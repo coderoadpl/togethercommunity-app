@@ -124,6 +124,7 @@ export const BrandMark = ({
   tenantAware?: boolean;
 }) => {
   const theme = useTheme();
+  const t = useTranslations();
   const tenant = useTenantOffer(tenantAware);
   const logoUrl = useThemedLogo(tenant?.branding ?? EMPTY_TENANT_BRANDING);
   if (tenant === null) {
@@ -131,7 +132,7 @@ export const BrandMark = ({
       <LogoImage
         surface={BRAND_SURFACE[size]}
         src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
-        alt="Together"
+        alt={t.common.appName}
         sx={{ mb: BRAND_TOGETHER_INSET[size] }}
       />
     );

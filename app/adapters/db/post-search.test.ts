@@ -28,7 +28,7 @@ const post = (id: string, body: string): Post => ({
   parentPostId: null,
   rootPostId: id,
   authorUserId: 'user-1',
-  authorDisplay: 'Autor',
+  authorDisplay: 'Author',
   authorIsStaff: false,
   body,
   createdAt: '2026-07-15T08:00:00.000Z',
@@ -59,28 +59,28 @@ beforeAll(async () => {
   });
 
   const repo = createPostRepository(db);
-  await repo.createPost(TENANT_ID, post('p1', 'Zakres zmiennych w JavaScript'));
-  await repo.createPost(TENANT_ID, post('p2', 'Deklaracja zmienna i typy'));
-  await repo.createPost(TENANT_ID, post('p3', 'Funkcje wyższego rzędu'));
+  await repo.createPost(TENANT_ID, post('p1', 'Variable scope in JavaScript'));
+  await repo.createPost(TENANT_ID, post('p2', 'Variable declaration and types'));
+  await repo.createPost(TENANT_ID, post('p3', 'Higher-order functions'));
 });
 
-describe('post search — Polish inflections via prefix matching', () => {
+describe('post search prefix matching', () => {
   it('matches every inflected form from a shared stem', async () => {
-    expect(await bodiesFor('zmienn')).toEqual([
-      'Deklaracja zmienna i typy',
-      'Zakres zmiennych w JavaScript',
+    expect(await bodiesFor('variabl')).toEqual([
+      'Variable declaration and types',
+      'Variable scope in JavaScript',
     ]);
   });
 
   it('still matches a fully typed word', async () => {
-    expect(await bodiesFor('funkcje')).toEqual(['Funkcje wyższego rzędu']);
+    expect(await bodiesFor('functions')).toEqual(['Higher-order functions']);
   });
 
   it('ANDs multiple terms, prefix-matching only the last', async () => {
-    expect(await bodiesFor('deklaracja zmienn')).toEqual(['Deklaracja zmienna i typy']);
+    expect(await bodiesFor('declaration variabl')).toEqual(['Variable declaration and types']);
   });
 
   it('returns nothing for an unrelated stem', async () => {
-    expect(await bodiesFor('kamper')).toEqual([]);
+    expect(await bodiesFor('camper')).toEqual([]);
   });
 });

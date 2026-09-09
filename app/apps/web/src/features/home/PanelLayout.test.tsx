@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import {
   PanelCoursesRoute,
@@ -159,7 +159,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel');
 
-    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: en.tenant.openingWorkspace })).toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dashboard-tiles')).not.toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: en.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -199,7 +199,7 @@ describe('Creator panel routing', () => {
 
     const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
-    expect(await screen.findByRole('status', { name: pl.tenant.openingWorkspace })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: en.tenant.openingWorkspace })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: destination }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -251,7 +251,7 @@ describe('Creator panel routing', () => {
     for (const id of alwaysVisibleSectionIds) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
     }
-    for (const [id, label] of Object.entries(pl.navigationGroups)) {
+    for (const [id, label] of Object.entries(en.navigationGroups)) {
       const group = screen.getByTestId(`group-${id}`);
       expect(group.querySelector('.MuiTypography-overline')).toHaveTextContent(label);
       expect(group).toHaveAttribute('aria-controls', `panel-navigation-${id}`);
@@ -282,7 +282,7 @@ describe('Creator panel routing', () => {
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
     expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
-    expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.members.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
   });
 
@@ -296,7 +296,7 @@ describe('Creator panel routing', () => {
     await userEvent.click(screen.getByTestId('group-sales'));
 
     expect(screen.queryByTestId('section-sales')).not.toBeInTheDocument();
-    const navigation = screen.getByRole('navigation', { name: pl.sections.aria });
+    const navigation = screen.getByRole('navigation', { name: en.sections.aria });
     const entries = [...navigation.querySelectorAll('[data-testid^="section-"]')].map((entry) =>
       entry.getAttribute('data-testid'));
     expect(entries.slice(-2)).toEqual(['section-integrations', 'section-settings']);
@@ -351,7 +351,7 @@ describe('Creator panel routing', () => {
     await renderPanelAt('/panel/products');
     await userEvent.click(await screen.findByTestId('open-navigation'));
 
-    for (const id of Object.keys(pl.navigationGroups)) {
+    for (const id of Object.keys(en.navigationGroups)) {
       expect(screen.getByTestId(`group-${id}`)).toHaveAttribute(
         'aria-controls',
         `panel-navigation-${id}`,
@@ -390,7 +390,7 @@ describe('Creator panel routing', () => {
 
     expect(await screen.findByTestId('dashboard-tiles')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel');
-    expect(screen.getByRole('heading', { name: pl.dashboard.heading, level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.dashboard.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('section-dashboard')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
   });
@@ -405,7 +405,7 @@ describe('Creator panel routing', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/panel/courses'));
     expect(screen.getByTestId('section-courses')).toHaveAttribute('aria-current', 'page');
-    expect(await screen.findByRole('heading', { name: pl.courses.heading, level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.courses.heading, level: 1 })).toBeInTheDocument();
   });
 
   it('shows the sales ledger empty state and keeps the navigation active', async () => {
@@ -414,7 +414,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel/sales');
 
-    expect(await screen.findByText(pl.sales.empty, {}, { timeout: 5_000 })).toBeInTheDocument();
+    expect(await screen.findByText(en.sales.empty, {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
   });
 
@@ -424,13 +424,13 @@ describe('Creator panel routing', () => {
     await renderPanelAt('/panel/products');
     const link = await screen.findByTestId('panel-member-view-link');
     expect(link).toHaveAttribute('href', '/start');
-    expect(link).toHaveTextContent(pl.panel.memberView);
+    expect(link).toHaveTextContent(en.panel.memberView);
     expect(link.querySelector('svg')).toBeInTheDocument();
     expect(window.getComputedStyle(link).getPropertyValue('min-height')).toBe('44px');
     await userEvent.click(screen.getByTestId('user-menu'));
     const menuLink = screen.getByTestId('user-menu-member-view');
     expect(menuLink).toHaveAttribute('href', '/start');
-    expect(menuLink).toHaveTextContent(pl.panel.memberView);
+    expect(menuLink).toHaveTextContent(en.panel.memberView);
     expect(menuLink.compareDocumentPosition(screen.getByTestId('user-menu-account'))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -444,15 +444,15 @@ describe('Creator panel routing', () => {
 
     await userEvent.click(await screen.findByTestId('user-menu'));
     expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
-    expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
+    expect(screen.getByText(en.tenant.roleOwner)).toHaveClass('MuiChip-label');
     const menu = screen.getByRole('menu');
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual([
-      pl.panel.memberView,
-      pl.student.myProducts,
-      pl.messages.navLabel,
-      pl.panel.myAccount,
-      pl.tenant.signOut,
+      en.panel.memberView,
+      en.student.myProducts,
+      en.messages.navLabel,
+      en.panel.myAccount,
+      en.tenant.signOut,
     ]);
     expect(items[0]).toHaveAttribute('href', '/start');
     expect(items[1]).toHaveAttribute('href', '/my/products');

@@ -41,12 +41,12 @@ describe('isTenantScopedOrigin', () => {
 
   it('accepts a verified custom domain and rejects an unverified or subdomain row', async () => {
     const rows = [
-      domain({ domain: 'kurs.acme.example' }),
+      domain({ domain: 'course.acme.example' }),
       domain({ domain: 'pending.acme.example', verified: false }),
       domain({ domain: 'acme.together.test', kind: 'subdomain' }),
     ];
 
-    expect(await isTenantScopedOrigin('https://kurs.acme.example', deps(rows))).toBe(true);
+    expect(await isTenantScopedOrigin('https://course.acme.example', deps(rows))).toBe(true);
     expect(await isTenantScopedOrigin('https://pending.acme.example', deps(rows))).toBe(false);
     expect(await isTenantScopedOrigin('https://other.example', deps(rows))).toBe(false);
   });

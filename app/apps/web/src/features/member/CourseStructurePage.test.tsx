@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -126,9 +126,9 @@ const okMe = () =>
       ok: true,
       data: {
         userId: 'u1',
-        email: 'jan@example.com',
+        email: 'john@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -291,7 +291,7 @@ describe('CourseStructurePage', () => {
     expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
-    expect(within(inlineProgram).getByRole('heading', { level: 2, name: pl.courseOverview.curriculum })).toBeInTheDocument();
+    expect(within(inlineProgram).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
     expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
     expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
@@ -393,9 +393,13 @@ describe('CourseStructurePage', () => {
 
     const lessonsTile = await screen.findByTestId('stat-tile-lessons');
     expect(lessonsTile).toHaveTextContent('5');
-    expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent('1 godz. 0 min');
+    expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent(
+      en.courseOverview.durationHoursMinutes({ hours: 1, minutes: 0 }),
+    );
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
-    expect(screen.getByTestId('progress-summary')).toHaveTextContent('1 z 5 ukończone');
+    expect(screen.getByTestId('progress-summary')).toHaveTextContent(
+      en.courseOverview.completedOf({ done: 1, total: 5 }),
+    );
   });
 
   it('points the continue CTA at the last viewed lesson when it is unfinished', async () => {
@@ -404,9 +408,9 @@ describe('CourseStructurePage', () => {
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(cta).toHaveTextContent(en.courseOverview.continueLearning);
     expect(cta).toHaveTextContent('Advanced Variables');
-    expect(cta).toHaveAttribute('title', `${pl.courseOverview.continueLearning}: Advanced Variables`);
+    expect(cta).toHaveAttribute('title', `${en.courseOverview.continueLearning}: Advanced Variables`);
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
@@ -418,7 +422,7 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
     const link = await screen.findByTestId('first-lesson-link');
     expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
-    expect(link).toHaveTextContent(pl.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
+    expect(link).toHaveTextContent(en.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
@@ -427,7 +431,7 @@ describe('CourseStructurePage', () => {
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(cta).toHaveTextContent(en.courseOverview.continueLearning);
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
@@ -485,11 +489,11 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const cta = await screen.findByTestId('continue-cta');
-    expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
+    expect(cta).toHaveTextContent(en.courseOverview.reviewAgain);
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     const card = screen.getByTestId('course-progress-card');
     expect(within(card).getByTestId('completion-mark')).toHaveAccessibleName(
-      pl.courseOverview.courseCompleted,
+      en.courseOverview.courseCompleted,
     );
     expect(within(card).getByTestId('progress-percent')).toHaveTextContent('100%');
     expect(screen.queryByTestId('course-completed-note')).not.toBeInTheDocument();
@@ -525,8 +529,8 @@ describe('CourseStructurePage', () => {
 
     const empty = await screen.findByTestId('course-empty-state');
     expect(within(empty).getByTestId('empty-course-icon')).toBeInTheDocument();
-    expect(empty).toHaveTextContent(pl.courseTree.emptyCourseTitle);
-    expect(empty).toHaveTextContent(pl.courseTree.noPublishedContent);
+    expect(empty).toHaveTextContent(en.courseTree.emptyCourseTitle);
+    expect(empty).toHaveTextContent(en.courseTree.noPublishedContent);
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
   });
 
@@ -545,11 +549,11 @@ describe('CourseStructurePage', () => {
     );
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
-    expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { name: pl.courseTree.courseNotFound })).toHaveLength(1);
-    expect(screen.getByText(pl.courseTree.courseNotInLibrary)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
-    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseNotFound })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: en.courseTree.courseNotFound })).toHaveLength(1);
+    expect(screen.getByText(en.courseTree.courseNotInLibrary)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
@@ -558,7 +562,7 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByTestId('anon-course-program')).toHaveTextContent(
-      pl.anon.lockedCourseHint,
+      en.anon.lockedCourseHint,
     );
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
     expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
@@ -570,7 +574,7 @@ describe('CourseStructurePage', () => {
     for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
-    expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(pl.shell.start);
+    expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(en.shell.start);
   });
 
   it('crops the anonymous cover exactly like the member cover', async () => {
@@ -598,7 +602,7 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const about = await screen.findByTestId('course-about-card');
-    expect(about).toHaveTextContent(pl.courseOverview.aboutCourse);
+    expect(about).toHaveTextContent(en.courseOverview.aboutCourse);
     const text = within(about).getByText(description);
     for (const width of [390, 1440]) {
       expect(stylesAt(text, width)['white-space']).not.toBe('nowrap');
@@ -631,10 +635,11 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('course-cover')).not.toBeInTheDocument();
   });
   it.each([
-    { name: 'product before sales URL', product: anonOffer.product, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: '/checkout/prod-advanced', label: pl.anon.unlockCta, contact: false },
-    { name: 'sales URL without product', product: null, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: 'https://courses.example.org/offer', label: pl.anon.salesCta, contact: false },
-    { name: 'login and contact', product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact', href: '/login', label: pl.auth.signInLink, contact: true },
-    { name: 'login without contact', product: null, salesUrl: null, supportUrl: null, href: '/login', label: pl.auth.signInLink, contact: false },
+    { name: 'product before sales URL', product: anonOffer.product, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: '/checkout/prod-advanced', label: en.anon.unlockCta, contact: false },
+    { name: 'sales URL without product', product: null, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: 'https://courses.example.org/offer', label: en.anon.salesCta, contact: false },
+    { name: 'login and contact', product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact', href: '/login', label: en.auth.signInLink, contact: true },
+    { name: 'unlisted product excluded by the offer', product: null, salesUrl: null, supportUrl: null, href: '/login', label: en.auth.signInLink, contact: false },
+    { name: 'login without contact', product: null, salesUrl: null, supportUrl: null, href: '/login', label: en.auth.signInLink, contact: false },
   ])('resolves $name', async ({ product, salesUrl, supportUrl, href, label, contact }) => {
     anonCoursePage(null, { ...anonOffer, product, salesUrl, supportUrl });
     await renderPage(<CourseStructurePage courseId="course-1" />);
@@ -642,7 +647,7 @@ describe('CourseStructurePage', () => {
       expect(await screen.findByTestId(id)).toHaveAttribute('href', href);
       expect(screen.getByTestId(id)).toHaveTextContent(label);
     }
-    const contactLink = screen.queryByRole('link', { name: pl.anon.contactCreator });
+    const contactLink = screen.queryByRole('link', { name: en.anon.contactCreator });
     if (contact) {
       expect(contactLink).toHaveAttribute('href', supportUrl);
       if (contactLink === null) throw new Error('Expected public contact link');
@@ -658,10 +663,10 @@ describe('CourseStructurePage', () => {
     const user = userEvent.setup();
     const module = await screen.findByTestId('module-toggle-m1');
     expect(module).toHaveAttribute('aria-expanded', 'false');
-    expect(module).toHaveTextContent(`3 ${pl.courseOverview.statLessons({ count: 3 })}`);
+    expect(module).toHaveTextContent(`3 ${en.courseOverview.statLessons({ count: 3 })}`);
     await user.click(module);
     expect(await screen.findByTestId('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'true');
-    expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(pl.anon.previewChip);
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(en.anon.previewChip);
     expect(screen.getByTestId('lesson-button-l1')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
     expect(screen.getByTestId('lesson-button-l2')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('lesson-button-l2')).not.toHaveAttribute('href');
@@ -672,7 +677,7 @@ describe('CourseStructurePage', () => {
     anonCoursePage(null, { ...anonOffer, product: { ...anonOffer.product, interval } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
     const price = await screen.findByTestId('guest-course-price');
-    expect(price).toHaveTextContent(interval === 'month' ? '/ miesiąc' : '/ rok');
+    expect(price).toHaveTextContent(interval === 'month' ? en.anon.monthlyPrice({ price: '' }).trim() : en.anon.yearlyPrice({ price: '' }).trim());
     expect(screen.getByTestId('guest-course-sticky-offer')).toHaveTextContent((price.textContent ?? '').replaceAll('\u00a0', ' '));
   });
 

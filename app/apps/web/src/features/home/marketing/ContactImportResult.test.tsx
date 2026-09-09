@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { marketingDirectoryContracts } from '#core/client/index.js';
 import { directoryTestFixtures } from './directory-test-data.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { fixtureValue, installDirectoryFixture, renderDirectory } from './directory-test-helpers.js';
 import { ContactImportWizard } from './ContactImportWizard.js';
 import { importErrorCsv } from './ContactImportResult.js';
@@ -27,7 +27,7 @@ describe('import results', () => {
       expect(revoked).not.toHaveBeenCalled();
     });
     try {
-      await userEvent.click(await screen.findByRole('button', { name: pl.directory.downloadErrors }));
+      await userEvent.click(await screen.findByRole('button', { name: en.directory.downloadErrors }));
       await waitFor(() => expect(click).toHaveBeenCalledOnce());
       await waitFor(() => expect(revoked).toHaveBeenCalledWith('blob:import-errors'));
       expect(document.querySelector('a[download]')).toBeNull();
@@ -38,10 +38,10 @@ describe('import results', () => {
   it('restores a completed batch directly from its URL and distinguishes withheld consent', async () => {
     installDirectoryFixture(fixture);
     await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', fixture.route);
-    expect(await screen.findByText(pl.directory.completed_with_errors)).toBeInTheDocument();
-    expect(screen.getByText(`${pl.directory.consentBlockedBySuppression}: 1`)).toBeInTheDocument();
-    expect(screen.getByText(`${pl.directory.created}: 2`)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: pl.directory.downloadErrors })).toBeEnabled();
+    expect(await screen.findByText(en.directory.completed_with_errors)).toBeInTheDocument();
+    expect(screen.getByText(`${en.directory.consentBlockedBySuppression}: 1`)).toBeInTheDocument();
+    expect(screen.getByText(`${en.directory.created}: 2`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.directory.downloadErrors })).toBeEnabled();
   });
   it('exports only rejected rows and escapes quotes, newlines and spreadsheet formulas', () => {
     const rejected = receipts.find((row) => row.errors.length > 0);

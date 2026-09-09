@@ -35,10 +35,6 @@ const COURSE_ID = 'course-acme';
 const MODULE_ID = 'module-acme-1';
 const PRODUCT_ID = 'product-acme-course';
 
-/**
- * The publicly embeddable Bunny Stream demo the studio fixture uses, so the
- * smoke's lesson-playback check resolves a real signed URL.
- */
 const BUNNY_DEMO_LIBRARY_ID = '197133';
 const BUNNY_DEMO_VIDEO_ID = 'dc48a09e-d9bb-420a-83d7-72dc2304c034';
 
@@ -49,14 +45,14 @@ const LESSON_CONTENTS: LessonBlock[] = [
     streamVideoId: BUNNY_DEMO_VIDEO_ID,
     streamLibraryId: BUNNY_DEMO_LIBRARY_ID,
   },
-  { type: 'html', html: '<p>Lekcja demonstracyjna kursu Acme.</p>' },
+  { type: 'html', html: '<p>A sample lesson from the Acme course.</p>' },
 ];
 
 const CHAPTERS: Chapter[] = [
   {
     id: 'chapter-acme-1',
-    name: 'Wprowadzenie',
-    contents: [{ id: `content-${SMOKE_TENANT_LESSON_ID}`, name: 'Lekcja wprowadzająca', lessonId: SMOKE_TENANT_LESSON_ID }],
+    name: 'Introduction',
+    contents: [{ id: `content-${SMOKE_TENANT_LESSON_ID}`, name: 'Introductory lesson', lessonId: SMOKE_TENANT_LESSON_ID }],
   },
 ];
 
@@ -101,9 +97,10 @@ export const applySmokeTenantSeed = async (
       id: SMOKE_TENANT_ID,
       slug: SMOKE_TENANT_SLUG,
       name: SMOKE_TENANT_NAME,
+      defaultLanguage: 'en',
       createdAt: options.nextIso(),
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({ target: tenants.id, set: { defaultLanguage: 'en' } });
 
   await db
     .insert(tenantAdmins)
@@ -131,7 +128,7 @@ export const applySmokeTenantSeed = async (
     .values({
       id: SMOKE_TENANT_LESSON_ID,
       tenantId: SMOKE_TENANT_ID,
-      name: 'Lekcja wprowadzająca',
+      name: 'Introductory lesson',
       isPreview: false,
       contents: LESSON_CONTENTS,
       durationMinutes: 4,
@@ -148,7 +145,7 @@ export const applySmokeTenantSeed = async (
       id: COURSE_ID,
       tenantId: SMOKE_TENANT_ID,
       name: SMOKE_TENANT_COURSE_TITLE,
-      description: 'Kurs demonstracyjny używany przez smoke test.',
+      description: 'A demo course used by the smoke test.',
       imageUrl: null,
       moduleOrder: [MODULE_ID],
       publiclyVisible: false,
@@ -165,8 +162,8 @@ export const applySmokeTenantSeed = async (
       id: MODULE_ID,
       tenantId: SMOKE_TENANT_ID,
       courseIds: [COURSE_ID],
-      title: 'Moduł wprowadzający',
-      prefix: 'Część 1',
+      title: 'Introductory module',
+      prefix: 'Part 1',
       chapters: CHAPTERS,
       createdAt: options.nextIso(),
     })

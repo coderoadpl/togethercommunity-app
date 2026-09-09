@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -37,7 +37,7 @@ describe('ResetPasswordPage', () => {
   it('sits on the auth shell, signed once with the Together wordmark', async () => {
     await renderResetPage('?token=valid-token');
 
-    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', en.common.appName);
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
   });
 
@@ -63,7 +63,7 @@ describe('ResetPasswordPage', () => {
     await userEvent.type(screen.getByTestId('reset-password-confirm'), 'different123');
     await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(pl.resetPassword.mismatch);
+    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(en.resetPassword.mismatch);
   });
 
   it('blocks a password below the shared minimum', async () => {
@@ -73,7 +73,7 @@ describe('ResetPasswordPage', () => {
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(
-      pl.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+      en.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
     );
   });
 
@@ -81,10 +81,10 @@ describe('ResetPasswordPage', () => {
     await renderResetPage('');
 
     expect(await screen.findByTestId('reset-invalid-token')).toHaveTextContent(
-      pl.resetPassword.missingToken,
+      en.resetPassword.missingToken,
     );
     expect(screen.queryByTestId('reset-password')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.resetPassword.requestNewLink })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute(
       'href',
       '/forgot-password',
     );
@@ -94,9 +94,9 @@ describe('ResetPasswordPage', () => {
     await renderResetPage('?error=INVALID_TOKEN');
 
     expect(await screen.findByTestId('reset-invalid-token')).toHaveTextContent(
-      pl.resetPassword.missingToken,
+      en.resetPassword.missingToken,
     );
-    expect(screen.getByRole('link', { name: pl.resetPassword.requestNewLink })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute(
       'href',
       '/forgot-password',
     );
@@ -113,7 +113,7 @@ describe('ResetPasswordPage', () => {
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByTestId('reset-invalid-token')).toHaveTextContent(
-      pl.resetPassword.missingToken,
+      en.resetPassword.missingToken,
     );
   });
 
@@ -127,7 +127,7 @@ describe('ResetPasswordPage', () => {
     await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageValidation);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(screen.getByTestId('reset-password')).toBeInTheDocument();
   });
 
@@ -141,6 +141,6 @@ describe('ResetPasswordPage', () => {
     await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByRole('button', { name: pl.resetPassword.submitPending })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: en.resetPassword.submitPending })).toBeDisabled();
   });
 });

@@ -54,7 +54,7 @@ describe('localizeError', () => {
       pl.errors.messageEmailSendingNotConfigured,
       pl.errors.messagePlatformEmailPoolExhausted,
     ]) {
-      expect(message).not.toContain('Integracje');
+      expect(message).not.toContain(pl.sections.integrations);
     }
     for (const message of [
       en.errors.messageIntegrationNotConfigured,
@@ -64,7 +64,7 @@ describe('localizeError', () => {
     ]) {
       expect(message).not.toContain('Integrations');
     }
-    expect(pl.errors.messageInvoiceExemptionBasisMissing).not.toContain('Ustawienia');
+    expect(pl.errors.messageInvoiceExemptionBasisMissing).not.toContain(pl.sections.settings);
     expect(en.errors.messageInvoiceExemptionBasisMissing).not.toContain('Settings');
   });
 
@@ -74,7 +74,11 @@ describe('localizeError', () => {
       'broadcasts_disabled',
       'transactional_platform_cap_reached',
     ] as const) {
-      expect(localizeErrorCodeForPanel(code, pl)).toContain('Integracje → E-mail');
+      expect(localizeErrorCodeForPanel(code, pl)).toContain(
+        code === 'transactional_platform_cap_reached'
+          ? pl.errors.panelHintPlatformEmailPoolExhausted
+          : pl.errors.panelHintEmailSendingNotConfigured,
+      );
       expect(localizeErrorCodeForPanel(code, en)).toContain('Integrations → E-mail');
       expect(localizeErrorCodeForPanel(code, pl)).toContain(localizeErrorCode(code, pl));
     }
@@ -82,14 +86,14 @@ describe('localizeError', () => {
 
   it('points panel surfaces at the integrations section for unconfigured and rejected integrations', () => {
     for (const code of ['integration_not_configured', 'integration_auth'] as const) {
-      expect(localizeErrorCodeForPanel(code, pl)).toContain('Integracje');
+      expect(localizeErrorCodeForPanel(code, pl)).toContain(pl.sections.integrations);
       expect(localizeErrorCodeForPanel(code, en)).toContain('Integrations');
     }
   });
 
   it('points panel surfaces at the invoicing settings for a missing exemption basis', () => {
     expect(localizeErrorCodeForPanel('invoice_exemption_basis_missing', pl)).toContain(
-      'Ustawienia → Firma → Automatyczne faktury',
+      pl.errors.panelHintInvoiceExemptionBasisMissing,
     );
     expect(localizeErrorCodeForPanel('invoice_exemption_basis_missing', en)).toContain(
       'Settings → Company → Automatic invoices',

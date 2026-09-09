@@ -105,6 +105,7 @@ const product = (id: string): Product => ({
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -273,7 +274,7 @@ class FakePosts implements PostRepository {
       threads: page.map((post) => ({
         post,
         replyCount: this.rows.filter(
-          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
+          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null,
         ).length,
       })),
       nextCursor: overflow && last ? cursorOf(last) : null,
@@ -302,7 +303,7 @@ class FakePosts implements PostRepository {
       threads: page.map((post) => ({
         post,
         replyCount: this.rows.filter(
-          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
+          (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null,
         ).length,
       })),
       nextCursor: overflow && last ? cursorOf(last) : null,
@@ -326,6 +327,10 @@ class FakePosts implements PostRepository {
     const index = this.rows.findIndex((item) => item.id === post.id);
     this.rows[index] = next;
     return next;
+  }
+
+  async purge(): Promise<boolean> {
+    return false;
   }
 
   async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
@@ -772,7 +777,7 @@ const membersSpace = space({ id: 's-open', slug: 'open', name: 'Otwarta', visibi
 const gatedSpace = space({
   id: 's-club',
   slug: 'club',
-  name: 'Klub',
+  name: 'Club',
   visibility: 'product',
   productIds: ['p-club'],
   position: 1,
@@ -879,17 +884,17 @@ describe('space CRUD', () => {
   it('requires products for product-gated spaces and round-trips update/delete', async () => {
     const f = fixture({ spaces: [] });
     const staff = ctx({ staffRole: 'owner', memberId: null });
-    const invalid = await createSpace(staff, { slug: 'club', name: 'Klub', visibility: 'product' }, f.deps);
+    const invalid = await createSpace(staff, { slug: 'club', name: 'Club', visibility: 'product' }, f.deps);
     expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
     const created = await createSpace(
       staff,
-      { slug: 'club', name: 'Klub', visibility: 'product', productIds: ['p1'] },
+      { slug: 'club', name: 'Club', visibility: 'product', productIds: ['p1'] },
       f.deps,
     );
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const updated = await updateSpace(staff, { id: created.value.id, name: 'Klub 2.0' }, f.deps);
-    expect(updated).toMatchObject({ ok: true, value: { name: 'Klub 2.0', visibility: 'product' } });
+    const updated = await updateSpace(staff, { id: created.value.id, name: 'Club 2.0' }, f.deps);
+    expect(updated).toMatchObject({ ok: true, value: { name: 'Club 2.0', visibility: 'product' } });
     const deleted = await deleteSpace(staff, { id: created.value.id }, f.deps);
     expect(deleted).toMatchObject({ ok: true, value: { spaceId: created.value.id } });
     expect(await deleteSpace(staff, { id: created.value.id }, f.deps)).toMatchObject({
@@ -1028,7 +1033,7 @@ describe('space feed', () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
       ctx(),
-      { contextKind: 'space', contextId: 's-open', body: 'ważne' },
+      { contextKind: 'space', contextId: 's-open', body: 'important' },
       f.deps,
     );
     if (!created.ok) throw new Error('post was not created');
@@ -1054,10 +1059,10 @@ describe('space feed', () => {
 
   it('resolves author avatars for pinned and unpinned feed rows', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'przypięty' }, f.deps);
+    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'pinned' }, f.deps);
     const plain = await createPost(
       ctx({ userId: 'u2', memberId: 'm2' }),
-      { contextKind: 'space', contextId: 's-open', body: 'zwykły' },
+      { contextKind: 'space', contextId: 's-open', body: 'plain' },
       f.deps,
     );
     if (!pinned.ok || !plain.ok) throw new Error('posts were not created');
@@ -1072,11 +1077,28 @@ describe('space feed', () => {
     });
   });
 
+  it('hides legacy space roots after their last live reply is deleted', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const input = { contextKind: 'space', contextId: 's-open' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Legacy root' }, f.deps);
+    if (!root.ok) throw new Error('Root failed');
+    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, f.deps);
+    if (!reply.ok) throw new Error('Reply failed');
+    const stored = await f.posts.findById('t1', root.value.id);
+    if (stored === null) throw new Error('Root missing');
+    stored.deletedAt = NOW;
+    delete stored.deletedBy;
+    delete stored.deletedByUserId;
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [{ id: root.value.id }] } });
+    await deletePost(ctx(), { id: reply.value.id }, f.deps);
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [] } });
+  });
+
   it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
       ctx(),
-      { contextKind: 'space', contextId: 's-open', body: 'do usunięcia' },
+      { contextKind: 'space', contextId: 's-open', body: 'delete me' },
       f.deps,
     );
     if (!created.ok) throw new Error('post was not created');
@@ -1106,7 +1128,7 @@ describe('space feed', () => {
 
   it.each([
     { moderator: false, reply: true, deletedBy: 'author' },
-    { moderator: true, reply: false, deletedBy: 'moderator' },
+    { moderator: true, reply: true, deletedBy: 'moderator' },
   ] as const)('keeps $deletedBy tombstones in the space feed with reply=$reply', async ({ moderator, reply, deletedBy }) => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const input = { contextKind: 'space', contextId: 's-open' } as const;
@@ -1177,7 +1199,7 @@ describe('space feed', () => {
 
   it('paginates newest-first with reply counts and reaction summaries', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const bodies = ['pierwszy', 'drugi', 'trzeci'];
+    const bodies = ['first', 'second', 'third'];
     for (const body of bodies) {
       const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body }, f.deps);
       expect(created.ok).toBe(true);
@@ -1187,7 +1209,7 @@ describe('space feed', () => {
     if (!first) throw new Error('no root post');
     await createPost(
       ctx({ userId: 'u2', memberId: 'm2' }),
-      { contextKind: 'space', contextId: 's-open', parentPostId: first.id, body: 'odpowiedź' },
+      { contextKind: 'space', contextId: 's-open', parentPostId: first.id, body: 'reply' },
       f.deps,
     );
     await reactToPost(ctx({ userId: 'u2', memberId: 'm2' }), { postId: first.id, emoji: '👍' }, f.deps);
@@ -1195,7 +1217,7 @@ describe('space feed', () => {
     const pageOne = await getSpaceFeed(ctx(), { spaceId: 's-open', limit: 2 }, f.deps);
     expect(pageOne.ok).toBe(true);
     if (!pageOne.ok) return;
-    expect(pageOne.value.items.map((item) => item.body)).toEqual(['trzeci', 'drugi']);
+    expect(pageOne.value.items.map((item) => item.body)).toEqual(['third', 'second']);
     expect(pageOne.value.nextCursor).not.toBeNull();
 
     const pageTwo = await getSpaceFeed(
@@ -1205,7 +1227,7 @@ describe('space feed', () => {
     );
     expect(pageTwo.ok).toBe(true);
     if (!pageTwo.ok) return;
-    expect(pageTwo.value.items.map((item) => item.body)).toEqual(['pierwszy']);
+    expect(pageTwo.value.items.map((item) => item.body)).toEqual(['first']);
     expect(pageTwo.value.nextCursor).toBeNull();
     const firstItem = pageTwo.value.items[0];
     expect(firstItem?.replyCount).toBe(1);
@@ -1276,7 +1298,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-club', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'nowy wpis' }, f.deps);
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'new post' }, f.deps);
     expect(created.ok).toBe(true);
 
     expect(f.delivered.sort()).toEqual(['u2', 'u9']);
@@ -1285,8 +1307,8 @@ describe('space-post notifications', () => {
       contextKind: 'space',
       contextId: 's-club',
       courseId: null,
-      lessonName: 'Klub',
-      snippet: 'nowy wpis',
+      lessonName: 'Club',
+      snippet: 'new post',
       authorAvatarUrl: null,
     });
   });
@@ -1297,7 +1319,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-open', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'nowy wpis' }, f.deps);
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'new post' }, f.deps);
 
     expect(created.ok).toBe(true);
     expect(f.delivered).toEqual(['u5']);

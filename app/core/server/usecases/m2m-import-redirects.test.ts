@@ -170,7 +170,7 @@ const write = (records: unknown[]) => ({ datasetVersion: 'together-import/v1' as
 
 const redirectRecord = (overrides: Record<string, unknown> = {}) => ({
   importKey: 'redirect-course',
-  fromPath: '/kurs/javascript',
+  fromPath: '/course/javascript',
   target: { kind: 'course', importKey: 'course-source' },
   permanent: true,
   ...overrides,
@@ -181,12 +181,12 @@ describe('m2m redirect import', () => {
     const h = harness();
 
     const result = await importM2mRedirects(ctx, apiKey, write([
-      redirectRecord({ fromPath: '/Kurs/JavaScript/' }),
+      redirectRecord({ fromPath: '/Course/JavaScript/' }),
     ]), h.deps);
 
     expect(result).toMatchObject({ ok: true, value: { summary: { created: 1, failed: 0 } } });
     expect(h.redirects.get('redirect-course')).toMatchObject({
-      fromPath: '/kurs/javascript',
+      fromPath: '/course/javascript',
       targetKind: 'course',
       targetId: course.id,
       targetPath: `/my/courses/${course.id}`,
@@ -200,7 +200,7 @@ describe('m2m redirect import', () => {
     await importM2mRedirects(ctx, apiKey, write([
       redirectRecord({
         importKey: 'redirect-lesson',
-        fromPath: '/kurs/javascript/wstep',
+        fromPath: '/course/javascript/intro',
         target: { kind: 'lesson', importKey: 'lesson-source', courseKey: 'course-source' },
         permanent: false,
       }),
@@ -220,7 +220,7 @@ describe('m2m redirect import', () => {
     await importM2mRedirects(ctx, apiKey, write([
       redirectRecord({
         importKey: 'redirect-module',
-        fromPath: '/kurs/javascript/modul',
+        fromPath: '/course/javascript/modul',
         target: { kind: 'module-as-course', importKey: 'module-source' },
       }),
     ]), h.deps);
@@ -283,7 +283,7 @@ describe('m2m redirect import', () => {
     const manual = {
       id: 'redirect-manual',
       tenantId: TENANT_ID,
-      fromPath: '/kurs/javascript',
+      fromPath: '/course/javascript',
       targetKind: 'path' as const,
       targetId: null,
       targetPath: '/my',
@@ -320,7 +320,7 @@ describe('m2m redirect import', () => {
     const result = await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
 
     expect(result).toMatchObject({ ok: true, value: { summary: { created: 1, failed: 0 } } });
-    expect(h.redirects.get('redirect-course')).toMatchObject({ fromPath: '/kurs/javascript' });
+    expect(h.redirects.get('redirect-course')).toMatchObject({ fromPath: '/course/javascript' });
   });
 
   it('refuses a target that no import created', async () => {
@@ -340,7 +340,7 @@ describe('m2m redirect import', () => {
     const h = harness();
 
     const result = await importM2mRedirects(ctx, apiKey, write([
-      redirectRecord({ fromPath: 'kurs/javascript' }),
+      redirectRecord({ fromPath: 'course/javascript' }),
     ]), h.deps);
 
     expect(result).toMatchObject({

@@ -23,6 +23,14 @@ const persistedPreference = <T extends string>(
       return fallback;
     }
   },
+  loadStored: (): T | undefined => {
+    try {
+      const stored = localStorage.getItem(key);
+      return isValid(stored) ? stored : undefined;
+    } catch {
+      return undefined;
+    }
+  },
   save: (value: T): void => {
     try {
       localStorage.setItem(key, value);

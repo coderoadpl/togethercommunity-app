@@ -27,7 +27,7 @@ import { updateLastViewedInputSchema } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StartPage } from './StartPage.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -179,7 +179,7 @@ describe('LessonPlayerPage', () => {
             userId: 'u1',
             email: 'user@example.com',
             emailVerified: true,
-            name: 'Jan Uczestnik',
+            name: 'John Participant',
             tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1', banned: false },
           },
         }),
@@ -284,12 +284,12 @@ describe('LessonPlayerPage', () => {
     await act(() => router.navigate({ to: '/start' }));
     await screen.findByTestId('start-continue');
     releaseVisit();
-    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(pl.start.continueLabel({ lesson: 'Lesson B' })));
+    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(en.start.continueLabel({ lesson: 'Lesson B' })));
     expect(screen.getByTestId('start-continue-cta')).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l1' } }));
     await waitFor(() => expect(recorded).toEqual(['l1', 'l2', 'l1']));
     await act(() => router.navigate({ to: '/start' }));
-    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(pl.start.continueLabel({ lesson: 'Lesson A' })));
+    await waitFor(() => expect(screen.getByTestId('start-continue')).toHaveTextContent(en.start.continueLabel({ lesson: 'Lesson A' })));
     expect(screen.getByTestId('start-continue-cta')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
     expect(lessonReads).toEqual(['l1', 'l2']);
     expect(structureReads).toBe(1);
@@ -305,8 +305,8 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const loading = screen.getByTestId('course-loading');
-    expect(within(loading).getByRole('status', { name: pl.lesson.loading })).toHaveAttribute('aria-busy', 'true');
-    expect(within(loading).getByRole('heading', { level: 1, name: pl.lesson.loading })).toBeInTheDocument();
+    expect(within(loading).getByRole('status', { name: en.lesson.loading })).toHaveAttribute('aria-busy', 'true');
+    expect(within(loading).getByRole('heading', { level: 1, name: en.lesson.loading })).toBeInTheDocument();
     expect(screen.queryByTestId('brand-loader-mark')).not.toBeInTheDocument();
 
     releaseResponse();
@@ -330,7 +330,7 @@ describe('LessonPlayerPage', () => {
       'src',
       'https://cdn.example.com/slides.pdf',
     );
-    expect(screen.getByRole('link', { name: pl.lesson.openPdf })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.lesson.openPdf })).toHaveAttribute(
       'href',
       'https://cdn.example.com/slides.pdf',
     );
@@ -377,7 +377,7 @@ describe('LessonPlayerPage', () => {
     server.use(
       okStructure(),
       okProgress(),
-      okLesson([{ type: 'link', url: sandboxUrl, description: 'Zadanie 1 — flexbox' }]),
+      okLesson([{ type: 'link', url: sandboxUrl, description: 'Task 1 - flexbox' }]),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
@@ -389,14 +389,14 @@ describe('LessonPlayerPage', () => {
     );
     expect(sandbox).toHaveAttribute('loading', 'lazy');
     expect(sandbox).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-    expect(sandbox).toHaveAttribute('title', 'Zadanie 1 — flexbox');
-    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Zadanie 1 — flexbox');
+    expect(sandbox).toHaveAttribute('title', 'Task 1 - flexbox');
+    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Task 1 - flexbox');
     expect(screen.getByTestId('lesson-media-skeleton')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — Zadanie 1 — flexbox` }),
+      screen.getByRole('link', { name: `${en.lesson.openInNewTab} — Task 1 - flexbox` }),
     ).toHaveAttribute('href', 'https://codesandbox.io/s/github/acme-courses/task-1?autoresize=1');
     expect(screen.getByTestId('lesson-block-0')).toHaveTextContent(
-      pl.lesson.labelSandbox({ provider: 'CodeSandbox' }),
+      en.lesson.labelSandbox({ provider: 'CodeSandbox' }),
     );
   });
 
@@ -410,12 +410,12 @@ describe('LessonPlayerPage', () => {
 
     const toggle = await screen.findByTestId('lesson-embed-toggle');
     expect(screen.getByTestId('lesson-embed-collapsed-warning')).toHaveTextContent(
-      pl.lesson.collapsedEmbedWarning,
+      en.lesson.collapsedEmbedWarning,
     );
-    expect(toggle).toHaveTextContent(pl.lesson.expandEmbed);
+    expect(toggle).toHaveTextContent(en.lesson.expandEmbed);
     expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — CodeSandbox / alert-demo` }),
+      screen.getByRole('link', { name: `${en.lesson.openInNewTab} — CodeSandbox / alert-demo` }),
     ).toBeInTheDocument();
 
     await userEvent.click(toggle);
@@ -425,7 +425,7 @@ describe('LessonPlayerPage', () => {
       'https://codesandbox.io/embed/alert-demo',
     );
     expect(screen.queryByTestId('lesson-embed-collapsed-warning')).not.toBeInTheDocument();
-    expect(screen.getByTestId('lesson-embed-toggle')).toHaveTextContent(pl.lesson.collapseEmbed);
+    expect(screen.getByTestId('lesson-embed-toggle')).toHaveTextContent(en.lesson.collapseEmbed);
 
     await userEvent.click(screen.getByTestId('lesson-embed-toggle'));
 
@@ -521,7 +521,7 @@ describe('LessonPlayerPage', () => {
     ]);
     expect(screen.queryByTestId('lesson-sandbox-caption')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: `${pl.lesson.openInNewTab} — CodeSandbox / grid-task-2` }),
+      screen.getByRole('link', { name: `${en.lesson.openInNewTab} — CodeSandbox / grid-task-2` }),
     ).toHaveAttribute('href', 'https://codesandbox.io/s/grid-task-2');
   });
 
@@ -529,12 +529,12 @@ describe('LessonPlayerPage', () => {
     server.use(
       okStructure(),
       okProgress(),
-      okLesson([{ type: 'link', url: 'mailto:teacher@example.com', description: 'Napisz do prowadzącej' }]),
+      okLesson([{ type: 'link', url: 'mailto:teacher@example.com', description: 'Email the instructor' }]),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const mailLink = await screen.findByRole('link', {
-      name: `Napisz do prowadzącej ${pl.lesson.mailHint}`,
+      name: `Email the instructor ${en.lesson.mailHint}`,
     });
     expect(mailLink).toHaveAttribute('href', 'mailto:teacher@example.com');
     expect(mailLink).not.toHaveAttribute('target');
@@ -546,7 +546,7 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
-        { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Zadanie' },
+        { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Task' },
         { type: 'html', html: '<p><a href="https://codesandbox.io/s/abc123">sandbox</a></p>' },
       ]),
     );
@@ -557,7 +557,7 @@ describe('LessonPlayerPage', () => {
       'sandbox',
       'html',
     ]);
-    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Zadanie');
+    expect(screen.getByTestId('lesson-sandbox-caption')).toHaveTextContent('Task');
     expect(screen.getByTestId('lesson-html')).toHaveTextContent('sandbox');
   });
 
@@ -575,12 +575,12 @@ describe('LessonPlayerPage', () => {
     const section = await screen.findByTestId('lesson-block-0');
     expect(screen.getAllByTestId(/lesson-block-/u)).toHaveLength(1);
     expect(section.dataset.blockType).toBe('links');
-    expect(within(section).getByText(pl.lesson.linksHeading)).toBeInTheDocument();
+    expect(within(section).getByText(en.lesson.linksHeading)).toBeInTheDocument();
     expect(within(section).getAllByRole('listitem')).toHaveLength(2);
     const links = within(section).getAllByRole('link');
     expect(links[0]).toHaveAttribute('title', 'https://github.com/acme-courses/task-1');
-    expect(links[0]).toHaveAccessibleName(`GitHub ${pl.lesson.newTabHint}`);
-    expect(links[1]).toHaveAccessibleName(`developer.mozilla.org ${pl.lesson.newTabHint}`);
+    expect(links[0]).toHaveAccessibleName(`GitHub ${en.lesson.newTabHint}`);
+    expect(links[1]).toHaveAccessibleName(`developer.mozilla.org ${en.lesson.newTabHint}`);
     expect(section.textContent).not.toContain('https://');
     expect(section.textContent).not.toContain('/acme-courses/');
   });
@@ -601,8 +601,8 @@ describe('LessonPlayerPage', () => {
       .getAllByRole('link')
       .map((node) => node.getAttribute('title'));
     expect(names).toEqual(['https://github.com/acme-courses/one', 'https://github.com/acme-courses/two']);
-    expect(within(section).getByRole('link', { name: `github.com / one ${pl.lesson.newTabHint}` })).toBeInTheDocument();
-    expect(within(section).getByRole('link', { name: `github.com / two ${pl.lesson.newTabHint}` })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: `github.com / one ${en.lesson.newTabHint}` })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: `github.com / two ${en.lesson.newTabHint}` })).toBeInTheDocument();
   });
 
   it('leaves a single-anchor html block as html beside a link chip on the same target', async () => {
@@ -612,7 +612,7 @@ describe('LessonPlayerPage', () => {
       okProgress(),
       okLesson([
         { type: 'link', url: repoUrl, description: 'GitHub' },
-        { type: 'html', html: `<p><a href="${repoUrl}" target="_blank">repozytorium</a></p>` },
+        { type: 'html', html: `<p><a href="${repoUrl}" target="_blank">repository</a></p>` },
       ]),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -655,9 +655,9 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
-        { type: 'link', url: 'https://example.com/first', description: 'Pierwszy' },
-        { type: 'html', html: '<p>Notatki</p><p>Więcej</p>' },
-        { type: 'link', url: 'https://example.com/second', description: 'Drugi' },
+        { type: 'link', url: 'https://example.com/first', description: 'First' },
+        { type: 'html', html: '<p>Notes</p><p>More</p>' },
+        { type: 'link', url: 'https://example.com/second', description: 'Second' },
       ]),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -698,9 +698,9 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
-    expect(screen.getByTestId('lesson-video-placeholder')).toHaveTextContent(pl.lesson.videoPlaceholder);
-    expect(screen.queryByText(pl.lesson.videoFailedTitle)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-video-placeholder')).toHaveTextContent(en.lesson.videoPlaceholder);
+    expect(screen.queryByText(en.lesson.videoFailedTitle)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
     expect(memberOnlyRequests).toBe(0);
@@ -735,7 +735,7 @@ describe('LessonPlayerPage', () => {
             userId: 'u1',
             email: 'user@example.com',
             emailVerified: true,
-            name: 'Jan Uczestnik',
+            name: 'John Participant',
             tenant: {
               id: 't1',
               slug: 'acme',
@@ -830,7 +830,7 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
     expect(screen.getByTestId('lesson-video')).toHaveAttribute(
       'src',
       'https://iframe.mediadelivery.net/embed/424242/vid-1?autoplay=false&preload=false',
@@ -892,14 +892,14 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-video-placeholder')).toHaveTextContent(
-      pl.lesson.videoPlaceholder,
+      en.lesson.videoPlaceholder,
     );
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
 
   it.each([
-    ['missing_library_id', pl.lesson.videoMissingLibrary],
-    ['secret_invalid', pl.lesson.videoSecretInvalid],
+    ['missing_library_id', en.lesson.videoMissingLibrary],
+    ['secret_invalid', en.lesson.videoSecretInvalid],
   ])('explains unavailable video reason %s and retries playback', async (reason, message) => {
     let recovered = false;
     server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
@@ -913,7 +913,7 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
     recovered = true;
-    await userEvent.setup().click(screen.getByRole('button', { name: pl.common.retry }));
+    await userEvent.setup().click(screen.getByRole('button', { name: en.common.retry }));
     expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', 'https://courses.example.org/video');
     expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
@@ -923,9 +923,9 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     await screen.findByTestId('lesson-html');
-    expect(screen.queryByLabelText(pl.common.breadcrumbs)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.common.breadcrumbs)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Intro to Variables' })).toBeInTheDocument();
-    expect(screen.getByText(pl.lesson.eyebrow)).toBeInTheDocument();
+    expect(screen.getByText(en.lesson.eyebrow)).toBeInTheDocument();
   });
 
   it('completes the lesson: optimistic checkmark, disabled button and invalidation', async () => {
@@ -1035,10 +1035,10 @@ describe('LessonPlayerPage', () => {
     await user.click(await screen.findByTestId('complete-continue'));
 
     const pending = screen.getByTestId('complete-continue');
-    expect(pending).toHaveTextContent(pl.lesson.completing);
+    expect(pending).toHaveTextContent(en.lesson.completing);
     expect(pending).toBeDisabled();
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.lesson.next({ name: 'Advanced Variables' })))
+    expect(screen.queryByText(en.lesson.next({ name: 'Advanced Variables' })))
       .not.toBeInTheDocument();
     expect(screen.queryByTestId('unmark-complete')).not.toBeInTheDocument();
 
@@ -1073,15 +1073,15 @@ describe('LessonPlayerPage', () => {
     server.use(okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const complete = await screen.findByRole('button', { name: pl.lesson.markCompleted });
-    const previous = screen.getByRole('button', { name: pl.lesson.previousLesson });
-    const next = screen.getByRole('link', { name: pl.lesson.nextLesson });
+    const complete = await screen.findByRole('button', { name: en.lesson.markCompleted });
+    const previous = screen.getByRole('button', { name: en.lesson.previousLesson });
+    const next = screen.getByRole('link', { name: en.lesson.nextLesson });
     for (const action of [previous, next, complete]) {
       expect(action).toHaveClass('MuiButton-outlined');
     }
     expect(previous).toBeDisabled();
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    const primary = screen.getByRole('button', { name: pl.lesson.completeContinue });
+    const primary = screen.getByRole('button', { name: en.lesson.completeContinue });
     expect(primary).toHaveClass('MuiButton-contained');
     for (const width of [375, 390, 899]) {
       for (const action of [previous, next, complete, primary]) {
@@ -1110,7 +1110,7 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const primary = await screen.findByTestId('complete-continue');
-    expect(primary).toHaveTextContent(pl.lesson.completeContinue);
+    expect(primary).toHaveTextContent(en.lesson.completeContinue);
     expect(primary.className).toContain('MuiButton-contained');
     expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-outlined');
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
@@ -1137,7 +1137,7 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
 
     const neutral = await screen.findByTestId('skip-to-next-lesson');
-    expect(neutral).toHaveTextContent(pl.lesson.nextLesson);
+    expect(neutral).toHaveTextContent(en.lesson.nextLesson);
     expect(neutral).toHaveAttribute('href', '/my/courses/course-1/lessons/l3');
     const muiClasses = (element: HTMLElement) =>
       [...element.classList].filter((name) => name.startsWith('MuiButton'));
@@ -1171,7 +1171,7 @@ describe('LessonPlayerPage', () => {
     server.use(okStructureFullyCompleted(), okProgress(['l1', 'l2']), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
 
-    expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
+    expect(await screen.findByTestId('course-completed')).toHaveTextContent(en.lesson.courseCompleted);
     expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
@@ -1183,7 +1183,7 @@ describe('LessonPlayerPage', () => {
     const markComplete = await screen.findByTestId('mark-complete');
     expect(markComplete.className).toContain('MuiButton-contained');
     expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
-    expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
+    expect(await screen.findByTestId('course-end')).toHaveTextContent(en.lesson.lastLesson);
   });
 
   it('links the previous lesson and disables that slot on the first one', async () => {
@@ -1194,7 +1194,7 @@ describe('LessonPlayerPage', () => {
 
     const previous = await screen.findByTestId('prev-lesson');
     expect(previous).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
-    expect(previous).toHaveTextContent(pl.lesson.previousLesson);
+    expect(previous).toHaveTextContent(en.lesson.previousLesson);
     unmount();
 
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -1273,7 +1273,7 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const download = await screen.findByRole('link', {
-      name: pl.lesson.downloadAttachment({ name: 'worksheet.pdf' }),
+      name: en.lesson.downloadAttachment({ name: 'worksheet.pdf' }),
     });
     expect(download).toHaveAttribute(
       'href',
@@ -1294,9 +1294,9 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByRole('heading', { name: pl.lesson.contentLocked })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.lesson.contentLocked })).toBeInTheDocument();
     expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.lesson.backToCourse })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute(
       'href',
       '/my/courses/course-1',
     );
@@ -1337,9 +1337,9 @@ describe('LessonPlayerPage', () => {
             products: [{
               id: 'prod-full',
               type: 'course',
-              slug: 'pelny-kurs-javascript',
-              title: 'Pełny kurs JavaScript',
-              description: 'Wszystkie lekcje',
+              slug: 'complete-javascript-course',
+              title: 'Complete JavaScript Course',
+              description: 'All lessons',
               coverUrl: null,
               priceCents: 19900,
               currency: 'PLN',
@@ -1360,9 +1360,9 @@ describe('LessonPlayerPage', () => {
 
     const unlock = await screen.findByTestId('unlock-lesson-cta');
     expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
-    expect(unlock).toHaveTextContent('Odblokuj dostęp — 49,00 zł/mies.');
-    expect(await screen.findByRole('heading', { name: 'Pełny kurs JavaScript' })).toBeInTheDocument();
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('49,00 zł/mies.');
+    expect(unlock).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceMonthly({ price: 'PLN 49.00' }) }));
+    expect(await screen.findByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
+    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceMonthly({ price: 'PLN 49.00' }));
   });
 
   it('falls back to the product price when the locked product has no active price rows', async () => {
@@ -1399,9 +1399,9 @@ describe('LessonPlayerPage', () => {
             products: [{
               id: 'prod-full',
               type: 'course',
-              slug: 'pelny-kurs-javascript',
-              title: 'Pełny kurs JavaScript',
-              description: 'Wszystkie lekcje',
+              slug: 'complete-javascript-course',
+              title: 'Complete JavaScript Course',
+              description: 'All lessons',
               coverUrl: null,
               priceCents: 19900,
               currency: 'PLN',
@@ -1414,8 +1414,8 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('199,00 zł jednorazowo');
-    expect(screen.getByTestId('unlock-lesson-cta')).toHaveTextContent('Odblokuj dostęp — 199,00 zł jednorazowo');
+    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceOneTime({ price: 'PLN 199.00' }));
+    expect(screen.getByTestId('unlock-lesson-cta')).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceOneTime({ price: 'PLN 199.00' }) }));
   });
 
   it('leaves the program to the shell below md, where the program sheet carries it', async () => {
@@ -1520,7 +1520,7 @@ describe('LessonPlayerPage', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toBe(heading);
     expect(screen.getByTestId('lesson-transition-loading')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: pl.auth.signInLink })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
 
     releaseLesson();
 
@@ -1534,8 +1534,8 @@ describe('LessonPlayerPage', () => {
 
     const empty = await screen.findByTestId('lesson-empty-state');
     expect(within(empty).getByTestId('empty-lesson-icon')).toBeInTheDocument();
-    expect(empty).toHaveTextContent(pl.lesson.noContentTitle);
-    expect(empty).toHaveTextContent(pl.lesson.noContent);
+    expect(empty).toHaveTextContent(en.lesson.noContentTitle);
+    expect(empty).toHaveTextContent(en.lesson.noContent);
   });
 
   it('fires a fire-and-forget last-viewed with module and chapter ids on mount', async () => {
@@ -1599,13 +1599,13 @@ describe('LessonPlayerPage', () => {
             userId: 'u1',
             email: 'user@example.com',
             emailVerified: true,
-            name: 'Jan Uczestnik',
+            name: 'John Participant',
             tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1', banned: false },
             impersonation: {
               id: 'imp-1',
               subjectMemberId: 'mem-1',
-              subjectName: 'Jan Uczestnik',
-              actorName: 'Ola Operatorka',
+              subjectName: 'John Participant',
+              actorName: 'Olivia Operator',
               expiresAt: '2026-08-15T09:00:00.000Z',
             },
           },
@@ -1637,7 +1637,7 @@ describe('LessonPlayerPage', () => {
       parentPostId: null,
       rootPostId: id,
       isOwn: false,
-      authorDisplay: 'Ola Autorka',
+      authorDisplay: 'Olivia Author',
       authorIsStaff: false,
       authorAvatarUrl: null,
       body,
@@ -1657,7 +1657,7 @@ describe('LessonPlayerPage', () => {
           ok: true,
           data: {
             discussion: {
-              threads: [post('t1', 'Pytanie o hamaki'), post('t2', 'Pytanie o panele')],
+              threads: [post('t1', 'Question about hammocks'), post('t2', 'Question about panels')],
               nextCursor: null,
               viewerSubscriptions: {},
             },
@@ -1695,7 +1695,7 @@ describe('LessonPlayerPage', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     const subthread = await screen.findByTestId('discussion-subthread-t1');
-    expect(subthread).toHaveTextContent('Pytanie o hamaki');
+    expect(subthread).toHaveTextContent('Question about hammocks');
     expect(screen.queryByTestId('discussion-thread-t2')).not.toBeInTheDocument();
 
     await waitFor(() => expect(subthread).toHaveFocus());
@@ -1705,7 +1705,7 @@ describe('LessonPlayerPage', () => {
     await userEvent.click(screen.getByTestId('back-to-discussion'));
 
     expect(await screen.findByTestId('discussion-thread-t2')).toHaveTextContent(
-      'Pytanie o panele',
+      'Question about panels',
     );
     await waitFor(() => expect(router.state.location.searchStr).toBe(''));
   });

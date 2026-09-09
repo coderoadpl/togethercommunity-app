@@ -17,7 +17,7 @@ import {
   type StaffSpace,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelEventCreateRoute, PanelEventEditRoute, PanelSpaceEventsRoute } from '../panel-routes.js';
@@ -28,7 +28,7 @@ const staffSpace = (): StaffSpace => ({
   id: 's1',
   tenantId: 't1',
   slug: 's1',
-  name: 'Ogólna',
+  name: 'General',
   description: 'Rozmowy o wszystkim.',
   visibility: 'members',
   productIds: [],
@@ -119,7 +119,7 @@ describe('space events panel', () => {
 
     await user.click(screen.getByTestId('panel-events-scope-past'));
 
-    expect(await screen.findByTestId('panel-events-empty')).toHaveTextContent(pl.events.panelEmpty);
+    expect(await screen.findByTestId('panel-events-empty')).toHaveTextContent(en.events.panelEmpty);
   });
 
   it('creates an event from the panel form', async () => {
@@ -137,24 +137,24 @@ describe('space events panel', () => {
     const user = userEvent.setup();
     await renderPanel('/panel/spaces/s1/events/new');
 
-    await user.type(await screen.findByLabelText(pl.events.titleLabel), 'Warsztat');
-    fireEvent.change(screen.getByLabelText(pl.events.startsAtLabel), {
+    await user.type(await screen.findByLabelText(en.events.titleLabel), 'Workshop');
+    fireEvent.change(screen.getByLabelText(en.events.startsAtLabel), {
       target: { value: '2099-09-10T18:00' },
     });
-    fireEvent.change(screen.getByLabelText(pl.events.endsAtLabel), {
+    fireEvent.change(screen.getByLabelText(en.events.endsAtLabel), {
       target: { value: '2099-09-10T19:30' },
     });
-    await user.type(screen.getByLabelText(pl.events.locationLabel), 'Kraków');
+    await user.type(screen.getByLabelText(en.events.locationLabel), 'London');
     await user.click(screen.getByTestId('event-form-submit'));
 
     await waitFor(() =>
       expect(created).toEqual([
         {
           spaceId: 's1',
-          title: 'Warsztat',
+          title: 'Workshop',
           startsAt: new Date('2099-09-10T18:00').toISOString(),
           endsAt: new Date('2099-09-10T19:30').toISOString(),
-          location: 'Kraków',
+          location: 'London',
         },
       ]),
     );
@@ -166,16 +166,16 @@ describe('space events panel', () => {
     const user = userEvent.setup();
     await renderPanel('/panel/spaces/s1/events/new');
 
-    await user.type(await screen.findByLabelText(pl.events.titleLabel), 'Warsztat');
-    fireEvent.change(screen.getByLabelText(pl.events.startsAtLabel), {
+    await user.type(await screen.findByLabelText(en.events.titleLabel), 'Workshop');
+    fireEvent.change(screen.getByLabelText(en.events.startsAtLabel), {
       target: { value: '2099-09-10T19:00' },
     });
-    fireEvent.change(screen.getByLabelText(pl.events.endsAtLabel), {
+    fireEvent.change(screen.getByLabelText(en.events.endsAtLabel), {
       target: { value: '2099-09-10T18:00' },
     });
 
     expect(await screen.findByTestId('event-time-order-error')).toHaveTextContent(
-      pl.events.timeOrderError,
+      en.events.timeOrderError,
     );
     expect(screen.getByTestId('event-form-submit')).toBeDisabled();
   });
@@ -196,7 +196,7 @@ describe('space events panel', () => {
     const user = userEvent.setup();
     await renderPanel('/panel/spaces/s1/events/e1');
 
-    const title = await screen.findByLabelText(pl.events.titleLabel);
+    const title = await screen.findByLabelText(en.events.titleLabel);
     await user.clear(title);
     await user.type(title, 'Live Q&A vol. 2');
     await user.click(screen.getByTestId('event-form-submit'));
@@ -234,10 +234,10 @@ describe('space events panel', () => {
     const user = userEvent.setup();
     await renderPanel('/panel/spaces/s1/events/e1');
 
-    const liveField = await screen.findByLabelText(pl.events.liveEmbedUrlLabel);
+    const liveField = await screen.findByLabelText(en.events.liveEmbedUrlLabel);
     await user.type(liveField, 'https://stream.example.com/room/1');
 
-    expect(screen.getByTestId('event-live-embed-help')).toHaveTextContent(pl.events.embedUrlError);
+    expect(screen.getByTestId('event-live-embed-help')).toHaveTextContent(en.events.embedUrlError);
     expect(screen.getByTestId('event-form-submit')).toBeDisabled();
 
     await user.clear(liveField);

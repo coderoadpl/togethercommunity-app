@@ -102,7 +102,7 @@ const BunnyCdnHostnameField = () => {
         <OutlinedInput
           id="bunny-cdn-hostname"
           value={value}
-          placeholder="vz-xxxxxxx-xxx.b-cdn.net"
+          placeholder={t.integrations.bunnyCdnHostnamePlaceholder}
           disabled={settings.isPending}
           onChange={(event) => setDraft(event.target.value)}
           inputProps={{ 'data-testid': 'bunny-cdn-hostname' }}

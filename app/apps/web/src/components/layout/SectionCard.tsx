@@ -2,10 +2,8 @@ import type { FormEvent, ReactNode } from 'react';
 import { Box, Paper, Stack, Typography } from '@mui/material';
 
 interface SectionCardProps {
-  /** Always an h2 — eyebrows stay eyebrows (inventory rows 26/38/39). */
   title: ReactNode;
   description?: ReactNode;
-  /** Footer action row, right-aligned (Zapisz, Testuj połączenie). */
   actions?: ReactNode;
   headerActions?: ReactNode;
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;

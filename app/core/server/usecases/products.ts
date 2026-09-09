@@ -99,6 +99,7 @@ export const createProduct = async (
     priceCents: parsed.data.priceCents,
     currency: parsed.data.currency,
     published: false,
+    visibility: parsed.data.visibility,
     accessItems: parsed.data.accessItems,
     checkoutConsentDefinitionIds: [],
     legacyId: null,
@@ -129,6 +130,7 @@ export const updateProduct = async (
   if (!snapshot.ok) return snapshot;
   const updated: Product = {
     ...existing,
+    visibility: parsed.data.visibility ?? existing.visibility,
     title: parsed.data.title ?? existing.title,
     description: parsed.data.description ?? existing.description,
     coverUrl: parsed.data.coverUrl === undefined ? existing.coverUrl : parsed.data.coverUrl,

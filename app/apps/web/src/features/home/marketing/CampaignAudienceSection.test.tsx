@@ -7,7 +7,7 @@ import type { ContactCampaignAudience } from '#core/domain/index.js';
 import { CampaignAudienceSection } from './CampaignAudienceSection.js';
 import { renderDirectory } from './directory-test-helpers.js';
 import { server } from '../../../test/server.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 
 const empty: ContactCampaignAudience = { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false };
 const Interactive = () => {
@@ -25,14 +25,14 @@ describe('campaign audience controls', () => {
       return HttpResponse.json({ ok: true, data: { count: 1, candidateCount: 2, excludedCount: 0, skipped: { suppressed: 1, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [{ contactId: 'contact', email: 'eligible@example.test', displayName: null, memberId: null }], computedAt: '2026-09-09T10:00:00.000Z', audienceHash: 'hash' } });
     }));
     await renderDirectory(Interactive, '/panel/marketing/campaigns/new');
-    expect(await screen.findByRole('checkbox', { name: pl.marketing.includeConsentedMembers })).not.toBeChecked();
+    expect(await screen.findByRole('checkbox', { name: en.marketing.includeConsentedMembers })).not.toBeChecked();
     expect(await screen.findByText('eligible@example.test')).toBeInTheDocument();
     expect(requests[0]).toMatchObject({ audience: empty });
-    await userEvent.click(screen.getByRole('combobox', { name: pl.marketing.includeLists }));
+    await userEvent.click(screen.getByRole('combobox', { name: en.marketing.includeLists }));
     await userEvent.click(await screen.findByRole('option', { name: 'Newsletter (newsletter)' }));
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: [] } }));
-    await userEvent.click(screen.getByRole('combobox', { name: pl.marketing.excludeLists }));
+    await userEvent.click(screen.getByRole('combobox', { name: en.marketing.excludeLists }));
     await userEvent.click(await screen.findByRole('option', { name: 'Newsletter (newsletter)' }));
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: ['list'] } }));
@@ -43,9 +43,9 @@ describe('campaign audience controls', () => {
     server.use(http.post('/api/marketing/audience-preview', () => { previews += 1; return HttpResponse.json({ ok: true, data: { count: 0 } }); }));
     const Frozen = () => <CampaignAudienceSection audience={empty} onChange={() => { throw new Error('Frozen audience changed'); }} consentDefinitionId="consent" disabled frozen />;
     await renderDirectory(Frozen, '/panel/marketing/campaigns/frozen');
-    expect(await screen.findByText(pl.marketing.frozenAudience)).toBeInTheDocument();
+    expect(await screen.findByText(en.marketing.frozenAudience)).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).toBeDisabled();
-    expect(screen.queryByRole('button', { name: pl.marketing.previewContacts })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.marketing.previewContacts })).not.toBeInTheDocument();
     expect(previews).toBe(0);
   });
 });

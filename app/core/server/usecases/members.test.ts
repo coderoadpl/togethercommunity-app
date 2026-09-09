@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  deletedMemberDisplay,
+  DELETED_MEMBER_DISPLAY,
   err,
   integrationUnavailable,
   memberTombstone,
@@ -408,7 +408,7 @@ describe('removeMember', () => {
           deletedAt: clock.nowIso(),
           tombstoneEmail: memberTombstone('m1').email,
           severedUserId: memberTombstone('m1').userId,
-          postAuthorDisplay: deletedMemberDisplay(),
+          postAuthorDisplay: DELETED_MEMBER_DISPLAY,
         },
       },
     ]);

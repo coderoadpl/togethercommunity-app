@@ -21,14 +21,14 @@ describe('LessonMediaEmbed', () => {
     await act(() => vi.advanceTimersByTime(14_999));
     expect(screen.getByTestId('lesson-media-skeleton')).toBeInTheDocument();
     await act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByRole('status')).toHaveTextContent(pl.lesson.mediaFailedTitle);
+    expect(screen.getByRole('status')).toHaveTextContent(en.lesson.mediaFailedTitle);
     expect(screen.queryByTitle('Lesson video')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.lesson.mediaOpenExternal })).toHaveAttribute('href', 'https://courses.example.org/watch');
-    fireEvent.click(screen.getByRole('button', { name: pl.common.retry }));
+    expect(screen.getByRole('link', { name: en.lesson.mediaOpenExternal })).toHaveAttribute('href', 'https://courses.example.org/watch');
+    fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
     expect(screen.getByTitle('Lesson video')).not.toBe(first);
     expect(screen.getByTestId('lesson-media-skeleton')).toBeInTheDocument();
     await act(() => vi.advanceTimersByTime(15_000));
-    expect(screen.getByRole('status')).toHaveTextContent(pl.lesson.mediaFailedTitle);
+    expect(screen.getByRole('status')).toHaveTextContent(en.lesson.mediaFailedTitle);
   });
 
   it('clears the timeout when the iframe loads and resets on a source change', async () => {
@@ -52,8 +52,8 @@ describe('LessonMediaEmbed', () => {
     fireEvent.load(iframe);
     expect(screen.queryByTestId('lesson-media-skeleton')).not.toBeInTheDocument();
     fireEvent.error(iframe);
-    expect(screen.getByRole('status')).toHaveTextContent(pl.lesson.mediaFailedTitle);
-    fireEvent.click(screen.getByRole('button', { name: pl.common.retry }));
+    expect(screen.getByRole('status')).toHaveTextContent(en.lesson.mediaFailedTitle);
+    fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
     expect(screen.getByTitle('Lazy material')).not.toBe(iframe);
     await act(() => vi.advanceTimersByTime(60_000));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();

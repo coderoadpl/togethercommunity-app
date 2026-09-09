@@ -21,8 +21,8 @@ const invoice: Invoice = {
     schemaSystemCode: 'FA (3)',
     schemaVersion: '1-0E',
     contextNip: '5555555555',
-    sellerName: 'Żółta Łódź sp. z o.o.',
-    sellerAddress: 'Prosta 1, 00-001 Warszawa',
+    sellerName: 'Yellow Boat Ltd.',
+    sellerAddress: '1 Simple St, 00-001 Warsaw',
     p2: 'FV/2026/000001',
     invoiceType: 'VAT',
     issueDate: '2026-07-28',
@@ -61,15 +61,15 @@ const xml = renderFa3Invoice({
   generatedAt: '2026-07-28T09:00:00.000Z',
   seller: {
     nip: '5555555555',
-    name: 'Żółta Łódź sp. z o.o.',
-    addressLine: 'Prosta 1, 00-001 Warszawa',
+    name: 'Yellow Boat Ltd.',
+    addressLine: '1 Simple St, 00-001 Warsaw',
   },
   buyer: {
     nip: '1111111111',
-    name: 'Nabywca sp. z o.o.',
-    addressLine: 'Długa 2, 30-001 Kraków',
+    name: 'Buyer Ltd.',
+    addressLine: '2 Long St, 30-001 Krakow',
   },
-  productName: 'Kurs specjalistyczny',
+  productName: 'Specialized course',
   grossAmountCents: 12300,
   discountCents: 0,
   vat: { kind: 'rate', percent: 23 },
@@ -86,7 +86,7 @@ describe('KSeF invoice PDF', () => {
     expect(source.startsWith('%PDF-1.')).toBe(true);
     expect(source).toContain('FV/2026/000001');
     expect(source).toContain('5555555555-20260728-ABCDEF-01');
-    expect(source).toContain('Kurs specjalistyczny');
+    expect(source).toContain('Specialized course');
     expect(source).toContain('23%');
     expect(source).toContain('Razem brutto: 123.00 PLN');
     expect(source).toContain('Wizualizacja');
@@ -97,9 +97,9 @@ describe('KSeF invoice PDF', () => {
       invoiceNumber: 'FV/2026/000002',
       issueDate: '2026-07-29',
       generatedAt: '2026-07-29T09:00:00.000Z',
-      seller: { nip: '5555555555', name: 'Seller', addressLine: 'Prosta 1' },
+      seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' },
       buyer: null,
-      productName: 'Kurs',
+      productName: 'Course',
       grossAmountCents: 12345,
       discountCents: 0,
       vat: { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1 ustawy' },

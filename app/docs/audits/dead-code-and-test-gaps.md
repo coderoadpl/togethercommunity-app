@@ -22,7 +22,7 @@
 | `pnpm run knip` | Finds unused files, exports, and dependencies visible to its configured entry points. Dynamic registration and broad entry points can hide dead code. |
 | `pnpm run typecheck`, `pnpm run lint`, and `pnpm run depcruise` | Detect invalid references and boundary violations, not behavior that is reachable but obsolete. |
 | `pnpm run test` and `pnpm run smoke` | Exercise unit/integration behavior and the canonical runtime path. Passing tests do not establish meaningful coverage of every branch or role. |
-| `pnpm run coverage` | Produces the repository's layer report and ratchet described in the [coverage audit](../../../tasks/coverage-report.md). It is separate from `pnpm run check` and is not a completeness metric. |
+| `pnpm run coverage` | Produces the repository's layer report and ratchet described in the [coverage audit](coverage-report.md). It is separate from `pnpm run check` and is not a completeness metric. |
 
 ## Manual checks
 

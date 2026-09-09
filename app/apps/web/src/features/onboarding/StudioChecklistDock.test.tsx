@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { computeCreatorOnboarding, computeTenantSetupReadiness } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { StudioChecklistDock, StudioChecklistPanel } from './StudioChecklistDock.js';
@@ -155,7 +155,7 @@ describe('StudioChecklistDock', () => {
     await renderPanel();
 
     const panel = await screen.findByTestId('studio-checklist-panel');
-    expect(panel).toHaveAttribute('aria-label', pl.studioSetup.panelTitle);
+    expect(panel).toHaveAttribute('aria-label', en.studioSetup.panelTitle);
     expect(await screen.findByTestId('tenant-setup-checklist')).toBeInTheDocument();
     expect(await screen.findByTestId('onboarding-checklist')).toBeInTheDocument();
     expect(screen.queryByTestId('studio-checklist-launcher')).not.toBeInTheDocument();
@@ -212,11 +212,11 @@ describe('StudioChecklistDock', () => {
     await user.click(collapse);
 
     const bar = screen.getByTestId('studio-checklist-bar');
-    expect(bar).toHaveTextContent(pl.studioSetup.panelTitle);
+    expect(bar).toHaveTextContent(en.studioSetup.panelTitle);
     const launcher = screen.getByTestId('studio-checklist-launcher');
     expect(launcher).toHaveAttribute('aria-expanded', 'false');
     expect(launcher).not.toHaveAttribute('aria-controls');
-    expect(launcher).toHaveAccessibleName(pl.studioSetup.expand({ title: pl.studioSetup.panelTitle }));
+    expect(launcher).toHaveAccessibleName(en.studioSetup.expand({ title: en.studioSetup.panelTitle }));
     expect(launcher).toHaveFocus();
     expect(screen.queryByTestId('studio-checklist-panel')).not.toBeInTheDocument();
   });

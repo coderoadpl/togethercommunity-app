@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DiscussionPost, PublicNavigation, PublicSpaceEvent } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SpaceFeedPage } from '../SpaceFeedPage.js';
@@ -29,7 +29,7 @@ const anonMe = () =>
 
 const navigation = (): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
-  spaces: [{ id: 's1', slug: 's1', name: 'Ogólna', description: 'Rozmowy o kamperze.', position: 0 }],
+  spaces: [{ id: 's1', slug: 's1', name: 'General', description: 'Camper discussions.', position: 0 }],
   courses: [],
   lockedSpaces: [],
 });
@@ -52,7 +52,7 @@ const event = (overrides: Partial<PublicSpaceEvent> = {}): PublicSpaceEvent => (
   tenantId: 't1',
   spaceId: 's1',
   title: 'Live Q&A',
-  description: 'Pytania i odpowiedzi na żywo.',
+  description: 'Live questions and answers.',
   startsAt: '2099-09-10T16:00:00.000Z',
   endsAt: '2099-09-10T17:30:00.000Z',
   location: 'Online',
@@ -98,7 +98,7 @@ const rootPost = (): DiscussionPost => ({
   authorDisplay: 'Ola Autorka',
   authorIsStaff: true,
   authorAvatarUrl: null,
-  body: 'Wątek wydarzenia: Live Q&A',
+  body: 'Event thread: Live Q&A',
   createdAt: '2026-08-17T09:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -142,7 +142,7 @@ describe('public event surface', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     expect(await screen.findByTestId('public-space-events-empty')).toHaveTextContent(
-      pl.events.emptyUpcoming,
+      en.events.emptyUpcoming,
     );
   });
 
@@ -152,14 +152,14 @@ describe('public event surface', () => {
     await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
 
     expect(await screen.findByTestId('public-event-page')).toHaveTextContent(
-      'Pytania i odpowiedzi na żywo.',
+      'Live questions and answers.',
     );
     expect(screen.getByTestId('public-event-going-count')).toHaveTextContent(
-      pl.events.goingCount({ count: 4 }),
+      en.events.goingCount({ count: 4 }),
     );
     expect(screen.getByTestId('public-event-sign-in')).toHaveAttribute('href', '/login');
     expect(await screen.findByTestId('public-post-root-1')).toHaveTextContent(
-      'Wątek wydarzenia: Live Q&A',
+      'Event thread: Live Q&A',
     );
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-ics')).not.toBeInTheDocument();
@@ -176,7 +176,7 @@ describe('public event surface', () => {
     await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
 
     expect(await screen.findByTestId('event-live-embed')).toHaveAttribute('src', BUNNY_EMBED);
-    expect(screen.getByTestId('event-live')).toHaveTextContent(pl.events.liveHeading);
+    expect(screen.getByTestId('event-live')).toHaveTextContent(en.events.liveHeading);
     expect(screen.getByTestId('public-event-sign-in')).toBeInTheDocument();
   });
 
@@ -185,7 +185,7 @@ describe('public event surface', () => {
 
     await renderPage(() => <EventPage spaceId="s1" eventId="gone" />, '/community/s1/events/gone');
 
-    expect((await screen.findAllByText(pl.events.notFoundTitle)).length).toBeGreaterThan(0);
-    expect(screen.getByText(pl.events.notFoundBody)).toBeInTheDocument();
+    expect((await screen.findAllByText(en.events.notFoundTitle)).length).toBeGreaterThan(0);
+    expect(screen.getByText(en.events.notFoundBody)).toBeInTheDocument();
   });
 });

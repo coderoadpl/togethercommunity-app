@@ -52,7 +52,7 @@ const space: Space = {
   id: 'space-1',
   tenantId: TENANT,
   slug: 'space-1',
-  name: 'Ogólny',
+  name: 'General',
   description: null,
   visibility: 'members',
   productIds: [],
@@ -72,7 +72,7 @@ const post: Post = {
   authorUserId: AUTHOR,
   authorDisplay: 'Autorka',
   authorIsStaff: false,
-  body: 'Nowy wpis',
+  body: 'New post',
   createdAt: NOW,
   editedAt: null,
   deletedAt: null,
@@ -118,6 +118,7 @@ const unusedPosts: Omit<PostRepository, 'findById'> = {
   listReplies: async () => [],
   updateBody: async () => null,
   softDelete: async () => null,
+  purge: async () => false,
   setPinned: async () => null,
   listPinnedForContext: async () => [],
   countPinnedForContext: async () => 0,
@@ -537,7 +538,7 @@ describe('notification fan-out', () => {
 
     expect(preferred.languages).toEqual(['en']);
     expect(inherited.languages).toEqual(['en']);
-    expect(unset.languages).toEqual(['pl']);
+    expect(unset.languages).toEqual(['en']);
   });
 
   it('reads the tenant default once per job, not once per recipient', async () => {

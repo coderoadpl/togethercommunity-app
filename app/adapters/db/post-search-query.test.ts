@@ -4,24 +4,24 @@ import { buildPrefixTsquery } from './post-search-query.js';
 
 describe('buildPrefixTsquery', () => {
   it('prefix-matches a single stem so inflected forms are reachable', () => {
-    expect(buildPrefixTsquery('zmienn')).toBe('zmienn:*');
-    expect(buildPrefixTsquery('Zmienne')).toBe('zmienne:*');
+    expect(buildPrefixTsquery('variabl')).toBe('variabl:*');
+    expect(buildPrefixTsquery('Variable')).toBe('variable:*');
   });
 
   it('ANDs multiple terms with only the last one prefix-matched', () => {
-    expect(buildPrefixTsquery('typy zmienn')).toBe('typy & zmienn:*');
-    expect(buildPrefixTsquery('  pętla   for  ')).toBe('pętla & for:*');
+    expect(buildPrefixTsquery('types variabl')).toBe('types & variabl:*');
+    expect(buildPrefixTsquery('  loop   for  ')).toBe('loop & for:*');
   });
 
   it('strips characters that would otherwise inject to_tsquery operators', () => {
-    expect(buildPrefixTsquery('zmienn:* | typy')).toBe('zmienn & typy:*');
+    expect(buildPrefixTsquery('variabl:* | types')).toBe('variabl & types:*');
     expect(buildPrefixTsquery('a & b')).toBe('a & b:*');
     expect(buildPrefixTsquery('(drop)')).toBe('drop:*');
   });
 
   it('keeps unicode letters and digits', () => {
-    expect(buildPrefixTsquery('funkcja42')).toBe('funkcja42:*');
-    expect(buildPrefixTsquery('ĄĘŻ')).toBe('ąęż:*');
+    expect(buildPrefixTsquery('function42')).toBe('function42:*');
+    expect(buildPrefixTsquery('CAFÉ')).toBe('café:*');
   });
 
   it('returns null when nothing searchable remains', () => {

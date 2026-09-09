@@ -20,6 +20,7 @@ import {
   eventsListOutputSchema,
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
+  publicOfferQuerySchema,
   spaceFeedOutputSchema,
   studentLessonOutputSchema,
   STRIPE_WEBHOOK_PATH_PATTERN,
@@ -306,7 +307,10 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
 
-    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}"`;
+    const query = publicOfferQuerySchema.safeParse(c.req.query());
+    if (!query.success) return respondPublic(err(validation('Invalid offer query')));
+    const productRef = query.data.productRef;
+    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}"`;
     if (c.req.header('if-none-match') === etag) {
       return respondNotModified(publicHeaders(etag));
     }
@@ -319,7 +323,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       tenants: deps.tenants,
       definitions: deps.marketing?.definitions,
       documents: deps.marketing?.documents,
-    });
+    }, productRef);
     if (!result.ok) return respondPublic(result, etag);
     const parsed = publicOfferOutputSchema.safeParse(result.value);
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
@@ -560,13 +564,6 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const body: unknown = await readJson(c.req.raw);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
-    if (parsed.data.couponCode === undefined) {
-      const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
-      if (!configured.ok) return respondPublic(configured);
-      if (!configured.value.stripeConfigured) {
-        return respondPublic(err(validation('Stripe is not configured for this tenant')));
-      }
-    }
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);
     const consent = await validateTermsConsent(
@@ -601,10 +598,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     );
     if (
       session.ok &&
-      session.value.free &&
-      session.value.couponCheckoutSessionId !== undefined
+      session.value.free
     ) {
-      const objectId = `free_${session.value.couponCheckoutSessionId}`;
+      const objectId = `free_${checkoutConsentCaptureId}`;
       const event: PaymentWebhookEvent = {
         id: `event_${objectId}`,
         type: 'checkout.session.completed',
@@ -625,7 +621,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
             memberEmail: parsed.data.email ?? null,
             language: parsed.data.language ?? null,
             checkoutConsentCaptureId,
-            couponCheckoutSessionId: session.value.couponCheckoutSessionId,
+            couponCheckoutSessionId: session.value.couponCheckoutSessionId ?? null,
           },
         },
       };

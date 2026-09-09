@@ -8,7 +8,7 @@ import {
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createThemeForMode } from '../../theme.js';
 import { CourseCard, type CourseCardCourse } from './CourseCards.js';
@@ -75,7 +75,7 @@ describe('CourseCard', () => {
     const finished = screen.getByTestId('course-progress-row-finished');
     expect(within(finished).getByTestId('course-progress-finished')).toHaveTextContent('100%');
     expect(within(finished).getByTestId('completion-mark')).toHaveAccessibleName(
-      pl.courseOverview.courseCompleted,
+      en.courseOverview.courseCompleted,
     );
 
     const partial = screen.getByTestId('course-progress-row-with-description');

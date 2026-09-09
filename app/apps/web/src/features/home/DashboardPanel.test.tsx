@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { MemberWithProductIds } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DashboardPanel } from './DashboardPanel.js';
@@ -19,6 +19,7 @@ const product = (id: string, published: boolean) => ({
   coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
+  visibility: 'listed',
   published,
   accessItems: [],
   legacyId: null,
@@ -98,8 +99,7 @@ describe('DashboardPanel', () => {
 
     const tile = await screen.findByTestId('dashboard-tile-members');
     expect(tile).toHaveTextContent('2');
-    expect(tile).toHaveTextContent(pl.dashboard.membersRemoved({ count: 1 }));
-    expect(tile).toHaveTextContent('+ 1 usunięty');
+    expect(tile).toHaveTextContent(en.dashboard.membersRemoved({ count: 1 }));
   });
 
   it('opens the page body with the KPI tiles', async () => {
@@ -179,7 +179,7 @@ describe('DashboardPanel', () => {
     expect(await screen.findByTestId('dashboard-tiles')).toBeInTheDocument();
     expect(screen.getByTestId('dashboard-tile-products')).toHaveTextContent('2');
     expect(screen.getByTestId('dashboard-tile-products')).toHaveTextContent(
-      pl.dashboard.publishedDraft({ published: 1, draft: 1 }),
+      en.dashboard.publishedDraft({ published: 1, draft: 1 }),
     );
     expect(screen.getByTestId('dashboard-tile-courses')).toHaveTextContent('1');
     expect(screen.getByTestId('dashboard-tile-members')).toHaveTextContent('6');
@@ -188,12 +188,12 @@ describe('DashboardPanel', () => {
     expect(screen.getByTestId('dashboard-tile-subscriptions')).toHaveTextContent('2');
     expect(screen.getByTestId('dashboard-tile-orders')).toHaveTextContent('4');
     expect(screen.getByTestId('dashboard-tile-products-headline')).toHaveTextContent('2');
-    expect(screen.getByTestId('dashboard-tile-products-label')).toHaveTextContent(pl.sections.products);
+    expect(screen.getByTestId('dashboard-tile-products-label')).toHaveTextContent(en.sections.products);
     expect(screen.getByTestId('dashboard-tile-products-detail')).toHaveTextContent(
-      pl.dashboard.publishedDraft({ published: 1, draft: 1 }),
+      en.dashboard.publishedDraft({ published: 1, draft: 1 }),
     );
-    expect(screen.getByTestId('dashboard-tile-revenue')).toHaveTextContent('zł');
-    expect(screen.getByTestId('dashboard-tile-subscriptions')).not.toHaveTextContent('zł');
+    expect(screen.getByTestId('dashboard-tile-revenue')).toHaveTextContent('PLN');
+    expect(screen.getByTestId('dashboard-tile-subscriptions')).not.toHaveTextContent('PLN');
 
     const recent = screen.getAllByTestId('dashboard-member-row');
     expect(recent).toHaveLength(5);

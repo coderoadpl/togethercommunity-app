@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { MemberWithProductIds } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { MembersPanel } from './MembersPanel.js';
@@ -66,9 +66,9 @@ describe('MembersPanel', () => {
 
     renderWithProviders(<MembersPanel />);
 
-    expect(await screen.findByText(pl.members.empty)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: pl.members.checkoutLinkAction })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: pl.members.checkoutLinkAction })).toBeNull();
+    expect(await screen.findByText(en.members.empty)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.members.checkoutLinkAction })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.members.checkoutLinkAction })).toBeNull();
   });
 
   it('renders the members table newest-first with emails and product counts', async () => {
@@ -100,7 +100,7 @@ describe('MembersPanel', () => {
     await userEvent.clear(screen.getByTestId('members-search'));
     await userEvent.type(screen.getByTestId('members-search'), 'nobody-matches');
 
-    expect(await screen.findByText(pl.members.noMatches)).toBeInTheDocument();
+    expect(await screen.findByText(en.members.noMatches)).toBeInTheDocument();
   });
 
   it('filters members by active and expired grants', async () => {
@@ -207,20 +207,20 @@ describe('MembersPanel', () => {
     expect(row).toBeDefined();
     if (row === undefined) return;
 
-    await userEvent.click(within(row).getByRole('button', { name: pl.members.remove }));
+    await userEvent.click(within(row).getByRole('button', { name: en.members.remove }));
 
-    const dialog = await screen.findByRole('dialog', { name: pl.members.removeConfirmTitle });
+    const dialog = await screen.findByRole('dialog', { name: en.members.removeConfirmTitle });
     expect(await within(dialog).findByTestId('member-remove-impact')).toHaveTextContent(
-      pl.members.removeImpact({ grants: 2, completedLessons: 5 }),
+      en.members.removeImpact({ grants: 2, completedLessons: 5 }),
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.remove }));
+    await userEvent.click(within(dialog).getByRole('button', { name: en.members.remove }));
 
     await waitFor(() => expect(removed).toEqual(['member-1']));
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: pl.members.removeConfirmTitle })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: en.members.removeConfirmTitle })).toBeNull(),
     );
     expect(await screen.findByTestId('member-remove-cancellation-warning')).toHaveTextContent(
-      pl.members.removeCancellationWarning({ providerSubscriptionIds: 'sub_failed_1' }),
+      en.members.removeCancellationWarning({ providerSubscriptionIds: 'sub_failed_1' }),
     );
   });
 
@@ -251,8 +251,8 @@ describe('MembersPanel', () => {
     expect(row).toBeDefined();
     if (row === undefined) return;
 
-    expect(within(row).getByTestId('member-deleted-badge')).toHaveTextContent(pl.members.deletedBadge);
-    expect(within(row).queryByRole('button', { name: pl.members.remove })).toBeNull();
+    expect(within(row).getByTestId('member-deleted-badge')).toHaveTextContent(en.members.deletedBadge);
+    expect(within(row).queryByRole('button', { name: en.members.remove })).toBeNull();
   });
 
   it('marks banned members in the list', async () => {
@@ -269,7 +269,7 @@ describe('MembersPanel', () => {
     renderWithProviders(<MembersPanel />);
     const row = await screen.findByTestId('member-row');
     expect(within(row).getByTestId('member-banned-badge')).toHaveTextContent(
-      pl.members.bannedBadge,
+      en.members.bannedBadge,
     );
   });
 
@@ -295,10 +295,10 @@ describe('MembersPanel', () => {
 
     expect(screen.getAllByTestId('member-row')).toHaveLength(25);
     expect(screen.getByTestId('members-pagination')).toHaveTextContent(
-      pl.pagination.displayedRows({ from: 1, to: 25, count: 30 }),
+      en.pagination.displayedRows({ from: 1, to: 25, count: 30 }),
     );
 
-    await userEvent.click(screen.getByRole('button', { name: pl.pagination.nextPage }));
+    await userEvent.click(screen.getByRole('button', { name: en.pagination.nextPage }));
     expect(screen.getAllByTestId('member-row')).toHaveLength(5);
     expect(screen.getByText('member00@together.dev')).toBeInTheDocument();
 

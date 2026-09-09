@@ -21,15 +21,18 @@ const renderSwitcher = () =>
   );
 
 describe('LanguageSwitcher', () => {
-  it('swaps the Polish default text to English when English is picked', async () => {
+  it('switches the English default to Polish and back', async () => {
     const user = userEvent.setup();
     renderSwitcher();
 
     expect(screen.getByTestId('language-switcher')).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
+
+    await user.click(screen.getByRole('button', { name: 'pl' }));
+
     expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitPending);
 
     await user.click(screen.getByRole('button', { name: 'en' }));
-
     expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
   });
 
@@ -37,11 +40,11 @@ describe('LanguageSwitcher', () => {
     const user = userEvent.setup();
     const first = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'en' }));
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
+    await user.click(screen.getByRole('button', { name: 'pl' }));
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitPending);
     first.unmount();
 
     renderSwitcher();
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitPending);
   });
 });

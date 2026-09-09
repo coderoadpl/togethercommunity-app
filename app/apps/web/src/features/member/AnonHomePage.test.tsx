@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicNavigation, SpaceFeedItem } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { AnonHomePage } from './AnonHomePage.js';
@@ -18,10 +18,10 @@ import { AnonHomePage } from './AnonHomePage.js';
 const navigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
   spaces: [
-    { id: 's1', slug: 'ogolna', name: 'Ogólna', description: 'Rozmowy.', position: 0 },
-    { id: 's2', slug: 'klub', name: 'Klub', description: 'Klubowe rozmowy.', position: 1 },
+    { id: 's1', slug: 'general', name: 'General', description: 'Discussions.', position: 0 },
+    { id: 's2', slug: 'club', name: 'Club', description: 'Club discussions.', position: 1 },
   ],
-  courses: [{ id: 'c1', name: 'JavaScript od zera', description: 'Kurs startowy.', imageUrl: null }],
+  courses: [{ id: 'c1', name: 'JavaScript from scratch', description: 'Starter course.', imageUrl: null }],
   lockedSpaces: [
     { id: 's9', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
   ],
@@ -77,8 +77,8 @@ describe('AnonHomePage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Wpis powitalny');
-    expect(screen.getByTestId('anon-home-feed')).toHaveTextContent('Ogólna');
-    expect(screen.getByTestId('anon-read-only-banner')).toHaveTextContent(pl.anon.readOnlyBanner);
+    expect(screen.getByTestId('anon-home-feed')).toHaveTextContent('General');
+    expect(screen.getByTestId('anon-read-only-banner')).toHaveTextContent(en.anon.readOnlyBanner);
     expect(screen.getByTestId('space-card-s2')).toHaveAttribute('href', '/community/s2');
     expect(screen.queryByTestId('space-card-s1')).not.toBeInTheDocument();
     expect(screen.getByTestId('course-card-c1')).toHaveAttribute('href', '/my/courses/c1');
@@ -90,12 +90,12 @@ describe('AnonHomePage', () => {
 
     await renderPage();
 
-    expect(await screen.findByTestId('anon-courses')).toHaveTextContent(pl.anon.coursesSection);
-    expect(screen.getByTestId('anon-spaces')).toHaveTextContent(pl.anon.spacesSection);
-    expect(screen.getByTestId('anon-courses')).not.toHaveTextContent(pl.start.coursesSection);
+    expect(await screen.findByTestId('anon-courses')).toHaveTextContent(en.anon.coursesSection);
+    expect(screen.getByTestId('anon-spaces')).toHaveTextContent(en.anon.spacesSection);
+    expect(screen.getByTestId('anon-courses')).not.toHaveTextContent(en.start.coursesSection);
     expect(
       within(screen.getByTestId('anon-read-only-banner')).getByRole('link', {
-        name: pl.auth.signInLink,
+        name: en.auth.signInLink,
       }),
     ).toHaveAttribute('href', '/login');
   });
@@ -114,7 +114,7 @@ describe('AnonHomePage', () => {
     server.use(
       okNavigation(
         navigation({
-          spaces: [{ id: 's1', slug: 'ogolna', name: 'Ogólna', description: 'Rozmowy.', position: 0 }],
+          spaces: [{ id: 's1', slug: 'general', name: 'General', description: 'Discussions.', position: 0 }],
         }),
       ),
       okFeed([]),
@@ -122,7 +122,7 @@ describe('AnonHomePage', () => {
 
     await renderPage();
 
-    expect(await screen.findByTestId('anon-home-feed')).toHaveTextContent('Ogólna');
+    expect(await screen.findByTestId('anon-home-feed')).toHaveTextContent('General');
     expect(screen.queryByTestId('anon-spaces')).not.toBeInTheDocument();
   });
 
@@ -134,7 +134,7 @@ describe('AnonHomePage', () => {
     await renderPage();
 
     const empty = await screen.findByTestId('anon-empty-state');
-    expect(empty).toHaveTextContent(pl.anon.emptyTitle);
-    expect(empty).toHaveTextContent(pl.anon.emptyBody);
+    expect(empty).toHaveTextContent(en.anon.emptyTitle);
+    expect(empty).toHaveTextContent(en.anon.emptyBody);
   });
 });

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '#core/client/index.js';
 import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -27,6 +28,7 @@ import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
+import { TombstonePostMenu } from './TombstonePostMenu.js';
 import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
@@ -222,8 +224,8 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
   return (
     <Box data-testid={`discussion-post-${post.id}`}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
-        <UserAvatar name={post.authorDisplay} imageUrl={post.authorAvatarUrl} size="sm" />
-        <PostAuthorName component="span">{post.authorDisplay}</PostAuthorName>
+        <UserAvatar name={translateDeletedContent(post.authorDisplay, t)} imageUrl={post.authorAvatarUrl} size="sm" />
+        <PostAuthorName component="span">{translateDeletedContent(post.authorDisplay, t)}</PostAuthorName>
         {post.authorIsStaff && (
           <AuthorChip data-testid={`author-chip-${post.id}`}>{t.discussion.authorChip}</AuthorChip>
         )}
@@ -260,6 +262,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
         </PostBody>
       )}
 
+      {deleted && a.viewer?.canModerate ? (
+        <TombstonePostMenu postId={post.id} writeDisabled={a.writeDisabled} />
+      ) : null}
       {(canReply || canEdit || canDelete || (!own && !deleted)) && (
         <Stack
           direction="row"

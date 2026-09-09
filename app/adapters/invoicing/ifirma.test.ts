@@ -26,9 +26,9 @@ const input: Parameters<InvoicingPort['issueInvoice']>[0] = {
     billing: {
       nip: '5555555555',
       companyName: 'Acme sp. z o.o.',
-      address: 'Prosta 1',
+      address: '1 Simple St',
       postalCode: '00-001',
-      city: 'Warszawa',
+      city: 'Warsaw',
       country: 'PL',
     },
     createdAt: '2026-07-27T10:00:00.000Z',
@@ -36,9 +36,9 @@ const input: Parameters<InvoicingPort['issueInvoice']>[0] = {
   billing: {
     nip: '5555555555',
     companyName: 'Acme sp. z o.o.',
-    address: 'Prosta 1',
+    address: '1 Simple St',
     postalCode: '00-001',
-    city: 'Warszawa',
+    city: 'Warsaw',
     country: 'PL',
   },
   productName: 'Course',
@@ -99,7 +99,7 @@ describe('ifirmaInvoicePayload', () => {
       DataSprzedazy: '2026-07-27',
       Pozycje: [
         {
-          NazwaPelna: 'Course (rabat kuponowy: 20,00 zł)',
+          NazwaPelna: 'Course (coupon discount: PLN 20.00)',
           CenaJednostkowa: 79,
           StawkaVat: 0.23,
         },
@@ -107,9 +107,9 @@ describe('ifirmaInvoicePayload', () => {
       Kontrahent: {
         Nazwa: 'Acme sp. z o.o.',
         NIP: '5555555555',
-        Ulica: 'Prosta 1',
+        Ulica: '1 Simple St',
         KodPocztowy: '00-001',
-        Miejscowosc: 'Warszawa',
+        Miejscowosc: 'Warsaw',
         KodKraju: 'PL',
         OsobaFizyczna: false,
       },
@@ -140,7 +140,7 @@ describe('ifirmaInvoicePayload', () => {
         StawkaVat: null,
         TypStawkiVat: 'ZW',
         PodstawaPrawna: 'art. 113 ust. 1',
-        NazwaPelna: 'Course (rabat kuponowy: 20,00 zł)',
+        NazwaPelna: 'Course (coupon discount: PLN 20.00)',
       }],
     });
     expect(payload.Pozycje[0]).not.toHaveProperty('PKWiU');
@@ -155,7 +155,7 @@ describe('createIfirmaInvoicing', () => {
       calls.push({ url: String(url), init });
       if (calls.length === 1) {
         return Response.json({
-          response: { Kod: 0, Informacja: 'Faktura została pomyślnie dodana.', Identyfikator: '1244512' },
+          response: { Kod: 0, Informacja: 'Invoice added successfully.', Identyfikator: '1244512' },
         });
       }
       if (calls.length === 2) {

@@ -15,31 +15,31 @@ describe('PanelListRow', () => {
     render(
       <PanelListRow
         data-testid="row"
-        title="Klub JavaScriptu"
-        badges={<span>Członkostwo</span>}
-        actions={<button type="button">Zarządzaj</button>}
+        title="JavaScript Club"
+        badges={<span>Membership</span>}
+        actions={<button type="button">Manage</button>}
       />,
     );
 
     const row = screen.getByTestId('row');
     const order = row.textContent ?? '';
-    expect(order.indexOf('Klub JavaScriptu')).toBeLessThan(order.indexOf('Członkostwo'));
-    expect(order.indexOf('Członkostwo')).toBeLessThan(order.indexOf('Zarządzaj'));
+    expect(order.indexOf('JavaScript Club')).toBeLessThan(order.indexOf("Membership"));
+    expect(order.indexOf("Membership")).toBeLessThan(order.indexOf("Manage"));
   });
 
   it('renders meta above the row body', () => {
     render(
-      <PanelListRow data-testid="row" title="Ogólna" meta={<span>3 wpisy</span>}>
-        <span>Szczegóły</span>
+      <PanelListRow data-testid="row" title="General" meta={<span>3 posts</span>}>
+        <span>Details</span>
       </PanelListRow>,
     );
 
     const order = screen.getByTestId('row').textContent ?? '';
-    expect(order.indexOf('3 wpisy')).toBeLessThan(order.indexOf('Szczegóły'));
+    expect(order.indexOf('3 posts')).toBeLessThan(order.indexOf("Details"));
   });
 
   it('omits the meta and action containers when nothing is passed', () => {
-    render(<PanelListRow title="Ogólna" data-testid="row" />);
+    render(<PanelListRow title="General" data-testid="row" />);
 
     expect(screen.getByTestId('row').querySelectorAll('.MuiStack-root')).toHaveLength(2);
   });

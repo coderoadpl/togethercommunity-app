@@ -3,7 +3,7 @@ import fixture from '../fixtures/anon-home-branded.json';
 import populatedFixture from '../fixtures/anon-home-tiles.json';
 import { withPage } from '../page-decorators.js';
 
-const meta = { title: 'Pages/AnonHomeBranded', id: 'anon-home-branded', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/AnonHomeBranded', id: 'anon-home-branded', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'anon-home-branded--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };

@@ -15,7 +15,7 @@ const rgbOf = (hex: string): string =>
 
 describe('Cover', () => {
   it('crops a cover into the shared aspect ratio instead of stretching it', () => {
-    render(<Cover src={COVER_SRC} title="Kurs" alt="Okładka kursu" testId="cover" />);
+    render(<Cover src={COVER_SRC} title="Course" alt="Course cover" testId="cover" />);
 
     const image = screen.getByTestId('cover');
     expect(image).toHaveAttribute('src', COVER_SRC);
@@ -29,21 +29,21 @@ describe('Cover', () => {
   });
 
   it('gives a missing cover the same box as the cover it replaces', () => {
-    render(<Cover src={null} title="Kurs JavaScript od podstaw" alt="" fallbackTestId="cover-fallback" />);
+    render(<Cover src={null} title="JavaScript from scratch" alt="" fallbackTestId="cover-fallback" />);
 
     const fallback = screen.getByTestId('cover-fallback');
     expect(stylesOf(fallback)).toMatchObject({
       'aspect-ratio': '16/9',
       width: '100%',
     });
-    expect(fallback).toHaveTextContent('KJ');
-    expect(fallback).toHaveTextContent('Kurs JavaScript od podstaw');
+    expect(fallback).toHaveTextContent('JF');
+    expect(fallback).toHaveTextContent('JavaScript from scratch');
   });
 
   it('paints the fallback as an accent gradient, deterministic from the title', () => {
-    render(<Cover src={null} title="Kurs JavaScript" alt="" fallbackTestId="fallback" />);
+    render(<Cover src={null} title="JavaScript Course" alt="" fallbackTestId="fallback" />);
 
-    const { from, to, ink } = accentGradient(deterministicAccent('Kurs JavaScript'));
+    const { from, to, ink } = accentGradient(deterministicAccent('JavaScript Course'));
     const styles = stylesOf(screen.getByTestId('fallback'));
     expect(styles.background).toBe(`linear-gradient(135deg, ${rgbOf(from)} 0%, ${rgbOf(to)} 100%)`);
     expect(styles.color).toBe(rgbOf(ink));
@@ -51,7 +51,7 @@ describe('Cover', () => {
 
   it('renders no block at all where the cover is decoration', () => {
     const { container } = render(
-      <Cover src={null} title="Kurs" alt="" whenMissing="omit" fallbackTestId="fallback" />,
+      <Cover src={null} title="Course" alt="" whenMissing="omit" fallbackTestId="fallback" />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -61,8 +61,8 @@ describe('Cover', () => {
     render(
       <Cover
         src={COVER_SRC}
-        title="Kurs bez okładki"
-        alt="Okładka"
+        title="Course without a cover"
+        alt="Cover"
         whenMissing="omit"
         testId="cover"
         fallbackTestId="fallback"
@@ -76,21 +76,21 @@ describe('Cover', () => {
 
   it('falls back when the cover fails to load', () => {
     render(
-      <Cover src={COVER_SRC} title="Kurs bez okładki" alt="Okładka" testId="cover" fallbackTestId="fallback" />,
+      <Cover src={COVER_SRC} title="Course without a cover" alt="Cover" testId="cover" fallbackTestId="fallback" />,
     );
 
     fireEvent.error(screen.getByTestId('cover'));
 
     expect(screen.queryByTestId('cover')).toBeNull();
-    expect(screen.getByTestId('fallback')).toHaveTextContent('KB');
+    expect(screen.getByTestId('fallback')).toHaveTextContent('CW');
   });
 
   it('seams a card cover into the card and rounds a standalone one', () => {
-    const card = render(<Cover src={COVER_SRC} title="Kurs" alt="Okładka" testId="card" />);
+    const card = render(<Cover src={COVER_SRC} title="Course" alt="Cover" testId="card" />);
     const cardStyles = stylesOf(screen.getByTestId('card'));
     card.unmount();
 
-    render(<Cover src={COVER_SRC} title="Kurs" alt="Okładka" frame="standalone" testId="standalone" />);
+    render(<Cover src={COVER_SRC} title="Course" alt="Cover" frame="standalone" testId="standalone" />);
     const standalone = screen.getByTestId('standalone');
     const standaloneStyles = stylesOf(standalone);
 
@@ -104,8 +104,8 @@ describe('Cover', () => {
   });
 
   it('lets a standalone cover fill the member course column', () => {
-    render(<Cover src={COVER_SRC} title="Kurs" alt="Okładka" frame="standalone" testId="standalone" />);
-    render(<Cover src={null} title="Kurs bez okładki" alt="" frame="standalone" fallbackTestId="fallback" />);
+    render(<Cover src={COVER_SRC} title="Course" alt="Cover" frame="standalone" testId="standalone" />);
+    render(<Cover src={null} title="Course without a cover" alt="" frame="standalone" fallbackTestId="fallback" />);
 
     for (const testId of ['standalone', 'fallback']) {
       const styles = stylesOf(screen.getByTestId(testId));

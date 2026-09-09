@@ -93,6 +93,7 @@ const product: Product = {
   description: '',
   priceCents: 4900,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,

@@ -9,7 +9,7 @@ import staticList from '../fixtures/panel-marketing-list-static.json';
 import dynamic from '../fixtures/panel-marketing-list-dynamic.json';
 import { withPage } from '../page-decorators.js';
 
-const meta = { title: 'Pages/PanelMarketingLists', id: 'panel-marketing-lists', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/PanelMarketingLists', id: 'panel-marketing-lists', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'panel-marketing-lists--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };

@@ -22,6 +22,7 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published,
   accessItems: [],
   legacyId: null,

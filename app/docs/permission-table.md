@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 367. Exported `Ctx` use-case rows: 286.
+Closed capability count: 115. Route rows: 368. Exported `Ctx` use-case rows: 287.
 
 ## Human-readable diff
 
@@ -356,6 +356,7 @@ no changes
 | `GET /api/dm-reports` | community:report:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/dm-reports/resolve` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/posts/update` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `DELETE /api/posts/:postId/permanent` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/discussion` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/subscribe` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -419,6 +420,7 @@ no changes
 | `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `community.ts#purgePost` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#subscribeThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#muteThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#searchPosts` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
@@ -696,11 +698,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1061` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1063` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1564` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:174` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1066` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1068` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1569` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1569` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -718,9 +720,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:248` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:264` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:233` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:247` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:448` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:235` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:249` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:450` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
@@ -746,7 +748,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/my-products.ts:66` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |

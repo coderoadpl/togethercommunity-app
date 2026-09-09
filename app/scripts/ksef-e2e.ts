@@ -362,9 +362,9 @@ const executeAdapterE2e = async (
     [orderId, tenantId, JSON.stringify({
       nip: buyerNip,
       companyName: 'Together KSeF E2E Buyer',
-      address: 'Testowa 2',
+      address: '2 Test Street',
       postalCode: '00-002',
-      city: 'Warszawa',
+      city: 'Warsaw',
       country: 'PL',
     }), now.toISOString()],
   );
@@ -376,7 +376,7 @@ const executeAdapterE2e = async (
          invoice_exemption_basis_kind = $4,
          invoice_exemption_basis = $5,
          invoice_seller_name = 'Together KSeF E2E Seller',
-         invoice_seller_address = 'Testowa 1, 00-001 Warszawa'
+         invoice_seller_address = '1 Test Street, 00-001 Warsaw'
      where id = $1`,
     [
       tenantId,

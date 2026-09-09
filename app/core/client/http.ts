@@ -147,6 +147,7 @@ import {
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
+  postPurgeOutputSchema,
   postPinOutputSchema,
   postReportOutputSchema,
   reportResolveOutputSchema,
@@ -810,11 +811,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
       { body: '', headers: { [EMAIL_DISPATCH_SECRET_HEADER]: secret } },
     ),
-  publicOffer: (signal?: AbortSignal) =>
+  publicOffer: (signal?: AbortSignal, productRef?: string) =>
     request(
       options,
       API_ROUTES.publicOffer.method,
-      API_ROUTES.publicOffer.path,
+      productRef === undefined ? API_ROUTES.publicOffer.path
+        : `${API_ROUTES.publicOffer.path}?productRef=${encodeURIComponent(productRef)}`,
       publicOfferOutputSchema,
       undefined,
       signal,
@@ -1866,6 +1868,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
+  purgePost: (input: PostDeleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsPurge.method,
+      API_ROUTES.postsPurge.path.replace(':postId', encodeURIComponent(input.id)),
+      postPurgeOutputSchema,
+      undefined,
+      signal,
+    ),
   deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>
     request(
       options,

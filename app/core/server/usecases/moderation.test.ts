@@ -308,6 +308,7 @@ const makeDeps = (
         posts[index] = next;
         return next;
       },
+      purge: async () => false,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
@@ -658,7 +659,7 @@ const dmMessage = (id: string, senderUserId: string, createdAt: string): DmMessa
   tenantId: 'tenant-1',
   conversationId: 'conversation-1',
   senderUserId,
-  body: `Treść ${id}`,
+  body: `Content ${id}`,
   createdAt,
 });
 

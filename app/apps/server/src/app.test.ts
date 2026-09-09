@@ -122,6 +122,7 @@ const product = (input: {
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published: input.published,
   accessItems: [],
   legacyId: null,
@@ -320,6 +321,8 @@ const deps = (input: {
     },
     publicRateLimitPolicies: selectPublicRateLimitPolicies({}),
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
+    importDailyMemberRecordLimit: 10_000,
+    importDailyRecordLimit: 20_000,
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
@@ -669,6 +672,7 @@ const deps = (input: {
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
+      purge: async () => false,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
@@ -951,6 +955,7 @@ const scopedApp = (
       ...base.posts,
       findById: async () => post,
       countPinnedForContext: async () => 0,
+      purge: async () => false,
       setPinned: async (_tenantId, input) => ({
         ...post,
         pinnedAt: input.pinnedAt,
@@ -4690,7 +4695,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-course',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript',
+      fromPath: '/course/javascript',
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
@@ -4702,7 +4707,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-lesson',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript/let',
+      fromPath: '/course/javascript/let',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
@@ -4714,7 +4719,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-document',
       tenantId: acme.id,
-      fromPath: '/kurs/lekcja-1.html',
+      fromPath: '/course/lesson-1.html',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
@@ -4742,7 +4747,7 @@ describe('tenant redirects', () => {
       domains: [tenantDomainFixture({
         id: 'domain-acme',
         tenantId: acme.id,
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         kind: 'custom',
         verified: true,
       })],
@@ -4763,23 +4768,23 @@ describe('tenant redirects', () => {
     redirectApp().request(path, { headers: { host } });
 
   it('redirects a permanent entry for good', async () => {
-    const response = await redirectGet('/kurs/javascript');
+    const response = await redirectGet('/course/javascript');
 
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
   it('redirects a non-permanent entry temporarily', async () => {
-    const response = await redirectGet('/kurs/javascript/let');
+    const response = await redirectGet('/course/javascript/let');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(lessonPagePath);
   });
 
   it.each([
-    ['a trailing slash', '/kurs/javascript/'],
-    ['upper case', '/Kurs/JavaScript'],
-    ['a repeated slash', '/kurs//javascript'],
+    ['a trailing slash', '/course/javascript/'],
+    ['upper case', '/Course/JavaScript'],
+    ['a repeated slash', '/course//javascript'],
   ])('normalises %s before the lookup', async (_case, path) => {
     const response = await redirectGet(path);
 
@@ -4787,7 +4792,7 @@ describe('tenant redirects', () => {
     expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
-  it.each(['/kurs/lekcja-1.html', '/kurs/lekcja-1.HTML'])(
+  it.each(['/course/lesson-1.html', '/course/lesson-1.HTML'])(
     'redirects the document-extension source path %s',
     async (path) => {
       const response = await redirectGet(path);
@@ -4808,15 +4813,15 @@ describe('tenant redirects', () => {
   );
 
   it('redirects on a verified custom domain and keeps the query string', async () => {
-    const response = await redirectGet('/kurs/javascript/let?utm_source=newsletter', 'kurs.acme.example');
+    const response = await redirectGet('/course/javascript/let?utm_source=newsletter', 'course.acme.example');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
   });
 
   it.each([
-    ['an unconfigured path', '/kurs/python', acme],
-    ['a path configured for another workspace', '/kurs/javascript', globex],
+    ['an unconfigured path', '/course/python', acme],
+    ['a path configured for another workspace', '/course/javascript', globex],
   ])('leaves %s to the web app', async (_case, path, owner) => {
     const response = await redirectApp(owner).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4827,7 +4832,7 @@ describe('tenant redirects', () => {
   });
 
   it('leaves the platform host alone', async () => {
-    const response = await redirectGet('/kurs/javascript', 'start.localhost');
+    const response = await redirectGet('/course/javascript', 'start.localhost');
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();
@@ -5853,7 +5858,7 @@ describe('public auth-resolve route', () => {
   it('answers a passwordless member and an unknown address identically', async () => {
     const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
 
-    const passwordless = await resolve(app, 'kursant@together.dev');
+    const passwordless = await resolve(app, 'student@together.dev');
     const unknown = await resolve(app, 'nobody@example.com');
 
     expect(await passwordless.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
@@ -5930,7 +5935,7 @@ describe('public auth-resolve route', () => {
         origin: 'http://acme.localhost:48730',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ email: 'kursant@together.dev' }),
+      body: JSON.stringify({ email: 'student@together.dev' }),
     });
     const foreign = await app.request(API_PATHS.authResolve, {
       method: 'POST',
@@ -5939,7 +5944,7 @@ describe('public auth-resolve route', () => {
         origin: 'https://creator.example',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ email: 'kursant@together.dev' }),
+      body: JSON.stringify({ email: 'student@together.dev' }),
     });
 
     expect(allowed.headers.get('access-control-allow-origin')).toBe('http://acme.localhost:48730');
@@ -6831,7 +6836,7 @@ describe('tenant-host magic links on checkout', () => {
 
     expect(response.status).toBe(200);
     expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
-    expect(captured.request?.language).toBe('pl');
+    expect(captured.request?.language).toBe('en');
   });
 });
 
@@ -6881,7 +6886,7 @@ describe('tenant-host magic links on login', () => {
     expect(captured.context?.context).toMatchObject({ language: 'pl' });
   });
 
-  it('falls back to Polish and the base host on the bare domain', async () => {
+  it('falls back to English and the base host on the bare domain', async () => {
     const { app, captured } = capturingApp();
 
     await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
@@ -6891,7 +6896,7 @@ describe('tenant-host magic links on login', () => {
     });
 
     expect(captured.context?.context).toMatchObject({
-      language: 'pl',
+      language: 'en',
       baseUrl: 'http://localhost:48730',
     });
     expect(captured.context?.context.tenantName).toBeUndefined();
@@ -6969,7 +6974,7 @@ describe('tenant-host email verification', () => {
 
       expect(captured.verificationContext).toEqual({
         email: 'tenant-header@together.dev',
-        context: { language: 'pl', baseUrl: 'http://globex.localhost:48730' },
+        context: { language: 'en', baseUrl: 'http://globex.localhost:48730' },
       });
     },
   );
@@ -7697,5 +7702,94 @@ describe('staff member self-service routes', () => {
     }
     expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
     expect(createMember).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('unlisted and free checkout', () => {
+  const hidden: Product = {
+    ...product({ id: 'hidden', tenantId: 't-acme', title: 'Private offer', published: true }),
+    visibility: 'unlisted', priceCents: 0,
+  };
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  it('omits unlisted products from listings but serves direct checkout by id and slug with distinct ETags', async () => {
+    const app = buildApp(deps({ products: [hidden] }));
+    const listed = await app.request(API_PATHS.publicOffer, { headers });
+    expect(await listed.json()).toMatchObject({ ok: true, data: { products: [] } });
+    const direct = await app.request(`${API_PATHS.publicOffer}?productRef=hidden`, {
+      headers: { ...headers, 'if-none-match': listed.headers.get('etag') ?? '' },
+    });
+    expect(direct.status).toBe(200);
+    expect(await direct.json()).toMatchObject({ ok: true, data: { products: [{ id: 'hidden' }] } });
+    expect(direct.headers.get('etag')).not.toBe(listed.headers.get('etag'));
+    const invalid = await app.request(`${API_PATHS.publicOffer}?productRef=`, { headers });
+    expect(invalid.status).toBe(400);
+  });
+
+  it('fulfills a guest zero-price purchase with an order, grant and consent without Stripe or dev payments', async () => {
+    const base = deps({ products: [hidden] });
+    const createSession = vi.fn(base.payment.createCheckoutSession);
+    base.payment.createCheckoutSession = createSession;
+    const createOrder = vi.fn(base.orders.create);
+    base.orders.create = createOrder;
+    const recordConsent = vi.fn(base.consents.record);
+    base.consents.record = recordConsent;
+    base.tenants.findSettings = async () => ({
+      name: 'Acme', logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null,
+      faviconUrl: null, socialLinks: [], billingPortalUrl: null,
+      bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+      ogTitle: null, ogDescription: null, ogImageUrl: null,
+      supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',
+      privacyUrl: 'https://acme.example/privacy', defaultHomeSpaceId: null,
+    });
+    const createGrant = vi.fn(async () => true);
+    const enrollment = base.enrollmentTransaction.run;
+    base.enrollmentTransaction.run = (operation) => enrollment((transaction) => operation({
+      ...transaction, grants: { ...transaction.grants, createGrant },
+    }));
+    const app = buildApp(base);
+    const start = (termsAccepted: boolean) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST', headers,
+      body: JSON.stringify({ productId: hidden.id, email: 'guest@example.com', termsAccepted }),
+    });
+    expect((await start(false)).status).toBe(400);
+    expect(createGrant).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    const response = await start(true);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: {
+      free: true, url: 'http://acme.localhost:48730/checkout/hidden?status=success&purchase_kind=one_time',
+    } });
+    expect(createSession).not.toHaveBeenCalled();
+    expect(createGrant).toHaveBeenCalledOnce();
+    expect(createOrder).toHaveBeenCalledWith('t-acme', expect.objectContaining({ productId: hidden.id, amountCents: 0, status: 'paid' }));
+    expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
+  });
+});
+
+describe('post purge route', () => {
+  it.each(['member', 'staff', 'owner'] as const)('authorizes %s and returns a purge receipt', async (scope) => {
+    const purge = vi.fn<AppDeps['posts']['purge']>(async () => true);
+    const app = scopedApp(scope, { overrides: { posts: { ...deps().posts, purge } } });
+    const response = await app.request(API_PATHS.postsPurge.replace(':postId', 'post-1'), {
+      method: 'DELETE', headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(response.status).toBe(scope === 'member' ? 403 : 200);
+    if (scope === 'member') {
+      expect(purge).not.toHaveBeenCalled();
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    } else {
+      expect(await response.json()).toEqual({ ok: true, data: { id: 'post-1' } });
+      expect(purge).toHaveBeenCalledWith(acme.id, 'post-1', expect.objectContaining({ kind: 'post_purged', actorUserId: 'user-1', reason: 'post-1' }));
+    }
+  });
+
+  it('rejects a missing or live post', async () => {
+    const response = await scopedApp('staff').request(API_PATHS.postsPurge.replace(':postId', 'missing'), {
+      method: 'DELETE', headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });

@@ -147,14 +147,14 @@ describe('tenant redirect management', () => {
 
     const result = await createTenantRedirect(
       ctx,
-      { fromPath: '/Kurs/JavaScript/', target: { kind: 'course', courseId: course.id }, permanent: true },
+      { fromPath: '/Course/JavaScript/', target: { kind: 'course', courseId: course.id }, permanent: true },
       h.deps,
     );
 
     expect(result).toMatchObject({
       ok: true,
       value: {
-        fromPath: '/kurs/javascript',
+        fromPath: '/course/javascript',
         targetKind: 'course',
         targetId: course.id,
         targetPath: `/my/courses/${course.id}`,
@@ -171,7 +171,7 @@ describe('tenant redirect management', () => {
     const result = await createTenantRedirect(
       ctx,
       {
-        fromPath: '/kurs/javascript/wstep',
+        fromPath: '/course/javascript/intro',
         target: { kind: 'lesson', courseId: course.id, lessonId: lesson.id },
         permanent: false,
       },
@@ -190,7 +190,7 @@ describe('tenant redirect management', () => {
     const result = await createTenantRedirect(
       ctx,
       {
-        fromPath: '/kurs/javascript/obcy',
+        fromPath: '/course/javascript/obcy',
         target: { kind: 'lesson', courseId: course.id, lessonId: orphanLesson.id },
         permanent: false,
       },
@@ -218,7 +218,7 @@ describe('tenant redirect management', () => {
 
     const result = await createTenantRedirect(
       ctx,
-      { fromPath: '/oferta', target: { kind: 'path', path: '/oferta' }, permanent: false },
+      { fromPath: '/offer', target: { kind: 'path', path: '/offer' }, permanent: false },
       h.deps,
     );
 
@@ -229,10 +229,10 @@ describe('tenant redirect management', () => {
   it('refuses a target that only differs from its source before normalisation', async () => {
     const h = harness();
 
-    for (const path of ['/oferta/', '/Oferta']) {
+    for (const path of ['/offer/', '/Offer']) {
       expect(await createTenantRedirect(
         ctx,
-        { fromPath: '/oferta', target: { kind: 'path', path }, permanent: true },
+        { fromPath: '/offer', target: { kind: 'path', path }, permanent: true },
         h.deps,
       )).toMatchObject({ ok: false, error: { code: 'validation' } });
     }
@@ -245,7 +245,7 @@ describe('tenant redirect management', () => {
     for (const fromPath of ['/panel', '/My/courses/course-js', '/api/health']) {
       expect(await createTenantRedirect(
         ctx,
-        { fromPath, target: { kind: 'path', path: '/oferta' }, permanent: true },
+        { fromPath, target: { kind: 'path', path: '/offer' }, permanent: true },
         h.deps,
       )).toMatchObject({ ok: false, error: { code: 'validation' } });
     }
@@ -258,7 +258,7 @@ describe('tenant redirect management', () => {
     for (const fromPath of ['/', '///', '#anchor', '?ref=x']) {
       expect(await createTenantRedirect(
         ctx,
-        { fromPath, target: { kind: 'path', path: '/oferta' }, permanent: true },
+        { fromPath, target: { kind: 'path', path: '/offer' }, permanent: true },
         h.deps,
       )).toMatchObject({ ok: false, error: { code: 'validation' } });
     }

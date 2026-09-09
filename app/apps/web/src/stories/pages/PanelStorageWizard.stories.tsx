@@ -3,7 +3,7 @@ import { userEvent, within } from 'storybook/test';
 import fixture from '../fixtures/panel-storage-wizard.json';
 import { withPage } from '../page-decorators.js';
 
-const meta = { title: 'Pages/PanelStorageWizard', id: 'panel-storage-wizard', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/PanelStorageWizard', id: 'panel-storage-wizard', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 

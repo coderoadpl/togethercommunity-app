@@ -68,7 +68,7 @@ const idsOf = async (sql: string): Promise<string[]> => {
 const addForeignMember = async (): Promise<void> => {
   await client.query(
     `INSERT INTO members (id, tenant_id, user_id, email, display_name, created_at)
-     VALUES ('member-acme-real', 'tenant-acme', 'user-real', 'kupujacy@gmail.com', 'Kupujący', NOW()::text)`,
+     VALUES ('member-acme-real', 'tenant-acme', 'user-real', 'buyer@example.com', 'Buyer', NOW()::text)`,
   );
 };
 

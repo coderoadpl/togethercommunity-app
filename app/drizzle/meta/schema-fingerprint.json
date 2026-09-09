@@ -1,6 +1,6 @@
 {
-  "hash": "c73154a997cda6f10735768f93309925a664f37493639e434cf0db9735005d0e",
-  "shortId": "c73154a997cd",
+  "hash": "0cc09cd2c6eaa2b0f827cd74c2133738dc2191eda755199e57369bdf7c3dedb1",
+  "shortId": "0cc09cd2c6ea",
   "schema": {
     "constraints": [
       {
@@ -82,6 +82,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
+        "name": "products_visibility_check",
+        "table": "products"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES tenant_api_keys(id) ON DELETE CASCADE",
@@ -2759,6 +2764,14 @@
             "type": "text"
           },
           {
+            "default": "'listed'::text",
+            "generated": "",
+            "identity": "",
+            "name": "visibility",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -3378,7 +3391,7 @@
             "type": "text"
           },
           {
-            "default": "'pl'::text",
+            "default": "'en'::text",
             "generated": "",
             "identity": "",
             "name": "default_language",

@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { apiKeyCreateInputSchema } from '#core/contract/index.js';
 import type { StripeMode, TenantApiKeyPublic, TenantSecretMasked } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider } from '../panel-context.js';
@@ -304,7 +304,7 @@ const openTab = async (label: string) => {
 };
 
 const fillMinioConfiguration = async () => {
-  await openTab(pl.integrations.tabStorage);
+  await openTab(en.integrations.tabStorage);
   await userEvent.click(await screen.findByTestId('storage-provider-minio'));
   await userEvent.click(screen.getByTestId('storage-provider-continue'));
   await userEvent.type(screen.getByTestId('storage-endpoint'), 'http://localhost:9000');
@@ -322,14 +322,14 @@ describe('IntegrationsPanel', () => {
   it('opens the Stripe tab by default and keeps the other services one tab away', async () => {
     const { router } = renderPanel();
 
-    expect(await screen.findByRole('tab', { name: pl.integrations.tabStripe })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: en.integrations.tabStripe })).toHaveAttribute(
       'aria-selected',
       'true',
     );
     expect(await screen.findByTestId('stripe-webhook-url')).toBeInTheDocument();
     expect(screen.queryByTestId('bunny-test-connection')).not.toBeInTheDocument();
 
-    await openTab(pl.integrations.tabVideo);
+    await openTab(en.integrations.tabVideo);
 
     expect(await screen.findByTestId('bunny-test-connection')).toBeInTheDocument();
     expect(screen.queryByTestId('stripe-webhook-url')).not.toBeInTheDocument();
@@ -337,16 +337,16 @@ describe('IntegrationsPanel', () => {
   });
 
   it.each([
-    ['#payments', pl.integrations.tabStripe],
-    ['#stripe', pl.integrations.tabStripe],
-    ['#unknown', pl.integrations.tabStripe],
-    ['#sending', pl.integrations.tabEmail],
-    ['#ses', pl.integrations.tabEmail],
-    ['#s3', pl.integrations.tabStorage],
-    ['#bunny', pl.integrations.tabVideo],
-    ['#ifirma', pl.integrations.tabInvoicing],
-    ['#ksef', pl.integrations.tabInvoicing],
-    ['#api-keys', pl.integrations.tabApiKeys],
+    ['#payments', en.integrations.tabStripe],
+    ['#stripe', en.integrations.tabStripe],
+    ['#unknown', en.integrations.tabStripe],
+    ['#sending', en.integrations.tabEmail],
+    ['#ses', en.integrations.tabEmail],
+    ['#s3', en.integrations.tabStorage],
+    ['#bunny', en.integrations.tabVideo],
+    ['#ifirma', en.integrations.tabInvoicing],
+    ['#ksef', en.integrations.tabInvoicing],
+    ['#api-keys', en.integrations.tabApiKeys],
   ])('opens %s on the %s tab', async (hash, label) => {
     window.history.replaceState(null, '', `/panel/integrations${hash}`);
     renderPanel();
@@ -369,7 +369,7 @@ describe('IntegrationsPanel', () => {
 
     await router.navigate({ to: '/panel/integrations', hash: 'ksef' });
 
-    expect(await screen.findByRole('tab', { name: pl.integrations.tabInvoicing })).toHaveAttribute(
+    expect(await screen.findByRole('tab', { name: en.integrations.tabInvoicing })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -384,20 +384,20 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByTestId('marketing-webhook-url')).toHaveTextContent(
       'https://app.example.test/api/webhooks/ses/webhook-token',
     );
-    expect(screen.getByLabelText(pl.marketing.accessKeyLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.marketing.fromAddressLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.marketing.smtpHostLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.marketing.resendApiKeyLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.marketing.footerLegalNameLabel)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.marketing.wizardTitle })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.marketing.reputationTitle })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.marketing.quota })).toBeInTheDocument();
+    expect(screen.getByLabelText(en.marketing.accessKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.marketing.fromAddressLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.marketing.smtpHostLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.marketing.resendApiKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.marketing.footerLegalNameLabel)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.marketing.wizardTitle })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.marketing.reputationTitle })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.marketing.quota })).toBeInTheDocument();
   });
 
   it('creates a short-lived import key with independently selectable scopes', async () => {
     const { apiKeySubmissions } = renderPanel();
 
-    await openTab(pl.integrations.tabApiKeys);
+    await openTab(en.integrations.tabApiKeys);
     await userEvent.type(await screen.findByTestId('import-api-key-name'), 'Migration from a previous platform');
     await userEvent.click(screen.getByTestId('import-api-key-content-scope'));
     await userEvent.click(screen.getByTestId('import-api-key-users-scope'));
@@ -406,7 +406,7 @@ describe('IntegrationsPanel', () => {
     expect(expiry).toHaveAttribute('max');
     await userEvent.click(screen.getByTestId('import-api-key-create'));
 
-    expect(await screen.findByRole('group', { name: pl.integrations.importKeysSecretLabel })).toHaveTextContent(
+    expect(await screen.findByRole('group', { name: en.integrations.importKeysSecretLabel })).toHaveTextContent(
       'together_import_secret',
     );
     expect(apiKeySubmissions).toHaveLength(1);
@@ -449,22 +449,22 @@ describe('IntegrationsPanel', () => {
       },
     ]);
 
-    await openTab(pl.integrations.tabApiKeys);
+    await openTab(en.integrations.tabApiKeys);
     expect(await screen.findByTestId('import-api-key-active-key')).toHaveTextContent(
-      pl.integrations.importKeysActive,
+      en.integrations.importKeysActive,
     );
     expect(screen.getByTestId('import-api-key-expired-key')).toHaveTextContent(
-      pl.integrations.importKeysExpired,
+      en.integrations.importKeysExpired,
     );
     expect(screen.getByTestId('import-api-key-revoked-key')).toHaveTextContent(
-      pl.integrations.importKeysRevoked,
+      en.integrations.importKeysRevoked,
     );
 
     await userEvent.click(screen.getByTestId('import-api-key-revoke-active-key'));
     await userEvent.click(await screen.findByTestId('import-api-key-revoke-confirm'));
     await waitFor(() => {
       expect(screen.getByTestId('import-api-key-active-key')).toHaveTextContent(
-        pl.integrations.importKeysRevoked,
+        en.integrations.importKeysRevoked,
       );
     });
   });
@@ -476,10 +476,10 @@ describe('IntegrationsPanel', () => {
       expiresAt: null, revokedAt: null,
     }]);
 
-    await openTab(pl.integrations.tabApiKeys);
+    await openTab(en.integrations.tabApiKeys);
     await userEvent.click(await screen.findByTestId('import-api-key-audit-audited-key'));
 
-    expect(await screen.findByText(/Uczestnik member-source/)).toBeInTheDocument();
+    expect(await screen.findByText(/Member member-source/)).toBeInTheDocument();
   });
 
   it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {
@@ -488,7 +488,7 @@ describe('IntegrationsPanel', () => {
     if (state === 'error') await screen.findAllByRole('alert');
     expect(screen.queryByTestId('payment-test-hint')).not.toBeInTheDocument();
 
-    await openTab(pl.integrations.tabStorage);
+    await openTab(en.integrations.tabStorage);
 
     if (state === 'error') await screen.findAllByRole('alert');
     expect(screen.queryByTestId('storage-test-hint')).not.toBeInTheDocument();
@@ -500,26 +500,26 @@ describe('IntegrationsPanel', () => {
     await waitFor(() => {
       expect(url).toHaveTextContent('https://app.example.test/base/api/webhooks/stripe/tenant-123');
     });
-    expect(screen.getByText(pl.integrations.webhookUrlHint)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.webhookUrlHint)).toBeInTheDocument();
   });
 
   it('saves the restricted key, creates the webhook, and shows the persisted live-mode badge', async () => {
     const { stripeConfigurations } = renderPanel();
 
     const status = await screen.findByTestId('stripe-key-status');
-    expect(status).toHaveTextContent(pl.integrations.notConfigured);
+    expect(status).toHaveTextContent(en.integrations.notConfigured);
 
     await userEvent.type(screen.getByTestId('stripe-restricted-key'), 'rk_live_secret2345');
     await userEvent.click(screen.getByTestId('stripe-configure'));
 
-    expect(await screen.findByTestId('stripe-configured')).toHaveTextContent(pl.integrations.stripeConfigured);
+    expect(await screen.findByTestId('stripe-configured')).toHaveTextContent(en.integrations.stripeConfigured);
     await waitFor(() => {
-      expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(pl.integrations.configured);
+      expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(en.integrations.configured);
     });
     expect(screen.getByTestId('stripe-key-status')).toHaveTextContent('••••2345');
-    expect(screen.getByTestId('stripe-mode-badge')).toHaveTextContent(pl.integrations.stripeLiveMode);
+    expect(screen.getByTestId('stripe-mode-badge')).toHaveTextContent(en.integrations.stripeLiveMode);
     expect(stripeConfigurations).toEqual(['rk_live_secret2345']);
-    expect(screen.getByText(pl.integrations.webhookActiveHint)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.webhookActiveHint)).toBeInTheDocument();
   });
 
   it('reports a readable diagnostic after testing the connection', async () => {
@@ -529,7 +529,7 @@ describe('IntegrationsPanel', () => {
     ]);
     await userEvent.click(await screen.findByTestId('payment-test-connection'));
     expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(
-      pl.integrations.paymentAvailable,
+      en.integrations.paymentAvailable,
     );
   });
 
@@ -540,14 +540,14 @@ describe('IntegrationsPanel', () => {
     ], defaultSettings, 'test');
 
     expect(await screen.findByTestId('stripe-mode-badge')).toHaveTextContent(
-      pl.integrations.stripeTestMode,
+      en.integrations.stripeTestMode,
     );
   });
 
   it('guards the test button until both Stripe secrets are stored', async () => {
     renderPanel();
     const hint = await screen.findByTestId('payment-test-hint');
-    expect(hint).toHaveTextContent(pl.integrations.saveKeysFirst);
+    expect(hint).toHaveTextContent(en.integrations.saveKeysFirst);
     expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
   });
 
@@ -557,10 +557,10 @@ describe('IntegrationsPanel', () => {
       { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabStorage);
+    await openTab(en.integrations.tabStorage);
     expect(await screen.findByTestId('storage-provider-minio')).toBeInTheDocument();
     expect(screen.getByTestId('storage-test-connection')).toBeDisabled();
-    expect(screen.getByTestId('storage-test-hint')).toHaveTextContent(pl.integrations.s3SaveFirst);
+    expect(screen.getByTestId('storage-test-hint')).toHaveTextContent(en.integrations.s3SaveFirst);
   });
 
   it('runs storage, email and payment through one diagnostic contract', async () => {
@@ -571,15 +571,15 @@ describe('IntegrationsPanel', () => {
     ]);
 
     await userEvent.click(await screen.findByTestId('payment-test-connection'));
-    expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(pl.integrations.paymentAvailable);
+    expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(en.integrations.paymentAvailable);
 
-    await openTab(pl.integrations.tabEmail);
+    await openTab(en.integrations.tabEmail);
     await userEvent.click(await screen.findByTestId('email-test-connection'));
-    expect(await screen.findByTestId('email-test-result')).toHaveTextContent(pl.integrations.emailAvailable);
+    expect(await screen.findByTestId('email-test-result')).toHaveTextContent(en.integrations.emailAvailable);
 
-    await openTab(pl.integrations.tabStorage);
+    await openTab(en.integrations.tabStorage);
     await userEvent.click(await screen.findByTestId('storage-test-connection'));
-    expect(await screen.findByTestId('storage-test-result')).toHaveTextContent(pl.integrations.storageAvailable);
+    expect(await screen.findByTestId('storage-test-result')).toHaveTextContent(en.integrations.storageAvailable);
 
     expect(testedProviders).toEqual(['payment', 'email', 'storage']);
   });
@@ -588,16 +588,16 @@ describe('IntegrationsPanel', () => {
     const { storageSubmissions } = renderPanel();
     await fillMinioConfiguration();
 
-    expect(screen.getByText(pl.integrations.storageProbeDescription)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.storageProbeDescription)).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('storage-probe'));
     expect(await screen.findByTestId('storage-probe-success')).toHaveTextContent(
-      pl.integrations.storageProbeSuccess,
+      en.integrations.storageProbeSuccess,
     );
     expect(screen.getByTestId('storage-save')).toBeEnabled();
 
     await userEvent.click(screen.getByTestId('storage-save'));
     expect(await screen.findByTestId('storage-save-success')).toHaveTextContent(
-      pl.integrations.storageSaved,
+      en.integrations.storageSaved,
     );
     expect(storageSubmissions).toEqual([
       {
@@ -620,29 +620,29 @@ describe('IntegrationsPanel', () => {
   });
 
   it.each([
-    ['aws_s3', pl.integrations.storageInstructionAws, 'docs.aws.amazon.com'],
-    ['cloudflare_r2', pl.integrations.storageInstructionR2, 'developers.cloudflare.com'],
-    ['backblaze_b2', pl.integrations.storageInstructionB2, 'backblaze.com'],
-    ['minio', pl.integrations.storageInstructionMinio, 'min.io'],
+    ['aws_s3', en.integrations.storageInstructionAws, 'docs.aws.amazon.com'],
+    ['cloudflare_r2', en.integrations.storageInstructionR2, 'developers.cloudflare.com'],
+    ['backblaze_b2', en.integrations.storageInstructionB2, 'backblaze.com'],
+    ['minio', en.integrations.storageInstructionMinio, 'min.io'],
   ])('shows scoped key instructions for %s', async (provider, instructions, host) => {
     renderPanel();
-    await openTab(pl.integrations.tabStorage);
+    await openTab(en.integrations.tabStorage);
     await userEvent.click(await screen.findByTestId(`storage-provider-${provider}`));
     await userEvent.click(screen.getByTestId('storage-provider-continue'));
 
     expect(screen.getByText(instructions)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.integrations.storageInstructionLink })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.integrations.storageInstructionLink })).toHaveAttribute(
       'href',
       expect.stringContaining(host),
     );
   });
 
   it.each([
-    ['storage.wrong_region', pl.integrations.storageProbeWrongRegion],
-    ['storage.credentials', pl.integrations.storageProbeCredentials],
-    ['storage.bucket', pl.integrations.storageProbeBucket],
-    ['storage.cors', pl.integrations.storageProbeCors],
-    ['storage.unavailable', pl.integrations.storageProbeUnavailable],
+    ['storage.wrong_region', en.integrations.storageProbeWrongRegion],
+    ['storage.credentials', en.integrations.storageProbeCredentials],
+    ['storage.bucket', en.integrations.storageProbeBucket],
+    ['storage.cors', en.integrations.storageProbeCors],
+    ['storage.unavailable', en.integrations.storageProbeUnavailable],
   ])('renders the mapped %s failure without raw SDK text', async (providerCode, message) => {
     renderPanel();
     server.use(
@@ -670,11 +670,11 @@ describe('IntegrationsPanel', () => {
 
   it('guards the Bunny test button until the key and library id are stored', async () => {
     renderPanel();
-    await openTab(pl.integrations.tabVideo);
+    await openTab(en.integrations.tabVideo);
     const hint = await screen.findByTestId('bunny-test-hint');
-    expect(hint).toHaveTextContent(pl.integrations.bunnySaveFirst);
+    expect(hint).toHaveTextContent(en.integrations.bunnySaveFirst);
     expect(screen.getByTestId('bunny-test-connection')).toBeDisabled();
-    expect(await screen.findByText(pl.integrations.bunnySecurityHint)).toBeInTheDocument();
+    expect(await screen.findByText(en.integrations.bunnySecurityHint)).toBeInTheDocument();
     expect(await screen.findByTestId('secret-input-bunny.securityKey')).toBeInTheDocument();
   });
 
@@ -684,7 +684,7 @@ describe('IntegrationsPanel', () => {
       { key: 'ifirma.username', maskedPreview: '••••.com', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     expect(await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).toHaveAttribute('type', 'password');
     expect(screen.getByTestId('secret-input-ifirma.username')).toHaveAttribute('type', 'password');
     await userEvent.click(screen.getByTestId('ifirma-test-connection'));
@@ -695,9 +695,9 @@ describe('IntegrationsPanel', () => {
 
   it('guards the iFirma test until both credentials are stored', async () => {
     renderPanel();
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     expect(await screen.findByTestId('ifirma-test-connection')).toBeDisabled();
-    expect(screen.getByTestId('ifirma-test-hint')).toHaveTextContent(pl.integrations.ifirmaSaveFirst);
+    expect(screen.getByTestId('ifirma-test-hint')).toHaveTextContent(en.integrations.ifirmaSaveFirst);
   });
 
   it('tests stored KSeF credentials where they are configured', async () => {
@@ -706,7 +706,7 @@ describe('IntegrationsPanel', () => {
       { key: 'ksef.contextNip', maskedPreview: '••••5555', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     const testButton = await screen.findByTestId('ksef-test-connection');
     await waitFor(() => {
       expect(testButton).toBeEnabled();
@@ -720,9 +720,9 @@ describe('IntegrationsPanel', () => {
 
   it('guards the KSeF test until the token and context NIP are stored', async () => {
     renderPanel();
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     expect(await screen.findByTestId('ksef-test-connection')).toBeDisabled();
-    expect(screen.getByTestId('ksef-test-hint')).toHaveTextContent(pl.integrations.ksefSaveFirst);
+    expect(screen.getByTestId('ksef-test-hint')).toHaveTextContent(en.integrations.ksefSaveFirst);
   });
 
   it('saves the Bunny library id and reports the connection diagnostic', async () => {
@@ -730,10 +730,10 @@ describe('IntegrationsPanel', () => {
       { key: 'bunny.apiKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabVideo);
+    await openTab(en.integrations.tabVideo);
     await userEvent.type(await screen.findByTestId('bunny-library-id'), 'lib-1');
     await userEvent.click(screen.getByTestId('bunny-library-id-save'));
-    expect(await screen.findByTestId('bunny-library-id-saved')).toHaveTextContent(pl.integrations.saved);
+    expect(await screen.findByTestId('bunny-library-id-saved')).toHaveTextContent(en.integrations.saved);
 
     const testButton = screen.getByTestId('bunny-test-connection');
     await waitFor(() => {
@@ -746,15 +746,15 @@ describe('IntegrationsPanel', () => {
   it('saves the Bunny Stream CDN hostname', async () => {
     renderPanel();
 
-    await openTab(pl.integrations.tabVideo);
+    await openTab(en.integrations.tabVideo);
     const input = await screen.findByTestId('bunny-cdn-hostname');
     expect(input).toHaveAttribute('placeholder', 'vz-xxxxxxx-xxx.b-cdn.net');
-    expect(screen.getByText(pl.integrations.bunnyCdnHostnameHelper)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.bunnyCdnHostnameHelper)).toBeInTheDocument();
     await userEvent.type(input, 'vz-demo-123.b-cdn.net');
     await userEvent.click(screen.getByTestId('bunny-cdn-hostname-save'));
 
     expect(await screen.findByTestId('bunny-cdn-hostname-saved')).toHaveTextContent(
-      pl.integrations.saved,
+      en.integrations.saved,
     );
     await waitFor(() => {
       expect(screen.getByTestId('bunny-cdn-hostname')).toHaveValue('vz-demo-123.b-cdn.net');
@@ -766,17 +766,17 @@ describe('IntegrationsPanel', () => {
       { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     const field = (await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).closest('form');
     expect(field).not.toBeNull();
     if (!field) return;
     await userEvent.click(within(field).getByTestId('secret-remove-ifirma.invoiceApiKey'));
-    expect(await screen.findByText(pl.integrations.removeSecretConfirmBody({ label: pl.integrations.ifirmaInvoiceApiKeyLabel }))).toBeInTheDocument();
+    expect(await screen.findByText(en.integrations.removeSecretConfirmBody({ label: en.integrations.ifirmaInvoiceApiKeyLabel }))).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('secret-remove-confirm-ifirma.invoiceApiKey'));
 
     await waitFor(() => {
       expect(screen.getByTestId('secret-status-ifirma.invoiceApiKey')).toHaveTextContent(
-        pl.integrations.notConfigured,
+        en.integrations.notConfigured,
       );
     });
   });
@@ -786,17 +786,17 @@ describe('IntegrationsPanel', () => {
       { key: 'ifirma.username', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
     ]);
 
-    await openTab(pl.integrations.tabInvoicing);
+    await openTab(en.integrations.tabInvoicing);
     const field = (await screen.findByTestId('secret-input-ifirma.username')).closest('form');
     expect(field).not.toBeNull();
     if (!field) return;
     await userEvent.click(within(field).getByTestId('secret-remove-ifirma.username'));
-    expect(await screen.findByText(pl.integrations.removeSecretConfirmBody({ label: pl.integrations.ifirmaUsernameLabel }))).toBeInTheDocument();
+    expect(await screen.findByText(en.integrations.removeSecretConfirmBody({ label: en.integrations.ifirmaUsernameLabel }))).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('secret-remove-confirm-ifirma.username'));
 
     await waitFor(() => {
       expect(screen.getByTestId('secret-status-ifirma.username')).toHaveTextContent(
-        pl.integrations.notConfigured,
+        en.integrations.notConfigured,
       );
     });
   });
@@ -808,12 +808,12 @@ describe('IntegrationsPanel', () => {
     ], defaultSettings, 'live');
 
     await userEvent.click(await screen.findByTestId('stripe-remove'));
-    expect(await screen.findByText(pl.integrations.stripeDisconnectConfirmBody)).toBeInTheDocument();
+    expect(await screen.findByText(en.integrations.stripeDisconnectConfirmBody)).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('stripe-remove-confirm'));
 
     await waitFor(() => {
       expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(
-        pl.integrations.notConfigured,
+        en.integrations.notConfigured,
       );
     });
     expect(screen.queryByTestId('stripe-mode-badge')).not.toBeInTheDocument();

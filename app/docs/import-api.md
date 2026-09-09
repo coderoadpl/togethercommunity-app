@@ -142,13 +142,13 @@ Progress is explicitly enabled in the initial rollout. There can be only one pro
 Together holds no knowledge of the URL shapes of the platform a tenant came from. Your transform decides which paths existed there and what each one now means; the import stores one row per path and the tenant host answers it.
 
 ```jsonl
-{"kind":"redirect","importKey":"redirect-course-abc123","fromPath":"/kurs/javascript","target":{"kind":"course","importKey":"course-abc123"},"permanent":true}
-{"kind":"redirect","importKey":"redirect-lesson-l1","fromPath":"/kurs/javascript/wstep","target":{"kind":"lesson","importKey":"lesson-l1","courseKey":"course-abc123"},"permanent":false}
-{"kind":"redirect","importKey":"redirect-module-m1","fromPath":"/kurs/javascript/modul-1","target":{"kind":"module-as-course","importKey":"module-m1"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-course-abc123","fromPath":"/course/javascript","target":{"kind":"course","importKey":"course-abc123"},"permanent":true}
+{"kind":"redirect","importKey":"redirect-lesson-l1","fromPath":"/course/javascript/wstep","target":{"kind":"lesson","importKey":"lesson-l1","courseKey":"course-abc123"},"permanent":false}
+{"kind":"redirect","importKey":"redirect-module-m1","fromPath":"/course/javascript/modul-1","target":{"kind":"module-as-course","importKey":"module-m1"},"permanent":false}
 {"kind":"redirect","importKey":"redirect-catalog","fromPath":"/kursy","target":{"kind":"path","path":"/my"},"permanent":false}
 ```
 
-`fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Kurs/JavaScript/` and `/kurs/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
+`fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Course/JavaScript/` and `/course/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
 
 Paths that end in a document extension are answered — `/kurs/lekcja-1.html` and `/artykul.php` redirect like any other row. Paths under `/assets/` and paths ending in a static file extension (`.js`, `.css`, `.png`, `.svg`, `.ico`, `.txt`, `.xml`, fonts and the rest) are served by the web build instead, so a redirect stored for one never answers.
 
@@ -273,7 +273,7 @@ A full re-run of a finished import returns an all-`unchanged` summary. That is t
 | Request body | 2 MiB | 10 MiB |
 | Requests | 60 per minute per key | 30 per hour per key |
 
-All write endpoints on a key share one daily record counter. Content, grant, and progress requests can claim against a 20,000-record ceiling; member requests can claim only while that same counter remains within 2,000. Use a separate `import:users` key for member batches if you also expect to import more than 2,000 grants or progress records that day. Counters are per key and independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
+All write endpoints on a key share one daily record counter. Member requests use `IMPORT_DAILY_MEMBER_RECORD_LIMIT` (default: 10,000); all other record kinds use `IMPORT_DAILY_RECORD_LIMIT` (default: 20,000). Both server environment settings must be positive integers and apply per day to each API key within its tenant. A request can claim records only while the shared counter remains within its configured ceiling. Use a separate `import:users` key for member batches if other records would exhaust that ceiling. Counters are independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
 
 ## Errors
 

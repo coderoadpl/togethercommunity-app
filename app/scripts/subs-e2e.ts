@@ -228,13 +228,13 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     steps += 1;
 
     const course = expectOk(
-      await staff(['course', 'create', '--name', 'Klub Subs']),
+      await staff(['course', 'create', '--name', 'Club Subs']),
       'course create',
       courseOutputSchema,
     ).course;
     const product = expectOk(
       await staff([
-        'product', 'create', '--title', 'Klub Subs', '--price-cents', '9900', '--currency', 'PLN',
+        'product', 'create', '--title', 'Club Subs', '--price-cents', '9900', '--currency', 'PLN',
         '--access-items', JSON.stringify([{ level: 'course', courseId: course.id }]),
       ]),
       'product create',

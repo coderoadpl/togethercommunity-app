@@ -8,7 +8,7 @@ import {
   type TenantDomainProvider,
 } from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
-import { DEFAULT_LANGUAGE, languageSchema, type Language } from './language.js';
+import { languageSchema } from './language.js';
 import { storageCorsStatusSchema } from './storage.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
@@ -361,13 +361,7 @@ export const memberSchema = z.object({
 
 export type Member = z.infer<typeof memberSchema>;
 
-const DELETED_MEMBER_DISPLAY: Record<Language, string> = {
-  pl: 'Konto usunięte',
-  en: 'Deleted account',
-};
-
-export const deletedMemberDisplay = (language: Language = DEFAULT_LANGUAGE): string =>
-  DELETED_MEMBER_DISPLAY[language];
+export const DELETED_MEMBER_DISPLAY = '[deleted-member]';
 
 /**
  * A ban is a reversible moderation state: the person keeps their account, their
@@ -378,10 +372,10 @@ export const deletedMemberDisplay = (language: Language = DEFAULT_LANGUAGE): str
 export const MAX_MEMBER_BAN_REASON_LENGTH = 500;
 
 /**
- * Removal keeps the member row for order-history integrity (ustawa o
- * rachunkowości) and erases only the personal data: the e-mail and userId are
- * replaced with markers derived from the opaque member id, so the row can never
- * be traced back to the person nor matched by a future sign-in or purchase.
+ * The member row is retained for order-history integrity required by the Polish
+ * Accounting Act. Only personal data is erased: e-mail and userId become markers
+ * derived from the opaque member id, so the row cannot be traced back or matched
+ * by a future sign-in or purchase.
  */
 export const memberTombstone = (memberId: string): { email: string; userId: string } => ({
   email: `deleted-${memberId}@anonymized.invalid`,

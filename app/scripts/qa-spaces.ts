@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { chromium, type Browser, type Page } from 'playwright-core';
 import pg from 'pg';
@@ -127,7 +128,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 const signInMember = async (page: Page, baseUrl: string, email: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, email);
-  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
+  const magicLink = page.getByRole('link', { name: en.auth.openMagicLink });
   await magicLink.waitFor({ state: 'visible', timeout: 15000 });
   const href = await magicLink.getAttribute('href');
   if (href === null) throw new Error('no magic link');
@@ -159,7 +160,7 @@ try {
   const created = envelopeData(
     cli(probeStaff, apiUrl, [
       '--tenant', probeTenantSlug, 'space', 'create',
-      '--slug', slug, '--name', 'Strefa QA', '--visibility', 'members',
+      '--slug', slug, '--name', 'QA space', '--visibility', 'members',
     ]),
   );
   const probeSpaceId =
@@ -172,7 +173,7 @@ try {
   if (probeSpaceId === null) throw new Error('unreachable');
 
   const studioMember = cliSession();
-  cli(studioMember, apiUrl, ['login-magic', '--email', 'kursant.aktywny@together.dev']);
+  cli(studioMember, apiUrl, ['login-magic', '--email', 'student.active@together.dev']);
   const memberToken = studioMember.token();
 
   const feedPath = API_PATHS.spaceFeed.replace(':spaceId', probeSpaceId);
@@ -209,12 +210,12 @@ try {
   const legit = curlBody([
     '-H', `authorization: Bearer ${memberToken}`,
     '-H', 'x-tenant: studio',
-    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-community')}`,
   ]);
   probeLog.push(`studio member reads own tenant feed -> ${legit.slice(0, 120)}...`);
   record(
     'control probe: the same token DOES read the studio feed',
-    legit.includes('"spaceId":"space-studio-spolecznosc"'),
+    legit.includes('"spaceId":"space-studio-community"'),
   );
   writeFileSync(join(qaDir, 'cross-tenant-probe.txt'), `${probeLog.join('\n')}\n`);
 
@@ -222,17 +223,17 @@ try {
 
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const memberPage = await desktop.newPage();
-  await signInMember(memberPage, studioUrl, 'kursant.aktywny@together.dev');
+  await signInMember(memberPage, studioUrl, 'student.active@together.dev');
   await memberPage.goto(`${studioUrl}/community`, { waitUntil: 'load' });
-  await memberPage.getByTestId('space-card-space-studio-spolecznosc').waitFor({ state: 'visible' });
+  await memberPage.getByTestId('space-card-space-studio-community').waitFor({ state: 'visible' });
   record(
     'member desktop: community tab lists the gated space for the entitled member',
-    await memberPage.getByTestId('space-card-space-studio-klub-js').isVisible(),
+    await memberPage.getByTestId('space-card-space-studio-club-js').isVisible(),
   );
   await shoot(memberPage, 'member-community-desktop');
 
-  await memberPage.goto(`${studioUrl}/community/space-studio-spolecznosc`, { waitUntil: 'load' });
-  const reaction = memberPage.getByTestId('reaction-post-spolecznosc-hello-👍');
+  await memberPage.goto(`${studioUrl}/community/space-studio-community`, { waitUntil: 'load' });
+  const reaction = memberPage.getByTestId('reaction-post-community-hello-👍');
   await reaction.waitFor({ state: 'visible' });
   const before = (await reaction.innerText()).trim();
   await reaction.click();
@@ -241,7 +242,7 @@ try {
       const el = document.querySelector(selector);
       return el !== null && el.textContent !== null && el.textContent.trim() !== previous;
     },
-    { selector: '[data-testid="reaction-post-spolecznosc-hello-👍"]', previous: before },
+    { selector: '[data-testid="reaction-post-community-hello-👍"]', previous: before },
     { timeout: 10000 },
   );
   const after = (await reaction.innerText()).trim();
@@ -253,7 +254,7 @@ try {
       const el = document.querySelector(selector);
       return el !== null && el.textContent !== null && el.textContent.trim() === previous;
     },
-    { selector: '[data-testid="reaction-post-spolecznosc-hello-👍"]', previous: before },
+    { selector: '[data-testid="reaction-post-community-hello-👍"]', previous: before },
     { timeout: 10000 },
   );
   record('member desktop: second click restores the original reaction count', true, `back to ${before}`);
@@ -261,36 +262,34 @@ try {
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const mobilePage = await mobile.newPage();
-  await signInMember(mobilePage, studioUrl, 'kursant.aktywny@together.dev');
+  await signInMember(mobilePage, studioUrl, 'student.active@together.dev');
   await mobilePage.goto(`${studioUrl}/community`, { waitUntil: 'load' });
-  await mobilePage.getByTestId('space-card-space-studio-spolecznosc').waitFor({ state: 'visible' });
-  const communityTab = mobilePage.getByRole('link', { name: 'Społeczność' }).last();
+  await mobilePage.getByTestId('space-card-space-studio-community').waitFor({ state: 'visible' });
+  const communityTab = mobilePage.getByRole('link', { name: en.community.heading }).last();
   record('member mobile: bottom tab bar shows the community tab', await communityTab.isVisible());
   await shoot(mobilePage, 'member-community-mobile');
-  await mobilePage.goto(`${studioUrl}/community/space-studio-spolecznosc`, { waitUntil: 'load' });
-  await mobilePage.getByTestId('post-body-post-spolecznosc-hello').waitFor({ state: 'visible' });
+  await mobilePage.goto(`${studioUrl}/community/space-studio-community`, { waitUntil: 'load' });
+  await mobilePage.getByTestId('post-body-post-community-hello').waitFor({ state: 'visible' });
   await shoot(mobilePage, 'member-space-feed-mobile');
   await mobile.close();
 
   const gated = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const gatedPage = await gated.newPage();
-  await signInMember(gatedPage, studioUrl, 'kursant.modul@together.dev');
+  await signInMember(gatedPage, studioUrl, 'student.module@together.dev');
   await gatedPage.goto(`${studioUrl}/community`, { waitUntil: 'load' });
-  await gatedPage.getByTestId('space-card-space-studio-spolecznosc').waitFor({ state: 'visible' });
+  await gatedPage.getByTestId('space-card-space-studio-community').waitFor({ state: 'visible' });
   record(
     'gated visibility: module-only member does NOT see the product-gated space',
-    !(await gatedPage.getByTestId('space-card-space-studio-klub-js').isVisible()),
+    !(await gatedPage.getByTestId('space-card-space-studio-club-js').isVisible()),
   );
   await shoot(gatedPage, 'member-moduleonly-community-desktop');
-  const gatedResponse = await gatedPage.goto(`${studioUrl}/community/space-studio-klub-js`, {
+  const gatedResponse = await gatedPage.goto(`${studioUrl}/community/space-studio-club-js`, {
     waitUntil: 'load',
   });
   await delay(2500);
-  const gatedBody = await gatedPage.locator('body').innerText();
   record(
     'gated visibility: direct navigation to the gated space shows an error, not the feed',
-    !gatedBody.includes('Wyzwanie tygodnia') &&
-      (await gatedPage.getByTestId('post-body-post-klub-wyzwanie').count()) === 0,
+    (await gatedPage.getByTestId('post-body-post-club-challenge').count()) === 0,
     `status ${String(gatedResponse?.status())}`,
   );
   await shoot(gatedPage, 'member-moduleonly-gated-space-desktop');
@@ -300,15 +299,15 @@ try {
   const panelPage = await panel.newPage();
   await signInCreator(panelPage, studioUrl);
   await panelPage.goto(`${studioUrl}/panel/spaces`, { waitUntil: 'load' });
-  await panelPage.getByTestId('space-manage-space-studio-spolecznosc').waitFor({ state: 'visible' });
+  await panelPage.getByTestId('space-manage-space-studio-community').waitFor({ state: 'visible' });
   await shoot(panelPage, 'panel-spaces-list-desktop');
 
   await panelPage.goto(`${studioUrl}/panel/spaces/new`, { waitUntil: 'load' });
-  await panelPage.getByLabel('nazwa').fill('Strefa QA');
-  await panelPage.getByLabel('opis').fill('Utworzona przez adwersaryjne QA przeglądarki.');
+  await panelPage.getByLabel(en.spacesPanel.nameLabel).fill('QA space');
+  await panelPage.getByLabel(en.spacesPanel.descriptionLabel).fill('Created by adversarial browser QA.');
   await panelPage.getByTestId('space-form-submit').click();
   await panelPage.waitForURL('**/panel/spaces', { timeout: 15000 });
-  const createdRow = panelPage.getByRole('heading', { name: 'Strefa QA' });
+  const createdRow = panelPage.getByRole('heading', { name: 'QA space' });
   await createdRow.waitFor({ state: 'visible' });
   record('panel CRUD: create via form lands back on the list with the new space', true);
   await shoot(panelPage, 'panel-spaces-created-desktop');
@@ -323,16 +322,16 @@ try {
         }
       }
       return null;
-    }, 'Strefa QA');
+    }, 'QA space');
   must('panel CRUD: the created space has a manage link', qaSpaceHref !== null);
   if (qaSpaceHref === null) throw new Error('unreachable');
   const qaSpaceId = decodeURIComponent(qaSpaceHref.split('/').at(-1) ?? '');
 
   await panelPage.goto(`${studioUrl}${qaSpaceHref}`, { waitUntil: 'load' });
-  await panelPage.getByLabel('nazwa').fill('Strefa QA (po edycji)');
+  await panelPage.getByLabel(en.spacesPanel.nameLabel).fill('QA space (edited)');
   await panelPage.getByTestId('space-form-submit').click();
   await panelPage.waitForURL('**/panel/spaces', { timeout: 15000 });
-  await panelPage.getByRole('heading', { name: 'Strefa QA (po edycji)' }).waitFor({ state: 'visible' });
+  await panelPage.getByRole('heading', { name: 'QA space (edited)' }).waitFor({ state: 'visible' });
   record('panel CRUD: edit renames the space', true);
 
   await panelPage.getByTestId(`space-archive-${qaSpaceId}`).click();
@@ -341,7 +340,7 @@ try {
     .getByTestId(`space-archive-${qaSpaceId}`)
     .waitFor({ state: 'detached', timeout: 15000 });
   record('panel CRUD: archiving removes the space from the default active filter', true);
-  await panelPage.getByRole('group', { name: 'Filtr stref' }).getByText('Zarchiwizowane').click();
+  await panelPage.getByRole('group', { name: en.spacesPanel.filterAria }).getByText(en.spacesPanel.filterArchived).click();
   await panelPage.getByTestId(`space-restore-${qaSpaceId}`).waitFor({ state: 'visible', timeout: 15000 });
   record('panel CRUD: the archived filter shows the row with a restore action', true);
   await shoot(panelPage, 'panel-spaces-archived-desktop');
@@ -349,7 +348,7 @@ try {
   await panelPage
     .getByTestId(`space-restore-${qaSpaceId}`)
     .waitFor({ state: 'detached', timeout: 15000 });
-  await panelPage.getByRole('group', { name: 'Filtr stref' }).getByText('Aktywne').click();
+  await panelPage.getByRole('group', { name: en.spacesPanel.filterAria }).getByText(en.spacesPanel.filterActive).click();
   await panelPage.getByTestId(`space-archive-${qaSpaceId}`).waitFor({ state: 'visible', timeout: 15000 });
   record('panel CRUD: restore brings the space back to active', true);
 
@@ -357,7 +356,7 @@ try {
   const panelMobilePage = await panelMobile.newPage();
   await signInCreator(panelMobilePage, studioUrl);
   await panelMobilePage.goto(`${studioUrl}/panel/spaces`, { waitUntil: 'load' });
-  await panelMobilePage.getByTestId('space-manage-space-studio-spolecznosc').waitFor({ state: 'visible' });
+  await panelMobilePage.getByTestId('space-manage-space-studio-community').waitFor({ state: 'visible' });
   await shoot(panelMobilePage, 'panel-spaces-list-mobile');
   await panelMobile.close();
 
@@ -368,7 +367,7 @@ try {
     '-X', 'POST',
     '-H', 'content-type: application/json',
     '-H', 'x-tenant: studio',
-    '-d', JSON.stringify({ postId: 'post-spolecznosc-hello', pinned: true }),
+    '-d', JSON.stringify({ postId: 'post-community-hello', pinned: true }),
     `${apiUrl}${API_PATHS.postsPin}`,
   ];
   const memberPin = curl([
@@ -388,36 +387,36 @@ try {
   const pinnedFeed = feedSchema.parse(JSON.parse(curlBody([
     '-H', `authorization: Bearer ${memberToken}`,
     '-H', 'x-tenant: studio',
-    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-community')}`,
   ])));
   must(
     'pin lifecycle: the pinned post appears in the member feed projection',
-    pinnedFeed.data.feed.pinned.some((post) => post.id === 'post-spolecznosc-hello'),
+    pinnedFeed.data.feed.pinned.some((post) => post.id === 'post-community-hello'),
   );
   const staffUnpin = curl([
     '-H', `authorization: Bearer ${staffToken}`,
     '-X', 'POST',
     '-H', 'content-type: application/json',
     '-H', 'x-tenant: studio',
-    '-d', JSON.stringify({ postId: 'post-spolecznosc-hello', pinned: false }),
+    '-d', JSON.stringify({ postId: 'post-community-hello', pinned: false }),
     `${apiUrl}${API_PATHS.postsPin}`,
   ]);
   must('pin lifecycle: staff can unpin a space post', staffUnpin === '200', `HTTP ${staffUnpin}`);
   const unpinnedFeed = feedSchema.parse(JSON.parse(curlBody([
     '-H', `authorization: Bearer ${memberToken}`,
     '-H', 'x-tenant: studio',
-    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-community')}`,
   ])));
   must(
     'pin lifecycle: the unpinned post leaves the pinned projection',
-    unpinnedFeed.data.feed.pinned.every((post) => post.id !== 'post-spolecznosc-hello'),
+    unpinnedFeed.data.feed.pinned.every((post) => post.id !== 'post-community-hello'),
   );
 
   const moderationPost = z.object({
     post: z.object({ id: z.string() }),
   }).parse(envelopeData(cli(studioStaff, apiUrl, [
     '--tenant', 'studio', 'space', 'post',
-    '--space', 'space-studio-spolecznosc',
+    '--space', 'space-studio-community',
     '--body', 'QA moderation lifecycle target',
   ])));
   const reported = z.object({
@@ -463,7 +462,7 @@ try {
   }).parse(JSON.parse(curlBody([
     '-H', `authorization: Bearer ${memberToken}`,
     '-H', 'x-tenant: studio',
-    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-community')}`,
   ])));
   must(
     'report lifecycle: deleting through moderation leaves only the removal projection',
@@ -472,10 +471,10 @@ try {
 
   cli(studioStaff, apiUrl, [
     '--tenant', 'studio', 'member', 'ban',
-    '--member', 'member-studio-aktywny',
+    '--member', 'member-studio-active',
     '--reason', 'QA moderation lifecycle probe',
   ]);
-  await panelPage.goto(`${studioUrl}/panel/members/member-studio-aktywny`, { waitUntil: 'load' });
+  await panelPage.goto(`${studioUrl}/panel/members/member-studio-active`, { waitUntil: 'load' });
   await panelPage.getByText('QA moderation lifecycle probe').waitFor({ state: 'visible', timeout: 15000 });
   await shoot(panelPage, 'panel-member-banned-desktop');
 
@@ -485,7 +484,7 @@ try {
     '-H', 'x-tenant: studio',
     '-d', JSON.stringify({
       contextKind: 'space',
-      contextId: 'space-studio-spolecznosc',
+      contextId: 'space-studio-community',
       body: 'QA post after moderation transition',
     }),
     `${apiUrl}${API_PATHS.postsCreate}`,
@@ -508,7 +507,7 @@ try {
   );
   cli(studioStaff, apiUrl, [
     '--tenant', 'studio', 'member', 'unban',
-    '--member', 'member-studio-aktywny',
+    '--member', 'member-studio-active',
   ]);
   const restoredPost = curl([
     '-H', `authorization: Bearer ${memberToken}`,

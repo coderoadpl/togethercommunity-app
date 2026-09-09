@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
@@ -225,7 +226,7 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
 
     assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
     assert(await step('student2@together.dev') === 'magic-link', 'a passwordless acme member was offered a password');
-    assert(await step('nikt@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
+    assert(await step('nobody@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
     assert(
       await step('creator@together.dev') === 'magic-link',
       'the acme login revealed a password account that belongs to another tenant',
@@ -279,7 +280,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     );
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Bezpieczeństwo' }).click();
+    await page.getByRole('tab', { name: en.settingsNavigation.security }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('E2E Passkey');
     await page.getByTestId('passkey-proof-password').fill('demo-password-15');

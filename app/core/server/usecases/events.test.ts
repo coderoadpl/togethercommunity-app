@@ -100,7 +100,7 @@ const space = (overrides: Partial<Space> & { id: string }): Space => ({
 const event = (overrides: Partial<SpaceEvent> & { id: string }): SpaceEvent => ({
   tenantId: 't1',
   spaceId: 's-open',
-  title: 'Warsztat',
+  title: 'Workshop',
   description: null,
   startsAt: SOON,
   endsAt: SOON_END,
@@ -126,6 +126,7 @@ const product = (id: string): Product => ({
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -401,6 +402,7 @@ const fixture = (input: {
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
+      purge: async () => false,
       setPinned: async () => null,
       listPinnedForContext: async () => [],
       countPinnedForContext: async () => 0,
@@ -494,7 +496,7 @@ const fixture = (input: {
 
 const validInput = {
   spaceId: 's-open',
-  title: 'Warsztat',
+  title: 'Workshop',
   startsAt: SOON,
   endsAt: SOON_END,
 };
@@ -566,7 +568,7 @@ describe('createEvent', () => {
       contextId: 's-open',
       authorUserId: 'u-staff',
       authorIsStaff: true,
-      body: 'Wątek wydarzenia: Warsztat',
+      body: 'Event thread: Workshop',
     });
     expect(created.value.discussionRootPostId).toBe(f.posts[0]?.id);
     expect(f.threadSubscriptions).toMatchObject([{ userId: 'u-staff' }]);
@@ -586,7 +588,7 @@ describe('createEvent', () => {
       contextId: 's-open',
       eventId: created.value.id,
       lessonName: 'Otwarta',
-      snippet: `Warsztat · ${SOON}`,
+      snippet: `Workshop · ${SOON}`,
     });
     expect(f.delivered).toEqual([
       { userId: 'u1', url: `http://tenant.localhost/community/s-open/events/${created.value.id}` },
@@ -708,7 +710,7 @@ describe('event reads', () => {
     expect(ics.ok).toBe(true);
     if (!ics.ok) return;
     expect(ics.value.fileName).toBe('event-e-soon.ics');
-    expect(ics.value.icsContent).toContain('SUMMARY:Warsztat');
+    expect(ics.value.icsContent).toContain('SUMMARY:Workshop');
   });
 });
 
@@ -755,13 +757,13 @@ describe('updateEvent and deleteEvent', () => {
 
     const updated = await updateEvent(
       staffCtx(),
-      { eventId: 'e-soon', title: 'Warsztat II', location: 'Online' },
+      { eventId: 'e-soon', title: 'Workshop II', location: 'Online' },
       f.deps,
     );
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
-    expect(updated.value).toMatchObject({ title: 'Warsztat II', location: 'Online', updatedAt: NOW });
+    expect(updated.value).toMatchObject({ title: 'Workshop II', location: 'Online', updatedAt: NOW });
     expect(f.notifications.rows).toEqual([]);
   });
 

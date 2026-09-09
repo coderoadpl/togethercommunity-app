@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DmReportReceipt, PublicDmConversation, PublicDmMessage } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ConversationPage } from './ConversationPage.js';
@@ -21,7 +21,7 @@ const conversation: PublicDmConversation = {
   id: 'c1',
   otherParticipant: { display: 'Ola', avatarUrl: null, isStaff: false },
   lastMessageAt: '2026-08-17T09:00:00.000Z',
-  lastMessageSnippet: 'Cześć',
+  lastMessageSnippet: 'Hello',
   lastMessageIsOwn: false,
   hasMessages: true,
   unread: true,
@@ -126,7 +126,7 @@ describe('ConversationPage', () => {
         sendBody = await request.json();
         return HttpResponse.json({
           ok: true,
-          data: { message: message({ id: 'm2', body: 'Odpowiedź', own: true }) },
+          data: { message: message({ id: 'm2', body: 'Reply', own: true }) },
         });
       }),
     );
@@ -134,10 +134,10 @@ describe('ConversationPage', () => {
     await renderPage();
 
     const input = await screen.findByTestId('message-composer-input');
-    await userEvent.type(input, 'Odpowiedź');
+    await userEvent.type(input, 'Reply');
     await userEvent.click(screen.getByTestId('message-composer-submit'));
 
-    await waitFor(() => expect(sendBody).toEqual({ conversationId: 'c1', body: 'Odpowiedź' }));
+    await waitFor(() => expect(sendBody).toEqual({ conversationId: 'c1', body: 'Reply' }));
     await waitFor(() => expect(input).toHaveValue(''));
   });
 
@@ -158,7 +158,7 @@ describe('ConversationPage', () => {
     await userEvent.type(await screen.findByTestId('message-composer-input'), 'Znowu');
     await userEvent.click(screen.getByTestId('message-composer-submit'));
 
-    expect(await screen.findByText(pl.messages.rateLimited)).toBeInTheDocument();
+    expect(await screen.findByText(en.messages.rateLimited)).toBeInTheDocument();
   });
 
   it('shows the empty conversation state before the first message', async () => {
@@ -167,7 +167,7 @@ describe('ConversationPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('conversation-empty')).toHaveTextContent(
-      pl.messages.emptyConversation,
+      en.messages.emptyConversation,
     );
   });
 
@@ -177,7 +177,7 @@ describe('ConversationPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('conversation-send-blocked')).toHaveTextContent(
-      pl.messages.cannotSend,
+      en.messages.cannotSend,
     );
     expect(screen.queryByTestId('message-composer-input')).not.toBeInTheDocument();
   });
@@ -194,7 +194,7 @@ describe('ConversationPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('conversation-send-blocked')).toHaveTextContent(
-      pl.messages.blockedByYou,
+      en.messages.blockedByYou,
     );
   });
 
@@ -262,13 +262,13 @@ describe('ConversationPage', () => {
     await waitFor(() =>
       expect(reportBody).toEqual({ conversationId: 'c1', reason: 'harassment' }),
     );
-    expect(await screen.findByText(pl.messages.reportSent)).toBeInTheDocument();
+    expect(await screen.findByText(en.messages.reportSent)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.common.close }));
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
     await userEvent.click(await screen.findByTestId('conversation-menu'));
     await userEvent.click(await screen.findByTestId('conversation-report'));
 
-    expect(screen.queryByText(pl.messages.reportSent)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.messages.reportSent)).not.toBeInTheDocument();
     expect(await screen.findByTestId('dm-report-submit')).toBeEnabled();
   });
 });

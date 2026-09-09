@@ -1,9 +1,8 @@
 # Marketing contacts, lists and imports
 
 The tenant directory is independent of accounts. Importing contacts never creates
-users, members, grants, verification messages or welcome messages. The existing
-campaign workflow remains unchanged; contact audiences and Studio screens are
-separate implementation units.
+users, members, grants, verification messages or welcome messages. Campaigns support both legacy member audiences and explicit contact-list
+audiences in Studio, as described below.
 
 ## CLI workflow
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BrandMark, TenantLogo, TenantSocialLinks } from './branding.js';
 import { MemberPage } from './components/layout/index.js';
+import { en } from './i18n/en.js';
 import { renderWithProviders } from './test/render.js';
 import { server } from './test/server.js';
 import { colorSchemePreference, ThemeModeProvider, useColorScheme } from './theme-mode.js';
@@ -21,7 +22,7 @@ const offerHandler = (
     HttpResponse.json({
       ok: true,
       data: {
-        tenant: { slug: 'akademia', name: 'Akademia Samouka', branding, socialLinks },
+        tenant: { slug: 'academy', name: 'Self-Learner Academy', branding, socialLinks },
         contentVersion: 1,
         products: [],
       },
@@ -79,7 +80,7 @@ const SchemeToggle = () => {
   const { setColorScheme } = useColorScheme();
   return (
     <button type="button" onClick={() => setColorScheme('dark')}>
-      ciemny
+      dark
     </button>
   );
 };
@@ -99,7 +100,7 @@ describe('TenantLogo', () => {
 
     const logo = await screen.findByTestId('tenant-logo');
     expect(logo).toHaveAttribute('src', '/assets/akademia-logo.svg');
-    expect(logo).toHaveAttribute('alt', 'Akademia Samouka');
+    expect(logo).toHaveAttribute('alt', 'Self-Learner Academy');
   });
 
   it('keeps a wide logo inside the sidebar header', async () => {
@@ -117,7 +118,7 @@ describe('TenantLogo', () => {
     server.use(offerHandler({ logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(<TenantLogo />);
 
-    expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Akademia Samouka');
+    expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Self-Learner Academy');
     expect(screen.queryByTestId('tenant-logo')).not.toBeInTheDocument();
   });
 
@@ -139,15 +140,15 @@ describe('BrandMark', () => {
 
     const logo = await screen.findByTestId('tenant-brand-logo');
     expect(logo).toHaveAttribute('src', '/assets/akademia-logo.svg');
-    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
+    expect(screen.queryByAltText(en.common.appName)).not.toBeInTheDocument();
   });
 
   it('falls back to the tenant name when unbranded', async () => {
     server.use(offerHandler({ logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(<BrandMark />);
 
-    expect(await screen.findByTestId('tenant-brand-name')).toHaveTextContent('Akademia Samouka');
-    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('tenant-brand-name')).toHaveTextContent('Self-Learner Academy');
+    expect(screen.queryByAltText(en.common.appName)).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 
@@ -182,13 +183,13 @@ describe('BrandMark', () => {
     renderWithProviders(<BrandMark />);
 
     await waitFor(() => expect(requested).toHaveBeenCalledOnce());
-    expect(screen.getByAltText('Together')).toBeInTheDocument();
+    expect(screen.getByAltText(en.common.appName)).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 
   it('keeps social profiles out of the brand slot', async () => {
     server.use(offerHandler(BRANDED, [
-      { label: 'YouTube', url: 'https://youtube.com/@akademia' },
+      { label: 'YouTube', url: 'https://youtube.com/@academy' },
     ]));
     renderWithProviders(<BrandMark />);
 
@@ -200,25 +201,25 @@ describe('BrandMark', () => {
 describe('TenantSocialLinks', () => {
   it('renders social profiles in a member page', async () => {
     server.use(offerHandler(BRANDED, [
-      { label: 'Instagram', url: 'https://instagram.com/akademia' },
+      { label: 'Instagram', url: 'https://instagram.com/academy' },
     ]));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
+      <MemberPage title="My courses" eyebrow="library" breadcrumbLabel="Breadcrumbs">
         <TenantSocialLinks />
       </MemberPage>,
     );
 
-    expect(await screen.findByRole('navigation', { name: 'Profile społecznościowe' }))
+    expect(await screen.findByRole('navigation', { name: en.branding.socialLinksAria }))
       .toContainElement(screen.getByRole('link', { name: 'Instagram' }));
   });
 
   it('gives every profile a recognisable icon and keeps the label as the accessible name', async () => {
     server.use(offerHandler(BRANDED, [
-      { label: 'LinkedIn', url: 'https://www.linkedin.com/company/akademia' },
-      { label: 'Blog', url: 'https://akademia.example/blog' },
+      { label: 'LinkedIn', url: 'https://www.linkedin.com/company/academy' },
+      { label: 'Blog', url: 'https://academy.example/blog' },
     ]));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
+      <MemberPage title="My courses" eyebrow="library" breadcrumbLabel="Breadcrumbs">
         <TenantSocialLinks />
       </MemberPage>,
     );
@@ -228,7 +229,7 @@ describe('TenantSocialLinks', () => {
     expect(footer).toContainElement(screen.getByTestId('social-icon-generic'));
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href',
-      'https://www.linkedin.com/company/akademia',
+      'https://www.linkedin.com/company/academy',
     );
   });
 });
@@ -282,7 +283,7 @@ describe('tenant logo variants', () => {
       '/assets/akademia-light.svg',
     );
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'ciemny' }));
+      fireEvent.click(screen.getByRole('button', { name: 'dark' }));
     });
 
     expect(screen.getByTestId('tenant-brand-logo')).toHaveAttribute(

@@ -64,7 +64,6 @@ type BlockDraft =
   | { type: 'html'; html: string };
 
 const BLOCK_TYPE_ORDER: BlockType[] = ['video', 'embed', 'pdf', 'link', 'html'];
-
 const TYPE_FILTERS: (BlockType | 'all')[] = ['all', ...BLOCK_TYPE_ORDER];
 
 const blockTypeLabel = (t: Messages, value: BlockType): string => {

@@ -8,6 +8,10 @@ export const SUPPORTED_CURRENCIES = ['PLN', 'EUR', 'USD'] as const;
 
 export const PRODUCT_TYPES = ['course', 'digital_download', 'membership'] as const;
 
+export const productVisibilitySchema = z.enum(['listed', 'unlisted']);
+
+export type ProductVisibility = z.infer<typeof productVisibilitySchema>;
+
 export const productTypeSchema = z.enum(PRODUCT_TYPES);
 
 export type ProductType = z.infer<typeof productTypeSchema>;
@@ -104,6 +108,7 @@ export const productSchema = z.object({
   priceCents: z.number().int().nonnegative(),
   currency: currencySchema,
   published: z.boolean(),
+  visibility: productVisibilitySchema.default('listed'),
   accessItems: z.array(accessItemSchema),
   checkoutConsentDefinitionIds: z.array(z.string().min(1)).optional(),
   legacyId: z.string().nullable(),
@@ -114,6 +119,7 @@ export type Product = z.infer<typeof productSchema>;
 
 export const newProductSchema = z.object({
   type: productTypeSchema.default('course'),
+  visibility: productVisibilitySchema.default('listed'),
   slug: productSlugSchema.optional(),
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long'),
   description: newProductDescriptionSchema.default(''),
@@ -126,6 +132,7 @@ export const newProductSchema = z.object({
 export type NewProductInput = z.input<typeof newProductSchema>;
 
 export const updateProductInputSchema = z.object({
+  visibility: productVisibilitySchema.optional(),
   id: z.string().min(1),
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),
   description: newProductDescriptionSchema.optional(),

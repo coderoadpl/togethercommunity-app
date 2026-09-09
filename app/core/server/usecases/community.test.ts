@@ -45,6 +45,7 @@ import type {
 import {
   createPost,
   deletePost,
+  purgePost,
   editPost,
   listDiscussion,
   listNotifications,
@@ -135,6 +136,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems,
   legacyId: null,
@@ -289,7 +291,7 @@ class FakePosts implements PostRepository {
     return {
       threads: roots.map((post) => ({
         post,
-        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null).length,
       })),
       nextCursor: null,
     };
@@ -311,7 +313,7 @@ class FakePosts implements PostRepository {
     return {
       threads: roots.map((post) => ({
         post,
-        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id).length,
+        replyCount: this.rows.filter((reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id && reply.deletedAt === null).length,
       })),
       nextCursor: null,
     };
@@ -335,6 +337,24 @@ class FakePosts implements PostRepository {
     const next = { ...post, deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null };
     this.replace(next);
     return next;
+  }
+
+  async purge(tenantId: string, id: string): Promise<boolean> {
+    const post = await this.findById(tenantId, id);
+    if (post === null || post.deletedAt === null) return false;
+    const ids = new Set([id]);
+    let previousSize = 0;
+    while (previousSize !== ids.size) {
+      previousSize = ids.size;
+      for (const row of this.rows) {
+        if (row.tenantId === tenantId && (row.rootPostId === id || (row.parentPostId !== null && ids.has(row.parentPostId)))) ids.add(row.id);
+      }
+    }
+    for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+      const row = this.rows[index];
+      if (row !== undefined && row.tenantId === tenantId && ids.has(row.id)) this.rows.splice(index, 1);
+    }
+    return true;
   }
 
   async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
@@ -704,7 +724,7 @@ const deps = (
     { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
     { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
-    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Captain Dawn', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null, dmOptOutAt: null },
   ];
   const members: Member[] = allMembers.map((member) =>
     bannedUserIds.includes(member.userId) ? { ...member, bannedAt: NOW } : member,
@@ -778,8 +798,8 @@ describe('community use-cases', () => {
     expect(resolveAuthorDisplay({ name: '', email: 'audit-r3-member+jhkglk@example.com' })).toBe(
       'Audit R3 Member',
     );
-    expect(resolveAuthorDisplay({ email: 'jan.kowalski@example.com' })).toBe('Jan Kowalski');
-    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Uczestnik');
+    expect(resolveAuthorDisplay({ email: 'john.smith@example.com' })).toBe('John Smith');
+    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Participant');
     expect(resolveAuthorDisplay({}, 'en')).toBe('Participant');
   });
 
@@ -799,11 +819,11 @@ describe('community use-cases', () => {
   it('prefers the member displayName override over the account name', async () => {
     const d = deps([allAccess], [grant('m4', 'all')]);
     const created = await createPost(
-      ctx({ userId: 'u4', memberId: 'm4', name: 'Jan Testowy', email: 'u4@example.com' }),
+      ctx({ userId: 'u4', memberId: 'm4', name: 'John Tester', email: 'u4@example.com' }),
       { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
       d,
     );
-    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Kapitan Świt' } });
+    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Captain Dawn' } });
   });
 
   it('rate-limits the eleventh member post in ten minutes while exempting staff', async () => {
@@ -1083,6 +1103,39 @@ describe('community use-cases', () => {
     expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
+  it.each([false, true])('hides legacy deleted roots with only deleted replies: %s', async (withReply) => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const created = await createPost(ctx(), { ...input, body: 'Legacy content' }, d);
+    if (!created.ok) throw new Error('Root failed');
+    if (withReply) {
+      const reply = await createPost(ctx(), { ...input, parentPostId: created.value.id, body: 'Reply' }, d);
+      if (!reply.ok) throw new Error('Reply failed');
+      await deletePost(ctx(), { id: reply.value.id }, d);
+    }
+    const stored = await d.posts.findById('t1', created.value.id);
+    if (stored === null) throw new Error('Root missing');
+    stored.deletedAt = NOW;
+    delete stored.deletedBy;
+    delete stored.deletedByUserId;
+    expect(await listDiscussion(ctx(), input, d)).toMatchObject({ ok: true, value: { threads: [] } });
+  });
+
+  it('denies author purge and lets staff remove a tombstone and its descendants', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPost(ctx(), { ...input, body: 'Root' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+    if (!reply.ok) throw new Error('Reply failed');
+    await createPost(ctx(), { ...input, parentPostId: reply.value.id, body: 'Nested' }, d);
+    await deletePost(ctx(), { id: root.value.id }, d);
+    expect(await purgePost(ctx(), { id: root.value.id }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await purgePost(ctx({ staffRole: 'admin' }), { id: root.value.id }, d)).toEqual({ ok: true, value: { id: root.value.id } });
+    expect(await d.posts.findById('t1', root.value.id)).toBeNull();
+    expect(await d.posts.listReplies('t1', root.value.id)).toEqual([]);
+  });
+
   it('renders soft-deleted posts with replies as placeholders', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'secret' }, d);
@@ -1090,14 +1143,14 @@ describe('community use-cases', () => {
     await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'Reply' }, d);
     await deletePost(ctx(), { id: root.value.id }, d);
     const listed = await listDiscussion(ctx(), { contextKind: 'lesson', contextId: 'l1' }, d);
-    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: 'Wpis usunięty' }] } });
+    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]' }] } });
   });
 
   it.each([
     { own: true, staffRole: null, replies: false, visible: false, deletedBy: 'author' },
     { own: true, staffRole: 'admin', replies: false, visible: false, deletedBy: 'author' },
     { own: true, staffRole: null, replies: true, visible: true, deletedBy: 'author' },
-    { own: false, staffRole: 'owner', replies: false, visible: true, deletedBy: 'moderator' },
+    { own: false, staffRole: 'owner', replies: false, visible: false, deletedBy: 'moderator' },
     { own: false, staffRole: 'admin', replies: true, visible: true, deletedBy: 'moderator' },
   ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, visible, deletedBy }) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
@@ -1107,7 +1160,6 @@ describe('community use-cases', () => {
     if (replies) {
       const reply = await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
       if (!reply.ok) throw new Error('Reply failed');
-      await deletePost(ctx(), { id: reply.value.id }, d);
     }
     const actor = ctx({ userId: own ? 'u1' : 'staff', staffRole });
     const deleted = await deletePost(actor, { id: root.value.id }, d);
@@ -1124,7 +1176,7 @@ describe('community use-cases', () => {
     expect(listed.value.threads).toHaveLength(visible ? 1 : 0);
     if (visible) {
       expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
-      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedBy: 'author' });
+      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
     } else {
       expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
     }
@@ -1529,10 +1581,8 @@ describe('renderPost', () => {
     pinnedAt: null,
   });
 
-  it('replaces the body with the placeholder in both languages', () => {
-    expect(renderPost(softDeleted()).body).toBe('Wpis usunięty');
-    expect(renderPost(softDeleted(), 'en').body).toBe('Deleted post');
-    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('Wpis usunięty przez moderatora.');
-    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }, 'en').body).toBe('This post was deleted by a moderator.');
+  it('replaces a deleted body with a language-neutral marker', () => {
+    expect(renderPost(softDeleted()).body).toBe('[deleted-post]');
+    expect(renderPost({ ...softDeleted(), deletedBy: 'moderator' }).body).toBe('This post was deleted by a moderator.');
   });
 });

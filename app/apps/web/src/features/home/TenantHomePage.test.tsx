@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ToastProvider } from '../../components/ui/Toast.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { TenantHomePage } from './TenantHomePage.js';
@@ -113,9 +113,9 @@ describe('TenantHomePage dispatcher', () => {
       })),
     );
     await renderHome();
-    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
-    expect(screen.getByText(pl.tenant.welcome)).toBeInTheDocument();
-    expect(await screen.findByLabelText(pl.tenant.slugLabel)).toBeInTheDocument();
+    expect(await screen.findByText(en.tenant.choose)).toBeInTheDocument();
+    expect(screen.getByText(en.tenant.welcome)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.tenant.slugLabel)).toBeInTheDocument();
   });
 
   it('hides tenant creation when the instance policy is closed', async () => {
@@ -137,9 +137,9 @@ describe('TenantHomePage dispatcher', () => {
     );
     await renderHome();
 
-    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.tenant.nameLabel)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.tenant.slugLabel)).not.toBeInTheDocument();
+    expect(await screen.findByText(en.tenant.choose)).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.tenant.nameLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.tenant.slugLabel)).not.toBeInTheDocument();
   });
 
   it('offers first-workspace creation and resend for an unverified platform account', async () => {
@@ -156,7 +156,7 @@ describe('TenantHomePage dispatcher', () => {
     await renderHome();
 
     expect(await screen.findByTestId('resend-verification-email')).toBeInTheDocument();
-    expect(await screen.findByLabelText(pl.tenant.nameLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.tenant.nameLabel)).toBeInTheDocument();
   });
 
   it('offers the data reset only when the deployment reports a resettable environment', async () => {
@@ -166,7 +166,7 @@ describe('TenantHomePage dispatcher', () => {
         http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
       );
       await renderHome();
-      expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+      expect(await screen.findByText(en.tenant.choose)).toBeInTheDocument();
     };
     await withoutReset();
     expect(screen.queryByTestId('platform-reset-open')).not.toBeInTheDocument();
@@ -181,7 +181,7 @@ describe('TenantHomePage dispatcher', () => {
     );
     await renderHome();
 
-    expect(await screen.findByTestId('platform-reset-open')).toHaveTextContent(pl.platformReset.action);
+    expect(await screen.findByTestId('platform-reset-open')).toHaveTextContent(en.platformReset.action);
   });
 
   it.each(['acme.localhost', 'courses.example.org'])('renders the anonymous home on %s instead of redirecting to sign in', async (hostname) => {

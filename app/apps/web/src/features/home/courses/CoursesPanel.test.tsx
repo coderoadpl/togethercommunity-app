@@ -20,7 +20,7 @@ import {
   type CourseModule,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { PanelCourseDetailRoute, PanelModuleCreateRoute } from '../panel-routes.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -124,10 +124,10 @@ describe('CoursesPanel courses tab', () => {
 
     expect(await screen.findByText('Launch Kit')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
-    await userEvent.type(await screen.findByLabelText(pl.common.name), 'Growth Course');
-    await userEvent.type(screen.getByLabelText(pl.common.description), 'Grow fast');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
+    await userEvent.click(screen.getByRole('link', { name: `+ ${en.common.add}` }));
+    await userEvent.type(await screen.findByLabelText(en.common.name), 'Growth Course');
+    await userEvent.type(screen.getByLabelText(en.common.description), 'Grow fast');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.create }));
 
     expect(await screen.findByText('Growth Course')).toBeInTheDocument();
   });
@@ -150,11 +150,11 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel('/panel/courses/new');
 
-    await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
+    await userEvent.type(screen.getByLabelText(en.common.name), 'X');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.create }));
 
-    const name = screen.getByLabelText(pl.common.name);
-    expect(await screen.findByText(pl.errors.validationField({ field: pl.common.name }))).toBeInTheDocument();
+    const name = screen.getByLabelText(en.common.name);
+    expect(await screen.findByText(en.errors.validationField({ field: en.common.name }))).toBeInTheDocument();
     expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
     expect(name).toHaveAttribute('aria-describedby', 'create-course-error');
     expect(name).toHaveFocus();
@@ -188,17 +188,17 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel('/panel/courses/course-1');
 
-    const title = await screen.findByLabelText(pl.courses.titleLabel);
-    expect(screen.getByRole('button', { name: pl.imageAssets.upload })).toBeInTheDocument();
+    const title = await screen.findByLabelText(en.courses.titleLabel);
+    expect(screen.getByRole('button', { name: en.imageAssets.upload })).toBeInTheDocument();
     await userEvent.clear(title);
     await userEvent.type(title, 'Updated Launch Kit');
-    await userEvent.clear(screen.getByLabelText(pl.common.description));
-    await userEvent.type(screen.getByLabelText(pl.common.description), 'Updated description');
-    await userEvent.type(screen.getByLabelText(pl.courses.salesUrl), 'https://courses.example.org/offer');
-    await userEvent.type(screen.getByLabelText(pl.courses.imageUrl), 'https://cdn.test/course.jpg');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.saveDetails }));
+    await userEvent.clear(screen.getByLabelText(en.common.description));
+    await userEvent.type(screen.getByLabelText(en.common.description), 'Updated description');
+    await userEvent.type(screen.getByLabelText(en.courses.salesUrl), 'https://courses.example.org/offer');
+    await userEvent.type(screen.getByLabelText(en.courses.imageUrl), 'https://cdn.test/course.jpg');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.saveDetails }));
 
-    expect(await screen.findByText(pl.courses.detailsSaved)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.detailsSaved)).toBeInTheDocument();
     expect(updatedInput).toMatchObject({
       id: 'course-1',
       name: 'Updated Launch Kit',
@@ -224,11 +224,11 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel('/panel/courses/course-1');
 
-    const toggle = await screen.findByRole('switch', { name: pl.courses.publicVisibilityLabel });
+    const toggle = await screen.findByRole('switch', { name: en.courses.publicVisibilityLabel });
     expect(toggle).not.toBeChecked();
-    expect(screen.getByText(pl.courses.publicVisibilityHelper)).toBeInTheDocument();
+    expect(screen.getByText(en.courses.publicVisibilityHelper)).toBeInTheDocument();
     await userEvent.click(toggle);
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.saveDetails }));
+    await userEvent.click(screen.getByRole('button', { name: en.courses.saveDetails }));
 
     await waitFor(() => expect(updatedInput).toMatchObject({ id: 'course-1', publiclyVisible: true }));
   });
@@ -253,24 +253,24 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
 
-    await userEvent.type(await screen.findByLabelText(pl.courses.newChapterName), 'Chapter One');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.addChapter }));
+    await userEvent.type(await screen.findByLabelText(en.courses.newChapterName), 'Chapter One');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.addChapter }));
 
     expect(await screen.findByDisplayValue('Chapter One')).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
-    await userEvent.clear(screen.getByLabelText(pl.courses.displayName));
-    await userEvent.type(screen.getByLabelText(pl.courses.displayName), 'Watch this');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.addLesson }));
+    await userEvent.clear(screen.getByLabelText(en.courses.displayName));
+    await userEvent.type(screen.getByLabelText(en.courses.displayName), 'Watch this');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.addLesson }));
 
     expect(await screen.findByText('Watch this')).toBeInTheDocument();
     await waitFor(() => {
       expect(
         within(screen.getByTestId('module-card')).getByText(
-          pl.courses.sourceLesson({ name: 'Intro lesson' }),
+          en.courses.sourceLesson({ name: 'Intro lesson' }),
         ),
       ).toBeInTheDocument();
     });
@@ -297,9 +297,9 @@ describe('CoursesPanel courses tab', () => {
 
     await userEvent.click(await screen.findByTestId('add-module'));
 
-    const titleField = await screen.findByLabelText(pl.products.titleLabel);
+    const titleField = await screen.findByLabelText(en.products.titleLabel);
     await userEvent.type(titleField, 'Module Nine');
-    await userEvent.click(screen.getByRole('button', { name: pl.courses.createModule }));
+    await userEvent.click(screen.getByRole('button', { name: en.courses.createModule }));
 
     expect(await screen.findByTestId('module-card')).toBeInTheDocument();
     expect(created).toEqual([expect.objectContaining({ title: 'Module Nine' })]);
@@ -321,14 +321,14 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
 
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.courses.lessonLabel }));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.courses.lessonLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
 
-    expect(screen.getByLabelText(pl.courses.displayName)).toHaveValue('Intro lesson');
-    expect(screen.getByRole('button', { name: pl.courses.addLesson })).toBeEnabled();
-    expect(screen.getByText(pl.courses.duplicateLessonWarning)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.courses.displayName)).toHaveValue('Intro lesson');
+    expect(screen.getByRole('button', { name: en.courses.addLesson })).toBeEnabled();
+    expect(screen.getByText(en.courses.duplicateLessonWarning)).toBeInTheDocument();
   });
 
   it('names the source lesson only when the content name differs', async () => {
@@ -355,9 +355,9 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
 
-    const sourceLabel = pl.courses.sourceLesson({ name: 'Intro lesson' });
+    const sourceLabel = en.courses.sourceLesson({ name: 'Intro lesson' });
     expect(await screen.findByTestId('lesson-content-ct1')).not.toHaveTextContent(sourceLabel);
     expect(screen.getByTestId('lesson-content-ct2')).toHaveTextContent(sourceLabel);
   });
@@ -399,10 +399,10 @@ describe('CoursesPanel courses tab', () => {
     await renderCoursesPanel('/panel/courses/course-1');
     const content = await screen.findByTestId('lesson-content-ct1');
 
-    await userEvent.click(within(content).getByRole('button', { name: pl.common.remove }));
+    await userEvent.click(within(content).getByRole('button', { name: en.common.remove }));
 
-    expect(await screen.findByText(pl.courses.removeContentConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.courses.removeContentConfirmBody({ name: 'First lesson' }))).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.removeContentConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.courses.removeContentConfirmBody({ name: 'First lesson' }))).toBeInTheDocument();
     expect(sentContentIds).toBeUndefined();
     await userEvent.click(screen.getByTestId('chapter-content-remove-confirm'));
 
@@ -434,10 +434,10 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
 
     const moveDown = await screen.findByRole('button', {
-      name: pl.courses.moveModuleDown({ name: 'Module One' }),
+      name: en.courses.moveModuleDown({ name: 'Module One' }),
     });
     moveDown.focus();
     expect(moveDown).toHaveFocus();
@@ -630,7 +630,7 @@ describe('CoursesPanel courses tab', () => {
     expect(updateCalls).toBe(1);
 
     const moveDown = screen.getByRole('button', {
-      name: pl.courses.moveContentDown({ name: 'Second lesson' }),
+      name: en.courses.moveContentDown({ name: 'Second lesson' }),
     });
     moveDown.focus();
     expect(moveDown).toHaveFocus();
@@ -770,12 +770,12 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.detachModule }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.detachModule }));
     await userEvent.click(await screen.findByTestId('module-detach-confirm'));
 
     await waitFor(() => expect(detached).toEqual({ courseId: 'course-1', moduleId: 'module-1' }));
-    expect(await screen.findByText(pl.courses.noModulesInCourse)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.noModulesInCourse)).toBeInTheDocument();
   });
 
   it('confirms a populated chapter delete before mutating', async () => {
@@ -804,10 +804,10 @@ describe('CoursesPanel courses tab', () => {
 
     await renderCoursesPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
-    await userEvent.click(await screen.findByRole('button', { name: pl.courses.removeChapter }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.removeChapter }));
 
-    expect(await screen.findByText(pl.courses.removeChapterConfirmTitle)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.removeChapterConfirmTitle)).toBeInTheDocument();
     expect(savedChapters).toBeUndefined();
 
     await userEvent.click(screen.getByTestId('chapter-delete-confirm'));

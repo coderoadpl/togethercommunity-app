@@ -100,10 +100,10 @@ try {
   );
   const context = await browser.newContext();
   await context.addInitScript(() => {
-    window.localStorage.setItem('together-language', 'pl');
+    window.localStorage.setItem('together-language', 'en');
   });
   const page = await context.newPage();
-  await page.goto(`${webBaseUrl}/checkout/product-studio-kurs-101`, {
+  await page.goto(`${webBaseUrl}/checkout/product-studio-course-101`, {
     waitUntil: 'networkidle',
   });
 
@@ -114,7 +114,7 @@ try {
   await page.getByTestId('checkout-coupon-reveal').click();
   await page.getByTestId('checkout-coupon-input').waitFor({ state: 'visible', timeout: 15000 });
 
-  await page.getByTestId('checkout-coupon-input').fill('NIE-ISTNIEJE');
+  await page.getByTestId('checkout-coupon-input').fill('DOES-NOT-EXIST');
   await page.getByTestId('checkout-coupon-apply').click();
   await page.getByTestId('checkout-coupon-error').waitFor({ state: 'visible', timeout: 15000 });
   assert(
@@ -126,25 +126,25 @@ try {
   await page.getByTestId('checkout-coupon-apply').click();
   await page.getByTestId('checkout-coupon-breakdown').waitFor({ state: 'visible', timeout: 15000 });
   assert(
-    (await page.getByTestId('checkout-coupon-final').textContent())?.includes('159,20') === true,
-    'valid coupon did not render the 159,20 final price',
+    (await page.getByTestId('checkout-coupon-final').textContent())?.includes('159.20') === true,
+    'valid coupon did not render the 159.20 final price',
   );
   assert(
-    (await page.getByTestId('checkout-coupon-breakdown').textContent())?.includes('39,80') === true,
-    'valid coupon did not render the 39,80 discount',
+    (await page.getByTestId('checkout-coupon-breakdown').textContent())?.includes('39.80') === true,
+    'valid coupon did not render the 39.80 discount',
   );
   assert(
     await page.locator('button[type="submit"]').isVisible(),
     'discounted checkout did not keep the payment affordance visible',
   );
 
-  await page.goto(`${webBaseUrl}/checkout/product-studio-kurs-101?code=PARTNER20`, {
+  await page.goto(`${webBaseUrl}/checkout/product-studio-course-101?code=PARTNER20`, {
     waitUntil: 'networkidle',
   });
   await page.locator('#checkout-email').fill('buyer@together.dev');
   await page.getByTestId('checkout-coupon-breakdown').waitFor({ state: 'visible', timeout: 15000 });
   assert(
-    (await page.getByTestId('checkout-coupon-final').textContent())?.includes('159,20') === true,
+    (await page.getByTestId('checkout-coupon-final').textContent())?.includes('159.20') === true,
     'coupon query parameter did not auto-apply',
   );
 

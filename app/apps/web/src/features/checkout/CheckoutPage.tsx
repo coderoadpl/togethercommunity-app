@@ -47,6 +47,7 @@ type OfferPrice = {
   amountCents: number;
   currency: string;
 };
+type InvoiceField = readonly [string, string, string, (value: string) => void];
 
 const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
   <SvgIcon fontSize="small" aria-hidden>
@@ -86,7 +87,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const { language } = useLanguage();
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
-  const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
+  const offer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage });
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
   const [invoiceVisible, setInvoiceVisible] = useState(false);
@@ -96,6 +97,14 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const [postalCode, setPostalCode] = useState('');
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('PL');
+  const invoiceFields: InvoiceField[] = [
+    ['checkout-nip', t.checkout.nipLabel, nip, setNip],
+    ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
+    ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
+    ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
+    ['checkout-city', t.checkout.cityLabel, city, setCity],
+    ['checkout-country', t.checkout.countryLabel, country, setCountry],
+  ];
   const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
   const [checkoutState, dispatchCheckout] = useReducer(
     reduceCheckoutState,
@@ -418,22 +427,13 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
           </CheckoutDisclosureButton>
           {invoiceVisible ? (
             <Stack useFlexGap spacing="0.75rem">
-              {[
-                ['checkout-nip', t.checkout.nipLabel, nip, setNip],
-                ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
-                ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
-                ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
-                ['checkout-city', t.checkout.cityLabel, city, setCity],
-                ['checkout-country', t.checkout.countryLabel, country, setCountry],
-              ].map(([id, label, value, setValue]) => (
-                <FormControl key={String(id)} fullWidth>
-                  <FormLabel htmlFor={String(id)}>{String(label)}</FormLabel>
+              {invoiceFields.map(([id, label, value, setValue]) => (
+                <FormControl key={id} fullWidth>
+                  <FormLabel htmlFor={id}>{label}</FormLabel>
                   <OutlinedInput
-                    id={String(id)}
-                    value={String(value)}
-                    onChange={(event) => {
-                      if (typeof setValue === 'function') setValue(event.target.value);
-                    }}
+                    id={id}
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
                     required={id !== 'checkout-nip'}
                     inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
                   />
@@ -629,7 +629,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               </FinePrint>
             </Stack>
           ) : null}
-          {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
+          {payableCents > 0 && !paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
             <Alert severity="error">{t.checkout.paymentUnavailable}</Alert>
           ) : null}
           {checkoutSession.isError ? (

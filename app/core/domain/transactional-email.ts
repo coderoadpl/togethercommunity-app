@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
+import { translateDeletedEmailContent } from './deleted-content.js';
 import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
+import { transactionalEmailMessagesEn } from './transactional-email.en.js';
+import type { NotificationFooterKind, TransactionalEmailMessages } from './transactional-email-messages.js';
+import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
@@ -48,25 +52,25 @@ const localizedDate = (language: TransactionalLanguage, isoDateTime: string): st
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 
-/**
- * Community notifications are recurring, so PL/EU e-privacy rules require an
- * opt-out path. The link lands on the surface that owns the toggle (thread
- * mute / space unfollow); tokenized one-click unsubscribe is future backlog.
- */
+const transactionalMessages: Record<TransactionalLanguage, TransactionalEmailMessages> = {
+  pl: transactionalEmailMessagesPl,
+  en: transactionalEmailMessagesEn,
+};
+
+const messagesFor = (language: string): TransactionalEmailMessages =>
+  transactionalMessages[languageOrDefault(language)];
+
 const manageNotificationsFooter = (
-  language: TransactionalLanguage,
+  messages: TransactionalEmailMessages,
   url: string,
-  hint: { pl: string; en: string },
-): { html: string; text: string } =>
-  language === 'en'
-    ? {
-        html: `<p style="font-size:12px;color:#64646b">${link(url, 'Manage notifications')} (${escapeHtml(hint.en)})</p>`,
-        text: `\n\nManage notifications (${hint.en}): ${url}`,
-      }
-    : {
-        html: `<p style="font-size:12px;color:#64646b">${link(url, 'Zarządzaj powiadomieniami')} (${escapeHtml(hint.pl)})</p>`,
-        text: `\n\nZarządzaj powiadomieniami (${hint.pl}): ${url}`,
-      };
+  kind: NotificationFooterKind,
+): { html: string; text: string } => {
+  const hint = messages.manageNotifications.hints[kind];
+  return {
+    html: `<p style="font-size:12px;color:#64646b">${link(url, messages.manageNotifications.label)} (${escapeHtml(hint)})</p>`,
+    text: `\n\n${messages.manageNotifications.label} (${hint}): ${url}`,
+  };
+};
 
 export interface EmailBranding {
   logoUrl: string | null;
@@ -74,7 +78,6 @@ export interface EmailBranding {
   socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
 
-/** Mail renders on a white background, so it always takes the light-background logo variant. */
 export const emailBrandingFrom = (
   settings: {
     logoUrl: string | null;
@@ -90,7 +93,6 @@ export const emailBrandingFrom = (
   socialLinks: settings.socialLinks,
 });
 
-/** Tenant-branded header; an empty string (byte-identical mail) without branding. */
 const brandHeader = (branding: EmailBranding | undefined): string => {
   if (branding === undefined || (branding.logoUrl === null && branding.accentColor === null)) return '';
   const rule = `<div style="border-top:4px solid ${escapeHtml(branding.accentColor ?? '#191512')};margin-bottom:16px"></div>`;
@@ -118,244 +120,193 @@ export const welcomeSignIn = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
-  const actionLink = link(
-    input.actionUrl,
-    languageOrDefault(language) === 'en'
-      ? 'Sign in and open your course'
-      : 'Zaloguj się i otwórz kurs',
-  );
-
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: `Hello, your ${input.tenantName} account is ready`,
-      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.</p><p>${actionLink}</p>${socialLinks.html}`,
-      text: `Hello!\n\nYour account on ${input.tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.\n\nSign in and open your course: ${input.actionUrl}${socialLinks.text}`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: `Twoje konto na platformie ${input.tenantName} jest gotowe`,
-    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p>${actionLink}</p>${socialLinks.html}`,
-    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.\n\nZaloguj się i otwórz kurs: ${input.actionUrl}${socialLinks.text}`,
-  });
+  const actionLink = link(input.actionUrl, messages.welcomeSignIn.actionLabel);
+  return emailMessageSchema.parse(messages.welcomeSignIn.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    actionUrl: input.actionUrl,
+    actionLink,
+    header,
+    socialLinks,
+  }));
 };
 
 export const resetPassword = (
   language: string,
   input: { actionUrl: string },
 ): EmailMessage => {
-  const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Reset password' : 'Zresetuj hasło');
-
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: 'Reset your password',
-      html: `<p>Hello!</p><p>Please click the link below to reset your password:</p><p>${actionLink}</p><p>The password reset link expires in one hour.</p>`,
-      text: `Hello!\n\nPlease open the link below to reset your password:\n${input.actionUrl}\n\nThe password reset link expires in one hour.`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: 'Zresetuj hasło',
-    html: `<p>Cześć!</p><p>Kliknij poniższy link, aby zresetować hasło:</p><p>${actionLink}</p><p>Link do zresetowania hasła jest ważny przez godzinę.</p>`,
-    text: `Cześć!\n\nOtwórz poniższy link, aby zresetować hasło:\n${input.actionUrl}\n\nLink do zresetowania hasła jest ważny przez godzinę.`,
-  });
+  const messages = messagesFor(language);
+  const actionLink = link(input.actionUrl, messages.resetPassword.actionLabel);
+  return emailMessageSchema.parse(messages.resetPassword.render({ actionUrl: input.actionUrl, actionLink }));
 };
 
 export const verifyEmail = (
   language: string,
   input: { actionUrl: string },
 ): EmailMessage => {
-  const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Verify email' : 'Potwierdź e-mail');
-
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: 'Verify your email address',
-      html: `<p>Hello!</p><p>Confirm that this email address belongs to you:</p><p>${actionLink}</p><p>You can sign in and use Together before confirming it. Verification is required only to create a new workspace.</p><p>The link expires in one hour.</p>`,
-      text: `Hello!\n\nConfirm that this email address belongs to you:\n${input.actionUrl}\n\nYou can sign in and use Together before confirming it. Verification is required only to create a new workspace.\n\nThe link expires in one hour.`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: 'Potwierdź swój adres e-mail',
-    html: `<p>Cześć!</p><p>Potwierdź, że ten adres e-mail należy do Ciebie:</p><p>${actionLink}</p><p>Możesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest potrzebna tylko do założenia własnej platformy twórcy.</p><p>Link jest ważny przez godzinę.</p>`,
-    text: `Cześć!\n\nPotwierdź, że ten adres e-mail należy do Ciebie:\n${input.actionUrl}\n\nMożesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest potrzebna tylko do założenia własnej platformy twórcy.\n\nLink jest ważny przez godzinę.`,
-  });
+  const messages = messagesFor(language);
+  const actionLink = link(input.actionUrl, messages.verifyEmail.actionLabel);
+  return emailMessageSchema.parse(messages.verifyEmail.render({ actionUrl: input.actionUrl, actionLink }));
 };
 
 export const threadReply = (
   language: string,
   input: { tenantName: string; lessonName: string; authorDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const lessonName = escapeHtml(input.lessonName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
-  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'możesz wyciszyć ten wątek w dyskusji',
-    en: 'you can mute this thread in the discussion',
-  });
-
-  if (languageOrDefault(language) === 'en') {
-    const actionLink = link(input.url, 'Open the discussion');
-    return emailMessageSchema.parse({
-      subject: `New reply in the "${input.lessonName}" discussion`,
-      html: `<p>Hello!</p><p>${author} replied in the "${lessonName}" discussion on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the discussion: ${input.url}${footer.text}`,
-    });
-  }
-
-  const actionLink = link(input.url, 'Otwórz dyskusję');
-  return emailMessageSchema.parse({
-    subject: `Nowa odpowiedź w dyskusji „${input.lessonName}”`,
-    html: `<p>Cześć!</p><p>${author} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz dyskusję: ${input.url}${footer.text}`,
-  });
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
+  const footer = manageNotificationsFooter(messages, input.url, 'thread');
+  const actionLink = link(input.url, messages.threadReply.actionLabel);
+  return emailMessageSchema.parse(messages.threadReply.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    lessonName: input.lessonName,
+    lessonNameHtml: lessonName,
+    authorDisplay,
+    authorHtml: author,
+    snippetText,
+    snippetHtml: snippet,
+    url: input.url,
+    actionLink,
+    footer,
+  }));
 };
 
 export const lessonQuestion = (
   language: string,
   input: { tenantName: string; lessonName: string; authorDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const lessonName = escapeHtml(input.lessonName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
-  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'możesz wyciszyć ten wątek w dyskusji',
-    en: 'you can mute this thread in the discussion',
-  });
-
-  if (languageOrDefault(language) === 'en') {
-    const actionLink = link(input.url, 'Open the question');
-    return emailMessageSchema.parse({
-      subject: `New question under “${input.lessonName}”`,
-      html: `<p>Hello!</p><p>${author} asked a question under “${lessonName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} asked a question under “${input.lessonName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the question: ${input.url}${footer.text}`,
-    });
-  }
-
-  const actionLink = link(input.url, 'Otwórz pytanie');
-  return emailMessageSchema.parse({
-    subject: `Nowe pytanie pod lekcją „${input.lessonName}”`,
-    html: `<p>Cześć!</p><p>${author} zadał(a) pytanie pod lekcją „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} zadał(a) pytanie pod lekcją „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz pytanie: ${input.url}${footer.text}`,
-  });
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
+  const footer = manageNotificationsFooter(messages, input.url, 'thread');
+  const actionLink = link(input.url, messages.lessonQuestion.actionLabel);
+  return emailMessageSchema.parse(messages.lessonQuestion.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    lessonName: input.lessonName,
+    lessonNameHtml: lessonName,
+    authorDisplay,
+    authorHtml: author,
+    snippetText,
+    snippetHtml: snippet,
+    url: input.url,
+    actionLink,
+    footer,
+  }));
 };
 
 export const spacePost = (
   language: string,
   input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const spaceName = escapeHtml(input.spaceName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
-  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'możesz przestać obserwować tę przestrzeń',
-    en: 'you can unfollow the space there',
-  });
-
-  if (languageOrDefault(language) === 'en') {
-    const actionLink = link(input.url, 'Open the space');
-    return emailMessageSchema.parse({
-      subject: `New post in “${input.spaceName}”`,
-      html: `<p>Hello!</p><p>${author} posted in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the space: ${input.url}${footer.text}`,
-    });
-  }
-
-  const actionLink = link(input.url, 'Otwórz przestrzeń');
-  return emailMessageSchema.parse({
-    subject: `Nowy wpis w przestrzeni „${input.spaceName}”`,
-    html: `<p>Cześć!</p><p>${author} dodał(a) nowy wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} dodał(a) nowy wpis w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz przestrzeń: ${input.url}${footer.text}`,
-  });
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
+  const footer = manageNotificationsFooter(messages, input.url, 'space');
+  const actionLink = link(input.url, messages.spacePost.actionLabel);
+  return emailMessageSchema.parse(messages.spacePost.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    spaceName: input.spaceName,
+    spaceNameHtml: spaceName,
+    authorDisplay,
+    authorHtml: author,
+    snippetText,
+    snippetHtml: snippet,
+    url: input.url,
+    actionLink,
+    footer,
+  }));
 };
 
 export const spaceEvent = (
   language: string,
   input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const spaceName = escapeHtml(input.spaceName);
-  const author = escapeHtml(input.authorDisplay);
-  const snippet = escapeHtml(input.snippet);
-  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'możesz przestać obserwować tę przestrzeń',
-    en: 'you can unfollow the space there',
-  });
-
-  if (languageOrDefault(language) === 'en') {
-    const actionLink = link(input.url, 'Open the event');
-    return emailMessageSchema.parse({
-      subject: `New event in “${input.spaceName}”`,
-      html: `<p>Hello!</p><p>${author} scheduled an event in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.authorDisplay} scheduled an event in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the event: ${input.url}${footer.text}`,
-    });
-  }
-
-  const actionLink = link(input.url, 'Otwórz wydarzenie');
-  return emailMessageSchema.parse({
-    subject: `Nowe wydarzenie w przestrzeni „${input.spaceName}”`,
-    html: `<p>Cześć!</p><p>${author} zaplanował(a) wydarzenie w przestrzeni „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz wydarzenie: ${input.url}${footer.text}`,
-  });
+  const authorDisplay = translateDeletedEmailContent(input.authorDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const author = escapeHtml(authorDisplay);
+  const snippet = escapeHtml(snippetText);
+  const footer = manageNotificationsFooter(messages, input.url, 'space');
+  const actionLink = link(input.url, messages.spaceEvent.actionLabel);
+  return emailMessageSchema.parse(messages.spaceEvent.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    spaceName: input.spaceName,
+    spaceNameHtml: spaceName,
+    authorDisplay,
+    authorHtml: author,
+    snippetText,
+    snippetHtml: snippet,
+    url: input.url,
+    actionLink,
+    footer,
+  }));
 };
 
 export const directMessage = (
   language: string,
   input: { tenantName: string; senderDisplay: string; snippet: string; url: string },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
-  const sender = escapeHtml(input.senderDisplay);
-  const snippet = escapeHtml(input.snippet);
-  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
-    pl: 'w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników',
-    en: 'you can turn off messages from community members in your account settings',
-  });
-
-  if (languageOrDefault(language) === 'en') {
-    const actionLink = link(input.url, 'Open the conversation');
-    return emailMessageSchema.parse({
-      subject: `New message from ${input.senderDisplay}`,
-      html: `<p>Hello!</p><p>${sender} sent you a message on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${input.senderDisplay} sent you a message on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the conversation: ${input.url}${footer.text}`,
-    });
-  }
-
-  const actionLink = link(input.url, 'Otwórz rozmowę');
-  return emailMessageSchema.parse({
-    subject: `Nowa wiadomość od ${input.senderDisplay}`,
-    html: `<p>Cześć!</p><p>${sender} wysłał(a) Ci wiadomość na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
-    text: `Cześć!\n\n${input.senderDisplay} wysłał(a) Ci wiadomość na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz rozmowę: ${input.url}${footer.text}`,
-  });
+  const senderDisplay = translateDeletedEmailContent(input.senderDisplay, language);
+  const snippetText = translateDeletedEmailContent(input.snippet, language);
+  const sender = escapeHtml(senderDisplay);
+  const snippet = escapeHtml(snippetText);
+  const footer = manageNotificationsFooter(messages, input.url, 'direct');
+  const actionLink = link(input.url, messages.directMessage.actionLabel);
+  return emailMessageSchema.parse(messages.directMessage.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    senderDisplay,
+    senderHtml: sender,
+    snippetText,
+    snippetHtml: snippet,
+    url: input.url,
+    actionLink,
+    footer,
+  }));
 };
 
 export const magicLink = (
   language: string,
   input: { tenantName: string; url: string; branding?: EmailBranding },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
-  const actionLink = link(input.url, languageOrDefault(language) === 'en' ? 'Sign in' : 'Zaloguj się');
-
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: `Sign in to ${input.tenantName}`,
-      html: `${header}<p>Hello!</p><p>Use this link to sign in to ${tenantName}:</p><p>${actionLink}</p><p>If you did not request this email, you can ignore it.</p>${socialLinks.html}`,
-      text: `Hello!\n\nUse this link to sign in to ${input.tenantName}:\n${input.url}\n\nIf you did not request this email, you can ignore it.${socialLinks.text}`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: `Zaloguj się do ${input.tenantName}`,
-    html: `${header}<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>${socialLinks.html}`,
-    text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.${socialLinks.text}`,
-  });
+  const actionLink = link(input.url, messages.magicLink.actionLabel);
+  return emailMessageSchema.parse(messages.magicLink.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    url: input.url,
+    actionLink,
+    header,
+    socialLinks,
+  }));
 };
 
 export const subscriptionPaymentFailed = (
@@ -369,6 +320,7 @@ export const subscriptionPaymentFailed = (
   },
 ): EmailMessage => {
   const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAtText = localizedDate(resolvedLanguage, input.accessEndsAt);
@@ -378,21 +330,20 @@ export const subscriptionPaymentFailed = (
   const portal =
     input.billingPortalUrl === null
       ? ''
-      : `<p>${link(input.billingPortalUrl, resolvedLanguage === 'en' ? 'Update billing details' : 'Zaktualizuj dane płatności')}</p>`;
+      : `<p>${link(input.billingPortalUrl, messages.subscriptionPaymentFailed.billingPortalLabel)}</p>`;
 
-  if (resolvedLanguage === 'en') {
-    return emailMessageSchema.parse({
-      subject: `Payment failed for ${input.productTitle}`,
-      html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitle} on ${tenantName}.</p><p>Your access ends on ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
-      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${accessEndsAtText}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}${socialLinks.text}`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: `Nie udało się pobrać płatności za „${input.productTitle}”`,
-    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
-    text: `Cześć!\n\nNie udało się pobrać płatności za „${input.productTitle}” na platformie ${input.tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtText}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj dane płatności: ${input.billingPortalUrl}`}${socialLinks.text}`,
-  });
+  return emailMessageSchema.parse(messages.subscriptionPaymentFailed.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    productTitle: input.productTitle,
+    productTitleHtml: productTitle,
+    accessEndsAtText,
+    accessEndsAtHtml: accessEndsAt,
+    billingPortalUrl: input.billingPortalUrl,
+    portal,
+    header,
+    socialLinks,
+  }));
 };
 
 export const subscriptionEnded = (
@@ -406,26 +357,27 @@ export const subscriptionEnded = (
   },
 ): EmailMessage => {
   const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
   const tenantName = escapeHtml(input.tenantName);
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAtText = localizedDate(resolvedLanguage, input.accessEndsAt);
   const accessEndsAt = escapeHtml(accessEndsAtText);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
+  const offerLink = link(input.offerUrl, messages.subscriptionEnded.offerLabel);
 
-  if (resolvedLanguage === 'en') {
-    return emailMessageSchema.parse({
-      subject: `Your ${input.productTitle} subscription has ended`,
-      html: `${header}<p>Hello!</p><p>Your subscription to ${productTitle} on ${tenantName} has ended.</p><p>Your access ends on ${accessEndsAt}.</p><p>${link(input.offerUrl, 'View the offer')}</p>${socialLinks.html}`,
-      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${accessEndsAtText}.\n\nView the offer: ${input.offerUrl}${socialLinks.text}`,
-    });
-  }
-
-  return emailMessageSchema.parse({
-    subject: `Subskrypcja „${input.productTitle}” została zakończona`,
-    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja „${productTitle}” na platformie ${tenantName} została zakończona.</p><p>Dostęp do materiałów zachowasz do ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
-    text: `Cześć!\n\nTwoja subskrypcja „${input.productTitle}” na platformie ${input.tenantName} została zakończona.\n\nDostęp do materiałów zachowasz do ${accessEndsAtText}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
-  });
+  return emailMessageSchema.parse(messages.subscriptionEnded.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    productTitle: input.productTitle,
+    productTitleHtml: productTitle,
+    accessEndsAtText,
+    accessEndsAtHtml: accessEndsAt,
+    offerUrl: input.offerUrl,
+    offerLink,
+    header,
+    socialLinks,
+  }));
 };
 
 export const supportMessage = (
@@ -439,24 +391,26 @@ export const supportMessage = (
     branding?: EmailBranding;
   },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const memberEmail = escapeHtml(input.memberEmail);
   const memberDisplay = escapeHtml(input.memberDisplay);
   const subject = escapeHtml(input.subject);
   const body = escapeHtml(input.body);
   const header = brandHeader(input.branding);
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: `[${input.tenantName}] ${input.subject}`,
-      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
-      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
-    });
-  }
-  return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] ${input.subject}`,
-    html: `${header}<p>Nowa wiadomość od uczestnika ${memberDisplay} (platforma ${tenantName}).</p><p>Odpowiedz na adres: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
-    text: `Nowa wiadomość od uczestnika ${input.memberDisplay} (platforma ${input.tenantName}).\n\nOdpowiedz na adres: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
-  });
+  return emailMessageSchema.parse(messages.supportMessage.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    memberEmail: input.memberEmail,
+    memberEmailHtml: memberEmail,
+    memberDisplay: input.memberDisplay,
+    memberDisplayHtml: memberDisplay,
+    subject: input.subject,
+    subjectHtml: subject,
+    body: input.body,
+    bodyHtml: body,
+    header,
+  }));
 };
 
 export const memberErasureRequestEmail = (
@@ -470,48 +424,36 @@ export const memberErasureRequestEmail = (
   },
 ): EmailMessage => {
   const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
   const memberEmail = escapeHtml(input.memberEmail);
   const panelUrl = escapeHtml(input.panelUrl);
   const requestedAtText = localizedDate(resolvedLanguage, input.requestedAt);
   const dueAtText = localizedDate(resolvedLanguage, input.dueAt);
   const requestedAt = escapeHtml(requestedAtText);
   const dueAt = escapeHtml(dueAtText);
-  if (resolvedLanguage === 'en') {
-    return emailMessageSchema.parse({
-      subject: `[${input.tenantName}] Member erasure request`,
-      html: `<p>${memberEmail} requested account erasure.</p><p>Requested: ${requestedAt}<br>Due: ${dueAt}</p><p><a href="${panelUrl}">Review request</a></p>`,
-      text: `${input.memberEmail} requested account erasure.\nRequested: ${requestedAtText}\nDue: ${dueAtText}\n${input.panelUrl}`,
-    });
-  }
-  return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
-    html: `<p>${memberEmail} złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: ${requestedAt}<br>Termin realizacji: ${dueAt}</p><p><a href="${panelUrl}">Otwórz wniosek w panelu</a></p>`,
-    text: `${input.memberEmail} złożył(a) wniosek o usunięcie konta i danych.\nZłożono: ${requestedAtText}\nTermin realizacji: ${dueAtText}\n${input.panelUrl}`,
-  });
+  return emailMessageSchema.parse(messages.memberErasureRequestEmail.render({
+    tenantName: input.tenantName,
+    memberEmail: input.memberEmail,
+    memberEmailHtml: memberEmail,
+    requestedAtText,
+    requestedAtHtml: requestedAt,
+    dueAtText,
+    dueAtHtml: dueAt,
+    panelUrl: input.panelUrl,
+    panelUrlHtml: panelUrl,
+  }));
 };
 
 export const emailTransportTest = (
   language: string,
   input: { transport: EmailIntegrationTransport | TransactionalEmailTransport },
 ): EmailMessage => {
+  const messages = messagesFor(language);
   const transport = escapeHtml(input.transport);
-  if (languageOrDefault(language) === 'en') {
-    return emailMessageSchema.parse({
-      subject: `Together test e-mail (${input.transport})`,
-      html: `<p>Your ${transport} transport is configured correctly.</p><p>This message was sent from the panel to confirm delivery.</p>`,
-      text: `Your ${input.transport} transport is configured correctly.\n\nThis message was sent from the panel to confirm delivery.`,
-    });
-  }
-  return emailMessageSchema.parse({
-    subject: `Together — wiadomość testowa (${input.transport})`,
-    html: `<p>Transport ${transport} jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>`,
-    text: `Transport ${input.transport} jest poprawnie skonfigurowany.\n\nTa wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.`,
-  });
-};
-
-const REPUTATION_STATUS_LABEL: Record<TransactionalLanguage, Record<'warn' | 'critical', string>> = {
-  pl: { warn: 'ostrzeżenie', critical: 'stan krytyczny' },
-  en: { warn: 'warning', critical: 'critical' },
+  return emailMessageSchema.parse(messages.emailTransportTest.render({
+    transport: input.transport,
+    transportHtml: transport,
+  }));
 };
 
 export const reputationAlertEmail = (
@@ -527,29 +469,29 @@ export const reputationAlertEmail = (
   },
 ): EmailMessage => {
   const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
   const tenantName = escapeHtml(input.tenantName);
   const dashboardUrl = escapeHtml(input.dashboardUrl);
-  const status = REPUTATION_STATUS_LABEL[resolvedLanguage][input.status];
+  const status = messages.reputationAlertEmail.statusLabels[input.status];
   const windowStartText = localizedDate(resolvedLanguage, input.windowStart);
   const windowEndText = localizedDate(resolvedLanguage, input.windowEnd);
   const windowStart = escapeHtml(windowStartText);
   const windowEnd = escapeHtml(windowEndText);
   const rate = (value: number | null, missing: string): string =>
     value === null ? missing : `${(value * 100).toFixed(3)}%`;
-  if (resolvedLanguage === 'en') {
-    const hardBounceRate = rate(input.hardBounceRate, 'n/a');
-    const complaintRate = rate(input.complaintRate, 'n/a');
-    return emailMessageSchema.parse({
-      subject: `[${input.tenantName}] E-mail reputation: ${status}`,
-      html: `<p>E-mail reputation for ${tenantName}: <strong>${status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${windowStart} – ${windowEnd}</p><p><a href="${dashboardUrl}">Review reputation</a></p>`,
-      text: `E-mail reputation for ${input.tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${input.dashboardUrl}`,
-    });
-  }
-  const hardBounceRate = rate(input.hardBounceRate, 'brak danych');
-  const complaintRate = rate(input.complaintRate, 'brak danych');
-  return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] Reputacja nadawcy: ${status}`,
-    html: `<p>Reputacja nadawcy e-mail platformy ${tenantName}: <strong>${status}</strong>.</p><p>Odsetek twardych odbić (hard bounce): ${hardBounceRate}<br>Odsetek zgłoszeń spamu: ${complaintRate}<br>Okres: ${windowStart} – ${windowEnd}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
-    text: `Reputacja nadawcy e-mail platformy ${input.tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${input.dashboardUrl}`,
-  });
+  const hardBounceRate = rate(input.hardBounceRate, messages.reputationAlertEmail.missingRate);
+  const complaintRate = rate(input.complaintRate, messages.reputationAlertEmail.missingRate);
+  return emailMessageSchema.parse(messages.reputationAlertEmail.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: tenantName,
+    status,
+    hardBounceRate,
+    complaintRate,
+    windowStartText,
+    windowStartHtml: windowStart,
+    windowEndText,
+    windowEndHtml: windowEnd,
+    dashboardUrl: input.dashboardUrl,
+    dashboardUrlHtml: dashboardUrl,
+  }));
 };

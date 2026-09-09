@@ -19,16 +19,19 @@ import type {
   MemberSubscriptionRepository,
   ProductDownloadAssetRepository,
   ProductGrantRepository,
+  ProductPriceRepository,
 } from '../ports.js';
 
 export interface MyProductsDeps {
   grants: ProductGrantRepository;
+  prices: ProductPriceRepository;
   subscriptions: MemberSubscriptionRepository;
   downloadAssets: ProductDownloadAssetRepository;
   clock: Clock;
 }
 
 export type MyProduct = GrantedProduct & {
+  purchasable: boolean;
   subscription: MemberSubscriptionSummary | null;
   downloads: ProductDownloadAsset[];
 };
@@ -66,11 +69,18 @@ export const listMyProducts = async (
   const { memberId } = ctx.identity;
   const now = deps.clock.nowIso();
   const nowMs = new Date(now).getTime();
-  const [grants, products, subscriptions] = await Promise.all([
+  const productsPromise = deps.grants.listGrantedProducts(tenantId, memberId);
+  const [grants, products, subscriptions, activePrices] = await Promise.all([
     deps.grants.listForMemberWithProductNames(tenantId, memberId, now),
-    deps.grants.listGrantedProducts(tenantId, memberId),
+    productsPromise,
     deps.subscriptions.listForMember(tenantId, memberId),
+    productsPromise.then((products) => deps.prices.listActiveByProducts(
+      tenantId,
+      products.map((product) => product.id),
+    )),
   ]);
+
+  const pricedProductIds = new Set(activePrices.map((price) => price.productId));
 
   const bestGrantByProduct = new Map<string, MemberGrant>();
   for (const grant of grants) {
@@ -109,6 +119,7 @@ export const listMyProducts = async (
     const subscription = subscriptionByProduct.get(product.id);
     result.push({
       ...product,
+      purchasable: product.published && pricedProductIds.has(product.id),
       grantStatus: grantStatus(grant, nowMs),
       grantStartsAt: grant.startsAt,
       grantExpiresAt: grant.expiresAt,

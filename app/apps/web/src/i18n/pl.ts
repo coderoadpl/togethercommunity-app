@@ -9,6 +9,7 @@ const plural = (count: number, one: string, few: string, many: string): string =
 };
 
 export const pl: Messages = {
+  deletedContent: { member: 'Konto usunięte', post: 'Wpis usunięty' },
   common: {
     appName: 'Together',
     language: 'Język',
@@ -169,6 +170,7 @@ export const pl: Messages = {
     methodMagicLinkTitle: 'Wyślij link na e-mail',
     methodMagicLinkBody: 'Kliknij link w skrzynce — wejdziesz bez hasła.',
     methodPasswordTitle: 'Wpisz hasło',
+    passwordNotNeeded: 'Hasła nie potrzebujesz — ustawisz je po zalogowaniu w Moje konto → Bezpieczeństwo.',
     methodPasswordBody: 'Jeśli ustawiłeś je wcześniej.',
     methodPasskeyTitle: 'Użyj klucza dostępu',
     methodPasskeyBody: 'Face ID, Touch ID albo Windows Hello.',
@@ -612,7 +614,7 @@ export const pl: Messages = {
     title: 'Wiadomości',
     loading: 'Wczytywanie wiadomości…',
     emptyList: 'Nie masz jeszcze żadnych wiadomości',
-    emptyListHint: 'Znajdź autora wpisu i napisz do niego wiadomość',
+    emptyListHint: 'Aby napisać do kogoś, otwórz jego wpis i wybierz „Napisz do autora”.',
     browseSpaces: 'Przejdź do przestrzeni',
     emptyConversation: 'To dopiero początek tej rozmowy. Napisz pierwszą wiadomość.',
     conversationEyebrow: 'Rozmowa',
@@ -624,6 +626,7 @@ export const pl: Messages = {
     sending: 'Wysyłanie…',
     loadOlder: 'Wczytaj starsze',
     ownPrefix: 'Ty:',
+    messageAuthor: 'Napisz do autora',
     startFromAuthor: 'Napisz wiadomość',
     starting: 'Otwieranie rozmowy…',
     unreadAria: ({ count }) => format('Nieprzeczytane wiadomości: {count}', { count }),
@@ -898,6 +901,7 @@ export const pl: Messages = {
     bunnyLibraryIdLabel: 'Identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnyCdnHostnameLabel: 'Nazwa hosta CDN Stream',
+    bunnyCdnHostnamePlaceholder: 'vz-xxxxxxx-xxx.b-cdn.net',
     bunnyCdnHostnameHelper:
       'Znajdziesz ją w bibliotece Bunny Stream → Delivery. Jest potrzebna do odtwarzania w aplikacji mobilnej.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
@@ -953,6 +957,11 @@ export const pl: Messages = {
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
+    visibilityLabel: 'Widoczność',
+    listed: 'Widoczny w ofercie',
+    unlisted: 'Ukryty w ofercie',
+    visibilityHelper: 'Produkty ukryte w ofercie są dostępne przez bezpośredni link do zakupu i pozostają w bibliotekach kupujących.',
+
     newProduct: 'Nowy produkt',
     detailsHeading: 'Dane produktu',
     titleLabel: 'Tytuł',
@@ -1419,6 +1428,7 @@ export const pl: Messages = {
       impersonation_ended: 'Wyjście z podglądu uczestnika',
       content_version_restored: 'Przywrócenie wersji treści',
       redirect_created: 'Dodanie przekierowania',
+      post_purged: 'Trwałe usunięcie wpisu',
       redirect_deleted: 'Usunięcie przekierowania',
     },
     auditLogEntry: ({ actor, subject }) => format('{actor} → {subject}', { actor, subject }),
@@ -1644,6 +1654,7 @@ export const pl: Messages = {
     grantExpiredLabel: ({ date }) => `Wygasł ${date}`,
     grantUpcomingLabel: ({ date }) => `Rozpocznie się ${date}`,
     grantUpcomingNote: ({ date }) => `Dostęp rozpocznie się ${date}.`,
+    renewalUnavailable: 'Dostęp wygasł. Odnowienie nie jest teraz dostępne.',
     renewAccess: 'Odnów dostęp',
     subscriptionActiveLabel: 'Aktywna',
     subscriptionPastDueLabel: 'Zaległa płatność',
@@ -1773,6 +1784,9 @@ export const pl: Messages = {
       'Treść wpisu zostanie usunięta, a w wątku pozostanie informacja o usunięciu. Tej operacji nie można cofnąć.',
     deleteConfirm: 'Usuń wpis',
     deleting: 'Usuwanie…',
+    purge: 'Usuń trwale',
+    purgeConfirmTitle: 'Trwale usunąć ten wpis?',
+    purgeConfirmBody: 'Tej operacji nie można cofnąć. Wpis i jego treść zostaną trwale usunięte. Odpowiedzi na trwale usuwany wpis główny zostaną usunięte razem z nim. Odpowiedzi pod usuwaną odpowiedzią również zostaną usunięte.',
     moderatorDeletedPost: 'Wpis usunięty przez moderatora.',
     deletedPost: 'Wpis został usunięty.',
     edited: '(edytowano)',

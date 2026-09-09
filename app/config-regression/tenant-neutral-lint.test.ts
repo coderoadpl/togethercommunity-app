@@ -9,9 +9,9 @@ const root = join(import.meta.dirname, '..', '..');
 describe('tenant-neutral lint', () => {
   it('reports a tenant name, domain, legacy path shape, course title, and legacy slug', () => {
     const source = [
-      'const host = "kurs.coderoad.pl";',
+      'const host = "course.coderoad.pl";',
       'const legacy = "/courses/656b8fa6e74246956889b096/modules/65a52510b5bd26b9d2ab3aa1";',
-      'const title = "Kurs front-end od A do Z";',
+      'const title = "Course front-end od A do Z";',
       'const bundle = "akademia-samouka";',
     ].join('\n');
 

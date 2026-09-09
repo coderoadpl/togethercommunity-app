@@ -4,48 +4,48 @@ import { describe, expect, it } from 'vitest';
 import { ListSection, ResponsiveTable } from './ListSection.js';
 
 const toolbar = {
-  search: <input aria-label="Szukaj" />,
-  filters: <span>Filtry</span>,
-  actions: <button type="button">Eksportuj CSV</button>,
+  search: <input aria-label="Search" />,
+  filters: <span>Filters</span>,
+  actions: <button type="button">Export CSV</button>,
 };
 
 describe('ListSection', () => {
   it('renders the toolbar, rows and pagination for a non-empty collection', () => {
     render(
       <ListSection
-        title="Lekcje"
+        title="Lessons"
         toolbar={toolbar}
-        pagination={<span>Strona 1</span>}
+        pagination={<span>Page 1</span>}
         isEmpty={false}
-        empty={<p>Brak lekcji</p>}
+        empty={<p>No lessons</p>}
       >
         <ul>
-          <li>Deklarowanie zmiennych</li>
+          <li>Declaring variables</li>
         </ul>
       </ListSection>,
     );
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Lekcje' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Szukaj')).toBeInTheDocument();
-    expect(screen.getByText('Filtry')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Eksportuj CSV' })).toBeInTheDocument();
-    expect(screen.getByText('Deklarowanie zmiennych')).toBeInTheDocument();
-    expect(screen.getByText('Strona 1')).toBeInTheDocument();
-    expect(screen.queryByText('Brak lekcji')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Lessons' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Search')).toBeInTheDocument();
+    expect(screen.getByText('Filters')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
+    expect(screen.getByText('Declaring variables')).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
+    expect(screen.queryByText('No lessons')).not.toBeInTheDocument();
   });
 
   it('shows only the empty branch (no toolbar) when the collection is empty', () => {
     render(
-      <ListSection toolbar={toolbar} isEmpty empty={<p>Brak lekcji</p>}>
+      <ListSection toolbar={toolbar} isEmpty empty={<p>No lessons</p>}>
         <ul>
-          <li>Nie powinno się pojawić</li>
+          <li>Should not appear</li>
         </ul>
       </ListSection>,
     );
 
-    expect(screen.getByText('Brak lekcji')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Szukaj')).not.toBeInTheDocument();
-    expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
+    expect(screen.getByText('No lessons')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Search')).not.toBeInTheDocument();
+    expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
   });
 
   it('keeps the toolbar and swaps rows for the no-matches message when filtered to zero', () => {
@@ -53,18 +53,18 @@ describe('ListSection', () => {
       <ListSection
         toolbar={toolbar}
         isEmpty={false}
-        empty={<p>Brak lekcji</p>}
-        noMatches={<p>Brak wyników wyszukiwania</p>}
+        empty={<p>No lessons</p>}
+        noMatches={<p>No search results</p>}
       >
         <ul>
-          <li>Nie powinno się pojawić</li>
+          <li>Should not appear</li>
         </ul>
       </ListSection>,
     );
 
-    expect(screen.getByLabelText('Szukaj')).toBeInTheDocument();
-    expect(screen.getByText('Brak wyników wyszukiwania')).toBeInTheDocument();
-    expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Search')).toBeInTheDocument();
+    expect(screen.getByText('No search results')).toBeInTheDocument();
+    expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
   });
 });
 
@@ -75,13 +75,13 @@ describe('ResponsiveTable', () => {
         <table>
           <tbody>
             <tr>
-              <td>komórka</td>
+              <td>cell</td>
             </tr>
           </tbody>
         </table>
       </ResponsiveTable>,
     );
 
-    expect(screen.getByTestId('scroller')).toContainElement(screen.getByText('komórka'));
+    expect(screen.getByTestId('scroller')).toContainElement(screen.getByText('cell'));
   });
 });

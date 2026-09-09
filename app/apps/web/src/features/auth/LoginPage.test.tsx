@@ -6,11 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
+import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 import { LoginPage } from './LoginPage.js';
 
 const stubAuthConfig = (exposeMagicLinks = false, googleClientId: string | null = null) =>
@@ -100,8 +101,13 @@ const renderLoginPage = async (
     path: '/login',
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
+  const forgotPasswordRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/forgot-password',
+    component: ForgotPasswordPage,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
+    routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -122,13 +128,13 @@ afterEach(() => {
 });
 
 const continueWithEmail = async (email = 'creator@together.dev') => {
-  await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), email);
-  await userEvent.click(screen.getByRole('button', { name: pl.auth.identifierContinue }));
+  await userEvent.type(screen.getByLabelText(en.auth.emailLabel), email);
+  await userEvent.click(screen.getByRole('button', { name: en.auth.identifierContinue }));
 };
 
 const fillCredentials = async () => {
   await continueWithEmail();
-  await userEvent.type(await screen.findByLabelText(pl.auth.passwordLabel), 'wrong-password');
+  await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
 };
 
 describe('LoginPage', () => {
@@ -156,7 +162,7 @@ describe('LoginPage', () => {
   it('keeps login available for a signed-in account without a tenant', async () => {
     const { router } = await renderLoginPage(false, '/login', undefined, ['password'], [], tenantlessMe());
 
-    expect(await screen.findByRole('heading', { level: 1, name: pl.auth.signInTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: en.auth.signInTitle })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/login');
   });
 
@@ -179,9 +185,9 @@ describe('LoginPage', () => {
 
     await renderLoginPage(false, '/login', hostname);
 
-    expect(screen.getByRole('heading', { level: 1, name: pl.auth.signInTitle })).toBeInTheDocument();
-    expect(screen.queryByText(/przestrzeń togethercommunity\.app/u)).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.errors.messageTenantNotFound)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: en.auth.signInTitle })).toBeInTheDocument();
+    expect(screen.queryByText(/workspace togethercommunity\.app/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.errors.messageTenantNotFound)).not.toBeInTheDocument();
     await waitFor(() => expect(offerCalls).toBe(0));
   });
 
@@ -198,11 +204,11 @@ describe('LoginPage', () => {
 
     await renderLoginPage(false, '/login', 'preview.example');
 
-    const error = await screen.findByText(pl.errors.messageTenantNotFound);
-    const retry = screen.getByRole('button', { name: pl.common.retry });
-    const signupPrompt = screen.getByText(pl.auth.registerPrompt);
-    expect(screen.getByRole('heading', { level: 1, name: pl.auth.signInTitle })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: pl.auth.identifierContinue })).toBeEnabled();
+    const error = await screen.findByText(en.errors.messageTenantNotFound);
+    const retry = screen.getByRole('button', { name: en.common.retry });
+    const signupPrompt = screen.getByText(en.auth.registerPrompt);
+    expect(screen.getByRole('heading', { level: 1, name: en.auth.signInTitle })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.auth.identifierContinue })).toBeEnabled();
     expect(retry).toHaveClass('MuiButton-fullWidth');
     expect(error.compareDocumentPosition(signupPrompt)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
@@ -229,15 +235,20 @@ describe('LoginPage', () => {
     const indexRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: '/',
-      component: () => <div>{pl.tenant.choose}</div>,
+      component: () => <div>{en.tenant.choose}</div>,
     });
     const loginRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: '/login',
       component: () => <LoginPage hostname="localhost" />,
     });
+    const forgotPasswordRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/forgot-password',
+      component: ForgotPasswordPage,
+    });
     const router = createRouter({
-      routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
+      routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
       history: createMemoryHistory({ initialEntries: ['/login'] }),
     });
     await router.load();
@@ -248,10 +259,10 @@ describe('LoginPage', () => {
     );
 
     await continueWithEmail();
-    await userEvent.type(await screen.findByLabelText(pl.auth.passwordLabel), 'demo-password-15');
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
-    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+    expect(await screen.findByText(en.tenant.choose)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/');
     expect(offerCalls).toBe(0);
   });
@@ -259,10 +270,10 @@ describe('LoginPage', () => {
   it('asks for the identifier alone before any credential', async () => {
     await renderLoginPage();
 
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveFocus();
-    expect(screen.getByRole('button', { name: pl.auth.identifierContinue })).toBeInTheDocument();
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveFocus();
+    expect(screen.getByRole('button', { name: en.auth.identifierContinue })).toBeInTheDocument();
     expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
     expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toHaveTextContent(`v${pkg.version}`);
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
@@ -272,30 +283,51 @@ describe('LoginPage', () => {
     await renderLoginPage();
 
     const passkey = screen.getByTestId('signin-passkey');
-    expect(passkey).toHaveTextContent(pl.auth.passkeyLink);
+    expect(passkey).toHaveTextContent(en.auth.passkeyLink);
     expect(passkey.querySelector('svg')).toBeInTheDocument();
     expect(window.getComputedStyle(passkey).getPropertyValue('min-height')).toBe('48px');
+  });
+
+  it.each(['success', 'failure', 'rate-limit'])('keeps configured Google available after lookup %s', async (outcome) => {
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), 'google-client-id');
+    expect(await screen.findByTestId('continue-google')).toBeInTheDocument();
+    if (outcome === 'failure') failSignInMethods();
+    if (outcome === 'rate-limit') rateLimitSignInMethods();
+    await continueWithEmail();
+    if (outcome !== 'success') await userEvent.click(await screen.findByTestId('choose-magic-link'));
+    await screen.findByTestId('send-magic-link');
+    expect(screen.getByTestId('continue-google')).toBeEnabled();
+  });
+
+  it('carries the entered email into the editable password-reset form', async () => {
+    await renderLoginPage();
+    await continueWithEmail('member+login@example.com');
+    await userEvent.click(await screen.findByTestId('forgot-password'));
+    expect(await screen.findByTestId('forgot-password-email')).toHaveValue('member+login@example.com');
+    await userEvent.clear(screen.getByTestId('forgot-password-email'));
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'another@example.com');
+    expect(screen.getByTestId('forgot-password-email')).toHaveValue('another@example.com');
   });
 
   it('opens the password step for an account that has a password', async () => {
     await renderLoginPage();
     await continueWithEmail();
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toHaveFocus();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveFocus();
     const identifier = screen.getByTestId('login-identity-email');
     expect(identifier).toHaveValue('creator@together.dev');
     expect(identifier).toHaveAttribute('readonly');
     expect(identifier).toHaveAttribute('autocomplete', 'username');
-    expect(screen.queryByLabelText(pl.auth.emailLabel)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.auth.forgotPassword })).toHaveAttribute(
+    expect(screen.queryByLabelText(en.auth.emailLabel)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.auth.forgotPassword })).toHaveAttribute(
       'href',
-      '/forgot-password',
+      '/forgot-password?email=creator%40together.dev',
     );
-    expect(screen.getByTestId('send-magic-link')).toHaveTextContent(pl.auth.methodMagicLinkTitle);
-    expect(screen.getByTestId('signin-passkey')).toHaveTextContent(pl.auth.methodPasskeyTitle);
+    expect(screen.getByTestId('send-magic-link')).toHaveTextContent(en.auth.methodMagicLinkTitle);
+    expect(screen.getByTestId('signin-passkey')).toHaveTextContent(en.auth.methodPasskeyTitle);
     expect(screen.getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
     expect(
-      screen.getByRole('group', { name: pl.auth.signingInAs({ email: 'creator@together.dev' }) }),
+      screen.getByRole('group', { name: en.auth.signingInAs({ email: 'creator@together.dev' }) }),
     ).toBe(screen.getByTestId('login-identity'));
   });
 
@@ -304,12 +336,12 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await continueWithEmail(email);
 
-    const pill = await screen.findByRole('group', { name: pl.auth.signingInAs({ email }) });
+    const pill = await screen.findByRole('group', { name: en.auth.signingInAs({ email }) });
     expect(pill).toHaveStyle({ width: '100%', boxSizing: 'border-box' });
     expect(within(pill).getByText(email)).toHaveStyle({
       minWidth: '0', flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
     });
-    const change = within(pill).getByRole('button', { name: pl.auth.changeIdentifier });
+    const change = within(pill).getByRole('button', { name: en.auth.changeIdentifier });
     expect(change).toHaveStyle({ minHeight: '44px', minWidth: '44px', flexShrink: '0' });
     await userEvent.click(change);
     expect(await screen.findByTestId('login-email')).toHaveValue(email);
@@ -324,21 +356,23 @@ describe('LoginPage', () => {
     expect(head).not.toHaveAttribute('role');
     expect(head).not.toHaveAttribute('tabindex');
     expect(
-      screen.queryByRole('button', { name: new RegExp(pl.auth.methodPasswordTitle, 'u') }),
+      screen.queryByRole('button', { name: new RegExp(en.auth.methodPasswordTitle, 'u') }),
     ).not.toBeInTheDocument();
   });
 
   it('opens the magic-link step for a passwordless account', async () => {
     await renderLoginPage(false, '/login', undefined, ['magic-link']);
-    await continueWithEmail('kursant@together.dev');
+    await continueWithEmail('learner@together.dev');
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: pl.auth.methodTitle })).toBeInTheDocument();
-    expect(screen.getByText(pl.auth.methodMagicLinkBody)).toBeInTheDocument();
-    expect(screen.getByTestId('login-identity')).toHaveTextContent('kursant@together.dev');
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.auth.methodMagicLinkBody)).toBeInTheDocument();
+    expect(screen.getByTestId('login-identity')).toHaveTextContent('learner@together.dev');
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
     expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).toHaveTextContent(pl.auth.methodPasswordTitle);
+    expect(screen.queryByTestId('use-password')).not.toBeInTheDocument();
+    expect(screen.getByText(en.auth.passwordNotNeeded)).toBeInTheDocument();
+    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
   });
 
   it('answers an unknown address exactly like a passwordless account', async () => {
@@ -347,22 +381,22 @@ describe('LoginPage', () => {
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
     expect(screen.getByTestId('login-identity')).toHaveTextContent('nobody@example.com');
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
-  it('offers every method on one step, with the link card first', async () => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link']);
+  it('offers password when reported, with the link card first', async () => {
+    await renderLoginPage(false, '/login', undefined, ['password']);
     await continueWithEmail();
 
     const cards = await screen.findAllByRole('listitem');
     expect(cards.map((card) => card.textContent)).toEqual([
-      expect.stringContaining(pl.auth.methodMagicLinkTitle),
-      expect.stringContaining(pl.auth.methodPasswordTitle),
-      expect.stringContaining(pl.auth.methodPasskeyTitle),
+      expect.stringContaining(en.auth.methodMagicLinkTitle),
+      expect.stringContaining(en.auth.methodPasswordTitle),
+      expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    await userEvent.click(screen.getByTestId('use-password'));
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
 
@@ -388,21 +422,21 @@ describe('LoginPage', () => {
 
     await userEvent.click(await screen.findByTestId('login-change-email'));
 
-    expect(await screen.findByLabelText(pl.auth.emailLabel)).toHaveValue('creator@together.dev');
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toHaveValue('creator@together.dev');
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('remembers the last identifier for the next visit in this tab only', async () => {
     const first = await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(pl.auth.passwordLabel);
+    await screen.findByLabelText(en.auth.passwordLabel);
     first.unmount();
 
     expect(window.localStorage.getItem('together-login-identifier')).toBeNull();
 
     await renderLoginPage();
 
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveValue('creator@together.dev');
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveValue('creator@together.dev');
   });
 
   it('names the failure and preselects nothing when the lookup fails', async () => {
@@ -412,20 +446,20 @@ describe('LoginPage', () => {
 
     const failure = await screen.findByTestId('sign-in-methods-unavailable');
     expect(failure).toHaveTextContent(
-      pl.auth.signInMethodsUnavailable,
+      en.auth.signInMethodsUnavailable,
     );
     const retry = within(failure).getByTestId('sign-in-methods-retry');
     expect(retry).toHaveClass('MuiButton-outlined');
     expect(retry).toHaveStyle({ width: '100%', minHeight: '44px' });
     expect(screen.getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
     expect(screen.getByTestId('choose-magic-link')).toHaveTextContent(
-      pl.auth.signInMethodsChooseMagicLink,
+      en.auth.signInMethodsChooseMagicLink,
     );
     expect(screen.getByTestId('choose-password')).toHaveTextContent(
-      pl.auth.signInMethodsChoosePassword,
+      en.auth.signInMethodsChoosePassword,
     );
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('quotes the retry delay when the resolver rate-limits the visitor', async () => {
@@ -434,7 +468,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
-      pl.auth.signInMethodsRateLimitedRetryAfter({ seconds: 42 }),
+      en.auth.signInMethodsRateLimitedRetryAfter({ seconds: 42 }),
     );
   });
 
@@ -444,7 +478,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
-      pl.auth.signInMethodsRateLimited,
+      en.auth.signInMethodsRateLimited,
     );
   });
 
@@ -455,18 +489,21 @@ describe('LoginPage', () => {
 
     await userEvent.click(await screen.findByTestId('choose-password'));
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
-  it('opens the magic-link step from the failed lookup', async () => {
+  it.each([failSignInMethods, rateLimitSignInMethods])('offers all methods after a failed lookup: %s', async (failLookup) => {
     await renderLoginPage();
-    failSignInMethods();
+    failLookup();
     await continueWithEmail();
 
     await userEvent.click(await screen.findByTestId('choose-magic-link'));
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).toBeInTheDocument();
+    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
+    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
@@ -479,35 +516,35 @@ describe('LoginPage', () => {
 
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(pl.auth.passwordLabel);
+    await screen.findByLabelText(en.auth.passwordLabel);
     await userEvent.click(screen.getByTestId('login-change-email'));
     failSignInMethods();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.auth.identifierContinue }));
+    await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('does not carry a known password method over to another address', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(pl.auth.passwordLabel);
+    await screen.findByLabelText(en.auth.passwordLabel);
     await userEvent.click(screen.getByTestId('login-change-email'));
-    await userEvent.clear(await screen.findByLabelText(pl.auth.emailLabel));
+    await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
     failSignInMethods();
 
     await continueWithEmail('someone-else@together.dev');
 
     expect(await screen.findByTestId('sign-in-methods-unavailable')).toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('keeps the identifier fixed and focused while the lookup is in flight', async () => {
@@ -520,14 +557,14 @@ describe('LoginPage', () => {
     );
     await continueWithEmail();
 
-    const submit = await screen.findByRole('button', { name: pl.auth.identifierPending });
+    const submit = await screen.findByRole('button', { name: en.auth.identifierPending });
     expect(submit).toBeEnabled();
     expect(submit).toHaveAttribute('aria-busy', 'true');
-    const identifier = screen.getByLabelText(pl.auth.emailLabel);
+    const identifier = screen.getByLabelText(en.auth.emailLabel);
     expect(identifier).toBeEnabled();
     expect(identifier).toHaveAttribute('readonly');
     expect(document.activeElement).not.toBe(document.body);
-    expect(screen.getByRole('status')).toHaveTextContent(pl.auth.identifierPending);
+    expect(screen.getByRole('status')).toHaveTextContent(en.auth.identifierPending);
   });
 
   it('rejects a malformed identifier before touching the resolver', async () => {
@@ -542,16 +579,16 @@ describe('LoginPage', () => {
 
     await continueWithEmail('not-an-email');
 
-    expect(await screen.findByText(pl.auth.emailInvalid)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveAccessibleDescription(
-      pl.auth.emailInvalid,
+    expect(await screen.findByText(en.auth.emailInvalid)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveAccessibleDescription(
+      en.auth.emailInvalid,
     );
     expect(resolveCalls).toBe(0);
 
-    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), '@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), '@together.dev');
 
-    expect(screen.queryByText(pl.auth.emailInvalid)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.auth.emailInvalid)).not.toBeInTheDocument();
   });
 
   it('sends an expired-link visitor back to the magic link even with a password', async () => {
@@ -559,7 +596,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('degrades to not remembering when the browser blocks session storage', async () => {
@@ -569,25 +606,25 @@ describe('LoginPage', () => {
     try {
       await renderLoginPage();
 
-      expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveValue('');
+      expect(screen.getByLabelText(en.auth.emailLabel)).toHaveValue('');
 
       await continueWithEmail();
 
-      expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+      expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     } finally {
       allowSiteData();
     }
   });
 
   it.each([
-    ['/login?verification=verified', 'verified', pl.emailVerification.verified],
+    ['/login?verification=verified', 'verified', en.emailVerification.verified],
     [
       '/login?error=TOKEN_EXPIRED',
       'expired',
-      pl.emailVerification.expired,
+      en.emailVerification.expired,
     ],
-    ['/login?error=USER_NOT_FOUND', 'providerError', pl.emailVerification.providerError],
-    ['/login?error=INVALID_USER', 'providerError', pl.emailVerification.providerError],
+    ['/login?error=USER_NOT_FOUND', 'providerError', en.emailVerification.providerError],
+    ['/login?error=INVALID_USER', 'providerError', en.emailVerification.providerError],
   ] as const)('renders the %s verification outcome', async (entry, outcome, message) => {
     await renderLoginPage(false, entry);
 
@@ -597,8 +634,8 @@ describe('LoginPage', () => {
   it('shows an expired magic-link error with the replacement form ready', async () => {
     await renderLoginPage(false, '/login?error=INVALID_TOKEN');
 
-    expect(screen.getByRole('alert')).toHaveTextContent(pl.auth.magicLinkExpired);
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveFocus();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.auth.magicLinkExpired);
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveFocus();
     expect(screen.queryByTestId('email-verification-invalid')).not.toBeInTheDocument();
   });
 
@@ -617,7 +654,7 @@ describe('LoginPage', () => {
           data: {
             tenant: {
               slug: 'akademia',
-              name: 'Akademia Samouka',
+              name: 'Self-Learner Academy',
               branding: { logoUrl: null, accentColor: null, faviconUrl: null },
               socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@akademia' }],
               support: { url: null },
@@ -631,7 +668,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage(true, '/login', 'akademia.togethercommunity.app');
 
-    const form = screen.getByLabelText(pl.auth.emailLabel).closest('form');
+    const form = screen.getByLabelText(en.auth.emailLabel).closest('form');
     const socialLink = await screen.findByRole('link', { name: 'YouTube' });
     expect(form).not.toBeNull();
     expect(form?.compareDocumentPosition(socialLink) ?? 0)
@@ -688,10 +725,10 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
     expect(await screen.findByTestId('magic-link-sent')).toHaveTextContent(
-      pl.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
+      en.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
     );
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: pl.auth.openMagicLink })).toHaveAttribute(
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: en.auth.openMagicLink })).toHaveAttribute(
       'href',
       'https://studio.test/magic',
     );
@@ -724,11 +761,11 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
     expect(await screen.findByTestId('magic-link-sent')).toHaveTextContent(
-      pl.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
+      en.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
     );
     await waitFor(() => expect(devCalls).toBe(0));
-    expect(screen.queryByText(pl.auth.magicLinkFetching)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: pl.common.retry })).not.toBeInTheDocument();
+    expect(screen.queryByText(en.auth.magicLinkFetching)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
   it('renders the AppError from a failed sign-in mutation', async () => {
@@ -740,12 +777,12 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
-    const alert = (await screen.findByText(pl.errors.messageInvalidCredentials)).closest('[role="alert"]');
+    const alert = (await screen.findByText(en.errors.messageInvalidCredentials)).closest('[role="alert"]');
     expect(alert).not.toBeNull();
-    expect(alert).toHaveTextContent(pl.errors.messageInvalidCredentials);
-    expect(alert).not.toHaveTextContent(pl.errors.messageUnauthorized);
+    expect(alert).toHaveTextContent(en.errors.messageInvalidCredentials);
+    expect(alert).not.toHaveTextContent(en.errors.messageUnauthorized);
   });
 
   it('disables submit while the sign-in mutation is pending', async () => {
@@ -758,9 +795,9 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
-    expect(await screen.findByRole('button', { name: pl.auth.signInPending })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: en.auth.signInPending })).toBeDisabled();
   });
 
   it('keeps a pending sign-in provisional until TOTP succeeds', async () => {
@@ -782,11 +819,11 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
     expect(await screen.findByTestId('two-factor-challenge')).toBeInTheDocument();
     expect(calls).toEqual(['password']);
-    await userEvent.type(screen.getByLabelText(pl.auth.twoFactorCodeLabel), '123456');
+    await userEvent.type(screen.getByLabelText(en.auth.twoFactorCodeLabel), '123456');
     await userEvent.click(screen.getByTestId('verify-login-totp'));
 
     await waitFor(() => expect(calls).toEqual(['password', 'totp']));
@@ -811,8 +848,8 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
-    await userEvent.type(await screen.findByLabelText(pl.auth.twoFactorCodeLabel), 'backup-once');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+    await userEvent.type(await screen.findByLabelText(en.auth.twoFactorCodeLabel), 'backup-once');
     await userEvent.click(screen.getByTestId('verify-login-backup-code'));
 
     await waitFor(() => expect(submitted).toEqual({ code: 'backup-once' }));
@@ -829,7 +866,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
     await screen.findByTestId('two-factor-challenge');
   };
 
@@ -843,8 +880,8 @@ describe('LoginPage', () => {
     expect(code).not.toHaveAttribute('inputmode');
     expect(screen.getByTestId('verify-login-backup-code')).toBeEnabled();
     expect(screen.getByTestId('verify-login-totp')).toBeDisabled();
-    expect(screen.queryByText(pl.auth.registerPrompt)).not.toBeInTheDocument();
-    expect(screen.queryByText(pl.auth.demoAccount)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.auth.registerPrompt)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.auth.demoAccount)).not.toBeInTheDocument();
   });
 
   it('returns an empty backup-code click to the field instead of the API', async () => {
@@ -872,7 +909,7 @@ describe('LoginPage', () => {
 
     await userEvent.click(screen.getByTestId('two-factor-cancel'));
 
-    expect(await screen.findByLabelText(pl.auth.emailLabel)).toHaveValue('creator@together.dev');
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toHaveValue('creator@together.dev');
     expect(screen.queryByTestId('two-factor-challenge')).not.toBeInTheDocument();
     expect(window.location.search).toBe('');
   });
@@ -894,16 +931,16 @@ describe('LoginPage', () => {
 
     await userEvent.click(screen.getByTestId('resend-magic-link'));
 
-    expect(await screen.findByText(pl.auth.magicLinkResent)).toBeInTheDocument();
+    expect(await screen.findByText(en.auth.magicLinkResent)).toBeInTheDocument();
     await waitFor(() => expect(magicLinkCalls).toBe(2));
     expect(screen.getByTestId('resend-magic-link')).toBeDisabled();
     expect(screen.getByTestId('resend-magic-link')).toHaveTextContent(
-      pl.auth.magicLinkResendCooldown({ seconds: 30 }),
+      en.auth.magicLinkResendCooldown({ seconds: 30 }),
     );
 
     await userEvent.click(screen.getByTestId('login-change-email'));
 
-    expect(await screen.findByLabelText(pl.auth.emailLabel)).toHaveValue('member@example.com');
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toHaveValue('member@example.com');
     expect(screen.queryByTestId('magic-link-sent')).not.toBeInTheDocument();
   });
 
@@ -916,7 +953,7 @@ describe('LoginPage', () => {
     stubSignInMethods(['password']);
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
@@ -931,22 +968,22 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
-    await screen.findByText(pl.errors.messageInvalidCredentials);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+    await screen.findByText(en.errors.messageInvalidCredentials);
 
     await userEvent.click(screen.getByTestId('login-change-email'));
-    await userEvent.click(await screen.findByRole('button', { name: pl.auth.identifierContinue }));
+    await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
-    expect(await screen.findByLabelText(pl.auth.passwordLabel)).toHaveValue('');
-    expect(screen.queryByText(pl.errors.messageInvalidCredentials)).not.toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveValue('');
+    expect(screen.queryByText(en.errors.messageInvalidCredentials)).not.toBeInTheDocument();
   });
 
   it('explains the expired link again on the magic-link step', async () => {
     await renderLoginPage(false, '/login?error=INVALID_TOKEN');
     await continueWithEmail();
 
-    expect(await screen.findByText(pl.auth.magicLinkExpiredOnStep)).toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(await screen.findByText(en.auth.magicLinkExpiredOnStep)).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('keeps the demo block on the identifier step of the platform surface only', async () => {
@@ -968,7 +1005,7 @@ describe('LoginPage', () => {
         return HttpResponse.json({
           ok: true,
           data: {
-            tenant: { slug: 'akademia', name: 'Akademia Demo' },
+            tenant: { slug: 'academy', name: 'Academy Demo' },
             contentVersion: 1,
             previewLessons: [],
             products: [],
@@ -977,13 +1014,13 @@ describe('LoginPage', () => {
       }),
     );
 
-    await renderLoginPage(false, '/login', 'akademia.togethercommunity.app');
+    await renderLoginPage(false, '/login', 'academy.togethercommunity.app');
 
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: pl.auth.signInToTenant({ tenant: 'Akademia Demo' }),
+        name: en.auth.signInToTenant({ tenant: 'Academy Demo' }),
       }),
     ).toBeInTheDocument();
   });
@@ -995,7 +1032,7 @@ describe('LoginPage', () => {
         HttpResponse.json({
           ok: true,
           data: {
-            tenant: { slug: 'akademia', name: 'Akademia Demo' },
+            tenant: { slug: 'academy', name: 'Academy Demo' },
             contentVersion: 1,
             previewLessons: [],
             products: [],
@@ -1004,21 +1041,21 @@ describe('LoginPage', () => {
       ),
     );
 
-    await renderLoginPage(false, '/login', 'akademia.togethercommunity.app', undefined, [
+    await renderLoginPage(false, '/login', 'academy.togethercommunity.app', undefined, [
       'course-1',
     ]);
 
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: pl.auth.signInToTenant({ tenant: 'Akademia Demo' }),
+        name: en.auth.signInToTenant({ tenant: 'Academy Demo' }),
       }),
     ).toBeInTheDocument();
     const prompt = await screen.findByTestId('auth-footer-access');
-    expect(prompt).toHaveTextContent(pl.auth.noAccessPrompt);
+    expect(prompt).toHaveTextContent(en.auth.noAccessPrompt);
     expect(
       within(prompt).getByRole('link', {
-        name: pl.auth.noAccessLink({ tenant: 'Akademia Demo' }),
+        name: en.auth.noAccessLink({ tenant: 'Academy Demo' }),
       }),
     ).toHaveAttribute('href', '/');
     expect(screen.queryByTestId('login-register-prompt')).not.toBeInTheDocument();
@@ -1032,7 +1069,7 @@ describe('LoginPage', () => {
         HttpResponse.json({
           ok: true,
           data: {
-            tenant: { slug: 'akademia', name: 'Akademia Demo' },
+            tenant: { slug: 'academy', name: 'Academy Demo' },
             contentVersion: 1,
             previewLessons: [],
             products: [],
@@ -1041,9 +1078,9 @@ describe('LoginPage', () => {
       ),
     );
 
-    await renderLoginPage(false, '/login', 'akademia.togethercommunity.app');
+    await renderLoginPage(false, '/login', 'academy.togethercommunity.app');
 
-    expect(await screen.findByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('auth-footer-access')).not.toBeInTheDocument();
     expect(screen.queryByTestId('login-register-prompt')).not.toBeInTheDocument();
   });
@@ -1051,10 +1088,10 @@ describe('LoginPage', () => {
   it('explains the next step under the identifier field', async () => {
     await renderLoginPage();
 
-    expect(screen.getByLabelText(pl.auth.emailLabel)).toHaveAccessibleDescription(
-      pl.auth.emailHelper,
+    expect(screen.getByLabelText(en.auth.emailLabel)).toHaveAccessibleDescription(
+      en.auth.emailHelper,
     );
-    expect(screen.getByTestId('login-register-prompt')).toHaveTextContent(pl.auth.registerPrompt);
+    expect(screen.getByTestId('login-register-prompt')).toHaveTextContent(en.auth.registerPrompt);
   });
 
   it('hides the demo block on a tenant host', async () => {
@@ -1062,7 +1099,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage(true, '/login', 'acme.togethercommunity.app');
 
-    expect(await screen.findByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toBeInTheDocument();
     expect(screen.queryByText('demo-password-15')).not.toBeInTheDocument();
   });
 });

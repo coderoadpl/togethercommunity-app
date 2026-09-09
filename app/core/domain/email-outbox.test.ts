@@ -8,7 +8,7 @@ describe('renderEmailOutboxPayload', () => {
   it('renders a welcome-sign-in payload with branding', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'welcome-sign-in',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
       actionUrl: 'https://caravan.test/sign-in?token=abc',
       branding,
@@ -27,18 +27,15 @@ describe('renderEmailOutboxPayload', () => {
     if (rendered.success) expect(rendered.data.subject).toBe('Reset your password');
   });
 
-  it.each([
-    ['pl', 'Potwierdź swój adres e-mail'],
-    ['en', 'Verify your email address'],
-  ] as const)('renders a %s verification email', (language, subject) => {
+  it('renders an email verification message', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'verify-email',
-      language,
+      language: 'en',
       actionUrl: 'https://studio.example/verify?token=xyz',
     });
     expect(rendered.success).toBe(true);
     if (rendered.success) {
-      expect(rendered.data.subject).toBe(subject);
+      expect(rendered.data.subject).toBe('Verify your email address');
       expect(rendered.data.text).toContain('studio.example');
     }
   });
@@ -68,7 +65,7 @@ describe('renderEmailOutboxPayload', () => {
   it('renders a magic-link payload with branding', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'magic-link',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
       url: 'https://caravan.test/verify?token=abc',
       branding,
@@ -80,15 +77,15 @@ describe('renderEmailOutboxPayload', () => {
   it('renders a thread-reply payload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'thread-reply',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
-      lessonName: 'Lekcja o hamakach',
-      authorDisplay: 'Ola',
-      snippet: 'Świetne pytanie!',
+      lessonName: 'Hammock lesson',
+      authorDisplay: 'Olivia',
+      snippet: 'Great question!',
       url: 'https://caravan.test/my/courses/c1/lessons/l1',
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.text).toContain('Ola');
+    if (rendered.success) expect(rendered.data.text).toContain('Olivia');
   });
 
   it('renders a lesson-question payload', () => {
@@ -96,35 +93,35 @@ describe('renderEmailOutboxPayload', () => {
       kind: 'lesson-question',
       language: 'en',
       tenantName: 'Caravan',
-      lessonName: 'Lekcja o hamakach',
-      authorDisplay: 'Ola',
+      lessonName: 'Hammock lesson',
+      authorDisplay: 'Olivia',
       snippet: 'Where do I start?',
       url: 'https://caravan.test/my/courses/c1/lessons/l1',
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.subject).toContain('Lekcja o hamakach');
+    if (rendered.success) expect(rendered.data.subject).toContain('Hammock lesson');
   });
 
   it('renders a space-post payload', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'space-post',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
-      spaceName: 'Społeczność',
-      authorDisplay: 'Ola',
-      snippet: 'Cześć wszystkim',
+      spaceName: 'Community',
+      authorDisplay: 'Olivia',
+      snippet: 'Hello everyone',
       url: 'https://caravan.test/community/s1/posts/p1',
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.html).toContain('Społeczność');
+    if (rendered.success) expect(rendered.data.html).toContain('Community');
   });
 
   it('renders subscription lifecycle payloads', () => {
     const failed = renderEmailOutboxPayload({
       kind: 'subscription-payment-failed',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
-      productTitle: 'Kurs',
+      productTitle: 'Course',
       accessEndsAt: '1998-08-17T10:00:00.000Z',
       billingPortalUrl: null,
     });
@@ -183,18 +180,18 @@ describe('renderEmailOutboxPayload', () => {
       .toBe(false);
   });
 
-  it('renders a marketing consent confirmation in Polish when the payload carries no language', () => {
+  it('renders a marketing consent confirmation in English when the payload carries no language', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'marketing-consent-confirmation',
       wording: 'Newsletter',
       confirmationUrl: 'https://studio.test/marketing/confirm?token=abc',
     });
     expect(rendered.success).toBe(true);
-    if (rendered.success) expect(rendered.data.subject).toBe('Potwierdź zgodę na wiadomości e-mail');
+    if (rendered.success) expect(rendered.data.subject).toBe('Confirm your e-mail consent');
   });
 
   it('fails on an unknown payload kind', () => {
-    const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'pl' });
+    const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'en' });
     expect(rendered.success).toBe(false);
   });
 

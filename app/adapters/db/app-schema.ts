@@ -2,6 +2,8 @@ import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
 import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
+import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
+
 import type {
   MarketingListRule,
   MarketingAudienceSnapshot,
@@ -43,7 +45,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
     plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
-    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default('pl'),
+    defaultLanguage: text('default_language', { enum: ['pl', 'en'] }).notNull().default(DEFAULT_LANGUAGE),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
@@ -328,6 +330,7 @@ export const products = pgTable(
     priceCents: integer('price_cents').notNull(),
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
+    visibility: text('visibility', { enum: ['listed', 'unlisted'] }).notNull().default('listed'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
     checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
@@ -337,6 +340,7 @@ export const products = pgTable(
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
     index('products_tenantId_idx').on(table.tenantId),
+    check('products_visibility_check', sql`${table.visibility} in ('listed', 'unlisted')`),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -2225,6 +2229,7 @@ export const tenantAuditEvents = pgTable(
         'content_version_restored',
         'redirect_created',
         'redirect_deleted',
+        'post_purged',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

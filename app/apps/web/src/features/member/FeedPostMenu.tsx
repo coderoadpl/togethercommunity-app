@@ -100,7 +100,7 @@ export const FeedPostMenu = ({
               conversation.start();
             }}
           >
-            <ListItemText primary={t.messages.startFromAuthor} />
+            <ListItemText primary={t.messages.messageAuthor} />
           </MenuItem>
         ) : null}
         {canContactAuthor ? (

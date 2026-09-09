@@ -37,6 +37,7 @@ import {
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
   updateProductAccessItemsInputSchema,
+  productVisibilitySchema,
   validation,
   type AccessStatus,
   type AppError,
@@ -159,6 +160,7 @@ const storageConfigurationOptionsSchema = z.object({
   secretAccessKey: z.string().min(1),
 });
 const productCreateOptionsSchema = z.object({
+  visibility: productVisibilitySchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership']).optional(),
   slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
@@ -170,6 +172,7 @@ const productCreateOptionsSchema = z.object({
   accessItems: z.string().optional(),
 });
 const productUpdateOptionsSchema = z.object({
+  visibility: productVisibilitySchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
@@ -820,7 +823,7 @@ const checkout = program.command('checkout').description('Public checkout');
 
 checkout
   .command('session')
-  .description('Create a Stripe-hosted checkout session')
+  .description('Start a paid or free checkout')
   .requiredOption('--product <id>')
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
@@ -1100,6 +1103,7 @@ product.command('list').description('List products').action(
 product
   .command('create')
   .description('Create a product in the active tenant')
+  .option('--visibility <visibility>', 'listed or unlisted')
   .requiredOption('--title <title>')
   .option('--type <type>', 'course, digital_download or membership')
   .option('--slug <slug>', 'tenant-unique product slug')
@@ -1140,6 +1144,7 @@ product
       }
       emit(
         await ctx.api.createProduct({
+          ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           title: options.title,
           priceCents,
           ...(options.type === undefined ? {} : { type: options.type }),
@@ -1179,7 +1184,8 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description or cover')
+  .description('Update product title, description, cover or visibility')
+  .option('--visibility <visibility>', 'listed or unlisted')
   .option('--title <title>')
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
@@ -1192,6 +1198,7 @@ product
       }
       emit(
         await ctx.api.updateProduct({
+          ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           id,
           ...(options.title === undefined ? {} : { title: options.title }),
           ...(options.description === undefined ? {} : { description: options.description }),
@@ -2064,6 +2071,14 @@ student
 const discussion = program.command('discussion').description('Lesson discussions');
 
 const post = program.command('post').description('Community posts');
+
+post
+  .command('purge')
+  .description('Permanently delete a deleted post and its replies (staff only)')
+  .requiredOption('--id <postId>')
+  .action(withInput(z.tuple([z.object({ id: z.string().min(1) })]), async (ctx, [input]) => {
+    emit(await ctx.api.purgePost(input), ctx.json, (data) => `purged post ${data.id}`);
+  }));
 
 post
   .command('report')

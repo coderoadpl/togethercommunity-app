@@ -110,6 +110,7 @@ const product: Product = {
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,
@@ -290,7 +291,7 @@ describe('lesson attachments', () => {
     const { attachments, deps, signed } = testDeps();
     const owner = ctx({ staffRole: 'owner', memberId: null });
     const started = await beginLessonAttachmentUpload(owner, lesson.id, {
-      fileName: 'Ćwiczenia 01.pdf',
+      fileName: 'Exercises 01.pdf',
       contentType: 'application/pdf',
       sizeBytes: 2048,
     }, deps);
@@ -300,7 +301,7 @@ describe('lesson attachments', () => {
     expect(started.value.expiresAt).toBe('2026-08-03T12:15:00.000Z');
     expect(signed).toEqual([{
       method: 'PUT',
-      url: 'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/C-wiczenia-01.pdf',
+      url: 'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/Exercises-01.pdf',
       region: 'eu-central-1',
       expiresInSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
     }]);

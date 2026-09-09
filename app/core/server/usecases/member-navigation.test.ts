@@ -134,6 +134,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems,
   legacyId: null,
@@ -281,6 +282,7 @@ const deps = (input: {
     listReplies: async () => [],
     updateBody: async () => null,
     softDelete: async () => null,
+    purge: async () => false,
     setPinned: async () => null,
     listPinnedForContext: async () => [],
     countPinnedForContext: async () => 0,
@@ -702,4 +704,17 @@ describe('getMemberNavigation', () => {
       },
     });
   });
+});
+
+
+it('hides unlisted purchase suggestions while preserving spaces already owned', async () => {
+  const result = await getMemberNavigation(memberCtx(), deps({
+    ...entitledToModuleM1,
+    products: entitledToModuleM1.products.map((entry) => ({ ...entry, visibility: 'unlisted' })),
+  }));
+  expect(result).toMatchObject({ ok: true, value: {
+    spaces: [{ id: 's-open' }, { id: 's-module' }], lockedSpaces: [],
+  } });
+  if (!result.ok) throw new Error('Expected navigation');
+  expect(result.value.spaces.flatMap((entry) => entry.products)).toEqual([]);
 });

@@ -131,7 +131,7 @@ const MethodCard = ({
 
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const { explicitLanguage } = useLanguage();
   const me = useRedirectSignedInWithTenant();
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
@@ -282,14 +282,22 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const sendMagicLink = () => {
     setRequestedMagicEmail('');
     setMagicLinkResent(false);
-    requestMagicLink.mutate({ email, callbackURL: `${window.location.origin}/my`, language });
+    requestMagicLink.mutate({
+      email,
+      callbackURL: `${window.location.origin}/my`,
+      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+    });
   };
 
   const resendMagicLink = () => {
     setMagicLinkResent(false);
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     requestMagicLink.mutate(
-      { email: requestedMagicEmail, callbackURL: `${window.location.origin}/my`, language },
+      {
+        email: requestedMagicEmail,
+        callbackURL: `${window.location.origin}/my`,
+        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+      },
       { onSuccess: () => setMagicLinkResent(true) },
     );
   };
@@ -340,6 +348,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       {changeIdentifierLink(t.auth.changeIdentifierShort)}
     </AuthIdentityChip>
   );
+
+  const passwordAvailable = resolveSignInMethods.data?.methods.includes('password') ?? true;
 
   const resolveRetryAfterSeconds = retryAfterSecondsOf(resolveFailure);
   const resolveFailureMessage =
@@ -711,63 +721,68 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           disabled={requestMagicLink.isPending}
           onClick={sendMagicLink}
         />
-        <MethodCard
-          icon={<LockIcon />}
-          title={t.auth.methodPasswordTitle}
-          body={t.auth.methodPasswordBody}
-          testId="use-password"
-          {...(method === 'password'
-            ? {}
-            : { onClick: () => switchMethod('password') })}
-          {...(method === 'password'
-            ? {
-                panel: (
-                  <>
-                    <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
-                      <VisuallyHidden aria-hidden>
-                        <input
-                          type="email"
-                          name="username"
-                          autoComplete="username"
-                          value={email}
-                          readOnly
-                          tabIndex={-1}
-                          data-testid="login-identity-email"
-                        />
-                      </VisuallyHidden>
-                      <FormControl fullWidth>
-                        <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
-                        <AuthInput
-                          id="login-password"
-                          type="password"
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          autoComplete="current-password"
-                          autoFocus
-                          inputProps={{ 'data-testid': 'login-password' }}
-                          required
-                        />
-                      </FormControl>
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        fullWidth
-                        disabled={signIn.isPending}
-                        data-testid="signin-submit"
-                      >
-                        {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
-                      </Button>
-                    </Stack>
-                    <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
-                      <MuiLink component={Link} to="/forgot-password" data-testid="forgot-password">
-                        {t.auth.forgotPassword}
-                      </MuiLink>
-                    </FinePrint>
-                  </>
-                ),
-              }
-            : {})}
-        />
+        {passwordAvailable ? null : (
+          <AuthHelp component="li">{t.auth.passwordNotNeeded}</AuthHelp>
+        )}
+        {passwordAvailable ? (
+          <MethodCard
+            icon={<LockIcon />}
+            title={t.auth.methodPasswordTitle}
+            body={t.auth.methodPasswordBody}
+            testId="use-password"
+            {...(method === 'password'
+              ? {}
+              : { onClick: () => switchMethod('password') })}
+            {...(method === 'password'
+              ? {
+                  panel: (
+                    <>
+                      <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
+                        <VisuallyHidden aria-hidden>
+                          <input
+                            type="email"
+                            name="username"
+                            autoComplete="username"
+                            value={email}
+                            readOnly
+                            tabIndex={-1}
+                            data-testid="login-identity-email"
+                          />
+                        </VisuallyHidden>
+                        <FormControl fullWidth>
+                          <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
+                          <AuthInput
+                            id="login-password"
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            autoComplete="current-password"
+                            autoFocus
+                            inputProps={{ 'data-testid': 'login-password' }}
+                            required
+                          />
+                        </FormControl>
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          fullWidth
+                          disabled={signIn.isPending}
+                          data-testid="signin-submit"
+                        >
+                          {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
+                        </Button>
+                      </Stack>
+                      <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
+                        <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}`} data-testid="forgot-password">
+                          {t.auth.forgotPassword}
+                        </MuiLink>
+                      </FinePrint>
+                    </>
+                  ),
+                }
+              : {})}
+          />
+        ) : null}
         <MethodCard
           icon={<PasskeyIcon />}
           title={t.auth.methodPasskeyTitle}

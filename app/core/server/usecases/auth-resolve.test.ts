@@ -28,7 +28,7 @@ describe('resolveSignInMethods', () => {
 
     const passwordless = await resolveSignInMethods(
       't-acme',
-      { email: 'kursant@together.dev' },
+      { email: 'student@together.dev' },
       deps,
     );
     const unknown = await resolveSignInMethods('t-acme', { email: 'nobody@example.com' }, deps);

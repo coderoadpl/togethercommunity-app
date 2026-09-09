@@ -47,8 +47,8 @@ const provisioner = (
 
 const TXT = {
   type: 'TXT',
-  domain: '_vercel.kurs.acme.example',
-  value: 'vc-domain-verify=kurs.acme.example,abc',
+  domain: '_vercel.course.acme.example',
+  value: 'vc-domain-verify=course.acme.example,abc',
 };
 
 describe('vercel domain provisioner', () => {
@@ -59,7 +59,7 @@ describe('vercel domain provisioner', () => {
       { teamId: 'team_1', gitBranch: 'staging' },
     );
 
-    const result = await subject.add('kurs.acme.example');
+    const result = await subject.add('course.acme.example');
 
     expect(result).toEqual({
       ok: true,
@@ -67,17 +67,17 @@ describe('vercel domain provisioner', () => {
         verified: false,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.acme.example',
-          value: 'vc-domain-verify=kurs.acme.example,abc',
+          name: '_vercel.course.acme.example',
+          value: 'vc-domain-verify=course.acme.example,abc',
         }],
-        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
+        records: [{ type: 'TXT', name: '_vercel.course.acme.example', value: 'vc-domain-verify=course.acme.example,abc', purpose: 'ownership' }],
       },
     });
     expect(recorded).toEqual([{
       method: 'POST',
       url: 'https://api.vercel.com/v10/projects/prj_1/domains?teamId=team_1',
       authorization: 'Bearer vercel-token',
-      body: { name: 'kurs.acme.example', gitBranch: 'staging' },
+      body: { name: 'course.acme.example', gitBranch: 'staging' },
     }]);
   });
 
@@ -88,24 +88,24 @@ describe('vercel domain provisioner', () => {
       { gitBranch: 'staging' },
     );
 
-    await subject.add('kurs.acme.example', { gitBranch: 'main' });
+    await subject.add('course.acme.example', { gitBranch: 'main' });
 
-    expect(recorded[0]?.body).toEqual({ name: 'kurs.acme.example', gitBranch: 'main' });
+    expect(recorded[0]?.body).toEqual({ name: 'course.acme.example', gitBranch: 'main' });
   });
 
   it('reads verification records and the DNS configuration for the status', async () => {
     const { subject } = provisioner({
-      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
+      'GET /v9/projects/prj_1/domains/course.acme.example': {
         status: 200,
         payload: { verified: false, verification: [TXT] },
       },
-      'GET /v6/domains/kurs.acme.example/config': {
+      'GET /v6/domains/course.acme.example/config': {
         status: 200,
         payload: { misconfigured: true },
       },
     });
 
-    const result = await subject.status('kurs.acme.example');
+    const result = await subject.status('course.acme.example');
 
     expect(result).toEqual({
       ok: true,
@@ -114,37 +114,37 @@ describe('vercel domain provisioner', () => {
         misconfigured: true,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.acme.example',
-          value: 'vc-domain-verify=kurs.acme.example,abc',
+          name: '_vercel.course.acme.example',
+          value: 'vc-domain-verify=course.acme.example,abc',
         }],
-        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
+        records: [{ type: 'TXT', name: '_vercel.course.acme.example', value: 'vc-domain-verify=course.acme.example,abc', purpose: 'ownership' }],
       },
     });
   });
 
   it('triggers verification and re-reads the resulting state', async () => {
     const { subject, recorded } = provisioner({
-      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify': { status: 200, payload: { verified: true } },
-      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
+      'POST /v9/projects/prj_1/domains/course.acme.example/verify': { status: 200, payload: { verified: true } },
+      'GET /v9/projects/prj_1/domains/course.acme.example': {
         status: 200,
         payload: { verified: true, verification: [] },
       },
-      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v6/domains/course.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    const result = await subject.verify('kurs.acme.example');
+    const result = await subject.verify('course.acme.example');
 
     expect(result).toEqual({ ok: true, value: { verified: true, misconfigured: false, verification: [], records: [] } });
     expect(recorded.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
-      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify',
-      'GET /v9/projects/prj_1/domains/kurs.acme.example',
-      'GET /v6/domains/kurs.acme.example/config',
+      'POST /v9/projects/prj_1/domains/course.acme.example/verify',
+      'GET /v9/projects/prj_1/domains/course.acme.example',
+      'GET /v6/domains/course.acme.example/config',
     ]);
   });
 
   it('reads the state of a domain whose TXT challenge is not published yet', async () => {
     const { subject } = provisioner({
-      'POST /v9/projects/prj_1/domains/kurs.acme.example/verify': {
+      'POST /v9/projects/prj_1/domains/course.acme.example/verify': {
         status: 400,
         payload: {
           error: {
@@ -153,34 +153,34 @@ describe('vercel domain provisioner', () => {
           },
         },
       },
-      'GET /v9/projects/prj_1/domains/kurs.acme.example': {
+      'GET /v9/projects/prj_1/domains/course.acme.example': {
         status: 200,
         payload: { verified: false, verification: [TXT] },
       },
-      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v6/domains/course.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    expect(await subject.verify('kurs.acme.example')).toEqual({
+    expect(await subject.verify('course.acme.example')).toEqual({
       ok: true,
       value: {
         verified: false,
         misconfigured: false,
         verification: [{
           type: 'TXT',
-          name: '_vercel.kurs.acme.example',
-          value: 'vc-domain-verify=kurs.acme.example,abc',
+          name: '_vercel.course.acme.example',
+          value: 'vc-domain-verify=course.acme.example,abc',
         }],
-        records: [{ type: 'TXT', name: '_vercel.kurs.acme.example', value: 'vc-domain-verify=kurs.acme.example,abc', purpose: 'ownership' }],
+        records: [{ type: 'TXT', name: '_vercel.course.acme.example', value: 'vc-domain-verify=course.acme.example,abc', purpose: 'ownership' }],
       },
     });
   });
 
   it('treats a domain the project no longer holds as removed', async () => {
     const { subject } = provisioner({
-      'DELETE /v9/projects/prj_1/domains/kurs.acme.example': { status: 404 },
+      'DELETE /v9/projects/prj_1/domains/course.acme.example': { status: 404 },
     });
 
-    expect(await subject.remove('kurs.acme.example')).toEqual({ ok: true, value: undefined });
+    expect(await subject.remove('course.acme.example')).toEqual({ ok: true, value: undefined });
   });
 
   it('reports a project the token cannot reach instead of a pending domain', async () => {
@@ -189,15 +189,15 @@ describe('vercel domain provisioner', () => {
         status: 404,
         payload: { error: { code: 'not_found', message: 'Project not found' } },
       },
-      'GET /v9/projects/prj_1/domains/kurs.acme.example': { status: 404 },
-      'GET /v6/domains/kurs.acme.example/config': { status: 200, payload: { misconfigured: false } },
+      'GET /v9/projects/prj_1/domains/course.acme.example': { status: 404 },
+      'GET /v6/domains/course.acme.example/config': { status: 200, payload: { misconfigured: false } },
     });
 
-    expect(await subject.add('kurs.acme.example')).toEqual({
+    expect(await subject.add('course.acme.example')).toEqual({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel: Project not found' },
     });
-    expect(await subject.status('kurs.acme.example')).toEqual({
+    expect(await subject.status('course.acme.example')).toEqual({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel responded with HTTP 404.' },
     });
@@ -211,7 +211,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.add('kurs.acme.example')).toEqual({
+    expect(await subject.add('course.acme.example')).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -233,7 +233,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.add('kurs.acme.example')).toEqual({
+    expect(await subject.add('course.acme.example')).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -252,7 +252,7 @@ describe('vercel domain provisioner', () => {
       },
     });
 
-    expect(await subject.status('kurs.acme.example', { signal: AbortSignal.abort() })).toEqual({
+    expect(await subject.status('course.acme.example', { signal: AbortSignal.abort() })).toEqual({
       ok: false,
       error: {
         code: 'integration_unavailable',
@@ -268,7 +268,7 @@ describe('vercel domain provisioner', () => {
       fetchImpl: () => Promise.reject(new Error('ECONNRESET')),
     });
 
-    expect(await subject.status('kurs.acme.example')).toMatchObject({
+    expect(await subject.status('course.acme.example')).toMatchObject({
       ok: false,
       error: { code: 'integration_unavailable', message: 'Vercel is unreachable: ECONNRESET' },
     });

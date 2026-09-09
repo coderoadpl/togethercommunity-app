@@ -16,6 +16,7 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  deletedContent: { member: string; post: string };
   common: {
     appName: string;
     language: string;
@@ -168,6 +169,7 @@ export interface Messages {
     methodMagicLinkTitle: string;
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
+    passwordNotNeeded: string;
     methodPasswordBody: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
@@ -555,6 +557,7 @@ export interface Messages {
     sending: string;
     loadOlder: string;
     ownPrefix: string;
+    messageAuthor: string;
     startFromAuthor: string;
     starting: string;
     unreadAria: (params: { count: number }) => string;
@@ -810,6 +813,7 @@ export interface Messages {
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnyCdnHostnameLabel: string;
+    bunnyCdnHostnamePlaceholder: string;
     bunnyCdnHostnameHelper: string;
     bunnySaveFirst: string;
     s3Heading: string;
@@ -856,6 +860,10 @@ export interface Messages {
     storageProbeUnavailable: string;
   };
   products: {
+    visibilityLabel: string;
+    visibilityHelper: string;
+    listed: string;
+    unlisted: string;
     newProduct: string;
     detailsHeading: string;
     titleLabel: string;
@@ -1424,6 +1432,7 @@ export interface Messages {
     grantExpiredLabel: (params: { date: string }) => string;
     grantUpcomingLabel: (params: { date: string }) => string;
     grantUpcomingNote: (params: { date: string }) => string;
+    renewalUnavailable: string;
     renewAccess: string;
     subscriptionActiveLabel: string;
     subscriptionPastDueLabel: string;
@@ -1551,6 +1560,9 @@ export interface Messages {
     deleteConfirm: string;
     deleting: string;
     deletedPost: string;
+    purge: string;
+    purgeConfirmTitle: string;
+    purgeConfirmBody: string;
     moderatorDeletedPost: string;
     edited: string;
     authorChip: string;

@@ -27,21 +27,21 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Roczny dostęp do kursu Samodzielna nauka programowania.",
-            "id": "product-akademia-roczny",
+            "description": "One year of access to Learning to Code on Your Own.",
+            "id": "product-akademia-annual",
             "marketingConsents": [],
             "priceCents": 29900,
             "prices": [
               {
                 "amountCents": 29900,
                 "currency": "PLN",
-                "id": "price-product-akademia-roczny",
+                "id": "price-product-akademia-annual",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "akademia-roczny",
-            "title": "Akademia - dostęp roczny",
+            "slug": "akademia-annual",
+            "title": "Akademia - annual access",
             "type": "course"
           }
         ],
@@ -53,6 +53,7 @@
             "logoDarkUrl": null,
             "logoUrl": "/assets/akademia-wordmark.svg"
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

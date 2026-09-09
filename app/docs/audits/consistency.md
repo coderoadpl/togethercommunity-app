@@ -56,7 +56,7 @@ divergences before merge. **Next review:** the next release audit.
 
 | Contract | Server | Client | CLI | Creator account | Member account | PL | EN | Docs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `emailVerified` identity state and `tenant:create` verdict | Soft verification mail and enumeration-safe resend; tenant-host links preserve the cookie world | Identity parsing and resend descriptor covered | Identity output includes verification state | Status and resend in tenantless home and settings | Status and resend at `/account` | Mail, status, success, error, and recovery copy | Mail, status, success, error, and recovery copy | ADR 0012, route table, permission table, self-host guide, and this audit |
+| `emailVerified` identity state and `tenant:create` verdict | Soft verification mail and enumeration-safe resend; tenant-host links preserve the cookie world | Identity parsing and resend descriptor covered | Identity output includes verification state | Status and resend in tenantless home and settings | Status and resend at `/account` | Mail, status, success, error, and recovery copy | Mail, status, success, error, and recovery copy | Route table, permission table, [self-host and tenant bootstrap guide](../self-host.md), and this audit |
 
 - **Tool evidence:** focused auth, server, and login-page tests cover subdomain,
   custom-domain, base-domain tenant-header, bounded-context, and known provider

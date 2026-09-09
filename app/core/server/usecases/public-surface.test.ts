@@ -107,6 +107,7 @@ const product = (id: string, lessonIds: string[], courseId: string): Product => 
   coverUrl: null,
   priceCents: 5000,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [{ level: 'lessons', courseId, lessonIds }],
   legacyId: null,
@@ -559,7 +560,7 @@ describe('getPublicCourseStructure', () => {
   it('returns no product for draft or unrelated products', async () => {
     const result = await getPublicCourseStructure(tenant, open.id, structureDeps({
       courses: [open], modules: [], lessons: [],
-      products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other')],
+      products: [{ ...product('draft', [], open.id), published: false }, product('other', [], 'other'), { ...product('hidden', [], open.id), visibility: 'unlisted' }],
     }));
     expect(result).toMatchObject({ ok: true, value: { offer: { product: null, salesUrl: null, supportUrl: null } } });
   });
@@ -689,16 +690,14 @@ describe('getPublicSpaceThread', () => {
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it.each(['author', 'moderator'] as const)('applies %s deletion visibility to public feeds and permalinks', async (deletedBy) => {
+  it.each([null, 'author', 'moderator'] as const)('applies %s deletion visibility to public feeds and permalinks', async (deletedBy) => {
     const root = { ...post({ id: 'deleted-root', contextId: open.id }), deletedAt: PUBLIC_NOW, deletedBy };
     const deps = spaceDeps({ spaces: [open], posts: [root] });
     deps.posts.listThreadsForContext = async () => ({ threads: [{ post: root, replyCount: 0 }], nextCursor: null });
     const feed = await getPublicSpaceFeed(tenant, { spaceId: open.id }, deps);
-    expect(feed).toMatchObject({ ok: true, value: { items: deletedBy === 'author' ? [] : [{ deletedBy }] } });
+    expect(feed).toMatchObject({ ok: true, value: { items: [] } });
     const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
-    expect(thread).toMatchObject(deletedBy === 'author'
-      ? { ok: false, error: { code: 'not_found' } }
-      : { ok: true, value: { threads: [{ deletedBy, body: 'Wpis usunięty przez moderatora.' }] } });
+    expect(thread).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it('rejects a malformed thread query', async () => {

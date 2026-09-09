@@ -11,8 +11,8 @@
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
-          "defaultHomeSpaceId": "space-studio-spolecznosc",
-          "defaultLanguage": "pl",
+          "defaultHomeSpaceId": "space-studio-community",
+          "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
           "invoiceExemptionBasis": null,
@@ -45,24 +45,24 @@
         "courses": [
           {
             "createdAt": "2026-07-01T12:00:02.000Z",
-            "description": "Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.",
+            "description": "A complete JavaScript course, from variables, functions, and the DOM to your first project.",
             "id": "course-js",
             "imageUrl": "https://picsum.photos/seed/together-course-js/960/540",
             "legacyId": null,
             "moduleOrder": [],
-            "name": "Kurs JavaScript od podstaw",
+            "name": "JavaScript from Scratch",
             "publiclyVisible": true,
             "salesUrl": null,
             "tenantId": "tenant-studio"
           },
           {
             "createdAt": "2026-07-01T12:00:03.000Z",
-            "description": "Budowanie interfejsów w React — komponenty, stan, hooki i zaawansowane wzorce.",
+            "description": "Build interfaces in React with components, state, hooks, and advanced patterns.",
             "id": "course-react",
             "imageUrl": "https://picsum.photos/seed/together-course-react/960/540",
             "legacyId": null,
             "moduleOrder": [],
-            "name": "React w praktyce",
+            "name": "React in Practice",
             "publiclyVisible": false,
             "salesUrl": null,
             "tenantId": "tenant-studio"
@@ -91,7 +91,7 @@
                 "type": "video"
               },
               {
-                "html": "<h3>Odtwarzacz wideo Bunny Stream</h3><p>Ta lekcja pokazuje prawdziwy strumień wideo z Bunny Stream osadzony w odtwarzaczu platformy. Materiały wideo w Together serwujemy przez Bunny Stream — szybki, globalny hosting wideo z adaptacyjną jakością (HLS).</p><p>Aby dodać własne nagranie, wgraj je do swojej biblioteki Bunny Stream i wklej identyfikatory biblioteki oraz wideo w edytorze lekcji.</p>",
+                "html": "<h3>Bunny Stream video player</h3><p>This lesson shows a real Bunny Stream video embedded in the platform player. Together delivers video through Bunny Stream, a global video host with adaptive streaming quality (HLS).</p><p>To add your own recording, upload it to your Bunny Stream library and paste the library and video IDs into the lesson editor.</p>",
                 "type": "html"
               }
             ],
@@ -100,7 +100,7 @@
             "id": "lesson-js-demo-video",
             "isPreview": false,
             "legacyId": null,
-            "name": "Demo wideo (Bunny Stream)",
+            "name": "Video demo (Bunny Stream)",
             "tenantId": "tenant-studio"
           },
           {
@@ -110,27 +110,27 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Zmienne w JavaScript</h3><p>W JavaScript zmienne deklarujemy słowami kluczowymi <code>let</code>, <code>const</code> oraz historycznym <code>var</code>. W nowoczesnym kodzie sięgamy niemal wyłącznie po dwa pierwsze.</p><ul><li><strong>const</strong> — wartość, której nie zamierzamy nadpisywać.</li><li><strong>let</strong> — zmienna, której wartość będzie się zmieniać w czasie.</li></ul><p>Dobrą praktyką jest domyślne używanie <code>const</code> i sięganie po <code>let</code> dopiero wtedy, gdy naprawdę musimy przypisać nową wartość.</p>",
+                "html": "<h3>Variables in JavaScript</h3><p>JavaScript declares variables with <code>let</code>, <code>const</code>, and the older <code>var</code> keyword. Modern code mostly uses the first two.</p><ul><li><strong>const</strong> - a binding you do not intend to reassign.</li><li><strong>let</strong> - a variable whose value will change over time.</li></ul><p>Use <code>const</code> by default and switch to <code>let</code> when you need to assign a new value.</p>",
                 "type": "html"
               },
               {
-                "description": "MDN — gramatyka i typy w JavaScript",
+                "description": "MDN - JavaScript grammar and types",
                 "type": "link",
-                "url": "https://developer.mozilla.org/pl/docs/Web/JavaScript/Guide/Grammar_and_types"
+                "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types"
               }
             ],
             "createdAt": "2026-07-01T12:00:06.000Z",
             "durationMinutes": 12,
-            "id": "lesson-js-zmienne-1",
+            "id": "lesson-js-variables-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Deklarowanie zmiennych",
+            "name": "Declaring variables",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Typy danych</h3><p>JavaScript rozróżnia typy proste (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, <code>bigint</code>) oraz typy złożone, czyli obiekty i tablice.</p><p>Typy proste przekazywane są przez wartość, a obiekty przez referencję. To fundamentalna różnica, którą warto zrozumieć na początku nauki.</p>",
+                "html": "<h3>Data types</h3><p>JavaScript distinguishes primitive types (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, and <code>bigint</code>) from objects, including arrays.</p><p>Primitive values are copied directly. With objects, the copied value is a reference to the same object, so changing that object is visible through either reference.</p>",
                 "type": "html"
               },
               {
@@ -140,10 +140,10 @@
             ],
             "createdAt": "2026-07-01T12:00:07.000Z",
             "durationMinutes": 15,
-            "id": "lesson-js-zmienne-2",
+            "id": "lesson-js-variables-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Typy proste i złożone",
+            "name": "Primitive and complex types",
             "tenantId": "tenant-studio"
           },
           {
@@ -153,36 +153,36 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Funkcje</h3><p>Funkcja to fragment kodu, który możemy wielokrotnie wywoływać. W JavaScript funkcje są <strong>wartościami pierwszej klasy</strong> — możemy je przypisywać do zmiennych i przekazywać jako argumenty.</p><ul><li>Deklaracja funkcji: <code>function suma(a, b) { return a + b; }</code></li><li>Funkcja strzałkowa: <code>const suma = (a, b) =&gt; a + b;</code></li></ul>",
+                "html": "<h3>Functions</h3><p>A function is a piece of code you can call repeatedly. JavaScript functions are <strong>first-class values</strong>: you can assign them to variables and pass them as arguments.</p><ul><li>Function declaration: <code>function sum(a, b) { return a + b; }</code></li><li>Arrow function: <code>const sum = (a, b) =&gt; a + b;</code></li></ul>",
                 "type": "html"
               }
             ],
             "createdAt": "2026-07-01T12:00:08.000Z",
             "durationMinutes": 18,
-            "id": "lesson-js-funkcje-1",
+            "id": "lesson-js-functions-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Funkcje i argumenty",
+            "name": "Functions and arguments",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Domknięcia (closures)</h3><p>Domknięcie powstaje, gdy funkcja zapamiętuje zmienne z zakresu, w którym została utworzona. To jeden z najważniejszych mechanizmów języka.</p><p>Domknięcia wykorzystujemy między innymi do tworzenia liczników, funkcji pomocniczych oraz w programowaniu funkcyjnym.</p>",
+                "html": "<h3>Closures</h3><p>A closure lets a function retain access to variables from the scope where it was created. This is one of the core mechanisms of the language.</p><p>Closures are useful for counters, helper functions, and functional programming.</p>",
                 "type": "html"
               },
               {
-                "description": "You Dont Know JS — darmowa seria książek o JavaScript",
+                "description": "You Don’t Know JS - a free JavaScript book series",
                 "type": "link",
                 "url": "https://github.com/getify/You-Dont-Know-JS"
               }
             ],
             "createdAt": "2026-07-01T12:00:09.000Z",
             "durationMinutes": 22,
-            "id": "lesson-js-funkcje-2",
+            "id": "lesson-js-functions-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Domknięcia i zakres",
+            "name": "Closures and scope",
             "tenantId": "tenant-studio"
           },
           {
@@ -192,12 +192,12 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Drzewo DOM</h3><p>DOM (Document Object Model) to reprezentacja strony w postaci drzewa węzłów. Elementy wybieramy metodami <code>querySelector</code> oraz <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.klasa&quot;)</code> — pierwszy pasujący element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> — lista wszystkich elementów.</li></ul>",
+                "html": "<h3>The DOM tree</h3><p>The DOM (Document Object Model) represents a page as a tree of nodes. Select elements with <code>querySelector</code> and <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.example&quot;)</code> - the first matching element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> - a list of all matching elements.</li></ul>",
                 "type": "html"
               },
               {
-                "name": "Ściąga: metody DOM (PDF)",
-                "pdfUrl": "/assets/sample-lekcja.pdf",
+                "name": "DOM methods cheat sheet (PDF)",
+                "pdfUrl": "/assets/sample-lesson.pdf",
                 "type": "pdf"
               }
             ],
@@ -206,13 +206,13 @@
             "id": "lesson-js-dom-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Wybieranie elementów DOM",
+            "name": "Selecting DOM elements",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Obsługa zdarzeń</h3><p>Interaktywność strony budujemy, nasłuchując zdarzeń metodą <code>addEventListener</code>. Do najczęstszych zdarzeń należą <code>click</code>, <code>input</code> oraz <code>submit</code>.</p><p>Pamiętaj o tym, by przy formularzach wywołać <code>event.preventDefault()</code>, jeśli chcesz przejąć kontrolę nad domyślnym zachowaniem przeglądarki.</p>",
+                "html": "<h3>Handling events</h3><p>Make a page interactive by listening for events with <code>addEventListener</code>. Common events include <code>click</code>, <code>input</code>, and <code>submit</code>.</p><p>When handling a form, call <code>event.preventDefault()</code> if you need to take control of the default browser behavior.</p>",
                 "type": "html"
               },
               {
@@ -222,7 +222,7 @@
               {
                 "description": "MDN — addEventListener",
                 "type": "link",
-                "url": "https://developer.mozilla.org/pl/docs/Web/API/EventTarget/addEventListener"
+                "url": "https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener"
               }
             ],
             "createdAt": "2026-07-01T12:00:11.000Z",
@@ -230,7 +230,7 @@
             "id": "lesson-js-dom-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Zdarzenia i interakcja",
+            "name": "Events and interaction",
             "tenantId": "tenant-studio"
           },
           {
@@ -240,21 +240,21 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Projekt końcowy</h3><p>W tej lekcji łączymy zdobytą wiedzę i budujemy prostą aplikację listy zadań (to-do). Wykorzystamy manipulację DOM, obsługę zdarzeń oraz zapisywanie stanu w <code>localStorage</code>.</p><ul><li>Dodawanie i usuwanie zadań.</li><li>Oznaczanie zadań jako ukończone.</li><li>Trwałość danych po odświeżeniu strony.</li></ul>",
+                "html": "<h3>Final project</h3><p>Put your new skills together by building a simple to-do app. You will use DOM manipulation, event handling, and <code>localStorage</code> to save state.</p><ul><li>Add and remove tasks.</li><li>Mark tasks as complete.</li><li>Keep your data after refreshing the page.</li></ul>",
                 "type": "html"
               },
               {
-                "description": "Repozytorium startowe projektu na GitHub",
+                "description": "Project starter repository on GitHub",
                 "type": "link",
                 "url": "https://github.com/acme-courses/todo-vanilla"
               }
             ],
             "createdAt": "2026-07-01T12:00:12.000Z",
             "durationMinutes": 35,
-            "id": "lesson-js-projekt-1",
+            "id": "lesson-js-project-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Projekt: lista zadań",
+            "name": "Project: a to-do list",
             "tenantId": "tenant-studio"
           },
           {
@@ -264,11 +264,11 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Składnia JSX</h3><p>JSX pozwala pisać strukturę interfejsu w składni przypominającej HTML bezpośrednio w kodzie JavaScript. Pod spodem JSX kompiluje się do wywołań <code>React.createElement</code>.</p><p>Każdy komponent zwraca dokładnie jedno drzewo elementów — jeśli potrzebujesz zwrócić kilka elementów obok siebie, użyj fragmentu <code>&lt;&gt;...&lt;/&gt;</code>.</p>",
+                "html": "<h3>JSX syntax</h3><p>JSX lets you describe an interface with HTML-like syntax directly in JavaScript. A JSX compiler turns this markup into JavaScript calls that create React elements. The classic transform uses <code>React.createElement</code>.</p><p>Each component returns one element tree. To group sibling elements without an extra wrapper, use a fragment: <code>&lt;&gt;...&lt;/&gt;</code>.</p>",
                 "type": "html"
               },
               {
-                "description": "Dokumentacja React — pisanie znaczników w JSX",
+                "description": "React documentation - writing markup with JSX",
                 "type": "link",
                 "url": "https://react.dev/learn/writing-markup-with-jsx"
               }
@@ -278,13 +278,13 @@
             "id": "lesson-react-jsx-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Czym jest JSX",
+            "name": "What is JSX?",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Komponenty</h3><p>Komponent to funkcja zwracająca JSX. Dane przekazujemy do komponentu przez <strong>propsy</strong> — argumenty tylko do odczytu.</p><ul><li>Nazwy komponentów piszemy wielką literą.</li><li>Propsy są niemutowalne — komponent nigdy nie powinien ich modyfikować.</li></ul>",
+                "html": "<h3>Components</h3><p>A component is a function that returns JSX. Pass data into components through <strong>props</strong>, which are read-only inputs.</p><ul><li>Start component names with a capital letter.</li><li>Props are immutable: a component should never modify them.</li></ul>",
                 "type": "html"
               },
               {
@@ -297,7 +297,7 @@
             "id": "lesson-react-jsx-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Komponenty i propsy",
+            "name": "Components and props",
             "tenantId": "tenant-studio"
           },
           {
@@ -307,11 +307,11 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Hook useState</h3><p>Stan to dane, które zmieniają się w czasie życia komponentu. Zarządzamy nim hookiem <code>useState</code>, który zwraca parę: aktualną wartość oraz funkcję ustawiającą.</p><p>Aktualizacja stanu powoduje ponowne wyrenderowanie komponentu z nowymi danymi.</p>",
+                "html": "<h3>The useState hook</h3><p>State is data that changes during the lifetime of a component. The <code>useState</code> hook returns a pair: the current value and a setter function.</p><p>Updating state triggers another render of the component with the new data.</p>",
                 "type": "html"
               },
               {
-                "description": "Dokumentacja React — useState",
+                "description": "React documentation - useState",
                 "type": "link",
                 "url": "https://react.dev/reference/react/useState"
               }
@@ -321,13 +321,13 @@
             "id": "lesson-react-state-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Stan komponentu z useState",
+            "name": "Component state with useState",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Podnoszenie stanu (lifting state up)</h3><p>Gdy kilka komponentów potrzebuje tych samych danych, przenosimy stan do ich wspólnego rodzica i przekazujemy go w dół przez propsy. To podstawowy wzorzec przepływu danych w React.</p>",
+                "html": "<h3>Lifting state up</h3><p>When several components need the same data, move that state into their closest shared parent and pass it down through props. This is a basic pattern for data flow in React.</p>",
                 "type": "html"
               },
               {
@@ -340,7 +340,7 @@
             "id": "lesson-react-state-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Przepływ danych i podnoszenie stanu",
+            "name": "Data flow and lifting state up",
             "tenantId": "tenant-studio"
           },
           {
@@ -350,11 +350,11 @@
                 "type": "embed"
               },
               {
-                "html": "<h3>Hook useEffect</h3><p>Efekty uboczne — pobieranie danych, subskrypcje, ręczna manipulacja DOM — obsługujemy hookiem <code>useEffect</code>. Tablica zależności decyduje, kiedy efekt zostanie ponownie uruchomiony.</p><ul><li>Pusta tablica <code>[]</code> — efekt uruchamia się raz, po zamontowaniu.</li><li>Funkcja czyszcząca zwracana z efektu sprząta po sobie przy odmontowaniu.</li></ul>",
+                "html": "<h3>The useEffect hook</h3><p>Use <code>useEffect</code> to synchronize with external systems, such as network requests, subscriptions, or manual DOM updates. The dependency array controls when the effect runs again.</p><ul><li>An empty array <code>[]</code> runs the effect after mounting; development Strict Mode also checks setup and cleanup with an extra cycle.</li><li>Return a cleanup function to release resources before the effect runs again or the component unmounts.</li></ul>",
                 "type": "html"
               },
               {
-                "description": "Dokumentacja React — useEffect",
+                "description": "React documentation - useEffect",
                 "type": "link",
                 "url": "https://react.dev/reference/react/useEffect"
               }
@@ -364,13 +364,13 @@
             "id": "lesson-react-hooks-1",
             "isPreview": false,
             "legacyId": null,
-            "name": "Efekty uboczne z useEffect",
+            "name": "Side effects with useEffect",
             "tenantId": "tenant-studio"
           },
           {
             "contents": [
               {
-                "html": "<h3>Custom hooks</h3><p>Powtarzalną logikę stanową wydzielamy do własnych hooków — zwykłych funkcji, których nazwa zaczyna się od <code>use</code>. Dzięki temu logika jest współdzielona między komponentami bez duplikacji kodu.</p>",
+                "html": "<h3>Custom hooks</h3><p>Extract reusable stateful logic into custom hooks: functions whose names start with <code>use</code>. This lets components share logic without duplicating code.</p>",
                 "type": "html"
               },
               {
@@ -378,7 +378,7 @@
                 "type": "embed"
               },
               {
-                "description": "react-use — biblioteka gotowych hooków (GitHub)",
+                "description": "react-use - a library of ready-made hooks (GitHub)",
                 "type": "link",
                 "url": "https://github.com/streamich/react-use"
               }
@@ -388,7 +388,7 @@
             "id": "lesson-react-hooks-2",
             "isPreview": false,
             "legacyId": null,
-            "name": "Tworzenie własnych hooków",
+            "name": "Creating custom hooks",
             "tenantId": "tenant-studio"
           }
         ]
@@ -407,7 +407,7 @@
             },
             "doubleOptIn": true,
             "id": "consent-definition-studio-news",
-            "key": "aktualnosci",
+            "key": "news",
             "kind": "optional_marketing",
             "status": "active",
             "tenantId": "tenant-studio",
@@ -427,55 +427,55 @@
                   {
                     "id": "content-lesson-js-demo-video",
                     "lessonId": "lesson-js-demo-video",
-                    "name": "Demo wideo (Bunny Stream)"
+                    "name": "Video demo (Bunny Stream)"
                   }
                 ],
                 "id": "chapter-js-demo",
-                "name": "Wprowadzenie"
+                "name": "Introduction"
               },
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-zmienne-1",
-                    "lessonId": "lesson-js-zmienne-1",
-                    "name": "Deklarowanie zmiennych"
+                    "id": "content-lesson-js-variables-1",
+                    "lessonId": "lesson-js-variables-1",
+                    "name": "Declaring variables"
                   },
                   {
-                    "id": "content-lesson-js-zmienne-2",
-                    "lessonId": "lesson-js-zmienne-2",
-                    "name": "Typy proste i złożone"
+                    "id": "content-lesson-js-variables-2",
+                    "lessonId": "lesson-js-variables-2",
+                    "name": "Primitive and complex types"
                   }
                 ],
-                "id": "chapter-js-zmienne",
-                "name": "Zmienne i typy"
+                "id": "chapter-js-variables",
+                "name": "Variables and types"
               },
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-funkcje-1",
-                    "lessonId": "lesson-js-funkcje-1",
-                    "name": "Funkcje i argumenty"
+                    "id": "content-lesson-js-functions-1",
+                    "lessonId": "lesson-js-functions-1",
+                    "name": "Functions and arguments"
                   },
                   {
-                    "id": "content-lesson-js-funkcje-2",
-                    "lessonId": "lesson-js-funkcje-2",
-                    "name": "Domknięcia i zakres"
+                    "id": "content-lesson-js-functions-2",
+                    "lessonId": "lesson-js-functions-2",
+                    "name": "Closures and scope"
                   }
                 ],
-                "id": "chapter-js-funkcje",
-                "name": "Funkcje"
+                "id": "chapter-js-functions",
+                "name": "Functions"
               }
             ],
             "courseIds": [
               "course-js"
             ],
             "createdAt": "2026-07-01T12:00:23.000Z",
-            "id": "module-js-podstawy",
+            "id": "module-js-basics",
             "legacyId": null,
-            "name": "Część 1 - Podstawy",
-            "prefix": "Część 1",
+            "name": "Part 1 - Basics",
+            "prefix": "Part 1",
             "tenantId": "tenant-studio",
-            "title": "Podstawy"
+            "title": "Basics"
           },
           {
             "chapters": [
@@ -484,16 +484,16 @@
                   {
                     "id": "content-lesson-js-dom-1",
                     "lessonId": "lesson-js-dom-1",
-                    "name": "Wybieranie elementów DOM"
+                    "name": "Selecting DOM elements"
                   },
                   {
                     "id": "content-lesson-js-dom-2",
                     "lessonId": "lesson-js-dom-2",
-                    "name": "Zdarzenia i interakcja"
+                    "name": "Events and interaction"
                   }
                 ],
                 "id": "chapter-js-dom",
-                "name": "Manipulacja DOM"
+                "name": "DOM manipulation"
               }
             ],
             "courseIds": [
@@ -502,8 +502,8 @@
             "createdAt": "2026-07-01T12:00:24.000Z",
             "id": "module-js-dom",
             "legacyId": null,
-            "name": "Część 2 - DOM",
-            "prefix": "Część 2",
+            "name": "Part 2 - DOM",
+            "prefix": "Part 2",
             "tenantId": "tenant-studio",
             "title": "DOM"
           },
@@ -512,25 +512,25 @@
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-projekt-1",
-                    "lessonId": "lesson-js-projekt-1",
-                    "name": "Projekt: lista zadań"
+                    "id": "content-lesson-js-project-1",
+                    "lessonId": "lesson-js-project-1",
+                    "name": "Project: a to-do list"
                   }
                 ],
-                "id": "chapter-js-projekty",
-                "name": "Projekt końcowy"
+                "id": "chapter-js-projects",
+                "name": "Final project"
               }
             ],
             "courseIds": [
               "course-js"
             ],
             "createdAt": "2026-07-01T12:00:25.000Z",
-            "id": "module-js-projekty",
+            "id": "module-js-projects",
             "legacyId": null,
-            "name": "Część 3 - Projekty",
-            "prefix": "Część 3",
+            "name": "Part 3 - Projects",
+            "prefix": "Part 3",
             "tenantId": "tenant-studio",
-            "title": "Projekty"
+            "title": "Projects"
           },
           {
             "chapters": [
@@ -539,44 +539,44 @@
                   {
                     "id": "content-lesson-react-jsx-1",
                     "lessonId": "lesson-react-jsx-1",
-                    "name": "Czym jest JSX"
+                    "name": "What is JSX?"
                   },
                   {
                     "id": "content-lesson-react-jsx-2",
                     "lessonId": "lesson-react-jsx-2",
-                    "name": "Komponenty i propsy"
+                    "name": "Components and props"
                   }
                 ],
                 "id": "chapter-react-jsx",
-                "name": "JSX i komponenty"
+                "name": "JSX and components"
               },
               {
                 "contents": [
                   {
                     "id": "content-lesson-react-state-1",
                     "lessonId": "lesson-react-state-1",
-                    "name": "Stan komponentu z useState"
+                    "name": "Component state with useState"
                   },
                   {
                     "id": "content-lesson-react-state-2",
                     "lessonId": "lesson-react-state-2",
-                    "name": "Przepływ danych i podnoszenie stanu"
+                    "name": "Data flow and lifting state up"
                   }
                 ],
                 "id": "chapter-react-state",
-                "name": "Stan i propsy"
+                "name": "State and props"
               }
             ],
             "courseIds": [
               "course-react"
             ],
             "createdAt": "2026-07-01T12:00:26.000Z",
-            "id": "module-react-fundamenty",
+            "id": "module-react-fundamentals",
             "legacyId": null,
-            "name": "Część 1 - Fundamenty",
-            "prefix": "Część 1",
+            "name": "Part 1 - Fundamentals",
+            "prefix": "Part 1",
             "tenantId": "tenant-studio",
-            "title": "Fundamenty"
+            "title": "Fundamentals"
           },
           {
             "chapters": [
@@ -585,12 +585,12 @@
                   {
                     "id": "content-lesson-react-hooks-1",
                     "lessonId": "lesson-react-hooks-1",
-                    "name": "Efekty uboczne z useEffect"
+                    "name": "Side effects with useEffect"
                   },
                   {
                     "id": "content-lesson-react-hooks-2",
                     "lessonId": "lesson-react-hooks-2",
-                    "name": "Tworzenie własnych hooków"
+                    "name": "Creating custom hooks"
                   }
                 ],
                 "id": "chapter-react-hooks",
@@ -601,12 +601,12 @@
               "course-react"
             ],
             "createdAt": "2026-07-01T12:00:27.000Z",
-            "id": "module-react-zaawansowane",
+            "id": "module-react-advanced",
             "legacyId": null,
-            "name": "Część 2 - Zaawansowane wzorce",
-            "prefix": "Część 2",
+            "name": "Part 2 - Advanced patterns",
+            "prefix": "Part 2",
             "tenantId": "tenant-studio",
-            "title": "Zaawansowane wzorce"
+            "title": "Advanced patterns"
           }
         ]
       }
@@ -618,7 +618,7 @@
           {
             "contentType": "application/pdf",
             "createdAt": "2026-06-19T12:00:00.000Z",
-            "fileName": "workbook-tworcy.pdf",
+            "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook",
             "productId": "product-download-workbook",
             "sizeBytes": 2416640,
@@ -656,14 +656,15 @@
             "createdAt": "2026-07-01T12:00:31.000Z",
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "legacyId": null,
             "priceCents": 19900,
             "published": true,
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "tenantId": "tenant-studio",
-            "title": "Kurs Together 101",
-            "type": "course"
+            "title": "Together 101 Course",
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [],
@@ -672,14 +673,15 @@
             "createdAt": "2026-07-01T12:00:32.000Z",
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-warsztat",
+            "id": "product-studio-workshop",
             "legacyId": null,
             "priceCents": 49900,
             "published": false,
-            "slug": "warsztat-scenariuszowy",
+            "slug": "workshop-scenario",
             "tenantId": "tenant-studio",
-            "title": "Warsztat scenariuszowy",
-            "type": "course"
+            "title": "Scenario Workshop",
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -692,15 +694,16 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:33.000Z",
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "legacyId": null,
             "priceCents": 39900,
             "published": true,
             "slug": "js-full",
             "tenantId": "tenant-studio",
-            "title": "Kurs JavaScript - pełny dostęp",
-            "type": "course"
+            "title": "JavaScript Course - full access",
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -713,15 +716,16 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:34.000Z",
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "legacyId": null,
             "priceCents": 49900,
             "published": true,
             "slug": "react-full",
             "tenantId": "tenant-studio",
-            "title": "React w praktyce - pełny dostęp",
-            "type": "course"
+            "title": "React in Practice - full access",
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -737,15 +741,16 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:35.000Z",
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "legacyId": null,
             "priceCents": 9900,
             "published": true,
             "slug": "js-dom-module",
             "tenantId": "tenant-studio",
-            "title": "Pakiet: moduł DOM",
-            "type": "course"
+            "title": "DOM Module Pack",
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -753,9 +758,9 @@
                 "courseId": "course-js",
                 "lessonIds": [
                   "lesson-js-demo-video",
-                  "lesson-js-zmienne-1",
+                  "lesson-js-variables-1",
                   "lesson-js-dom-1",
-                  "lesson-js-projekt-1"
+                  "lesson-js-project-1"
                 ],
                 "level": "lessons"
               },
@@ -772,7 +777,7 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:36.000Z",
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "legacyId": null,
             "priceCents": 0,
@@ -780,7 +785,8 @@
             "slug": "free-preview",
             "tenantId": "tenant-studio",
             "title": "Free preview",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -797,15 +803,16 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:38.000Z",
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "legacyId": null,
             "priceCents": 4900,
             "published": true,
             "slug": "club",
             "tenantId": "tenant-studio",
-            "title": "Klub Studio — subskrypcja",
-            "type": "membership"
+            "title": "Studio Club - subscription",
+            "type": "membership",
+            "visibility": "listed"
           },
           {
             "accessItems": [],
@@ -813,15 +820,16 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:39.000Z",
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "legacyId": null,
             "priceCents": 7900,
             "published": true,
             "slug": "download-workbook",
             "tenantId": "tenant-studio",
-            "title": "Workbook twórcy",
-            "type": "digital_download"
+            "title": "Creator Workbook",
+            "type": "digital_download",
+            "visibility": "listed"
           }
         ]
       }
@@ -834,30 +842,30 @@
             "openReportsForPost": 1,
             "post": {
               "authorAvatarUrl": null,
-              "authorDisplay": "Konto Free",
+              "authorDisplay": "Free Account",
               "authorIsStaff": false,
-              "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
-              "contextId": "space-studio-spolecznosc",
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
               "deletedBy": null,
               "editedAt": null,
-              "id": "post-spolecznosc-polecajki",
+              "id": "post-community-resources",
               "isOwn": false,
               "parentPostId": null,
               "pinnedAt": null,
-              "rootPostId": "post-spolecznosc-polecajki",
+              "rootPostId": "post-community-resources",
               "tenantId": "tenant-studio"
             },
             "report": {
               "createdAt": "2026-06-26T12:00:00.000Z",
-              "id": "report-studio-polecajki",
-              "note": "Ten wpis wygląda jak reklama zewnętrznego serwisu.",
-              "postId": "post-spolecznosc-polecajki",
+              "id": "report-studio-resources",
+              "note": "This post looks like an advertisement for an external service.",
+              "postId": "post-community-resources",
               "reason": "off-topic",
-              "reporterDisplay": "Kursant Aktywny",
-              "reporterUserId": "user-kursant-aktywny",
+              "reporterDisplay": "Active Student",
+              "reporterUserId": "user-student-active",
               "resolvedAt": null,
               "resolvedByUserId": null,
               "signals": null,
@@ -865,7 +873,7 @@
               "status": "open",
               "tenantId": "tenant-studio"
             },
-            "spaceName": "Społeczność"
+            "spaceName": "Community"
           }
         ],
         "nextCursor": null,
@@ -905,26 +913,26 @@
             "coverUrl": null,
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "marketingConsents": [],
             "priceCents": 19900,
             "prices": [
               {
                 "amountCents": 19900,
                 "currency": "PLN",
-                "id": "price-product-studio-kurs-101",
+                "id": "price-product-studio-course-101",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "kurs-together-101",
-            "title": "Kurs Together 101",
+            "slug": "course-together-101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
             "priceCents": 39900,
@@ -938,13 +946,13 @@
               }
             ],
             "slug": "js-full",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
             "priceCents": 49900,
@@ -958,13 +966,13 @@
               }
             ],
             "slug": "react-full",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
             "priceCents": 9900,
@@ -978,13 +986,13 @@
               }
             ],
             "slug": "js-dom-module",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
             "priceCents": 0,
@@ -1004,7 +1012,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
             "priceCents": 4900,
@@ -1025,13 +1033,13 @@
               }
             ],
             "slug": "club",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
             "priceCents": 7900,
@@ -1045,7 +1053,7 @@
               }
             ],
             "slug": "download-workbook",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ],
@@ -1057,6 +1065,7 @@
             "logoDarkUrl": null,
             "logoUrl": null
           },
+          "defaultLanguage": "en",
           "legal": {
             "privacyUrl": null,
             "termsUrl": null

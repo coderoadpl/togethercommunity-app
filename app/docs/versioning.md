@@ -1,9 +1,8 @@
 # Versioning
 
-Owner decision, 2026-09-04. The policy behind it is
-[ADR-0017](decisions/0017-version-derived-from-git-history.md); the surfaces it
-feeds are [ADR-0009](decisions/0009-release-versioning-and-version-surfaces.md)
-and [ADR-0011](decisions/0011-version-surfaces.md).
+Deployment builds derive the application version from Git history. The
+[version surfaces reference](version-surfaces.md) describes how the server,
+browser, and CLI expose it.
 
 ## The rules
 

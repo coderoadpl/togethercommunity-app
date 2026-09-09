@@ -90,9 +90,10 @@ export const getMemberNavigation = async (
     new Set(courses.map((course) => course.id)),
   );
 
-  const publishedProductIds = new Set(products.map((product) => product.id));
+  const listedProducts = products.filter((product) => product.visibility === 'listed');
+  const publishedProductIds = new Set(listedProducts.map((product) => product.id));
   const productsById = new Map(
-    products.map((product) => [product.id, { id: product.id, title: product.title }]),
+    listedProducts.map((product) => [product.id, { id: product.id, title: product.title }]),
   );
   const publishedProductIdsForSpace = (space: Pick<Space, 'productIds'>) =>
     space.productIds.filter((productId) => publishedProductIds.has(productId));

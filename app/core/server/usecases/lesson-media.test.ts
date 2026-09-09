@@ -112,6 +112,7 @@ const pCourse: Product = {
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [{ level: 'course', courseId: 'c1' }],
   legacyId: null,

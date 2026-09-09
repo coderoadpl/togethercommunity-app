@@ -14,6 +14,8 @@ interface Hoisted {
   config: CliConfig;
   loadError: Error | null;
   saved: CliConfig[];
+  createProduct: ReturnType<typeof vi.fn>;
+  updateProduct: ReturnType<typeof vi.fn>;
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
@@ -35,6 +37,7 @@ interface Hoisted {
   getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
+  purgePost: ReturnType<typeof vi.fn>;
   deleteTenantRedirect: ReturnType<typeof vi.fn>;
 }
 
@@ -50,6 +53,8 @@ const h = vi.hoisted(
     },
     loadError: null,
     saved: [],
+    createProduct: vi.fn(),
+    updateProduct: vi.fn(),
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
@@ -72,6 +77,7 @@ const h = vi.hoisted(
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
     deleteTenantRedirect: vi.fn(),
+    purgePost: vi.fn(),
   }),
 );
 
@@ -117,6 +123,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    createProduct: h.createProduct,
+    updateProduct: h.updateProduct,
     listCourses: h.listCourses,
     listModules: h.listModules,
     listLessons: h.listLessons,
@@ -131,6 +139,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getTenantRedirects: h.getTenantRedirects,
     createTenantRedirect: h.createTenantRedirect,
     deleteTenantRedirect: h.deleteTenantRedirect,
+    purgePost: h.purgePost,
   }),
 }));
 
@@ -174,6 +183,8 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
+  h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.listCourses.mockReset();
   h.listModules.mockReset();
   h.listLessons.mockReset();
@@ -223,6 +234,7 @@ beforeEach(() => {
   h.getTenantRedirects.mockResolvedValue(ok({ redirects: [redirectFixture], total: 1 }));
   h.createTenantRedirect.mockReset();
   h.createTenantRedirect.mockResolvedValue(ok({ redirect: redirectFixture }));
+  h.purgePost.mockReset().mockResolvedValue(ok({ id: 'post-1' }));
   h.deleteTenantRedirect.mockReset();
   h.deleteTenantRedirect.mockResolvedValue(ok({ id: redirectFixture.id }));
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -637,7 +649,7 @@ describe('redirect commands', () => {
   it('emits one validation envelope when a path and a course target are combined', async () => {
     await run(
       '--json', 'redirect', 'create',
-      '--from', '/legacy/five', '--path', '/oferta', '--course', 'course-js',
+      '--from', '/legacy/five', '--path', '/offer', '--course', 'course-js',
     );
 
     expect(h.createTenantRedirect).not.toHaveBeenCalled();
@@ -913,5 +925,40 @@ describe('tenant accent settings', () => {
     await run('tenant', 'settings');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dark accent: #F5C842'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('light accent: #786000'));
+  });
+});
+
+
+it('passes visibility through product create and update', async () => {
+  await run('--json', 'product', 'create', '--title', 'Course', '--price-cents', '0', '--visibility', 'unlisted');
+  expect(h.createProduct).toHaveBeenCalledWith(expect.objectContaining({ priceCents: 0, visibility: 'unlisted' }));
+  await run('--json', 'product', 'update', 'product-1', '--visibility', 'listed');
+  expect(h.updateProduct).toHaveBeenCalledWith({ id: 'product-1', visibility: 'listed' });
+});
+
+it('rejects invalid visibility before invoking the product client', async () => {
+  await run('--json', 'product', 'update', 'product-1', '--visibility', 'private');
+  expect(h.updateProduct).not.toHaveBeenCalled();
+});
+
+describe('post purge', () => {
+  it('emits one purge envelope', async () => {
+    await run('--json', 'post', 'purge', '--id', 'post-1');
+    expect(h.purgePost).toHaveBeenCalledExactlyOnceWith({ id: 'post-1' });
+    expect(soleJson()).toEqual({ ok: true, data: { id: 'post-1' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('maps author denial to the forbidden exit code', async () => {
+    h.purgePost.mockResolvedValue(err(appError('forbidden', 'Staff only')));
+    await run('--json', 'post', 'purge', '--id', 'post-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+
+  it('requires a post id', async () => {
+    await run('--json', 'post', 'purge');
+    expect(h.purgePost).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });

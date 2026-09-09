@@ -30,6 +30,9 @@ export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess
     </EmberCtaLink>
   );
 
+  const desktopCta = cta('public-course-unlock-cta');
+  const mobileCta = cta('public-course-unlock-cta-mobile');
+
   return (
     <>
       <Paper variant="outlined" sx={{ overflow: 'hidden' }} data-testid="guest-course-offer">
@@ -40,7 +43,7 @@ export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess
             <Typography component="h2" variant="h3" sx={{ textWrap: 'balance' }}>{course.name}</Typography>
             {offer?.description ? <Typography noWrap title={offer.description} color="text.secondary">{offer.description}</Typography> : null}
             {price ? <Typography variant="h3" component="p" data-testid="guest-course-price">{price}</Typography> : null}
-            {cta('public-course-unlock-cta')}
+            {desktopCta}
             {!product && !salesUrl && offer?.supportUrl ? (
               <MuiLink href={offer.supportUrl} sx={{ alignSelf: 'center', display: 'inline-flex', alignItems: 'center', minHeight: 44, px: '0.75rem', py: '0.5rem' }}>{t.anon.contactCreator}</MuiLink>
             ) : null}
@@ -53,7 +56,7 @@ export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess
         p: '0.75rem', pb: 'calc(0.75rem + env(safe-area-inset-bottom))',
       }}>
         {price ? <Typography variant="body2" sx={{ flexShrink: 0 }}>{price}</Typography> : null}
-        {cta('public-course-unlock-cta-mobile')}
+        {mobileCta}
       </Paper>
     </>
   );

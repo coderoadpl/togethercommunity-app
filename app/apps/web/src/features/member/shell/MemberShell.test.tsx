@@ -17,7 +17,7 @@ import type {
   PublicNavigation,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
@@ -74,7 +74,7 @@ const okMe = (
         userId: 'u1',
         email: 'jan@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Member',
         tenant: overrides.tenant === null
           ? null
           : {
@@ -90,7 +90,7 @@ const okMe = (
           ? {
               id: 'imp-1',
               subjectMemberId: 'm1',
-              subjectName: 'Jan Uczestnik',
+              subjectName: 'John Member',
               actorName: 'Ala Tworczyni',
               expiresAt: '2026-09-03T11:00:00.000Z',
             }
@@ -101,12 +101,12 @@ const okMe = (
 
 const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation => ({
   spaces: [
-    { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
+    { id: 's1', slug: 'general', name: 'General', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
   ],
   courses: [
     {
       courseId: 'c1',
-      courseName: 'JavaScript od zera',
+      courseName: 'JavaScript from scratch',
       completedLessonCount: 1,
       accessibleLessonCount: 3,
       lastActivityAt: '2026-08-10T10:00:00.000Z',
@@ -124,7 +124,7 @@ const navigation = (overrides: Partial<MemberNavigation> = {}): MemberNavigation
       id: 's9',
       slug: 'premium',
       name: 'Premium',
-      description: 'Tylko dla kursantów.',
+      description: 'Students only.',
       productIds: ['p1'],
       products: [{ id: 'p1', title: 'Program Pro' }],
     },
@@ -139,8 +139,8 @@ const okNavigation = (value: MemberNavigation = navigation()) =>
 
 const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
-  spaces: [{ id: 's1', slug: 'ogolna', name: 'Ogólna', description: null, position: 0 }],
-  courses: [{ id: 'c1', name: 'JavaScript od zera', description: '', imageUrl: null }],
+  spaces: [{ id: 's1', slug: 'general', name: 'General', description: null, position: 0 }],
+  courses: [{ id: 'c1', name: 'JavaScript from scratch', description: '', imageUrl: null }],
   lockedSpaces: [
     { id: 's9', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
   ],
@@ -153,13 +153,13 @@ const okPublicNavigation = (value: PublicNavigation = publicNavigation()) =>
 
 const courseStructure: CourseStructureWithAccess = {
   courseId: 'c1',
-  name: 'JavaScript od zera',
+  name: 'JavaScript from scratch',
   accessStatus: 'fully-accessible',
   completionStatus: 'partially-completed',
   modules: [
     {
       id: 'm1',
-      name: 'Podstawy',
+      name: 'Basics',
       accessStatus: 'fully-accessible',
       completionStatus: 'partially-completed',
       chapters: [
@@ -223,7 +223,7 @@ const stubMatchingViewport = (dimension: 'min-width' | 'max-width') => {
   }));
 };
 
-const renderShell = async (path: string, lessonComponent: FunctionComponent = page('Lekcja'), courseComponent: FunctionComponent = page('Kurs')) => {
+const renderShell = async (path: string, lessonComponent: FunctionComponent = page(en.redirects.targetLesson), courseComponent: FunctionComponent = page(en.redirects.targetCourse)) => {
   const rootRoute = createRootRoute();
   const shellRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -233,10 +233,11 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
+      createRoute({ getParentRoute: () => shellRoute, path: '/messages', component: page(en.messages.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
-      createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page('Szukaj') }),
+      createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page(en.search.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
-      createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page('Produkty') }),
+      createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page(en.members.colProducts) }),
       createRoute({
         getParentRoute: () => shellRoute,
         path: '/my/courses/$courseId',
@@ -250,7 +251,7 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
       createRoute({
         getParentRoute: () => shellRoute,
         path: '/community/$spaceId',
-        component: page('Przestrzeń'),
+        component: page(en.community.feedEyebrow),
       }),
     ]),
   ]);
@@ -281,13 +282,13 @@ describe('MemberShell', () => {
     const sidebar = await screen.findByTestId(anonymous ? 'anon-sidebar' : 'course-sidebar');
     const loading = screen.getByTestId('course-loading');
     expect(loading.closest('main')).not.toBeNull();
-    expect(within(loading).getByRole('status', { name: lesson ? pl.lesson.loading : pl.courseTree.loadingCourse })).toHaveAttribute('aria-busy', 'true');
-    expect(within(loading).getByText(lesson ? pl.lesson.eyebrow : anonymous ? pl.anon.eyebrow : pl.student.courseEyebrow)).toBeInTheDocument();
+    expect(within(loading).getByRole('status', { name: lesson ? en.lesson.loading : en.courseTree.loadingCourse })).toHaveAttribute('aria-busy', 'true');
+    expect(within(loading).getByText(lesson ? en.lesson.eyebrow : anonymous ? en.anon.eyebrow : en.student.courseEyebrow)).toBeInTheDocument();
     expect(within(loading).queryByTestId('tenant-social-links')).not.toBeInTheDocument();
-    expect(within(loading).getByRole('heading', { level: 1, name: lesson ? pl.lesson.loading : pl.courseTree.loadingCourse })).toBeInTheDocument();
+    expect(within(loading).getByRole('heading', { level: 1, name: lesson ? en.lesson.loading : en.courseTree.loadingCourse })).toBeInTheDocument();
     expect(screen.queryByTestId('brand-loader-mark')).not.toBeInTheDocument();
     const appBar = anonymous
-      ? screen.getByRole('link', { name: pl.auth.signInLink }).closest('header')
+      ? screen.getByRole('link', { name: en.auth.signInLink }).closest('header')
       : screen.getByTestId('shell-breadcrumbs').closest('header');
     expect(appBar).not.toBeNull();
 
@@ -354,11 +355,11 @@ describe('MemberShell', () => {
 
     const crumbs = await screen.findByTestId('member-breadcrumbs');
     expect(screen.getByTestId('shell-breadcrumbs')).toContainElement(crumbs);
-    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toHaveAttribute(
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript from scratch' })).toHaveAttribute(
       'href',
       '/my/courses/c1',
     );
-    expect(within(crumbs).getByText('Podstawy')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Basics')).toBeInTheDocument();
     expect(within(crumbs).getByText('Start')).toBeInTheDocument();
     expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
   });
@@ -370,9 +371,9 @@ describe('MemberShell', () => {
     await renderShell('/my/courses/c1/lessons/l1');
 
     const crumbs = await screen.findByTestId('member-breadcrumbs');
-    expect(within(crumbs).getByRole('link', { name: 'JavaScript od zera' })).toBeInTheDocument();
+    expect(within(crumbs).getByRole('link', { name: 'JavaScript from scratch' })).toBeInTheDocument();
     expect(within(crumbs).getByText('Zmienne')).toBeInTheDocument();
-    expect(within(crumbs).queryByText('Podstawy')).not.toBeInTheDocument();
+    expect(within(crumbs).queryByText('Basics')).not.toBeInTheDocument();
     expect(within(crumbs).queryByText('Start')).not.toBeInTheDocument();
   });
 
@@ -442,7 +443,7 @@ describe('MemberShell', () => {
 
     const studioLink = await screen.findByTestId('member-studio-link');
     expect(studioLink).toHaveAttribute('href', '/panel');
-    expect(studioLink).toHaveTextContent(pl.account.menuStudio);
+    expect(studioLink).toHaveTextContent('Studio');
     expect(studioLink.querySelector('svg')).toBeInTheDocument();
     expect(window.getComputedStyle(studioLink).getPropertyValue('min-height')).toBe('44px');
   });
@@ -468,7 +469,7 @@ describe('MemberShell', () => {
     const sidebar = screen.getByTestId('member-sidebar');
     expect(sidebar).toContainElement(space);
     expect(space).toHaveAttribute('href', '/community/s1');
-    expect(space).toHaveTextContent('Ogólna');
+    expect(space).toHaveTextContent('General');
     expect(space.querySelector('svg')).not.toBeNull();
 
     const inProgress = within(sidebar).getByTestId('sidebar-course-c1');
@@ -485,12 +486,12 @@ describe('MemberShell', () => {
     const locked = within(sidebar).getByTestId('sidebar-locked-s9');
     expect(locked).toHaveAttribute('href', '/checkout/p1');
     await user.hover(locked);
-    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
-    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
-    expect(within(sidebar).getByText(pl.shell.spacesSection)).toBeInTheDocument();
+    expect(await screen.findByText(en.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(en.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
+    expect(within(sidebar).getByText(en.shell.spacesSection)).toBeInTheDocument();
   });
 
-  it('moves products, messages and the account out of the sidebar into the avatar menu', async () => {
+  it('keeps messages in the sidebar and avatar menu', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
     const user = userEvent.setup();
@@ -499,7 +500,7 @@ describe('MemberShell', () => {
 
     const sidebar = await screen.findByTestId('member-sidebar');
     expect(within(sidebar).queryByTestId('sidebar-products')).toBeNull();
-    expect(within(sidebar).queryByTestId('sidebar-messages')).toBeNull();
+    expect(await within(sidebar).findByTestId('sidebar-messages')).toHaveAttribute('href', '/messages');
     expect(within(sidebar).queryByTestId('sidebar-account')).toBeNull();
     expect(within(sidebar).queryByTestId('notification-nav')).toBeNull();
 
@@ -507,10 +508,10 @@ describe('MemberShell', () => {
 
     const menu = await screen.findByRole('menu');
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      pl.student.myProducts,
-      pl.messages.navLabel,
-      pl.account.menuAccount,
-      pl.tenant.signOut,
+      en.student.myProducts,
+      en.messages.navLabel,
+      en.account.menuAccount,
+      en.tenant.signOut,
     ]);
     expect(within(menu).getByTestId('member-account-products')).toHaveAttribute(
       'href',
@@ -536,6 +537,23 @@ describe('MemberShell', () => {
     expect(await screen.findByTestId('member-account-products')).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByTestId('member-account-messages')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])('shows the messages unread badge (desktop: %s)', async (desktop) => {
+    stubViewport(desktop);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications(),
+      http.get('/api/messages/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 3 } })),
+    );
+    await renderShell('/messages');
+    if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
+    const navigation = within(await screen.findByTestId(desktop ? 'member-sidebar' : 'member-menu-sheet'));
+    const messagesId = desktop ? 'sidebar-messages' : 'member-account-messages';
+    const messages = await navigation.findByTestId(messagesId);
+    expect(messages).toHaveAttribute('href', '/messages');
+    if (desktop) expect(messages).toHaveAttribute('aria-current', 'page');
+    expect(await navigation.findByTestId(`${messagesId}-unread`)).toHaveTextContent('3');
+    expect(messages).toHaveTextContent(en.messages.unreadAria({ count: 3 }));
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -544,8 +562,8 @@ describe('MemberShell', () => {
       okMe(),
       okNavigation(navigation({
         spaces: [
-          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: true, courseIds: [] },
-          { id: 's2', slug: 'cicha', name: 'Cicha', visibility: 'members', position: 1, isFollowing: false, unread: false, courseIds: [] },
+          { id: 's1', slug: 'general', name: 'General', visibility: 'members', position: 0, isFollowing: true, unread: true, courseIds: [] },
+          { id: 's2', slug: 'cicha', name: 'Quiet', visibility: 'members', position: 1, isFollowing: false, unread: false, courseIds: [] },
         ],
       })),
       okOffer(),
@@ -555,7 +573,7 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     const unread = await screen.findByTestId('sidebar-space-s1');
-    expect(unread).toHaveAttribute('aria-label', pl.shell.spaceUnreadLabel({ name: 'Ogólna' }));
+    expect(unread).toHaveAttribute('aria-label', en.shell.spaceUnreadLabel({ name: 'General' }));
     expect(within(unread).getByTestId('sidebar-space-s1-unread')).toBeInTheDocument();
 
     const quiet = screen.getByTestId('sidebar-space-s2');
@@ -569,8 +587,8 @@ describe('MemberShell', () => {
       okMe(),
       okNavigation(navigation({
         spaces: [
-          { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
-          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 1, isFollowing: true, unread: true, courseIds: ['c1'] },
+          { id: 's1', slug: 'general', name: 'General', visibility: 'members', position: 0, isFollowing: true, unread: false, courseIds: [] },
+          { id: 's2', slug: 'js', name: 'JS Course', visibility: 'product', position: 1, isFollowing: true, unread: true, courseIds: ['c1'] },
         ],
       })),
       okOffer(),
@@ -584,7 +602,7 @@ describe('MemberShell', () => {
     expect(nested).toHaveAttribute('href', '/community/s2');
     expect(nested).toHaveStyle({ paddingLeft: '34px' });
     expect(within(nested).getByTestId('sidebar-space-s2-unread')).toBeInTheDocument();
-    expect(nested).toHaveAccessibleName(pl.shell.spaceUnreadLabel({ name: 'Kurs JS' }));
+    expect(nested).toHaveAccessibleName(en.shell.spaceUnreadLabel({ name: 'JS Course' }));
     expect(screen.getByTestId('sidebar-space-s1').nextElementSibling).toBe(
       screen.getByTestId('sidebar-course-c1'),
     );
@@ -596,7 +614,7 @@ describe('MemberShell', () => {
       okMe(),
       okNavigation(navigation({
         spaces: [
-          { id: 's2', slug: 'js', name: 'Kurs JS', visibility: 'product', position: 0, isFollowing: true, unread: false, courseIds: ['c1', 'c2'] },
+          { id: 's2', slug: 'js', name: 'JS Course', visibility: 'product', position: 0, isFollowing: true, unread: false, courseIds: ['c1', 'c2'] },
         ],
       })),
       okOffer(),
@@ -664,7 +682,7 @@ describe('MemberShell', () => {
 
     const search = await screen.findByTestId('sidebar-search');
     expect(search).toHaveAttribute('href', memberSearchPath());
-    expect(search).toHaveTextContent(pl.shell.searchEntry);
+    expect(search).toHaveTextContent(en.shell.searchEntry);
     expect(search).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('sidebar-start')).not.toHaveAttribute('aria-current');
   });
@@ -699,7 +717,7 @@ describe('MemberShell', () => {
     const bell = await screen.findByTestId('notification-bell');
     expect(await within(bell).findByText('4')).toBeInTheDocument();
     await waitFor(() =>
-      expect(bell).toHaveAttribute('aria-label', pl.notifications.unreadAria({ count: 4 })));
+      expect(bell).toHaveAttribute('aria-label', en.notifications.unreadAria({ count: 4 })));
   });
 
   it('leaves the unauthenticated tier without a bell', async () => {
@@ -708,7 +726,7 @@ describe('MemberShell', () => {
 
     await renderShell(memberHomePath());
 
-    expect(await screen.findByRole('link', { name: pl.auth.signInLink })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
     expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
   });
 
@@ -730,9 +748,9 @@ describe('MemberShell', () => {
 
     const identity = await screen.findByTestId('member-identity');
     expect(identity).toHaveAttribute('href', '/account');
-    expect(identity).toHaveTextContent('Jan Uczestnik');
+    expect(identity).toHaveTextContent('John Member');
     expect(identity).toHaveTextContent('jan@example.com');
-    expect(identity).toHaveTextContent('JU');
+    expect(identity).toHaveTextContent('JM');
   });
 
   it('prefers the community display name over the account name', async () => {
@@ -757,7 +775,7 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    expect(await screen.findAllByText(pl.community.bannedBanner)).toHaveLength(1);
+    expect(await screen.findAllByText(en.community.bannedBanner)).toHaveLength(1);
   });
 
   it('keeps the global banned banner on accessible lesson pages', async () => {
@@ -767,7 +785,7 @@ describe('MemberShell', () => {
     await renderShell('/my/courses/c1/lessons/l1');
 
     expect(await screen.findByTestId('course-sidebar')).toBeInTheDocument();
-    expect(screen.getByText(pl.community.bannedBanner)).toBeInTheDocument();
+    expect(screen.getByText(en.community.bannedBanner)).toBeInTheDocument();
   });
 
   it('keeps the member-view banner in the sticky app bar, out of the scrolling page', async () => {
@@ -819,7 +837,7 @@ describe('MemberShell', () => {
     expect(bar).not.toBeNull();
     const trigger = screen.getByTestId('member-account-menu');
     expect(bar).toContainElement(trigger);
-    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('JU');
+    expect(within(trigger).getByTestId('user-avatar')).toHaveTextContent('JM');
     expect(screen.getByTestId('course-sidebar')).not.toContainElement(trigger);
   });
 
@@ -906,7 +924,7 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('member-bottom-nav')).not.toBeInTheDocument();
     scrollIntoView.mockClear();
 
-    await user.click(screen.getByRole('button', { name: pl.common.cancel }));
+    await user.click(screen.getByRole('button', { name: en.common.cancel }));
 
     expect(await screen.findByTestId('member-bottom-nav')).toBeInTheDocument();
     expect(scrollIntoView).not.toHaveBeenCalled();
@@ -926,9 +944,9 @@ describe('MemberShell', () => {
     const identity = within(sheet).getByTestId('member-identity');
     const space = await within(sheet).findByTestId('sidebar-space-s1');
     const actions = within(sheet).getByTestId('member-menu-account-actions');
-    expect(space).toHaveTextContent('Ogólna');
+    expect(space).toHaveTextContent('General');
     expect(within(sheet).queryByTestId('sidebar-products')).not.toBeInTheDocument();
-    expect(identity).toHaveTextContent('Jan Uczestnik');
+    expect(identity).toHaveTextContent('John Member');
     expect(identity).not.toHaveAttribute('href');
     expect(identity.compareDocumentPosition(space)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -938,10 +956,10 @@ describe('MemberShell', () => {
       within(actions).getByTestId('member-account-link'),
       within(actions).getByTestId('member-sign-out'),
     ].map((item) => item.textContent)).toEqual([
-      pl.student.myProducts,
-      pl.messages.navLabel,
-      pl.account.menuAccount,
-      pl.tenant.signOut,
+      en.student.myProducts,
+      en.messages.navLabel,
+      en.account.menuAccount,
+      en.tenant.signOut,
     ]);
     expect(within(actions).getByTestId('member-account-products')).toHaveAttribute(
       'href',
@@ -954,6 +972,7 @@ describe('MemberShell', () => {
     expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-messages')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
   });
@@ -972,7 +991,7 @@ describe('MemberShell', () => {
     const studio = within(actions).getByTestId('member-account-studio-link');
     const products = within(actions).getByTestId('member-account-products');
     expect(studio).toHaveAttribute('href', '/panel');
-    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio).toHaveTextContent('Studio');
     expect(studio.compareDocumentPosition(products)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -1001,7 +1020,7 @@ describe('MemberShell', () => {
 
     await waitFor(() => expect(signOutCalls).toBe(1));
     await waitFor(() => expect(screen.queryByTestId('member-menu-sheet')).not.toBeInTheDocument());
-    expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageInternal);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageInternal);
   });
 
   it('exits impersonation from the mobile menu without signing out', async () => {
@@ -1031,7 +1050,7 @@ describe('MemberShell', () => {
 
     const sheet = await screen.findByTestId('member-menu-sheet');
     const control = within(sheet).getByTestId('member-sign-out');
-    await waitFor(() => expect(control).toHaveTextContent(pl.shell.impersonationExit));
+    await waitFor(() => expect(control).toHaveTextContent(en.shell.impersonationExit));
     expect(within(sheet).queryByTestId('member-account-messages')).not.toBeInTheDocument();
     await user.click(control);
 
@@ -1050,8 +1069,8 @@ describe('MemberShell', () => {
     await renderShell('/my/courses/c1/lessons/l1');
 
     const compact = await screen.findByTestId('program-button');
-    expect(compact).toHaveAccessibleName(pl.shell.programButton);
-    expect(screen.getByTestId('program-button-wide')).toHaveTextContent(pl.shell.programButton);
+    expect(compact).toHaveAccessibleName('Program');
+    expect(screen.getByTestId('program-button-wide')).toHaveTextContent('Program');
 
     await user.click(screen.getByTestId('program-button-wide'));
     expect(await screen.findByTestId('course-program-sheet')).toBeInTheDocument();
@@ -1082,7 +1101,7 @@ describe('MemberShell', () => {
     await user.click(await screen.findByTestId('program-button'));
     await user.click(await screen.findByTestId('lesson-button-l1'));
 
-    expect(await screen.findByText('Lekcja')).toBeInTheDocument();
+    expect(await screen.findByText(en.redirects.targetLesson)).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByTestId('course-program-sheet')).not.toBeInTheDocument());
   });
@@ -1103,10 +1122,10 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    const signIn = await screen.findByRole('link', { name: pl.auth.signInLink });
+    const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
     expect(signIn).toHaveAttribute('href', '/login');
     expect(signIn.closest('header')).not.toBeNull();
-    expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: pl.auth.signInLink })).toBeNull();
+    expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
     expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
@@ -1120,7 +1139,7 @@ describe('MemberShell', () => {
 
     await renderShell('/my');
 
-    const signIn = await screen.findByRole('link', { name: pl.auth.signInLink });
+    const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
     expect(signIn).toHaveStyle({ whiteSpace: 'nowrap', minHeight: '44px' });
     expect(screen.getByTestId('tenant-name-mark')).toHaveStyle({ fontSize: '0.95rem' });
   });
@@ -1162,10 +1181,10 @@ describe('MemberShell', () => {
       '/checkout/p1',
     );
     await user.hover(locked);
-    expect(await screen.findByText(pl.shell.lockedSpaceHint)).toBeInTheDocument();
-    expect(await screen.findByText(pl.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
-    expect(within(nav).queryByRole('link', { name: pl.auth.signInLink })).toBeNull();
-    expect(screen.getAllByRole('link', { name: pl.auth.signInLink })).toHaveLength(1);
+    expect(await screen.findByText(en.shell.lockedSpaceHint)).toBeInTheDocument();
+    expect(await screen.findByText(en.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
+    expect(screen.getAllByRole('link', { name: en.auth.signInLink })).toHaveLength(1);
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
   });
 });

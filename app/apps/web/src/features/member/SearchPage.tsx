@@ -7,6 +7,7 @@ import { ApiError } from '#core/client/index.js';
 import { communityPostPath, lessonPath } from '#core/contract/index.js';
 import type { CourseStructureWithAccess, PostSearchHit } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../components/ui/SearchField.js';
@@ -108,22 +109,25 @@ const HitRow = ({
   hit: PostSearchHit;
   query: string;
   href: string | null;
-}) => (
-  <Box>
-    {href === null ? (
-      <Typography variant="body2" component="p" data-testid={`search-hit-${hit.post.id}`}>
-        {hit.post.authorDisplay}
-      </Typography>
-    ) : (
-      <MuiLink component={Link} to={href} data-testid={`search-hit-${hit.post.id}`}>
-        {hit.post.authorDisplay}
-      </MuiLink>
-    )}
-    <DiscussionHitSnippet variant="body2" component="p">
-      <Highlighted text={hit.snippet} query={query} />
-    </DiscussionHitSnippet>
-  </Box>
-);
+}) => {
+  const t = useTranslations();
+  return (
+    <Box>
+      {href === null ? (
+        <Typography variant="body2" component="p" data-testid={`search-hit-${hit.post.id}`}>
+          {translateDeletedContent(hit.post.authorDisplay, t)}
+        </Typography>
+      ) : (
+        <MuiLink component={Link} to={href} data-testid={`search-hit-${hit.post.id}`}>
+          {translateDeletedContent(hit.post.authorDisplay, t)}
+        </MuiLink>
+      )}
+      <DiscussionHitSnippet variant="body2" component="p">
+        <Highlighted text={hit.snippet} query={query} />
+      </DiscussionHitSnippet>
+    </Box>
+  );
+};
 
 const ResultSection = ({
   heading,

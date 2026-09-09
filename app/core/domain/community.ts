@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { communityPl } from './community.pl.js';
 import { DEFAULT_LANGUAGE, type Language } from './language.js';
 
 export const postContextKindSchema = z.enum(['lesson', 'space']);
@@ -34,8 +35,7 @@ export type Post = z.output<typeof postSchema>;
  */
 export const publicPostSchema = postSchema.omit({ authorUserId: true, deletedByUserId: true }).extend({
   isOwn: z.boolean(),
-  // Unlike authorDisplay this is never snapshotted, and it stays null on the
-  // anonymous surface so public JSON carries no e-mail hash (ADR 0016).
+  // Anonymous public JSON must not carry an e-mail hash, so authorAvatarUrl stays null here.
   authorAvatarUrl: z.string().nullable().default(null),
 });
 
@@ -196,22 +196,25 @@ export const postSearchHitSchema = z.object({
 
 export type PostSearchHit = z.output<typeof postSearchHitSchema>;
 
-const DELETED_POST_PLACEHOLDER: Record<Language, string> = {
-  pl: 'Wpis usunięty',
-  en: 'Deleted post',
-};
+export const DELETED_POST_PLACEHOLDER = '[deleted-post]';
 
 const MODERATOR_DELETED_POST_PLACEHOLDER: Record<Language, string> = {
-  pl: 'Wpis usunięty przez moderatora.',
+  pl: communityPl.moderatorDeletedPost,
   en: 'This post was deleted by a moderator.',
 };
 
 export const isVisiblePostThread = (post: Post, replyCount: number): boolean =>
-  post.parentPostId !== null || post.deletedAt === null || post.deletedBy !== 'author' || replyCount > 0;
+  post.parentPostId !== null || post.deletedAt === null || replyCount > 0;
 
-/** Soft-deleted posts keep the thread shape but never leak their body. */
 export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
-  post.deletedAt === null ? post : { ...post, body: post.deletedBy === 'moderator' ? MODERATOR_DELETED_POST_PLACEHOLDER[language] : DELETED_POST_PLACEHOLDER[language] };
+  post.deletedAt === null
+    ? post
+    : {
+      ...post,
+      body: post.deletedBy === 'moderator'
+        ? MODERATOR_DELETED_POST_PLACEHOLDER[language]
+        : DELETED_POST_PLACEHOLDER,
+    };
 
 /** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
 export const toPublicPost = (

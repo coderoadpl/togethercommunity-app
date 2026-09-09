@@ -120,24 +120,24 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();
-    expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();
-    expect(screen.getByText(/Weryfikacja nieaktualna/)).toBeInTheDocument();
+    expect(within((await screen.findByText("SES configuration set")).closest('li') ?? document.body).getByText("Ready")).toBeInTheDocument();
+    expect(within(screen.getByText("SNS subscription").closest('li') ?? document.body).getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText(/Stale verification/)).toBeInTheDocument();
 
-    await user.click(await screen.findByRole('button', { name: 'Sprawdź status w AWS' }));
+    await user.click(await screen.findByRole('button', { name: "Poll AWS status" }));
 
-    expect(await screen.findByText(/AWS nie zgłasza już tej tożsamości/)).toBeInTheDocument();
+    expect(await screen.findByText(/AWS no longer reports this identity/)).toBeInTheDocument();
     expect(screen.getByTestId('dkim-record-name-token._domainkey.tenant.test'))
       .toHaveTextContent('token._domainkey.tenant.test');
     expect(screen.getByTestId('dkim-record-value-token._domainkey.tenant.test'))
       .toHaveTextContent('token.dkim.amazonses.com');
-    expect(screen.getByText(/Przekazywanie powiadomień tożsamości jest wyłączone/)).toBeInTheDocument();
+    expect(screen.getByText(/Identity feedback forwarding is disabled/)).toBeInTheDocument();
 
-    const testButtons = screen.getAllByRole('button', { name: 'Wyślij test do siebie' });
+    const testButtons = screen.getAllByRole('button', { name: "Send test to myself" });
     expect(testButtons).toHaveLength(3);
     for (const button of testButtons) await user.click(button);
 
-    expect(await screen.findAllByText(/Transport przeszedł diagnostykę/)).toHaveLength(3);
+    expect(await screen.findAllByText(/The transport passed its diagnostic/)).toHaveLength(3);
     expect(testedTransports).toEqual(['ses', 'smtp', 'resend']);
   }, 15_000);
 
@@ -163,10 +163,10 @@ describe('email transport wizard', () => {
     );
     renderWithProviders(<EmailTab />);
 
-    const subscriptionRow = (await screen.findByText('Subskrypcja SNS')).closest('li') ?? document.body;
-    expect(within(subscriptionRow).getByText('Wymaga działania')).toBeInTheDocument();
+    const subscriptionRow = (await screen.findByText("SNS subscription")).closest('li') ?? document.body;
+    expect(within(subscriptionRow).getByText("Action needed")).toBeInTheDocument();
     expect(await screen.findByTestId('marketing-sns-last-delivery')).toHaveTextContent(
-      /Ostatnie zdarzenie z SNS: SubscriptionConfirmation · .* · potwierdzenie nie powiodło się/,
+      /Last SNS event: SubscriptionConfirmation · .* · confirmation failed/,
     );
   }, 15_000);
 
@@ -209,23 +209,23 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    await user.click(await screen.findByRole('button', { name: 'Utwórz infrastrukturę SES + SNS' }));
+    await user.click(await screen.findByRole('button', { name: "Create SES + SNS infrastructure" }));
 
-    expect(await screen.findByText('Infrastruktura SES + SNS jest utworzona')).toBeInTheDocument();
+    expect(await screen.findByText("SES + SNS infrastructure is in place")).toBeInTheDocument();
     expect(screen.getByTestId('ses-configuration-set')).toHaveTextContent('together-tenant-1');
     expect(screen.getByTestId('ses-topic-arn'))
       .toHaveTextContent('arn:aws:sns:eu-central-1:123:together-tenant-1');
     expect(screen.getByTestId('ses-subscription-endpoint'))
       .toHaveTextContent('https://app.test/api/webhooks/ses/webhook-token');
-    await screen.findByText(/Subskrypcja SNS czeka na potwierdzenie/);
+    await screen.findByText(/The SNS subscription is still pending/);
     await vi.waitFor(() => {
       expect(settingsReads).toBeGreaterThan(1);
     });
 
-    await user.click(screen.getByRole('button', { name: 'Sprawdź status w AWS' }));
+    await user.click(screen.getByRole('button', { name: "Poll AWS status" }));
 
     await vi.waitFor(() => {
-      expect(screen.queryByText('Infrastruktura SES + SNS jest utworzona')).not.toBeInTheDocument();
+      expect(screen.queryByText("SES + SNS infrastructure is in place")).not.toBeInTheDocument();
     });
   }, 15_000);
 
@@ -239,7 +239,7 @@ describe('email transport wizard', () => {
     );
     renderWithProviders(<EmailTab />);
 
-    expect(await screen.findByText(/Adres webhooka zmienił się/)).toBeInTheDocument();
+    expect(await screen.findByText(/The webhook address changed/)).toBeInTheDocument();
   }, 15_000);
 
   it('shows the AWS message verbatim when provisioning fails as integration_unavailable', async () => {
@@ -255,9 +255,9 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    await user.click(await screen.findByRole('button', { name: 'Utwórz infrastrukturę SES + SNS' }));
+    await user.click(await screen.findByRole('button', { name: "Create SES + SNS infrastructure" }));
 
-    expect(await screen.findByText('Usługa AWS odrzuciła operację')).toBeInTheDocument();
+    expect(await screen.findByText("AWS rejected the operation")).toBeInTheDocument();
     expect(screen.getByText(awsMessage)).toBeInTheDocument();
   }, 15_000);
 
@@ -280,18 +280,18 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    expect(await screen.findByText(/Adres nadawcy musi należeć do domeny tenant\.test/, {}, { timeout: 5_000 })).toBeInTheDocument();
-    expect(screen.getByLabelText('Zweryfikowana domena lub adres')).toHaveValue('tenant.test');
-    expect(screen.getByText('Sprawdzenie nastąpi po zapisaniu nadawcy')).toBeInTheDocument();
-    expect(screen.getByText(/Domena jest już zweryfikowana w SES/)).toBeInTheDocument();
+    expect(await screen.findByText(/The from address must belong to the tenant\.test domain/, {}, { timeout: 5_000 })).toBeInTheDocument();
+    expect(screen.getByLabelText("Verified domain or address")).toHaveValue('tenant.test');
+    expect(screen.getByText("Checked after the sender is saved")).toBeInTheDocument();
+    expect(screen.getByText(/The domain is already verified in SES/)).toBeInTheDocument();
 
-    await user.click(screen.getByTitle('Otwórz'));
+    await user.click(screen.getByTitle("Open"));
 
     const options = await screen.findAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual([
-      'owner@tenant.testZweryfikowana w SES',
-      'tenant.testZweryfikowana w SESDKIM zweryfikowany',
-      'old.tenant.testDKIM oczekuje',
+      'owner@tenant.testVerified in SES',
+      'tenant.testVerified in SESDKIM verified',
+      'old.tenant.testDKIM pending',
     ]);
   }, 15_000);
 
@@ -310,9 +310,9 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    await user.type(await screen.findByLabelText('Zweryfikowana domena lub adres'), 'owner@tenant.test');
+    await user.type(await screen.findByLabelText("Verified domain or address"), 'owner@tenant.test');
 
-    expect(screen.queryByText(/Domena jest już zweryfikowana w SES/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/The domain is already verified in SES/)).not.toBeInTheDocument();
   }, 15_000);
 
   it('confirms the sender form save instead of leaving the creator guessing', async () => {
@@ -324,10 +324,10 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<EmailTab />);
 
-    const senderForm = (await screen.findByText('Nadawca i tożsamość')).closest('form');
-    await user.click(within(senderForm ?? document.body).getByRole('button', { name: 'Zapisz ustawienia' }));
+    const senderForm = (await screen.findByText("Sender and identity")).closest('form');
+    await user.click(within(senderForm ?? document.body).getByRole('button', { name: "Save settings" }));
 
-    expect(await screen.findByTestId('marketing-sender-status')).toHaveTextContent('Zapisano.');
+    expect(await screen.findByTestId('marketing-sender-status')).toHaveTextContent("Saved.");
   }, 15_000);
 
   it('names the denied AWS action instead of failing the form', async () => {
@@ -341,6 +341,6 @@ describe('email transport wizard', () => {
     );
     renderWithProviders(<EmailTab />);
 
-    expect(await screen.findByText(/Dodaj uprawnienie ses:GetIdentityDkimAttributes/, {}, { timeout: 5_000 })).toBeInTheDocument();
+    expect(await screen.findByText(/Add the ses:GetIdentityDkimAttributes/, {}, { timeout: 5_000 })).toBeInTheDocument();
   }, 15_000);
 });

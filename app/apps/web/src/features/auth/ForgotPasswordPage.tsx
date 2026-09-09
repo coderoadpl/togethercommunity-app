@@ -9,7 +9,7 @@ import {
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
@@ -23,9 +23,10 @@ const emailSchema = z.string().email();
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
-  const [email, setEmail] = useState('');
+  const search = useRouterState({ select: (state) => state.location.searchStr });
+  const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
 
@@ -40,7 +41,7 @@ export const ForgotPasswordPage = () => {
     requestPasswordReset.mutate({
       email: normalizedEmail,
       redirectTo: new URL('/reset-password', window.location.origin).toString(),
-      language,
+      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };
 

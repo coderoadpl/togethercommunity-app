@@ -85,12 +85,7 @@ const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
  */
 const CONTRAST_THRESHOLD = 4.5;
 
-/**
- * Shadcn is the only maintained base theme (owner decision 2026-07-29); the
- * other six stay compiled as unmaintained Storybook-only BYO-theme examples,
- * with Steady Frame as the showcase reference.
- * See docs/decisions/0010-shadcn-base-theme.md.
- */
+// Shadcn is the only maintained base theme; the other modes are Storybook-only BYO examples (see app/docs/storybook.md).
 export const MODES = [
   { id: 'logbook', label: 'Logbook' },
   { id: 'material', label: 'Material' },

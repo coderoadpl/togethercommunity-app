@@ -4,8 +4,8 @@ import { createHtmlToText } from './html-to-text.js';
 
 describe('HTML to plaintext', () => {
   it('preserves Unicode, link destinations, paragraphs, lists and tables', () => {
-    const text = createHtmlToText().convert('<html><head><title>Hidden</title><style>hidden</style></head><body><p>Hello &amp; zażółć &#128512;</p><p><a href="https://courses.example.org/?a=1&amp;b=2">Learn</a><br>Next</p><ul><li>One</li><li>Two</li></ul><table><tr><td>A</td><td>B</td></tr></table><script>hidden()</script></body></html>');
-    expect(text).toContain('Hello & zażółć 😀\n\nLearn (https://courses.example.org/?a=1&b=2)\nNext');
+    const text = createHtmlToText().convert('<html><head><title>Hidden</title><style>hidden</style></head><body><p>Hello &amp; world &#128512;</p><p><a href="https://courses.example.org/?a=1&amp;b=2">Learn</a><br>Next</p><ul><li>One</li><li>Two</li></ul><table><tr><td>A</td><td>B</td></tr></table><script>hidden()</script></body></html>');
+    expect(text).toContain('Hello & world 😀\n\nLearn (https://courses.example.org/?a=1&b=2)\nNext');
     expect(text).toContain('- One');
     expect(text).toContain('- Two');
     expect(text).toContain('A\tB');

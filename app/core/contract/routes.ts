@@ -84,6 +84,7 @@ import {
   impersonationViewSchema,
   tenantAuditEventListQuerySchema,
   tenantAuditEventSchema,
+  DEFAULT_LANGUAGE,
   languageSchema,
   type listOrdersQuerySchema,
   listStreamVideosInputSchema,
@@ -362,6 +363,10 @@ const publicLegalUrlsSchema = z.object({
   privacyUrl: z.string().nullable().default(null),
 });
 
+export const publicOfferQuerySchema = z.object({
+  productRef: z.string().min(1).max(100).optional(),
+});
+
 export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
@@ -370,6 +375,7 @@ export const publicOfferOutputSchema = z.object({
     socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),
     support: tenantSupportPublicSchema.default({ url: null }),
+    defaultLanguage: languageSchema.default(DEFAULT_LANGUAGE),
   }),
   contentVersion: z.number().int().positive(),
   previewLessons: z.array(z.object({
@@ -456,6 +462,7 @@ export const myProductsOutputSchema = z.object({
       accessItems: z.array(accessItemSchema),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
+      purchasable: z.boolean(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
@@ -612,7 +619,7 @@ export const simulatePurchaseInputSchema = z.object({
   email: z.string().email(),
   productId: z.string().min(1),
   priceId: z.string().min(1).optional(),
-  language: languageSchema.default('pl'),
+  language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
   couponCode: z.string().trim().min(1).max(100).optional(),
@@ -1050,6 +1057,7 @@ export type PostUpdateInput = z.input<typeof postUpdateInputSchema>;
 
 export const postDeleteInputSchema = deletePostInputSchema;
 
+export const postPurgeOutputSchema = z.object({ id: z.string().min(1) });
 export type PostDeleteInput = z.input<typeof postDeleteInputSchema>;
 
 export const postOutputSchema = z.object({
@@ -1862,6 +1870,7 @@ export const API_ROUTES = {
   postsPin: { method: 'POST', path: '/api/posts/pin' },
   postsReport: { method: 'POST', path: '/api/posts/report' },
   postsUpdate: { method: 'POST', path: '/api/posts/update' },
+  postsPurge: { method: 'DELETE', path: '/api/posts/:postId/permanent' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
   threadSubscribe: { method: 'POST', path: '/api/discussion/subscribe' },
@@ -2193,6 +2202,7 @@ export const API_PATHS = {
   postsPin: API_ROUTES.postsPin.path,
   postsReport: API_ROUTES.postsReport.path,
   postsUpdate: API_ROUTES.postsUpdate.path,
+  postsPurge: API_ROUTES.postsPurge.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
   threadSubscribe: API_ROUTES.threadSubscribe.path,

@@ -202,8 +202,8 @@ describe('TenantGate', () => {
     renderWithProviders(<TenantGate hostname="ghost.localhost">{children}</TenantGate>);
 
     expect(await screen.findByTestId('tenant-not-found')).toBeInTheDocument();
-    expect(screen.getByAltText('Together')).toBeInTheDocument();
-    expect(screen.getByText(pl.tenantNotFound.title)).toBeInTheDocument();
+    expect(screen.getByAltText(en.common.appName)).toBeInTheDocument();
+    expect(screen.getByText(en.tenantNotFound.title)).toBeInTheDocument();
     expect(screen.queryByText('APP')).not.toBeInTheDocument();
     expect(en.tenantNotFound.title).not.toBe(pl.tenantNotFound.title);
   });

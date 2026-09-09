@@ -182,6 +182,7 @@ import {
   memberSubscriptions,
   marketingConsents,
   notifications,
+  notificationFanoutJobs,
   orders,
   postReactions,
   postReportEvents,
@@ -206,6 +207,7 @@ import {
   tenantDomains,
   tenantSecrets,
   tenants,
+  tenantAuditEvents,
   threadSubscriptions,
   user,
 } from './schema.js';
@@ -322,6 +324,7 @@ const countThreadReplies = async (
         eq(posts.tenantId, tenantId),
         eq(posts.rootPostId, post.rootPostId),
         sql`${posts.id} <> ${post.id}`,
+        isNull(posts.deletedAt),
       ),
     );
   return counts[0]?.value ?? 0;
@@ -391,6 +394,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
+        visibility: product.visibility,
         priceCents: product.priceCents,
         currency: product.currency,
         published: product.published,
@@ -413,6 +417,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
+        visibility: product.visibility,
       })
       .where(and(eq(products.tenantId, tenantId), eq(products.id, product.id)))
       .returning();
@@ -1105,9 +1110,9 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
   },
 });
 
-const visiblePostThread = sql`(${posts.deletedAt} is null or ${posts.deletedBy} is distinct from 'author' or exists (
+const visiblePostThread = sql`(${posts.deletedAt} is null or exists (
   select 1 from posts reply
-  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null
+  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null and reply.deleted_at is null
 ))`;
 
 export const createPostRepository = (db: Db): PostRepository => ({
@@ -1273,6 +1278,40 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id))).limit(1))[0];
     return row ? parsePost(row) : null;
   },
+  purge: async (tenantId, id, audit) => db.transaction(async (tx) => {
+    await tx.execute(sql`lock table ${posts} in share row exclusive mode`);
+    const [post] = await tx.select().from(posts)
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, id), isNotNull(posts.deletedAt)));
+    if (post === undefined) return false;
+    const removed = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.tenantId, tenantId), sql`${posts.id} in (
+      with recursive descendants as (
+        select id from ${posts} where tenant_id = ${tenantId} and id = ${id}
+        union
+        select child.id from ${posts} child join descendants parent on child.parent_post_id = parent.id
+        where child.tenant_id = ${tenantId}
+      ) select id from descendants
+      union select id from ${posts} where tenant_id = ${tenantId} and root_post_id = ${id}
+    )`));
+    const ids = removed.map((row) => row.id);
+    await tx.delete(postReportEvents).where(and(eq(postReportEvents.tenantId, tenantId), inArray(postReportEvents.postId, ids)));
+    await tx.delete(postReports).where(and(eq(postReports.tenantId, tenantId), inArray(postReports.postId, ids)));
+    await tx.delete(postReactions).where(and(eq(postReactions.tenantId, tenantId), inArray(postReactions.postId, ids)));
+    await tx.delete(threadSubscriptions).where(and(eq(threadSubscriptions.tenantId, tenantId), inArray(threadSubscriptions.rootPostId, ids)));
+    await tx.delete(notifications).where(and(eq(notifications.tenantId, tenantId), or(
+      inArray(sql`${notifications.payload}->>'postId'`, ids),
+      inArray(sql`${notifications.payload}->>'rootPostId'`, ids),
+    )));
+    await tx.delete(notificationFanoutJobs).where(and(eq(notificationFanoutJobs.tenantId, tenantId),
+      inArray(notificationFanoutJobs.kind, ['space-post', 'thread-reply']),
+      inArray(sql`${notificationFanoutJobs.payload}->>'postId'`, ids),
+    ));
+    await tx.update(spaceEvents).set({ discussionRootPostId: null }).where(and(
+      eq(spaceEvents.tenantId, tenantId), inArray(spaceEvents.discussionRootPostId, ids),
+    ));
+    await tx.delete(posts).where(and(eq(posts.tenantId, tenantId), inArray(posts.id, ids)));
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
   setPinned: async (tenantId, input) => {
     const rows = await db
       .update(posts)
@@ -1293,6 +1332,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
             eq(posts.contextKind, query.contextKind),
             eq(posts.contextId, query.contextId),
             isNotNull(posts.pinnedAt),
+            visiblePostThread,
           ),
         )
         .orderBy(desc(posts.pinnedAt), desc(posts.id))
@@ -1308,6 +1348,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           isNotNull(posts.pinnedAt),
+          visiblePostThread,
         ),
       );
     return rows[0]?.value ?? 0;
@@ -2983,6 +3024,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           coverUrl: products.coverUrl,
           priceCents: products.priceCents,
           currency: products.currency,
+          visibility: products.visibility,
           published: products.published,
           accessItems: products.accessItems,
           legacyId: products.legacyId,

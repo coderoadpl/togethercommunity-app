@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CreatorOnboarding } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { OnboardingChecklist } from './OnboardingChecklist.js';
@@ -32,11 +32,11 @@ describe('OnboardingChecklist', () => {
     renderWithProviders(<OnboardingChecklist />);
 
     expect(await screen.findByTestId('onboarding-checklist')).toBeInTheDocument();
-    expect(screen.getByText(pl.onboarding.title)).toBeInTheDocument();
-    expect(screen.getByText(pl.onboarding.progress({ done: 1, total: 5 }))).toBeInTheDocument();
-    expect(screen.getByText(pl.onboarding.steps.courseWithLesson)).toBeInTheDocument();
-    expect(screen.getByText(pl.onboarding.steps.paymentsConfigured)).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: new RegExp(pl.onboarding.stepOpen) })).toHaveLength(4);
+    expect(screen.getByText(en.onboarding.title)).toBeInTheDocument();
+    expect(screen.getByText(en.onboarding.progress({ done: 1, total: 5 }))).toBeInTheDocument();
+    expect(screen.getByText(en.onboarding.steps.courseWithLesson)).toBeInTheDocument();
+    expect(screen.getByText(en.onboarding.steps.paymentsConfigured)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: new RegExp(en.onboarding.stepOpen) })).toHaveLength(4);
   });
 
   it('renders nothing when the checklist was dismissed', async () => {

@@ -2,10 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import fixture from '../fixtures/anon-home-tiles.json';
 import { withPage } from '../page-decorators.js';
 
-const publicEventsCall = 'publicSpaceEvents:[{"limit":5,"scope":"upcoming","spaceId":"space-studio-spolecznosc"}]';
+const publicEventsCall = 'publicSpaceEvents:[{"limit":5,"scope":"upcoming","spaceId":"space-studio-community"}]';
 const anonSpaceFixture = {
   ...fixture,
-  route: '/community/space-studio-spolecznosc',
+  route: '/community/space-studio-community',
   calls: {
     ...fixture.calls,
     [publicEventsCall]: {
@@ -15,7 +15,7 @@ const anonSpaceFixture = {
   },
 };
 
-const meta = { title: 'Pages/AnonSpace', id: 'anon-space', render: () => <></>, decorators: [withPage], parameters: { fixture: anonSpaceFixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
+const meta = { title: 'Pages/AnonSpace', id: 'anon-space', render: () => <></>, decorators: [withPage], parameters: { fixture: anonSpaceFixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 

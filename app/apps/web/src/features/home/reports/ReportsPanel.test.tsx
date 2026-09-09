@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -59,7 +59,7 @@ describe('ReportsPanel', () => {
 
     renderWithProviders(<ReportsPanel />);
 
-    expect(await screen.findByText(pl.community.reportReasonOffTopic)).toBeInTheDocument();
+    expect(await screen.findByText(en.community.reportReasonOffTopic)).toBeInTheDocument();
     expect(screen.queryByText('off-topic')).not.toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe('ReportsPanel', () => {
                 id: 'dm-1',
                 senderDisplay: 'Other Person',
                 senderIsReporter: false,
-                body: 'Nieprzyjemna wiadomość',
+                body: 'Unpleasant message',
                 createdAt: '2026-07-29T00:00:00.000Z',
               }],
               status: 'open',
@@ -107,14 +107,14 @@ describe('ReportsPanel', () => {
 
     expect(await screen.findByTestId('dm-report-row')).toBeInTheDocument();
     expect(screen.getByTestId('dm-report-snapshot-dm-report-1')).toHaveTextContent(
-      'Nieprzyjemna wiadomość',
+      'Unpleasant message',
     );
     expect(screen.getByTestId('dm-report-snapshot-dm-report-1')).toHaveTextContent(
-      formatDateTime('2026-07-29T00:00:00.000Z', 'pl'),
+      formatDateTime('2026-07-29T00:00:00.000Z', 'en'),
     );
     expect(
       screen.getByText(
-        pl.dmReports.parties({ reporter: 'Member One', reported: 'Other Person' }),
+        en.dmReports.parties({ reporter: 'Member One', reported: 'Other Person' }),
       ),
     ).toBeInTheDocument();
 

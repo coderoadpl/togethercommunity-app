@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { get as httpsGet } from 'node:https';
 import { join } from 'node:path';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import pg from 'pg';
 import { chromium, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright-core';
@@ -278,9 +279,9 @@ const expectError = (
   }
 };
 
-const setPolish = async (context: BrowserContext): Promise<void> => {
+const setEnglish = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript(() => {
-    window.localStorage.setItem('together-language', 'pl');
+    window.localStorage.setItem('together-language', 'en');
   });
 };
 
@@ -294,7 +295,7 @@ const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
 
 const signInMember = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await requestMagicLink(page, 'kursant.aktywny@together.dev');
+  await requestMagicLink(page, 'student.active@together.dev');
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor(visible);
   const link = sent.locator('a[href]').first();
@@ -351,7 +352,7 @@ const validateFilesAndUploadCourse = async (
   });
 
   await fileInput.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not an image') });
-  await page.getByRole('alert').filter({ hasText: 'Wybierz obraz PNG, JPEG, WebP lub SVG. Favicon może być również plikiem ICO.' }).waitFor(visible);
+  await page.getByRole('alert').filter({ hasText: en.imageAssets.invalidType }).waitFor(visible);
   expectPutRequests(0, 'Invalid MIME selection');
 
   await fileInput.setInputFiles({
@@ -359,9 +360,9 @@ const validateFilesAndUploadCourse = async (
     mimeType: 'image/png',
     buffer: Buffer.alloc(IMAGE_ASSET_MAX_BYTES + 1),
   });
-  await page.getByRole('alert').filter({ hasText: 'Obraz nie może być większy niż 5 MB.' }).waitFor(visible);
+  await page.getByRole('alert').filter({ hasText: en.imageAssets.tooLarge }).waitFor(visible);
   expectPutRequests(0, 'Oversized selection');
-  console.log('image-assets-e2e: Polish client validation blocked invalid files before PUT OK');
+  console.log('image-assets-e2e: English client validation blocked invalid files before PUT OK');
 
   const beginResponse = page.waitForResponse(
     (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === API_PATHS.courseCoverUpload,
@@ -402,7 +403,7 @@ const validateFilesAndUploadCourse = async (
   );
   await expectImageLoaded(page, 'course-image-preview', 'Course upload preview');
   await page.getByTestId('course-details-section').locator('button[type="submit"]').click();
-  await page.getByText('Zapisano dane kursu.').waitFor(visible);
+  await page.getByText('Course details saved.').waitFor(visible);
   return assetPath;
 };
 
@@ -663,7 +664,7 @@ try {
   const creatorContext = await browser.newContext({ ignoreHTTPSErrors: true });
   const memberContext = await browser.newContext({ ignoreHTTPSErrors: true });
   const anonymousContext = await browser.newContext({ ignoreHTTPSErrors: true });
-  await Promise.all([setPolish(creatorContext), setPolish(memberContext), setPolish(anonymousContext)]);
+  await Promise.all([setEnglish(creatorContext), setEnglish(memberContext), setEnglish(anonymousContext)]);
   const creatorPage = await creatorContext.newPage();
   const memberPage = await memberContext.newPage();
   const anonymousPage = await anonymousContext.newPage();

@@ -33,6 +33,7 @@ const product: Product = {
   coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,

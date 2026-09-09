@@ -6,6 +6,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 import type { ReactionEmoji, ReactionSummary, SpaceFeedItem } from '#core/domain/index.js';
 
+import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -30,6 +31,7 @@ import { LockedSpaceCard, SpaceVisibilityChip } from './SpaceCards.js';
 import { PostComposer } from './ThreadDiscussion.js';
 import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
+import { TombstonePostMenu } from './TombstonePostMenu.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { ReactionBar } from './ReactionBar.js';
 import { useImpersonation, useViewerKind } from './viewer.js';
@@ -71,8 +73,8 @@ const FeedPost = ({
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
         <Box>
           <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}>
-            <UserAvatar name={item.authorDisplay} imageUrl={item.authorAvatarUrl} size="sm" />
-            <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
+            <UserAvatar name={translateDeletedContent(item.authorDisplay, t)} imageUrl={item.authorAvatarUrl} size="sm" />
+            <PostAuthorName component="span">{translateDeletedContent(item.authorDisplay, t)}</PostAuthorName>
             {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
             {item.pinnedAt !== null ? (
               <Chip
@@ -147,7 +149,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </PostMetaButton>
           ) : null}
-          <FeedPostMenu
+          {deleted ? (canPin ? <TombstonePostMenu postId={item.id} writeDisabled={writeDisabled} /> : null) : <FeedPostMenu
             postId={item.id}
             postPath={postPath}
             canContactAuthor={!item.isOwn && !deleted}
@@ -156,7 +158,7 @@ const FeedPost = ({
             writeDisabled={writeDisabled}
             onEdit={() => setEditing(true)}
             onDelete={() => setDeleting(true)}
-          />
+          />}
         </Stack>
         {mutationError !== null ? <Alert severity="error">{localizeError(mutationError, t)}</Alert> : null}
       </Stack>

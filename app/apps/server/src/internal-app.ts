@@ -134,6 +134,7 @@ import {
 import {
   devGrantInputSchema,
   apiKeyHasCapability,
+  DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
   forbidden,
@@ -206,6 +207,7 @@ import {
   deleteLessonAttachment,
   deleteProductDownloadAsset,
   deletePost,
+  purgePost,
   deleteSpace,
   deleteTenantSecret,
   detachModuleFromCourse,
@@ -818,6 +820,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       );
       if (!consent.ok) return respond(consent);
 
+      const language = parsed.data.language
+        ?? (await deps.tenants.findSettings(tenant.value.tenant.id))?.defaultLanguage
+        ?? DEFAULT_LANGUAGE;
       let result: Result<SimulatePurchaseResult, AppError>;
       if (parsed.data.couponCode === undefined) {
         result = await simulatePurchase(
@@ -906,7 +911,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
                 productId: selection.value.product.id,
                 priceId: price?.id ?? null,
                 memberEmail: parsed.data.email,
-                language: parsed.data.language,
+                language,
                 couponCheckoutSessionId: couponSessionId,
                 checkoutConsentCaptureId: captureId,
               },
@@ -997,7 +1002,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         email: parsed.data.email,
         tenantId: tenant.value.tenant.id,
         tenantName: tenant.value.tenant.name,
-        language: parsed.data.language,
+        language,
         baseUrl,
       });
       const magicLink = deps.devEndpoints.exposeMagicLinks ? issuedMagicLink : null;
@@ -1918,6 +1923,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             accessItems: product.accessItems,
             priceCents: product.priceCents,
             currency: product.currency,
+            purchasable: product.purchasable,
             grantStatus: product.grantStatus,
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
@@ -3049,6 +3055,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid post update payload', parsed.error.flatten())));
     const result = await editPost(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.postsPurge, async (c) => {
+    const result = await purgePost(ctxOf(c), { id: c.req.param('postId') }, deps);
+    return respond(result);
   });
 
   app.delete(API_PATHS.postsDelete, async (c) => {

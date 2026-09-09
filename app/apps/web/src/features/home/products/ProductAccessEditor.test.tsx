@@ -11,7 +11,7 @@ import {
   type Product,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
@@ -26,6 +26,7 @@ const product: Product = {
   coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
+  visibility: 'listed',
   published: false,
   accessItems: [],
   legacyId: null,
@@ -109,13 +110,13 @@ describe('ProductAccessEditor', () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.addFullCourse }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.addFullCourse }));
 
-    expect(await screen.findByText(pl.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
+    expect(await screen.findByText(en.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -128,18 +129,18 @@ describe('ProductAccessEditor', () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
-    await userEvent.click(await screen.findByLabelText(pl.access.proMode));
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
+    await userEvent.click(await screen.findByLabelText(en.access.proMode));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.selectedLessons }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.selectedLessons }));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Intro lesson' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.addItem }));
 
     expect(
-      await screen.findByText(pl.access.lessonsSummary({ lessons: 'Intro lesson' })),
+      await screen.findByText(en.access.lessonsSummary({ lessons: 'Intro lesson' })),
     ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -152,19 +153,19 @@ describe('ProductAccessEditor', () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
-    await userEvent.click(await screen.findByLabelText(pl.access.proMode));
-    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
+    await userEvent.click(await screen.findByLabelText(en.access.proMode));
+    await userEvent.click(await screen.findByRole('combobox', { name: en.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Module One' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.addItem }));
 
     expect(
       await screen.findByText(
-        pl.access.wholeCourseExceptSummary({ course: 'Launch Kit', modules: 'Module One' }),
+        en.access.wholeCourseExceptSummary({ course: 'Launch Kit', modules: 'Module One' }),
       ),
     ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -185,8 +186,8 @@ describe('ProductAccessEditor', () => {
     renderWithProviders(<ProductAccessEditor product={productWithAccess} />);
 
     expect(await screen.findAllByText('Launch Kit')).toHaveLength(1);
-    expect(screen.getByText(pl.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
-    expect(screen.getByText(pl.access.lessonsSummary({ lessons: 'Intro lesson' }))).toBeInTheDocument();
+    expect(screen.getByText(en.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
+    expect(screen.getByText(en.access.lessonsSummary({ lessons: 'Intro lesson' }))).toBeInTheDocument();
     expect(screen.getAllByTestId('access-item')).toHaveLength(2);
   });
 
@@ -205,8 +206,8 @@ describe('ProductAccessEditor', () => {
     renderWithProviders(<ProductAccessEditor product={productWithAccess} />);
 
     const summary = await screen.findByText(
-      pl.access.lessonsSummary({
-        lessons: `Intro lesson, Advanced lesson, Workshop lesson, ${pl.access.andMore({ count: 1 })}`,
+      en.access.lessonsSummary({
+        lessons: `Intro lesson, Advanced lesson, Workshop lesson, ${en.access.andMore({ count: 1 })}`,
       }),
     );
     await userEvent.hover(summary);
@@ -224,11 +225,11 @@ describe('ProductAccessEditor', () => {
     const { bodies } = setup(productWithAccess);
     renderWithProviders(<ProductAccessEditor product={productWithAccess} />);
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.access.editItem }));
+    await userEvent.click(await screen.findByRole('button', { name: en.access.editItem }));
     expect(await screen.findByRole('checkbox', { name: 'Intro lesson' })).toBeChecked();
     await userEvent.click(screen.getByRole('checkbox', { name: 'Advanced lesson' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.updateItem }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.updateItem }));
+    await userEvent.click(screen.getByRole('button', { name: en.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({

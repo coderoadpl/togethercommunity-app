@@ -105,7 +105,7 @@ describe('Together theme contrast', () => {
     expectRatio('#C21E1E', '#FAFAF9', 5.75);
     expectRatio('#147036', '#FAFAF9', 5.91);
     expectRatio('#A34D08', '#FAFAF9', 5.55);
-    expectRatio('#0E7490', '#FAFAF9', 5.13);
+    expectRatio("#0E7490", '#FAFAF9', 5.13);
     expectRatio('#FFFFFF', '#1B1A18', 17.39);
     expectRatio('#FFFFFF', '#2F2D2A', 13.73);
     expectRatio('#FFFFFF', '#3B3936', 11.51);

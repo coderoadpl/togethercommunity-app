@@ -152,10 +152,10 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
 const queryObject = (url: string): Record<string, string> => Object.fromEntries(new URL(url).searchParams.entries());
 
 
-const publicBrand = async (deps: AppDeps, tenant: Tenant): Promise<PublicBrand> => ({
-  tenant,
-  settings: await deps.tenants.findSettings(tenant.id),
-});
+const publicPageContext = async (deps: AppDeps, tenant: Tenant, request: Request) => {
+  const brand: PublicBrand = { tenant, settings: await deps.tenants.findSettings(tenant.id) };
+  return { brand, language: languageFromRequest(request, brand.settings?.defaultLanguage) };
+};
 
 const html = (body: string): Response => new Response(body, {
   status: 200,
@@ -620,8 +620,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!preferences.ok) return response(preferences);
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       token,
       result: preferences.value.scope === 'all_marketing' ? 'all_unsubscribed' : 'scope_unsubscribed',
       scopeLabel: preferences.value.scopeLabel,
@@ -642,8 +641,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!result.ok) return response(result);
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       token,
       result: 'all_unsubscribed',
       scopeLabel: null,
@@ -678,8 +676,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!result.ok) return response(result);
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       token,
       result: 'saved',
       scopeLabel: null,
@@ -700,8 +697,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!preferences.ok) return response(preferences);
     return html(renderPreferencesPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       token: c.req.param('token'),
       ...preferences.value,
     }));
@@ -722,8 +718,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     return html(renderConfirmationPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       path,
       state,
     }));
@@ -750,8 +745,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     return html(renderConfirmationPage({
       nonce: pageNonce(c),
-      brand: await publicBrand(deps, resolved.value.tenant),
-      language: languageFromRequest(c.req.raw),
+      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       path,
       state: result.ok ? 'success' : 'expired',
     }));
@@ -769,8 +763,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ? response(err(appError('not_found', 'Legal document was not found')))
       : html(renderLegalDocumentPage({
           nonce: pageNonce(c),
-          brand: await publicBrand(deps, resolved.value.tenant),
-          language: languageFromRequest(c.req.raw),
+          ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
           path: `/legal/${encodeURIComponent(c.req.param('slug'))}`,
           title: document.document.title,
           content: document.version.content,
@@ -788,8 +781,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ? response(err(appError('not_found', 'Legal document version was not found')))
       : html(renderLegalDocumentPage({
           nonce: pageNonce(c),
-          brand: await publicBrand(deps, resolved.value.tenant),
-          language: languageFromRequest(c.req.raw),
+          ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
           path: `/legal/${encodeURIComponent(c.req.param('slug'))}/v/${String(parsed.data)}`,
           title: document.document.title,
           content: document.version.content,

@@ -7,10 +7,10 @@ import { createThemeForMode, EmberCtaButton, type ResolvedColorScheme } from '..
 const renderedColor = (scheme: ResolvedColorScheme) => {
   render(
     <ThemeProvider theme={createThemeForMode('shadcn', undefined, scheme)}>
-      <EmberCtaButton variant="contained">Odblokuj dostęp</EmberCtaButton>
+      <EmberCtaButton variant="contained">Unlock access</EmberCtaButton>
     </ThemeProvider>,
   );
-  return getComputedStyle(screen.getByRole('button', { name: 'Odblokuj dostęp' })).color;
+  return getComputedStyle(screen.getByRole('button', { name: "Unlock access" })).color;
 };
 
 describe('EmberCtaButton', () => {

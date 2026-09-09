@@ -13,10 +13,10 @@ describe('resolveEmailLanguage', () => {
     expect(resolveEmailLanguage(undefined, 'en')).toBe('en');
   });
 
-  it('falls back to Polish when nothing is set or the value is unsupported', () => {
-    expect(resolveEmailLanguage()).toBe('pl');
-    expect(resolveEmailLanguage(null, null)).toBe('pl');
-    expect(resolveEmailLanguage('de', 'fr')).toBe('pl');
+  it('falls back to English when nothing is set or the value is unsupported', () => {
+    expect(resolveEmailLanguage()).toBe('en');
+    expect(resolveEmailLanguage(null, null)).toBe('en');
+    expect(resolveEmailLanguage('de', 'fr')).toBe('en');
   });
 
   it('skips unsupported values and keeps looking down the chain', () => {

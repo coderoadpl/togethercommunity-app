@@ -107,6 +107,7 @@ const product = (id: string, tenantId: string): Product => ({
   coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
+  visibility: 'listed',
   published: false,
   accessItems: [],
   legacyId: null,
@@ -467,7 +468,7 @@ describe('course management use-cases', () => {
     await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 4]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 5]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });

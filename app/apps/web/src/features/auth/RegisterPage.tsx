@@ -30,7 +30,7 @@ const baseDomainUrl = (): string => {
 
 export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -71,7 +71,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       email,
       password,
       callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
-      language,
+      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
       ...(consentRequired ? { termsAccepted } : {}),
     });
   };

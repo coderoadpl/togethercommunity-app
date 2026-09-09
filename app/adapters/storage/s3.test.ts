@@ -195,8 +195,8 @@ describe('createS3StorageProvider', () => {
       ...MINIO_CONFIGURATION,
       endpoint: 'https://storage.example.test/tenant/prefix/',
       bucket: 'creator-files',
-    }, 'lesson attachments/zażółć (1).pdf').toString()).toBe(
-      'https://storage.example.test/tenant/prefix/creator-files/lesson%20attachments/za%C5%BC%C3%B3%C5%82%C4%87%20%281%29.pdf',
+    }, 'lesson attachments/resume (1).pdf').toString()).toBe(
+      'https://storage.example.test/tenant/prefix/creator-files/lesson%20attachments/resume%20%281%29.pdf',
     );
   });
 

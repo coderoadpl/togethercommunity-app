@@ -7,15 +7,15 @@ const REQUIRED_LINK_ATTRIBUTES = 'target="_blank" rel="noopener noreferrer nofol
 describe('renderPostContent', () => {
   it('escapes plain text, preserves line breaks and linkifies supported destinations', () => {
     const rendered = renderPostContent(
-      'Generic<T> & notes\nhttps://example.com/a?b=1&c=2, www.zażółć.pl/ścieżka). mailto:ola@example.com!',
+      'Generic<T> & notes\nhttps://example.com/a?b=1&c=2, www.café-müsli.de/übung). mailto:ola@example.com!',
       'plain',
     );
 
     expect(rendered.html).toBe(
-      `Generic&lt;T&gt; &amp; notes<br><a href="https://example.com/a?b=1&amp;c=2" ${REQUIRED_LINK_ATTRIBUTES}>https://example.com/a?b=1&amp;c=2</a>, <a href="https://www.xn--za-6ja4f8n1l.pl/%C5%9Bcie%C5%BCka" ${REQUIRED_LINK_ATTRIBUTES}>www.zażółć.pl/ścieżka</a>). <a href="mailto:ola@example.com" ${REQUIRED_LINK_ATTRIBUTES}>mailto:ola@example.com</a>!`,
+      `Generic&lt;T&gt; &amp; notes<br><a href="https://example.com/a?b=1&amp;c=2" ${REQUIRED_LINK_ATTRIBUTES}>https://example.com/a?b=1&amp;c=2</a>, <a href="https://www.xn--caf-msli-d1a6q.de/%C3%BCbung" ${REQUIRED_LINK_ATTRIBUTES}>www.café-müsli.de/übung</a>). <a href="mailto:ola@example.com" ${REQUIRED_LINK_ATTRIBUTES}>mailto:ola@example.com</a>!`,
     );
     expect(rendered.plainText).toBe(
-      'Generic<T> & notes\nhttps://example.com/a?b=1&c=2, www.zażółć.pl/ścieżka). mailto:ola@example.com!',
+      'Generic<T> & notes\nhttps://example.com/a?b=1&c=2, www.café-müsli.de/übung). mailto:ola@example.com!',
     );
   });
 

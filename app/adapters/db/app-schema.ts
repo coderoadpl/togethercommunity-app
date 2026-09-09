@@ -1264,6 +1264,7 @@ export const posts = pgTable(
     authorDisplay: text('author_display').notNull(),
     authorIsStaff: boolean('author_is_staff').notNull().default(false),
     body: text('body').notNull(),
+    bodyFormat: text('body_format', { enum: ['plain', 'markdown'] }).notNull().default('plain'),
     createdAt: text('created_at').notNull(),
     editedAt: text('edited_at'),
     deletedAt: text('deleted_at'),

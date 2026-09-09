@@ -7,14 +7,13 @@ import type { DiscussionPost, ReactionSummary, SpaceFeed, SpaceFeedItem } from '
 import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
-import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
+import { PostContent } from '../../components/ui/PostContent.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
   DeletedPostText,
   DiscussionThread,
   PostAuthorName,
-  PostBody,
   PostMetaText,
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
@@ -68,9 +67,7 @@ const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
 const PostText = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
   const t = useTranslations();
   return post.deletedAt === null ? (
-    <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`public-post-body-${post.id}`}>
-      <LinkifiedText text={post.body} />
-    </PostBody>
+    <PostContent html={post.bodyHtml} format={post.bodyFormat} sx={{ mt: '0.75rem' }} data-testid={`public-post-body-${post.id}`} />
   ) : (
     <DeletedPostText variant="body2" component="p" sx={{ mt: '0.75rem' }} data-testid={`public-deleted-post-${post.id}`}>
       {post.deletedBy === 'moderator' ? t.discussion.moderatorDeletedPost : t.discussion.deletedPost}

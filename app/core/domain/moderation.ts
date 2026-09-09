@@ -181,10 +181,11 @@ export const normalizeBodyForDuplicate = (body: string): string =>
 
 export const heuristicSignalsFor = (input: {
   body: string;
+  linkDestinations?: readonly string[];
   recentBodies: readonly string[];
 }): HeuristicSignal[] => {
   const signals: HeuristicSignal[] = [];
-  if (countLinks(input.body) >= LINK_COUNT_FLAG_THRESHOLD) signals.push('link-flood');
+  if ((input.linkDestinations?.length ?? countLinks(input.body)) >= LINK_COUNT_FLAG_THRESHOLD) signals.push('link-flood');
   const normalized = normalizeBodyForDuplicate(input.body);
   if (
     normalized.length >= 20 &&

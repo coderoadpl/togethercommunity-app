@@ -18,11 +18,9 @@ import {
   POST_RATE_LIMIT,
   postSchema,
   postSnippet,
-  renderPost,
   rateLimited,
   searchPostsInputSchema,
   subscribeThreadInputSchema,
-  toPublicPost,
   updatePostInputSchema,
   validation,
   type AppError,
@@ -39,6 +37,10 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import {
+  renderPostContent,
+  toRenderedPublicPost,
+} from '../post-content.js';
 import type {
   AvatarSourceReader,
   Clock,
@@ -164,7 +166,7 @@ export const nestReplies = (
   const build = (post: Post): DiscussionPost => {
     const children = byParent.get(post.id) ?? [];
     return {
-      ...toPublicPost(renderPost(post), viewerUserId, avatarUrls.get(post.authorUserId) ?? null),
+      ...toRenderedPublicPost(post, viewerUserId, avatarUrls.get(post.authorUserId) ?? null),
       replyCount: children.length,
       replies: children.map(build),
     };
@@ -206,7 +208,7 @@ const notifyLessonQuestionStaff = async (
         lessonName: context.contextName,
         authorDisplay: post.authorDisplay,
         authorAvatarUrl,
-        snippet: postSnippet(post.body),
+        snippet: postSnippet(renderPostContent(post.body, post.bodyFormat).plainText),
       },
       sourceKey: null,
       readAt: null,
@@ -301,6 +303,7 @@ export const createPost = async (
     authorDisplay: await resolveActorDisplay(ctx.identity, deps),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
+    bodyFormat: parsed.data.bodyFormat,
     createdAt: now,
     editedAt: null,
     deletedAt: null,
@@ -327,7 +330,12 @@ export const createPost = async (
   const created = fanoutJob === null
     ? await deps.posts.createPost(actor.value.tenantId, post)
     : await deps.posts.createPost(actor.value.tenantId, post, fanoutJob);
-  const signals = heuristicSignalsFor({ body: created.body, recentBodies });
+  const rendered = renderPostContent(created.body, created.bodyFormat);
+  const signals = heuristicSignalsFor({
+    body: rendered.plainText,
+    linkDestinations: rendered.linkDestinations,
+    recentBodies,
+  });
   if (signals.length > 0) {
     await openHeuristicReport(actor.value.tenantId, created, signals, deps).catch(() => undefined);
   }
@@ -346,7 +354,7 @@ export const createPost = async (
     const notified = await notifyLessonQuestionStaff(actor.value.tenantId, created, deps, tenant);
     if (!notified.ok) return notified;
   }
-  return ok(toPublicPost(created, actor.value.userId));
+  return ok(toRenderedPublicPost(created, actor.value.userId, null, rendered));
 };
 
 export const listDiscussion = async (
@@ -378,8 +386,8 @@ export const listDiscussion = async (
     deps,
   );
   const threads = visibleThreads.map((thread, index) => ({
-    ...toPublicPost(
-      renderPost(thread.post),
+    ...toRenderedPublicPost(
+      thread.post,
       scope.value.userId,
       avatarUrls.get(thread.post.authorUserId) ?? null,
     ),
@@ -426,14 +434,20 @@ export const editPost = async (
   const updated = await deps.posts.updateBody(actor.value.tenantId, {
     id: post.id,
     body,
+    bodyFormat: parsed.data.bodyFormat ?? post.bodyFormat,
     editedAt: now,
   });
   if (updated === null) return err(validation('Post not found'));
-  const signals = heuristicSignalsFor({ body: updated.body, recentBodies: [] });
+  const rendered = renderPostContent(updated.body, updated.bodyFormat);
+  const signals = heuristicSignalsFor({
+    body: rendered.plainText,
+    linkDestinations: rendered.linkDestinations,
+    recentBodies: [],
+  });
   if (signals.length > 0) {
     await openHeuristicReport(actor.value.tenantId, updated, signals, deps).catch(() => undefined);
   }
-  return ok(toPublicPost(updated, actor.value.userId));
+  return ok(toRenderedPublicPost(updated, actor.value.userId, null, rendered));
 };
 
 export const deletePost = async (
@@ -450,14 +464,14 @@ export const deletePost = async (
   if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {
     return err(forbidden('Only the author or staff can delete this post'));
   }
-  if (post.deletedAt !== null) return ok(toPublicPost(renderPost(post), actor.value.userId));
+  if (post.deletedAt !== null) return ok(toRenderedPublicPost(post, actor.value.userId));
   const deleted = await deps.posts.softDelete(actor.value.tenantId, {
     id: post.id,
     deletedAt: deps.clock.nowIso(),
     deletedBy: post.authorUserId === actor.value.userId ? 'author' : 'moderator',
     deletedByUserId: actor.value.userId,
   });
-  return deleted ? ok(toPublicPost(renderPost(deleted), actor.value.userId)) : err(validation('Post not found'));
+  return deleted ? ok(toRenderedPublicPost(deleted, actor.value.userId)) : err(validation('Post not found'));
 };
 
 export const purgePost = async (
@@ -552,17 +566,19 @@ export const searchPosts = async (
     deps,
   );
   return ok(
-    rows.map(
-      (row): PostSearchHit => ({
-        post: toPublicPost(
+    rows.map((row): PostSearchHit => {
+      const rendered = renderPostContent(row.post.body, row.post.bodyFormat);
+      return {
+        post: toRenderedPublicPost(
           row.post,
           ctx.identity.userId,
           avatarUrls.get(row.post.authorUserId) ?? null,
+          rendered,
         ),
         lessonId: row.lessonId,
-        snippet: row.snippet,
-      }),
-    ),
+        snippet: postSnippet(rendered.plainText),
+      };
+    }),
   );
 };
 

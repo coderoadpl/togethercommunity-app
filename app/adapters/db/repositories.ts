@@ -1262,7 +1262,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
   updateBody: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ body: input.body, editedAt: input.editedAt })
+      .set({ body: input.body, bodyFormat: input.bodyFormat, editedAt: input.editedAt })
       .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), sql`${posts.deletedAt} is null`))
       .returning();
     const row = rows[0];
@@ -1386,7 +1386,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const rows = await db
       .select({
         post: posts,
-        snippet: sql<string>`left(regexp_replace(${posts.body}, '\\s+', ' ', 'g'), 180)`,
       })
       .from(posts)
       .where(
@@ -1403,7 +1402,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
       (row): PostSearchRow => ({
         post: parsePost(row.post),
         lessonId: row.post.contextId,
-        snippet: row.snippet,
       }),
     );
   },

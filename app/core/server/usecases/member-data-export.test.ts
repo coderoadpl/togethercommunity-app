@@ -34,6 +34,7 @@ const post: Post = {
   authorDisplay: 'Member',
   authorIsStaff: false,
   body: 'My post',
+  bodyFormat: 'plain',
   createdAt: now,
   editedAt: null,
   deletedAt: null,
@@ -181,7 +182,7 @@ describe('exportMyData', () => {
     expect(JSON.parse(result.value.content)).toMatchObject({
       formatVersion: 1,
       profile: { email: member.email, language: 'en' },
-      posts: [{ id: post.id, body: post.body }],
+      posts: [{ id: post.id, body: post.body, bodyFormat: 'plain' }],
       invoices: [{
         id: invoice.id,
         invoiceNumber: invoice.invoiceNumber,

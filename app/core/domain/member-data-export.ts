@@ -7,7 +7,7 @@ import { languageSchema } from './language.js';
 import { isoDateTimeSchema, marketingConsentSchema } from './marketing-email.js';
 import { memberSubscriptionSchema, orderSchema } from './commerce.js';
 import { termsConsentSchema } from './consent.js';
-import { postContextKindSchema } from './community.js';
+import { postBodyFormatSchema, postContextKindSchema } from './community.js';
 
 export const memberDataExportSchema = z.object({
   formatVersion: z.literal(1),
@@ -42,6 +42,7 @@ export const memberDataExportSchema = z.object({
       contextKind: postContextKindSchema,
       contextId: z.string(),
       body: z.string(),
+      bodyFormat: postBodyFormatSchema,
       createdAt: z.string().datetime(),
       editedAt: z.string().datetime().nullable(),
       deletedAt: z.string().datetime().nullable(),

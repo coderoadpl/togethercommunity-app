@@ -52,7 +52,8 @@ const harness = (options: HarnessOptions = {}): Harness => {
       ? {
           name: 'Acme', socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+          accentColor: null,
+          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null, defaultHomeSpaceId: null,
         }
@@ -109,7 +110,8 @@ describe('listBunnyVideos', () => {
     const h = harness({ settings: {
       name: 'Acme', socialLinks: [],
       billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-      accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      accentColor: null,
+      accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
       privacyUrl: null, defaultHomeSpaceId: null,
     } });

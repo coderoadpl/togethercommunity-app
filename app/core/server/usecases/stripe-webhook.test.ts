@@ -677,7 +677,7 @@ const consentHarness = async () => {
   h.deps.tenants.findSettings = async () => ({
     name: 'Acme', socialLinks: [], billingPortalUrl: null,
     bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
-    logoUrl: null, logoDarkUrl: null, accentColor: null, faviconUrl: null,
+    logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null,
     ogTitle: null, ogDescription: null, ogImageUrl: null,
     supportEmail: null, supportUrl: null, defaultHomeSpaceId: null,
     termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',

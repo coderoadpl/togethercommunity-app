@@ -24,6 +24,7 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 
 import {
   accentColorSchema,
+  deriveLightAccent,
   DEFAULT_LANGUAGE,
   languageOrDefault,
   LANGUAGES,
@@ -62,7 +63,7 @@ import {
   shortSha,
 } from '../../../lib/build-info.js';
 import { formatDateTime } from '../../../lib/format.js';
-import { BrandSwatch, Eyebrow, QuietActionLink } from '../../../theme.js';
+import { BrandSchemePreview, BrandPreviewControl, BrandSwatch, Eyebrow, QuietActionLink } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
@@ -773,6 +774,8 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [name, setName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoDarkUrl, setLogoDarkUrl] = useState<string | null>(null);
+  const [accentLight, setAccentLight] = useState<string | null>(null);
+  const [accentLightError, setAccentLightError] = useState(false);
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const [ogTitle, setOgTitle] = useState<string | null>(null);
@@ -785,6 +788,8 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const nameValue = name ?? settings.data?.settings.name ?? '';
   const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
   const logoDarkValue = logoDarkUrl ?? settings.data?.settings.logoDarkUrl ?? '';
+  const accentLightValue = accentLight ?? settings.data?.settings.accentLight ?? '';
+  const accentLightValid = accentColorSchema.safeParse(accentLightValue.trim()).success;
   const accentValue = accentColor ?? settings.data?.settings.accentColor ?? '';
   const faviconValue = faviconUrl ?? settings.data?.settings.faviconUrl ?? '';
   const ogTitleValue = ogTitle ?? settings.data?.settings.ogTitle ?? '';
@@ -792,7 +797,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const ogImageValue = ogImageUrl ?? settings.data?.settings.ogImageUrl ?? '';
   const socialLinksValue = socialLinks ?? settings.data?.settings.socialLinks ?? [];
   const accentValid = accentColorSchema.safeParse(accentValue.trim()).success;
-  const swatch = accentValid ? deriveBrandPalette(accentValue.trim()) : null;
+  const swatch = accentValid ? deriveBrandPalette(accentValue.trim(), 'dark') : null;
+  const derivedLight = accentValid ? deriveLightAccent(accentValue.trim()) : '';
+  const lightPreview = accentLightValid ? accentLightValue.trim() : derivedLight;
+  const lightSwatch = lightPreview === '' ? null : deriveBrandPalette(lightPreview);
 
   const updateSettings = useMutation({
     ...actions.updateTenantSettings,
@@ -807,6 +815,11 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const light = accentLightValue.trim();
+    if (light !== '' && !accentLightValid) {
+      setAccentLightError(true);
+      return;
+    }
     const accent = accentValue.trim();
     if (accent !== '' && !accentValid) {
       setAccentError(true);
@@ -830,6 +843,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
       logoDarkUrl: logoDarkValue.trim() === '' ? null : logoDarkValue.trim(),
       accentColor: accent === '' ? null : accent,
+      accentLight: light === '' ? null : light,
       faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
       ogTitle: ogTitleValue.trim() === '' ? null : ogTitleValue.trim(),
       ogDescription: ogDescriptionValue.trim() === '' ? null : ogDescriptionValue.trim(),
@@ -854,6 +868,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           type="submit"
           variant="contained"
           data-testid="branding-save"
+          sx={{ minHeight: 44, minWidth: 44 }}
           disabled={updateSettings.isPending || !settings.isSuccess}
         >
           {updateSettings.isPending ? t.branding.saving : t.branding.save}
@@ -915,7 +930,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
                 }}
                 placeholder={t.branding.accentPlaceholder}
                 inputProps={{ 'data-testid': 'branding-accent-color' }}
-                sx={{ maxWidth: '11rem' }}
+                sx={{ maxWidth: '11rem', minHeight: 44 }}
               />
               <BrandSwatch
                 aria-hidden
@@ -927,6 +942,37 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {accentError ? t.branding.accentInvalid : t.branding.previewHint}
             </Typography>
           </FormControl>
+          <FormControl fullWidth error={accentLightError}>
+            <FormLabel htmlFor="branding-accent-light">{t.branding.accentLightLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-accent-light"
+              value={accentLightValue}
+              disabled={disabled}
+              onChange={(event) => {
+                setAccentLight(event.target.value);
+                setAccentLightError(false);
+              }}
+              inputProps={{ 'data-testid': 'branding-accent-light' }}
+              sx={{ maxWidth: '11rem', minHeight: 44 }}
+            />
+            <Typography variant="caption" component="p">
+              {accentLightError ? t.branding.accentInvalid : t.branding.accentLightHint}
+              {accentLightValue.trim() === '' && derivedLight !== '' ? ` ${derivedLight}` : ''}
+            </Typography>
+          </FormControl>
+          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap sx={{ gap: 1 }}>
+            {[
+              { label: t.branding.darkPreview, scheme: 'dark' as const, palette: swatch },
+              { label: t.branding.lightPreview, scheme: 'light' as const, palette: lightSwatch },
+            ].map(({ label, scheme, palette }) => palette === null ? null : (
+              <BrandSchemePreview key={label} scheme={scheme} accent={palette.dark}>
+                <Typography>{label}</Typography>
+                <BrandPreviewControl accent={palette.main} ink={palette.contrastText}>
+                  {t.branding.previewAction}
+                </BrandPreviewControl>
+              </BrandSchemePreview>
+            ))}
+          </Stack>
           <ImageAssetField
             id="branding-favicon-url"
             label={t.branding.faviconLabel}

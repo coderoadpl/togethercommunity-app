@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router';
 
 import { communitySpacePath } from '#core/contract/index.js';
 
+import { useDocumentTitle } from '../../components/layout/document-title.js';
 import { publicAssetUrl } from '../../theme-public-asset.js';
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
@@ -36,6 +37,7 @@ import {
 import { CommunityOutlineIcon, CoursesOutlineIcon } from './auth-icons.js';
 
 interface AuthShellProps {
+  title?: string;
   hostname?: string;
   footer?: ReactNode;
   children: ReactNode;
@@ -146,6 +148,7 @@ const TenantPublicNav = ({ homeSpaceId, hasCourses }: { homeSpaceId: string | nu
 };
 
 export const AuthShell = ({
+  title,
   hostname = window.location.hostname,
   footer,
   children,
@@ -154,6 +157,9 @@ export const AuthShell = ({
   const t = useTranslations();
   const theme = useTheme();
   const platformSurface = usesPlatformAuthSurface(hostname);
+  const offer = useQuery({ ...actions.publicOffer, enabled: !isConfiguredBaseDomainHost(hostname) });
+  const tenantName = isConfiguredBaseDomainHost(hostname) ? null : offer.data?.tenant.name;
+  useDocumentTitle([title, tenantName ?? t.common.appName]);
 
   return (
     <ThemeProvider theme={authSurfaceTheme}>

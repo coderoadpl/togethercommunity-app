@@ -51,7 +51,7 @@ export const ForgotPasswordPage = () => {
   );
 
   return (
-    <AuthShell footer={footer}>
+    <AuthShell title={t.forgotPassword.title} footer={footer}>
       {requestPasswordReset.isSuccess ? (
         <Box data-testid="forgot-password-success">
           <AuthTitle variant="h1">{t.forgotPassword.successTitle}</AuthTitle>

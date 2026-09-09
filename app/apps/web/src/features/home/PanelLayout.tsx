@@ -27,6 +27,7 @@ import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
 
+import { DocumentTitleProvider } from '../../components/layout/document-title.js';
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
@@ -776,14 +777,16 @@ export const PanelLayout = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      <PanelContextProvider value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified }}>
-        <PanelShell
-          tenant={tenant}
-          name={me.data.name}
-          email={me.data.email}
-          avatarUrl={me.data.avatarUrl}
-        />
-      </PanelContextProvider>
+      <DocumentTitleProvider tenantName={tenant.name} studio>
+        <PanelContextProvider value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified }}>
+          <PanelShell
+            tenant={tenant}
+            name={me.data.name}
+            email={me.data.email}
+            avatarUrl={me.data.avatarUrl}
+          />
+        </PanelContextProvider>
+      </DocumentTitleProvider>
     </ThemeProvider>
   );
 };

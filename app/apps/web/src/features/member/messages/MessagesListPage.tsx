@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { conversationPath } from '#core/contract/index.js';
@@ -11,6 +11,7 @@ import { actions } from '../../../api.js';
 import { ListSection, StatusView } from '../../../components/layout/index.js';
 import { UserAvatar } from '../../../components/ui/UserAvatar.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { useRedirectToLogin } from '../use-login-redirect.js';
 import { formatRelativeTime } from '../../../lib/format.js';
 import {
   AuthorChip,
@@ -80,7 +81,7 @@ const ConversationRow = ({ conversation }: { conversation: PublicDmConversation 
 
 export const MessagesListPage = () => {
   const t = useTranslations();
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   const list = useQuery({
@@ -90,8 +91,8 @@ export const MessagesListPage = () => {
 
   const unauthorized = isUnauthorized(list.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (list.isPending) {
     return (

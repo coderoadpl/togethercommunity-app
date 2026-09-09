@@ -58,7 +58,7 @@ const vitestFiles = execFileSync(
 )
   .split('\n')
   .map((entry) => entry.replace(/^\[[^\]]+\]\s+/, '').trim())
-  .filter((entry) => entry.length > 0);
+  .filter((entry) => entry.length > 0 && !entry.includes('Unsupported engine: wanted'));
 const countValues: Readonly<Record<string, number>> = {
   'test-files': new Set(vitestFiles).size,
 };

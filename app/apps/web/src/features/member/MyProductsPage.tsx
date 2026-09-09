@@ -8,7 +8,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type {
@@ -23,6 +23,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatDate, formatOfferPrice } from '../../lib/format.js';
 import { DataValue, MemberProductLink } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -203,12 +204,12 @@ export const MyProductsPage = () => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
   const tenantSettings = useQuery(actions.tenantSettings);
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (products.isPending) {
     return (

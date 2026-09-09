@@ -1170,20 +1170,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     return marketing;
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
-  const tenantDomainDeps = {
-    tenantDomains,
-    domainEvents: tenantDomainEvents,
-    provisioner: domainProvisioner,
-    rateLimit: publicRateLimitBuckets,
-    notifications: notificationRepository,
-    tenantAccess,
-    realtimeBus,
-    ids,
-    clock,
-    routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
-    customDomainTarget,
-    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
-  };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const memberLink = async (tenantId: string, tenantSlug: string | null, path: string): Promise<string> =>
     new URL(path, await resolveTenantOrigin({ id: tenantId, slug: tenantSlug }, { ...routing, tenantDomains })).toString();
@@ -1207,6 +1193,24 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     corsOrigin: env.APP_BASE_URL,
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
+  const tenantDomainDeps = {
+    tenantDomains,
+    domainEvents: tenantDomainEvents,
+    provisioner: domainProvisioner,
+    rateLimit: publicRateLimitBuckets,
+    notifications: notificationRepository,
+    tenantAccess,
+    realtimeBus,
+    ids,
+    clock,
+    storage,
+    secretResolver,
+    storageCorsCache,
+    logger,
+    routing,
+    customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
+  };
   const accountAvatars = createAccountAvatarRepository(db);
   const accountAvatarTenants = createAccountAvatarTenantReader(db);
   const avatarImages = createAvatarImageProcessor(storage);

@@ -22,7 +22,7 @@ import { RegisterPage } from './RegisterPage.js';
 const HomeAfterRegistration = () => <div>Home after registration</div>;
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const renderRegisterPage = async (hostname?: string) => {
+const renderRegisterPage = async (hostname?: string, initialEntry = '/register') => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -37,7 +37,7 @@ const renderRegisterPage = async (hostname?: string) => {
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, registerRoute]),
-    history: createMemoryHistory({ initialEntries: ['/register'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return {
@@ -170,6 +170,42 @@ describe('RegisterPage', () => {
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+  });
+
+  it('preserves returnTo for verification and back-to-login links', async () => {
+    const signupBodies: unknown[] = [];
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', async ({ request }) => {
+        signupBodies.push(await request.json());
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
+
+    await renderRegisterPage(
+      undefined,
+      '/register?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+
+    expect(screen.getByRole('link', { name: en.auth.signInLink })).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+    expect(signupBodies).toEqual([
+      {
+        name: 'New Creator',
+        email: 'new@together.dev',
+        password: VALID_PASSWORD,
+        callbackURL: 'http://localhost:3000/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      },
+    ]);
   });
 
   it.each(['akademia.localhost', 'courses.example.org'])('requires accepting configured documents and submits consent with signup on %s', async (hostname) => {

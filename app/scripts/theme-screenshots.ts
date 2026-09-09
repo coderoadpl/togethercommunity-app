@@ -231,7 +231,7 @@ const signInMember = async (page: Page, studioBaseUrl: string, email: string): P
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, `login page did not expose a dev magic link for ${email}`);
   await page.goto(href, { waitUntil: 'load' });
-  await page.waitForURL('**/my', { timeout: 20000 });
+  await page.waitForURL(/\/(?:my|start)(?:[/?#]|$)/, { timeout: 20000 });
 };
 
 const captureDarkLoginStates = async (

@@ -133,6 +133,7 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
     consents: marketing.marketingConsents,
     suppressions: marketing.suppressions,
     hmac: marketing.hmac,
+    tenants: deps.tenants,
     sends: marketing.campaignSends,
     events: marketing.events,
     layouts: marketing.layouts,

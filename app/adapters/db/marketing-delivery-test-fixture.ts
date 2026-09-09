@@ -7,6 +7,7 @@ import { createMarketingDeliveryRepos, createMarketingDeliveryTransaction } from
 import { createConsentDefinitionRepository, createEmailLayoutRepository, createMarketingConsentRepository, createMarketingThrottleRepository } from './marketing-repositories.js';
 import { tenants, tenantSesSettings } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
+import { createTenantRepository } from './repositories.js';
 
 export const DELIVERY_NOW = '2026-09-09T10:00:00.000Z';
 export const deliveryCtx = (tenantId = 'delivery-a'): Ctx => ({
@@ -24,6 +25,7 @@ export const createDeliveryFixture = async () => {
   const deps = {
     ...createMarketingDeliveryRepos(database.db), delivery: createMarketingDeliveryTransaction(database.db),
     definitions: createConsentDefinitionRepository(database.db), consents: createMarketingConsentRepository(database.db), layouts: createEmailLayoutRepository(database.db),
+    tenants: createTenantRepository(database.db),
     hmac: createEmailHmac(Buffer.alloc(32, 1).toString('base64')), clock: { nowIso: () => new Date(now).toISOString() },
     ids: { nextId: () => crypto.randomUUID() }, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
     htmlToText: createHtmlToText(), waiter: { wait: async (ms: number) => { now += ms; } },

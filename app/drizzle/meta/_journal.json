@@ -796,8 +796,15 @@
     {
       "idx": 113,
       "version": "7",
+      "when": 1788915486889,
+      "tag": "0113_branding_light_accent",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
       "when": 1788917804140,
-      "tag": "0113_marketing_delivery_durability",
+      "tag": "0114_marketing_delivery_durability",
       "breakpoints": true
     }
   ]

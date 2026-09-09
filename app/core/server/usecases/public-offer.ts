@@ -111,6 +111,7 @@ export const getPublicOffer = async (
             logoUrl: settings.logoUrl,
             logoDarkUrl: settings.logoDarkUrl,
             accentColor: settings.accentColor,
+            accentLight: settings.accentLight,
             faviconUrl: settings.faviconUrl,
           },
       socialLinks: settings?.socialLinks ?? [],

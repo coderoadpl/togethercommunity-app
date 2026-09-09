@@ -44,7 +44,7 @@ const stubOffer = (
           tenant: {
             slug: 'akademia',
             name: 'Akademia Demo',
-            branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+            branding: { logoUrl: null, accentColor: null, accentLight: null, faviconUrl: null },
             socialLinks: [],
             legal: overrides.legal ?? { termsUrl: null, privacyUrl: null },
             support: overrides.support ?? { url: null },
@@ -92,6 +92,7 @@ const renderShell = async (hostname: string, accentColor: string | null = null) 
               logoUrl: null,
               logoDarkUrl: null,
               accentColor,
+              accentLight: null,
               faviconUrl: null,
             })
           }

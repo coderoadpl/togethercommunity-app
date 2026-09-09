@@ -144,11 +144,13 @@ export const AuthDivider = styled(Box)(({ theme }) => ({
 }));
 
 export const AuthIdentityChip = styled(Box)(({ theme }) => ({
+  '& button': { whiteSpace: 'nowrap' },
   display: 'flex',
   alignItems: 'center',
   gap: '0.6rem',
-  width: 'fit-content',
-  maxWidth: '100%',
+  width: '100%',
+  minWidth: 0,
+  boxSizing: 'border-box',
   marginBottom: '1.25rem',
   padding: '0.15rem 0.9rem 0.15rem 0.5rem',
   fontSize: '0.9375rem',
@@ -171,6 +173,8 @@ export const AuthIdentityAvatar = styled('span')(({ theme }) => ({
 }));
 
 export const AuthIdentityEmail = styled('span')({
+  flex: 1,
+  minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
@@ -262,6 +266,10 @@ export const AuthFooterRow = styled(Box)({
 });
 
 export const AuthFooterLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+  minWidth: 44,
   color: theme.palette.text.secondary,
   textDecorationLine: 'underline',
   textDecorationColor: alpha(theme.palette.text.secondary, 0.45),

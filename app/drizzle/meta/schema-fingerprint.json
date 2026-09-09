@@ -1,6 +1,6 @@
 {
-  "hash": "4903d31b970b59e18392a385b09a997d5d611a2e3dac8a0949d8b696d498dc9c",
-  "shortId": "4903d31b970b",
+  "hash": "ff3b796971c1c84bfdb930afd6e3068f044d7332d34f9c2c12b86efbe7fdcfd7",
+  "shortId": "ff3b796971c1",
   "schema": {
     "constraints": [
       {
@@ -3378,6 +3378,14 @@
             "generated": "",
             "identity": "",
             "name": "accent_color",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "accent_light",
             "notNull": false,
             "type": "text"
           },

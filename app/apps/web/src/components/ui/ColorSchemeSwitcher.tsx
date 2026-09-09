@@ -63,7 +63,7 @@ export const ColorSchemeSwitcher = ({ compact = false }: { compact?: boolean }) 
       exclusive
       value={colorScheme}
       aria-label={labels.label}
-      sx={compact ? { '& .MuiToggleButton-root': { minHeight: '44px', minWidth: '44px', px: 0 } } : undefined}
+      sx={{ '& .MuiToggleButton-root': { minHeight: '44px', minWidth: '44px', ...(compact ? { px: 0 } : {}) } }}
       onChange={(_event, next: ColorScheme | null) => {
         if (next !== null) setColorScheme(next);
       }}

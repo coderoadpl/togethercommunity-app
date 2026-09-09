@@ -3,6 +3,7 @@ import { mkdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import {
   chromium,
@@ -181,7 +182,7 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
 const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, 'student.active@together.dev');
-  const magicLink = page.getByRole('link', { name: 'Open magic link (development mode)' });
+  const magicLink = page.getByRole('link', { name: en.auth.openMagicLink });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');

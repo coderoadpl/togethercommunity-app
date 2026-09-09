@@ -1,25 +1,10 @@
-# ADR-0003: Vercel environments and release topology
+# Deployment environments
 
-Status: accepted, 2026-07-28. Amended 2026-08-04 to add the deployment-risk
-profile and distinguish the target production topology from its outstanding
-owner actions and adopt the platform-default branch model.
+Together serves the static web app and Hono API on Vercel. Runtime adapters
+require interactive transactions, so every environment uses
+`DB_DRIVER=node-postgres`; see [Data atomicity](data-atomicity.md).
 
-## Context
-
-Together deploys the static web app and Hono API to Vercel. The repository
-needs a named development, staging, preview, and production topology that keeps
-production promotion owner-controlled and runs each deployment against the
-matching database.
-
-The internal [deployment-risk classification](../deployment-risk-classes.md)
-selects a SIL-3-shaped posture for Together's commercial hosted production.
-
-Runtime adapters currently require interactive database transactions.
-Consequently every environment uses `DB_DRIVER=node-postgres`; the reason and
-the migration path to another driver are defined in
-[data-atomicity.md](../data-atomicity.md).
-
-## Decision
+## Branches and databases
 
 | Environment | Source | Vercel deployment | Database |
 |---|---|---|---|
@@ -28,28 +13,24 @@ the migration path to another driver are defined in
 | Staging | `staging` | stable Preview alias | automatic integration-managed Neon staging branch |
 | Production | `main` | Vercel Production Branch | Neon production branch |
 
-This table is the target release topology, not evidence of live configuration.
-Earlier on 2026-08-04, the remote had no `production` branch and no
-ruleset; that was
-a recorded launch blocker under the former topology. Later that day, the
-model
-was switched to the platform's default convention because the inverted model
-(`main` as staging and `production` as production) fought the hosting and
-database integrations, which assume that the default branch is production.
 
-`main` is now the default and production branch. `staging` is the integration
-trunk where feature pull requests merge, and a production release is an
-owner-approved pull request from `staging` to `main`. Vercel Production Branch
-Tracking must point to `main`; merges to `staging` must create Preview
-deployments only. The database integration automatically creates and manages
-the `staging` database branch used by that stable staging deployment. The
-legacy `production` branch is not a deployment or promotion target.
+`main` is the default and production branch. Feature pull requests merge into
+`staging`; production promotion is an owner-approved pull request from `staging`
+to `main`. Preserve merge commits and their GitHub-generated subjects: the
+[version derivation](versioning.md) counts those events.
 
-GitHub enforces rulesets and branch protection on public repositories on the
-Free plan, but repository files cannot prove that the live approval wall is
-configured. Creation of `staging` and the rulesets, verification of the hosting
-boundary, and manual SHA attestation are tracked in items 16–18 of the
-[go-live checklist](../go-live-checklist.md#16-production-branch-and-approval-wall).
+Set Vercel Production Branch Tracking to `main`. Merges to `staging` create
+Preview deployments only, using the integration-managed Neon staging branch.
+The legacy `production` branch is not a deployment target. Environment data and
+credentials remain isolated.
+
+Repository configuration describes the required topology but does not prove
+that live branch protection, hosting accounts, or databases match it. Verify
+those boundaries and record deployment SHA attestation using the
+[go-live checklist](go-live-checklist.md#16-production-branch-and-approval-wall)
+and [deployment controls](deployment-risk-classes.md#together-controls).
+
+## Runtime and build configuration
 
 The Vercel project root is `app`. `api/index.ts` delegates to
 `apps/server/src/entry.vercel.ts`, while local and smoke processes keep using
@@ -160,13 +141,5 @@ data. No workflow currently invokes it or turns its result into an automated
 acceptance gate.
 Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
 environment.
-The first platform login, project linkage, environment provisioning, and first
-deployment remain owner actions.
-
-## Consequences
-
-The same commit advances Preview to staging to production, while environment
-data and credentials remain isolated. Production code is reviewed before the
-build receives production secrets. Vercel stays confined to the platform entry
-and deployment configuration; core and ordinary app modules remain
-provider-neutral.
+Project linkage, environment provisioning, and deployment require the
+operator to authenticate with the hosting provider.

@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { chromium, type Browser, type Page } from 'playwright-core';
 import pg from 'pg';
@@ -127,7 +128,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 const signInMember = async (page: Page, baseUrl: string, email: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, email);
-  const magicLink = page.getByRole('link', { name: 'Open magic link (development mode)' });
+  const magicLink = page.getByRole('link', { name: en.auth.openMagicLink });
   await magicLink.waitFor({ state: 'visible', timeout: 15000 });
   const href = await magicLink.getAttribute('href');
   if (href === null) throw new Error('no magic link');
@@ -159,7 +160,7 @@ try {
   const created = envelopeData(
     cli(probeStaff, apiUrl, [
       '--tenant', probeTenantSlug, 'space', 'create',
-      '--slug', slug, '--name', 'QA Space', '--visibility', 'members',
+      '--slug', slug, '--name', 'QA space', '--visibility', 'members',
     ]),
   );
   const probeSpaceId =
@@ -264,7 +265,7 @@ try {
   await signInMember(mobilePage, studioUrl, 'student.active@together.dev');
   await mobilePage.goto(`${studioUrl}/community`, { waitUntil: 'load' });
   await mobilePage.getByTestId('space-card-space-studio-community').waitFor({ state: 'visible' });
-  const communityTab = mobilePage.getByRole('link', { name: 'Community' }).last();
+  const communityTab = mobilePage.getByRole('link', { name: en.community.heading }).last();
   record('member mobile: bottom tab bar shows the community tab', await communityTab.isVisible());
   await shoot(mobilePage, 'member-community-mobile');
   await mobilePage.goto(`${studioUrl}/community/space-studio-community`, { waitUntil: 'load' });
@@ -302,11 +303,11 @@ try {
   await shoot(panelPage, 'panel-spaces-list-desktop');
 
   await panelPage.goto(`${studioUrl}/panel/spaces/new`, { waitUntil: 'load' });
-  await panelPage.getByLabel('Name').fill('QA Space');
-  await panelPage.getByLabel('Description').fill('Created by adversarial QA browsers.');
+  await panelPage.getByLabel(en.spacesPanel.nameLabel).fill('QA space');
+  await panelPage.getByLabel(en.spacesPanel.descriptionLabel).fill('Created by adversarial browser QA.');
   await panelPage.getByTestId('space-form-submit').click();
   await panelPage.waitForURL('**/panel/spaces', { timeout: 15000 });
-  const createdRow = panelPage.getByRole('heading', { name: 'QA Space' });
+  const createdRow = panelPage.getByRole('heading', { name: 'QA space' });
   await createdRow.waitFor({ state: 'visible' });
   record('panel CRUD: create via form lands back on the list with the new space', true);
   await shoot(panelPage, 'panel-spaces-created-desktop');
@@ -321,16 +322,16 @@ try {
         }
       }
       return null;
-    }, 'QA Space');
+    }, 'QA space');
   must('panel CRUD: the created space has a manage link', qaSpaceHref !== null);
   if (qaSpaceHref === null) throw new Error('unreachable');
   const qaSpaceId = decodeURIComponent(qaSpaceHref.split('/').at(-1) ?? '');
 
   await panelPage.goto(`${studioUrl}${qaSpaceHref}`, { waitUntil: 'load' });
-  await panelPage.getByLabel('Name').fill('QA Space (edited)');
+  await panelPage.getByLabel(en.spacesPanel.nameLabel).fill('QA space (edited)');
   await panelPage.getByTestId('space-form-submit').click();
   await panelPage.waitForURL('**/panel/spaces', { timeout: 15000 });
-  await panelPage.getByRole('heading', { name: 'QA Space (edited)' }).waitFor({ state: 'visible' });
+  await panelPage.getByRole('heading', { name: 'QA space (edited)' }).waitFor({ state: 'visible' });
   record('panel CRUD: edit renames the space', true);
 
   await panelPage.getByTestId(`space-archive-${qaSpaceId}`).click();
@@ -339,7 +340,7 @@ try {
     .getByTestId(`space-archive-${qaSpaceId}`)
     .waitFor({ state: 'detached', timeout: 15000 });
   record('panel CRUD: archiving removes the space from the default active filter', true);
-  await panelPage.getByRole('group', { name: 'Space filter' }).getByText('Archived').click();
+  await panelPage.getByRole('group', { name: en.spacesPanel.filterAria }).getByText(en.spacesPanel.filterArchived).click();
   await panelPage.getByTestId(`space-restore-${qaSpaceId}`).waitFor({ state: 'visible', timeout: 15000 });
   record('panel CRUD: the archived filter shows the row with a restore action', true);
   await shoot(panelPage, 'panel-spaces-archived-desktop');
@@ -347,7 +348,7 @@ try {
   await panelPage
     .getByTestId(`space-restore-${qaSpaceId}`)
     .waitFor({ state: 'detached', timeout: 15000 });
-  await panelPage.getByRole('group', { name: 'Space filter' }).getByText('Active').click();
+  await panelPage.getByRole('group', { name: en.spacesPanel.filterAria }).getByText(en.spacesPanel.filterActive).click();
   await panelPage.getByTestId(`space-archive-${qaSpaceId}`).waitFor({ state: 'visible', timeout: 15000 });
   record('panel CRUD: restore brings the space back to active', true);
 

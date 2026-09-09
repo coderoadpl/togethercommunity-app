@@ -2,7 +2,7 @@
 
 A workspace is always reachable at `<slug>.<APP_BASE_DOMAIN>`. A creator can
 additionally connect up to three of their own domains from
-**Panel → Ustawienia → Adresy**. Only the workspace owner sees the controls;
+**Panel → Settings → Addresses**. Only the workspace owner sees the controls;
 administrators can read the section but cannot change it.
 
 ## Canonical address
@@ -15,8 +15,8 @@ domains are excluded. In this schema, `verified` is the active routing state.
 Without a verified custom domain, links use the platform subdomain (or the
 configured application origin in single-tenant mode).
 
-Settings → Addresses displays this derived address read-only as **Primary address**
-in Polish. There is no primary flag or manual selection. Removing the canonical
+Settings → Addresses displays this derived address read-only as **Canonical address**
+in the English UI. There is no primary flag or manual selection. Removing the canonical
 domain makes the next eligible domain canonical; removing the last one restores
 the platform address.
 
@@ -71,8 +71,8 @@ the address the platform operator provides. A subdomain such as
 
 | Chip | Meaning |
 |---|---|
-| Czeka na DNS | The records are published in the Studio; DNS does not point at the deployment yet. |
-| Weryfikacja u dostawcy | The provider returned an ownership record that must be published before it will serve the domain. |
+| Waiting for DNS | The records are published in the Studio; DNS does not point at the deployment yet. |
+| Provider verification | The provider returned an ownership record that must be published before it will serve the domain. |
 | Active | The domain resolves and serves the workspace. |
 | Error | The last check failed; the provider message is shown under the domain. |
 
@@ -217,7 +217,7 @@ and rotate it whenever anyone with runtime access leaves.
 
 With no `DOMAIN_PROVISIONER_TOKEN` the platform runs the manual provisioner: adding a
 domain records the row and shows the `CNAME` to `APP_CUSTOM_DOMAIN_TARGET`, and
-nothing else contacts an external API. The domain stays *Czeka na DNS* until an
+nothing else contacts an external API. The domain stays *Waiting for DNS* until an
 operator flips it:
 
 ```sql

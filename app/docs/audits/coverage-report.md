@@ -1,17 +1,15 @@
 # Per-layer test coverage audit
 
-Answers the owner's question — *"do we have full test coverage at every level?"*
-("do we have full test coverage of every layer?") — with numbers, a
-risk-ranked gap list, and a ratchet that stops any layer from silently
-regressing.
+Reports test coverage by layer, with measured results, a risk-ranked gap list,
+and a ratchet that stops any layer from silently regressing.
 
 ## How to read / reproduce
 
 ```bash
 cd app
-npm run coverage        # runs vitest with v8 coverage, prints the table, enforces the floor
-npm run coverage:check  # report-only ratchet gate (used by npm run coverage)
-npm run coverage:baseline  # re-measure and rewrite coverage-baseline.json floors
+pnpm run coverage        # runs vitest with v8 coverage, prints the table, enforces the floor
+pnpm run coverage:check  # report-only ratchet gate (used by pnpm run coverage)
+pnpm run coverage:baseline  # re-measure and rewrite coverage-baseline.json floors
 ```
 
 - Provider: `@vitest/coverage-v8` with `all: true`, so **every** source file in
@@ -65,10 +63,10 @@ value rounded down. All four core layers exceed **85% lines**, and adapters clea
 **70% lines** at 75.2%. Core/server branches are **76.9%**, 3.1 points below the
 stated **>80%** target, so its honest ratchet floor is now 76% while >80% remains
 the restoration target; the other core branch results clear that target.
-The high-risk surfaces the owner cares about — money/price math, entitlement
-edges, tenant isolation, auth/secret crypto, webhook transitions, error-code
-mapping, CLI exit codes — are covered by unit tests (new or pre-existing) plus
-the smoke/e2e runtime gates. `apps/cli`, `apps/server` and `scripts` stay low on
+The high-risk surfaces — money/price math, entitlement edges, tenant isolation,
+auth/secret crypto, webhook transitions, error-code mapping, CLI exit codes —
+are covered by unit tests (new or pre-existing) plus the smoke/e2e runtime
+gates. `apps/cli`, `apps/server` and `scripts` stay low on
 *unit* coverage by design: they are thin wiring/tooling exercised by `smoke` and
 the `e2e:*` scripts, not by vitest.
 
@@ -78,16 +76,16 @@ Unit coverage is measured only from `vitest`. Several critical paths are
 covered instead — or in addition — by runtime gates that vitest does not
 observe, so a low unit number on those files is **not** an untested path:
 
-- **`npm run smoke`** (`scripts/smoke.ts`): boots the real server on an
+- **`pnpm run smoke`** (`scripts/smoke.ts`): boots the real server on an
   ephemeral port and drives health → sign-in → product list → simulated
   purchase → magic-link sign-in through the CLI, asserting taxonomy exit codes
   (including `unauthorized = 3`). This exercises `apps/server`, `apps/cli`,
   `core/client/http.ts`, and the DB repositories end to end.
-- **`npm run e2e:auth`** (`scripts/auth-e2e.ts`): passkey / TOTP / password
+- **`pnpm run e2e:auth`** (`scripts/auth-e2e.ts`): passkey / TOTP / password
   reset / magic-link auth flows against `adapters/auth/*`.
-- **`npm run e2e:poc`** (`scripts/poc-e2e.ts`): creator + member happy path
+- **`pnpm run e2e:poc`** (`scripts/poc-e2e.ts`): creator + member happy path
   across products, courses, grants, entitlements.
-- **`npm run e2e:subs`** (`scripts/subs-e2e.ts`): full subscription lifecycle
+- **`pnpm run e2e:subs`** (`scripts/subs-e2e.ts`): full subscription lifecycle
   (checkout → invoice.paid renewal → payment_failed → cancel) through the real
   Stripe-shaped webhook path.
 - **Adapter integration tests** (`adapters/db/importer.test.ts`,
@@ -201,13 +199,13 @@ create/renew/revoke plus tenant-isolation negatives.
 - `coverage-baseline.json` (at `app/coverage-baseline.json`) stores a per-layer
   floor for lines/branches/functions, each **rounded down** from the achieved
   number.
-- `scripts/coverage-check.ts` (`npm run coverage:check`) compares the latest
+- `scripts/coverage-check.ts` (`pnpm run coverage:check`) compares the latest
   `coverage-summary.json` against those floors and **fails** if any layer drops
-  below any floor. It is part of `npm run coverage` but intentionally **not**
-  part of `npm run check` — the static gate stays fast and the coverage gate is
+  below any floor. It is part of `pnpm run coverage` but intentionally **not**
+  part of `pnpm run check` — the static gate stays fast and the coverage gate is
   opt-in / CI-friendly.
-- **To raise a floor** after adding tests: run `npm run coverage:baseline`,
+- **To raise a floor** after adding tests: run `pnpm run coverage:baseline`,
   which re-measures and rewrites the floors to the new (rounded-down) achieved
   numbers. Commit the updated `coverage-baseline.json`. Never hand-raise a floor
-  above what `npm run coverage` currently reports, or the gate will fail on a
+  above what `pnpm run coverage` currently reports, or the gate will fail on a
   clean tree.

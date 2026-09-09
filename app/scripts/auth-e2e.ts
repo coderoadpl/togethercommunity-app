@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
@@ -279,7 +280,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     );
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Security' }).click();
+    await page.getByRole('tab', { name: en.settingsNavigation.security }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('E2E Passkey');
     await page.getByTestId('passkey-proof-password').fill('demo-password-15');

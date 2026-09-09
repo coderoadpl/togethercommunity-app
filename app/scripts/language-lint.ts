@@ -26,8 +26,8 @@ const legalPhrases = [
 
 const isAllowedFile = (path: string): boolean =>
   path === 'CLA.md' ||
-  path === 'app/apps/web/src/i18n/pl.ts' ||
-  path.endsWith('.pl.ts') ||
+  path === 'app/apps/web/src/i18n/en.ts' ||
+  path.endsWith('.en.ts') ||
   path.startsWith('app/adapters/invoicing/xsd/') ||
   path.startsWith('app/drizzle/') && path.endsWith('.sql') ||
   path === 'app/adapters/invoicing/ksef-pdf.ts';

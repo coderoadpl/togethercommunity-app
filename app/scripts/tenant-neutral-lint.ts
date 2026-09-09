@@ -8,7 +8,7 @@ const DENIED_PATTERNS: readonly { rule: string; pattern: RegExp }[] = [
   { rule: 'tenant name', pattern: /coderoad/gi },
   { rule: 'tenant domain', pattern: /coderoad\.(?:pl|example|test|localhost)/gi },
   { rule: 'legacy path shape', pattern: /(?<!\w)\/courses\/[^/\s'"`]+\/modules\//g },
-  { rule: 'tenant course title', pattern: /Course front-end od A do Z/gi },
+  { rule: 'tenant course title', pattern: /Kurs front-end od A do Z/gi },
   { rule: 'tenant course title', pattern: /Programowanie – co musisz wiedzie\u0107/gi },
   { rule: 'legacy tenant slug', pattern: /akademia-samouka/gi },
 ];

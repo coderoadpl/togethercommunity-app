@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
@@ -417,7 +418,7 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
 const signInMagicLink = (email: string) => async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await requestMagicLink(page, email);
-  const magicLink = page.getByRole('link', { name: 'Open magic link (development mode)' });
+  const magicLink = page.getByRole('link', { name: en.auth.openMagicLink });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');

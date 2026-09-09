@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { en } from '../apps/web/src/i18n/en.js';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { z } from 'zod';
@@ -393,7 +394,7 @@ interface MagicLinkLabels {
   open: string;
 }
 
-const ENGLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Open magic link (development mode)' };
+const ENGLISH_MAGIC_LINK: MagicLinkLabels = { open: en.auth.openMagicLink };
 
 const signInStudent = async (
   page: Page,

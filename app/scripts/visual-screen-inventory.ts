@@ -2,6 +2,7 @@ import type { Locator, Page, Route } from 'playwright-core';
 import type { TenantRouting } from '#core/domain/index.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { waitForPaint } from './visual-browser-setup.js';
+import { en } from '../apps/web/src/i18n/en.js';
 
 export const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900, scope: 'all' },
@@ -200,7 +201,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     tenantSlug: 'akademia',
     path: '/',
     ready: async (page) => {
-      await page.getByRole('heading', { name: 'Look inside' }).waitFor(visible);
+      await page.getByRole('heading', { name: en.anon.homeTitle }).waitFor(visible);
       await page.getByTestId('tenant-logo').first().waitFor(visible);
     },
   },
@@ -478,7 +479,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
       if (!desktop) return;
       await page.getByTestId('dashboard-aside').waitFor(visible);
-      const manage = page.getByTestId('dashboard-member-row').first().getByRole('button', { name: 'Manage' });
+      const manage = page.getByTestId('dashboard-member-row').first().getByRole('button', { name: en.members.manage });
       await manage.waitFor(visible);
       const hit = await manage.evaluate((element) => {
         const rect = element.getBoundingClientRect();
@@ -579,7 +580,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-coupon-detail',
     auth: 'creator',
     path: '/panel/sales/coupons/coupon-studio-partner20',
-    ready: (page) => page.getByText('Activity over time').waitFor(visible),
+    ready: (page) => page.getByText(en.coupons.timeSeries).waitFor(visible),
   },
   {
     name: 'panel-order-detail',
@@ -633,7 +634,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-marketing-layouts',
     auth: 'creator',
     path: '/panel/marketing/layouts',
-    ready: (page) => page.getByRole('heading', { name: 'Email layouts' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: en.marketing.layoutsTitle }).waitFor(visible),
   },
   {
     name: 'panel-integrations-email',

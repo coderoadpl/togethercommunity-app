@@ -31,7 +31,7 @@ rebuild a stale bundle automatically. After pulling changes, run
 
 Transactional mail uses the database-backed development sink by default.
 To exercise the real SMTP adapter, select `EMAIL_PROVIDER=smtp` as described in
-[ADR-0007](docs/decisions/0007-local-mailpit.md), then inspect captured messages
+[Local Mailpit](docs/local-mailpit.md), then inspect captured messages
 at `http://localhost:48980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
@@ -58,7 +58,7 @@ progress, then re-runs the seed. Other tenants are untouched.
 | --- | --- | --- |
 | Studio Demo | http://studio.localhost:48730 | `creator@together.dev` |
 | Acme Courses | http://acme.localhost:48730 | `kontakt+smoke-creator@togethercommunity.app` |
-| Self-learning Academy | http://akademia.localhost:48730 | `creator3@together.dev` |
+| Akademia Samouka | http://akademia.localhost:48730 | `creator3@together.dev` |
 
 **Courses**
 
@@ -206,7 +206,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->403<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->402<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -231,7 +231,7 @@ Tenant lifecycle status and plan are migration-managed in this phase; no applica
 
 ## Community
 
-Lesson discussions are the first Community (Faza 2) slice:
+Lesson discussions are the first Community (Phase 2) slice:
 
 - **Discussions under lessons** — context-generic posts (`contextKind:
   'lesson'` today, spaces later) with nested replies capped at depth 3,
@@ -255,7 +255,7 @@ Lesson discussions are the first Community (Faza 2) slice:
   browser falls back to polling on serverless (details in
   [Realtime](#realtime) below).
 
-The seed plants a Polish demo discussion under `course-js` lessons
+The seed plants an English demo discussion under `course-js` lessons
 (`lesson-js-variables-1`, `lesson-js-dom-1`), including a creator answer and a
 deleted-post placeholder, plus one unread notification for
 `student.active@together.dev` — the bell shows a badge on first login.

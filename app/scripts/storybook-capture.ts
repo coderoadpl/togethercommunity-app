@@ -89,7 +89,7 @@ try {
       };
       const sharedCapture = await createCapture();
       for (const spec of specs) {
-        const capture = sharedCapture;
+        const capture = spec.isolateCapture ? await createCapture() : sharedCapture;
         const { page, errors } = capture;
         const screen = spec.name;
         const id = pageStoryId(screen, viewport.name);
@@ -125,6 +125,7 @@ try {
         const fixturePath = resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
         const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
         const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
+        if (spec.isolateCapture) await capture.context.close();
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
         console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);

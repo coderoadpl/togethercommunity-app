@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import { Alert, AppBar, Box, Button, IconButton, Toolbar, Tooltip, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -43,9 +43,11 @@ export const MemberShell = () => {
   const courseContext = courseContextFromPath(pathname);
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
+  const [mobileKeyboardActive, setMobileKeyboardActive] = useState(false);
   const canOpenStudio = useCanOpenStudio();
   const shellRef = useRef<HTMLDivElement>(null);
   const appBarRef = useRef<HTMLElement>(null);
+  const mobileKeyboardAnchorRef = useRef<Element | null>(null);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -61,7 +63,22 @@ export const MemberShell = () => {
 
   useEffect(() => {
     setOpenSheet(null);
+    mobileKeyboardAnchorRef.current = null;
+    setMobileKeyboardActive(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const anchor = mobileKeyboardAnchorRef.current;
+    if (!mobileKeyboardActive || shell === null || anchor === null) return;
+    const observer = new MutationObserver(() => {
+      if (anchor.isConnected || mobileKeyboardAnchorRef.current !== anchor) return;
+      mobileKeyboardAnchorRef.current = null;
+      setMobileKeyboardActive(false);
+    });
+    observer.observe(shell, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [mobileKeyboardActive]);
 
   const tenant = me.data?.tenant ?? null;
   const isMember = viewer === 'member';
@@ -79,6 +96,27 @@ export const MemberShell = () => {
     : { courseId: courseContext.courseId, lessonId: courseContext.lessonId };
   const hasMobileNavigation = identity !== null && !isDesktop;
   const closeSheet = () => setOpenSheet(null);
+  const mobileKeyboardAnchor = (target: EventTarget): Element | null =>
+    target instanceof Element ? target.closest('[data-mobile-keyboard-anchor]') : null;
+  const handleMobileFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (!hasMobileNavigation) return;
+    if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
+    const anchor = mobileKeyboardAnchor(event.target);
+    if (anchor === null) return;
+    if (mobileKeyboardAnchorRef.current === anchor) return;
+    mobileKeyboardAnchorRef.current = anchor;
+    setMobileKeyboardActive(true);
+    anchor.scrollIntoView({ block: 'center' });
+  };
+  const handleMobileBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!hasMobileNavigation) return;
+    const anchor = mobileKeyboardAnchor(event.target);
+    if (anchor === null) return;
+    if (event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
+    if (mobileKeyboardAnchorRef.current !== anchor) return;
+    mobileKeyboardAnchorRef.current = null;
+    setMobileKeyboardActive(false);
+  };
 
   const sidebar = identity === null || !isDesktop ? null : courseContext === null ? (
     <MemberSidebar
@@ -97,7 +135,9 @@ export const MemberShell = () => {
 
   const mobileNavigation = !hasMobileNavigation || identity === null ? null : (
     <>
-      <MemberBottomBar menuOpen={openSheet === 'menu'} onOpenMenu={() => setOpenSheet('menu')} />
+      {mobileKeyboardActive ? null : (
+        <MemberBottomBar menuOpen={openSheet === 'menu'} onOpenMenu={() => setOpenSheet('menu')} />
+      )}
       <MemberMenuSheet
         open={openSheet === 'menu'}
         onClose={closeSheet}
@@ -156,25 +196,36 @@ export const MemberShell = () => {
 
   return (
     <>
-      <Box ref={shellRef} sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}>
-        {sidebar === null ? null : (
-          <SidebarColumn
-            component="aside"
-            sx={courseContext === null ? undefined : {
-              top: 'var(--member-app-bar-height)',
-              mt: 'var(--member-app-bar-height)',
-              height: 'calc(100dvh - var(--member-app-bar-height))',
-              maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
-              overflowY: 'auto',
-            }}
-          >
-            {sidebar}
-          </SidebarColumn>
+      <Box
+        ref={shellRef}
+        onFocusCapture={handleMobileFocus}
+        onBlurCapture={handleMobileBlur}
+        sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}
+      >
+        {sidebar === null ? null : courseContext === null ? (
+          <SidebarColumn component="aside">{sidebar}</SidebarColumn>
+        ) : (
+          <Box sx={{ flexShrink: 0 }}>
+            <SidebarColumn sx={{ height: 'var(--member-app-bar-height)', justifyContent: 'center', px: '1.2rem' }}>
+              {brand}
+            </SidebarColumn>
+            <SidebarColumn
+              component="aside"
+              sx={{
+                top: 'var(--member-app-bar-height)',
+                height: 'calc(100dvh - var(--member-app-bar-height))',
+                maxHeight: 'calc(100dvh - var(--member-app-bar-height))',
+                overflowY: 'auto',
+              }}
+            >
+              {sidebar}
+            </SidebarColumn>
+          </Box>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar ref={appBarRef} position="sticky">
             <Toolbar variant="dense" sx={{ minHeight: `${TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
-              {lessonCrumbs === null ? (
+              {lessonCrumbs === null && (courseContext === null || !isDesktop) ? (
                 <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
                   {brand}
                 </Box>
@@ -206,7 +257,7 @@ export const MemberShell = () => {
                     aria-expanded={openSheet === 'program' ? true : undefined}
                     onClick={() => setOpenSheet('program')}
                     data-testid="program-button"
-                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0 }}
+                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, flexShrink: 0, minHeight: 44, minWidth: 44 }}
                   >
                     <ProgramIcon />
                   </IconButton>

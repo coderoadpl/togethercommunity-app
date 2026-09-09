@@ -350,7 +350,7 @@ describe('CourseSidebar', () => {
     }
   });
 
-  it('scrolls when the active lesson is visible but its module header is above the scroller', async () => {
+  it('scrolls when the active lesson is covered by the sticky module header', async () => {
     server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
     const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
@@ -361,8 +361,8 @@ describe('CourseSidebar', () => {
     });
     const rects = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
       if (this.hasAttribute('data-course-tree-scroll')) return new DOMRect(0, 0, 320, 400);
-      if (this.getAttribute('data-testid') === 'module-toggle-m2') return new DOMRect(0, -44, 320, 44);
-      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 120, 320, 44);
+      if (this.getAttribute('data-testid') === 'module-toggle-m2') return new DOMRect(0, 8, 320, 46);
+      if (this.getAttribute('data-testid') === 'lesson-button-l3') return new DOMRect(0, 40, 320, 44);
       return new DOMRect(0, 0, 320, 44);
     });
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');

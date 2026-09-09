@@ -265,6 +265,14 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
 export class InMemoryMarketingConsentRepository implements MarketingConsentRepository {
   private readonly rows: MarketingConsent[] = [];
 
+  snapshot(): MarketingConsent[] {
+    return structuredClone(this.rows);
+  }
+
+  restore(rows: MarketingConsent[]): void {
+    this.rows.splice(0, this.rows.length, ...structuredClone(rows));
+  }
+
   async record(tenantId: string, consent: MarketingConsent): Promise<void> {
     if (!sameTenant(tenantId, consent)) throw new Error('Tenant mismatch');
     if (this.rows.some((row) => row.id === consent.id)) throw new Error('Consent repository is append-only');

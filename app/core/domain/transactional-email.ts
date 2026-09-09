@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
@@ -79,12 +80,13 @@ export const emailBrandingFrom = (
     logoUrl: string | null;
     logoDarkUrl?: string | null | undefined;
     accentColor: string | null;
+    accentLight?: string | null | undefined;
     socialLinks?: Array<{ label: string; url: string }> | undefined;
   },
   baseUrl: string,
 ): EmailBranding => ({
   logoUrl: absoluteBrandingAssetUrl(resolveTenantLogo(settings, 'light'), baseUrl),
-  accentColor: settings.accentColor,
+  accentColor: settings.accentLight ?? (settings.accentColor === null ? null : deriveLightAccent(settings.accentColor)),
   socialLinks: settings.socialLinks,
 });
 

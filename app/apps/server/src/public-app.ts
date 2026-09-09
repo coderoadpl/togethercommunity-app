@@ -48,7 +48,6 @@ import {
 } from '#core/domain/index.js';
 import {
   authLinkBaseUrl,
-  enforceTermsConsent,
   fulfillStripeWebhook,
   getPaymentConfig,
   getPlayableLesson,
@@ -60,7 +59,6 @@ import {
   getPublicSpaceEvents,
   getPublicSpaceFeed,
   getPublicSpaceThread,
-  recordCheckoutMarketingConsents,
   resolveIdentity,
   resolveSignInMethods,
   resolveTenant,
@@ -237,110 +235,6 @@ const anonymousIdentity = (
   memberLanguage: null,
   memberVideoAutoplay: false,
 });
-
-const recordCheckoutConsents = async (
-  deps: AppDeps,
-  input: {
-    tenant: { id: string; slug: string; name: string; };
-    email: string | undefined;
-    selectedDefinitionIds: string[];
-    attachedDefinitionIds: string[];
-    productId: string;
-    orderId: string;
-    collectedAt: string;
-    confirmationBaseUrl: string;
-    ip?: string;
-    userAgent?: string;
-  },
-): Promise<void> => {
-  if (deps.marketing === undefined || input.email === undefined || input.selectedDefinitionIds.length === 0) return;
-  const proofRef = `product:${input.productId};order:${input.orderId}`;
-  try {
-    const recorded = await recordCheckoutMarketingConsents(
-      { identity: anonymousIdentity('Checkout', input.tenant) },
-      {
-        email: input.email,
-        selectedDefinitionIds: input.selectedDefinitionIds,
-        attachedDefinitionIds: input.attachedDefinitionIds,
-        evidence: {
-          collectedAt: input.collectedAt,
-          proofRef,
-          ...(input.ip === undefined ? {} : { ip: input.ip }),
-          ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
-        },
-        confirmationBaseUrl: input.confirmationBaseUrl,
-      },
-      {
-        definitions: deps.marketing.definitions,
-        consents: deps.marketing.marketingConsents,
-        confirmations: deps.marketing.confirmations,
-        members: deps.members,
-        tenants: deps.tenants,
-        outbox: deps.emailOutbox,
-        ids: deps.ids,
-        tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
-        clock: deps.clock,
-      },
-    );
-    if (!recorded.ok) {
-      deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${proofRef} error=${recorded.error.code}:${recorded.error.message}`);
-    }
-  } catch (cause) {
-    deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${proofRef} unexpected=${String(cause)}`);
-  }
-};
-
-const recordFulfilledCheckoutConsents = async (
-  deps: AppDeps,
-  tenant: { id: string; slug: string; name: string; },
-  event: PaymentWebhookEvent,
-): Promise<void> => {
-  const checkout = event.checkoutSession;
-  const captureId = checkout?.metadata.checkoutConsentCaptureId;
-  if (checkout === null || captureId === undefined || captureId === null) return;
-  const capture = await deps.checkoutConsentCaptures.findById(tenant.id, captureId);
-  if (capture === null) {
-    deps.logger.error(
-      `[checkout-consent] tenant=${tenant.id} capture=${captureId} missing`,
-    );
-    return;
-  }
-  const email = checkout.email ?? checkout.metadata.memberEmail;
-  const terms = await enforceTermsConsent(
-    tenant.id,
-    {
-      accepted: capture.termsAccepted,
-      userId: null,
-      email,
-      source: 'checkout',
-    },
-    deps,
-  );
-  if (!terms.ok) {
-    deps.logger.error(`[checkout-consent] tenant=${tenant.id} terms=${terms.error.code}:${terms.error.message}`);
-  }
-  if (event.objectId === null || checkout.metadata.productId === null) return;
-  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
-    tenant.id,
-    { checkoutSession: event.objectId },
-  );
-  if (order === null) {
-    deps.logger.error(`[checkout-consent] tenant=${tenant.id} checkout=${event.objectId} order=missing`);
-    return;
-  }
-  await recordCheckoutConsents(deps, {
-    tenant,
-    email: email ?? undefined,
-    selectedDefinitionIds: capture.selectedDefinitionIds,
-    attachedDefinitionIds: capture.attachedDefinitionIds,
-    productId: checkout.metadata.productId,
-    orderId: order.id,
-    collectedAt: capture.collectedAt,
-    confirmationBaseUrl: capture.confirmationBaseUrl,
-    ...(capture.ip === undefined ? {} : { ip: capture.ip }),
-    ...(capture.userAgent === undefined ? {} : { userAgent: capture.userAgent }),
-  });
-};
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
@@ -742,7 +636,6 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         'simulated',
       );
       if (!fulfilled.ok) return respondPublic(fulfilled);
-      await recordFulfilledCheckoutConsents(deps, tenant.value.tenant, event);
     }
     return respondPublic(session);
   });
@@ -843,9 +736,6 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       ...deps,
       exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
     });
-    if (fulfilled.ok && fulfilled.value.processed) {
-      await recordFulfilledCheckoutConsents(deps, tenant, event.value);
-    }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
 

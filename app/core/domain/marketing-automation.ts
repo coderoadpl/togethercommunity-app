@@ -1,3 +1,4 @@
+import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/marketing-email.js';
 import { z } from 'zod';
 
 import { campaignSendSchema, marketingConsentSourceSchema } from './marketing-email.js';
@@ -6,6 +7,8 @@ const marketingAutomationMessageSchema = z.object({
   to: z.string().email(),
   consentDefinitionId: z.string().min(1),
   templateId: z.string().min(1).optional(),
+  bodyText: marketingBodyTextSchema.nullable().optional(),
+  replyTo: marketingReplyToSchema.nullable().optional(),
   bodyHtml: z.string().min(1).optional(),
   data: z.record(z.unknown()).default({}),
   campaignKey: z.string().min(1).max(120).optional(),

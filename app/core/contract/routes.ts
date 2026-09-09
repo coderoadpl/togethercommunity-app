@@ -1,3 +1,5 @@
+import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
+import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
 
@@ -1566,6 +1568,8 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
 });
 export const marketingCampaignCreateInputSchema = z.object({
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
+  bodyText: marketingBodyTextSchema.nullable().optional(),
+  replyTo: marketingReplyToSchema.nullable().optional(),
   bodyHtml: z.string().min(1), bodySource: z.string().min(1).optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
@@ -1609,6 +1613,10 @@ export const marketingLayoutOutputSchema = z.object({ layout: emailLayoutSchema 
 export const marketingLayoutSaveInputSchema = z.object({
   layoutId: z.string().min(1).optional(), name: z.string().trim().min(1), bodyHtml: z.string().min(1),
 });
+export const marketingSnsInboxOutputSchema = z.object({ receipts: z.array(marketingSnsReceiptSchema) });
+export const marketingSnsRetryInputSchema = z.object({ inboxId: z.string().min(1) });
+export const marketingSnsRetryOutputSchema = z.object({ retried: z.literal(true) });
+export const marketingWorkerOutputSchema = z.object({ campaignsDispatched: z.number(), retentionTenantsProcessed: z.number(), identityChecksPerformed: z.number(), reputationAlertsSent: z.number() });
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
@@ -1621,6 +1629,7 @@ export const marketingSesSettingsOutputSchema = z.object({
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
+  replyTo: marketingReplyToSchema.nullable().optional(),
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
@@ -1976,6 +1985,9 @@ export const API_ROUTES = {
   marketingDocumentPublish: { method: 'POST', path: '/api/marketing/documents/publish' },
   marketingLayouts: { method: 'GET', path: '/api/marketing/layouts' },
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
+  marketingSnsInbox: { method: 'GET', path: '/api/marketing/sns-inbox' },
+  marketingSnsRetry: { method: 'POST', path: '/api/marketing/sns-inbox/retry' },
+  marketingWorker: { method: 'GET', path: '/api/internal/marketing/tick' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },

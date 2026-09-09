@@ -1,3 +1,4 @@
+import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
 import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
@@ -1927,6 +1928,8 @@ export const campaigns = pgTable(
     subject: text('subject').notNull(),
     bodyHtml: text('body_html').notNull(),
     bodySource: text('body_source').notNull(),
+    bodyText: text('body_text'),
+    replyTo: text('reply_to'),
     layoutId: text('layout_id').references(() => emailLayouts.id, { onDelete: 'set null' }),
     consentDefinitionId: text('consent_definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'restrict' }),
     audienceFilter: jsonb('audience_filter').$type<Campaign['audienceFilter']>(),
@@ -2063,6 +2066,7 @@ export const tenantSesSettings = pgTable(
   {
     tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
     fromAddress: text('from_address').notNull(),
+    replyTo: text('reply_to'),
     fromName: text('from_name').notNull(),
     identity: text('identity').notNull(),
     identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
@@ -2319,3 +2323,50 @@ export const marketingMemberSyncJobs = pgTable('marketing_member_sync_jobs', {
   foreignKey({ columns: [t.tenantId, t.memberId], foreignColumns: [members.tenantId, members.id], name: 'marketing_member_sync_member_fk' }).onDelete('cascade'),
   index('marketing_member_sync_work_idx').on(t.status, t.nextAttemptAt),
 ]);
+
+export const marketingOutbox = pgTable('marketing_outbox', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  campaignSendId: text('campaign_send_id').notNull().references(() => campaignSends.id, { onDelete: 'cascade' }),
+  payload: jsonb('payload').$type<MarketingOutboxPayload>(),
+  payloadPurgedAt: timestamp('payload_purged_at', { withTimezone: true, mode: 'string' }),
+  status: text('status', { enum: ['pending', 'dispatching', 'retry', 'sent', 'skipped', 'failed', 'uncertain'] }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
+  lockedBy: text('locked_by'), lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+  claimVersion: integer('claim_version').notNull().default(0),
+  sesMessageId: text('ses_message_id'), lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+  uniqueIndex('marketing_outbox_send_uidx').on(table.tenantId, table.campaignSendId),
+  index('marketing_outbox_worker_idx').on(table.tenantId, table.status, table.nextAttemptAt, table.lockedUntil),
+]);
+
+export const marketingSnsInbox = pgTable('marketing_sns_inbox', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  topicArn: text('topic_arn').notNull(), snsMessageId: text('sns_message_id').notNull(),
+  messageType: text('message_type', { enum: ['Notification', 'SubscriptionConfirmation'] }).notNull(),
+  rawBody: text('raw_body'), bodySha256: text('body_sha256').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true, mode: 'string' }).notNull(),
+  status: text('status', { enum: ['pending', 'processing', 'retry', 'processed', 'ignored', 'dead_letter'] }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
+  lockedBy: text('locked_by'), lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+  claimVersion: integer('claim_version').notNull().default(0),
+  processedAt: timestamp('processed_at', { withTimezone: true, mode: 'string' }),
+  lastError: text('last_error'), ignoreReason: text('ignore_reason'),
+}, (table) => [
+  uniqueIndex('marketing_sns_inbox_receipt_uidx').on(table.tenantId, table.topicArn, table.snsMessageId),
+  index('marketing_sns_inbox_worker_idx').on(table.tenantId, table.status, table.nextAttemptAt, table.lockedUntil),
+]);
+
+export const marketingSnsInboxEvents = pgTable('marketing_sns_inbox_events', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  inboxId: text('inbox_id').notNull().references(() => marketingSnsInbox.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), actor: text('actor'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [index('marketing_sns_inbox_events_tenant_idx').on(table.tenantId, table.inboxId)]);

@@ -286,8 +286,8 @@ export const createEmailOutboxRepository = (
     try {
       await db.transaction(async (tx) => {
         await tx.update(emailOutbox).set({
-          deliveryStatus: input.status,
-          deliveryOccurredAt: input.occurredAt,
+          deliveryStatus: sql`case when ${emailOutbox.deliveryStatus} = 'complained' or (${emailOutbox.deliveryStatus} = 'bounced' and ${input.status} = 'delivered') then ${emailOutbox.deliveryStatus} else ${input.status} end`,
+          deliveryOccurredAt: sql`case when ${emailOutbox.deliveryStatus} = 'complained' or (${emailOutbox.deliveryStatus} = 'bounced' and ${input.status} = 'delivered') then ${emailOutbox.deliveryOccurredAt} else ${input.occurredAt}::timestamptz end`,
         }).where(and(eq(emailOutbox.tenantId, input.tenantId), eq(emailOutbox.id, input.id)));
         await tx.insert(emailEvents).values(emailEventSchema.parse(input.event));
       });

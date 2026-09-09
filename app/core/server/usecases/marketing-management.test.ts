@@ -64,7 +64,7 @@ const version: ConsentDefinitionVersion = {
 };
 const campaign = (status: Campaign['status']): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello', bodyHtml: '<p>News</p>',
-  bodySource: '<p>News</p>', layoutId: null, consentDefinitionId: definition.id, audienceFilter: null,
+  bodyText: null, replyTo: null, bodySource: '<p>News</p>', layoutId: null, consentDefinitionId: definition.id, audienceFilter: null,
   status, sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null, toSend: 0, sent: 0, failed: 0,
   lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null, audienceNameSnapshot: null,
   consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: NOW,
@@ -178,7 +178,7 @@ describe('marketing management use-cases', () => {
     const editableCampaigns = new InMemoryCampaignRepository([campaign('draft')]);
     const updated = await updateMarketingCampaign(ctx, {
       campaignId: 'campaign-1', name: 'Changed', subject: 'Changed',
-      bodyHtml: '<h1>Hello</h1>', bodySource: '# Hello',
+      bodyHtml: '<h1>Hello</h1>', bodyText: null, replyTo: null, bodySource: '# Hello',
       consentDefinitionId: definition.id, productIds: [], layoutId: null,
     }, { campaigns: editableCampaigns, definitions, layouts });
     expect(updated.ok).toBe(true);
@@ -191,7 +191,7 @@ describe('marketing management use-cases', () => {
   it('derives readiness from credentials and onboarding state instead of persisted flags', async () => {
     const settings: TenantSesSettings = {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
       configurationSet: null, snsTopicArn: 'arn:topic',
       snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
       trackingEnabled: false,
@@ -260,7 +260,7 @@ describe('marketing management use-cases', () => {
       ok: true,
       value: {
         settings: {
-          identityVerifiedAt: null,
+          replyTo: null, identityVerifiedAt: null,
           identityCheckedAt: null,
           broadcastsEnabled: false,
         },
@@ -298,7 +298,7 @@ describe('marketing management use-cases', () => {
       ok: true,
       value: {
         settings: {
-          identityVerifiedAt: null,
+          replyTo: null, identityVerifiedAt: null,
           inSandbox: true,
           quotaRefreshedAt: null,
           broadcastsEnabled: false,
@@ -310,7 +310,7 @@ describe('marketing management use-cases', () => {
   it('keeps the SNS subscription state only while the topic ARN stays the same', async () => {
     const stored: TenantSesSettings = {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: 'arn:topic',
       snsSubscriptionEndpoint: 'https://tenant.test/api/webhooks/ses/webhook_token_123456789012345',
       snsSubscriptionConfirmedAt: NOW,
@@ -363,7 +363,7 @@ describe('marketing management use-cases', () => {
   it('flags a subscribed endpoint that no longer matches the tenant webhook address', async () => {
     const stored: TenantSesSettings = {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      replyTo: null, identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
       configurationSet: 'marketing', snsTopicArn: 'arn:topic',
       snsSubscriptionEndpoint: 'https://apex.test/api/webhooks/ses/webhook_token_123456789012345',
       snsSubscriptionConfirmedAt: NOW,

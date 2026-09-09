@@ -107,3 +107,12 @@ export * from './usecases/marketing-lists.js';
 export * from './usecases/marketing-member-contacts.js';
 
 export * from './usecases/marketing-contact-imports.js';
+
+export type { HtmlToText, MarketingWaiter } from './marketing-delivery-ports.js';
+
+export type { MarketingOutboxRepository, MarketingSnsInboxRepository, MarketingDeliveryRepos, MarketingDeliveryTransaction } from './marketing-delivery-ports.js';
+
+export { enqueueMarketingMessages } from './usecases/marketing-outbox.js';
+export { dispatchMarketingOutbox } from './usecases/marketing-dispatch.js';
+
+export { recordVerifiedMarketingSnsEnvelope, processMarketingSnsInbox, retryMarketingSnsInbox, listMarketingSnsInbox } from './usecases/marketing-sns-inbox.js';

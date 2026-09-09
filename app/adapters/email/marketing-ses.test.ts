@@ -17,6 +17,7 @@ describe('SES marketing sender', () => {
       credentials: { accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' },
       from: { address: 'news@example.test', name: 'Example' },
       to: 'member@example.test',
+      replyTo: 'reply@example.test',
       subject: 'A'.repeat(180),
       html: `<p>${'hello '.repeat(80)}</p>`,
       text: 'hello',
@@ -29,6 +30,10 @@ describe('SES marketing sender', () => {
 
     expect(result).toEqual({ ok: true, value: { messageId: 'ses-1' } });
     expect(raw).toContain('List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n');
+    expect(raw).toContain('Reply-To: reply@example.test\r\n');
+    expect(raw).toContain('Content-Type: text/plain; charset=UTF-8');
+    expect(raw).toContain('Content-Type: text/html; charset=UTF-8');
+    expect(raw).toContain(Buffer.from('hello').toString('base64'));
     const headerBlock = raw.split('\r\n\r\n')[0] ?? '';
     expect(headerBlock).not.toContain('\r\n\r\n');
     expect(raw.split('\r\n').every((line) => line.length <= 998)).toBe(true);

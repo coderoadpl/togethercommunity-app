@@ -2489,7 +2489,7 @@ export const en: Messages = {
     eventTypes: {
       queued: 'Queued', claimed: 'Claimed', rendered: 'Rendered', accepted: 'Accepted', delivered: 'Delivered',
       opened: 'Opened', clicked: 'Clicked',
-      bounced: 'Bounced', complained: 'Complained', skipped: 'Skipped', failed: 'Failed', retried: 'Retried',
+      bounced: 'Bounced', complained: 'Complained', skipped: 'Skipped', failed: 'Failed', retried: 'Retried', uncertain: 'Acceptance uncertain',
       suppressed_written: 'Suppression recorded', unsubscribed: 'Unsubscribed',
     },
     activity: {
@@ -2507,7 +2507,7 @@ export const en: Messages = {
       purgeCount: ({ purged }) => `consent evidence deleted: ${purged}`,
       budgetUsage: ({ computed, used }) => `computed: ${computed} · used: ${used}`,
       milliseconds: ({ value }) => `${value} ms`,
-      kinds: { marketing_tick: 'Marketing tick', outbox_dispatch: 'Outbox dispatch', consent_evidence_purge: 'Consent evidence purge' },
+      kinds: { marketing_maintenance: 'Marketing maintenance', marketing_tick: 'Marketing tick', outbox_dispatch: 'Outbox dispatch', consent_evidence_purge: 'Consent evidence purge' },
       triggers: { cron: 'Cron', dev: 'Development', manual: 'Manual' },
       statuses: { running: 'Running', completed: 'Completed', failed: 'Failed' },
     },
@@ -2568,6 +2568,7 @@ export const en: Messages = {
     platformPoolNudge: 'Your starter pool is running low. Configure tenant SES, SMTP, or Resend.',
     accessKeyLabel: 'Access key ID',
     secretKeyLabel: 'Secret access key', regionLabel: 'AWS region', writeOnlyHint: 'These fields are write-only. Stored values remain hidden.', sender: 'Sender and identity',
+    bodyTextLabel: 'Plaintext message', bodyTextHint: 'Leave empty to generate text from HTML. The legal footer and unsubscribe link are always included.', replyToLabel: 'Reply-To address', replyToHint: 'Leave empty to use the tenant Reply-To, then the From address.',
     fromAddressLabel: 'From address', fromNameLabel: 'From name', identityLabel: 'Verified domain or address', identityVerifiedLabel: 'Identity and DKIM are verified',
     identityAuthenticationHint: 'Confirm this only after AWS reports DKIM as verified. Publish SPF and DMARC records for the sending domain before broadcasting.',
     identityDetectedInSes: 'Verified in SES',

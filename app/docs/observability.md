@@ -85,7 +85,7 @@ Unauthenticated, rate-limited to 12 requests per minute per address
 - Nothing derived from a decrypted secret ever reaches the response.
 
 The whole report is bounded by a 20-second budget (`DEEP_HEALTH_BUDGET_MS`),
-comfortably inside the 30-second function limit in `vercel.json`. A probe that
+comfortably inside the 60-second function limit in `vercel.json`. A probe that
 outlives the remaining budget is abandoned and the report gains a failing
 `deadline` check naming every probe that did not finish, so a hanging
 dependency pages with a name instead of a 504.

@@ -10,8 +10,8 @@ const adapterDbTestExternal =
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
 const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
-const adapterEmailExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|nodemailer)(/|$)';
-const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|nodemailer|vitest)(/|$)';
+const adapterEmailExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|parse5|nodemailer)(/|$)';
+const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|parse5|nodemailer|vitest)(/|$)';
 const adapterCryptoExternal = 'node_modules/zod(/|$)';
 const adapterCryptoTestExternal = 'node_modules/vitest(/|$)';
 const adapterPaymentExternal = 'node_modules/stripe(/|$)';

@@ -26,7 +26,6 @@ import {
   tenantSesSettingsSchema,
   throttleBudget,
   unsubscribeTokenSchema,
-  validateRenderedMarketingOutput,
   type ConsentDefinition,
   type MarketingConsent,
   type SnsWebhookDelivery,
@@ -191,21 +190,6 @@ describe('U5 sandboxed renderer', () => {
   });
 });
 
-describe('U6 rendered output gate', () => {
-  const required = {
-    unsubscribeUrl: 'https://tenant.test/u/token', legalName: 'Acme sp. z o.o.',
-    address: 'ul. Testowa 1, Warszawa', consentReference: 'newsletter consent',
-  };
-
-  it('refuses output missing any mandatory rendered footer value', () => {
-    const complete = Object.values(required).join(' ');
-    expect(validateRenderedMarketingOutput(complete, required).ok).toBe(true);
-    for (const missing of Object.values(required)) {
-      expect(validateRenderedMarketingOutput(complete.replace(missing, ''), required).ok).toBe(false);
-    }
-  });
-});
-
 describe('U7 header builder', () => {
   it('adds the RFC 8058 pair and bulk trio only to marketing mail', () => {
     expect(buildEmailHeaders({ kind: 'marketing', unsubscribeUrl: 'https://tenant.test/u/token' }))
@@ -219,12 +203,12 @@ describe('U7 header builder', () => {
     expect(buildEmailHeaders({ kind: 'marketing' }).ok).toBe(false);
   });
 
-  it('merges caller overrides case-insensitively and rejects header injection', () => {
+  it('preserves protected headers and rejects header injection', () => {
     const merged = buildEmailHeaders({
       kind: 'marketing', unsubscribeUrl: 'https://tenant.test/u/token',
       callerHeaders: { precedence: 'list', 'X-Campaign': 'weekly' },
     });
-    expect(merged).toMatchObject({ ok: true, value: { Precedence: 'list', 'X-Campaign': 'weekly' } });
+    expect(merged).toMatchObject({ ok: true, value: { Precedence: 'bulk', 'X-Campaign': 'weekly' } });
     if (!merged.ok) throw new Error('expected headers');
     expect(Object.keys(merged.value).filter((name) => name.toLowerCase() === 'precedence')).toHaveLength(1);
     expect(buildEmailHeaders({ kind: 'marketing', unsubscribeUrl: 'https://tenant.test/u/token', callerHeaders: { X: 'ok\r\nBcc: victim@test' } }).ok)

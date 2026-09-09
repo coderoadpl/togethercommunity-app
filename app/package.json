@@ -81,7 +81,8 @@
     "migration-lint": "tsx scripts/migration-lint.ts",
     "visual:app": "tsx scripts/visual-screenshots.ts",
     "fixtures:record": "tsx scripts/fixtures-record.ts",
-    "fixtures:check": "tsx scripts/fixtures-check.ts"
+    "fixtures:check": "tsx scripts/fixtures-check.ts",
+    "worker:marketing": "tsx --env-file-if-exists=.env apps/server/src/marketing-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1095.0",
@@ -115,6 +116,7 @@
     "hono": "~4.13.5",
     "marked": "^18.0.7",
     "nodemailer": "^9.1.1",
+    "parse5": "8.0.1",
     "pg": "^8.16.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

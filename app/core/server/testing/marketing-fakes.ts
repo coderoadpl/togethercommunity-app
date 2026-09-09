@@ -501,6 +501,10 @@ export class InMemoryTenantDocumentRepository implements TenantDocumentRepositor
 }
 
 export class InMemoryCampaignRepository implements CampaignRepository {
+  async addDeliveryCounts(tenantId: string, campaignId: string, counts: { sent: number; failed: number }): Promise<void> {
+    const row = this.rows.find((item) => item.tenantId === tenantId && item.id === campaignId);
+    if (row !== undefined) { row.sent += counts.sent; row.failed += counts.failed; row.errorCount = counts.sent > 0 ? 0 : row.errorCount + counts.failed; }
+  }
   private readonly rows: Campaign[];
 
   constructor(rows: Campaign[] = []) {
@@ -551,10 +555,11 @@ export class InMemoryCampaignRepository implements CampaignRepository {
   async advanceCursor(
     tenantId: string,
     campaignId: string,
-    input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
+    input: { cursorMemberId: string; sentDelta: number; failedDelta: number; lease?: { workerId: string; now: string } },
   ): Promise<Campaign | null> {
     const campaign = this.rows.find((row) => sameTenant(tenantId, row) && row.id === campaignId);
     if (campaign === undefined) return null;
+    if (input.lease !== undefined && (campaign.lockedBy !== input.lease.workerId || campaign.status !== 'running' || campaign.lockedUntil === null || campaign.lockedUntil <= input.lease.now)) return null;
     campaign.cursorMemberId = input.cursorMemberId;
     campaign.sent += input.sentDelta;
     campaign.failed += input.failedDelta;
@@ -1034,12 +1039,12 @@ export class FakeSnsVerifier implements SnsVerifier {
   readonly confirmed: Array<{ subscribeUrl: string; region: string }> = [];
 
   constructor(
-    readonly result: Result<VerifiedSnsEnvelope, AppError>,
+    readonly result: Result<Omit<VerifiedSnsEnvelope, 'messageId' | 'timestamp'> & Partial<Pick<VerifiedSnsEnvelope, 'messageId' | 'timestamp'>>, AppError>,
     private readonly confirmation: Result<void, AppError> = ok(undefined),
   ) {}
 
   async verify(): Promise<Result<VerifiedSnsEnvelope, AppError>> {
-    return this.result;
+    return this.result.ok ? ok({ messageId: 'sns-test-message', timestamp: '2026-09-01T00:00:00.000Z', ...this.result.value }) : this.result;
   }
 
   async confirmSubscription(input: { subscribeUrl: string; region: string }): Promise<Result<void, AppError>> {

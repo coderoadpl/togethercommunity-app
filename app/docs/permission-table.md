@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 364. Exported `Ctx` use-case rows: 276.
+Closed capability count: 115. Route rows: 366. Exported `Ctx` use-case rows: 282.
 
 ## Human-readable diff
 
@@ -202,6 +202,8 @@ no changes
 | `POST /api/marketing/documents/publish` | marketing:document:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/layouts` | marketing:layout:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/layouts` | marketing:layout:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/sns-inbox` | marketing:ses:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/sns-inbox/retry` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/ses-settings` | marketing:ses:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/reputation` | marketing:reputation:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-settings` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -533,6 +535,7 @@ no changes
 | `marketing-contacts.ts#archiveMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
 | `marketing-contacts.ts#restoreMarketingContact` | marketing:contact:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
 | `marketing-contacts.ts#exportMarketingContacts` | marketing:contact:read | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contacts.ts authorization call |
+| `marketing-dispatch.ts#dispatchMarketingOutbox` | marketing:campaign:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-dispatch.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -585,12 +588,17 @@ no changes
 | `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-member-contacts.ts#syncMarketingMemberContacts` | scheduler:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-member-contacts.ts authorization call |
+| `marketing-outbox.ts#enqueueMarketingMessages` | marketing:message:send | owner, admin, api-key, operator-secret | owner, admin, api-key, operator-secret | yes | core/server/usecases/marketing-outbox.ts authorization call |
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
+| `marketing-sns-inbox.ts#recordVerifiedMarketingSnsEnvelope` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#processMarketingSnsInbox` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#retryMarketingSnsInbox` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
+| `marketing-sns-inbox.ts#listMarketingSnsInbox` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
 | `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-billing-orders.ts authorization call |
 | `member-commerce.ts#getMemberCommerceOverview` | member:commerce:read | owner, admin | owner, admin | yes | core/server/usecases/member-commerce.ts authorization call |
 | `member-data-export.ts#exportMyData` | member:data-export:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/member-data-export.ts authorization call |
@@ -682,20 +690,20 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:6` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:169` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1057` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1059` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1532` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1532` | `(identity.staffRole \|\| identity.memberId)` |
-| api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:8` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:171` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1059` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1061` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1546` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1546` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
 | api-key | `apps/server/src/marketing-routes.ts:99` | `identity: apiIdentity(tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:110` | `const key = headers.get(API_KEY_HEADER);` |
 | api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:660` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:584` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

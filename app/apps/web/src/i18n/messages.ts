@@ -2274,7 +2274,7 @@ export interface Messages {
     eventError: string;
     eventTypes: Record<
       'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
-      | 'skipped' | 'failed' | 'retried' | 'suppressed_written' | 'unsubscribed',
+      | 'skipped' | 'failed' | 'retried' | 'uncertain' | 'suppressed_written' | 'unsubscribed',
       string
     >;
     activity: {
@@ -2310,7 +2310,7 @@ export interface Messages {
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
       milliseconds: (params: { value: number }) => string;
-      kinds: Record<'marketing_tick' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
+      kinds: Record<'marketing_tick' | 'marketing_maintenance' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
       triggers: Record<'cron' | 'dev' | 'manual', string>;
       statuses: Record<'running' | 'completed' | 'failed', string>;
     };
@@ -2450,6 +2450,10 @@ export interface Messages {
     regionLabel: string;
     writeOnlyHint: string;
     sender: string;
+    bodyTextLabel: string;
+    bodyTextHint: string;
+    replyToLabel: string;
+    replyToHint: string;
     fromAddressLabel: string;
     fromNameLabel: string;
     identityLabel: string;

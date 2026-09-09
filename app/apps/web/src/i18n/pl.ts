@@ -2511,7 +2511,7 @@ export const pl: Messages = {
     eventTypes: {
       queued: 'Dodana do kolejki', claimed: 'Pobrana do wysyłki', rendered: 'Wyrenderowana', accepted: 'Przyjęta',
       delivered: 'Dostarczona', opened: 'Otwarta', clicked: 'Kliknięta', bounced: 'Odbita', complained: 'Zgłoszona jako spam', skipped: 'Pominięta',
-      failed: 'Nieudana', retried: 'Ponowiona', suppressed_written: 'Zapisano blokadę', unsubscribed: 'Wypisano',
+      failed: 'Nieudana', retried: 'Ponowiona', uncertain: 'Niepewne przyjęcie', suppressed_written: 'Zapisano blokadę', unsubscribed: 'Wypisano',
     },
     activity: {
       title: 'Przebiegi wysyłek', description: 'Przeglądaj uruchomienia harmonogramu, które objęły tę platformę.',
@@ -2529,7 +2529,7 @@ export const pl: Messages = {
       purgeCount: ({ purged }) => `usunięte dowody zgody: ${purged}`,
       budgetUsage: ({ computed, used }) => `obliczony: ${computed} · użyty: ${used}`,
       milliseconds: ({ value }) => `${value} ms`,
-      kinds: { marketing_tick: 'Przebieg kampanii', outbox_dispatch: 'Wysyłka kolejki', consent_evidence_purge: 'Usuwanie dowodów zgody' },
+      kinds: { marketing_maintenance: 'Konserwacja marketingu', marketing_tick: 'Przebieg kampanii', outbox_dispatch: 'Wysyłka kolejki', consent_evidence_purge: 'Usuwanie dowodów zgody' },
       triggers: { cron: 'Cron', dev: 'Deweloperski', manual: 'Ręczny' },
       statuses: { running: 'W toku', completed: 'Zakończone', failed: 'Nieudane' },
     },
@@ -2595,6 +2595,7 @@ export const pl: Messages = {
     platformPoolHint: 'Pula liczy wyłącznie e-maile transakcyjne tej platformy (np. potwierdzenia zamówień) wysłane przez wspólną pulę Together, gdy własny SES lub SMTP nie jest skonfigurowany. E-maile logowania — magiczne linki, resety hasła, weryfikacje — Together wysyła zawsze i wlicza do licznika, ale nigdy nie blokuje ich po wyczerpaniu puli.',
     platformPoolNudge: 'Pula startowa zbliża się do końca. Skonfiguruj własny SES, SMTP lub Resend.',
     accessKeyLabel: 'Identyfikator klucza dostępu (access key ID)', secretKeyLabel: 'Tajny klucz dostępu (secret access key)',
+    bodyTextLabel: 'Wiadomość tekstowa', bodyTextHint: 'Pozostaw puste, aby wygenerować tekst z HTML. Stopka prawna i link rezygnacji są zawsze dołączane.', replyToLabel: 'Adres odpowiedzi', replyToHint: 'Pozostaw puste, aby użyć adresu odpowiedzi organizacji lub adresu nadawcy.',
     regionLabel: 'Region AWS', writeOnlyHint: 'Pola są tylko do zapisu. Zapisane wartości pozostają ukryte.', sender: 'Nadawca i tożsamość', fromAddressLabel: 'Adres nadawcy',
     fromNameLabel: 'Nazwa nadawcy', identityLabel: 'Zweryfikowana domena lub adres', identityVerifiedLabel: 'Tożsamość i DKIM są zweryfikowane',
     identityAuthenticationHint: 'Potwierdź dopiero, gdy AWS zgłosi DKIM jako zweryfikowany. Przed wysyłką kampanii opublikuj rekordy SPF i DMARC domeny nadawczej.',

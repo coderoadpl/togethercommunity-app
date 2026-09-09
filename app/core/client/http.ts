@@ -1,3 +1,4 @@
+import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
 import { type z } from 'zod';
 
 import {
@@ -653,6 +654,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingLayouts.method, API_ROUTES.marketingLayouts.path, marketingLayoutsOutputSchema, undefined, signal),
   saveMarketingLayout: (input: MarketingLayoutSaveInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
+  listMarketingSnsInbox: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSnsInbox.method, API_ROUTES.marketingSnsInbox.path, marketingSnsInboxOutputSchema, undefined, signal),
+  retryMarketingSnsInbox: (inboxId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSnsRetry.method, API_ROUTES.marketingSnsRetry.path, marketingSnsRetryOutputSchema, { inboxId }, signal),
+  runMarketingWorker: (secret: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingWorker.method, API_ROUTES.marketingWorker.path, marketingWorkerOutputSchema, undefined, signal, { headers: { 'x-marketing-tick-secret': secret } }),
   getMarketingSesSettings: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
   pollMarketingSesOnboarding: (signal?: AbortSignal) =>

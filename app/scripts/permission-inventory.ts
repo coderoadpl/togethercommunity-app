@@ -138,7 +138,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/marketing/documents')) return method === 'GET' ? 'marketing:document:read' : 'marketing:document:write';
   if (path.startsWith('/api/marketing/layouts')) return method === 'GET' ? 'marketing:layout:read' : 'marketing:layout:write';
   if (path === '/api/marketing/ses-onboarding/identities') return 'marketing:ses:write';
-  if (path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
+  if (path.startsWith('/api/marketing/sns-inbox') || path.startsWith('/api/marketing/ses-') || path === '/api/marketing/smtp/test') return method === 'GET' ? 'marketing:ses:read' : 'marketing:ses:write';
   if (path === '/api/marketing/reputation') return 'marketing:reputation:read';
   if (path === '/api/marketing/suppressions') return method === 'GET' ? 'marketing:suppression:read' : 'marketing:suppression:write';
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
@@ -502,7 +502,7 @@ const beforeForUseCase = (
   name: string,
   capability: Capability,
 ): readonly Principal[] => {
-  if (['marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
+  if (['marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -557,7 +557,7 @@ const beforeForUseCase = (
 const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
-    const directory = ['marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
+    const directory = ['marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
     const reachable = directory ? before : before === allHumans
       ? allHumans
       : before === platformOwner

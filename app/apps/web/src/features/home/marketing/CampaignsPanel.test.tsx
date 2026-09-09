@@ -13,7 +13,7 @@ const cancelledCampaign = {
   name: 'Cancelled',
   subject: 'Cancelled subject',
   bodyHtml: '<p>Cancelled</p>',
-  bodySource: '# Cancelled',
+  bodyText: null, replyTo: null, bodySource: '# Cancelled',
   layoutId: null,
   consentDefinitionId: 'consent-1',
   audienceFilter: null,

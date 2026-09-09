@@ -50,6 +50,7 @@
     "reseed:acme": "tsx adapters/db/reseed-acme.ts",
     "fingerprint:update": "tsx scripts/schema-fingerprint-update.ts",
     "cli": "tsx apps/cli/src/main.ts",
+    "cli-parity": "tsx scripts/cli-parity.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:remote": "tsx scripts/remote-smoke.ts",
     "smoke:staging": "tsx scripts/remote-smoke.ts --staging",

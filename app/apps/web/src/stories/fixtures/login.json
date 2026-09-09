@@ -258,6 +258,7 @@
       "value": {
         "methods": [
           "password",
+          "passkey",
           "magic-link"
         ]
       }

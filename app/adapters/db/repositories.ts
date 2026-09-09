@@ -146,7 +146,7 @@ import type {
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation } from './pg-errors.js';
-import { appendMemberEvent } from './member-events.js';
+import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
@@ -2865,8 +2865,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .returning();
     const row = rows[0];
     if (row === undefined) return false;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'grant',
@@ -2878,19 +2877,25 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         expiresAt: row.expiresAt,
       },
       occurredAt: row.createdAt,
-    }));
+    }, row.eventRevision);
     return true;
   }),
   setGrantWindow: async (tenantId, grantId, window) => db.transaction(async (tx) => {
+    const [current] = await tx.select().from(productGrants)
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .for('update');
+    if (current === undefined) return null;
+    if (current.startsAt === window.startsAt && current.expiresAt === window.expiresAt) {
+      return parseGrant(current);
+    }
     const rows = await tx
       .update(productGrants)
-      .set({ startsAt: window.startsAt, expiresAt: window.expiresAt })
+      .set({ startsAt: window.startsAt, expiresAt: window.expiresAt, eventRevision: current.eventRevision + 1 })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
     if (row === undefined) return null;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'grant',
@@ -2902,25 +2907,29 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         expiresAt: row.expiresAt,
       },
       occurredAt: window.occurredAt,
-    }));
+    }, row.eventRevision);
     return parseGrant(row);
   }),
   revokeGrant: async (tenantId, grantId, expiresAt) => db.transaction(async (tx) => {
+    const [current] = await tx.select().from(productGrants)
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .for('update');
+    if (current === undefined) return null;
+    if (current.expiresAt === expiresAt) return parseGrant(current);
     const rows = await tx
       .update(productGrants)
-      .set({ expiresAt })
+      .set({ expiresAt, eventRevision: current.eventRevision + 1 })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
     if (row === undefined) return null;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `revoke:${row.id}:${expiresAt}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'revoke',
       payload: { grantId: row.id, productId: row.productId, expiresAt },
       occurredAt: expiresAt,
-    }));
+    }, row.eventRevision);
     return parseGrant(row);
   }),
   listForMemberWithProductNames: async (tenantId, memberId, now) =>
@@ -3827,8 +3836,7 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
 
       const grant = grantRows[0];
       if (grant !== undefined) {
-        await appendMemberEvent(tx, memberEventSchema.parse({
-          id: `grant:${grant.id}:${grant.startsAt}:${grant.expiresAt ?? 'perpetual'}`,
+        await appendGrantMemberEvent(tx, {
           tenantId: input.tenantId,
           memberId: grant.memberId,
           type: 'grant',
@@ -3840,7 +3848,7 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
             expiresAt: grant.expiresAt,
           },
           occurredAt: grant.createdAt,
-        }));
+        }, grant.eventRevision);
       }
 
       return { member, grantCreated: grantRows.length > 0 };

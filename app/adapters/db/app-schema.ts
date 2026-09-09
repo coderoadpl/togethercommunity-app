@@ -898,6 +898,7 @@ export const productGrants = pgTable(
       .default(sql`to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`),
     expiresAt: text('expires_at'),
     legacyId: text('legacy_id'),
+    eventRevision: integer('event_revision').notNull().default(0),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

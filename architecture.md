@@ -42,9 +42,15 @@ The source tree has these responsibilities:
 | `app/apps/server` | Environment parsing, composition, identity resolution, HTTP routes, and process entry. |
 | `app/apps/cli` | A thin API client and the primary exact feedback surface for agents. |
 | `app/apps/web` | The React application: routes, isolated features, layout skeletons, UI primitives, and theme. |
+| `app/api/` | Vercel function entry points delegating to the server platform entry, including the platform-reset function. |
+| `app/packages/client-sdk` | Typed client SDK packaging for core client, contract, domain, and the headless auth adapter. |
+| `app/config-regression` | Regression probes for architecture and enforcement configuration. |
 | `app/scripts` | Gates, migration and seed entry points, e2e drivers, import tools, and operational probes. |
 
-Only `app/apps/server/src/composition.ts` constructs production adapters.
+`app/apps/server/src/composition.ts` wires runtime server adapters and delegates
+realtime selection and construction to `realtime-transport.ts`. The web API
+module and CLI context construct auth client adapters; operational scripts also
+compose adapters. Import gates do not enforce a sole construction site.
 Provider SDKs stay behind adapter ports. Framework and persistence types do not
 cross into core.
 
@@ -60,7 +66,7 @@ and a frontend feature are related, but they are not synonyms.
 | **Feature** | A vertical UI slice under `apps/web/src/features/<name>/`. A broad feature may present several business domains. |
 | **Island** | A feature viewed through its isolation guarantee: it cannot import another feature directly. |
 | **View** | A React component inside a feature. It renders state and invokes that feature's actions or descriptors. |
-| **Island core** | A future `features/<name>/core/` pure-TypeScript module that accepts events and exposes selectors. No island cores exist yet; the boundary is reserved for the first feature that needs one. |
+| **Island core** | A pure-TypeScript module under `features/<name>/core/`. The checkout core implements local state and event reduction; ESLint and dependency-cruiser enforce its framework and portability boundaries. |
 | **Machine** | The state implementation inside an island core. The ladder is descriptor re-exports, then an island store, then a statechart derived from a domain transition table. A feature climbs only when the previous rung is insufficient. |
 | **Descriptor** | A typed query or mutation definition produced through `core/client`; it is the seam between server state and React Query. |
 | **Bus** | A closed union of client-only ephemeral signals between island cores. Views never publish or consume it directly. The server-side notification channel and SSE fan-out are separate mechanisms. |
@@ -87,8 +93,9 @@ graph:
 - Adapters may depend inward on core and never outward on applications.
 - Web and CLI are clients. They cannot reach database, provisioning, or server
   internals.
-- `@vercel/*` and `@neondatabase/*` remain adapter-only dependencies. A future
-  platform entry requires an explicit reviewed exemption.
+- `@vercel/*` and `@neondatabase/*` are confined to adapters and the reviewed
+  `app/apps/server/src/entry.vercel.ts` platform boundary, as configured in
+  ESLint and dependency-cruiser.
 
 External dependencies are default-denied by ESLint boundaries and
 dependency-cruiser. Each layer has an explicit allowlist. Adding a package
@@ -125,8 +132,11 @@ verification surface.
 Tenant identity is resolved at the server edge, but isolation is enforced again
 inside the application:
 
-- Every tenant-scoped use-case receives `ctx: { identity }` first.
-- Every tenant-scoped repository operation requires `tenantId`.
+- Authenticated application entry points receive `ctx: Ctx`. Public checkout,
+  terms-consent helpers, and Stripe webhook processing instead accept explicit
+  tenant inputs without `Ctx`.
+- Tenant-scoped repository operations require `tenantId`; named platform
+  exceptions are recorded in `app/scripts/tenant-scope-check.ts`.
 - A tenant identifier supplied by a caller never substitutes for the tenant in
   the authenticated identity.
 - Staff-only operations require a staff role; owner-only integration and secret
@@ -136,13 +146,12 @@ inside the application:
 - Worker identities are explicit and tenant-scoped; they do not become
   unrestricted application identities.
 
-The current authorization model is distributed role and entitlement checks in
-the use-cases. A central default-deny capability matrix is a planned foundation
-upgrade, not a property of the current code. The accepted gap and sequencing
-are recorded in
-[`tasks/agentproofarch-upgrade.md`](tasks/agentproofarch-upgrade.md). Until that
-lands, new use-cases must follow the existing fail-closed identity checks and
-must include cross-tenant tests.
+The central default-deny capability matrix is implemented in
+`app/core/domain/authorization.ts` as `ROLE_CAPABILITIES`, exposed through
+`capabilitiesForPrincipal`, and enforced by `app/core/server/authorize.ts`.
+Use-cases also apply membership and entitlement checks where required. The
+permission inventory classifies exported `Ctx` functions, not every function
+under `core/server/usecases/`.
 
 Community visibility and moderation decisions are recorded in
 [`tasks/community-mvp.md`](tasks/community-mvp.md). Tenant terminology shown to
@@ -205,10 +214,10 @@ requires, then retry from stored state. KSeF additionally freezes canonical XML
 and its hash before submission and treats ambiguous duplicates as a conflict
 for recovery, not permission to invent a new invoice number.
 
-The code currently allows both `node-postgres` and `neon-http`, while some
-repository methods require interactive transactions. That compatibility must
-not be assumed until the transaction-capability gate planned in
-[`tasks/agentproofarch-upgrade.md`](tasks/agentproofarch-upgrade.md) lands.
+The DB factory in `app/adapters/db/client.ts` retains both `node-postgres` and
+`neon-http` branches. Server environment validation in
+`app/apps/server/src/env.ts` accepts only `node-postgres` because runtime
+repositories require interactive transactions.
 
 ## Public surfaces and caching
 
@@ -279,10 +288,11 @@ model and enforcement decisions live in
 [`tasks/ux-layout-system.md`](tasks/ux-layout-system.md), with owner decisions in
 [`tasks/ux-decisions.md`](tasks/ux-decisions.md).
 
-The current feature tree does not yet contain island cores. Their machine
-ladder is a reserved evolution path, not permission to introduce a global state
-library. Server state remains in typed descriptors; trivial view state remains
-in React.
+`app/apps/web/src/features/checkout/core/` contains checkout state, events, and
+a reducer for price selection and coupon state. ESLint classifies it as an
+island core; dependency-cruiser enforces the framework-agnostic and portable
+boundaries. `typecheck:islands` checks the island TypeScript configuration.
+Server state remains in typed descriptors; trivial view state remains in React.
 
 ## Gates
 
@@ -290,24 +300,28 @@ Architecture is enforced by configuration and executable probes:
 
 | Gate | Guarantee |
 |---|---|
-| `pnpm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
+| `pnpm run check` | `typecheck`, `typecheck:islands`, `lint`, `lock-lint`, `license-lint`, `migration-lint`, `tenant-scope-check`, `tenant-neutral-lint`, `depcruise`, `knip`, `doc-lint`, and `test`. |
 | `pnpm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
 | `pnpm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
 | `pnpm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
 | `pnpm run e2e:coupon` | The interactive checkout coupon flow in a real browser: reveal, invalid code, valid code, discounted breakdown. |
-| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` and `e2e:coupon` are the browser-driven suites). |
+| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level. |
 | `pnpm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `pnpm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `pnpm run e2e:storage` | The S3 write-read-delete probe and its mapped failure paths against a throwaway MinIO container or a real bucket. |
 | `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 | `pnpm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 
-CI runs `check`, `smoke`, the quickstart probe, and the auth, coupon, PoC,
-subscription, and marketing e2e suites on pushes and pull requests to
-`staging` and `main`. KSeF
-e2e is excluded because it targets an external shared test network. Visual
-comparison remains local until platform-scoped CI baselines and a platform
-guard land. Third-party GitHub Actions are pinned to full commit SHAs.
+In `.github/workflows/ci.yml`, the `check` job runs `check` and the production
+dependency audit. The `smoke` job runs `smoke` and `quickstart:probe`; the macOS
+`visual` job runs `visual`, which builds Storybook before comparing captures.
+The twelve e2e matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`,
+`public-authz`, `member-activity`, `member-shell`, `impersonation`, `two-factor`,
+`image-assets`, and `custom-domain`. The `auth` job also runs `fixtures:check`
+and `visual:app`. `e2e:storage`, `e2e:ksef`, and coverage scripts are available
+but are not run by this workflow. These gates run on pushes and pull requests
+to `staging` and `main`. Third-party GitHub Actions are pinned to full commit
+SHAs.
 
 Gates are deterministic. Rerun-to-green is prohibited; a flake is a P1 defect.
 Visual has zero retries.

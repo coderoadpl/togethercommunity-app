@@ -1,3 +1,4 @@
+import type * as ClientModule from '#core/client/index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import { appError, err, ok, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
@@ -24,6 +25,8 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  getTenantSettings: ReturnType<typeof vi.fn>;
+  updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
@@ -53,6 +56,8 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    getTenantSettings: vi.fn(),
+    updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
@@ -99,8 +104,11 @@ vi.mock('./config.js', () => ({
   }),
 }));
 
-vi.mock('#core/client/index.js', () => ({
+vi.mock('#core/client/index.js', async (importOriginal) => ({
+  ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    getTenantSettings: h.getTenantSettings,
+    updateTenantSettings: h.updateTenantSettings,
     health: h.health,
     listCourses: h.listCourses,
     updateCourse: h.updateCourse,
@@ -671,7 +679,6 @@ describe('domain show', () => {
   });
 });
 
-
 describe('course sales URL commands', () => {
   it('includes the sales URL in course show', async () => {
     const course = { id: 'course-1', name: 'Course', description: 'Learn the basics', salesUrl: 'https://courses.example.org/offer' };
@@ -694,5 +701,22 @@ describe('course sales URL commands', () => {
     await run('--json', 'course', 'update', 'course-1', '--sales-url', 'http://courses.example.org/offer');
     expect(h.updateCourse).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('tenant accent settings', () => {
+  it('sends both accents and clears only the light override', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('--json', 'tenant', 'settings-set', '--accent-color', '#F5C842', '--accent-light', '#786000');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentColor: '#F5C842', accentLight: '#786000' });
+    await run('--json', 'tenant', 'settings-set', '--clear-accent-light');
+    expect(h.updateTenantSettings).toHaveBeenLastCalledWith({ accentLight: null });
+  });
+
+  it('shows both accents in settings output', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: { accentColor: '#F5C842', accentLight: '#786000' } }));
+    await run('tenant', 'settings');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dark accent: #F5C842'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('light accent: #786000'));
   });
 });

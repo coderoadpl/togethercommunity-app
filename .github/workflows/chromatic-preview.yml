@@ -3,8 +3,18 @@ name: chromatic-preview
 on:
   pull_request:
     branches: [staging]
+    paths:
+      - 'app/apps/web/**'
+      - 'app/.storybook/**'
+      - 'app/tasks/visual-goldens/**'
+      - '.github/workflows/chromatic-preview.yml'
   push:
     branches: [staging]
+    paths:
+      - 'app/apps/web/**'
+      - 'app/.storybook/**'
+      - 'app/tasks/visual-goldens/**'
+      - '.github/workflows/chromatic-preview.yml'
 
 permissions:
   contents: read
@@ -32,7 +42,7 @@ jobs:
 
   chromatic-preview:
     needs: token
-    if: needs.token.outputs.available == 'true'
+    if: github.event.pull_request.draft != true && needs.token.outputs.available == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
@@ -60,6 +70,7 @@ jobs:
           pnpm exec chromatic
           --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN"
           --build-script-name=storybook:build
+          --only-changed
           --exit-zero-on-changes
           --exit-once-uploaded
           --zip

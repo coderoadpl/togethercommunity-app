@@ -2,6 +2,11 @@ import { sql } from 'drizzle-orm';
 import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
+  MarketingListRule,
+  MarketingImportCounts,
+  MarketingImportRow,
+  ImportActor,
+  MarketingImportCreateInput,
   AccessItem,
   Campaign,
   Chapter,
@@ -46,6 +51,7 @@ export const tenants = pgTable(
     logoUrl: text('logo_url'),
     logoDarkUrl: text('logo_dark_url'),
     accentColor: text('accent_color'),
+    accentLight: text('accent_light'),
     faviconUrl: text('favicon_url'),
     socialLinks: jsonb('social_links').$type<Array<{ label: string; url: string }>>().notNull().default([]),
     ogTitle: text('og_title'),
@@ -262,7 +268,7 @@ export const members = pgTable(
 export const memberEvents = pgTable(
   'member_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id').notNull(),
@@ -271,6 +277,7 @@ export const memberEvents = pgTable(
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     foreignKey({
       name: 'member_events_tenant_member_fk',
       columns: [table.tenantId, table.memberId],
@@ -284,7 +291,7 @@ export const memberEvents = pgTable(
 export const erasedMemberImports = pgTable(
   'erased_member_imports',
   {
-    memberId: text('member_id').primaryKey(),
+    memberId: text('member_id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -293,6 +300,7 @@ export const erasedMemberImports = pgTable(
     erasedAt: text('erased_at').notNull(),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.memberId] }),
     index('erased_member_imports_tenant_email_hmac_idx').on(table.tenantId, table.emailHmac),
     uniqueIndex('erased_member_imports_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
@@ -662,6 +670,23 @@ export const ksefSubmissionJobs = pgTable(
   ],
 );
 
+export const checkoutConsentJobs = pgTable(
+  'checkout_consent_jobs',
+  {
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    checkoutSessionId: text('checkout_session_id').notNull(),
+    webhookEventId: text('webhook_event_id').notNull(),
+    captureId: text('capture_id').notNull(),
+    email: text('email').notNull(),
+    orderId: text('order_id').notNull().references(() => orders.id, { onDelete: 'restrict' }),
+    productId: text('product_id').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: text('created_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.checkoutSessionId] })],
+);
+
 export const autoInvoiceJobs = pgTable(
   'auto_invoice_jobs',
   {
@@ -879,6 +904,7 @@ export const productGrants = pgTable(
       .default(sql`to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`),
     expiresAt: text('expires_at'),
     legacyId: text('legacy_id'),
+    eventRevision: integer('event_revision').notNull().default(0),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
@@ -987,7 +1013,7 @@ export const tenantSecrets = pgTable(
 export const processedPaymentEvents = pgTable(
   'processed_events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1000,6 +1026,7 @@ export const processedPaymentEvents = pgTable(
     workerId: text('worker_id'),
   },
   (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_fulfillment_uidx')
       .on(table.tenantId, table.objectId, table.type)
@@ -1231,6 +1258,8 @@ export const posts = pgTable(
     createdAt: text('created_at').notNull(),
     editedAt: text('edited_at'),
     deletedAt: text('deleted_at'),
+    deletedBy: text('deleted_by', { enum: ['author', 'moderator'] }),
+    deletedByUserId: text('deleted_by_user_id'),
     pinnedAt: text('pinned_at'),
   },
   (table) => [
@@ -2202,3 +2231,91 @@ export const platformAuditEvents = pgTable(
   },
   (table) => [index('platform_audit_events_created_idx').on(table.createdAt, table.id)],
 );
+
+export const marketingContacts = pgTable('marketing_contacts', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(), emailHmac: text('email_hmac').notNull(),
+  displayName: text('display_name'), firstName: text('first_name'), lastName: text('last_name'),
+  source: text('source').notNull().default('import'), tags: jsonb('tags').$type<string[]>().notNull().default([]),
+  memberId: text('member_id'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), archivedAt: text('archived_at'),
+}, (t) => [
+  uniqueIndex('marketing_contacts_tenant_id_uidx').on(t.tenantId, t.id),
+  uniqueIndex('marketing_contacts_tenant_email_uidx').on(t.tenantId, t.email),
+  uniqueIndex('marketing_contacts_tenant_hmac_uidx').on(t.tenantId, t.emailHmac),
+  uniqueIndex('marketing_contacts_tenant_member_uidx').on(t.tenantId, t.memberId).where(sql`${t.memberId} IS NOT NULL`),
+  foreignKey({ columns: [t.tenantId, t.memberId], foreignColumns: [members.tenantId, members.id] }),
+  index('marketing_contacts_page_idx').on(t.tenantId, t.archivedAt, t.id),
+  index('marketing_contacts_tags_idx').using('gin', t.tags),
+  check('marketing_contacts_normalized_email_check', sql`${t.email} = lower(btrim(${t.email}))`),
+  check('marketing_contacts_names_check', sql`length(${t.displayName}) <= 200 AND length(${t.firstName}) <= 200 AND length(${t.lastName}) <= 200 AND length(${t.source}) BETWEEN 1 AND 120`),
+  check('marketing_contacts_tags_check', sql`jsonb_typeof(${t.tags}) = 'array' AND jsonb_array_length(${t.tags}) <= 50`),
+]);
+
+export const marketingLists = pgTable('marketing_lists', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(), name: text('name').notNull(), kind: text('kind', { enum: ['static', 'dynamic'] }).notNull(),
+  rule: jsonb('rule').$type<MarketingListRule>(), revision: integer('revision').notNull(),
+  createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(), archivedAt: text('archived_at'),
+}, (t) => [
+  uniqueIndex('marketing_lists_tenant_id_uidx').on(t.tenantId, t.id), uniqueIndex('marketing_lists_tenant_key_uidx').on(t.tenantId, t.key),
+  check('marketing_lists_rule_check', sql`(${t.kind} = 'static' AND ${t.rule} IS NULL) OR (${t.kind} = 'dynamic' AND ${t.rule} IS NOT NULL AND ${t.rule}->>'kind' IN ('tag', 'product_grant', 'consent_definition'))`),
+]);
+
+export const marketingContactImports = pgTable('marketing_contact_imports', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  rawCsv: text('raw_csv'),
+  kind: text('kind', { enum: ['contacts', 'suppressions'] }).notNull(), fileName: text('file_name').notNull(), fileSha256: text('file_sha256'),
+  datasetVersion: text('dataset_version').notNull(), mapping: jsonb('mapping').$type<MarketingImportCreateInput['mapping']>().notNull(), delimiter: text('delimiter', { enum: [',', ';'] }),
+  defaults: jsonb('defaults').$type<MarketingImportCreateInput['defaults']>().notNull(), contentHash: text('content_hash').notNull(), requestHash: text('request_hash').notNull(), idempotencyKey: text('idempotency_key').notNull(),
+  rowCount: integer('row_count').notNull(), consentDefinitionId: text('consent_definition_id'), definitionVersion: integer('definition_version'), definitionHash: text('definition_hash'), validationHash: text('validation_hash'),
+  attestationVersion: text('attestation_version'), attestationText: text('attestation_text'), attestationLocale: text('attestation_locale'), attestationNote: text('attestation_note'),
+  attestedBy: jsonb('attested_by').$type<ImportActor>(), attestedAt: text('attested_at'), invalidRows: text('invalid_rows', { enum: ['reject_batch', 'skip_invalid'] }).notNull(),
+  status: text('status', { enum: ['draft', 'ready', 'queued', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled'] }).notNull(),
+  resultCounts: jsonb('result_counts').$type<MarketingImportCounts>().notNull(),
+  lockedBy: text('locked_by'), lockedUntil: text('locked_until'), attempts: integer('attempts').notNull(), nextAttemptAt: text('next_attempt_at').notNull(), lastError: text('last_error'),
+  createdAt: text('created_at').notNull(), startedAt: text('started_at'), finishedAt: text('finished_at'), stagedDataPurgedAt: text('staged_data_purged_at'),
+}, (t) => [
+  uniqueIndex('marketing_contact_imports_tenant_id_uidx').on(t.tenantId, t.id), uniqueIndex('marketing_contact_imports_idempotency_uidx').on(t.tenantId, t.idempotencyKey),
+  index('marketing_contact_imports_work_idx').on(t.status, t.nextAttemptAt),
+  check('marketing_contact_imports_row_count_check', sql`${t.rowCount} BETWEEN 1 AND 10000`),
+]);
+
+export const marketingListMemberships = pgTable('marketing_list_memberships', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), listId: text('list_id').notNull(), contactId: text('contact_id').notNull(),
+  createdAt: text('created_at').notNull(), removedAt: text('removed_at'), importId: text('import_id'),
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.listId, t.contactId] }),
+  foreignKey({ columns: [t.tenantId, t.listId], foreignColumns: [marketingLists.tenantId, marketingLists.id], name: 'marketing_membership_list_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.tenantId, t.contactId], foreignColumns: [marketingContacts.tenantId, marketingContacts.id], name: 'marketing_membership_contact_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.tenantId, t.importId], foreignColumns: [marketingContactImports.tenantId, marketingContactImports.id], name: 'marketing_membership_import_fk' }),
+  index('marketing_memberships_list_idx').on(t.tenantId, t.listId, t.removedAt, t.contactId),
+  index('marketing_memberships_contact_idx').on(t.tenantId, t.contactId, t.removedAt, t.listId),
+]);
+
+export const marketingContactImportRows = pgTable('marketing_contact_import_rows', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), importId: text('import_id').notNull(), rowNumber: integer('row_number').notNull(),
+  rowHash: text('row_hash').notNull(), normalizedEmailHmac: text('normalized_email_hmac'), stagedPayload: jsonb('staged_payload').$type<Record<string, unknown>>(), normalizedPayload: jsonb('normalized_payload').$type<MarketingImportRow>(),
+  status: text('status', { enum: ['staged', 'valid', 'invalid', 'duplicate', 'processed'] }).notNull(), duplicateOf: integer('duplicate_of'),
+  contactId: text('contact_id'), consentRowId: text('consent_row_id'), suppressionId: text('suppression_id'), outcome: text('outcome'),
+  errors: jsonb('errors').$type<string[]>().notNull(), warnings: jsonb('warnings').$type<string[]>().notNull(), counts: jsonb('counts').$type<MarketingImportCounts>().notNull(), processedAt: text('processed_at'),
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.importId, t.rowNumber] }),
+  index('marketing_import_rows_pending_idx').on(t.tenantId, t.importId, t.rowNumber).where(sql`${t.processedAt} IS NULL`),
+  foreignKey({ columns: [t.tenantId, t.importId], foreignColumns: [marketingContactImports.tenantId, marketingContactImports.id], name: 'marketing_import_row_batch_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.tenantId, t.contactId], foreignColumns: [marketingContacts.tenantId, marketingContacts.id], name: 'marketing_import_row_contact_fk' }),
+]);
+
+export const marketingDirectoryEvents = pgTable('marketing_directory_events', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  subjectKind: text('subject_kind').notNull(), subjectId: text('subject_id').notNull(), sequence: integer('sequence').notNull(), type: text('type').notNull(),
+  actor: text('actor').notNull(), importId: text('import_id'), payload: jsonb('payload').$type<Record<string, unknown>>().notNull(), occurredAt: text('occurred_at').notNull(), createdAt: text('created_at').notNull(),
+}, (t) => [uniqueIndex('marketing_directory_events_sequence_uidx').on(t.tenantId, t.subjectKind, t.subjectId, t.sequence)]);
+
+export const marketingMemberSyncJobs = pgTable('marketing_member_sync_jobs', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), memberId: text('member_id').notNull(), revision: integer('revision').notNull(),
+  status: text('status', { enum: ['pending', 'completed'] }).notNull(), attempts: integer('attempts').notNull(), nextAttemptAt: text('next_attempt_at').notNull(),
+  lockedBy: text('locked_by'), lockedUntil: text('locked_until'), lastError: text('last_error'), updatedAt: text('updated_at').notNull(),
+}, (t) => [primaryKey({ columns: [t.tenantId, t.memberId] }),
+  foreignKey({ columns: [t.tenantId, t.memberId], foreignColumns: [members.tenantId, members.id], name: 'marketing_member_sync_member_fk' }).onDelete('cascade'),
+  index('marketing_member_sync_work_idx').on(t.status, t.nextAttemptAt),
+]);

@@ -40,6 +40,7 @@
       "value": {
         "settings": {
           "accentColor": null,
+          "accentLight": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -188,6 +189,20 @@
       "ok": true,
       "value": {
         "members": [
+          {
+            "activeProductIds": [],
+            "bannedAt": null,
+            "bannedReason": null,
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "deletedAt": null,
+            "displayName": null,
+            "email": "creator@together.dev",
+            "externalCustomerIds": {},
+            "id": "fixture-member-9b6fd3a284cc9b9c",
+            "marketingConsents": {},
+            "productIds": [],
+            "tags": []
+          },
           {
             "activeProductIds": [],
             "bannedAt": null,
@@ -509,6 +524,7 @@
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
+              "deletedBy": null,
               "editedAt": null,
               "id": "post-spolecznosc-polecajki",
               "isOwn": false,
@@ -553,7 +569,7 @@
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
-          "memberId": null,
+          "memberId": "fixture-member-9b6fd3a284cc9b9c",
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": "owner",
@@ -719,6 +735,7 @@
         "tenant": {
           "branding": {
             "accentColor": null,
+            "accentLight": null,
             "faviconUrl": null,
             "logoDarkUrl": null,
             "logoUrl": null

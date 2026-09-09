@@ -319,6 +319,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       sx={{
         textUnderlineOffset: '0.15em',
         minHeight: 44,
+        minWidth: 44,
+        flexShrink: 0,
         display: 'inline-flex',
         alignItems: 'center',
       }}
@@ -540,19 +542,21 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           role="alert"
           sx={{ mb: '1rem' }}
           data-testid="sign-in-methods-unavailable"
-          action={
+        >
+          <Stack useFlexGap spacing="0.75rem" sx={{ width: '100%' }}>
+            <Typography variant="body2">{resolveFailureMessage}</Typography>
             <Button
-              size="small"
+              variant="outlined"
               color="inherit"
+              fullWidth
               data-testid="sign-in-methods-retry"
               disabled={resolveSignInMethods.isPending}
               onClick={() => resolveSignInMethods.mutate({ email })}
+              sx={{ minHeight: '44px' }}
             >
               {t.common.retry}
             </Button>
-          }
-        >
-          {resolveFailureMessage}
+          </Stack>
         </Alert>
         <Stack useFlexGap spacing="0.75rem">
           <Typography variant="body1">{t.auth.signInMethodsChoosePrompt}</Typography>

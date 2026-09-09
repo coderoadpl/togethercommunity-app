@@ -1,3 +1,4 @@
+import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
@@ -146,7 +147,7 @@ import type {
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation } from './pg-errors.js';
-import { appendMemberEvent } from './member-events.js';
+import { appendGrantMemberEvent, appendMemberEvent } from './member-events.js';
 import { insertFanoutJob } from './notification-fanout-jobs.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import { fingerprintHash, introspectSchema, shortFingerprint } from './schema-fingerprint.js';
@@ -1103,6 +1104,11 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
   },
 });
 
+const visiblePostThread = sql`(${posts.deletedAt} is null or ${posts.deletedBy} is distinct from 'author' or exists (
+  select 1 from posts reply
+  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null
+))`;
+
 export const createPostRepository = (db: Db): PostRepository => ({
   createPost: async (tenantId, post, fanoutJob) => {
     const row = await db.transaction(async (tx) => {
@@ -1179,6 +1185,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           sql`${posts.parentPostId} is null`,
+          visiblePostThread,
           ...(cursor === null
             ? []
             : [
@@ -1219,6 +1226,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, 'space'),
           inArray(posts.contextId, query.spaceIds),
           sql`${posts.parentPostId} is null`,
+          visiblePostThread,
           ...(cursor === null
             ? []
             : [sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -1257,17 +1265,18 @@ export const createPostRepository = (db: Db): PostRepository => ({
   softDelete: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ deletedAt: input.deletedAt, pinnedAt: null })
-      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .set({ deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), isNull(posts.deletedAt)))
       .returning();
-    const row = rows[0];
+    const row = rows[0] ?? (await db.select().from(posts)
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id))).limit(1))[0];
     return row ? parsePost(row) : null;
   },
   setPinned: async (tenantId, input) => {
     const rows = await db
       .update(posts)
       .set({ pinnedAt: input.pinnedAt })
-      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), isNull(posts.deletedAt)))
       .returning();
     const row = rows[0];
     return row ? parsePost(row) : null;
@@ -2612,13 +2621,15 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         )
         .limit(1);
 
+      await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
+
       await tx.insert(erasedMemberImports).values({
         memberId: member.id,
         tenantId,
         legacyId: member.legacyId,
         emailHmac: emailHmac.compute(tenantId, member.email),
         erasedAt: input.deletedAt,
-      }).onConflictDoNothing({ target: erasedMemberImports.memberId });
+      }).onConflictDoNothing({ target: [erasedMemberImports.tenantId, erasedMemberImports.memberId] });
 
       await tx.update(consents).set({ retentionStartedAt: input.deletedAt }).where(and(
         eq(consents.tenantId, tenantId),
@@ -2858,8 +2869,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .returning();
     const row = rows[0];
     if (row === undefined) return false;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'grant',
@@ -2871,19 +2881,25 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         expiresAt: row.expiresAt,
       },
       occurredAt: row.createdAt,
-    }));
+    }, row.eventRevision);
     return true;
   }),
   setGrantWindow: async (tenantId, grantId, window) => db.transaction(async (tx) => {
+    const [current] = await tx.select().from(productGrants)
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .for('update');
+    if (current === undefined) return null;
+    if (current.startsAt === window.startsAt && current.expiresAt === window.expiresAt) {
+      return parseGrant(current);
+    }
     const rows = await tx
       .update(productGrants)
-      .set({ startsAt: window.startsAt, expiresAt: window.expiresAt })
+      .set({ startsAt: window.startsAt, expiresAt: window.expiresAt, eventRevision: current.eventRevision + 1 })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
     if (row === undefined) return null;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'grant',
@@ -2895,25 +2911,29 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         expiresAt: row.expiresAt,
       },
       occurredAt: window.occurredAt,
-    }));
+    }, row.eventRevision);
     return parseGrant(row);
   }),
   revokeGrant: async (tenantId, grantId, expiresAt) => db.transaction(async (tx) => {
+    const [current] = await tx.select().from(productGrants)
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .for('update');
+    if (current === undefined) return null;
+    if (current.expiresAt === expiresAt) return parseGrant(current);
     const rows = await tx
       .update(productGrants)
-      .set({ expiresAt })
+      .set({ expiresAt, eventRevision: current.eventRevision + 1 })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
     if (row === undefined) return null;
-    await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `revoke:${row.id}:${expiresAt}`,
+    await appendGrantMemberEvent(tx, {
       tenantId,
       memberId: row.memberId,
       type: 'revoke',
       payload: { grantId: row.id, productId: row.productId, expiresAt },
       occurredAt: expiresAt,
-    }));
+    }, row.eventRevision);
     return parseGrant(row);
   }),
   listForMemberWithProductNames: async (tenantId, memberId, now) =>
@@ -3719,14 +3739,15 @@ export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentE
             leaseExpiresAt: lease.leaseExpiresAt,
           })
           .onConflictDoUpdate({
-            target: processedPaymentEvents.id,
+            target: [processedPaymentEvents.tenantId, processedPaymentEvents.id],
             set: {
               status: 'processing',
               workerId: lease.workerId,
               claimedAt: lease.now,
               leaseExpiresAt: lease.leaseExpiresAt,
             },
-            setWhere: sql`${processedPaymentEvents.status} = 'processing'
+            setWhere: sql`${processedPaymentEvents.tenantId} = ${tenantId}
+              and ${processedPaymentEvents.status} = 'processing'
               and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
           })
           .returning({ id: processedPaymentEvents.id });
@@ -3819,8 +3840,7 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
 
       const grant = grantRows[0];
       if (grant !== undefined) {
-        await appendMemberEvent(tx, memberEventSchema.parse({
-          id: `grant:${grant.id}:${grant.startsAt}:${grant.expiresAt ?? 'perpetual'}`,
+        await appendGrantMemberEvent(tx, {
           tenantId: input.tenantId,
           memberId: grant.memberId,
           type: 'grant',
@@ -3832,7 +3852,7 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
             expiresAt: grant.expiresAt,
           },
           occurredAt: grant.createdAt,
-        }));
+        }, grant.eventRevision);
       }
 
       return { member, grantCreated: grantRows.length > 0 };
@@ -4023,6 +4043,7 @@ export const createTenantRepository = (
         logoUrl: tenants.logoUrl,
         logoDarkUrl: tenants.logoDarkUrl,
         accentColor: tenants.accentColor,
+        accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
         ogTitle: tenants.ogTitle,
         ogDescription: tenants.ogDescription,
@@ -4060,6 +4081,7 @@ export const createTenantRepository = (
           logoUrl: row.logoUrl,
           logoDarkUrl: row.logoDarkUrl,
           accentColor: row.accentColor,
+          accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
           ogTitle: row.ogTitle,
           ogDescription: row.ogDescription,
@@ -4113,6 +4135,7 @@ export const createTenantRepository = (
         logoUrl: settings.logoUrl,
         logoDarkUrl: settings.logoDarkUrl,
         accentColor: settings.accentColor,
+        accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
         ogTitle: settings.ogTitle,
         ogDescription: settings.ogDescription,
@@ -4146,6 +4169,7 @@ export const createTenantRepository = (
       logoUrl: settings.logoUrl,
       logoDarkUrl: settings.logoDarkUrl,
       accentColor: settings.accentColor,
+      accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,
       ogTitle: settings.ogTitle,
       ogDescription: settings.ogDescription,

@@ -68,6 +68,7 @@ import {
   authorize,
   dispatchAutoInvoiceJobs,
   type AutoInvoiceJob,
+  type CheckoutConsentJob,
   type PaymentWebhookEvent,
   type SmokeTenantReseedPort,
   type StoredEntityVersion,
@@ -512,6 +513,15 @@ const deps = (input: {
             reschedule: async () => undefined,
             complete: async () => undefined,
           },
+          checkoutConsentJobs: {
+            enqueue: async () => undefined,
+            lockPending: async () => null,
+            complete: async () => undefined,
+          },
+          consentTransaction: { run: (nested) => appDeps.paymentTransaction.run(nested) },
+          consents: appDeps.consents,
+          marketingConsents: appDeps.marketing?.marketingConsents ?? new InMemoryMarketingConsentRepository(),
+          confirmations: appDeps.marketing?.confirmations ?? new InMemoryConsentConfirmationTokenRepository(),
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
         }),
@@ -786,7 +796,8 @@ const deps = (input: {
           name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
           socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
-          accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+          accentColor: null,
+          accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
           privacyUrl: null,
           defaultHomeSpaceId: null,
@@ -843,6 +854,7 @@ const deps = (input: {
     },
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
+    consentTokens: { nextToken: () => `confirmation-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined, warn: () => undefined },
     baseDomain: 'localhost',
@@ -3523,6 +3535,7 @@ describe('student lesson playback route', () => {
             logoUrl: null,
             logoDarkUrl: null,
             accentColor: null,
+            accentLight: null,
             faviconUrl: null,
             ogTitle: null,
             ogDescription: null,
@@ -4001,13 +4014,13 @@ describe('new route authorization', () => {
     ).toBe(403);
   });
 
-  it('allows only a member to export their own data', async () => {
+  it('allows members and staff to export their own data', async () => {
     expect(
       (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
     ).toBe(200);
     expect(
       (await scopedApp('staff').request(API_PATHS.memberDataExport, { headers })).status,
-    ).toBe(403);
+    ).toBe(200);
     expect(
       (await scopedApp('none').request(API_PATHS.memberDataExport, { headers })).status,
     ).toBe(403);
@@ -4039,7 +4052,7 @@ describe('new route authorization', () => {
     ).toBe(404);
     expect(
       (await staffApp.request(API_PATHS.memberErasureRequest, { headers })).status,
-    ).toBe(403);
+    ).toBe(200);
     expect(
       (await noneApp.request(API_PATHS.memberErasureRequest, { headers })).status,
     ).toBe(403);
@@ -6019,6 +6032,7 @@ const consentApp = (simulatedPayments: boolean, authTrustedProxyHeader: string |
               logoUrl: null,
               logoDarkUrl: null,
               accentColor: null,
+              accentLight: null,
               faviconUrl: null,
               ogTitle: null,
               ogDescription: null,
@@ -6171,7 +6185,7 @@ describe('checkout consent ordering', () => {
     ]);
   });
 
-  it('records locally captured consent after a real webhook and stays idempotent', async () => {
+  it('records locally captured consent and replays pending consent after a real webhook without repeating fulfillment', async () => {
     const definitionId = 'webhook-news';
     const attached = {
       ...product({
@@ -6212,6 +6226,8 @@ describe('checkout consent ordering', () => {
       },
     );
     const durableJobs: AutoInvoiceJob[] = [];
+    const consentJobs: CheckoutConsentJob[] = [];
+    let captureRestored = false;
     const autoInvoiceJobs = {
       enqueue: async (_tenantId: string, job: AutoInvoiceJob) => {
         if (durableJobs.some((candidate) => candidate.webhookEventId === job.webhookEventId)) {
@@ -6322,6 +6338,7 @@ describe('checkout consent ordering', () => {
                 logoUrl: null,
                 logoDarkUrl: null,
                 accentColor: null,
+                accentLight: null,
                 faviconUrl: null,
                 ogTitle: null,
                 ogDescription: null,
@@ -6366,7 +6383,7 @@ describe('checkout consent ordering', () => {
       checkoutConsentCaptures: {
         create: async () => undefined,
         findById: async (_tenantId, id) =>
-          id === 'capture-webhook'
+          id === 'capture-webhook' || (captureRestored && id === 'capture-gone')
             ? {
                 termsAccepted: true,
                 selectedDefinitionIds: [definitionId],
@@ -6417,6 +6434,37 @@ describe('checkout consent ordering', () => {
       },
       devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     } satisfies AppDeps;
+    webhookDeps.paymentTransaction = {
+      run: async (operation) => base.paymentTransaction.run((transaction) => operation({
+        ...transaction,
+        checkoutConsentJobs: {
+          enqueue: async (tenantId, job) => {
+            if (!consentJobs.some((row) => row.tenantId === tenantId && row.checkoutSessionId === job.checkoutSessionId)) {
+              consentJobs.push(job);
+            }
+          },
+          lockPending: async (tenantId, checkoutSessionId) =>
+            consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId && row.completedAt === null) ?? null,
+          complete: async (tenantId, checkoutSessionId, completedAt) => {
+            const job = consentJobs.find((row) => row.tenantId === tenantId && row.checkoutSessionId === checkoutSessionId);
+            if (job !== undefined) job.completedAt = completedAt;
+          },
+        },
+        consentTransaction: {
+          run: (nested) => transaction.consentTransaction.run((repositories) => nested({
+            ...repositories,
+            consents: webhookDeps.consents,
+            marketingConsents: marketing.marketingConsents,
+            confirmations: marketing.confirmations,
+          })),
+        },
+        consents: webhookDeps.consents,
+        marketingConsents: marketing.marketingConsents,
+        confirmations: marketing.confirmations,
+        paymentRefunds: webhookDeps.paymentRefunds,
+        processedPaymentEvents: webhookDeps.processedPaymentEvents,
+      })),
+    };
     const app = buildApp(webhookDeps);
     const deliver = () =>
       app.request('/api/webhooks/stripe/t-acme', {
@@ -6464,7 +6512,7 @@ describe('checkout consent ordering', () => {
         evidence: {
           ip: '203.0.113.90',
           userAgent: 'Webhook Browser/99',
-          proofRef: 'product:webhook-product;order:order-webhook',
+          proofRef: expect.stringMatching(/^product:webhook-product;order:id-\d+$/),
         },
       },
     ]);
@@ -6495,9 +6543,6 @@ describe('checkout consent ordering', () => {
     event.objectId = 'cs_webhook_missing_order';
     orderResult = null;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme checkout=cs_webhook_missing_order order=missing',
-    );
 
     const grantedBefore = await marketing.marketingConsents.listByEmail(
       acme.id,
@@ -6508,16 +6553,50 @@ describe('checkout consent ordering', () => {
     orderResult = order;
     if (event.checkoutSession !== null) {
       event.checkoutSession.metadata.checkoutConsentCaptureId = 'capture-gone';
+      event.checkoutSession.email = 'replay-buyer@example.test';
     }
     const recordedBefore = recorded.length;
     expect((await deliver()).status).toBe(200);
-    expect(logger.error).toHaveBeenCalledWith(
-      '[checkout-consent] tenant=t-acme capture=capture-gone missing',
-    );
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] pending tenant=t-acme event=evt_webhook_missing_capture capture=capture-gone'));
     expect(recorded).toHaveLength(recordedBefore);
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+
+    expect(consentJobs).toMatchObject([{
+      tenantId: acme.id,
+      checkoutSessionId: 'cs_webhook_missing_capture',
+      captureId: 'capture-gone',
+      completedAt: null,
+    }]);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toEqual([]);
+    const invoiceJobsBeforeReplay = structuredClone(durableJobs);
+    const createOrder = vi.spyOn(base.orders, 'create');
+    captureRestored = true;
+    for (let delivery = 0; delivery < 2; delivery += 1) {
+      const replay = await deliver();
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toMatchObject({
+        ok: true,
+        data: { received: true, processed: false },
+      });
+      expect(recorded).toHaveLength(recordedBefore + 1);
+      expect(await marketing.marketingConsents.listByEmail(acme.id, 'replay-buyer@example.test')).toMatchObject([{
+        status: 'granted',
+        evidence: { proofRef: `product:${attached.id};order:${consentJobs[0]?.orderId}` },
+      }]);
+      expect(consentJobs).toHaveLength(1);
+      expect(consentJobs[0]?.completedAt).toBe(base.clock.nowIso());
+      expect(durableJobs).toEqual(invoiceJobsBeforeReplay);
+      expect(createOrder).not.toHaveBeenCalled();
+    }
+
+    event.id = 'evt_webhook_consent_storage';
+    webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));
+    expect((await deliver()).status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable',
+    );
   });
 
   it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
@@ -7517,5 +7596,80 @@ describe('content history HTTP surface', () => {
     });
 
     expect(response.status).toBe(403);
+  });
+});
+
+
+describe('staff member self-service routes', () => {
+  it.each(['owner', 'admin'] as const)('initializes the %s own member and serves profile, erasure and progress', async (staffRole) => {
+    const rows: Member[] = [];
+    const base = deps({ members: rows });
+    const user = { sessionId: 'staff-session', userId: 'staff-user', email: 'staff@example.org', name: 'Staff', emailVerified: true, image: null };
+    const createMember = vi.fn(async (_tenantId: string, member: Member) => { rows.push(member); });
+    const course: Course = {
+      id: 'course-1', tenantId: acme.id, name: 'Course', description: '', imageUrl: null,
+      moduleOrder: ['module-1'], publiclyVisible: false, legacyId: null, createdAt: base.clock.nowIso(),
+    };
+    const module: CourseModule = {
+      id: 'module-1', tenantId: acme.id, courseIds: [course.id], title: 'Module', prefix: null, name: 'Module',
+      chapters: [{ id: 'chapter-1', name: 'Chapter', contents: [{ id: 'content-1', name: 'Lesson', lessonId: 'lesson-1' }] }],
+      legacyId: null, createdAt: base.clock.nowIso(),
+    };
+    const findById = async (tenantId: string, memberId: string) => rows.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null;
+    const updateProfile = async (tenantId: string, memberId: string, patch: Partial<Member>) => {
+      const row = await findById(tenantId, memberId);
+      if (row === null) return null;
+      Object.assign(row, patch);
+      return row;
+    };
+    const saveProgress = vi.fn(base.progress.update);
+    const app = buildApp({
+      ...base,
+      marketing: marketingDeps(),
+      authPort: { ...base.authPort, getAuthenticatedUser: async () => user, ensureUser: async () => ({ userId: user.userId, created: false }) },
+      tenantAccess: {
+        ...base.tenantAccess,
+        findStaffGrant: async () => ({ tenant: acme, staffRole }),
+        findMember: async (tenantId, userId) => rows.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null,
+      },
+      members: {
+        ...base.members, create: createMember, findById,
+        updateDisplayName: (tenantId, memberId, displayName) => updateProfile(tenantId, memberId, { displayName }),
+        updateLanguage: (tenantId, memberId, language) => updateProfile(tenantId, memberId, { language }),
+        updateVideoAutoplay: (tenantId, memberId, videoAutoplay) => updateProfile(tenantId, memberId, { videoAutoplay }),
+      },
+      courses: { ...base.courses, list: async () => [course], findById: async () => course },
+      modules: { ...base.modules, list: async () => [module] },
+      progress: { ...base.progress, update: saveProgress },
+    });
+    const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+    const profile = await app.request(API_PATHS.meProfile, {
+      method: 'POST', headers, body: JSON.stringify({ displayName: 'My name', language: 'en', videoAutoplay: false }),
+    });
+    expect(profile.status).toBe(200);
+    expect(await profile.json()).toMatchObject({ data: { displayName: 'My name', language: 'en', videoAutoplay: false } });
+    expect(rows).toHaveLength(1);
+    const ownMember = rows[0];
+    expect(ownMember).toMatchObject({ userId: user.userId, tenantId: acme.id, email: user.email });
+    const me = await app.request(API_PATHS.me, { headers });
+    expect(await me.json()).toMatchObject({ data: { tenant: { staffRole, memberId: ownMember?.id }, impersonation: null } });
+    for (const path of [API_PATHS.memberErasureRequest, API_PATHS.memberDataExport, `${API_PATHS.studentProgress}?courseId=course-1`]) {
+      const response = await app.request(path, { headers });
+      expect(response.status, path).toBe(200);
+    }
+    const erasure = await app.request(API_PATHS.memberErasureRequest, { method: 'POST', headers, body: JSON.stringify({ confirmEmail: user.email }) });
+    expect(erasure.status).toBe(200);
+    expect(await erasure.json()).toMatchObject({ data: { request: { memberId: ownMember?.id, tenantId: acme.id } } });
+    for (const [path, body] of [
+      [API_PATHS.studentLastViewed, { courseId: course.id, lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1' }],
+    ] as const) {
+      const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+      expect(response.status, path).toBe(200);
+      expect(await response.json()).toMatchObject({ data: { progress: { courseId: course.id } } });
+    }
+    expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
+    expect(createMember).toHaveBeenCalledOnce();
   });
 });

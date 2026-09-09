@@ -429,7 +429,16 @@ export const nextLessonSchema = z
 
 export type NextLesson = z.infer<typeof nextLessonSchema>;
 
+const courseResumeSchema = z.object({
+  target: nextLessonSchema,
+  firstIncomplete: nextLessonSchema,
+  isReview: z.boolean(),
+});
+
+export type CourseResume = z.infer<typeof courseResumeSchema>;
+
 export const progressViewSchema = z.object({
+  resume: courseResumeSchema.optional(),
   courseId: z.string(),
   completedLessonIds: z.array(z.string()),
   lastViewedLessonId: z.string().optional(),

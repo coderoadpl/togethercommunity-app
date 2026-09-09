@@ -119,6 +119,11 @@ describe('member event migration', () => {
 
     await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
 
+    const grants = await pool.query<{ event_revision: number }>(
+      `select event_revision from product_grants where tenant_id = 'tenant-history' and id = 'grant-history'`,
+    );
+    expect(grants.rows).toEqual([{ event_revision: 0 }]);
+
     const result = await pool.query<{
       id: string;
       type: string;

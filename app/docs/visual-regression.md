@@ -47,7 +47,11 @@ hash jump; the harness scrolls to the domain section after fonts settle so the
 sticky sidebar is first painted at the top of the document. Server HTML stories render the production HTML in a nested iframe;
 the harness waits for that document and its fonts. Captures run sequentially,
 once, with no retries. Each viewport/auth group reuses a page in inventory order, matching the
-golden authoring harness and its rounded-shadow paint caches. The shared browser
+golden authoring harness and its rounded-shadow paint caches. The panel course
+editor uses an isolated capture context because inherited paint caches can change
+the upload button's rounded shadow by four counted pixels. The mobile menu capture
+moves the pointer clear of the sheet so the opening click cannot leave sign-out
+hovered. The shared browser
 setup saves native animation-frame scheduling before Playwright installs its
 clock. Capture waits use those native frames, so paint readiness remains tied
 to rendering while application timers retain the authoring clock behavior.
@@ -167,11 +171,12 @@ workflow code and never executes pull-request code.
 
 ## Chromatic
 
-The `preview` project publishes a Storybook preview permalink for each pull request
-targeting `staging` and for the `staging` branch on pushes, when
-`CHROMATIC_PREVIEW_PROJECT_TOKEN` is available.
-UI Tests and UI Review are disabled in `preview`, so pull-request snapshots run
-only on promotion pull requests targeting `main`.
+The `preview` project publishes a Storybook preview permalink for non-draft pull requests
+targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
+available and changes affect `app/apps/web/**`, `app/.storybook/**`,
+`app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
+The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
+instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
 
 Chromatic snapshot testing runs only for promotion pull requests targeting `main`, plus manual
 `workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes

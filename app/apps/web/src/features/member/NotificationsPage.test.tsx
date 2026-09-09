@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { notificationMarkReadInputSchema, type Notification } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { NotificationsPage } from './NotificationsPage.js';
@@ -42,7 +42,7 @@ const notification = (input: {
     lessonName: 'Hamaki w kamperze',
     authorDisplay: 'Ola',
     authorAvatarUrl: input.authorAvatarUrl ?? null,
-    snippet: `Treść ${input.id}`,
+    snippet: `Content ${input.id}`,
   },
   sourceKey: null,
   readAt: input.read === true ? '2026-08-15T09:00:00.000Z' : null,
@@ -67,7 +67,7 @@ const impersonatedMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Member',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -79,7 +79,7 @@ const impersonatedMe = () =>
         impersonation: {
           id: 'imp-1',
           subjectMemberId: 'mem-1',
-          subjectName: 'Jan Uczestnik',
+          subjectName: 'John Member',
           actorName: 'Ola Operatorka',
           expiresAt: '2026-08-15T09:00:00.000Z',
         },
@@ -154,21 +154,21 @@ describe('NotificationsPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('notification-n1')).toHaveTextContent(
-      pl.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }),
+      en.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }),
     );
     expect(screen.getByTestId('notification-group-earlier')).toHaveTextContent(
-      pl.notifications.groupEarlier,
+      en.notifications.groupEarlier,
     );
-    expect(screen.getByTestId('notification-n1')).toHaveTextContent('Treść n1');
-    expect(screen.getByTestId('notification-n1')).toHaveTextContent(pl.notifications.unreadLabel);
+    expect(screen.getByTestId('notification-n1')).toHaveTextContent('Content n1');
+    expect(screen.getByTestId('notification-n1')).toHaveTextContent(en.notifications.unreadLabel);
     expect(screen.getByTestId('notification-n2')).not.toHaveTextContent(
-      pl.notifications.unreadLabel,
+      en.notifications.unreadLabel,
     );
 
     await userEvent.click(screen.getByTestId('notifications-mark-all-read'));
 
     await waitFor(() => expect(readAllCalls).toBe(1));
-    expect(await screen.findByText(pl.notifications.markedAllRead)).toBeInTheDocument();
+    expect(await screen.findByText(en.notifications.markedAllRead)).toBeInTheDocument();
   });
 
   it('shows the empty state without a mark-all-read action', async () => {
@@ -177,7 +177,7 @@ describe('NotificationsPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('notifications-page-empty')).toHaveTextContent(
-      pl.notifications.empty,
+      en.notifications.empty,
     );
     expect(screen.queryByTestId('notifications-mark-all-read')).not.toBeInTheDocument();
   });
@@ -232,7 +232,7 @@ describe('NotificationsPage', () => {
 
     await waitFor(() => expect(router.state.location.searchStr).toBe('?filter=unread'));
     expect(await screen.findByTestId('notifications-page-all-read')).toHaveTextContent(
-      pl.notifications.allRead,
+      en.notifications.allRead,
     );
     expect(requested).toEqual([null, 'true']);
     expect(screen.getByTestId('notifications-filter')).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe('NotificationsPage', () => {
         contextId: null,
         courseId: null,
         eventId: null,
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         lessonName: '',
         authorDisplay: null,
         authorAvatarUrl: null,
@@ -359,7 +359,7 @@ describe('NotificationsPage', () => {
 
     expect(within(row).queryByTestId('user-avatar')).toBeNull();
     expect(row).toHaveTextContent(
-      pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' }),
+      en.notifications.tenantDomainVerified({ domain: 'course.acme.example' }),
     );
   });
 

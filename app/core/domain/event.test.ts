@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { eventDiscussionLeadInPl } from './event.pl.js';
+
 import { VIDEO_EMBED_URL_MESSAGE } from './course.js';
 import {
   buildEventIcs,
@@ -24,7 +26,7 @@ const event = (overrides: Partial<SpaceEvent> = {}): SpaceEvent =>
     id: 'e1',
     tenantId: 't1',
     spaceId: 's1',
-    title: 'Warsztat',
+    title: 'Workshop',
     description: null,
     startsAt: '2026-09-01T09:00:00.000Z',
     endsAt: '2026-09-01T11:00:00.000Z',
@@ -87,7 +89,7 @@ describe('live and replay embeds', () => {
     expect(
       createEventInputSchema.parse({
         spaceId: 's1',
-        title: 'Warsztat',
+        title: 'Workshop',
         startsAt: '2026-09-01T09:00:00.000Z',
         endsAt: '2026-09-01T11:00:00.000Z',
         liveEmbedUrl: BUNNY_EMBED,
@@ -115,7 +117,7 @@ describe('live and replay embeds', () => {
     expect(
       createEventInputSchema.safeParse({
         spaceId: 's1',
-        title: 'Warsztat',
+        title: 'Workshop',
         startsAt: '2026-09-01T09:00:00.000Z',
         endsAt: '2026-09-01T11:00:00.000Z',
         liveEmbedUrl: 'https://iframe.mediadelivery.net/embed/12345/not-a-guid',
@@ -158,15 +160,15 @@ describe('public event projection', () => {
 
 describe('event discussion body', () => {
   it('leads the auto-created thread in both languages', () => {
-    expect(eventDiscussionBody('Warsztat')).toBe('Wątek wydarzenia: Warsztat');
-    expect(eventDiscussionBody('Warsztat', 'en')).toBe('Event thread: Warsztat');
+    expect(eventDiscussionBody('Workshop')).toBe('Event thread: Workshop');
+    expect(eventDiscussionBody('Workshop', 'pl')).toBe(eventDiscussionLeadInPl('Workshop'));
   });
 });
 
 describe('ics builder', () => {
   it('renders a calendar entry with CRLF lines and UTC stamps', () => {
     const built = buildEventIcs(
-      event({ description: 'Opis', location: 'Online', url: 'https://example.test/meet' }),
+      event({ description: 'Description', location: 'Online', url: 'https://example.test/meet' }),
       'Acme',
     );
 
@@ -183,8 +185,8 @@ describe('ics builder', () => {
         'DTSTAMP:20260801T080000Z',
         'DTSTART:20260901T090000Z',
         'DTEND:20260901T110000Z',
-        'SUMMARY:Warsztat',
-        'DESCRIPTION:Opis',
+        'SUMMARY:Workshop',
+        'DESCRIPTION:Description',
         'LOCATION:Online',
         'URL:https://example.test/meet',
         'END:VEVENT',
@@ -214,7 +216,7 @@ describe('ics builder', () => {
   });
 
   it('folds long lines at the octet limit with a leading space', () => {
-    const built = buildEventIcs(event({ description: 'ąęćłńóśżź'.repeat(20) }), 'Acme');
+    const built = buildEventIcs(event({ description: '🎉'.repeat(90) }), 'Acme');
     const encoder = new TextEncoder();
 
     for (const line of built.icsContent.split('\r\n')) {

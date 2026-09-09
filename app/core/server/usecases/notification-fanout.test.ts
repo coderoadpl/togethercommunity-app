@@ -52,7 +52,7 @@ const space: Space = {
   id: 'space-1',
   tenantId: TENANT,
   slug: 'space-1',
-  name: 'Ogólny',
+  name: 'General',
   description: null,
   visibility: 'members',
   productIds: [],
@@ -72,7 +72,7 @@ const post: Post = {
   authorUserId: AUTHOR,
   authorDisplay: 'Autorka',
   authorIsStaff: false,
-  body: 'Nowy wpis',
+  body: 'New post',
   createdAt: NOW,
   editedAt: null,
   deletedAt: null,
@@ -536,7 +536,7 @@ describe('notification fan-out', () => {
 
     expect(preferred.languages).toEqual(['en']);
     expect(inherited.languages).toEqual(['en']);
-    expect(unset.languages).toEqual(['pl']);
+    expect(unset.languages).toEqual(['en']);
   });
 
   it('reads the tenant default once per job, not once per recipient', async () => {

@@ -1005,14 +1005,14 @@ describe('SettingsPanel e-mail language', () => {
     await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
   });
 
-  it('saves the stored default back instead of the Polish fallback', async () => {
-    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'en' });
+  it('saves the stored default back instead of the English fallback', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, defaultLanguage: 'pl' });
 
     const picker = await screen.findByRole('combobox', { name: en.emailLanguageSettings.label });
-    await waitFor(() => expect(picker).toHaveTextContent(en.emailLanguageSettings.options.en));
+    await waitFor(() => expect(picker).toHaveTextContent(en.emailLanguageSettings.options.pl));
     await userEvent.click(screen.getByRole('button', { name: en.emailLanguageSettings.save }));
 
-    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'en' }));
+    await waitFor(() => expect(updates).toContainEqual({ defaultLanguage: 'pl' }));
   });
 });
 
@@ -1034,7 +1034,7 @@ describe('SettingsPanel direct KSeF', () => {
 
     const picker = await screen.findByRole('combobox', { name: en.billing.invoicingProvider });
     expect(picker).toHaveTextContent(en.billing.providerUnset);
-    expect(picker).not.toHaveTextContent(en.billing.providerIfirma);
+    expect(picker).not.toHaveTextContent('iFirma');
     expect(screen.queryByText(en.billing.ksefConfiguredInIntegrations)).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DELETED_POST_PLACEHOLDER } from '#core/domain/index.js';
+
 import type {
   Identity,
   Post,
@@ -201,7 +203,7 @@ const fixture = (input: {
   return { deps, feedCalls: posts.callCount };
 };
 
-const openSpaces = () => [space('s1', { name: 'Ogólna' }), space('s2', { name: 'Klub', position: 1 })];
+const openSpaces = () => [space('s1', { name: 'General' }), space('s2', { name: 'Club', position: 1 })];
 
 describe('member home feed', () => {
   it('interleaves root posts from every accessible space newest first', async () => {
@@ -223,7 +225,7 @@ describe('member home feed', () => {
     expect(feed).toMatchObject({ ok: true });
     if (!feed.ok) return;
     expect(feed.value.items.map((item) => item.id)).toEqual(['p2', 'p3', 'p1']);
-    expect(feed.value.items.map((item) => item.spaceName)).toEqual(['Klub', 'Ogólna', 'Ogólna']);
+    expect(feed.value.items.map((item) => item.spaceName)).toEqual(['Club', 'General', 'General']);
     expect(feed.value.items[0]).toMatchObject({
       spaceId: 's2',
       replyCount: 1,
@@ -233,9 +235,9 @@ describe('member home feed', () => {
   });
 
   it('hides posts from spaces the member is not entitled to and keeps members-visibility rooms', async () => {
-    const gated = space('s-club', { name: 'Klub', visibility: 'product', productIds: ['p-club'] });
+    const gated = space('s-club', { name: 'Club', visibility: 'product', productIds: ['p-club'] });
     const f = fixture({
-      spaces: [space('s1', { name: 'Ogólna' }), gated],
+      spaces: [space('s1', { name: 'General' }), gated],
       posts: [
         post('p-open', 's1', '2026-07-10T10:00:00.000Z'),
         post('p-gated', 's-club', '2026-07-12T10:00:00.000Z'),
@@ -250,7 +252,7 @@ describe('member home feed', () => {
   });
 
   it('lets an entitled member and staff see the gated room', async () => {
-    const gated = space('s-club', { name: 'Klub', visibility: 'product', productIds: ['p-club'] });
+    const gated = space('s-club', { name: 'Club', visibility: 'product', productIds: ['p-club'] });
     const entitled = fixture({
       spaces: [gated],
       posts: [post('p-gated', 's-club', '2026-07-12T10:00:00.000Z')],
@@ -300,7 +302,7 @@ describe('member home feed', () => {
 
   it('masks a deleted root and carries its reaction summary', async () => {
     const f = fixture({
-      spaces: [space('s1', { name: 'Ogólna' })],
+      spaces: [space('s1', { name: 'General' })],
       posts: [
         post('p-del', 's1', '2026-07-12T10:00:00.000Z', { deletedAt: '2026-07-13T10:00:00.000Z' }),
         post('p-live', 's1', '2026-07-11T10:00:00.000Z'),
@@ -312,7 +314,7 @@ describe('member home feed', () => {
 
     expect(feed).toMatchObject({ ok: true });
     if (!feed.ok) return;
-    expect(feed.value.items[0]).toMatchObject({ id: 'p-del', body: 'Wpis usunięty' });
+    expect(feed.value.items[0]).toMatchObject({ id: 'p-del', body: DELETED_POST_PLACEHOLDER });
     expect(feed.value.items[1]?.reactions).toEqual([
       { emoji: '👍', count: 2, viewerReacted: true },
     ]);
@@ -320,7 +322,7 @@ describe('member home feed', () => {
 
   it('never leaks another tenant\'s posts', async () => {
     const f = fixture({
-      spaces: [space('s1', { name: 'Ogólna' }), space('s-other', { tenantId: 't2' })],
+      spaces: [space('s1', { name: 'General' }), space('s-other', { tenantId: 't2' })],
       posts: [
         post('p-mine', 's1', '2026-07-10T10:00:00.000Z'),
         post('p-theirs', 's1', '2026-07-12T10:00:00.000Z', { tenantId: 't2' }),

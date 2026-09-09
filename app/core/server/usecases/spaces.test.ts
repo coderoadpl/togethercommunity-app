@@ -771,7 +771,7 @@ const membersSpace = space({ id: 's-open', slug: 'open', name: 'Otwarta', visibi
 const gatedSpace = space({
   id: 's-club',
   slug: 'club',
-  name: 'Klub',
+  name: 'Club',
   visibility: 'product',
   productIds: ['p-club'],
   position: 1,
@@ -878,17 +878,17 @@ describe('space CRUD', () => {
   it('requires products for product-gated spaces and round-trips update/delete', async () => {
     const f = fixture({ spaces: [] });
     const staff = ctx({ staffRole: 'owner', memberId: null });
-    const invalid = await createSpace(staff, { slug: 'club', name: 'Klub', visibility: 'product' }, f.deps);
+    const invalid = await createSpace(staff, { slug: 'club', name: 'Club', visibility: 'product' }, f.deps);
     expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
     const created = await createSpace(
       staff,
-      { slug: 'club', name: 'Klub', visibility: 'product', productIds: ['p1'] },
+      { slug: 'club', name: 'Club', visibility: 'product', productIds: ['p1'] },
       f.deps,
     );
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const updated = await updateSpace(staff, { id: created.value.id, name: 'Klub 2.0' }, f.deps);
-    expect(updated).toMatchObject({ ok: true, value: { name: 'Klub 2.0', visibility: 'product' } });
+    const updated = await updateSpace(staff, { id: created.value.id, name: 'Club 2.0' }, f.deps);
+    expect(updated).toMatchObject({ ok: true, value: { name: 'Club 2.0', visibility: 'product' } });
     const deleted = await deleteSpace(staff, { id: created.value.id }, f.deps);
     expect(deleted).toMatchObject({ ok: true, value: { spaceId: created.value.id } });
     expect(await deleteSpace(staff, { id: created.value.id }, f.deps)).toMatchObject({
@@ -1258,7 +1258,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-club', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'nowy wpis' }, f.deps);
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-club', body: 'new post' }, f.deps);
     expect(created.ok).toBe(true);
 
     expect(f.delivered.sort()).toEqual(['u2', 'u9']);
@@ -1267,8 +1267,8 @@ describe('space-post notifications', () => {
       contextKind: 'space',
       contextId: 's-club',
       courseId: null,
-      lessonName: 'Klub',
-      snippet: 'nowy wpis',
+      lessonName: 'Club',
+      snippet: 'new post',
       authorAvatarUrl: null,
     });
   });
@@ -1279,7 +1279,7 @@ describe('space-post notifications', () => {
       await f.spaceSubscriptions.follow('t1', { userId, spaceId: 's-open', createdAt: NOW });
     }
 
-    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'nowy wpis' }, f.deps);
+    const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'new post' }, f.deps);
 
     expect(created.ok).toBe(true);
     expect(f.delivered).toEqual(['u5']);

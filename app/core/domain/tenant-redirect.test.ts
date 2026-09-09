@@ -14,7 +14,7 @@ const spaRoutePaths = (): string[] => {
 describe('normalizeRedirectPath', () => {
   it('lower-cases, collapses repeated slashes and drops the trailing slash', () => {
     expect(normalizeRedirectPath('/Course/JavaScript/')).toBe('/course/javascript');
-    expect(normalizeRedirectPath('/course//javascript///wstep')).toBe('/course/javascript/wstep');
+    expect(normalizeRedirectPath('/course//javascript///intro')).toBe('/course/javascript/intro');
   });
 
   it('strips query strings and fragments', () => {

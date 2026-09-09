@@ -58,7 +58,7 @@ progress, then re-runs the seed. Other tenants are untouched.
 | --- | --- | --- |
 | Studio Demo | http://studio.localhost:48730 | `creator@together.dev` |
 | Acme Courses | http://acme.localhost:48730 | `kontakt+smoke-creator@togethercommunity.app` |
-| Akademia Samouka | http://akademia.localhost:48730 | `creator3@together.dev` |
+| Self-learning Academy | http://akademia.localhost:48730 | `creator3@together.dev` |
 
 **Courses**
 
@@ -176,7 +176,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->385<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->384<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -199,7 +199,7 @@ Lesson discussions are the first Community (Faza 2) slice:
 
 - **Discussions under lessons** — context-generic posts (`contextKind:
   'lesson'` today, spaces later) with nested replies capped at depth 3,
-  author edit + soft delete ("Wpis usunięty" placeholder keeps thread shape),
+  author edit + soft delete ("Deleted post" placeholder keeps thread shape),
   and staff moderation (staff can delete any post; staff posts carry the
   "Autor" badge).
 - **Visibility = lesson entitlement** — you read, search and write a lesson's
@@ -220,12 +220,12 @@ Lesson discussions are the first Community (Faza 2) slice:
   [Realtime](#realtime) below).
 
 The seed plants a Polish demo discussion under `course-js` lessons
-(`lesson-js-zmienne-1`, `lesson-js-dom-1`), including a creator answer and a
+(`lesson-js-variables-1`, `lesson-js-dom-1`), including a creator answer and a
 deleted-post placeholder, plus one unread notification for
-`kursant.aktywny@together.dev` — the bell shows a badge on first login.
+`student.active@together.dev` — the bell shows a badge on first login.
 
 ```bash
-pnpm --silent run cli --tenant studio discussion list --lesson lesson-js-zmienne-1
+pnpm --silent run cli --tenant studio discussion list --lesson lesson-js-variables-1
 pnpm --silent run cli --tenant studio discussion search --query const
 pnpm --silent run cli --tenant studio notifications list
 ```

@@ -59,8 +59,8 @@ const ctx = { identity };
 
 const TXT_RECORD: DnsRecord = {
   type: 'TXT',
-  name: '_vercel.kurs.acme.example',
-  value: 'vc-domain-verify=kurs.acme.example,abc',
+  name: '_vercel.course.acme.example',
+  value: 'vc-domain-verify=course.acme.example,abc',
 };
 
 class FakeProvisioner implements DomainProvisioner {
@@ -220,7 +220,7 @@ describe('getTenantRouting', () => {
     const { deps } = harness({
       rows: [
         tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'acme.together.example', kind: 'subdomain', verified: true }),
-        tenantDomainFixture({ id: 'd-2', tenantId: 't-acme', domain: 'kurs.acme.example', verified: true }),
+        tenantDomainFixture({ id: 'd-2', tenantId: 't-acme', domain: 'course.acme.example', verified: true }),
         tenantDomainFixture({ id: 'd-3', tenantId: 't-acme', domain: 'nowa.acme.example', verification: [TXT_RECORD] }),
       ],
     });
@@ -233,15 +233,15 @@ describe('getTenantRouting', () => {
         tenantHost: 'acme.together.example',
         storageCorsOrigins: [
           'https://acme.together.example',
-          'https://kurs.acme.example',
+          'https://course.acme.example',
         ],
-        canonicalOrigin: 'https://kurs.acme.example',
+        canonicalOrigin: 'https://course.acme.example',
         customDomains: [
           {
-            domain: 'kurs.acme.example',
+            domain: 'course.acme.example',
             verified: true,
             status: 'active',
-            records: [{ type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'verified' }],
+            records: [{ type: 'CNAME', name: 'course.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'verified' }],
             lastCheckedAt: null,
             lastError: null,
             storageCorsStatus: 'unknown',
@@ -291,9 +291,9 @@ describe('getTenantRouting', () => {
 
 describe('addTenantDomain', () => {
   it.each([
-    ['HTTPS://Kurs.Acme.Example/panel', 'kurs.acme.example'],
-    ['kurs.acme.example:8443', 'kurs.acme.example'],
-    ['  kurs.acme.example.  ', 'kurs.acme.example'],
+    ['HTTPS://Course.Acme.Example/panel', 'course.acme.example'],
+    ['course.acme.example:8443', 'course.acme.example'],
+    ['  course.acme.example.  ', 'course.acme.example'],
   ])('normalises %s to %s', async (input, expected) => {
     const { deps, rows } = harness();
 
@@ -306,7 +306,7 @@ describe('addTenantDomain', () => {
   it('records the provider, its verification records and an audit event', async () => {
     const { deps, rows, events } = harness();
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: true });
     expect(rows[0]).toMatchObject({
@@ -318,7 +318,7 @@ describe('addTenantDomain', () => {
     expect(events).toEqual([{
       id: 'id-2',
       tenantId: 't-acme',
-      domain: 'kurs.acme.example',
+      domain: 'course.acme.example',
       kind: 'domain_added',
       actorUserId: 'u-1',
       detail: 'vercel',
@@ -358,12 +358,12 @@ describe('addTenantDomain', () => {
       provisioner: new FakeProvisioner({ add: { verification: [], verified: true } }),
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({
       ok: true,
       value: {
-        customDomains: [{ domain: 'kurs.acme.example', verified: false, status: 'pending-dns' }],
+        customDomains: [{ domain: 'course.acme.example', verified: false, status: 'pending-dns' }],
       },
     });
     expect(rows[0]).toMatchObject({ verified: false, verifiedAt: null, lastCheckedAt: null });
@@ -379,11 +379,11 @@ describe('addTenantDomain', () => {
       }),
     });
 
-    await expect(addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps))
+    await expect(addTenantDomain(ctx, { domain: 'course.acme.example' }, deps))
       .rejects.toThrow('insert failed');
     expect(provisioner.calls).toEqual([
-      'add:kurs.acme.example',
-      'remove:kurs.acme.example',
+      'add:course.acme.example',
+      'remove:course.acme.example',
     ]);
   });
 
@@ -394,19 +394,19 @@ describe('addTenantDomain', () => {
       tenantDomains: tenantDomainRepositoryStub({ insert: async () => null }),
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({
       ok: false,
       error: { code: 'conflict', message: 'This domain cannot be connected' },
     });
-    expect(provisioner.calls).toEqual(['add:kurs.acme.example']);
+    expect(provisioner.calls).toEqual(['add:course.acme.example']);
   });
 
   it.each([
     ['together.example', 'the platform base domain'],
     ['acme.together.example', 'a platform subdomain'],
-    ['kurs.acme.przykład', 'a non-punycode international domain'],
+    ['course.acme.exämple', 'a non-punycode international domain'],
     ['localhost', 'a single-label host'],
     ['not a domain', 'a malformed host'],
   ])('refuses %s (%s)', async (domain) => {
@@ -420,10 +420,10 @@ describe('addTenantDomain', () => {
 
   it('refuses a domain another workspace already uses without naming that workspace', async () => {
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'course.acme.example' })],
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'KURS.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'COURSE.acme.example' }, deps);
 
     expect(result).toEqual({
       ok: false,
@@ -436,11 +436,11 @@ describe('addTenantDomain', () => {
       rows: [1, 2, 3].map((index) => tenantDomainFixture({
         id: `d-${String(index)}`,
         tenantId: 't-acme',
-        domain: `kurs${String(index)}.acme.example`,
+        domain: `course${String(index)}.acme.example`,
       })),
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs4.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course4.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
@@ -452,7 +452,7 @@ describe('addTenantDomain', () => {
       rateLimit: { claim: async () => false, purgeExpired: async () => 0 },
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
     expect(provisioner.calls).toEqual([]);
@@ -460,11 +460,11 @@ describe('addTenantDomain', () => {
 
   it('spends the budget before it reveals that another workspace holds the domain', async () => {
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'course.acme.example' })],
       rateLimit: { claim: async () => false, purgeExpired: async () => 0 },
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
@@ -474,7 +474,7 @@ describe('addTenantDomain', () => {
       provisioner: new FakeProvisioner({ failure: 'domain is used by another account' }),
     });
 
-    const result = await addTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await addTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({
       ok: false,
@@ -488,7 +488,7 @@ describe('addTenantDomain', () => {
 
     const result = await addTenantDomain(
       { identity: { ...identity, staffRole: 'admin' } },
-      { domain: 'kurs.acme.example' },
+      { domain: 'course.acme.example' },
       deps,
     );
 
@@ -499,13 +499,13 @@ describe('addTenantDomain', () => {
 describe('checkTenantDomain', () => {
   it('verifies the domain, records verifiedAt and notifies only the owners', async () => {
     const { deps, rows, events, notifications } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({
         verify: { verified: true, misconfigured: false, verification: [] },
       }),
     });
 
-    const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: true });
     expect(rows[0]).toMatchObject({
@@ -521,19 +521,19 @@ describe('checkTenantDomain', () => {
 
   it('keeps a misconfigured domain pending and surfaces the DNS records', async () => {
     const { deps, rows } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({
         verify: { verified: true, misconfigured: true, verification: [TXT_RECORD] },
       }),
     });
 
-    const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: true });
     expect(rows[0]).toMatchObject({ verified: false, providerVerified: true, verification: [TXT_RECORD] });
     expect(result).toMatchObject({ ok: true, value: { customDomains: [{ status: 'provider-verification' }] } });
     expect(result.ok && result.value.customDomains[0]?.records).toEqual([
-      { type: 'CNAME', name: 'kurs.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'pending' },
+      { type: 'CNAME', name: 'course.acme.example', value: 'cname.vercel-dns.com', purpose: 'routing', status: 'pending' },
       { ...TXT_RECORD, purpose: 'ownership', status: 'verified' },
     ]);
   });
@@ -543,22 +543,22 @@ describe('checkTenantDomain', () => {
       status: { verified: true, misconfigured: false, verification: [] },
     });
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner,
     });
 
-    await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
-    expect(provisioner.calls).toEqual(['status:kurs.acme.example']);
+    expect(provisioner.calls).toEqual(['status:course.acme.example']);
   });
 
   it('stores the provider message and returns it to the owner', async () => {
     const { deps, rows, events } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({ failure: 'rate limited by the registrar' }),
     });
 
-    const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({
       ok: false,
@@ -573,7 +573,7 @@ describe('checkTenantDomain', () => {
       rows: [tenantDomainFixture({
         id: 'd-1',
         tenantId: 't-acme',
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         provider: 'manual',
         verified: true,
         verifiedAt: '2026-09-01T00:00:00.000Z',
@@ -584,17 +584,17 @@ describe('checkTenantDomain', () => {
       }),
     });
 
-    await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(rows[0]).toMatchObject({ verified: true, verifiedAt: '2026-09-01T00:00:00.000Z' });
   });
 
   it('refuses a domain that belongs to another workspace', async () => {
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-globex', domain: 'course.acme.example' })],
     });
 
-    const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
@@ -602,12 +602,12 @@ describe('checkTenantDomain', () => {
   it('refuses once the hourly check budget is spent, without calling the provider', async () => {
     const provisioner = new FakeProvisioner();
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner,
       rateLimit: { claim: async () => false, purgeExpired: async () => 0 },
     });
 
-    const result = await checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
     expect(provisioner.calls).toEqual([]);
@@ -615,15 +615,15 @@ describe('checkTenantDomain', () => {
 
   it('records one verification even when two checks observe the same pending row', async () => {
     const { deps, events, notifications } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({
         status: { verified: true, misconfigured: false, verification: [] },
       }),
     });
 
     const results = await Promise.all([
-      checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps),
-      checkTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps),
+      checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps),
+      checkTenantDomain(ctx, { domain: 'course.acme.example' }, deps),
     ]);
 
     expect(results.every((result) => result.ok)).toBe(true);
@@ -636,26 +636,26 @@ describe('removeTenantDomain', () => {
   it('detaches the domain at the provider, deletes the row and appends an event', async () => {
     const provisioner = new FakeProvisioner();
     const { deps, rows, events } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example', verified: true })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example', verified: true })],
       provisioner,
     });
 
-    const result = await removeTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await removeTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: true, value: { redirectTo: null } });
     expect(rows).toHaveLength(0);
-    expect(provisioner.calls).toEqual(['remove:kurs.acme.example']);
+    expect(provisioner.calls).toEqual(['remove:course.acme.example']);
     expect(events.map((event) => event.kind)).toEqual(['domain_removed']);
   });
 
   it('returns the platform URL when the request arrived on the removed domain', async () => {
     const { deps } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example', verified: true })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example', verified: true })],
     });
 
     const result = await removeTenantDomain(
       ctx,
-      { domain: 'kurs.acme.example', requestHost: 'Kurs.Acme.Example' },
+      { domain: 'course.acme.example', requestHost: 'Course.Acme.Example' },
       deps,
     );
 
@@ -709,11 +709,11 @@ describe('removeTenantDomain', () => {
 
   it('keeps the row when the provider refuses to detach the domain', async () => {
     const { deps, rows } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({ failure: 'domain is locked' }),
     });
 
-    const result = await removeTenantDomain(ctx, { domain: 'kurs.acme.example' }, deps);
+    const result = await removeTenantDomain(ctx, { domain: 'course.acme.example' }, deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
     expect(rows).toHaveLength(1);
@@ -746,7 +746,7 @@ describe('runTenantDomainChecks', () => {
       rows: [tenantDomainFixture({
         id: 'd-1',
         tenantId: 't-acme',
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         createdAt: '2026-09-03T09:00:00.000Z',
       })],
       provisioner: new FakeProvisioner({
@@ -807,7 +807,7 @@ describe('runTenantDomainChecks', () => {
       rows: [tenantDomainFixture({
         id: 'd-1',
         tenantId: 't-acme',
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         createdAt: '2026-09-04T09:00:00.000Z',
       })],
     });
@@ -825,7 +825,7 @@ describe('runTenantDomainChecks', () => {
       rows: [tenantDomainFixture({
         id: 'd-1',
         tenantId: 't-acme',
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         createdAt: '2026-09-01T09:00:00.000Z',
       })],
       provisioner,
@@ -835,7 +835,7 @@ describe('runTenantDomainChecks', () => {
       const result = await runTenantDomainChecks(deps);
 
       expect(result).toEqual({ ok: true, value: { checked: 0, verified: 0, failed: 0, alerted: 0 } });
-      expect(provisioner.calls).toEqual(['status:kurs.acme.example']);
+      expect(provisioner.calls).toEqual(['status:course.acme.example']);
       expect(rows[0]).toMatchObject({
         verified: false,
         lastCheckedAt: '2026-09-04T10:00:00.000Z',
@@ -850,7 +850,7 @@ describe('runTenantDomainChecks', () => {
 
   it('counts a provider outage as a failure and keeps going', async () => {
     const { deps, rows } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner({ failure: 'gateway timeout' }),
     });
 
@@ -863,7 +863,7 @@ describe('runTenantDomainChecks', () => {
   it('records a failure that repeats once and the failure that replaces it', async () => {
     const states = { failure: 'gateway timeout' };
     const { deps, events } = harness({
-      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'kurs.acme.example' })],
+      rows: [tenantDomainFixture({ id: 'd-1', tenantId: 't-acme', domain: 'course.acme.example' })],
       provisioner: new FakeProvisioner(states),
     });
 
@@ -882,7 +882,7 @@ describe('runTenantDomainChecks', () => {
       rows: [tenantDomainFixture({
         id: 'd-1',
         tenantId: 't-acme',
-        domain: 'kurs.acme.example',
+        domain: 'course.acme.example',
         createdAt: '2026-09-01T09:00:00.000Z',
       })],
       provisioner,

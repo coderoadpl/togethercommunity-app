@@ -200,7 +200,7 @@ describe('m2m redirect import', () => {
     await importM2mRedirects(ctx, apiKey, write([
       redirectRecord({
         importKey: 'redirect-lesson',
-        fromPath: '/course/javascript/wstep',
+        fromPath: '/course/javascript/intro',
         target: { kind: 'lesson', importKey: 'lesson-source', courseKey: 'course-source' },
         permanent: false,
       }),

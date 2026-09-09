@@ -1124,7 +1124,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
-      invoiceExemptionBasis: '§ 1 rozporządzenia',
+      invoiceExemptionBasis: 'Section 1 of the regulation',
     });
     expect(updated).toMatchObject({
       name: 'Acme Academy',
@@ -1145,7 +1145,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
-      invoiceExemptionBasis: '§ 1 rozporządzenia',
+      invoiceExemptionBasis: 'Section 1 of the regulation',
     });
     expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
   });

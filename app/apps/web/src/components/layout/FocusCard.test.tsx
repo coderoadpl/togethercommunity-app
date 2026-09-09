@@ -12,7 +12,7 @@ describe('FocusCard', () => {
       </FocusCard>,
     );
 
-    expect(screen.getByAltText('Together')).toBeInTheDocument();
+    expect(screen.getByAltText("Together")).toBeInTheDocument();
     expect(screen.getByText('sign in studio')).toBeInTheDocument();
     expect(screen.getByText('Form fields')).toBeInTheDocument();
   });
@@ -24,7 +24,7 @@ describe('FocusCard', () => {
       </FocusCard>,
     );
 
-    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Together")).not.toBeInTheDocument();
     expect(screen.getByText('Other brand')).toBeInTheDocument();
   });
 

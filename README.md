@@ -1,38 +1,37 @@
 # Together
 
-Platforma source-available dla twórców: sprzedaż produktów cyfrowych + marketing + delivery kursów + społeczność w jednym. Darmowy self-host, bardzo tania wersja hostowana (1-5 USD/mies.), content zawsze należy do użytkownika (BYO storage: S3 / YouTube / Vimeo / Bunny; BYO Stripe).
+A source-available platform for creators: digital product sales, marketing, course delivery, and community in one place. Free self-hosting and an inexpensive hosted version (USD 1–5/month), with content always owned by the user (BYO storage: S3 / YouTube / Vimeo / Bunny; BYO Stripe).
 
-**Wartości produktu: niezawodność, uniwersalność, cena.**
+**Product values: reliability, versatility, price.**
 
 ## Status
 
-Działający PoC jest zaimplementowany w katalogu `app/`. Obejmuje aplikację
-webową, serwer API, CLI, migracje i dane demonstracyjne oraz automatyczne testy
-i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
+A working PoC is implemented in `app/`. It includes the web app, API server,
+CLI, migrations, demo data, automated tests, and architecture rules. The
+documents also describe the direction of future development.
 
-## Dokumenty
+## Documents
 
-| Plik | Zawartość |
+| File | Contents |
 |---|---|
-| [`tasks/prd-together.md`](tasks/prd-together.md) | **Aktualny PRD** — założenia, zasady, fazy, user stories, wymagania |
-| [`app/README.md`](app/README.md) | **Quickstart** — uruchomienie lokalnego demo, konta testowe, CLI |
-| [`architecture.md`](architecture.md) | Architektura Together — granice systemu, warstwy, słownik i reguły |
-| [`docs/ses-onboarding.md`](docs/ses-onboarding.md) | Konfiguracja SES, gotowe odpowiedzi do wniosku AWS i awaryjne opcje SMTP |
-| [`SECURITY.md`](SECURITY.md) | Prywatne zgłaszanie podatności, zakres i aktualna polityka wsparcia |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Jak zgłaszać zmiany — przebieg kontrybucji, wymagane bramki i przegląd |
-| [`CLA.md`](CLA.md) | Umowa licencyjna kontrybutora (CLA) podpisywana przy pierwszym PR |
-| [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) | Licencje wszystkich zależności i noty projektowe (fundament, sharp/libvips, schematy FA(3)) |
-| [`FOUNDATION.md`](FOUNDATION.md) | Pochodzenie fundamentu z agentproofarch — commit forka i synchronizowane ścieżki |
-| [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch) | **Architektura normatywna** (osobne repo) — warstwy, porty, CLI, deploy Vercel/Docker |
+| [`tasks/prd-together.md`](tasks/prd-together.md) | **Current PRD** — assumptions, principles, phases, user stories, requirements |
+| [`app/README.md`](app/README.md) | **Quickstart** — local demo, test accounts, CLI |
+| [`architecture.md`](architecture.md) | Together architecture — system boundaries, layers, glossary, and rules |
+| [`docs/ses-onboarding.md`](docs/ses-onboarding.md) | SES setup, sample AWS application answers, and SMTP fallback options |
+| [`SECURITY.md`](SECURITY.md) | Private vulnerability reporting, scope, and current support policy |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution workflow, required gates, and review |
+| [`CLA.md`](CLA.md) | Contributor License Agreement signed with the first PR |
+| [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) | Dependency licenses and project notices (foundation, sharp/libvips, FA(3) schemas) |
+| [`FOUNDATION.md`](FOUNDATION.md) | agentproofarch foundation provenance — fork commit and synchronized paths |
+| [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch) | **Normative architecture** (separate repository) — layers, ports, CLI, Vercel/Docker deployment |
 
-## Nazwa i domena
+## Name and domain
 
-Nazwa: **Together** (zdecydowana). Domena zostanie ogłoszona przy starcie wersji hostowanej.
+Name: **Together** (decided). The domain will be announced when the hosted version launches.
 
-## Licencja
+## License
 
-Together jest udostępniany jako Fair Source na licencji
-[FSL-1.1-ALv2](LICENSE.md). Możesz go hostować samodzielnie, ale nie możesz
-oferować konkurencyjnego hostingu. Każde wydanie automatycznie przechodzi na
-Apache-2.0 po dwóch latach. Więcej informacji:
-[fsl.software](https://fsl.software/) i [fair.io](https://fair.io/).
+Together is Fair Source under [FSL-1.1-ALv2](LICENSE.md). You may self-host it,
+but may not offer competing hosting. Each release automatically transitions to
+Apache-2.0 after two years. Learn more at
+[fsl.software](https://fsl.software/) and [fair.io](https://fair.io/).

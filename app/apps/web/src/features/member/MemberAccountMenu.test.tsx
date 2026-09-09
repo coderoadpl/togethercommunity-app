@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
@@ -17,7 +17,7 @@ const me = (impersonation: unknown, staffRole: 'owner' | 'admin' | null = null) 
         userId: 'u1',
         email: 'jan@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Member',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -35,8 +35,8 @@ const me = (impersonation: unknown, staffRole: 'owner' | 'admin' | null = null) 
 const activeImpersonation = {
   id: 'imp-1',
   subjectMemberId: 'm1',
-  subjectName: 'Jan Uczestnik',
-  actorName: 'Ala Twórczyni',
+  subjectName: 'John Member',
+  actorName: 'Alice Creator',
   expiresAt: '2026-09-03T11:00:00.000Z',
 };
 
@@ -60,7 +60,7 @@ describe('MemberAccountMenu', () => {
     const studio = await screen.findByTestId('member-account-studio-link');
     const account = screen.getByTestId('member-account-link');
     expect(studio).toHaveAttribute('href', '/panel');
-    expect(studio).toHaveTextContent(pl.account.menuStudio);
+    expect(studio).toHaveTextContent('Studio');
     expect(studio.compareDocumentPosition(account)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -85,7 +85,7 @@ describe('MemberAccountMenu', () => {
     window.sessionStorage.setItem('together-login-identifier', 'jan@example.com');
     await renderMenu();
 
-    expect(await screen.findByTestId('member-sign-out')).toHaveTextContent(pl.tenant.signOut);
+    expect(await screen.findByTestId('member-sign-out')).toHaveTextContent(en.tenant.signOut);
     await userEvent.click(screen.getByTestId('member-sign-out'));
 
     await waitFor(() => {
@@ -120,10 +120,10 @@ describe('MemberAccountMenu', () => {
     expect(await screen.findByTestId('member-account-messages-unread')).toHaveTextContent('3');
     expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
     expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
-      pl.panel.accountMenuUnread({ count: 3 }),
+      en.panel.accountMenuUnread({ count: 3 }),
     );
     expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
-      pl.messages.unreadAria({ count: 3 }),
+      en.messages.unreadAria({ count: 3 }),
     );
   });
 
@@ -158,7 +158,7 @@ describe('MemberAccountMenu', () => {
     await renderMenu();
 
     const control = await screen.findByTestId('member-sign-out');
-    await waitFor(() => expect(control).toHaveTextContent(pl.shell.impersonationExit));
+    await waitFor(() => expect(control).toHaveTextContent(en.shell.impersonationExit));
     await userEvent.click(control);
 
     await waitFor(() => {

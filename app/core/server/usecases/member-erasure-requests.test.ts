@@ -206,7 +206,7 @@ describe('member erasure requests', () => {
         to: 'first@example.com',
         payload: expect.objectContaining({
           kind: 'member-erasure-request',
-          language: 'pl',
+          language: 'en',
           memberEmail: member.email,
           requestedAt: now,
           dueAt: erasureRequestDueAt(now),

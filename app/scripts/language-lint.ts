@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 
 const appRoot = join(import.meta.dirname, '..');
 const repoRoot = join(appRoot, '..');
-const polishDiacritics = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
+const polishDiacritics = /[\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b]/;
 const skippedExtensions = new Set([
   '.avif',
   '.gif',

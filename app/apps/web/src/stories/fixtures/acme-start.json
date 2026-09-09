@@ -116,7 +116,7 @@
         "courses": [
           {
             "createdAt": "2026-07-01T12:01:10.000Z",
-            "description": "Kurs demonstracyjny używany przez smoke test.",
+            "description": "A demo course used by the smoke test.",
             "id": "course-acme",
             "imageUrl": null,
             "legacyId": null,
@@ -152,15 +152,15 @@
                       "contentId": "content-lesson-acme-intro",
                       "durationMinutes": 4,
                       "lessonId": "lesson-acme-intro",
-                      "name": "Lekcja wprowadzająca"
+                      "name": "Introductory lesson"
                     }
                   ],
-                  "name": "Wprowadzenie"
+                  "name": "Introduction"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-acme-1",
-              "name": "Część 1 - Moduł wprowadzający"
+              "name": "Part 1 - Introduction"
             }
           ],
           "name": "Acme Course"
@@ -176,12 +176,12 @@
           "resume": {
             "firstIncomplete": {
               "id": "lesson-acme-intro",
-              "name": "Lekcja wprowadzająca"
+              "name": "Introductory lesson"
             },
             "isReview": false,
             "target": {
               "id": "lesson-acme-intro",
-              "name": "Lekcja wprowadzająca"
+              "name": "Introductory lesson"
             }
           }
         }

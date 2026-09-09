@@ -1,64 +1,60 @@
-# Prompt dla agenta architektury (agentproofarch) — SSR/SEO + model tożsamości kursantów
+# Architecture agent prompt (agentproofarch) — SSR/SEO and member identity
 
-> Utworzony 2026-07-03. Do wklejenia agentowi pracującemu w repo coderoadpl/agentproofarch.
-> Dotyczy otwartych pytań 16 i 17 z tasks/prd-together.md.
+> Created 2026-07-03. For the agent working in coderoadpl/agentproofarch.
+> Covers open questions 16 and 17 in tasks/prd-together.md.
 
 ```text
-Kontekst produktu (Together), dla którego agentproofarch jest fundamentem:
-platforma multi-tenant dla twórców internetowych — sprzedaż produktów
-cyfrowych (kursy, ebooki, członkostwa), delivery kursów, społeczność
-i e-mail marketing. Hosted na Vercelu + darmowy self-host (docker compose).
-Publiczne strony sprzedażowe produktów to główny kanał ruchu twórców.
-Dwie populacje użytkowników: twórcy z zespołami (pasują do obecnego modelu
-organizacji) oraz kursanci/członkowie — klienci końcowi każdego tenanta.
-PRD produktu: repo coderoadpl/togethercommunity-app, tasks/prd-together.md (przeczytaj,
-jeśli masz dostęp; kluczowy kontekst jest też poniżej).
+Product context (Together), built on agentproofarch:
+a multi-tenant platform for online creators, combining digital product sales
+(courses, ebooks, memberships), course delivery, community, and email marketing.
+Hosted on Vercel, with free self-hosting through Docker Compose. Public product
+sales pages are the creators' primary traffic channel. There are two user
+populations: creators and their teams (matching the current organization model),
+and students/members, the end users of each tenant.
+Product PRD: coderoadpl/togethercommunity-app, tasks/prd-together.md (read it if
+accessible; the key context is also provided below).
 
-Mam dwa tematy architektoniczne do rozstrzygnięcia i wprowadzenia do PRD
-fundamentu (tasks/prd-agentproofarch-foundation.md):
+Resolve two architectural topics and record them in the foundation PRD
+(tasks/prd-agentproofarch-foundation.md):
 
-TEMAT 1 — Publiczne strony z SEO vs "No SSR, no Next.js" (FR-16, §6).
-Produkt wymaga publicznych, SEO-krytycznych stron per tenant (strony
-produktów/sprzedażowe, landing pages, publiczne strony społeczności):
-pełne meta tagi OG/Twitter w HTML, indeksowalność przez wszystkie boty
-(nie tylko Google), szybki first paint. Czyste statyczne SPA tego nie
-spełnia. Jestem otwarty na SSR "gdzieniegdzie" — Vercel jest do tego
-stworzony — ale nie chcę wywracać architektury.
-Zaprojektuj i wpisz do PRD warstwę renderowania stron publicznych, która:
-- zachowuje reguły warstw (core bez frameworków, boundaries lint-enforced),
-- działa z tego samego commita na obu targetach (Vercel Functions + kontener
-  Node w self-host), z sensownym cache (strony per tenant, unieważnianie po
-  zmianie treści),
-- zostawia SPA dla części zalogowanej (panel twórcy, widok kursanta).
-Rozważ co najmniej: (a) SSR publicznych route'ów w Hono (np. hono/jsx),
-współdzielący view-modele z core; (b) wstrzykiwanie meta tagów do index.html
-+ prerender/cache najważniejszych stron; (c) hybryda a+b. Jeśli uznasz, że
-jednak Next.js jest właściwym trade-offem, napisz wprost dlaczego warto
-odwrócić tę decyzję. Dodaj user stories i zaktualizuj FR-16/Non-Goals.
+TOPIC 1 — Public SEO pages versus "No SSR, no Next.js" (FR-16, §6).
+The product requires public, SEO-critical pages per tenant: product/sales pages,
+landing pages, and public community pages. Requirements: complete OG/Twitter
+metadata in HTML, indexing by all bots (not only Google), and a fast first paint.
+A purely static SPA cannot meet these requirements. Selective SSR is acceptable
+and fits Vercel, but should not overturn the architecture.
+Design and document a public-page rendering layer that:
+- preserves layer rules (framework-free core, lint-enforced boundaries),
+- deploys the same commit to both targets (Vercel Functions and a self-hosted
+  Node container), with sensible per-tenant caching and invalidation on edits,
+- keeps the authenticated creator panel and member views as an SPA.
+Consider at least: (a) Hono SSR for public routes (for example hono/jsx), sharing
+view models with core; (b) metadata injection into index.html plus prerendering
+and caching of key pages; (c) a hybrid of a and b. If Next.js is the right
+tradeoff, explicitly explain why reversing that decision is worthwhile.
+Add user stories and update FR-16/Non-Goals.
 
-TEMAT 2 — Model tożsamości kursantów (§3.4).
-Obecnie: 1 e-mail = 1 globalne konto + członkostwa w organizacjach. Dla
-twórców/zespołów to pasuje. Pytanie: czy kursanci (klienci końcowi tenanta)
-powinni być globalnymi userami z per-tenantowym profilem członka, czy osobną
-encją per tenant poza organizacjami Better Auth?
-Moja intuicja: model globalny nam nie przeszkadza — zwaliduj ją i zaprojektuj
-rekomendowany wariant tak, żeby spełniał twarde wymagania produktu:
-- relacja z klientem należy do twórcy: profil członka, tagi i zgody
-  marketingowe (RODO) przechowywane per tenant, nie na globalnym koncie,
-- pełny eksport danych członków per tenant (CSV/JSON, z e-mailami),
-- ten sam e-mail może być klientem wielu tenantów; członek nie może przez
-  swoje konto zobaczyć listy innych tenantów (prywatność),
-- twórca może usunąć członka ze SWOJEGO tenanta (semantyka: usunięcie
-  członkostwa + danych tenant-scoped vs usunięcie globalnego konta),
-- konto członka powstaje też bez hasła, z webhooka Stripe po zakupie
-  (logowanie magic linkiem),
-- sesje/cookies na custom domenach tenantów: cookie nie obejmie cudzej
-  custom domeny — opisz, jak wygląda logowanie per domena vs subdomeny
-  APP_BASE_DOMAIN, i co z tego wynika dla członków.
-Zaktualizuj §3.4 (model tożsamości) i dopisz decision record z uzasadnieniem
-oraz konsekwencjami dla RODO (kto jest administratorem danych członków).
+TOPIC 2 — Member identity model (§3.4).
+Currently, one email corresponds to one global account with organization
+memberships. This fits creators and teams. Should students (tenant end users)
+be global users with per-tenant member profiles, or separate per-tenant entities
+outside Better Auth organizations?
+My intuition is that the global model is acceptable. Validate it and design the
+recommended option against these hard product requirements:
+- The creator owns the customer relationship: member profiles, tags, and GDPR
+  marketing consent are stored per tenant, not on the global account.
+- Full per-tenant member export is available as CSV/JSON, including emails.
+- One email can belong to multiple tenants; members must not see a list of
+  other tenants through their account, for privacy reasons.
+- A creator can remove a member from THEIR tenant: remove the membership and
+  tenant-scoped data, rather than the global account.
+- Stripe purchase webhooks can create passwordless member accounts that use
+  magic-link sign-in.
+- Cookies cannot span unrelated custom domains. Describe sign-in per custom
+  domain versus APP_BASE_DOMAIN subdomains and the implications for members.
+Update §3.4 (identity model), and add a decision record with the rationale and
+GDPR consequences, including who controls member data.
 
-Oba tematy: najpierw krótka propozycja decyzji (żebym mógł zatwierdzić),
-potem aktualizacja PRD i ewentualne user stories. Nie implementuj przed
-zatwierdzeniem decyzji.
+For both topics, first propose the decision briefly for approval, then update
+the PRD and any user stories. Do not implement before the decision is approved.
 ```

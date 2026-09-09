@@ -8,9 +8,9 @@
           "threads": [
             {
               "authorAvatarUrl": null,
-              "authorDisplay": "Kursant Wygasły",
+              "authorDisplay": "Expired Student",
               "authorIsStaff": false,
-              "body": "Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.\nMateriały: https://courses.example.org/guide?topic=const&level=1.",
+              "body": "A quick tip: try the examples from this lesson in the browser console (F12 → Console). You can immediately see how const prevents reassignment.\nResources: https://courses.example.org/guide?topic=const&level=1.",
               "contextId": "lesson-js-variables-1",
               "contextKind": "lesson",
               "createdAt": "2026-06-11T12:00:00.000Z",
@@ -23,9 +23,9 @@
               "replies": [
                 {
                   "authorAvatarUrl": null,
-                  "authorDisplay": "Konto Free",
+                  "authorDisplay": "Free Account",
                   "authorIsStaff": false,
-                  "body": "Wpis usunięty",
+                  "body": "Deleted post",
                   "contextId": "lesson-js-variables-1",
                   "contextKind": "lesson",
                   "createdAt": "2026-06-12T12:00:00.000Z",
@@ -47,9 +47,9 @@
             },
             {
               "authorAvatarUrl": null,
-              "authorDisplay": "Kursant Aktywny",
+              "authorDisplay": "Active Student",
               "authorIsStaff": false,
-              "body": "Czy jest jeszcze sens używać var? W starszych poradnikach na YouTube wszędzie widzę var, a w tej lekcji tylko let i const. Powinienem przepisywać stare przykłady, czy po prostu je pomijać?",
+              "body": "Is there still a reason to use var? Older YouTube tutorials use it everywhere, but this lesson only uses let and const. Should I rewrite the older examples or skip them?",
               "contextId": "lesson-js-variables-1",
               "contextKind": "lesson",
               "createdAt": "2026-06-28T12:00:00.000Z",
@@ -62,9 +62,9 @@
               "replies": [
                 {
                   "authorAvatarUrl": null,
-                  "authorDisplay": "Konto Free",
+                  "authorDisplay": "Free Account",
                   "authorIsStaff": false,
-                  "body": "Mam dokładnie to samo — zaczynałem od kursu sprzed kilku lat i wszystko było na var. Odkąd przepisuję przykłady na const i let, dużo łatwiej mi zauważyć, gdzie wartość naprawdę się zmienia.",
+                  "body": "I had the same question. I started with a course from a few years ago that used var throughout. Rewriting the examples with const and let makes it much easier to spot where a value actually changes.",
                   "contextId": "lesson-js-variables-1",
                   "contextKind": "lesson",
                   "createdAt": "2026-06-29T12:00:00.000Z",
@@ -79,7 +79,7 @@
                       "authorAvatarUrl": null,
                       "authorDisplay": "Studio Creator",
                       "authorIsStaff": true,
-                      "body": "Dobre pytanie! W nowym kodzie var zostawiamy historii: domyślnie używaj const, a let tylko tam, gdzie wartość faktycznie się zmienia. Przepisywanie starych przykładów to świetne ćwiczenie — szczerze polecam.",
+                      "body": "Good question! In new code, use const by default and let where you need to reassign a value. Rewriting older examples is a useful exercise, and understanding var will help you read existing code.",
                       "contextId": "lesson-js-variables-1",
                       "contextKind": "lesson",
                       "createdAt": "2026-06-30T12:00:00.000Z",
@@ -122,7 +122,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "defaultHomeSpaceId": "space-studio-community",
-          "defaultLanguage": "pl",
+          "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
           "invoiceExemptionBasis": null,
@@ -156,10 +156,10 @@
         "email": "student.active@together.dev",
         "emailVerified": true,
         "impersonation": null,
-        "name": "Kursant Aktywny",
+        "name": "Active Student",
         "tenant": {
           "banned": false,
-          "displayName": "Kursant Aktywny",
+          "displayName": "Active Student",
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
@@ -181,7 +181,7 @@
               "accessibleLessonCount": 8,
               "completedLessonCount": 2,
               "courseId": "course-js",
-              "courseName": "Kurs JavaScript od podstaw",
+              "courseName": "JavaScript from Scratch",
               "lastActivityAt": "2026-07-01T12:01:06.000Z",
               "lastViewedLessonId": "lesson-js-functions-1"
             },
@@ -189,23 +189,23 @@
               "accessibleLessonCount": 6,
               "completedLessonCount": 0,
               "courseId": "course-react",
-              "courseName": "React w praktyce",
+              "courseName": "React in Practice",
               "lastActivityAt": null
             }
           ],
           "directMessagesEnabled": true,
           "lockedSpaces": [
             {
-              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
+              "description": "A space for React in Practice members to share projects, ask questions, and review code.",
               "id": "space-studio-club-react",
-              "name": "Klub Reacta",
+              "name": "React Club",
               "productIds": [
                 "product-react-full"
               ],
               "products": [
                 {
                   "id": "product-react-full",
-                  "title": "React w praktyce - pełny dostęp"
+                  "title": "React in Practice - full access"
                 }
               ],
               "slug": "club-react"
@@ -216,7 +216,7 @@
               "courseIds": [],
               "id": "space-studio-community",
               "isFollowing": true,
-              "name": "Społeczność",
+              "name": "Community",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
@@ -230,12 +230,12 @@
               ],
               "id": "space-studio-club-js",
               "isFollowing": true,
-              "name": "Klub JavaScriptu",
+              "name": "JavaScript Club",
               "position": 1,
               "products": [
                 {
                   "id": "product-js-full",
-                  "title": "Kurs JavaScript - pełny dostęp"
+                  "title": "JavaScript Course - full access"
                 }
               ],
               "publicReadOnly": false,
@@ -270,13 +270,13 @@
               }
             ],
             "slug": "course-together-101",
-            "title": "Kurs Together 101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
             "priceCents": 39900,
@@ -290,13 +290,13 @@
               }
             ],
             "slug": "js-full",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
             "priceCents": 49900,
@@ -310,13 +310,13 @@
               }
             ],
             "slug": "react-full",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
             "priceCents": 9900,
@@ -330,13 +330,13 @@
               }
             ],
             "slug": "js-dom-module",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
             "priceCents": 0,
@@ -356,7 +356,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
             "priceCents": 4900,
@@ -377,13 +377,13 @@
               }
             ],
             "slug": "club",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
             "priceCents": 7900,
@@ -397,7 +397,7 @@
               }
             ],
             "slug": "download-workbook",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ],
@@ -443,10 +443,10 @@
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
                       "lessonId": "lesson-js-demo-video",
-                      "name": "Demo wideo (Bunny Stream)"
+                      "name": "Video demo (Bunny Stream)"
                     }
                   ],
-                  "name": "Wprowadzenie"
+                  "name": "Introduction"
                 },
                 {
                   "accessStatus": "fully-accessible",
@@ -459,7 +459,7 @@
                       "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
                       "lessonId": "lesson-js-variables-1",
-                      "name": "Deklarowanie zmiennych"
+                      "name": "Declaring variables"
                     },
                     {
                       "accessStatus": "fully-accessible",
@@ -467,10 +467,10 @@
                       "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
                       "lessonId": "lesson-js-variables-2",
-                      "name": "Typy proste i złożone"
+                      "name": "Primitive and complex types"
                     }
                   ],
-                  "name": "Zmienne i typy"
+                  "name": "Variables and types"
                 },
                 {
                   "accessStatus": "fully-accessible",
@@ -483,7 +483,7 @@
                       "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
                       "lessonId": "lesson-js-functions-1",
-                      "name": "Funkcje i argumenty"
+                      "name": "Functions and arguments"
                     },
                     {
                       "accessStatus": "fully-accessible",
@@ -491,15 +491,15 @@
                       "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
                       "lessonId": "lesson-js-functions-2",
-                      "name": "Domknięcia i zakres"
+                      "name": "Closures and scope"
                     }
                   ],
-                  "name": "Funkcje"
+                  "name": "Functions"
                 }
               ],
               "completionStatus": "partially-completed",
               "id": "module-js-basics",
-              "name": "Część 1 - Podstawy"
+              "name": "Part 1 - Basics"
             },
             {
               "accessStatus": "fully-accessible",
@@ -515,7 +515,7 @@
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
                       "lessonId": "lesson-js-dom-1",
-                      "name": "Wybieranie elementów DOM"
+                      "name": "Selecting DOM elements"
                     },
                     {
                       "accessStatus": "fully-accessible",
@@ -523,15 +523,15 @@
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
                       "lessonId": "lesson-js-dom-2",
-                      "name": "Zdarzenia i interakcja"
+                      "name": "Events and interaction"
                     }
                   ],
-                  "name": "Manipulacja DOM"
+                  "name": "DOM manipulation"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-js-dom",
-              "name": "Część 2 - DOM"
+              "name": "Part 2 - DOM"
             },
             {
               "accessStatus": "fully-accessible",
@@ -547,18 +547,18 @@
                       "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
                       "lessonId": "lesson-js-project-1",
-                      "name": "Projekt: lista zadań"
+                      "name": "Project: a to-do list"
                     }
                   ],
-                  "name": "Projekt końcowy"
+                  "name": "Final project"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-js-projects",
-              "name": "Część 3 - Projekty"
+              "name": "Part 3 - Projects"
             }
           ],
-          "name": "Kurs JavaScript od podstaw"
+          "name": "JavaScript from Scratch"
         }
       }
     },
@@ -573,13 +573,13 @@
               "type": "embed"
             },
             {
-              "html": "<h3>Zmienne w JavaScript</h3><p>W JavaScript zmienne deklarujemy słowami kluczowymi <code>let</code>, <code>const</code> oraz historycznym <code>var</code>. W nowoczesnym kodzie sięgamy niemal wyłącznie po dwa pierwsze.</p><ul><li><strong>const</strong> — wartość, której nie zamierzamy nadpisywać.</li><li><strong>let</strong> — zmienna, której wartość będzie się zmieniać w czasie.</li></ul><p>Dobrą praktyką jest domyślne używanie <code>const</code> i sięganie po <code>let</code> dopiero wtedy, gdy naprawdę musimy przypisać nową wartość.</p>",
+              "html": "<h3>Variables in JavaScript</h3><p>JavaScript declares variables with <code>let</code>, <code>const</code>, and the older <code>var</code> keyword. Modern code mostly uses the first two.</p><ul><li><strong>const</strong> - a binding you do not intend to reassign.</li><li><strong>let</strong> - a variable whose value will change over time.</li></ul><p>Use <code>const</code> by default and switch to <code>let</code> when you need to assign a new value.</p>",
               "type": "html"
             },
             {
-              "description": "MDN — gramatyka i typy w JavaScript",
+              "description": "MDN - JavaScript grammar and types",
               "type": "link",
-              "url": "https://developer.mozilla.org/pl/docs/Web/JavaScript/Guide/Grammar_and_types"
+              "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types"
             }
           ],
           "createdAt": "2026-07-01T12:00:06.000Z",
@@ -587,7 +587,7 @@
           "id": "lesson-js-variables-1",
           "isPreview": false,
           "legacyId": null,
-          "name": "Deklarowanie zmiennych",
+          "name": "Declaring variables",
           "tenantId": "tenant-studio"
         }
       }
@@ -599,7 +599,7 @@
         "lesson": {
           "contents": [
             {
-              "html": "<h3>Typy danych</h3><p>JavaScript rozróżnia typy proste (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, <code>bigint</code>) oraz typy złożone, czyli obiekty i tablice.</p><p>Typy proste przekazywane są przez wartość, a obiekty przez referencję. To fundamentalna różnica, którą warto zrozumieć na początku nauki.</p>",
+              "html": "<h3>Data types</h3><p>JavaScript distinguishes primitive types (<code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, and <code>bigint</code>) from objects, including arrays.</p><p>Primitive values are copied directly. With objects, the copied value is a reference to the same object, so changing that object is visible through either reference.</p>",
               "type": "html"
             },
             {
@@ -612,7 +612,7 @@
           "id": "lesson-js-variables-2",
           "isPreview": false,
           "legacyId": null,
-          "name": "Typy proste i złożone",
+          "name": "Primitive and complex types",
           "tenantId": "tenant-studio"
         }
       }
@@ -638,12 +638,12 @@
           "resume": {
             "firstIncomplete": {
               "id": "lesson-js-demo-video",
-              "name": "Demo wideo (Bunny Stream)"
+              "name": "Video demo (Bunny Stream)"
             },
             "isReview": false,
             "target": {
               "id": "lesson-js-functions-1",
-              "name": "Funkcje i argumenty"
+              "name": "Functions and arguments"
             }
           }
         }

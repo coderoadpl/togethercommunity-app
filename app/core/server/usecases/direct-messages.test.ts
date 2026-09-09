@@ -772,13 +772,13 @@ describe('sendDmMessage', () => {
     const fx = fixture();
     const conversation = await startWith(fx);
 
-    const first = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
-    const second = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Jesteś tam?' }, fx.deps);
+    const first = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
+    const second = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Are you there?' }, fx.deps);
 
     expect(first.ok && first.value.isOwn).toBe(true);
     expect(second.ok).toBe(true);
     expect(fx.messages.rows).toHaveLength(2);
-    expect(fx.conversations.rows[0]?.lastMessageSnippet).toBe('Jesteś tam?');
+    expect(fx.conversations.rows[0]?.lastMessageSnippet).toBe('Are you there?');
     expect(fx.notifications.rows).toHaveLength(1);
     expect(fx.notifications.rows[0]?.kind).toBe('dm-message');
     expect(fx.notifications.rows[0]?.payload.contextKind).toBe('dm');
@@ -788,7 +788,7 @@ describe('sendDmMessage', () => {
         recipientUserId: 'u2',
         email: 'u2@example.com',
         url: `http://tenant.localhost/messages/${conversation.id}`,
-        language: 'pl',
+        language: 'en',
       },
     ]);
   });
@@ -802,7 +802,7 @@ describe('sendDmMessage', () => {
 
     for (const fx of [preferred, inherited]) {
       const conversation = await startWith(fx);
-      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
     }
 
     expect(preferred.delivered.map((row) => row.language)).toEqual(['en']);
@@ -837,7 +837,7 @@ describe('sendDmMessage', () => {
   it('notifies again once the recipient has read the conversation', async () => {
     const fx = fixture();
     const conversation = await startWith(fx);
-    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
 
     await markDmConversationRead(
       ctx({ userId: 'u2', memberId: 'm2' }),
@@ -862,7 +862,7 @@ describe('sendDmMessage', () => {
 
     const result = await sendDmMessage(
       ctx({ userId: 'u3', memberId: 'm3' }),
-      { conversationId: conversation.id, body: 'Podsłuch' },
+      { conversationId: conversation.id, body: 'Eavesdropping' },
       fx.deps,
     );
 
@@ -887,7 +887,7 @@ describe('sendDmMessage', () => {
     const outcomes = [];
     for (let index = 0; index <= DM_MESSAGE_RATE_LIMIT.maxMessages; index += 1) {
       outcomes.push(
-        await sendDmMessage(ctx(), { conversationId: conversation.id, body: `wiadomość ${String(index)}` }, fx.deps),
+        await sendDmMessage(ctx(), { conversationId: conversation.id, body: `message ${String(index)}` }, fx.deps),
       );
     }
 
@@ -901,7 +901,7 @@ describe('reading conversations', () => {
   it('lists conversations newest first with the viewer unread state', async () => {
     const fx = fixture();
     const conversation = await startWith(fx);
-    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
 
     const asRecipient = await listDmConversations(ctx({ userId: 'u2', memberId: 'm2' }), {}, fx.deps);
     const asSender = await listDmConversations(ctx(), {}, fx.deps);
@@ -920,7 +920,7 @@ describe('reading conversations', () => {
       ],
     });
     const conversation = await startWith(fx);
-    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
 
     const participant = await listDmMessages(
       ctx({ userId: 'u2', memberId: 'm2' }),
@@ -940,7 +940,7 @@ describe('reading conversations', () => {
   it('counts unread conversations for the badge and clears them on read', async () => {
     const fx = fixture();
     const conversation = await startWith(fx);
-    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
     const recipient = ctx({ userId: 'u2', memberId: 'm2' });
 
     const before = await dmUnreadCount(recipient, fx.deps);
@@ -960,7 +960,7 @@ describe('member blocks', () => {
 
     const blocked = await blockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
 
-    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
     const restart = await startDmConversation(
       ctx(),
       { recipient: { kind: 'member', memberId: 'm2' } },
@@ -998,7 +998,7 @@ describe('member blocks', () => {
     const conversation = await startWith(fx);
 
     await blockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps);
-    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
 
     expect(send.ok ? null : send.error.code).toBe('forbidden');
   });
@@ -1044,7 +1044,7 @@ describe('member blocks', () => {
     await blockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
     const unblocked = await unblockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
     await unblockDmParticipant(blocker, { conversationId: conversation.id }, fx.deps);
-    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps);
+    const send = await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps);
 
     expect(fx.blocks.rows).toHaveLength(0);
     expect(unblocked.ok && unblocked.value).toMatchObject({ blockedByViewer: false, canSend: true });
@@ -1102,7 +1102,7 @@ describe('the tenant direct-message switch', () => {
       await getDmConversation(ctx(), { conversationId: conversation.id }, fx.deps),
       await listDmMessages(ctx(), { conversationId: conversation.id }, fx.deps),
       await startDmConversation(ctx(), { recipient: { kind: 'member', memberId: 'm2' } }, fx.deps),
-      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Cześć' }, fx.deps),
+      await sendDmMessage(ctx(), { conversationId: conversation.id, body: 'Hello' }, fx.deps),
       await markDmConversationRead(ctx(), { conversationId: conversation.id }, fx.deps),
       await blockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps),
       await unblockDmParticipant(ctx(), { conversationId: conversation.id }, fx.deps),

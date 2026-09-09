@@ -162,7 +162,7 @@ Strict layer order; each step is independently mergeable and fully unit-tested.
 8. **Client + CLI + web** — `core/client` methods; `together domain
    list|add|check|remove` in `apps/cli/src/main.ts` rendering a human-readable
    DNS block (JSON output stays verbatim); creator settings page listing domains
-   with copy-paste DNS rows and a "Sprawdź" action (PL copy, English code).
+   with copy-paste DNS rows and a "Check" action.
 9. **Generated artifacts** — `pnpm run permissions:generate`,
    route-table regeneration, `pnpm run coverage:baseline`.
 

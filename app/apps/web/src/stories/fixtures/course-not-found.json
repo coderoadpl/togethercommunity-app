@@ -7,10 +7,10 @@
         "email": "student.active@together.dev",
         "emailVerified": true,
         "impersonation": null,
-        "name": "Kursant Aktywny",
+        "name": "Active Student",
         "tenant": {
           "banned": false,
-          "displayName": "Kursant Aktywny",
+          "displayName": "Active Student",
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
@@ -32,7 +32,7 @@
               "accessibleLessonCount": 8,
               "completedLessonCount": 2,
               "courseId": "course-js",
-              "courseName": "Kurs JavaScript od podstaw",
+              "courseName": "JavaScript from Scratch",
               "lastActivityAt": "2026-07-01T12:01:06.000Z",
               "lastViewedLessonId": "lesson-js-functions-1"
             },
@@ -40,23 +40,23 @@
               "accessibleLessonCount": 6,
               "completedLessonCount": 0,
               "courseId": "course-react",
-              "courseName": "React w praktyce",
+              "courseName": "React in Practice",
               "lastActivityAt": null
             }
           ],
           "directMessagesEnabled": true,
           "lockedSpaces": [
             {
-              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
+              "description": "A space for React in Practice members to share projects, ask questions, and review code.",
               "id": "space-studio-club-react",
-              "name": "Klub Reacta",
+              "name": "React Club",
               "productIds": [
                 "product-react-full"
               ],
               "products": [
                 {
                   "id": "product-react-full",
-                  "title": "React w praktyce - pełny dostęp"
+                  "title": "React in Practice - full access"
                 }
               ],
               "slug": "club-react"
@@ -67,7 +67,7 @@
               "courseIds": [],
               "id": "space-studio-community",
               "isFollowing": true,
-              "name": "Społeczność",
+              "name": "Community",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
@@ -81,12 +81,12 @@
               ],
               "id": "space-studio-club-js",
               "isFollowing": true,
-              "name": "Klub JavaScriptu",
+              "name": "JavaScript Club",
               "position": 1,
               "products": [
                 {
                   "id": "product-js-full",
-                  "title": "Kurs JavaScript - pełny dostęp"
+                  "title": "JavaScript Course - full access"
                 }
               ],
               "publicReadOnly": false,
@@ -121,13 +121,13 @@
               }
             ],
             "slug": "course-together-101",
-            "title": "Kurs Together 101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
             "priceCents": 39900,
@@ -141,13 +141,13 @@
               }
             ],
             "slug": "js-full",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
             "priceCents": 49900,
@@ -161,13 +161,13 @@
               }
             ],
             "slug": "react-full",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
             "priceCents": 9900,
@@ -181,13 +181,13 @@
               }
             ],
             "slug": "js-dom-module",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
             "priceCents": 0,
@@ -207,7 +207,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
             "priceCents": 4900,
@@ -228,13 +228,13 @@
               }
             ],
             "slug": "club",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
             "priceCents": 7900,
@@ -248,7 +248,7 @@
               }
             ],
             "slug": "download-workbook",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ],
@@ -278,23 +278,23 @@
         "courses": [
           {
             "createdAt": "2026-07-01T12:00:02.000Z",
-            "description": "Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.",
+            "description": "A complete JavaScript course, from variables, functions, and the DOM to your first project.",
             "id": "course-js",
             "imageUrl": "https://picsum.photos/seed/together-course-js/960/540",
             "legacyId": null,
             "moduleOrder": [],
-            "name": "Kurs JavaScript od podstaw",
+            "name": "JavaScript from Scratch",
             "publiclyVisible": true,
             "tenantId": "tenant-studio"
           },
           {
             "createdAt": "2026-07-01T12:00:03.000Z",
-            "description": "Budowanie interfejsów w React — komponenty, stan, hooki i zaawansowane wzorce.",
+            "description": "Build interfaces in React with components, state, hooks, and advanced patterns.",
             "id": "course-react",
             "imageUrl": "https://picsum.photos/seed/together-course-react/960/540",
             "legacyId": null,
             "moduleOrder": [],
-            "name": "React w praktyce",
+            "name": "React in Practice",
             "publiclyVisible": false,
             "tenantId": "tenant-studio"
           }

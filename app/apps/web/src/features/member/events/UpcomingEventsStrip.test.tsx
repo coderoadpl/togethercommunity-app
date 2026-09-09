@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { UpcomingEventsStrip } from './UpcomingEventsStrip.js';
@@ -64,15 +64,15 @@ const renderStrip = async () => {
 
 describe('UpcomingEventsStrip', () => {
   it('shows the events a member can still attend and links to their pages', async () => {
-    server.use(okUpcoming([event('e1', 'Live Q&A'), event('e2', 'Warsztat')]));
+    server.use(okUpcoming([event('e1', 'Live Q&A'), event('e2', 'Workshop')]));
 
     await renderStrip();
 
     expect(await screen.findByTestId('start-upcoming-events')).toHaveTextContent(
-      pl.events.upcomingHeading,
+      en.events.upcomingHeading,
     );
     expect(screen.getByTestId('event-card-e1')).toHaveAttribute('href', '/community/s1/events/e1');
-    expect(screen.getByTestId('event-card-e2')).toHaveTextContent('Warsztat');
+    expect(screen.getByTestId('event-card-e2')).toHaveTextContent('Workshop');
   });
 
   it('badges an event that is already on air', async () => {
@@ -80,7 +80,7 @@ describe('UpcomingEventsStrip', () => {
 
     await renderStrip();
 
-    expect(await screen.findByTestId('event-card-live-e1')).toHaveTextContent(pl.events.liveBadge);
+    expect(await screen.findByTestId('event-card-live-e1')).toHaveTextContent(en.events.liveBadge);
   });
 
   it('stays out of the way when nothing is scheduled', async () => {

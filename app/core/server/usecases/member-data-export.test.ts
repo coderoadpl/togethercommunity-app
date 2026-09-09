@@ -174,7 +174,7 @@ describe('exportMyData', () => {
     const result = await exportMyData(context('member'), deps());
     expect(result).toMatchObject({
       ok: true,
-      value: { filename: 'moje-dane-acme-2026-07-29.json' },
+      value: { filename: 'my-data-acme-2026-07-29.json' },
     });
     if (!result.ok) return;
     expect(JSON.parse(result.value.content)).toMatchObject({

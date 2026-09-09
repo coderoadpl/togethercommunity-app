@@ -363,12 +363,7 @@ export const DELETED_MEMBER_DISPLAY = '[deleted-member]';
  */
 export const MAX_MEMBER_BAN_REASON_LENGTH = 500;
 
-/**
- * Removal keeps the member row for order-history integrity (ustawa o
- * rachunkowości) and erases only the personal data: the e-mail and userId are
- * replaced with markers derived from the opaque member id, so the row can never
- * be traced back to the person nor matched by a future sign-in or purchase.
- */
+
 export const memberTombstone = (memberId: string): { email: string; userId: string } => ({
   email: `deleted-${memberId}@anonymized.invalid`,
   userId: `deleted:${memberId}`,

@@ -54,7 +54,7 @@
    enforced server-side regardless of caller. Creators build arbitrarily
    complex sequences in n8n / Make.com. Ship with integration docs and
    ready-made example scenarios (n8n workflow JSON, Make blueprint).
-5. **Consent creator (kreator zgód).** Panel wizard to define consents
+5. **Consent creator.** Panel wizard to define consents
    (name, copy, required/optional, scope, linked document). Documents:
    BYO URL (today's mechanism) OR hosted in-app (tenant uploads/authors the
    regulamin content; app serves versioned public pages usable in the consent
@@ -137,7 +137,7 @@ marketing stays tenant-SES-only.
 
 Visibility structure for platform-key mail (owner question resolved 2026-07-26):
 mail records are tenant-scoped — the tenant admin sees ALL mail of their
-tenant in the Wysyłki view regardless of transport. The platform operator gets
+tenant in the Sends view regardless of transport. The platform operator gets
 usage/quota metadata per tenant (counters, statuses, cap consumption) for ops
 and abuse handling — not a mail-content reading surface; content access stays
 a DB-level processor capability documented in the DPA. `email_events` is
@@ -203,7 +203,7 @@ must) and full gates (check 1028 tests / smoke / visual 186 / e2e:marketing):
 - **W1 event spine** — append-only `email_events` (projection + events is now
   the documented system convention in app/CLAUDE.md), deterministic ordering,
   transactional outbox reaches identical tracking depth (sesMessageId + SNS
-  correlation), unified Wysyłki view + per-send timelines + member mail tab.
+  correlation), unified Sends view + per-send timelines + member mail tab.
 - **W2 scheduler observability** — `scheduler_runs` + per-tenant breakdowns,
   bidirectional runId linkage, tenant activity view + operator CLI.
 - **W3 open/click** — tenant SES config-set events only; config set always
@@ -258,5 +258,5 @@ Final gates on HEAD: `npm run check` (927 tests) + `npm run smoke` +
 `npm run visual` (156/156) + `npm run e2e:marketing` (8/8) all green.
 Remaining owner-triggered item: E5 real-SES smoke on the owner's key.
 QA/audit should-fixes (consent-key validation copy, mobile tap targets,
-generic "Zapisz kampanię" button labels, cancelled-campaign copy) filed as
+generic "Save campaign" button labels, cancelled-campaign copy) filed as
 backlog, non-blocking.

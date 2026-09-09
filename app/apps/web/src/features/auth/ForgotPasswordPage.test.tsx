@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -48,7 +48,7 @@ describe('ForgotPasswordPage', () => {
 
     await renderForgotPasswordPage();
 
-    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', 'Together');
+    expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', en.common.appName);
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
   });
 
@@ -70,7 +70,7 @@ describe('ForgotPasswordPage', () => {
       await userEvent.click(screen.getByTestId('forgot-password-submit'));
 
       expect(await screen.findByTestId('forgot-password-success')).toHaveTextContent(
-        pl.forgotPassword.successBody,
+        en.forgotPassword.successBody,
       );
       expect(body).toEqual({
         email,
@@ -85,7 +85,7 @@ describe('ForgotPasswordPage', () => {
     await userEvent.type(screen.getByTestId('forgot-password-email'), 'not-an-email');
     fireEvent.submit(screen.getByTestId('forgot-password-form'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(pl.forgotPassword.invalidEmail);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.forgotPassword.invalidEmail);
   });
 
   it('disables submission while the provider request is pending', async () => {
@@ -99,7 +99,7 @@ describe('ForgotPasswordPage', () => {
     await userEvent.type(screen.getByTestId('forgot-password-email'), 'member@example.com');
     await userEvent.click(screen.getByTestId('forgot-password-submit'));
 
-    expect(await screen.findByRole('button', { name: pl.forgotPassword.submitPending })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: en.forgotPassword.submitPending })).toBeDisabled();
   });
 
   it('shows a localized provider error and keeps the form available', async () => {
@@ -111,7 +111,7 @@ describe('ForgotPasswordPage', () => {
     await userEvent.type(screen.getByTestId('forgot-password-email'), 'member@example.com');
     await userEvent.click(screen.getByTestId('forgot-password-submit'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageValidation);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(screen.getByTestId('forgot-password-email')).toBeInTheDocument();
   });
 });

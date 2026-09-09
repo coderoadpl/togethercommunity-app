@@ -212,7 +212,7 @@ const captureCheckout = async (
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/checkout/${checkoutProductId}`, { waitUntil: 'load' });
-  await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });
   await page
     .locator('button[type="submit"]', { hasText: /Pay|Simulate/ })
     .waitFor({ state: 'visible', timeout: 20000 });

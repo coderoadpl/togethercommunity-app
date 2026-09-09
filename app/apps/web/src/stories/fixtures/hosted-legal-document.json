@@ -8,7 +8,7 @@
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
       "defaultHomeSpaceId": null,
-      "defaultLanguage": "pl",
+      "defaultLanguage": "en",
       "directMessagesEnabled": true,
       "faviconUrl": "/assets/akademia-logo.svg",
       "invoiceExemptionBasis": null,
@@ -21,7 +21,7 @@
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
       "memberVideoAutoplayOverride": false,
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "ogDescription": null,
       "ogImageUrl": null,
       "ogTitle": null,
@@ -35,19 +35,19 @@
     "tenant": {
       "contentVersion": 1,
       "id": "tenant-akademia",
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "plan": "self_hosted",
       "slug": "akademia",
       "status": "active"
     }
   },
-  "content": "# Jak dbamy o Twoje dane\n\nSzanujemy Twoją prywatność i używamy danych wyłącznie do obsługi wybranych przez Ciebie usług.\n\n## Kontakt\n\nW sprawach dotyczących danych napisz na [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- możesz wycofać zgodę w dowolnym momencie\n- każda zmiana jest zapisywana w historii zgód",
+  "content": "# How we handle your data\n\nWe respect your privacy and use your data only to provide the services you choose.\n\n## Contact\n\nFor questions about your data, email [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- You can withdraw consent at any time.\n- Every change is recorded in your consent history.",
   "immutableVersion": {
     "publishedAt": "2026-06-01 12:00:00+00",
     "version": 1
   },
-  "language": "pl",
+  "language": "en",
   "nonce": "storybook",
   "path": "/legal/privacy-policy/v/1",
-  "title": "Polityka prywatności"
+  "title": "Privacy policy"
 }

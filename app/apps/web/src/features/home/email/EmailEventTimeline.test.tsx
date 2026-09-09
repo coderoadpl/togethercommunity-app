@@ -5,7 +5,7 @@ import type { EmailEvent } from '#core/domain/index.js';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { LanguageProvider } from '../../../i18n/index.js';
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { EmailEventTimeline } from './EmailEventTimeline.js';
 
 const events: EmailEvent[] = [
@@ -42,6 +42,6 @@ describe('EmailEventTimeline', () => {
     expect(screen.getAllByTestId('email-event')).toHaveLength(2);
     expect(screen.getByText('ses-1')).toBeInTheDocument();
     expect(screen.getByText('hard')).toBeInTheDocument();
-    expect(screen.getAllByText(pl.marketing.rawMeta)).toHaveLength(2);
+    expect(screen.getAllByText(en.marketing.rawMeta)).toHaveLength(2);
   });
 });

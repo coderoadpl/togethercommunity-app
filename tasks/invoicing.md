@@ -9,7 +9,7 @@
 ## Layered shape (decision)
 
 1. **Billing capture (core, this slice).** Checkout gains an optional
-   "Potrzebuję faktury" reveal: NIP (validated: checksum + 10 digits),
+   "I need an invoice" reveal: NIP (validated: checksum + 10 digits),
    company name, address, postal code, city, country (default PL). B2C can
    leave it closed; B2B fills it. Data lands on the order
    (`orders.billing` jsonb or dedicated columns), is visible in panel Sales
@@ -33,7 +33,7 @@
    surface status.
 4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
    drugie"; SPIKED successfully 2026-07-27, full report + working e2e script
-   w prywatnych artefaktach audytowych właściciela).** Same InvoicingPort.
+   in the owner’s private audit artifacts).** Same InvoicingPort.
    Confirmed design from the spike:
    - **BYO secret = tenant-generated KSeF TOKEN** (`InvoiceWrite`) + context
      NIP in tenant_secrets — NOT a certificate (no cert custody; token-auth
@@ -61,7 +61,7 @@
 
 - Billing capture end-to-end (checkout → order → Sales/export → member view),
   PL/EN, NIP validation, tests incl. fiscal-immutability.
-- `invoices` model + InvoicingPort + panel order action ("Wystaw fakturę") +
+- `invoices` model + InvoicingPort + panel order action ("Issue invoice") +
   status chip + download link; auto-issue toggle per tenant (default off).
 - iFirma adapter: issue (domestic VAT invoice, positions from order incl. coupon
   discount as a separate line note when present), status poll, error surfaces

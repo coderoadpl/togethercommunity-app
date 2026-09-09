@@ -1,5 +1,5 @@
 const NON_DECOMPOSING_LETTERS: Record<string, string> = {
-  ł: 'l',
+  '\u0142': 'l',
   ø: 'o',
   đ: 'd',
   ß: 'ss',

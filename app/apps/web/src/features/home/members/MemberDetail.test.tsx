@@ -344,7 +344,7 @@ describe('MemberDetail', () => {
     expect(rows.map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
       en.members.sourceManual,
       en.members.sourceSimulated,
-      en.members.sourceStripe,
+      'Stripe',
       en.members.sourceImport,
     ]);
   });

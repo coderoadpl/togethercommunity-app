@@ -25,7 +25,7 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
-const CUSTOM_HOST = 'kurs.acme.localhost';
+const CUSTOM_HOST = 'course.acme.localhost';
 const TENANT_HOST = 'acme.localhost';
 const CREATOR_PASSWORD = 'demo-password-15';
 
@@ -162,7 +162,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Bezpieczeństwo' }).click();
+    await page.getByRole('tab', { name: 'Security' }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('Custom Domain Passkey');
     await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
@@ -287,7 +287,7 @@ const runSelfServeAdd = async (input: {
     const row = page.getByTestId(`tenant-domain-${SELF_SERVE_HOST}`);
     await row.waitFor({ state: 'visible', timeout: 20000 });
     assert(
-      (await row.textContent())?.includes('Czeka na DNS') === true,
+      (await row.textContent())?.includes('Waiting for DNS') === true,
       'a self-serve domain did not land in the pending state',
     );
 
@@ -305,7 +305,7 @@ const runSelfServeAdd = async (input: {
       timeout: 20000,
     });
     assert(
-      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === 'Działa',
+      (await page.getByTestId(`tenant-domain-status-${SELF_SERVE_HOST}`).textContent()) === 'Active',
       'the Studio did not show the operator-verified domain as active',
     );
 

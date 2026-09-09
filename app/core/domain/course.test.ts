@@ -137,7 +137,7 @@ describe('lesson document and link URLs', () => {
     ['/uploads\\doc.pdf', false],
     ['mailto:teacher@example.test', false],
     ['ftp://files.test/doc.pdf', false],
-    ['/Zadanie 1.pdf', false],
+    ['/Assignment 1.pdf', false],
     ['https://ok.test/doc.pdf', true],
     ['/local.pdf', true],
   ])('accepts %s as a pdf block URL: %s', (pdfUrl, accepted) => {

@@ -8,7 +8,7 @@
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
       "defaultHomeSpaceId": null,
-      "defaultLanguage": "pl",
+      "defaultLanguage": "en",
       "directMessagesEnabled": true,
       "faviconUrl": "/assets/akademia-logo.svg",
       "invoiceExemptionBasis": null,
@@ -21,7 +21,7 @@
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
       "memberVideoAutoplayOverride": false,
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "ogDescription": null,
       "ogImageUrl": null,
       "ogTitle": null,
@@ -35,13 +35,13 @@
     "tenant": {
       "contentVersion": 1,
       "id": "tenant-akademia",
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "plan": "self_hosted",
       "slug": "akademia",
       "status": "active"
     }
   },
-  "language": "pl",
+  "language": "en",
   "nonce": "storybook",
   "path": "/marketing/confirm/confirmation_akademia_visual_123456",
   "state": "success"

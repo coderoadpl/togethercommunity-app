@@ -1,469 +1,510 @@
-# PRD: Together — platforma Fair Source dla twórców
+# PRD: Together — a Fair Source platform for creators
 
-> **Status:** Założenia projektowe — wersja 2 (2026-07-02, po feedbacku założyciela).
-> **Nazwa:** Together (zdecydowana). Domena otwarta — warianty domen do sprawdzenia (lista w prywatnych materiałach).
-> **Cel dokumentu:** baza do wygenerowania wykonywalnych zadań. Nie jest to spec implementacyjny.
-> **Decyzje przyjęte bez potwierdzenia** oznaczone są ⚠️ i zebrane w sekcji „Otwarte pytania".
-> **Poprzednia iteracja projektu (VI 2025):** archiwum poprzedniej iteracji w prywatnych materiałach właściciela (project-description, prd, tech-stack) — ten dokument ją zastępuje, ale czerpie z niej rozwiązania (poziomy dostępu publiczne/płatne/ukryte, zarządzanie członkostwem przez API).
-> **Reality audit (2026-08-03):** acceptance-criteria checkboxes reflect verified code. Ticked = shipped and evidenced; unticked = partial or missing. Remaining phase-0/1 work is packaged in `tasks/phase1-gaps.md`.
-
----
-
-## 1. Wstęp / Wizja
-
-Platforma typu Circle.so łącząca w jednym narzędziu cztery filary pracy twórcy internetowego:
-
-1. **Sprzedaż** produktów cyfrowych (kursy, ebooki, członkostwa),
-2. **Marketing** (e-mail, landing pages, automatyzacje, kupony),
-3. **Delivery** — dostarczanie zakupionych produktów (odtwarzanie kursów, pobieranie plików, kontrola dostępu),
-4. **Społeczność** (spaces, dyskusje, członkostwa).
-
-**Problem, który rozwiązujemy:** twórca (np. YouTuber, Instagramer) chcący sprzedawać własne produkty cyfrowe musi dziś skleić 4-6 płatnych narzędzi (Circle/Kajabi/Teachable + MailerLite + Stripe + landing page builder), płacić 50-300 USD/mies. i oddać kontrolę nad swoim contentem i listą klientów zamkniętym platformom. Alternatywy open source (Moodle, LearnHouse, Discourse) pokrywają pojedyncze filary i nie są zaprojektowane pod sprzedaż.
-
-**Nasza odpowiedź:** model Fair Source / source-available — darmowy self-host z pełnymi funkcjami korowymi + bardzo tania wersja hostowana (1-5 USD/mies.), w której hostujemy wyłącznie aplikację, bazę danych i autoryzację, a **cały ciężki content (wideo, pliki) pozostaje własnością użytkownika** na jego zewnętrznych usługach (S3, YouTube, Vimeo, Bunny).
-
-**Trzy wartości produktu (w tej kolejności): niezawodność, uniwersalność, cena.**
-
-**Pozycjonowanie — cena jest hakiem, BYO jest umożliwiaczem:** nie sprzedajemy ideologii „own your data" (grupa, którą to obchodzi, jest za mała). Sprzedajemy cenę, przy której nikt nie rezygnuje z platformy, gdy sprzedaż siada. BYO storage nie jest głównym argumentem sprzedażowym — jest tym, co czyni niską cenę fizycznie możliwą (nie da się hostować wideo w tej cenie). Ścieżka użytkownika: przychodzi po cenę → odkrywa, że wideo wkleja się linkiem z YouTube → dla większości to w zupełności wystarcza.
-
-**Spoiwo czterech filarów: „Klient 360" — jeden overview.** Gigantyczną wartością integracji filarów w jednym narzędziu jest jeden widok klienta: na jednej karcie członka twórca widzi **wszystkie subskrypcje, wszystkie zakupy, całą komunikację e-mail, aktywność w kursach, aktywność w społeczności, a jeśli dostępne — także wizyty na stronie**. To NIE jest CRM: żadnych lejków sprzedażowych, pipeline'ów, lead scoringu (może kiedyś — na razie nie). Klient to pojedyncza osoba kupująca, a twórca ma rozumieć jej historię bez przełączania pięciu narzędzi. W przyszłości dochodzi integracja prostego czatu (zewnętrznego, nie pisanego przez nas), żeby dosłownie cała komunikacja z klientem była w jednym miejscu.
+> **Status:** Design assumptions, version 2 (2026-07-02, after founder feedback).
+> **Name:** Together (decided). Domain options remain open; candidates are in private materials.
+> **Purpose:** A basis for executable tasks, not an implementation specification.
+> **Unconfirmed decisions** are marked ⚠️ and collected under Open questions.
+> **Previous iteration (June 2025):** The owner's private archive contains its project description, PRD, and tech stack. This document supersedes it while retaining ideas such as public/paid/hidden access and API membership management.
+> **Reality audit (2026-08-03):** Acceptance checkboxes reflect verified code. Checked means shipped with evidence; unchecked means partial or missing. Remaining phase-0/1 work is in `tasks/phase1-gaps.md`.
 
 ---
 
-## 2. Zasady przewodnie (niepodważalne założenia)
+## 1. Introduction and vision
 
-Te zasady rozstrzygają spory projektowe w przyszłości. Każda funkcja musi być z nimi zgodna.
+A Circle.so-style platform bringing four pillars of an online creator's work together:
 
-### Z-1: Content należy do użytkownika (BYO storage)
-- Platforma **nigdy nie przechowuje ciężkich plików** (wideo, duże pliki do pobrania). Przechowujemy wyłącznie: metadane, strukturę kursów, treści tekstowe, dane użytkowników końcowych, dane sprzedażowe i konfigurację.
-- Wideo i pliki żyją u zewnętrznych dostawców podpiętych przez użytkownika: S3-compatible (AWS S3, Cloudflare R2, Backblaze B2, MinIO), YouTube (unlisted), Vimeo, Bunny (Stream + Storage).
-- **Ścieżka zerowego kosztu i zerowej wiedzy: wklejenie linku z YouTube.** To domyślna, najprostsza droga dla nietechnicznego twórcy — nie wymaga żadnej konfiguracji ani opłat. W UI i dokumentacji umieszczamy notę, że użycie YouTube jako hostingu lekcji musi być zgodne z regulaminem YouTube — odpowiedzialność prawna leży po stronie twórcy, bo content należy do niego.
-- Konsekwencja biznesowa: koszt infrastruktury hostowanej wersji sprowadza się do bazy danych i compute — dzięki temu cena 1-5 USD/mies. jest realna. **BYO nie jest argumentem sprzedażowym, jest warunkiem ceny.**
-- Konsekwencja dla użytkownika: **zero lock-inu** — pełny eksport danych (JSON/CSV) w każdej chwili; odejście z platformy nie oznacza utraty contentu.
-- Przyszłość (nie MVP): opcjonalny płatny dodatek „hosting wideo bez konfiguracji" — uploader w panelu oparty o Bunny Stream, gdzie hosting formalnie i kosztowo należy do zewnętrznej firmy (transparentne przeniesienie kosztów), a my dostarczamy tylko wygodę. Nie łamie Z-1: to nadal nie nasza infrastruktura.
+1. **Sales** of digital products: courses, ebooks, memberships.
+2. **Marketing:** email, landing pages, automations, coupons.
+3. **Delivery:** course playback, file downloads, access control.
+4. **Community:** spaces, discussions, memberships.
 
-### Z-2: BYO również dla pieniędzy i e-maili
-- Płatności: **klucze Stripe użytkownika** — pieniądze idą bezpośrednio na jego konto Stripe, platforma nie pośredniczy w przepływie pieniędzy (zero ryzyka regulacyjnego, zero prowizji od sprzedaży w wersji podstawowej).
-- Wysyłka e-mail: własny dostawca użytkownika (SMTP / Amazon SES / Resend / Postmark).
+**Problem:** Creators selling digital products currently combine four to six paid tools (Circle/Kajabi/Teachable, MailerLite, Stripe, and a landing-page builder), spend USD 50–300/month, and surrender control of content and customer lists to closed platforms. Open-source alternatives such as Moodle, LearnHouse, and Discourse cover individual pillars and are not designed around sales.
 
-### Z-3: Podpinanie integracji ma być „effortless"
-- Każda integracja (storage, Stripe, e-mail) konfigurowana **przez panel**: kreator krok po kroku, walidacja kluczy na żywo, test end-to-end (np. testowy upload + odczyt), czytelne komunikaty błędów.
-- Docelowy użytkownik hosted **nie jest techniczny** — instrukcje z zrzutami ekranu „skąd wziąć klucz" dla każdego dostawcy.
+**Our answer:** Fair Source / source-available distribution: free self-hosting with all core features and an inexpensive hosted version (USD 1–5/month). We host only the app, database, and authentication. **Large content, including videos and files, remains the user's property** on external services such as S3, YouTube, Vimeo, and Bunny.
 
-### Z-4: Fair Source, uczciwy podział
-- **Self-host: darmowy, pełne funkcje korowe** (wszystkie 4 filary). Instalacja jednym `docker compose up`.
-- **Hosted (tania baza + dodatki):** te same funkcje korowe; płacisz za wygodę — hosting, backupy, aktualizacje, autoryzację, brak devopsu.
-- **Custom domena i white-label w hosted to płatne dodatki, nie funkcje korowe** — to branding/wygoda infrastrukturalna, więc nie łamie tej zasady. W self-hoście własna domena jest naturalna, a plakietka usuwalna — akceptujemy to; self-hosterzy są marketingiem przez GitHub, hosted monetyzuje wygodę.
-- **Płatne funkcje zaawansowane (przyszłość, wyższy plan):** funkcje „firmowe", nie korowe — np. zespoły/uprawnienia wieloosobowe, zaawansowane automatyzacje, priorytetowy support. Nigdy nie przenosimy funkcji z core do płatnych.
+**Product values, in order: reliability, versatility, price.**
+
+**Positioning:** Price attracts users; BYO makes it possible. Data-ownership ideology alone addresses too small an audience. We offer a price that lets creators keep the platform when sales decline. BYO storage makes that price viable because we cannot host video at this cost. The user arrives for the price, discovers that a YouTube link embeds a video, and usually needs nothing more.
+
+**Connecting the pillars: one member overview.** A creator sees all subscriptions, purchases, email communication, course progress, community activity, and, where available, website visits on one member card. This is not a CRM with funnels, pipelines, or lead scoring. The creator needs to understand one person's history without switching between five tools. A future external chat integration can bring the remaining communication into the same view.
+
+---
+
+## 2. Guiding principles
+
+These principles resolve future design disputes. Every feature must follow them.
+
+### Z-1: Users own their content (BYO storage)
+
+- The platform never stores large videos or downloadable files. It stores metadata, course structure, text content, end-user data, sales data, and configuration.
+- Videos and files live with user-connected providers: S3-compatible services (AWS S3, Cloudflare R2, Backblaze B2, MinIO), unlisted YouTube, Vimeo, or Bunny Stream/Storage.
+- The default path for nontechnical creators is a YouTube link, requiring no setup or payment. UI and documentation must explain that lesson hosting must comply with YouTube's terms; creators are responsible for their content.
+- Hosted infrastructure costs are limited to database and compute, making USD 1–5/month feasible. BYO is a condition of the price.
+- No lock-in: full JSON/CSV export at any time; leaving the platform does not mean losing content.
+- Future, outside MVP: a paid convenience uploader backed by Bunny Stream. The external provider owns the hosting relationship and costs are passed through transparently. This still follows Z-1.
+
+### Z-2: BYO payments and email
+
+- Creators supply their Stripe keys. Money goes directly to their Stripe accounts; the platform does not intermediate funds or take a core-plan sales commission.
+- Creators supply their email provider: SMTP, Amazon SES, Resend, or Postmark.
+
+### Z-3: Connecting integrations must be effortless
+
+- Configure storage, Stripe, and email through the panel: step-by-step wizard, live key validation, end-to-end tests such as upload/read, and clear errors.
+- Hosted users are nontechnical. Provide illustrated instructions showing where to obtain each provider's keys.
+
+### Z-4: Fair Source and a fair split
+
+- Self-hosting is free and includes all four core pillars. Install with `docker compose up`.
+- Hosted users get the same core features and pay for hosting, backups, updates, authentication, and avoiding operations work.
+- Hosted custom domains and white-labeling are paid branding conveniences. Self-hosted custom domains and removable badges are accepted; self-hosters promote the project through GitHub while hosted users pay for convenience.
+- Future higher plans may add business features such as teams and permissions, advanced automations, and priority support. Never move existing core features behind a paywall.
 
 ### Z-5: Creator-first
-- Główna persona to twórca contentu bez zaplecza technicznego. Każdy flow mierzony pytaniem: „czy YouTuber ogarnie to sam w godzinę?".
+
+- The primary persona is a creator without technical support. Evaluate every flow by whether a YouTuber can complete it independently within an hour.
 
 ---
 
-## 3. Grupy docelowe (persony)
+## 3. Target audiences
 
-| Persona | Opis | Wersja | Kluczowa potrzeba |
+| Persona | Description | Version | Key need |
 |---|---|---|---|
-| **Twórca „wyceniony poza rynek"** (główna) | Twórca/edukator, którego nie stać na 89-500 USD/mies. u Circle/Kajabi — albo który rezygnuje z platformy, gdy sprzedaż siada | Hosted | Cena, przy której platformę trzyma się „na zawsze"; wideo wkleja z YouTube |
-| **Twórca nietechniczny** | YouTuber/Instagramer (1k-100k followersów), chce sprzedać kurs/ebooka | Hosted | Od zera do sprzedaży w 1 dzień, bez devopsu |
-| **Twórca techniczny** | Programista-twórca (jak autor platformy) | Self-host | Pełna kontrola, brak vendor lock-in |
-| **Kursant / członek** | Klient twórcy — kupuje, uczy się, dyskutuje | — | Prosty zakup, wygodne odtwarzanie, jedno konto u danego twórcy |
-| **Zespół twórcy** *(przyszłość)* | VA, moderator, montażysta | Płatny plan | Role i uprawnienia |
+| **Creator priced out of the market** (primary) | Educator unable to afford USD 89–500/month for Circle/Kajabi, or who cancels when sales fall | Hosted | A price sustainable indefinitely; video through YouTube links |
+| **Nontechnical creator** | YouTuber/Instagramer with 1k–100k followers selling a course or ebook | Hosted | Start selling in one day without operations work |
+| **Technical creator** | Developer and creator, like the platform's author | Self-host | Full control without vendor lock-in |
+| **Member** | Buys, learns, and discusses | — | Simple purchases, comfortable playback, one account with each creator |
+| **Creator's team** (future) | Assistant, moderator, editor | Paid plan | Roles and permissions |
 
-Persony „techniczne" i zorientowane na własność danych to mile widziany, ale **poboczny** segment — za mały, żeby na nim budować wzrost.
+Technical and data-ownership audiences are welcome but secondary, too small to drive growth alone.
 
-**Pierwszy realny tenant (dogfooding):** migracja własnego kursu autora z poprzedniej platformy — walidacja delivery, płatności i migracji danych (szczegóły w prywatnych materiałach właściciela).
-
----
-
-## 4. Model biznesowy i dystrybucji
-
-Model dystrybucji: darmowy self-host (pełny core, Fair Source) + tania wersja hostowana (subdomena + plakietka „Powered by Together") z płatnymi dodatkami brandingowymi (custom domena, white-label) i przyszłym planem Pro z funkcjami „firmowymi". Szczegółowy cennik, kwoty i zasady cenowe są utrzymywane w prywatnych materiałach operacyjnych właściciela.
-
-- Licencja: **FSL-1.1-ALv2** (Functional Source License) — kod jest dostępny na zasadach Fair Source, ale nie jest open source przed automatycznym przejściem danego wydania na Apache-2.0 po dwóch latach. Wcześniej licencja pozwala na self-hosting, ale zabrania oferowania konkurencyjnego hostingu.
-- Monorepo publiczne na GitHub; wersja hosted = ten sam kod + zamknięty moduł billing/provisioning.
-
-### Ograniczenia projektowe (constraints)
-
-- **Zespół: jedna osoba + agenci AI.** Zero zatrudnień.
-- Konsekwencje architektoniczne: nudna, sprawdzona technologia; minimum ruchomych części w infrastrukturze; wszystko co się da — managed services albo BYO po stronie użytkownika; automatyzacja testów i CI od pierwszego dnia (nie ma QA); zakres faz musi być realistyczny dla solo developera wspieranego przez AI.
-- Konsekwencja produktowa: dyscyplina fazowania jest egzystencjalna (por. upadek Zenbership w researchu) — nie zaczynamy fazy N+1 przed działającą fazą N.
+**First real tenant:** Migrate the author's own course from the previous platform to validate delivery, payments, and migration. Details remain in the owner's private materials.
 
 ---
 
-## 5. Cele
+## 4. Business and distribution model
 
-- Twórca nietechniczny przechodzi od rejestracji do opublikowanego, kupowalnego produktu w **< 1 dzień** (docelowo < 2 h).
-- Twórca techniczny stawia self-host w **< 15 minut** (`docker compose up` + kreator startowy).
-- Pełna parytetowość funkcji korowych self-host ↔ hosted (jeden kod).
-- Własny kurs autora zmigrowany i działający na nowej platformie jako pierwszy tenant — **i jako poligon testowy wszystkich filarów przed publicznym startem** (patrz bramka w §6).
-- 100% ciężkiego contentu poza naszą infrastrukturą (zero plików wideo w naszej bazie/storage).
+Free self-hosting with the full Fair Source core, plus inexpensive hosting on a subdomain with a “Powered by Together” badge. Paid branding extras include custom domains and white-labeling; a future Pro plan adds business features. Detailed pricing and policies live in the owner's private operational materials.
+
+- **FSL-1.1-ALv2:** Source is available under Fair Source terms and becomes open source under Apache-2.0 two years after each release. Before then, self-hosting is permitted and competing hosting is prohibited.
+- Public GitHub monorepo; hosted distribution uses the same code plus a closed billing/provisioning module.
+
+### Constraints
+
+- One person plus AI agents; no hiring.
+- Use proven technology, few infrastructure components, managed services or user-supplied providers, and automated testing/CI from day one. There is no separate QA team. Phase scope must be realistic for a solo developer assisted by AI.
+- Phase discipline is essential, as illustrated by the Zenbership research: do not start phase N+1 before phase N works.
 
 ---
 
-## 6. Zakres — filary i fazy
+## 5. Goals
 
-⚠️ Przyjęto (do potwierdzenia): **rdzeń MVP = Delivery + Sprzedaż**, potem Społeczność, potem Marketing. Uzasadnienie: to najkrótsza ścieżka do produktu, którym twórca może zarabiać, i pokrywa się z potrzebą migracji pierwszego tenanta.
+- A nontechnical creator goes from registration to a published, purchasable product in less than one day, ultimately less than two hours.
+- A technical creator self-hosts in less than 15 minutes using Docker Compose and the startup wizard.
+- Full core-feature parity between hosted and self-hosted versions, from one codebase.
+- Migrate the author's course as the first tenant and test every pillar there before public launch (§6).
+- Keep 100% of large content outside our infrastructure.
 
-### Faza 0 — Fundament
-Multi-tenancy, auth, panel twórcy, system adapterów integracji (storage/e-mail/Stripe), self-host (docker compose), design system.
+---
 
-### Faza 1 — MVP: Delivery + Sprzedaż
-Produkty (kurs / pliki / członkostwo), builder kursu, odtwarzanie wideo z BYO providerów, checkout Stripe, dostępy, strona produktu, prosty branding.
+## 6. Scope and phases
 
-### Faza 2 — Społeczność
-Spaces, posty, komentarze, reakcje, członkostwa powiązane z produktami, powiadomienia, moderacja.
+⚠️ Assumption pending confirmation: **MVP = Delivery + Sales**, followed by Community, then Marketing. This is the shortest path to a product creators can earn money with and meets the first tenant's migration needs.
 
-### Faza 3 — Marketing
-E-mail (broadcasty, sekwencje), tagi/segmenty, landing pages, kupony, proste automatyzacje („kupił X → tag Y → sekwencja Z").
+### Phase 0 — Foundation
 
-### Faza 4 — Monetyzacja platformy i Pro
-Billing wersji hosted, provisioning tenantów self-service, dodatki brandingowe (custom domena, white-label), funkcje Pro (zespoły, automatyzacje zaawansowane), program afiliacyjny dla produktów twórców.
+Multi-tenancy, authentication, creator panel, integration adapters for storage/email/Stripe, Docker Compose self-hosting, and design system.
 
-Fazy 2-4 dostaną **osobne, szczegółowe PRD** przed rozpoczęciem prac. Ten dokument definiuje je kierunkowo.
+### Phase 1 — MVP: Delivery + Sales
 
-### Bramka startu komercyjnego: dogfooding na pierwszym tenancie
+Courses/files/memberships, course builder, BYO video playback, Stripe checkout, grants, product surface, and basic branding.
 
-Publiczny start Together (sprzedaż wersji hosted, marketing platformy, przyjmowanie zewnętrznych twórców) następuje **dopiero po przetestowaniu marketingu, sprzedaży i delivery na pierwszym tenancie jako żywym tenancie z realnymi kursantami**. Budujemy etapami (fazy jak wyżej), ale nie komercjalizujemy po fazie 1 — projekt w zakresie podstawowych funkcjonalności nie jest absurdalnie duży, więc stać nas na dowiezienie więcej przed startem zamiast sprzedawania niedojrzałego produktu. Własny tenant daje możliwość przetestowania wszystkiego end-to-end bez ryzyka reputacyjnego u cudzych klientów.
+### Phase 2 — Community
+
+Spaces, posts, comments, reactions, product-linked memberships, notifications, and moderation.
+
+### Phase 3 — Marketing
+
+Email broadcasts and sequences, tags/segments, landing pages, coupons, and simple purchase → tag → sequence automations.
+
+### Phase 4 — Platform monetization and Pro
+
+Hosted billing, self-service tenant provisioning, custom domains and white-labeling, teams, advanced automations, and creator-product affiliates.
+
+Phases 2–4 require separate detailed PRDs before implementation; this document gives their direction.
+
+### Commercial launch gate: first-tenant use
+
+Launch hosted sales, platform marketing, and external creator onboarding only after marketing, sales, and delivery have been tested on the first live tenant with real members. Build in phases, but do not commercialize immediately after phase 1. The core scope is manageable enough to deliver a more mature product first. The author's tenant allows end-to-end validation without risking other creators' reputations.
 
 ---
 
 ## 7. User stories
 
-Stories fazy 0 i 1 są rozpisane do poziomu implementowalnego. Fazy 2-4 — poziom epików.
+Phases 0 and 1 are specified as implementable stories; phases 2–4 remain epics.
 
-### Epik A: Fundament — multi-tenancy i auth (Faza 0)
+### Epic A: Multi-tenancy and authentication (Phase 0)
 
-#### US-001: Szkielet aplikacji multi-tenant
-**Opis:** Jako operator platformy chcę, żeby jedna instancja obsługiwała wielu twórców (tenantów) z pełną izolacją danych.
+#### US-001: Multi-tenant application skeleton
 
-**Kryteria akceptacji:**
-- [ ] Model `Tenant` (nazwa, slug, subdomena, status, plan)
-- [ ] Każda kolekcja danych tenanta ma `tenantId`; access control wymusza filtrowanie po tenancie na poziomie frameworka (nie w handlerach)
-- [x] Routing po subdomenie: `{slug}.platforma.dev` → właściwy tenant; nieznana subdomena → 404
-- [ ] W trybie self-host działa pojedynczy tenant bez konfiguracji subdomen
-- [x] Test automatyczny: użytkownik tenanta A nie może odczytać żadnego rekordu tenanta B
-- [x] Typecheck/lint przechodzi
+**Description:** As an operator, I want one instance to serve multiple creators with complete data isolation.
 
-#### US-002: Konta i role w obrębie tenanta
-**Opis:** Jako twórca chcę mieć konto administracyjne, a moi klienci konta członkowskie, żeby rozdzielić panel zarządzania od widoku kursanta.
+**Acceptance criteria:**
+- [ ] `Tenant` model: name, slug, subdomain, status, plan.
+- [ ] Every tenant data collection has `tenantId`; framework-level access control enforces filtering rather than individual handlers.
+- [x] Subdomain routing: `{slug}.platform.dev` selects the tenant; unknown subdomains return 404.
+- [ ] Self-hosted single-tenant mode works without subdomain configuration.
+- [x] Automated test: tenant A's user cannot read tenant B's records.
+- [x] Typecheck and lint pass.
 
-**Kryteria akceptacji:**
-- [x] Role: `owner` (twórca), `member` (kursant/członek); architektura ról rozszerzalna (przyszłe: `staff`, `moderator`)
-- [x] Rejestracja/logowanie e-mail + hasło oraz magic link
-- [x] Reset hasła przez e-mail
-- [x] Relacja członka jest per-tenant (rekord `members`; ten sam e-mail może być klientem dwóch twórców niezależnie) przy jednym globalnym koncie logowania (ADR-0002 agentproofarch)
-- [x] Typecheck/lint przechodzi
+#### US-002: Tenant accounts and roles
 
-#### US-003: Panel twórcy — szkielet
-**Opis:** Jako twórca chcę mieć panel administracyjny z nawigacją po sekcjach (Produkty, Sprzedaż, Członkowie, Integracje, Ustawienia), żeby zarządzać wszystkim z jednego miejsca.
+**Description:** As a creator, I want an administrative account and member accounts for my audience, separating management from learning.
 
-**Kryteria akceptacji:**
-- [x] Layout panelu z nawigacją; sekcje puste mają stan „coming soon"
-- [ ] Dostęp tylko dla roli `owner`
-- [x] Responsywny (twórcy pracują też z telefonu)
-- [x] Typecheck/lint przechodzi
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+**Acceptance criteria:**
+- [x] Roles: `owner` and `member`, extensible to staff and moderator roles.
+- [x] Email/password and magic-link registration/sign-in.
+- [x] Email password reset.
+- [x] Per-tenant `members` records with one global sign-in account; one email can independently belong to two creators (agentproofarch ADR-0002).
+- [x] Typecheck and lint pass.
 
-#### US-004: Self-host jednym poleceniem
-**Opis:** Jako twórca techniczny chcę postawić platformę przez `docker compose up`, żeby nie tracić czasu na devops.
+#### US-003: Creator panel skeleton
 
-**Kryteria akceptacji:**
-- [ ] `docker-compose.yml` (app + Postgres) w repo; start bez edycji plików poza `.env`
-- [x] Kreator pierwszego uruchomienia: utworzenie konta ownera i tenanta przez przeglądarkę
-- [ ] README z instrukcją self-host (< 1 strona)
-- [ ] Zmierzony czas od `git clone` do działającego panelu < 15 min
+**Description:** As a creator, I want Products, Sales, Members, Integrations, and Settings navigation in one panel.
 
-### Epik B: System integracji BYO (Faza 0)
+**Acceptance criteria:**
+- [x] Panel layout with navigation and coming-soon states for empty sections.
+- [ ] Access restricted to `owner`.
+- [x] Responsive, including phone use.
+- [x] Typecheck and lint pass.
+- [x] Browser verification (dev-browser skill).
 
-#### US-010: Rama adapterów integracji
-**Opis:** Jako deweloper platformy chcę wspólny interfejs dla integracji (storage, e-mail, płatności), żeby dodawanie kolejnych dostawców było tanie.
+#### US-004: One-command self-hosting
 
-**Kryteria akceptacji:**
-- [ ] Interfejsy: `StorageProvider` (upload przez presigned URL, signed GET, delete, healthcheck), `EmailProvider` (send, healthcheck), `PaymentProvider` (checkout session, webhook verify)
-- [x] Sekrety integracji szyfrowane at rest (nie plaintext w DB)
-- [ ] Każdy adapter ma metodę `test()` zwracającą sukces/diagnozę błędu — używaną przez panel
-- [x] Typecheck/lint przechodzi
+**Description:** As a technical creator, I want to launch with `docker compose up` without spending time on operations.
 
-#### US-011: Kreator podpinania storage S3-compatible
-**Opis:** Jako twórca chcę podpiąć własny bucket (AWS S3 / Cloudflare R2 / Backblaze B2 / MinIO) przez panel, żeby moje pliki były u mnie.
+**Acceptance criteria:**
+- [ ] Repository `docker-compose.yml` with app and Postgres; only `.env` needs editing.
+- [x] Browser first-run wizard creates the owner and tenant.
+- [ ] Self-host README instructions shorter than one page.
+- [ ] Measured clone-to-panel time below 15 minutes.
 
-**Kryteria akceptacji:**
-- [ ] Kreator: wybór dostawcy → pola (endpoint, region, bucket, klucze) → test na żywo (upload + odczyt + delete pliku testowego) → zapis
-- [ ] Błędne dane → czytelny komunikat co poprawić (nie surowy błąd SDK)
-- [ ] Instrukcja per dostawca „skąd wziąć klucze" (link/tooltip)
-- [ ] Weryfikacja w przeglądarce (dev-browser skill)
+### Epic B: BYO integrations (Phase 0)
 
-#### US-012: Podpinanie wideo — YouTube / Vimeo / Bunny Stream
-**Opis:** Jako twórca chcę wskazać, gdzie trzymam wideo, żeby lekcje odtwarzały się z mojego konta.
+#### US-010: Integration adapter framework
 
-**Kryteria akceptacji:**
-- [ ] YouTube (unlisted) i Vimeo: wklejenie URL wideo w lekcji, walidacja i podgląd
-- [x] Bunny Stream: podpięcie API key + library przez kreator (jak US-011), listowanie wideo z biblioteki i osadzanie z tokenem (podpisane URL-e)
-- [ ] Dokumentacja ograniczeń prywatności per dostawca (np. YouTube unlisted ≠ realna ochrona — jasno komunikowane twórcy)
-- [ ] Weryfikacja w przeglądarce (dev-browser skill)
+**Description:** As a developer, I want shared storage, email, and payment interfaces so adding providers is inexpensive.
 
-#### US-013: Podpinanie Stripe
-**Opis:** Jako twórca chcę podpiąć własne konto Stripe przez panel, żeby pieniądze trafiały bezpośrednio do mnie.
+**Acceptance criteria:**
+- [ ] `StorageProvider`: presigned upload, signed GET, delete, healthcheck; `EmailProvider`: send, healthcheck; `PaymentProvider`: checkout session, webhook verification.
+- [x] Integration secrets encrypted at rest.
+- [ ] Each adapter exposes a panel-consumed `test()` returning success or a diagnostic.
+- [x] Typecheck and lint pass.
 
-**Kryteria akceptacji:**
-- [ ] Kreator: klucze API (restricted key — instrukcja jakie uprawnienia) + automatyczna rejestracja webhooka
-- [x] Test na żywo: utworzenie i anulowanie testowej sesji checkout w trybie test mode
-- [ ] Obsługa trybu test/live z wyraźnym oznaczeniem w panelu
-- [ ] Weryfikacja w przeglądarce (dev-browser skill)
+#### US-011: S3-compatible storage wizard
 
-#### US-014: Podpinanie e-mail transakcyjnego
-**Opis:** Jako twórca chcę podpiąć własną wysyłkę (SMTP / SES / Resend), żeby e-maile (magic linki, potwierdzenia zakupu) szły z mojej domeny.
+**Description:** As a creator, I want to connect my AWS S3, Cloudflare R2, Backblaze B2, or MinIO bucket through the panel.
 
-**Kryteria akceptacji:**
-- [ ] Kreator jak w US-011, test = wysyłka e-maila testowego na adres twórcy
-- [x] Wersja hosted: fallback na współdzieloną wysyłkę platformy (limitowaną), żeby onboarding nie blokował się na DNS
-- [ ] Weryfikacja w przeglądarce (dev-browser skill)
+**Acceptance criteria:**
+- [ ] Provider choice → endpoint/region/bucket/keys → live upload/read/delete test → save.
+- [ ] Invalid details produce actionable errors, not raw SDK errors.
+- [ ] Provider-specific key instructions via link or tooltip.
+- [ ] Browser verification (dev-browser skill).
 
-### Epik C: Produkty i delivery (Faza 1)
+#### US-012: YouTube, Vimeo, and Bunny Stream video
 
-#### US-020: Tworzenie produktu
-**Opis:** Jako twórca chcę utworzyć produkt (kurs / paczka plików / członkostwo), nadać mu cenę i opis, żeby mieć co sprzedawać.
+**Description:** As a creator, I want lessons to play videos from my own provider account.
 
-**Kryteria akceptacji:**
-- [ ] Typy produktu: `course`, `digital_download`, `membership` (cyklicznie płatne)
-- [ ] Pola: nazwa, slug, opis (rich text), okładka, cena (jednorazowa lub cykliczna), waluta, status (draft/published)
-- [x] Lista produktów w panelu z filtrowaniem po statusie
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+**Acceptance criteria:**
+- [ ] YouTube unlisted and Vimeo URLs with validation and preview.
+- [x] Bunny Stream API key/library wizard, library listing, and signed embeds.
+- [ ] Document each provider's privacy limits, explicitly including unlisted YouTube's weak protection.
+- [ ] Browser verification (dev-browser skill).
 
-#### US-021: Builder kursu
-**Opis:** Jako twórca chcę zbudować strukturę kursu (moduły → lekcje) z treścią mieszaną (wideo + tekst + załączniki), żeby odwzorować swój program.
+#### US-013: Stripe connection
 
-**Kryteria akceptacji:**
-- [ ] Moduły i lekcje z drag & drop kolejnością
-- [ ] Lekcja: tytuł, wideo (z podpiętego providera — US-012), treść rich text, załączniki (z S3 twórcy — US-011)
-- [ ] Lekcje darmowe (preview) oznaczane flagą — dostępne bez zakupu
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+**Description:** As a creator, I want to connect my Stripe account in the panel so money goes directly to me.
 
-#### US-022: Widok kursanta — odtwarzanie kursu
-**Opis:** Jako kursant chcę wygodnie przechodzić kurs (odtwarzacz, nawigacja po lekcjach, „oznacz jako ukończone"), żeby śledzić swój postęp.
+**Acceptance criteria:**
+- [ ] Restricted-key wizard with permission instructions and automatic webhook registration.
+- [x] Live test creates and cancels a checkout session in test mode.
+- [ ] Clearly identified test/live modes in the panel.
+- [ ] Browser verification (dev-browser skill).
 
-**Kryteria akceptacji:**
-- [x] Spis treści z paskiem postępu; stan ukończenia per lekcja zapisywany na koncie
-- [x] Odtwarzanie wideo z każdego wspieranego providera w jednym, spójnym playerze/embedzie
-- [ ] Załączniki pobierane przez podpisane URL-e z S3 twórcy (linki wygasające, niepubliczne)
-- [x] Dostęp tylko dla członków z uprawnieniem do produktu (weryfikacja server-side)
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+#### US-014: Transactional email connection
 
-#### US-023: Delivery paczki plików (digital download)
-**Opis:** Jako kursant chcę po zakupie ebooka/paczki pobrać pliki, żeby korzystać z zakupu.
+**Description:** As a creator, I want SMTP, SES, or Resend delivery from my domain for magic links and purchase confirmations.
 
-**Kryteria akceptacji:**
-- [ ] Strona „moje produkty" z listą zakupów i przyciskami pobrania
-- [ ] Pobieranie przez podpisane, wygasające URL-e; bez uprawnień → 403
-- [ ] Weryfikacja w przeglądarce (dev-browser skill)
+**Acceptance criteria:**
+- [ ] Wizard like US-011, testing by sending to the creator's address.
+- [x] Limited shared hosted fallback so DNS setup does not block onboarding.
+- [ ] Browser verification (dev-browser skill).
 
-### Epik D: Sprzedaż (Faza 1)
+### Epic C: Products and delivery (Phase 1)
 
-#### US-030: Publiczna powierzchnia sprzedażowa (headless API + embeddy + checkout links)
-**Opis:** Jako twórca chcę udostępniać ofertę na własnej stronie (Astro/Next/Webflow/czysty HTML) przez publiczne API i gotowe widgety oraz linkować bezpośrednio do checkoutu, żeby sprzedawać bez żadnej strony hostowanej przez platformę ([ADR-0001 agentproofarch](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md)).
+#### US-020: Product creation
 
-**Kryteria akceptacji:**
-- [x] Publiczne read-only JSON API oferty tenanta (produkty published, ceny): nieuwierzytelnione GET, otwarty CORS, nagłówki cache z wersją treści tenanta; produkty draft niewidoczne
-- [x] Shareable checkout URL na domenie tenanta (kompletny flow zakupu renderowany przez platformę, model Stripe Payment Links) — twórca z zerową infrastrukturą wciąż może sprzedawać
-- [ ] Widgety embed (`/embed/*`: script loader + iframe, postMessage auto-resize) — post-MVP
-- [x] SEO/OG to zadanie strony własnej twórcy — platforma nie hostuje stron marketingowych i nie buduje machinerii SEO
-- [x] Weryfikacja: curl publicznego API z innego originu (CORS + cache) oraz przeklikanie checkoutu w przeglądarce (dev-browser skill)
+**Description:** As a creator, I want a course, file bundle, or membership with a price and description to sell.
 
-#### US-031: Checkout przez Stripe
-**Opis:** Jako kupujący chcę zapłacić kartą/BLIK-iem przez Stripe Checkout, żeby natychmiast dostać dostęp.
+**Acceptance criteria:**
+- [ ] Product types: `course`, `digital_download`, recurring `membership`.
+- [ ] Name, slug, rich-text description, cover, one-time/recurring price, currency, draft/published status.
+- [x] Panel product list filtered by status.
+- [x] Browser verification (dev-browser skill).
 
-**Kryteria akceptacji:**
-- [x] CTA → Stripe Checkout Session na koncie Stripe twórcy (jednorazowe i subskrypcyjne ceny)
-- [x] Webhook `checkout.session.completed` → utworzenie/znalezienie konta członka + nadanie dostępu do produktu + e-mail powitalny z magic linkiem
-- [x] Idempotencja webhooków (retry Stripe nie duplikuje dostępów)
-- [ ] Anulowanie subskrypcji Stripe → odebranie dostępu do membershipu (z okresem wypowiedzenia do końca opłaconego okresu)
-- [x] Testy automatyczne flow webhooków
-- [ ] Weryfikacja w przeglądarce pełnego flow w trybie test mode (dev-browser skill)
+#### US-021: Course builder
 
-#### US-032: Panel sprzedaży i członków
-**Opis:** Jako twórca chcę widzieć zamówienia i członków oraz ręcznie nadawać/odbierać dostępy, żeby zarządzać sprzedażą i obsługiwać przypadki brzegowe (zwroty, dostęp gratisowy).
+**Description:** As a creator, I want modules and lessons containing video, text, and attachments to represent my curriculum.
 
-**Kryteria akceptacji:**
-- [x] Lista zamówień (kto, co, kiedy, kwota, status) i lista członków z ich dostępami
-- [x] Ręczne nadanie/odebranie dostępu do produktu (np. gratis dla współpracownika, zwrot)
-- [x] Eksport członków i zamówień do CSV
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+**Acceptance criteria:**
+- [ ] Drag-and-drop module and lesson ordering.
+- [ ] Lesson title, connected-provider video (US-012), rich text, and creator-S3 attachments (US-011).
+- [ ] Free-preview lesson flag allowing access without purchase.
+- [x] Browser verification (dev-browser skill).
 
-#### US-034: Widok członka 360 („jeden overview")
-**Opis:** Jako twórca chcę na jednej karcie członka widzieć całą jego historię (zakupy, subskrypcje, dostępy, postęp w kursach), żeby rozumieć klienta bez przełączania narzędzi.
+#### US-022: Member course playback
 
-**Kryteria akceptacji:**
-- [ ] Karta członka: dane konta, lista zakupów, aktywne subskrypcje ze statusem ze Stripe, nadane dostępy, postęp w kursach z datą ostatniej aktywności
-- [ ] Oś czasu (timeline) zdarzeń zasilana **zdarzeniami domenowymi** — wspólny model zdarzenia pozwala w kolejnych fazach dodawać nowe typy (faza 2: aktywność w społeczności; faza 3: wysłane e-maile; później: wizyty na stronie, komunikacja z czatu) bez przebudowy
-- [ ] Wejście na kartę członka z listy członków i z listy zamówień (1 klik)
-- [x] Typecheck/lint przechodzi
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+**Description:** As a member, I want comfortable playback, lesson navigation, and completion tracking.
 
-#### US-033: Branding tenanta
-**Opis:** Jako twórca chcę ustawić logo, kolory i nazwę, żeby platforma wyglądała jak moja marka.
+**Acceptance criteria:**
+- [x] Contents and progress bar with per-account lesson completion.
+- [x] Consistent player/embed for every supported provider.
+- [ ] Attachments downloaded through private, expiring signed creator-S3 URLs.
+- [x] Server-verified product entitlement required for access.
+- [x] Browser verification (dev-browser skill).
 
-**Kryteria akceptacji:**
-- [ ] Ustawienia: logo, kolor wiodący, nazwa, opis, linki social
-- [x] Branding widoczny na stronach publicznych, w widoku kursanta i w e-mailach transakcyjnych
-- [x] Weryfikacja w przeglądarce (dev-browser skill)
+#### US-023: Digital download delivery
 
-### Epiki faz 2-4 (kierunkowo — osobne PRD przed realizacją)
+**Description:** As a member, I want to download purchased ebooks or file bundles.
 
-- **US-E20 Społeczność:** spaces (otwarte / dla członków / powiązane z produktem), posty z rich text, komentarze wątkowane, reakcje, wzmianki, powiadomienia (in-app + e-mail digest), narzędzia moderacji (usuwanie, ban), profil członka. Zdarzenia społeczności (posty, komentarze) zasilają oś czasu członka (US-034).
-- **US-E30 Marketing:** tagi i segmenty członków, broadcasty e-mail, sekwencje (drip), formularze zapisu / lead magnety, landing pages z prostych bloków, kupony rabatowe (integracja ze Stripe Coupons), automatyzacje „trigger → akcja". Każdy wysłany e-mail (transakcyjny i marketingowy) zapisuje się w osi czasu członka (US-034).
-- **US-E40 Platforma hosted:** rejestracja self-service, provisioning tenantów, billing platformy (Stripe), limity planów, custom domeny (CNAME + auto-TLS), backupy i eksport danych tenanta, panel operatora.
+**Acceptance criteria:**
+- [ ] My products page lists purchases with download buttons.
+- [ ] Signed, expiring URLs; missing entitlement returns 403.
+- [ ] Browser verification (dev-browser skill).
 
----
+### Epic D: Sales (Phase 1)
 
-## 8. Wymagania funkcjonalne
+#### US-030: Public sales surface: headless API, embeds, checkout links
 
-### Rdzeń i multi-tenancy
-- **FR-1:** System musi obsługiwać wielu tenantów w jednej instancji z izolacją danych wymuszaną na poziomie warstwy dostępu do danych (każde zapytanie automatycznie filtrowane po `tenantId`).
-- **FR-2:** System musi działać w trybie single-tenant (self-host) bez żadnej konfiguracji multi-tenancy.
-- **FR-3:** Własność relacji z członkiem musi być izolowana per tenant przy wspólnym uwierzytelnieniu ([ADR-0002 agentproofarch](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md)): globalne konto trzyma wyłącznie logowanie (dopuszczalne konto bez hasła + magic link), a cała relacja — profil, tagi, zgody RODO, snapshot e-maila, dostępy — żyje w naszym rekordzie `members` per tenant. Ten sam e-mail może być klientem wielu twórców niezależnie; żadne API nie pozwala członkowi wylistować tenantów, do których należy.
-- **FR-4:** System musi oferować pełny eksport danych tenanta (członkowie, zamówienia, struktura kursów, posty) do otwartych formatów (JSON/CSV).
+**Description:** As a creator, I want to display offers on my Astro/Next/Webflow/HTML site through a public API and widgets and link directly to checkout, without a platform-hosted sales page ([agentproofarch ADR-0001](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md)).
 
-### Integracje BYO
-- **FR-10:** System musi przechowywać sekrety integracji zaszyfrowane at rest.
-- **FR-11:** Każda integracja musi być konfigurowalna wyłącznie przez panel (kreator z walidacją i testem na żywo); edycja plików konfiguracyjnych nie może być wymagana.
-- **FR-12:** Storage plików: system musi wspierać dowolny endpoint S3-compatible (AWS S3, Cloudflare R2, Backblaze B2, MinIO).
-- **FR-13:** Wideo: system musi wspierać osadzanie z YouTube (unlisted), Vimeo oraz Bunny Stream (z podpisanymi URL-ami); architektura musi pozwalać dodać kolejnego providera bez zmian w modelu lekcji.
-- **FR-14:** Upload plików twórcy musi iść bezpośrednio do jego storage (presigned URL), nie przez nasz serwer.
-- **FR-15:** Pliki dla członków muszą być serwowane przez podpisane, wygasające URL-e po server-side weryfikacji uprawnień.
-- **FR-16:** E-mail: system musi wspierać SMTP, Amazon SES i Resend jako providerów wysyłki.
+**Acceptance criteria:**
+- [x] Read-only public JSON offer API: published products/prices, unauthenticated GET, open CORS, tenant content-version caching; drafts hidden.
+- [x] Shareable tenant-domain checkout URL with the complete purchase flow, like Stripe Payment Links, usable without creator infrastructure.
+- [ ] `/embed/*` widgets with script loader, iframe, and postMessage resizing, post-MVP.
+- [x] Creator-owned sites handle SEO/OG; the platform does not host marketing pages or SEO machinery.
+- [x] Cross-origin curl verification of CORS/cache and browser checkout verification (dev-browser skill).
 
-### Produkty i delivery
-- **FR-20:** System musi wspierać typy produktów: kurs, paczka plików (digital download), członkostwo (płatność cykliczna).
-- **FR-21:** Kurs musi mieć strukturę moduły → lekcje; lekcja może zawierać wideo, treść rich text i załączniki jednocześnie.
-- **FR-22:** Lekcje mogą być oznaczone jako darmowe preview, dostępne bez zakupu.
-- **FR-23:** System musi zapisywać postęp kursanta (ukończone lekcje) i pokazywać pasek postępu.
-- **FR-24:** Dostęp do treści produktu musi być weryfikowany server-side przy każdym żądaniu (nie tylko ukrycie w UI).
+#### US-031: Stripe checkout
 
-### Sprzedaż
-- **FR-30:** Płatności wyłącznie przez konto Stripe twórcy (jego klucze API); platforma nie przetwarza środków.
-- **FR-31:** Zakup musi automatycznie: utworzyć konto członka (jeśli nie istnieje), nadać dostęp, wysłać e-mail z linkiem logowania.
-- **FR-32:** Obsługa webhooków Stripe musi być idempotentna i pokryta testami.
-- **FR-33:** Wygaśnięcie/anulowanie subskrypcji musi odbierać dostęp do produktów typu membership z końcem opłaconego okresu.
-- **FR-34:** Twórca musi móc ręcznie nadać i odebrać dostęp dowolnemu członkowi.
-- **FR-35:** Platforma nie hostuje publicznych stron produktu (ADR-0001 agentproofarch). Publiczną powierzchnię sprzedażową tworzą: publiczne read-only JSON API oferty tenanta (nieuwierzytelnione GET, otwarty CORS, cache z wersją treści tenanta), shareable checkout URL na domenie tenanta (pełny flow zakupu bez strony po stronie twórcy) oraz — post-MVP — widgety embed (`/embed/*`). SEO stron sprzedażowych należy do własnej strony twórcy.
-- **FR-36:** System musi udostępniać widok 360 członka: karta z zakupami, subskrypcjami, dostępami i postępem kursów oraz oś czasu zdarzeń domenowych. Model zdarzenia musi być rozszerzalny o kolejne źródła bez przebudowy: aktywność w społeczności (faza 2), wysłane e-maile (faza 3), wizyty na stronie (jeśli dostępne, później), komunikacja z zewnętrznego czatu (integracja, później). To NIE jest CRM — bez lejków, pipeline'ów i lead scoringu.
+**Description:** As a buyer, I want card/BLIK payments through Stripe Checkout and immediate access.
 
-### Społeczność (Faza 2 — kierunkowo)
-- **FR-40:** Spaces z widocznością: publiczna / dla wszystkich członków / dla posiadaczy wskazanych produktów.
-- **FR-41:** Posty, komentarze wątkowane, reakcje; powiadomienia in-app i e-mail.
-- **FR-42:** Narzędzia moderacji: usuwanie treści, blokowanie członków.
+**Acceptance criteria:**
+- [x] CTA creates a session on the creator's Stripe account for one-time or subscription prices.
+- [x] `checkout.session.completed` finds/creates the member, grants access, and sends a welcome magic link.
+- [x] Idempotent webhooks; retries do not duplicate grants.
+- [ ] Stripe subscription cancellation revokes membership access at the paid period's end.
+- [x] Automated webhook-flow tests.
+- [ ] Full browser verification in test mode (dev-browser skill).
 
-### Marketing (Faza 3 — kierunkowo)
-- **FR-50:** Tagowanie i segmentacja członków (ręczna + automatyczna po zdarzeniach zakupu).
-- **FR-51:** Broadcasty i sekwencje e-mail przez podpiętego providera twórcy, z obsługą wypisu (unsubscribe) zgodną z RODO.
-- **FR-52:** Kupony rabatowe zsynchronizowane ze Stripe.
-- **FR-53:** Landing pages / formularze zapisu budowane z gotowych bloków w panelu.
-- **FR-54:** Automatyzacje: deklaratywne reguły „trigger (zakup, zapis, tag) → akcja (tag, e-mail, dostęp)".
-- **FR-55:** Każdy e-mail wysłany do członka (transakcyjny i marketingowy) musi być zapisany jako zdarzenie w osi czasu członka (FR-36).
+#### US-032: Sales and members panel
 
-### Wersja hosted (Faza 4 — kierunkowo)
-- **FR-60:** Rejestracja i provisioning tenanta self-service (bez udziału operatora).
-- **FR-61:** Billing platformy przez Stripe (nasz), niezależny od Stripe'ów twórców.
-- **FR-62:** Custom domena tenanta (CNAME + automatyczny TLS) — jako płatny dodatek do planu bazowego (por. §4); plan bazowy ma subdomenę i plakietkę „Powered by Together".
-- **FR-63:** Automatyczne backupy DB i samoobsługowy eksport/usunięcie tenanta (RODO).
+**Description:** As a creator, I want order/member lists and manual grants/revocations for refunds and complimentary access.
+
+**Acceptance criteria:**
+- [x] Orders list who/what/when/amount/status; members list their grants.
+- [x] Manually grant or revoke product access.
+- [x] CSV export of members and orders.
+- [x] Browser verification (dev-browser skill).
+
+#### US-034: Member 360 overview
+
+**Description:** As a creator, I want purchases, subscriptions, grants, and learning history on one member card.
+
+**Acceptance criteria:**
+- [ ] Account details, purchases, active subscriptions with Stripe status, grants, course progress, and last activity.
+- [ ] Domain-event timeline extensible without redesign: community activity in phase 2, sent email in phase 3, later website visits and external chat.
+- [ ] One-click access from members and orders lists.
+- [x] Typecheck and lint pass.
+- [x] Browser verification (dev-browser skill).
+
+#### US-033: Tenant branding
+
+**Description:** As a creator, I want the platform to use my logo, colors, and name.
+
+**Acceptance criteria:**
+- [ ] Logo, primary color, name, description, social links.
+- [x] Branding on public/member surfaces and transactional emails.
+- [x] Browser verification (dev-browser skill).
+
+### Phase 2–4 epics: separate PRDs before implementation
+
+- **US-E20 Community:** Public/member/product-gated spaces, rich-text posts, threaded comments, reactions, mentions, in-app and digest notifications, deletion/bans, and member profiles. Community events feed US-034.
+- **US-E30 Marketing:** Tags/segments, broadcasts, drip sequences, signup forms/lead magnets, block-based landing pages, Stripe-synchronized coupons, and trigger/action automations. Every transactional or marketing email feeds US-034.
+- **US-E40 Hosted platform:** Self-service signup/provisioning, platform Stripe billing, plan limits, CNAME custom domains with automatic TLS, backups, tenant export, and operator panel.
 
 ---
 
-## 9. Non-goals (poza zakresem)
+## 8. Functional requirements
 
-**Trwale poza zakresem (sprzeczne z zasadami Z-1/Z-2):**
-- Własny hosting i transkodowanie wideo (nigdy — to BYO; dopuszczalny jedynie przyszły uploader-dodatek na infrastrukturze Bunny, patrz §4).
-- Przetwarzanie płatności jako pośrednik (merchant of record) — pieniądze zawsze idą przez Stripe twórcy.
-- Marketplace/katalog kursów łączący twórców (każdy tenant to osobny świat).
-- **Cokolwiek związanego z ekosystemem WordPress** (wtyczki, integracje, wersja na WP) — to inna liga i inna kategoria produktu; nie konkurujemy tam i nie budujemy tam.
+### Core and multi-tenancy
 
-**Poza zakresem faz 0-3 (możliwe później):**
-- Live streaming, wideo-czaty, eventy na żywo.
-- Czat real-time (DM, kanały) — społeczność startuje jako async (posty/komentarze).
-- Aplikacje mobilne (web responsywny musi wystarczyć).
-- Gamifikacja (punkty, odznaki, leaderboardy).
-- Certyfikaty ukończenia, quizy/egzaminy.
-- Fakturowanie/VAT (twórca rozwiązuje po stronie Stripe Tax / zewnętrznej fakturowni) — do rewizji dla rynku PL.
-- Program afiliacyjny.
-- Wielojęzyczność UI poza PL + EN.
-- Integracje z platformami zewnętrznymi typu Zapier.
-- **CRM z lejkami sprzedażowymi, pipeline'ami, lead scoringiem** — klient to pojedyncza osoba kupująca, nie „lead w lejku"; widok Klient 360 (FR-36) to overview, nie CRM. Może kiedyś — na razie świadomie nie.
-- **Własny czat** — nigdy nie piszemy własnego; docelowo (po fazach 0-3) integracja zewnętrznego czatu (np. Chatwoot/Crisp) wpięta w oś czasu członka, żeby cała komunikacja z klientem była w jednym miejscu.
+- **FR-1:** Multiple tenants per instance with data-access-layer isolation; every query filters by `tenantId`.
+- **FR-2:** Single-tenant self-hosting without multi-tenancy configuration.
+- **FR-3:** Shared authentication with per-tenant ownership of the member relationship ([agentproofarch ADR-0002](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md)). Global accounts hold only sign-in, including passwordless magic links. Profiles, tags, GDPR consents, email snapshots, and grants live in per-tenant `members` records. One email may independently belong to multiple creators; no API lets a member enumerate their tenants.
+- **FR-4:** Full tenant export of members, orders, course structure, and posts in JSON/CSV.
+
+### BYO integrations
+
+- **FR-10:** Encrypt integration secrets at rest.
+- **FR-11:** Configure every integration entirely in a panel wizard with validation and live tests; no config-file editing required.
+- **FR-12:** Support arbitrary S3-compatible endpoints, including AWS S3, Cloudflare R2, Backblaze B2, and MinIO.
+- **FR-13:** Support unlisted YouTube, Vimeo, and signed Bunny Stream embeds; new providers must not require lesson-model changes.
+- **FR-14:** Upload directly to creator storage using presigned URLs, bypassing our server.
+- **FR-15:** Serve member files through signed, expiring URLs after server-side authorization.
+- **FR-16:** Support SMTP, Amazon SES, and Resend email delivery.
+
+### Products and delivery
+
+- **FR-20:** Support courses, digital downloads, and recurring memberships.
+- **FR-21:** Courses contain modules and lessons; each lesson may combine video, rich text, and attachments.
+- **FR-22:** Free-preview lessons are accessible without purchase.
+- **FR-23:** Persist completed lessons and display member progress.
+- **FR-24:** Authorize product content on every server request, beyond hiding UI controls.
+
+### Sales
+
+- **FR-30:** Payments use the creator's Stripe account and keys; the platform does not process funds.
+- **FR-31:** A purchase creates a missing member account, grants access, and emails a sign-in link.
+- **FR-32:** Stripe webhooks are idempotent and tested.
+- **FR-33:** Expired/canceled subscriptions revoke membership access at the end of the paid period.
+- **FR-34:** Creators can manually grant and revoke access for any member.
+- **FR-35:** No platform-hosted public product pages (agentproofarch ADR-0001). Provide unauthenticated, read-only offer JSON with open CORS and content-version caching, shareable tenant-domain checkout URLs, and post-MVP `/embed/*` widgets. Creator-owned sites handle sales-page SEO.
+- **FR-36:** A member 360 card combines purchases, subscriptions, grants, progress, and domain-event history. Extend its event model without redesign for community activity (phase 2), email (phase 3), and later website visits and external chat. No CRM funnels, pipelines, or lead scoring.
+
+### Community (Phase 2 direction)
+
+- **FR-40:** Public, all-member, and product-gated spaces.
+- **FR-41:** Posts, threaded comments, reactions, in-app and email notifications.
+- **FR-42:** Content deletion and member bans.
+
+### Marketing (Phase 3 direction)
+
+- **FR-50:** Manual and purchase-triggered member tags/segments.
+- **FR-51:** Broadcasts/sequences through the creator's provider with GDPR-compliant unsubscribe handling.
+- **FR-52:** Stripe-synchronized coupons.
+- **FR-53:** Panel-built landing pages and signup forms using predefined blocks.
+- **FR-54:** Declarative purchase/signup/tag triggers with tag/email/grant actions.
+- **FR-55:** Every transactional and marketing email becomes a member-timeline event (FR-36).
+
+### Hosted version (Phase 4 direction)
+
+- **FR-60:** Self-service signup and provisioning without operator involvement.
+- **FR-61:** Platform billing through our Stripe account, separate from creators' accounts.
+- **FR-62:** Paid custom-domain CNAME and automatic TLS; the base plan has a subdomain and “Powered by Together” badge (§4).
+- **FR-63:** Automatic database backups and self-service tenant export/deletion for GDPR.
 
 ---
 
-## 10. Założenia techniczne
+## 9. Non-goals
 
-**Architektura normatywna żyje w osobnym repo: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — „agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS" autorstwa założyciela (aktywnie rozwijana; stan 2026-07-03: działający walking skeleton — auth, organizacje/tenanty, rozwiązywanie tenanta po domenie, custom domeny, zasób demo przez wszystkie warstwy, CLI i SPA). Ten dokument **nie duplikuje architektury** — pełna specyfikacja żyje w dokumentacji tamtego repo (katalog `docs/`: opisy architektury i ADR-y). Poniżej tylko: decyzje, konsekwencje dla Together i punkty tarcia.
+**Permanently excluded by Z-1/Z-2:**
 
-**Decyzje przejęte z agentproofarch (zastępują wcześniejsze założenia tego PRD, w tym rekomendację Next.js z 2026-07-02):**
-- **Vite + React SPA (bez SSR, bez Next.js) + Hono** jako warstwa HTTP — ten sam kod działa na Node i Vercel Functions (entrypointy ~5 linii); TanStack Router/Query; jeden typowany klient (`core/client`) współdzielony przez web i CLI.
-- **Drizzle ORM** z fabryką sterowników `node-postgres | neon-http` (rozstrzyga otwarty detal „Prisma vs Drizzle" — Drizzle).
-- **Better Auth — wyłącznie tożsamość, bez pluginu organizacji** (rozstrzyga „Better Auth vs Auth.js"; ADR-0002: tenants/tenant_admins/members to tabele fundamentu, provider dostarcza tylko logowanie i metody auth — magic link, social, passkeys, 2FA — za portami `AuthPort`/`AuthClientPort`).
-- **MUI** jako warstwa UI (zamiast wcześniej zakładanego Tailwind + shadcn/ui).
-- **Postgres**: Neon na Vercelu (`neon-http`), kontener `postgres:16` w self-host.
-- **Warstwy wymuszane maszynowo:** `core/domain → contract / server (use-case'y + porty) / client` → `adapters` → `apps` (composition root — jedyne miejsce instancjonowania adapterów). `eslint-plugin-boundaries` + `dependency-cruiser` + `knip`; `any` i asercje `as` (poza `as const`) to błędy lintu; `Result<T, AppError>` z zamkniętą taksonomią błędów i jednym envelope HTTP. Nikt (człowiek ani agent) nie złamie architektury bez czerwonego `npm run check`.
-- **CLI jako pętla weryfikacyjna agenta** — każda funkcja platformy wywoływalna z terminala z `--json` (jeden dokument JSON na stdout) i deterministycznymi kodami wyjścia mapowanymi z taksonomii błędów. To bezpośrednia realizacja constraintu „solo + AI": agent implementuje i weryfikuje funkcje bez przeglądarki.
-- **Deploy z jednego commita, różni się tylko env:** Vercel (statyczne SPA + funkcja Hono + Neon) lub Docker self-host (`docker compose up`: app + Postgres + **Caddy z on-demand TLS** — dzięki czemu custom domeny działają także w self-hoście, nie tylko na Vercelu). Stringi „vercel"/„neon" dozwolone wyłącznie w `adapters/` — wymuszone lintem.
-- **Rozwiązywanie tenanta per request:** custom domena (`tenant_domains`) → subdomena `APP_BASE_DOMAIN` → nagłówek `X-Tenant` (CLI); członkostwo weryfikowane zawsze; każdy tenant-scoped use-case dostaje `ctx.identity`, każde repozytorium wymaga `tenantId`.
-- **Jedno `package.json`, bez workspaces**; `npm run check` (typecheck + lint + granice + graf zależności + dead code + testy) jako pojedyncza bramka.
-- Vercel jako hosting hosted — potwierdzony wcześniejszą weryfikacją (2026-07-02): custom domeny unlimited na Pro, auto-SSL, wildcard, Domains API.
+- Our own video hosting/transcoding; only a future convenience uploader on Bunny infrastructure is allowed (§4).
+- Merchant-of-record payment intermediation; money always goes through the creator's Stripe.
+- A cross-creator course marketplace/catalog; each tenant is independent.
+- WordPress plugins, integrations, or editions. This is a different product category.
 
-**Co pozostaje specyficzne dla Together (nie ma tego w agentproofarch):**
-- Adaptery BYO (`StorageProvider`/`EmailProvider`/`PaymentProvider` z US-010) — naturalnie wpisują się we wzorzec portów (precedens: `DomainPort` z implementacjami vercel/caddy/noop); każdy nasz port ma realne ≥2 implementacje, więc jest zgodny z tamtejszą zasadą „no speculative ports".
-- Sekrety integracji szyfrowane at rest; zdarzenia domenowe pod Klienta 360 (FR-36); migracja pierwszego tenanta z poprzedniej platformy (szczegóły w prywatnych materiałach właściciela); testy krytyczne: izolacja tenantów + webhooki Stripe.
-- Repo produktowe: `coderoadpl/togethercommunity-app` (publiczne, FSL-1.1-ALv2 — patrz LICENSE.md); fundament architektoniczny: `coderoadpl/agentproofarch` (będzie jeszcze korygowany — śledzić zmiany).
+**Outside phases 0–3, potentially later:**
 
-**Punkty tarcia agentproofarch ↔ Together — rozstrzygnięte ADR-ami (2026-07-11):**
-1. **Publiczna powierzchnia sprzedażowa** — rozstrzygnięte przez [ADR-0001](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md): platforma nie hostuje żadnych stron marketingowych/produktowych (SEO robi strona własna twórcy); dostarcza headless public JSON API (open CORS, cache z wersją treści), shareable checkout links na domenie tenanta i — post-MVP — widgety embed `/embed/*`. FR-35/US-030 przepisane zgodnie z tym.
-2. **Model tożsamości członków** — rozstrzygnięte przez [ADR-0002](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md): globalne konto = wyłącznie uwierzytelnianie; własność relacji per tenant w naszych tabelach (`tenants`/`tenant_admins`/`members` ze snapshotem e-maila); żadnych funkcji organizacji po stronie providera; konta bez hasła z webhooka płatności przez idempotentne `ensureMember` + magic link na domenie tenanta. FR-3 przeformułowane zgodnie z tym.
+- Live streaming, video chats, live events.
+- Real-time direct/channel chat; community starts asynchronously with posts/comments.
+- Mobile apps; responsive web must suffice.
+- Gamification, points, badges, leaderboards.
+- Completion certificates, quizzes, exams.
+- Invoicing/VAT, initially handled through Stripe Tax or external invoicing; revisit for Poland.
+- Affiliates.
+- UI languages beyond English and Polish.
+- External automation platforms such as Zapier.
+- CRM funnels, pipelines, and lead scoring. Member 360 is an overview of an individual buyer.
+- An internally built chat system. The intended post-phase-3 direction is an external Chatwoot/Crisp-style integration feeding the member timeline.
 
 ---
 
-## 11. Mierniki sukcesu
+## 10. Technical assumptions
 
-| Miernik | Cel |
+**Normative architecture: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)**, the founder's actively developed, agent-first, strictly layered TypeScript foundation for multi-tenant SaaS. As of 2026-07-03 it had a walking skeleton with authentication, organizations/tenants, domain resolution, custom domains, a resource spanning every layer, CLI, and SPA. Its `docs/` architecture descriptions and ADRs are authoritative. This section records Together's decisions and implications without duplicating that specification.
+
+**Inherited decisions, superseding earlier assumptions including the 2026-07-02 Next.js recommendation:**
+
+- **Vite + React SPA, no SSR or Next.js, with Hono HTTP.** One codebase for Node and Vercel Functions with small entrypoints, TanStack Router/Query, and shared typed `core/client` for web and CLI.
+- **Drizzle ORM** with `node-postgres | neon-http` driver factory, resolving the earlier Prisma/Drizzle question.
+- **Better Auth for identity only, without its organizations plugin.** ADR-0002 assigns tenants, tenant admins, and members to foundation tables. Provider sign-in, magic links, social login, passkeys, and 2FA stay behind `AuthPort`/`AuthClientPort`.
+- **MUI**, replacing the earlier Tailwind/shadcn proposal.
+- **Postgres:** Neon on Vercel and `postgres:16` for self-hosting.
+- **Machine-enforced layers:** `core/domain → contract / server (use cases and ports) / client` → `adapters` → `apps`, with adapter instantiation only at the composition root. Boundaries, dependency-cruiser, and knip enforce the graph; `any` and assertions other than `as const` fail lint. `Result<T, AppError>` provides a closed error taxonomy and shared HTTP envelope. Architecture violations make `pnpm run check` fail.
+- **CLI as the agent verification loop.** Every capability is terminal-accessible with `--json`, one stdout document, and deterministic taxonomy-based exit codes. This supports the solo-plus-AI constraint without browser dependence.
+- **One commit for Vercel and Docker; only environment differs.** Vercel uses static SPA, Hono function, and Neon. Docker uses app, Postgres, and Caddy on-demand TLS for self-hosted custom domains. Vendor dependencies remain at the architecture's allowed adapter/entrypoint boundaries.
+- **Per-request tenant resolution:** custom `tenant_domains` → `APP_BASE_DOMAIN` subdomain → CLI `X-Tenant` header. Always verify membership; tenant use cases receive `ctx.identity`, repositories require `tenantId`.
+- **One `package.json`, no workspaces**, with the full `pnpm run check` gate for types, lint, boundaries, graph, dead code, and tests.
+- Hosted Vercel was confirmed in the 2026-07-02 verification, including Pro custom domains, automatic SSL, wildcard support, and Domains API.
+
+**Together-specific work:**
+
+- BYO storage/email/payment ports from US-010 follow the existing `DomainPort` precedent with Vercel/Caddy/no-op implementations. Each has at least two real implementations, satisfying the no-speculative-ports rule.
+- Encrypted integration secrets, member-360 domain events, and first-tenant migration from the previous platform. Migration details remain private. Tenant isolation and Stripe webhooks are critical test paths.
+- Public product repository `coderoadpl/togethercommunity-app`, FSL-1.1-ALv2 (LICENSE.md). Track ongoing changes to `coderoadpl/agentproofarch`.
+
+**Architecture questions resolved by ADRs, 2026-07-11:**
+
+1. **Public sales surface:** [ADR-0001](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md) assigns marketing/product pages and SEO to creators' sites. Together supplies open-CORS cached JSON, shareable tenant checkout links, and post-MVP embeds. FR-35/US-030 reflect this.
+2. **Member identity:** [ADR-0002](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md) assigns authentication to global accounts and relationship ownership to per-tenant tables with email snapshots. No provider organizations. Payment webhooks call idempotent `ensureMember` and deliver tenant-domain magic links. FR-3 reflects this.
+
+---
+
+## 11. Success measures
+
+| Measure | Target |
 |---|---|
-| Czas: rejestracja → opublikowany, kupowalny produkt (twórca nietechniczny, hosted) | < 2 h |
-| Czas: `git clone` → działający panel (self-host) | < 15 min |
-| Ciężkie pliki w naszej infrastrukturze | 0 |
-| Pokrycie testami izolacji tenantów i webhooków | 100% ścieżek krytycznych |
-| Bramka startu komercyjnego | Marketing, sprzedaż i delivery przetestowane end-to-end na pierwszym tenancie z realnymi kursantami |
-| Walidacja po publicznym starcie | ≥ 1 zewnętrzny twórca sprzedaje produkt |
+| Registration to purchasable product, nontechnical hosted creator | Under 2 hours |
+| Clone to working self-hosted panel | Under 15 minutes |
+| Large files on our infrastructure | Zero |
+| Tenant-isolation and webhook test coverage | All critical paths |
+| Commercial launch gate | Marketing, sales, and delivery tested end-to-end on the first tenant with real members |
+| Post-launch validation | At least one external creator sells a product |
 
 ---
 
-## 12. Otwarte pytania
+## 12. Open questions
 
-**Decyzje przyjęte bez potwierdzenia użytkownika (⚠️ — potwierdź lub zmień):**
-1. **Rdzeń MVP = Delivery + Sprzedaż** (nie społeczność-first jak Circle). Alternatywa: społeczność jako rdzeń zmienia kolejność faz 1↔2.
-2. **Zakres marketingu** przyjęty w pełni (e-mail + landing pages + automatyzacje + kupony), ale cały przesunięty do fazy 3.
-3. ~~Stack~~ → **rozstrzygnięte (2026-07-03): architektura normatywna = [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — Vite+React SPA + Hono + Drizzle + Better Auth + MUI + Postgres (Neon/Docker), warstwy wymuszane lintem, CLI jako pętla weryfikacyjna agenta, deploy Vercel/Docker z jednego commita. Szczegóły i punkty tarcia w §10. (Wcześniejsze iteracje: Payload → Next.js — obie zastąpione.)
-4. **Hosted = multi-tenant** (wspólna instancja). Instancja-per-klient odrzucona kosztowo przy cenie 1-5 USD.
+**Unconfirmed assumptions (⚠️):**
 
-**Pytania wymagające decyzji przed odpowiednimi fazami:**
-5. ~~Licencja~~ → **rozstrzygnięte: FSL-1.1-ALv2 (Fair Source / source-available), z automatycznym przejściem każdego wydania na Apache-2.0 po dwóch latach.**
-6. ~~Nazwa produktu~~ → **Together** (zdecydowane). Domena wciąż otwarta — together.* zajęte; warianty domen do sprawdzenia (lista w prywatnych materiałach).
-7. Cena hosted — **struktura rozstrzygnięta (2026-07-03): tania baza (subdomena + plakietka) + płatne dodatki: custom domena i white-label.** Dokładne kwoty i zasady cenowe są utrzymywane w prywatnych materiałach operacyjnych. Otwarty detal: czy dodać plan darmowy hosted (np. 1 produkt) jako lejek.
-8. Rynek startowy: PL-first (UI po polsku, BLIK/P24 przez Stripe, integracja z fakturownią?) czy EN-first global? Wpływa na priorytet i18n i fakturowania.
-9. Czy „membership" w fazie 1 obejmuje też płatny dostęp do społeczności (wymaga kawałka fazy 2), czy tylko do treści?
-10. YouTube unlisted jako źródło wideo: akceptujemy słabą ochronę treści (link może wyciec) w zamian za zerowy koszt — czy komunikujemy i zostawiamy, czy rekomendujemy Bunny jako domyślne?
-11. Strategia wobec istniejących rozwiązań OSS (LearnHouse): budować od zera czy najpierw zrobić przegląd, czy któreś nie nadaje się jako fundament/inspiracja?
-    → **Częściowo odpowiedziane researchem (2026-07-02):** żaden projekt OSS nie pokrywa 4 filarów; rekomendacja: własna warstwa aplikacyjna, LearnHouse/CourseLit jako referencja architektury. Rozwiązania oparte o WordPress wykluczone decyzją założyciela. Warstwę e-mail budujemy sami na BYO providerach. Szczegółowy research konkurencji jest utrzymywany w prywatnych materiałach właściciela.
-12. Konkurencja do obserwowania: lista obserwowanych konkurentów i ich oceny są utrzymywane w prywatnych materiałach research właściciela (okresowy monitoring, nie paniczna reakcja).
-13. Fakturowanie/VAT-OSS: research pokazał kontr-trend Merchant-of-Record (Paddle, Stripe Managed Payments) — czy BYO Stripe uzupełnić wcześniej o Stripe Tax + integracje z polskimi fakturowniami (dziś w non-goals)?
-14. **Tryb pauzy/hibernacji konta** (propozycja z researchu rundy 2): $0-1/mies., treści zachowane, sprzedaż wyłączona — bezpośrednia odpowiedź na ból „rezygnuję z platformy, gdy sprzedaż siada"; żaden konkurent tego nie ma. Czy dodać do wymagań wersji hosted (faza 4)?
-15. **Minimalny e-mail broadcast wcześniej niż faza 3?** Research rundy 2: brak e-maila to skarga nr 1 na Skool i częsty powód drugiego abonamentu; rekomendacja agentów: prosty broadcast + 2-3 sztywne automatyzacje (welcome, nowa treść) już w fazie 1-2, builder automatyzacji nigdy/późno. Czy przesunąć?
-16. ~~SEO publicznych stron sprzedażowych vs zakaz SSR w agentproofarch~~ → **rozstrzygnięte (2026-07-11): [ADR-0001 agentproofarch](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md)** — żadnych hostowanych stron ani SSR stron; headless public JSON API + shareable checkout links + embeddy post-MVP. FR-35/US-030 przepisane (por. §10 „punkty tarcia").
-17. ~~Model tożsamości kursantów~~ → **rozstrzygnięte (2026-07-11): [ADR-0002 agentproofarch](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md)** — globalne konto (tylko auth, dopuszczalne bez hasła) + własność relacji per tenant (`members` ze snapshotem e-maila, zgody RODO per tenant, eksport per tenant, FR-21: brak enumeracji tenantów, `ensureMember` z webhooka, magic link per domena tenanta). FR-3 zaktualizowane.
+1. **MVP = Delivery + Sales**, rather than community-first like Circle. Community-first would swap phases 1 and 2.
+2. Full marketing scope (email, landing pages, automations, coupons), deferred to phase 3.
+3. ~~Stack~~ **Resolved 2026-07-03:** [agentproofarch](https://github.com/coderoadpl/agentproofarch), Vite/React, Hono, Drizzle, Better Auth, MUI, Postgres, lint-enforced layers, CLI verification, one-commit Vercel/Docker deployment (§10). Supersedes Payload and Next.js proposals.
+4. **Hosted multi-tenancy:** Shared instances. Per-customer instances are too costly at USD 1–5/month.
+
+**Decisions before the relevant phases:**
+
+5. ~~License~~ **Resolved:** FSL-1.1-ALv2; each release transitions to Apache-2.0 after two years.
+6. ~~Product name~~ **Together**, decided. Domain remains open; candidate list is private.
+7. **Hosted pricing structure resolved 2026-07-03:** inexpensive subdomain/badge base plus paid custom-domain and white-label extras. Amounts/policies remain private. A limited free hosted plan as an acquisition path remains open.
+8. **Default language resolved 2026-09-09:** English for the product and codebase; Polish only in translation dictionaries and the explicitly allowed schema, migration, CLA, and invoicing/VAT exceptions. Local payment and invoicing priorities remain product decisions.
+9. Does phase-1 membership include paid community access, requiring some phase-2 work, or only content?
+10. Accept unlisted YouTube's weak protection in exchange for zero cost with clear disclosure, or recommend Bunny by default?
+11. Build from scratch or evaluate existing OSS as a foundation/reference? **Partially answered 2026-07-02:** no project covers all four pillars; recommend our own application layer with LearnHouse/CourseLit as architectural references, subject to the repository's licensing and clean-room rules. WordPress is excluded. Build email on BYO providers. Detailed research remains private.
+12. Monitor competitors periodically without reactive changes; the list and assessments remain in private research materials.
+13. Should BYO Stripe gain Stripe Tax and Polish invoicing integrations earlier, given the merchant-of-record trend in Paddle and Stripe Managed Payments?
+14. Add hosted pause/hibernation at USD 0–1/month, retaining content but disabling sales? Proposed in research round 2 to address cancellations when sales fall; that research found no equivalent competitor offering.
+15. Bring basic broadcasts and two or three fixed welcome/new-content automations into phases 1–2? Round-2 research identified missing email as a major Skool complaint and cause of a second subscription. Defer or omit a general automation builder.
+16. ~~Public SEO versus no SSR~~ **Resolved 2026-07-11:** [ADR-0001](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0001-public-surface-embeds-over-pages.md): public JSON API, checkout links, post-MVP embeds, without hosted marketing-page SSR. FR-35/US-030 updated (§10).
+17. ~~Member identity~~ **Resolved 2026-07-11:** [ADR-0002](https://github.com/coderoadpl/agentproofarch/blob/main/docs/decisions/0002-member-identity-and-idp.md): global auth-only accounts, optionally passwordless; per-tenant email snapshots, consents, exports, no tenant enumeration, webhook `ensureMember`, and tenant-domain magic links. FR-3 updated.
 
 ---
 
-## Powiązane konteksty
+## Related context
 
-- **Architektura normatywna: [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** — fundament multi-tenant SaaS (warstwy, porty, CLI, deploy Vercel/Docker); szczegóły w §10
-- Research konkurencji (OSS + SaaS + rynek PL): prywatne materiały właściciela
-- **Poprzednia iteracja Together (VI 2025): archiwum poprzedniej iteracji w prywatnych materiałach właściciela** — project-description, prd (m.in. poziomy dostępu publiczne/płatne/ukryte, zarządzanie członkostwem przez API, denormalizacja postępu kursanta), tech-stack (Vite+React+tRPC+Express+Prisma — ciekawostka: agentproofarch to w dużej mierze dojrzalsza wersja tego samego kierunku)
-- Poprzednia platforma pierwszego tenanta: szczegóły stacku i produkcji w prywatnych materiałach właściciela
+- **[Normative agentproofarch architecture](https://github.com/coderoadpl/agentproofarch):** multi-tenant SaaS layers, ports, CLI, and Vercel/Docker deployment (§10).
+- OSS, SaaS, and Polish-market competitor research: owner's private materials.
+- **June 2025 Together iteration:** private project description, PRD, and tech stack, including public/paid/hidden access, API membership management, and denormalized progress. The Vite/React/tRPC/Express/Prisma stack followed a direction later matured by agentproofarch.
+- First tenant's previous platform: stack and production details remain in the owner's private materials.

@@ -79,7 +79,7 @@ When 440 identifies an original with the same seller NIP, invoice type, P_2, and
 
 ### PDF visualization
 
-Together renders the A4 visualization itself from the frozen FA(3) XML, with no PDF service and no PDF dependency: seller, buyer, positions, VAT summary, KSeF number, verification note, and the XML SHA-256. The same bytes are produced for the same invoice. The structured invoice in KSeF and its UPO remain the fiscal documents; the PDF is only a readable copy. It uses the standard PDF fonts, so Polish diacritics are transliterated (`Żółć` prints as `Zolc`); embedding a font with full Polish coverage is a follow-up.
+Together renders the A4 visualization itself from the frozen FA(3) XML, with no PDF service and no PDF dependency: seller, buyer, positions, VAT summary, KSeF number, verification note, and the XML SHA-256. The same bytes are produced for the same invoice. The structured invoice in KSeF and its UPO remain the fiscal documents; the PDF is only a readable copy. It uses the standard PDF fonts, so Polish diacritics are transliterated (accented letters print as their ASCII equivalents); embedding a font with full Polish coverage is a follow-up.
 
 ### Environments and operations
 

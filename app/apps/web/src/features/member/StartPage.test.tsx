@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Course, MemberNavigation } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { StartPage } from './StartPage.js';
@@ -78,7 +78,7 @@ const renderStart = async () => {
   const homeRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <p>Podgląd dla gości</p>,
+    component: () => <p>Guest preview</p>,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([startRoute, homeRoute]),
@@ -91,12 +91,12 @@ const renderStart = async () => {
 describe('StartPage', () => {
   it('points the continue bar at the last active course and its unfinished lesson', async () => {
     server.use(
-      okCourses([course('c1', 'JavaScript od zera'), course('c2', 'CSS w praktyce')]),
+      okCourses([course('c1', 'JavaScript from scratch'), course('c2', 'CSS w praktyce')]),
       okNavigation({
         courses: [
           {
             courseId: 'c1',
-            courseName: 'JavaScript od zera',
+            courseName: 'JavaScript from scratch',
             completedLessonCount: 1,
             accessibleLessonCount: 3,
             lastViewedLessonId: 'l2',
@@ -122,9 +122,9 @@ describe('StartPage', () => {
       'href',
       '/my/courses/c1/lessons/l2',
     );
-    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(pl.start.continueCta);
-    expect(card).toHaveTextContent('JavaScript od zera');
-    expect(card).toHaveTextContent(pl.start.continueLabel({ lesson: 'Zmienne' }));
+    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(en.start.continueCta);
+    expect(card).toHaveTextContent('JavaScript from scratch');
+    expect(card).toHaveTextContent(en.start.continueLabel({ lesson: 'Zmienne' }));
     expect(card).toHaveTextContent('33%');
     expect(within(card).getAllByText('33%')).toHaveLength(1);
     expect(within(card).queryByTestId('progress-ring')).not.toBeInTheDocument();
@@ -155,14 +155,14 @@ describe('StartPage', () => {
       'href',
       '/my/courses/c2/lessons/l9',
     );
-    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(pl.start.reviewCta);
-    expect(card).toHaveTextContent(pl.start.reviewLabel({ lesson: 'Selektory' }));
+    expect(within(card).getByTestId('start-continue-cta')).toHaveTextContent(en.start.reviewCta);
+    expect(card).toHaveTextContent(en.start.reviewLabel({ lesson: 'Selektory' }));
   });
 
   it('hides the continue bar when no course is entitled', async () => {
     server.use(
       okCourses([]),
-      okNavigation({ spaces: [space('s1', 'Ogólna')] }),
+      okNavigation({ spaces: [space('s1', 'General')] }),
       okHomeFeed(),
       noNotifications(),
     );
@@ -183,7 +183,7 @@ describe('StartPage', () => {
             id: 's9',
             slug: 'premium',
             name: 'Premium',
-            description: 'Tylko dla kursantów.',
+            description: 'Students only.',
             productIds: ['p1'],
             products: [{ id: 'p1', title: 'Kompletny program dla zaawansowanych' }],
           },
@@ -196,13 +196,13 @@ describe('StartPage', () => {
     await renderStart();
 
     const sold = await screen.findByTestId('locked-space-card-s9');
-    expect(sold).toHaveTextContent('Tylko dla kursantów.');
+    expect(sold).toHaveTextContent('Students only.');
     const cta = within(sold).getByTestId('locked-space-cta-s9');
     expect(cta).toHaveAttribute('href', '/checkout/p1');
-    expect(cta).toHaveTextContent(pl.courseTree.unlockAccess);
+    expect(cta).toHaveTextContent(en.courseTree.unlockAccess);
     const visibility = within(sold).getByTestId('space-visibility-s9');
     expect(visibility).toHaveTextContent(
-      pl.community.productGatedFor({ product: 'Kompletny program dla zaawansowanych' }),
+      en.community.productGatedFor({ product: 'Kompletny program dla zaawansowanych' }),
     );
     expect(cta.parentElement).toContainElement(within(sold).getByRole('heading', { name: 'Premium' }));
     expect(cta.parentElement).not.toContainElement(visibility);
@@ -213,19 +213,19 @@ describe('StartPage', () => {
 
   it('renders course tiles with navigation-fed progress and no space section', async () => {
     server.use(
-      okCourses([course('c1', 'JavaScript od zera')]),
+      okCourses([course('c1', 'JavaScript from scratch')]),
       okNavigation({
         courses: [
           {
             courseId: 'c1',
-            courseName: 'JavaScript od zera',
+            courseName: 'JavaScript from scratch',
             completedLessonCount: 1,
             accessibleLessonCount: 4,
             lastActivityAt: null,
           },
         ],
       }),
-      okResume('c1', 'l1', 'Wstęp'),
+      okResume('c1', 'l1', 'Introduction'),
       noNotifications(),
     );
 
@@ -241,7 +241,7 @@ describe('StartPage', () => {
   it('marks a space tile with an unread dot only while it carries new posts', async () => {
     server.use(
       okCourses([]),
-      okNavigation({ spaces: [space('s1', 'Ogólna', true), space('s2', 'Cicha')] }),
+      okNavigation({ spaces: [space('s1', 'General', true), space('s2', 'Quiet')] }),
       okHomeFeed(),
       noNotifications(),
     );
@@ -250,7 +250,7 @@ describe('StartPage', () => {
 
     const loud = await screen.findByTestId('space-card-s1');
     expect(within(loud).getByTestId('space-unread-s1')).toHaveAccessibleName(
-      pl.shell.spaceUnreadLabel({ name: 'Ogólna' }),
+      en.shell.spaceUnreadLabel({ name: 'General' }),
     );
     expect(within(screen.getByTestId('space-card-s2')).queryByTestId('space-unread-s2')).not.toBeInTheDocument();
   });
@@ -261,7 +261,7 @@ describe('StartPage', () => {
       okNavigation({
         spaces: [
           {
-            ...space('s-public', 'Publiczna'),
+            ...space('s-public', en.spacesPanel.publicChip),
             publicReadOnly: true,
           },
           {
@@ -278,17 +278,17 @@ describe('StartPage', () => {
     await renderStart();
 
     expect(await screen.findByTestId('space-visibility-s-public')).toHaveTextContent(
-      pl.community.publicReadOnly,
+      en.community.publicReadOnly,
     );
     expect(await screen.findByTestId('space-visibility-s1')).toHaveTextContent(
-      pl.community.productGatedFor({ product: 'Program Pro' }),
+      en.community.productGatedFor({ product: 'Program Pro' }),
     );
   });
 
   it('sends the space section header to the community list', async () => {
     server.use(
       okCourses([]),
-      okNavigation({ spaces: [space('s1', 'Ogólna')] }),
+      okNavigation({ spaces: [space('s1', 'General')] }),
       okHomeFeed(),
       noNotifications(),
     );
@@ -301,13 +301,13 @@ describe('StartPage', () => {
 
   it('places the home feed between the continue bar and the tile sections', async () => {
     server.use(
-      okCourses([course('c1', 'JavaScript od zera')]),
+      okCourses([course('c1', 'JavaScript from scratch')]),
       okNavigation({
-        spaces: [space('s1', 'Ogólna')],
+        spaces: [space('s1', 'General')],
         courses: [
           {
             courseId: 'c1',
-            courseName: 'JavaScript od zera',
+            courseName: 'JavaScript from scratch',
             completedLessonCount: 1,
             accessibleLessonCount: 3,
             lastViewedLessonId: 'l2',
@@ -324,26 +324,26 @@ describe('StartPage', () => {
 
     await screen.findByTestId('start-continue');
     const feed = screen.getByTestId('start-feed');
-    expect(feed).toHaveTextContent(pl.start.feedSection);
+    expect(feed).toHaveTextContent(en.start.feedSection);
     expect([...(feed.parentElement?.children ?? [])].map((child) => child.getAttribute('data-testid')))
       .toEqual(['start-continue', 'start-feed', 'start-spaces', 'start-courses']);
   });
 
   it('hides the home feed when no space is accessible', async () => {
     server.use(
-      okCourses([course('c1', 'JavaScript od zera')]),
+      okCourses([course('c1', 'JavaScript from scratch')]),
       okNavigation({
         courses: [
           {
             courseId: 'c1',
-            courseName: 'JavaScript od zera',
+            courseName: 'JavaScript from scratch',
             completedLessonCount: 0,
             accessibleLessonCount: 2,
             lastActivityAt: null,
           },
         ],
       }),
-      okResume('c1', 'l1', 'Wstęp'),
+      okResume('c1', 'l1', 'Introduction'),
       noNotifications(),
     );
 
@@ -360,9 +360,9 @@ describe('StartPage', () => {
 
     const empty = await screen.findByTestId('start-empty-state');
     expect(within(empty).getByTestId('empty-library-icon')).toBeInTheDocument();
-    expect(empty).toHaveTextContent(pl.start.emptyTitle);
-    expect(empty).toHaveTextContent(pl.start.emptyBody);
-    expect(within(empty).getByRole('link', { name: pl.student.myProducts })).toHaveAttribute(
+    expect(empty).toHaveTextContent(en.start.emptyTitle);
+    expect(empty).toHaveTextContent(en.start.emptyBody);
+    expect(within(empty).getByRole('link', { name: en.student.myProducts })).toHaveAttribute(
       'href',
       '/my/products',
     );

@@ -29,7 +29,7 @@
 ## Flows
 
 - Checkout page: price picker when a product has >1 active price (one-time
-  "Kup teraz" vs subscription "Subskrybuj co miesiąc/rok" with clear copy);
+  "Buy now" vs subscription "Subscribe monthly/yearly" with clear copy);
   Stripe-hosted checkout in `subscription` mode for recurring prices.
 - Webhooks (existing endpoint + processed_events idempotency):
   `checkout.session.completed` (order + grant + subscription row),
@@ -38,8 +38,8 @@
   `customer.subscription.updated/deleted` (cancelAtPeriodEnd / canceled).
 - Simulated payments (dev): can create a subscription and simulate the next
   invoice cycle so the whole lifecycle is testable without Stripe keys.
-- Member `/my/products`: subscription status chip (aktywna / zaległa płatność /
-  anulowana — do końca okresu), renewal date, cancel via billing portal link.
+- Member `/my/products`: subscription status chip (active / payment past due /
+  canceled — until the end of the period), renewal date, cancel via billing portal link.
 - Panel Sales (`/panel/sales`): ListSection — orders with status/amount/
   product/member/date, filters (status, product, kind), search, CSV/JSON
   export (all rows, not the page); dashboard tiles: revenue last 30 days,
@@ -68,10 +68,8 @@ the verification commit (this one).
   `cancelAtPeriodEnd` (replay skipped), next cycle cancels with no new order →
   DB time-travel past period end + grace flips the member view to `expired` at
   read time and the active-subscriptions tile to 0. PASS (13 steps, ~15 s).
-- **Browser QA** (headless Chrome, screenshots w prywatnych materiałach
-  właściciela): checkout price picker on the
-  seeded club product in PL + EN, `/my/products` chips (Aktywna / Zaległa
-  płatność / Anulowana — do końca okresu on a throwaway tenant, deleted after),
+- **Browser QA** (headless Chrome, screenshots in the owner’s private materials): checkout price picker on the
+  seeded club product in PL + EN, `/my/products` chips (Active / Payment past due / Canceled — until the end of the period on a throwaway tenant, deleted after),
   `/panel/sales` list + status filter + search + real CSV export download,
   dashboard revenue/subscriptions/orders tiles.
 - **Review fixes** — `countActive` in the subscriptions repository derived its
@@ -81,7 +79,7 @@ the verification commit (this one).
   `processed_events` idempotency (by event id AND object+type).
 - **Gates** — `npm run check` (568 tests) + `npm run smoke` + `npm run visual`
   all green. Goldens updated for `panel-products` only (intended S3 delta:
-  rows link to the new product editor via "Zarządzaj", inline single price
+  rows link to the new product editor via "Manage", inline single price
   dropped now that products carry price lists) — missed in `735e067`.
 - **Deferrals** — real-Stripe run (subscription checkout, portal cancel) still
   unverified without keys: the simulated path exercises the same

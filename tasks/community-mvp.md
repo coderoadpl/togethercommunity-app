@@ -2,8 +2,7 @@
 
 > Status: accepted by the owner (2026-07-15). Driver: buyers of paid content
 > must be able to ask questions under a lesson and get answers from each other
-> and from the author (szczegóły biznesowe w prywatnych materiałach
-> właściciela). This is the Faza-2 vertical slice.
+> and from the author (business details in the owner’s private materials). This is the Phase-2 vertical slice.
 
 ## Scope (owner requirements, verbatim intent)
 
@@ -20,7 +19,7 @@
 - **Context-generic posts**: `posts { id, tenantId, contextKind ('lesson' —
   'space' arrives with full Faza 2), contextId, parentPostId?, rootPostId?,
   authorUserId, authorDisplay, body (sanitized), createdAt, editedAt?,
-  deletedAt? }`. Soft delete keeps thread shape ("Wpis usunięty").
+  deletedAt? }`. Soft delete keeps thread shape ("Deleted post").
 - **Visibility = lesson entitlement**: you see/search/write a lesson's
   discussion iff the lesson is fully-accessible to you (staff always).
   Free-preview lessons therefore have OPEN discussions for preview users —
@@ -57,7 +56,7 @@ changes (contextKind, kind, port).
 
 The spaces sprint delivered the first chunk of the "full Faza 2" list on top
 of the contextKind design — no schema breaks, `contextKind: 'space'` slotted
-in as planned. PL term: **strefa** (tenant stays „przestrzeń"; decision
+in as planned. The space and tenant terms remain distinct (decision
 recorded in `terminology-glossary.md`).
 
 Scope shipped:
@@ -75,7 +74,7 @@ Scope shipped:
   `kind: 'space-post'` fan-out to followers (entitlement-checked at delivery
   time) through the same NotificationChannelPort — in-app SSE badge and
   e-mail both work with zero port changes, validating the port design.
-- **Member UI**: Społeczność tab (desktop nav + mobile bottom tab bar),
+- **Member UI**: Community tab (desktop nav + mobile bottom tab bar),
   spaces list with visibility chips, feed with composer and reactions,
   thread subview. **Panel UI**: spaces CRUD (create/edit form,
   archive/restore with filters); hard delete is CLI/API-only.
@@ -97,6 +96,6 @@ Accepted trade-offs (reviewed, deliberate):
 - Notification payload reuses the `lessonName` field for the space name —
   documented in the schema, keeps old persisted rows parseable.
 
-Still deferred to later Faza-2 iterations: **mentions**, **e-mail digests**,
+Still deferred to later Phase-2 iterations: **mentions**, **e-mail digests**,
 **moderation queue/bans**, notification preferences UI, real web push,
 member profiles beyond the lite author chips.

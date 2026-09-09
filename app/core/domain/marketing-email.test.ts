@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { marketingConsentConfirmationPl } from './marketing-email.pl.js';
 import {
   bounceAction,
   buildEmailHeaders,
@@ -326,14 +327,12 @@ describe('SES identity freshness', () => {
 });
 
 describe('marketingConsentConfirmation', () => {
-  const input = { confirmationUrl: 'https://tenant.test/confirm?token=abc', wording: 'Newsletter „Nowości”' };
+  const input = { confirmationUrl: 'https://tenant.test/confirm?token=abc', wording: 'News newsletter' };
 
   it('renders the Polish message for a Polish tenant', () => {
     const message = marketingConsentConfirmation({ ...input, language: 'pl' });
-    expect(message.subject).toBe('Potwierdź zgodę na wiadomości e-mail');
-    expect(message.html).toContain('Potwierdzam zgodę');
-    expect(message.html).toContain('tenant.test/confirm?token=abc');
-    expect(message.text).toContain('Jeśli to nie Ty zapisujesz się na te wiadomości, zignoruj tę wiadomość.');
+    expect(message).toEqual(marketingConsentConfirmationPl({ ...input, htmlWording: input.wording, htmlConfirmationUrl: input.confirmationUrl }));
+    expect(message.html).toContain(input.confirmationUrl);
   });
 
   it('renders the English message for an English tenant', () => {
@@ -343,9 +342,9 @@ describe('marketingConsentConfirmation', () => {
     expect(message.text).toContain('If you did not give this consent, ignore this message.');
   });
 
-  it('falls back to Polish for an unsupported language', () => {
+  it('falls back to English for an unsupported language', () => {
     expect(marketingConsentConfirmation({ ...input, language: 'de' }).subject)
-      .toBe('Potwierdź zgodę na wiadomości e-mail');
+      .toBe('Confirm your e-mail consent');
   });
 });
 

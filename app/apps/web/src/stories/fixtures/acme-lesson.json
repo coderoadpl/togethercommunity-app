@@ -21,7 +21,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "defaultHomeSpaceId": null,
-          "defaultLanguage": "pl",
+          "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
           "invoiceExemptionBasis": null,
@@ -159,15 +159,15 @@
                       "contentId": "content-lesson-acme-intro",
                       "durationMinutes": 4,
                       "lessonId": "lesson-acme-intro",
-                      "name": "Lekcja wprowadzająca"
+                      "name": "Introductory lesson"
                     }
                   ],
-                  "name": "Wprowadzenie"
+                  "name": "Introduction"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-acme-1",
-              "name": "Część 1 - Moduł wprowadzający"
+              "name": "Part 1 - Introduction"
             }
           ],
           "name": "Acme Course"
@@ -187,7 +187,7 @@
               "type": "video"
             },
             {
-              "html": "<p>Lekcja demonstracyjna kursu Acme.</p>",
+              "html": "<p>A sample lesson from the Acme course.</p>",
               "type": "html"
             }
           ],
@@ -196,7 +196,7 @@
           "id": "lesson-acme-intro",
           "isPreview": false,
           "legacyId": null,
-          "name": "Lekcja wprowadzająca",
+          "name": "Introductory lesson",
           "tenantId": "tenant-acme"
         }
       }
@@ -216,12 +216,12 @@
           "resume": {
             "firstIncomplete": {
               "id": "lesson-acme-intro",
-              "name": "Lekcja wprowadzająca"
+              "name": "Introductory lesson"
             },
             "isReview": false,
             "target": {
               "id": "lesson-acme-intro",
-              "name": "Lekcja wprowadzająca"
+              "name": "Introductory lesson"
             }
           }
         }

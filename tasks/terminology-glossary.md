@@ -1,239 +1,207 @@
-# Together — PL/EN terminology glossary
+# Together — terminology glossary
 
 Canonical terminology for every user-facing surface: web dictionaries
-(`apps/web/src/i18n/pl.ts`, `en.ts`), error messages (`errors` section +
-`errors.ts` mapping), transactional e-mails (`core/domain/transactional-email.ts`),
-and any future copy. One concept = one Polish term = one English term.
-Voice: competent, warm, never corporate. If a term is not listed here, add it
-here first, then use it.
+(`apps/web/src/i18n/pl.ts`, `en.ts`), error messages (`errors` section and
+`errors.ts` mapping), transactional emails (`core/domain/transactional-email.ts`),
+and future copy. One concept has one canonical term in each language.
+English is the product and repository default. Polish wording lives only in
+translation dictionaries; consult the corresponding keys there.
+Voice: competent, warm, never corporate. Add new concepts here before using them.
 
-## Personas & roles
+## Personas and roles
 
-| Concept | PL | EN | Decision notes |
-|---|---|---|---|
-| member (a person with access in a space) | **uczestnik** | **member** | DECIDED over „kursant" (course-only — too narrow for a course+community product) and „członek" (cold, club-like). Use everywhere: panel, student pages, e-mails. „Kursant"/„członek" are FORBIDDEN in user-facing copy. Seed data display names may keep legacy „Kursant …" fixtures. |
-| creator (the person who runs a space) | **twórca** | **creator** | Persona word — used when describing whose space/panel it is („panel twórcy", "another creator's space"). Never a role label. |
-| owner (role) | **właściciel** | **owner** | Role labels only (member list, role chips). |
-| admin (role) | **administrator** | **admin** | Role label. „Administrator" is NOT a synonym for „twórca": twórca = persona, administrator = permission level. |
-| staff (owner+admin collectively) | **zespół** | **staff** | e.g. „uprawnienia zespołu" / "staff access". |
-| customer / buyer before signup | *(avoid the noun)* | *(avoid the noun)* | DECIDED: pre-purchase visitors are not named („Udostępnij link do zakupu…", "Share a checkout link…"). Never „klient"/"customer" — the moment they buy, they are uczestnik/member. |
+| Concept | English | Decision notes |
+|---|---|---|
+| person with access in a workspace | **member** | Use throughout the panel, member pages, emails, and English seed fixtures. Avoid a course-only student label for this broader concept. |
+| person who runs a workspace | **creator** | Persona, as in “creator panel”; never a role label. |
+| owner role | **owner** | Role labels in member lists and chips. |
+| administrator role | **admin** | Permission level; not a synonym for the creator persona. |
+| owners and admins collectively | **staff** | For example, “staff access”. |
+| visitor before purchase | *(avoid the noun)* | Say “Share a checkout link…”. Do not call visitors customers; after purchase they are members. |
 
 ## Commerce
 
-| Concept | PL | EN | Decision notes |
-|---|---|---|---|
-| product | **produkt** | **product** | The sellable unit. A product *grants access* to course content. |
-| course | **kurs** | **course** | Content unit. Products ≠ courses; never mix („kup kurs" only when the product is literally one course — default to „kup produkt"/„link do zakupu"). |
-| price | **cena** | **price** | One-time = „jednorazowa" / "one-time"; recurring = „cykliczna" / "recurring"; kind = „rodzaj ceny" / "price kind"; billing interval = „okres rozliczeniowy" / "billing interval". |
-| subscription | **subskrypcja** | **subscription** | Never „abonament". Statuses: aktywna/active, zaległa płatność/payment past due, anulowana/canceled. |
-| order | **zamówienie** | **order** | Statuses: opłacone/paid, oczekujące/pending, nieudane/failed, zwrócone/refunded (lowercase in tables). |
-| grant (an access entitlement) | **dostęp** (long: **przyznany dostęp**) | **grant** | Verb: **przyznać** / **grant** — ALWAYS „przyznać", never „nadać" (fixed: checkout success copy). States: aktywny/active, wygasły/expired, bezterminowo/perpetual. |
-| to revoke a grant | **cofnąć dostęp** | **revoke** | DECIDED: „cofnij", not „odbierz" — „odbierz" collides with the claim-CTA „Odbierz bezpłatnie" (opposite directions of the same verb). |
-| to claim for free | **odbierz bezpłatnie** | **get it for free** | Checkout CTA; unambiguous now that revoke = „cofnij". |
-| checkout (the purchase surface) | **strona zakupu** | **checkout** | DECIDED: creator-facing copy names the surface „strona zakupu" (was mixed with „checkout"/„formularz zakupu"/„płatność"). The buyer-facing page keeps „Płatność" as its eyebrow and „Ładowanie płatności…" while loading — that copy names the payment step, not the surface. |
-| checkout link | **link do zakupu** | **checkout link** | DECIDED: one PL term (was mixed with „link do płatności") and one EN term (was mixed with "purchase link"). |
-| billing portal | **portal płatności** | **billing portal** | Student-side section heading: „Płatności" / "Payments"; CTA „Zarządzaj płatnościami" / "Manage payments". |
-| payment provider | **dostawca płatności** | **payment provider** | One name in orders, the member subscription table and Integrations — never „operator płatności" or a bare „Operator". |
-| free trial lesson | **bezpłatna lekcja próbna** | **free preview lesson** | One name for the free sample everywhere — never „lekcja podglądowa", „darmowy podgląd" or „za darmo". |
+| Concept | English | Decision notes |
+|---|---|---|
+| sellable unit | **product** | A product grants access to course content. |
+| content unit | **course** | Products and courses differ. Say “buy a course” only when the product is literally one course; otherwise use product or checkout link. |
+| price | **price** | One-time or recurring; fields are “price kind” and “billing interval”. |
+| subscription | **subscription** | Statuses: active, payment past due, canceled. |
+| order | **order** | Statuses: paid, pending, failed, refunded; lowercase in tables. |
+| access entitlement | **grant** | Verb: grant. States: active, expired, perpetual. |
+| revoke a grant | **revoke** | Keep distinct from the free-claim action in both dictionaries. |
+| claim without payment | **get it for free** | Checkout CTA. |
+| purchase surface | **checkout** | Creator copy names the surface; the buyer-facing “Payment” eyebrow and loading state name the payment step. |
+| purchase URL | **checkout link** | Do not alternate with “purchase link”. |
+| billing portal | **billing portal** | Member heading: “Payments”; CTA: “Manage payments”. |
+| payment service | **payment provider** | Use consistently in orders, subscriptions, and Integrations; avoid bare “Operator”. |
+| free sample lesson | **free preview lesson** | One name throughout the product. |
 
 ## Content structure
 
-| Concept | PL | EN | Decision notes |
-|---|---|---|---|
-| course | **kurs** | **course** | |
-| module | **moduł** | **module** | Reusable between courses. |
-| chapter | **rozdział** | **chapter** | Lives inside a module. |
-| lesson | **lekcja** | **lesson** | |
-| content block | **blok treści** (short: blok) | **content block** (short: block) | |
-| curriculum / syllabus | **program kursu** | **course curriculum** (eyebrow: "course syllabus") | |
-| attach / detach a module | **podepnij / odepnij** | **attach / detach** | DECIDED: „podepnij/odepnij" pair everywhere — never „odłącz/podłącz" (was mixed). Derived forms: „odpięte od kursu" / "detached from the course". |
-| draft / published | **wersja robocza / opublikowany** | **draft / published** | |
-| library (student's) | **biblioteka** | **library** | „Tego kursu nie ma w Twojej bibliotece." |
+| Concept | English | Decision notes |
+|---|---|---|
+| course | **course** | |
+| reusable course unit | **module** | Reusable between courses. |
+| section inside a module | **chapter** | |
+| lesson | **lesson** | |
+| lesson content element | **content block**, short **block** | |
+| curriculum or syllabus | **course curriculum** | Eyebrow: “course syllabus”. |
+| module association | **attach / detach** | Use this pair consistently, including “detached from the course”. |
+| publication state | **draft / published** | |
+| member's collection | **library** | “This course is not in your library.” |
 
 ## Community
 
-| Concept | PL | EN | Decision notes |
-|---|---|---|---|
-| discussion (per lesson) | **dyskusja** | **discussion** | |
-| thread | **wątek** | **thread** | |
-| post (a message in a thread) | **wpis** | **post** | Verb: „Opublikuj" / "Post". Reply = „odpowiedź" / "reply", verb „Odpowiedz" / "Reply". |
-| follow a thread | **obserwuj wątek** | **follow thread** | Muted = „wyciszono" / "muted". |
-| community space (feed area inside a tenant) | **przestrzeń** | **space** | DECIDED: the tenant is „platforma", so „przestrzeń" belongs to community spaces only („Przestrzenie", „wpis w przestrzeni „X""). Supersedes the earlier „strefa" proposal. Never use „przestrzeń" for a tenant. |
-| reaction (emoji on a post) | **reakcja** | **reaction** | Closed emoji set: 👍 ❤️ 🎉 💡 😂. Verb: „zareaguj" / "react". |
-| follow a space | **obserwuj przestrzeń** | **follow space** | Same verb as thread follow; unfollow = „przestań obserwować" / "unfollow". |
-| ban a member | **ban** (verb: **zbanuj** / **zdejmij bana**) | **ban** | DECIDED: the colloquial noun is intentional and reaches the confirmation dialogs too („Zbanować {e-mail}?", „Zdjąć bana z {e-mail}?") — never „blokada"/„zablokuj" for this action. Badge „Zbanowany" / "Banned". |
-| block another member (private messages) | **zablokuj** / **odblokuj** | **block** / **unblock** | DECIDED: „zablokuj" is reserved for this member-to-member action and is never a synonym for the staff ban above. It is a private, symmetric cut-off between two people („Ta osoba jest zablokowana. Odblokuj ją, aby znowu pisać."), so copy never names who blocked whom. |
-| report a private conversation | **zgłoś rozmowę** | **report conversation** | Same verb as the post report („zgłoś" / "report"); the staff surface is „Zgłoszone rozmowy prywatne" / "Reported direct conversations" and closing one is „Zamknij zgłoszenie" / "Close report". |
-| direct messages (the member surface) | **wiadomości** | **messages** | DECIDED: one bare noun in the member surface, matching the navigation entry („Wiadomości" / "Messages") — never „wiadomości prywatne" or "direct messages" there. A single item is „wiadomość" / "message", the pair of people „rozmowa" / "conversation". |
+| Concept | English | Decision notes |
+|---|---|---|
+| per-lesson discussion | **discussion** | |
+| conversation thread | **thread** | |
+| message in a thread | **post** | Verb: Post. Response noun and verb: reply / Reply. |
+| thread subscription | **follow thread** | Opposite state: muted. |
+| feed area inside a workspace | **space** | Reserve this term for community spaces, not tenants. The current Polish distinction is defined in `pl.ts`; it supersedes the earlier zone proposal. |
+| emoji response | **reaction** | Closed set: 👍 ❤️ 🎉 💡 😂. Verb: react. |
+| space subscription | **follow space** | Same verb as threads; opposite: unfollow. |
+| staff exclusion of a member | **ban** | Keep the colloquial term in confirmation dialogs. Badge: Banned. Do not call this blocking. |
+| member-to-member message cutoff | **block / unblock** | Separate from a staff ban. This is a private, symmetric cutoff: copy must not reveal who blocked whom. |
+| flag a private conversation | **report conversation** | Staff surface: “Reported direct conversations”; action: “Close report”. Same report verb as posts. |
+| member messaging surface | **messages** | Match navigation. Do not expand this to “direct messages” on the member surface. A single item is a message; the pair of people has a conversation. |
 
 ## Platform
 
-| Concept | PL | EN | Decision notes |
-|---|---|---|---|
-| tenant (user-facing) | **platforma** | **workspace** | DECIDED: users NEVER see „tenant". PL says „platforma" („Nieznana platforma", „adres platformy", „Twoja platforma") so „przestrzeń" stays reserved for community spaces. EN still says "workspace"; unifying EN is a separate pass. |
-| account | **konto** | **account** | |
-| magic link | **magiczny link** | **magic link** | DECIDED word order: adjective first — „magiczny link", „zaloguj się magicznym linkiem" (was mixed with „link magiczny"). |
-| passkey | **klucz dostępu** | **passkey** | |
-| two-factor authentication | **weryfikacja dwuetapowa** | **two-factor authentication** | DECIDED: one name on the login screen and in security settings — never „uwierzytelnianie dwuskładnikowe". EN buttons spell it out ("Enable two-factor authentication"). |
-| file storage (S3) | **magazyn plików** | **file storage** | The service. Its container is **bucket** in both languages (vendor term, kept untranslated): „nazwa bucketu" / "bucket name". Never „pamięć plików", „storage" or „zasobnik". |
-| import key (short-lived migration key) | **klucz importu** | **import key** | Section heading „Klucze importu" / "Import keys" — never „klucz API migracji" / "migration API key". |
-| configured / not configured (status pair) | **Skonfigurowane / Nieskonfigurowane** | **Configured / Not configured** | One adjectival pair in the setup checklist and in Integrations — never „Skonfigurowano", „Nie ustawiono", „Brak konfiguracji" or "Not set". |
-| iFirma (invoicing vendor) | **iFirma** | **iFirma** | Trademark casing: lowercase „i", capital „F" — in every heading, label and provider option, both languages. |
-| notification | **powiadomienie** | **notification** | Kinds so far: thread reply = „odpowiedź w dyskusji" / "reply in the discussion"; conversation report (`dm-report`, staff only) = „{osoba} zgłosił(a) rozmowę prywatną" / "{person} reported a direct conversation". |
-| manage notifications (e-mail footer) | **zarządzaj powiadomieniami** | **manage notifications** | Opt-out footer in community notification e-mails; links the thread/space surface that owns the mute/unfollow toggle. |
-| terms of service | **regulamin** | **terms of service** | Tenant-configured BYO URL (panel Settings). Consent copy: „Akceptuję regulamin i politykę prywatności" / "I accept the terms of service and privacy policy". |
-| privacy policy | **polityka prywatności** | **privacy policy** | Same consent surface as regulamin; inflected „politykę prywatności" in the checkbox copy. |
-| member view (staff sees the community as a member) | **podgląd uczestnika** | **member view** | DECIDED: „podgląd" is free for this concept — the free-sample row forbids „darmowy podgląd"/„lekcja podglądowa" for a lesson, not the noun itself. The entry CTA is „Zobacz jako" / "View as", the banner „Oglądasz jako {imię}" / "Viewing as {name}", the exit „Wróć do panelu" / "Back to the panel". Never „impersonacja", „podszywanie się" or "impersonation" in user-facing copy. |
-| integration | **integracja** | **integration** | Third-party proper nouns (Stripe, Bunny Stream, restricted key, webhook) stay untranslated; PL may gloss them in parentheses. |
+| Concept | English | Decision notes |
+|---|---|---|
+| tenant, user-facing | **workspace** | Never expose “tenant”. Keep distinct from community spaces. |
+| account | **account** | |
+| passwordless sign-in link | **magic link** | The Polish dictionary consistently uses adjective-first word order. |
+| passkey | **passkey** | |
+| second authentication factor | **two-factor authentication** | One name in login and security settings; spell it out in buttons. |
+| S3 service | **file storage** | Its container is a **bucket** in both languages, retaining the vendor term. |
+| short-lived migration key | **import key** | Heading: “Import keys”; avoid “migration API key”. |
+| setup status pair | **Configured / Not configured** | One adjectival pair in the checklist and Integrations; avoid “Not set”. |
+| invoicing vendor | **iFirma** | Lowercase i, capital F in all headings, labels, and provider options. |
+| notification | **notification** | Thread reply: “reply in the discussion”. Staff `dm-report`: “{person} reported a direct conversation”. |
+| email notification preferences | **manage notifications** | Footer links to the thread or space owning the mute/unfollow control. |
+| terms | **terms of service** | Tenant-configured BYO URL. Consent: “I accept the terms of service and privacy policy”. |
+| privacy document | **privacy policy** | Same consent surface as terms. |
+| staff viewing the community as a member | **member view** | Entry: “View as”; banner: “Viewing as {name}”; exit: “Back to the panel”. Avoid implementation jargon such as “impersonation”. |
+| connected service | **integration** | Proper nouns and vendor terms such as Stripe, Bunny Stream, restricted key, and webhook remain untranslated; translations may add a gloss. |
 
-## Action verbs (buttons)
+## Action verbs
 
-| Action | PL | EN | Notes |
-|---|---|---|---|
-| cancel (a dialog/flow) | **Anuluj** | **Cancel** | Never „Przerwij". A canceled payment/subscription = „anulowana" / "canceled". |
-| close (dismiss a finished dialog) | **Zamknij** | **Close** | `common.close`. Replaces „Anuluj" once the dialog's action has succeeded and there is nothing left to cancel. |
-| save | **Zapisz** | **Save** | |
-| create | **Utwórz** | **Create** | |
-| add | **Dodaj** | **Add** | |
-| delete (destroy content, irreversible) | **Usuń** | **Delete** | EN: "Delete" whenever data is destroyed (lessons, chapters, posts). |
-| remove (take out of a collection) | **Usuń** | **Remove** | PL uses „Usuń" for both; EN distinguishes. Exception kept by convention: "Remove member" (industry standard), even though it deletes their data — the dialog spells out the impact. |
-| revoke | **Cofnij dostęp** | **Revoke** | |
-| renew | **Odnów** | **Renew** | |
-| publish | **Opublikuj** | **Publish** | |
-| manage | **Zarządzaj** | **Manage** | |
-| upload a file | **Dodaj …** / progress **Przesyłanie…** | **Add …** / progress **Uploading…** | One PL pair for image assets, product downloads and lesson attachments — never „Wgraj"/„Wgrywanie…" or „Wysyłanie…". EN is not unified yet ("Upload file" still appears in image assets). |
-| irreversibility notice | **Tej operacji nie można cofnąć.** | **This cannot be undone.** | One canonical sentence (was mixed with „Ta operacja jest nieodwracalna."). |
+| Action | English | Notes |
+|---|---|---|
+| cancel an unfinished flow | **Cancel** | Payment/subscription state: canceled. |
+| dismiss a completed dialog | **Close** | `common.close`; replaces Cancel after success. |
+| save | **Save** | |
+| create | **Create** | |
+| add | **Add** | |
+| destroy content | **Delete** | Lessons, chapters, posts. |
+| take out of a collection | **Remove** | “Remove member” remains the conventional exception even when data is deleted; explain the impact in the dialog. |
+| revoke access | **Revoke** | |
+| renew | **Renew** | |
+| publish | **Publish** | |
+| manage | **Manage** | |
+| upload a file | **Add …**, progress **Uploading…** | The Polish dictionary uses one pair for images, downloads, and attachments. English is not yet unified: image assets still say “Upload file”. |
+| irreversible action notice | **This cannot be undone.** | Use this exact sentence consistently. |
 
 ## Error-message tone
 
-- PL addresses the user per „ty", capitalized „Ty/Twój" (grammar-required forms
-  only, no shouting). EN uses plain "you".
-- Actionable, no blame: say what happened + what to do next
-  („Sprawdź wprowadzone dane i spróbuj ponownie."), never accuse
-  („podałeś zły…" is forbidden — also because it is gendered, see below).
-- No gendered past-tense forms addressed to the user. Rephrase to
-  present/imperative/noun forms: „Masz tu kupiony kurs?" not „Kupiłeś kurs?".
-  Third-person „odpowiedział(a)" with the parenthesis is allowed.
-- Never leak internals: no raw backend messages, codes only as „Identyfikator
-  śledzenia" / "Trace ID".
-- Headings are short and human („Coś poszło nie tak", "Nothing here"); details
-  go in the body sentence.
+- Address the user directly. English uses plain “you”; Polish uses the polite
+  capitalization of personal pronouns where grammar requires it.
+- Be actionable and avoid blame: explain what happened and what to do next,
+  for example “Check your details and try again.”
+- Avoid gendered past-tense forms addressed to the user. Prefer present tense,
+  imperatives, or nouns. Parenthesized third-person gender alternatives are allowed.
+- Do not leak internal backend messages. Identify diagnostic codes as “Trace ID”.
+- Use short, human headings such as “Something went wrong” or “Nothing here”.
+  Put details in the body.
 
 ## Mechanics per language
 
-- **Button casing**: sentence case in both languages (per D6). Only proper
-  nouns capitalized ("Continue with Google", „Wybierz z Bunny Stream").
-- **Field labels**: lowercase in both languages („e-mail", "new password").
-  Table column headers and section headings: sentence case.
-- **PL quotes**: „lowered-raised" („nazwa"); **EN quotes**: “curly” — never
-  straight `"` in copy.
-- **Dashes**: spaced em/en dash „ — " for asides in both languages; never a
-  bare hyphen as punctuation.
-- **Ellipsis**: single char `…` for in-progress states („Zapisywanie…",
-  "Saving…").
-- **Numbers/currency**: rendered via `Intl` with `pl-PL` / `en-GB`
-  (`apps/web/src/lib/format.ts`): PL `399,00 zł` (comma decimal, symbol after),
-  EN `PLN 399.00`. Hand-written examples follow the same convention
-  (PL „np. 199,99", EN "e.g. 199.99").
-- **Dates**: via `Intl` `dateStyle: 'medium'` — never hand-formatted.
-- **PL e-mail**: always hyphenated „e-mail"; EN always "email".
-- **PL plurals**: always the 3-form `plural(one, few, many)` helper — never
-  a bare „{count} lekcji". Include agreeing adjectives inside the plural forms
-  or rephrase so the sentence works for count = 1 („występuje też w 1 innym
-  kursie").
-- **Duration**: PL „godz." / „min", EN "h" / "min".
+- **Buttons:** sentence case in both languages (D6). Capitalize proper nouns,
+  as in “Continue with Google” and “Choose from Bunny Stream”.
+- **Field labels:** lowercase, such as “email” or “new password”. Table columns
+  and section headings use sentence case.
+- **Quotes:** Polish uses lowered opening quotes; English uses curly quotes.
+  Avoid straight quotation marks in product copy.
+- **Dashes:** spaced em/en dashes for asides, not bare hyphens.
+- **Ellipsis:** a single `…` for progress states, such as “Saving…”.
+- **Numbers and currency:** use `Intl` with `pl-PL` / `en-GB`
+  (`apps/web/src/lib/format.ts`). Polish uses a decimal comma and trailing
+  currency symbol; English uses `PLN 399.00`. Follow the same convention in examples.
+- **Dates:** `Intl` with `dateStyle: 'medium'`; never format by hand.
+- **Email spelling:** hyphenated in Polish, “email” in English.
+- **Polish plurals:** use the three-form `plural(one, few, many)` helper.
+  Include agreeing adjectives in the plural forms or rephrase so count = 1 works.
+- **Duration:** localized hour abbreviation; “h” in English, “min” in both.
 
-## Forbidden anglicisms (PL)
+## Polish translation vocabulary
 
-Never in Polish copy: „member", „workspace", „tenant", „checkout" (as a noun),
-„billing" (bare), „subskrybent", „draft", „feature", „dashboard" (use
-„przegląd"), „progress" (use „postęp/postępy"), „community" (use
-„społeczność"). Technical proper nouns are fine (Stripe, webhook, restricted
-key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
-(„klucz ograniczony (restricted key)").
+Do not import these English nouns into Polish copy: member, workspace, tenant,
+checkout, bare billing, draft, feature, dashboard, progress, community.
+Use the canonical translations in `pl.ts`. The rejected subscriber synonym
+also stays excluded. Technical proper nouns are allowed: Stripe, webhook,
+restricted key, PDF, HTML, CSV, JSON. Add a parenthesized gloss where appropriate.
 
-## Decision log (all decisions, including no-change confirmations)
+## Decision log
 
-1. member = **uczestnik** (rejected: kursant, członek). Fixed „Kursanci" in
-   `billing.intro`.
-2. tenant = **przestrzeń** / **space**; "workspace" purged from EN
-   (`tenant.openingWorkspace`, `resetPassword.eyebrow`).
-3. Roles: właściciel/owner, administrator/admin, uczestnik/member; persona:
-   twórca/creator; collective: zespół/staff.
-4. grant = dostęp/grant; verb **przyznać** (fixed „nadany" →
-   „przyznany" in checkout success copy).
-5. revoke = **cofnij dostęp** (was „odbierz") to free „odbierz" for the
-   claim-CTA „Odbierz bezpłatnie".
-6. checkout link = **link do zakupu** / **checkout link** (fixed „link do
-   płatności" in `checkout.unavailableBody`, "purchase link" in
-   `products.copyCheckoutLink` + `checkoutLinkCopied`).
-7. magic link = **magiczny link**, adjective-first in every inflection (fixed
-   `auth.registeredBoughtHint`, `auth.registeredUseMagicLinkCta`).
-8. attach/detach = **podepnij/odepnij** (fixed „odłącz…" in
-   `courses.detachModule*`, „odłączone" in `products.unreachable*Label`).
-9. EN spelling: American **canceled** (fixed `checkout.cancelledEyebrow`;
-   key names keep their historical spelling — keys are API, values are copy).
-10. EN destructive verb: **Delete** for content destruction (fixed
-    `courses.removeChapter`, `removeChapterLessonCount`); **Remove member**
-    kept as the industry-standard exception.
-11. Irreversibility sentence standardized: „Tej operacji nie można cofnąć." /
-    "This cannot be undone." (fixed `lessons.deleteConfirmIntro`).
-12. No customer noun pre-purchase (fixed `sales.emptyBody` both languages).
-13. Shared-module warnings rephrased so count = 1 is grammatical in both
-    languages (`courses.detachModuleSharedNote`,
-    `courses.removeChapterSharedWarning`).
-14. „dangling references" (dev jargon) → "broken references" /
-    „nieprawidłowe odwołania" (fixed EN `products.accessIssues*`).
-15. `lesson.videoPlaceholder` rephrased in both languages (was a calque with a
-    bare hyphen).
-16. E-mail copy: PL magic-link disclaimer rephrased (was „Jeśli nie prosisz o
-    tę wiadomość…"), link validity standardized to „ważny przez godzinę",
-    reset e-mail uses „link do zresetowania hasła".
-17. Gendered forms addressed to the user removed („Kupiłeś tutaj kurs?" →
-    „Masz tu kupiony kurs?").
-18. `members.joined` PL = „Data dołączenia" (was the bare noun „Dołączenie").
-19. Confirmed unchanged (already canonical): kurs/moduł/rozdział/lekcja;
-    dyskusja/wątek/wpis; produkt/cena/subskrypcja/zamówienie; „Anuluj" (no
-    „przerwij" existed); sekcja „Przegląd"/"Overview"; „wersja
-    robocza"/"draft"; „klucz dostępu"/"passkey"; price formatting via `Intl`.
-20. `checkout.cancelledTitle` PL: „Płatność nie została dokończona" (was
-    „ukończona" — payments are „dokańczane", courses are „ukańczane").
-21. `student.grantUpcomingNote` aligned with its label: „Dostęp rozpocznie
-    się {date}." (was „otworzy się").
-22. community space = **strefa** / **space** (rejected: „przestrzeń" — tenant,
-    „kanał" — chat-like, „grupa" — collides with FB groups). New notification
-    kind copy: space post = „nowy wpis w strefie" / "new post in the space".
-23. PL tenant = **platforma**, superseding 2 and 22: „przestrzeń" now names the
-    community space and „strefa" is dropped. Applied to auth eyebrows, boot
-    splash, tenant chooser, branding, support, e-mail settings and transactional
-    e-mails. Where a sentence also names the shared product-level pool, that pool
-    is „Together", not „platforma".
-24. 2FA = **weryfikacja dwuetapowa** on the login screen and in security
-    settings (was „uwierzytelnianie dwuskładnikowe" in settings).
-25. checkout surface = **strona zakupu** in creator copy; the buyer-facing
-    checkout page keeps „Płatność"/„Ładowanie płatności…" for the payment step.
-26. storage = **magazyn plików** (service) + **bucket** (container); payment
-    provider = **dostawca płatności**; migration keys = **klucze importu**;
-    status pair = **Skonfigurowane/Nieskonfigurowane**; free sample =
-    **bezpłatna lekcja próbna**; upload pair = **Dodaj …/Przesyłanie…**.
-27. Moderation keeps the colloquial **ban** in confirmations too („Zbanować…?",
-    „Zdjąć bana z…?"), replacing „blokada".
-28. **iFirma** trademark casing in both languages (was „IFirma" in the
-    invoicing heading, username label and provider option).
-29. Setup errors are member-safe by default; the creator panel appends its own
-    hint (`errors.panelHint*`, `localizeErrorCodeForPanel`) so „Integracje →
-    E-mail" reaches the creator without leaking into member surfaces.
-30. Member-to-member cut-off in private messages = **zablokuj/odblokuj** /
-    **block/unblock**, kept apart from the staff **ban** of 27; conversation
-    report = „zgłoś rozmowę"/"report conversation" with the new `dm-report`
-    notification kind. The DM report copy says **zespół** like the post-report
-    copy („Dzięki — zespół to sprawdzi.") — never „zespół społeczności".
-31. Dialog dismissal after a successful action = **Zamknij** / **Close**
-    (`common.close`), so a finished dialog no longer offers „Anuluj".
-32. member view = **podgląd uczestnika** / **member view** (rejected:
-    „impersonacja", „podszywanie się" — jargon; „tryb podglądu" — names a mode,
-    not whose view it is). „Podgląd" stays forbidden only in the free-sample
-    wording.
-33. The member messages surface is **wiadomości** / **messages** in every
-    sentence (fixed „wiadomości prywatne" and "direct messages" in the
-    member-view copy).
+Polish wording is recorded in the dictionaries; this log describes the decisions
+and affected keys in English.
+
+1. Use the broad member concept rather than a course-only student or formal
+   club-member term. Corrected `billing.intro`.
+2. Initially called the tenant a space and removed workspace from
+   `tenant.openingWorkspace` and `resetPassword.eyebrow`. Superseded by 23.
+3. Separate owner/admin/member roles, the creator persona, and collective staff.
+4. Standardize the grant verb in checkout success copy.
+5. Use distinct verbs for revocation and the free-claim CTA.
+6. Standardize checkout link in `checkout.unavailableBody`,
+   `products.copyCheckoutLink`, and `checkoutLinkCopied`.
+7. Standardize adjective-first Polish magic-link phrasing in
+   `auth.registeredBoughtHint` and `auth.registeredUseMagicLinkCta`.
+8. Standardize attach/detach in `courses.detachModule*` and
+   `products.unreachable*Label`.
+9. Use American **canceled** in `checkout.cancelledEyebrow`. Historical key
+   spelling remains because keys are API; values are copy.
+10. Use **Delete** for content destruction in `courses.removeChapter` and
+    `removeChapterLessonCount`; retain **Remove member** as the conventional exception.
+11. Standardize **This cannot be undone.** in `lessons.deleteConfirmIntro`.
+12. Avoid a customer noun before purchase in `sales.emptyBody`.
+13. Make shared-module warnings grammatical for count = 1 in
+    `courses.detachModuleSharedNote` and `courses.removeChapterSharedWarning`.
+14. Replace developer jargon “dangling references” with “broken references”
+    in `products.accessIssues*` and the corresponding Polish wording.
+15. Rephrase `lesson.videoPlaceholder` in both languages, removing a literal
+    translation and punctuation hyphen.
+16. Rephrase the Polish magic-link disclaimer, standardize one-hour validity,
+    and name the password-reset link consistently.
+17. Remove gendered forms addressed to the user in purchased-course prompts.
+18. Give `members.joined` an explicit joining-date label in Polish.
+19. Confirm canonical course/module/chapter/lesson, discussion/thread/post,
+    product/price/subscription/order, Cancel, Overview, draft, passkey, and
+    `Intl` price formatting.
+20. Correct the Polish verb for an unfinished payment in `checkout.cancelledTitle`.
+21. Align `student.grantUpcomingNote` with the label: access starts on the date.
+22. Initially proposed a zone term for community spaces to distinguish them
+    from tenants and chat channels. Superseded by 23.
+23. Reserve the Polish platform term for tenants and the space term for
+    community spaces, superseding 2 and 22. Applied to auth, splash, chooser,
+    branding, support, email settings, and transactional emails. A shared
+    product-level pool is called **Together**. English uses **workspace**.
+24. Use one two-factor authentication term in login and security settings.
+25. Creator copy names the checkout surface; buyer copy names the payment step.
+26. Standardize file storage/bucket, payment provider, import keys,
+    Configured/Not configured, free preview lesson, and file-upload vocabulary.
+27. Retain the colloquial ban term in moderation confirmations, distinct from blocking.
+28. Apply **iFirma** trademark casing in invoicing headings, username labels,
+    and provider options in both languages.
+29. Default setup errors are member-safe. Creator hints belong in
+    `errors.panelHint*` and `localizeErrorCodeForPanel`; integration instructions
+    must not leak into member surfaces.
+30. Keep private block/unblock distinct from staff bans. Use report conversation
+    for `dm-report`, and plain staff in report acknowledgments.
+31. Use `common.close` to dismiss successful dialogs, replacing Cancel.
+32. Use member view instead of impersonation or a generic preview-mode label.
+    Restrictions on preview terminology apply to free samples, not this concept.
+33. Use **messages** consistently on the member surface, including member-view copy.

@@ -152,7 +152,7 @@ describe('groupLessonBlocks', () => {
     const groups = groupLessonBlocks([
       video,
       { type: 'link', url: 'https://github.com/acme-courses/task-1', description: 'GitHub' },
-      { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/HTML' },
+      { type: 'link', url: 'https://developer.mozilla.org/en-US/docs/Web/HTML' },
       { type: 'html', html: '<p>Notatki</p>' },
       { type: 'link', url: 'https://example.com/later' },
     ]);
@@ -163,7 +163,7 @@ describe('groupLessonBlocks', () => {
       links: [
         { url: 'https://github.com/acme-courses/task-1', label: 'GitHub', host: 'github.com' },
         {
-          url: 'https://developer.mozilla.org/pl/docs/Web/HTML',
+          url: 'https://developer.mozilla.org/en-US/docs/Web/HTML',
           label: 'developer.mozilla.org',
           host: 'developer.mozilla.org',
         },
@@ -207,12 +207,12 @@ describe('groupLessonBlocks', () => {
 
   it('renders one sandbox per block when several blocks point at the same sandbox', () => {
     const groups = groupLessonBlocks([
-      { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Zadanie' },
+      { type: 'link', url: 'https://codesandbox.io/embed/abc123', description: 'Assignment' },
       { type: 'embed', embedUrl: 'https://codesandbox.io/p/sandbox/abc123' },
     ]);
 
     expect(groups.map((group) => (group.kind === 'sandbox' ? group.caption : group.kind))).toEqual([
-      'Zadanie',
+      'Assignment',
       null,
     ]);
   });
@@ -288,7 +288,7 @@ describe('groupLessonBlocks', () => {
   it('labels a description-less link with its host alone', () => {
     expect(
       labelsOf([
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex' },
+        { type: 'link', url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/flex' },
         { type: 'html', html: '<p>Notatki</p>' },
         { type: 'link', url: 'https://www.github.com/acme-courses/task-1/' },
       ]),
@@ -300,8 +300,8 @@ describe('groupLessonBlocks', () => {
       labelsOf([
         { type: 'link', url: 'https://github.com/a/one' },
         { type: 'link', url: 'https://github.com/a/two' },
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#syntax' },
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex#examples' },
+        { type: 'link', url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/flex#syntax' },
+        { type: 'link', url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/flex#examples' },
         { type: 'link', url: 'https://example.com' },
       ]),
     ).toEqual([
@@ -338,7 +338,7 @@ describe('groupLessonBlocks', () => {
     expect(
       labelsOf([
         { type: 'link', url: 'https://example.com/a', description: 'developer.mozilla.org' },
-        { type: 'link', url: 'https://developer.mozilla.org/pl/docs/Web/CSS/flex' },
+        { type: 'link', url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/flex' },
       ]),
     ).toEqual(['developer.mozilla.org', 'developer.mozilla.org / flex']);
   });
@@ -346,10 +346,10 @@ describe('groupLessonBlocks', () => {
   it('decodes percent-escapes in the appended path segment', () => {
     expect(
       labelsOf([
-        { type: 'link', url: 'https://example.com/docs/uk%C5%82ad%20flex' },
-        { type: 'link', url: 'https://example.com/docs/siatka' },
+        { type: 'link', url: 'https://example.com/docs/flex%20layout' },
+        { type: 'link', url: 'https://example.com/docs/grid' },
       ]),
-    ).toEqual(['example.com / układ flex', 'example.com / siatka']);
+    ).toEqual(['example.com / flex layout', 'example.com / grid']);
   });
 
   it('falls back to a derived label when the description repeats the URL', () => {
@@ -376,7 +376,7 @@ describe('groupLessonBlocks', () => {
     expect(
       groupLessonBlocks([
         { type: 'link', url: 'mailto:teacher@example.com' },
-        { type: 'link', url: 'mailto:teacher@example.com?subject=Zadanie%201', description: 'Zadanie 1' },
+        { type: 'link', url: 'mailto:teacher@example.com?subject=Assignment%201', description: 'Assignment 1' },
       ]),
     ).toEqual([
       {
@@ -384,8 +384,8 @@ describe('groupLessonBlocks', () => {
         links: [
           { url: 'mailto:teacher@example.com', label: 'teacher@example.com', host: 'teacher@example.com' },
           {
-            url: 'mailto:teacher@example.com?subject=Zadanie%201',
-            label: 'Zadanie 1',
+            url: 'mailto:teacher@example.com?subject=Assignment%201',
+            label: 'Assignment 1',
             host: 'teacher@example.com',
           },
         ],

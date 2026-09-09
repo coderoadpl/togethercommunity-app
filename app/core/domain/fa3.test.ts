@@ -95,10 +95,10 @@ describe('FA(3) renderer', () => {
   it('uses P_19C for another legal basis and escapes its text', () => {
     const xml = renderFa3Invoice({
       ...input,
-      vat: { kind: 'exempt', basisKind: 'other', basis: '§ 1 & < " rozporządzenia' },
+      vat: { kind: 'exempt', basisKind: 'other', basis: 'Section 1 & < " of the regulation' },
     });
 
-    expect(xml).toContain('<P_19C>§ 1 &amp; &lt; &quot; rozporządzenia</P_19C>');
+    expect(xml).toContain('<P_19C>Section 1 &amp; &lt; &quot; of the regulation</P_19C>');
   });
 
   it('caps a normalized exemption basis at 256 characters', () => {

@@ -15,7 +15,7 @@ domains are excluded. In this schema, `verified` is the active routing state.
 Without a verified custom domain, links use the platform subdomain (or the
 configured application origin in single-tenant mode).
 
-Settings → Addresses displays this derived address read-only as **Adres główny**
+Settings → Addresses displays this derived address read-only as **Primary address**
 in Polish. There is no primary flag or manual selection. Removing the canonical
 domain makes the next eligible domain canonical; removing the last one restores
 the platform address.
@@ -30,7 +30,7 @@ Existing queued messages and registered SES subscriptions are not rewritten.
 
 ## How it works
 
-1. The owner types a domain and presses **Dodaj domenę**. The platform
+1. The owner types a domain and presses **Add domain**. The platform
    normalises it (lowercase, no scheme, no port, no trailing dot), refuses
    addresses under the platform's own base domain, refuses international
    domains that are not in punycode (`xn--…`) form, and refuses a domain that
@@ -49,15 +49,15 @@ Existing queued messages and registered SES subscriptions are not rewritten.
    Re-checks retain all previous records and merge new ones without duplicates.
    Active domains collapse the checklist under **DNS records (N) ✓**; expanding
    it shows the same records, all verified.
-4. Once the records are published, **Sprawdź teraz** re-reads the provider
+4. Once the records are published, **Check now** re-reads the provider
    state immediately. A scheduled job repeats the same check every 15 minutes
    for every pending domain, so a domain also goes live on its own.
-5. When the domain resolves, the row flips to *Działa*, and the owner gets an
+5. When the domain resolves, the row flips to *Active*, and the owner gets an
    in-app notification. If a domain is still unresolved 24 hours after it was
    added, the owner gets a single warning notification.
    The address also appears in the [storage CORS configuration](storage.md);
    Settings keeps a reminder beside it until the bucket accepts its preflight.
-6. **Usuń** detaches the domain at the provider and deletes the row. If the
+6. **Remove** detaches the domain at the provider and deletes the row. If the
    request came from the domain being removed, the response carries the
    platform URL to continue on.
 
@@ -73,8 +73,8 @@ the address the platform operator provides. A subdomain such as
 |---|---|
 | Czeka na DNS | The records are published in the Studio; DNS does not point at the deployment yet. |
 | Weryfikacja u dostawcy | The provider returned an ownership record that must be published before it will serve the domain. |
-| Działa | The domain resolves and serves the workspace. |
-| Błąd | The last check failed; the provider message is shown under the domain. |
+| Active | The domain resolves and serves the workspace. |
+| Error | The last check failed; the provider message is shown under the domain. |
 
 The domain row stores the full DNS record set in `records` (JSONB), including
 `purpose` (`ownership` or `routing`). Current ownership requirements remain in

@@ -3,8 +3,7 @@
 > Owner decision 2026-07-26 upgrading backlog B13: coupons/discounts are a
 > wanted feature, to be built soon, WITH usage statistics and per-coupon
 > revenue attribution — a coupon doubles as a lightweight affiliate mechanism
-> ("give a partner a code, settle attributed sales with them" — szczegóły
-> biznesowe w prywatnych materiałach właściciela) without a
+> ("give a partner a code, settle attributed sales with them" — business details in the owner’s private materials) without a
 > full partnerships panel. Omnibus compliance ships in the same slice (the
 > original r3 pairing rule: no promotional pricing without lowest-30-day
 > price display).
@@ -54,8 +53,8 @@
 ## Omnibus (must ship in the same PR)
 
 - Wherever a REDUCED price is presented to a consumer (checkout with an
-  applied coupon; any future struck-through promo price), show "Najniższa
-  cena z ostatnich 30 dni: X" derived from product_price_history + active
+  applied coupon; any future struck-through promo price), show "Lowest
+  price z ostatnich 30 dni: X" derived from product_price_history + active
   coupon-free price. PL/EN copy; hidden for B2B-only contexts if ever added.
 - Tripwire test: rendering a discounted checkout without the lowest-30-day
   line fails.
@@ -69,7 +68,7 @@
   Z PLN discount" — the owner settles with the partner off this export).
 - Existing /panel/sales orders list gains a coupon column + filter.
 - NO automatic payout math in v1 (the split stays a human agreement,
-  szczegóły biznesowe w prywatnych materiałach właściciela);
+  business details in the owner’s private materials);
   partnerLabel + export is the v1 affiliate feature. Full partner accounts,
   self-serve dashboards, payout automation = out of scope.
 

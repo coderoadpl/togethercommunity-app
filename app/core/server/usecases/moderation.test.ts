@@ -658,7 +658,7 @@ const dmMessage = (id: string, senderUserId: string, createdAt: string): DmMessa
   tenantId: 'tenant-1',
   conversationId: 'conversation-1',
   senderUserId,
-  body: `Treść ${id}`,
+  body: `Content ${id}`,
   createdAt,
 });
 

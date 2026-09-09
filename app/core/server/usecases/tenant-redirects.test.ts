@@ -171,7 +171,7 @@ describe('tenant redirect management', () => {
     const result = await createTenantRedirect(
       ctx,
       {
-        fromPath: '/course/javascript/wstep',
+        fromPath: '/course/javascript/intro',
         target: { kind: 'lesson', courseId: course.id, lessonId: lesson.id },
         permanent: false,
       },

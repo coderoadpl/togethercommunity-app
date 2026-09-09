@@ -259,7 +259,7 @@ describe('OrderDetailPage', () => {
       schemaSystemCode: 'FA (3)',
       schemaVersion: '1-0E',
       contextNip: '5555555555',
-      sellerName: 'Together',
+      sellerName: en.common.appName,
       sellerAddress: 'Main Street 1',
       p2: 'FV/2026/000001',
       invoiceType: 'VAT',

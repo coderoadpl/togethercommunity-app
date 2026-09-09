@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicDmConversation } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { MessagesListPage } from './MessagesListPage.js';
@@ -30,7 +30,7 @@ const conversation = (input: {
     isStaff: input.isStaff ?? false,
   },
   lastMessageAt: '2026-08-17T09:00:00.000Z',
-  lastMessageSnippet: `Wiadomość ${input.id}`,
+  lastMessageSnippet: `Message ${input.id}`,
   lastMessageIsOwn: input.own ?? false,
   hasMessages: true,
   unread: input.unread ?? false,
@@ -82,13 +82,13 @@ describe('MessagesListPage', () => {
     const first = await screen.findByTestId('conversation-row-c1');
     expect(first).toHaveAttribute('href', '/messages/c1');
     expect(first).toHaveTextContent('Ola');
-    expect(first).toHaveTextContent('Wiadomość c1');
-    expect(within(first).getByText(pl.notifications.unreadLabel)).toBeInTheDocument();
-    expect(first).toHaveTextContent(pl.discussion.authorChip);
+    expect(first).toHaveTextContent('Message c1');
+    expect(within(first).getByText(en.notifications.unreadLabel)).toBeInTheDocument();
+    expect(first).toHaveTextContent(en.discussion.authorChip);
 
     const second = screen.getByTestId('conversation-row-c2');
-    expect(second).toHaveTextContent(`${pl.messages.ownPrefix} Wiadomość c2`);
-    expect(within(second).queryByText(pl.notifications.unreadLabel)).not.toBeInTheDocument();
+    expect(second).toHaveTextContent(`${en.messages.ownPrefix} Message c2`);
+    expect(within(second).queryByText(en.notifications.unreadLabel)).not.toBeInTheDocument();
   });
 
   it('shows the empty state with the discovery hint', async () => {
@@ -97,9 +97,9 @@ describe('MessagesListPage', () => {
     await renderPage();
 
     expect(await screen.findByTestId('conversations-empty')).toHaveTextContent(
-      pl.messages.emptyList,
+      en.messages.emptyList,
     );
-    expect(screen.getByText(pl.messages.emptyListHint)).toBeInTheDocument();
+    expect(screen.getByText(en.messages.emptyListHint)).toBeInTheDocument();
   });
 
   it('sends an unauthenticated viewer to the sign-in page', async () => {

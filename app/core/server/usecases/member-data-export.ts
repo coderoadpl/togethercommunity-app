@@ -105,7 +105,7 @@ export const exportMyData = async (
   const date = exportedAt.slice(0, 10);
   const tenantSlug = ctx.identity.tenantSlug ?? tenant.value;
   return ok({
-    filename: `moje-dane-${tenantSlug}-${date}.json`,
+    filename: `my-data-${tenantSlug}-${date}.json`,
     mimeType: 'application/json; charset=utf-8',
     content: JSON.stringify(pkg),
   });

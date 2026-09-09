@@ -964,10 +964,10 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
   });
 
-  it('sends the double opt-in confirmation in the recipient language, then the tenant default, then Polish', async () => {
-    const polish = await setup([]);
-    await recordMarketingConsent(ctx, { email: 'pl@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, polish);
-    expect(polish.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation', language: 'pl' } }]);
+  it('sends the double opt-in confirmation in the recipient language, then the tenant default, then English', async () => {
+    const fallback = await setup([]);
+    await recordMarketingConsent(ctx, { email: 'fallback@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, fallback);
+    expect(fallback.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation', language: 'en' } }]);
 
     const tenantEnglish = await setup([], 'en');
     await recordMarketingConsent(ctx, { email: 'tenant-default@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: NOW, proofRef: 'form-1' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, tenantEnglish);

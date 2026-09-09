@@ -163,7 +163,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'checkout',
     auth: 'public',
     path: '/checkout/product-studio-course-101',
-    ready: (page) => page.getByText('Kurs Together 101').first().waitFor(visible),
+    ready: (page) => page.getByText('Together 101 Course').first().waitFor(visible),
   },
   {
     name: 'marketing-preferences',
@@ -199,7 +199,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     tenantSlug: 'akademia',
     path: '/',
     ready: async (page) => {
-      await page.getByRole('heading', { name: 'Zajrzyj do środka' }).waitFor(visible);
+      await page.getByRole('heading', { name: 'Look inside' }).waitFor(visible);
       await page.getByTestId('tenant-logo').first().waitFor(visible);
     },
   },
@@ -446,7 +446,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Otwieranie Twojej platformy…' }).waitFor(visible),
+    ready: (page) => page.getByRole('status', { name: 'Opening your workspace…' }).waitFor(visible),
     waitForNetworkIdle: false,
     minBytes: 7 * 1024,
   },
@@ -475,7 +475,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
       if (!desktop) return;
       await page.getByTestId('dashboard-aside').waitFor(visible);
-      const manage = page.getByTestId('dashboard-member-row').first().getByRole('button', { name: 'Zarządzaj' });
+      const manage = page.getByTestId('dashboard-member-row').first().getByRole('button', { name: 'Manage' });
       await manage.waitFor(visible);
       const hit = await manage.evaluate((element) => {
         const rect = element.getBoundingClientRect();
@@ -576,7 +576,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-coupon-detail',
     auth: 'creator',
     path: '/panel/sales/coupons/coupon-studio-partner20',
-    ready: (page) => page.getByText('Aktywność w czasie').waitFor(visible),
+    ready: (page) => page.getByText('Activity over time').waitFor(visible),
   },
   {
     name: 'panel-order-detail',
@@ -588,7 +588,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-marketing-campaigns',
     auth: 'creator',
     path: '/panel/marketing/campaigns',
-    ready: (page) => page.getByRole('heading', { name: 'Kampanie e-mail' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Email campaigns' }).waitFor(visible),
   },
   {
     name: 'panel-marketing-activity',
@@ -618,19 +618,19 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',
-    ready: (page) => page.getByRole('heading', { name: 'Zgody marketingowe' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Consent forms' }).waitFor(visible),
   },
   {
     name: 'panel-marketing-documents',
     auth: 'creator',
     path: '/panel/marketing/documents',
-    ready: (page) => page.getByRole('heading', { name: 'Dokumenty prawne' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Legal documents' }).waitFor(visible),
   },
   {
     name: 'panel-marketing-layouts',
     auth: 'creator',
     path: '/panel/marketing/layouts',
-    ready: (page) => page.getByRole('heading', { name: 'Układy e-mail' }).waitFor(visible),
+    ready: (page) => page.getByRole('heading', { name: 'Email layouts' }).waitFor(visible),
   },
   {
     name: 'panel-integrations-email',
@@ -661,7 +661,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/members/member-studio-active',
     ready: async (page) => {
-      await page.getByRole('tab', { name: 'E-maile' }).click();
+      await page.getByRole('tab', { name: 'Emails' }).click();
       await page.getByTestId('member-email-send').first().waitFor(visible);
     },
   },

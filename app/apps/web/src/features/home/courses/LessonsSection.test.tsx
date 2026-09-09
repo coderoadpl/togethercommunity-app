@@ -11,7 +11,7 @@ import {
   type TenantSecretMasked,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { stylesAt } from '../../../lib/stylesheet.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -92,7 +92,7 @@ describe('LessonsSection pagination', { timeout: 15000 }, () => {
 
     expect(screen.getAllByTestId('lesson-row')).toHaveLength(25);
 
-    await userEvent.click(screen.getByRole('button', { name: pl.pagination.nextPage }));
+    await userEvent.click(screen.getByRole('button', { name: en.pagination.nextPage }));
     expect(screen.getAllByTestId('lesson-row')).toHaveLength(1);
     expect(screen.getByText('Lesson 00')).toBeInTheDocument();
 
@@ -166,7 +166,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
 
     await renderLessonsAt('/panel/lessons/lesson-1');
-    const input = await screen.findByLabelText(pl.lessons.attachmentFileInput);
+    const input = await screen.findByLabelText(en.lessons.attachmentFileInput);
     await userEvent.upload(input, new File(['content'], 'worksheet.pdf', { type: 'application/pdf' }));
 
     await waitFor(() => expect(directUploadCalled).toBe(true));
@@ -208,10 +208,10 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
 
     await renderLessonsAt('/panel/lessons/lesson-1');
-    await userEvent.click(await screen.findByRole('button', { name: pl.lessons.deleteAttachment({ name: attachment.fileName }) }));
+    await userEvent.click(await screen.findByRole('button', { name: en.lessons.deleteAttachment({ name: attachment.fileName }) }));
 
-    expect(await screen.findByText(pl.lessons.deleteAttachmentConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.lessons.deleteAttachmentConfirmBody({ name: attachment.fileName }))).toBeInTheDocument();
+    expect(await screen.findByText(en.lessons.deleteAttachmentConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.lessons.deleteAttachmentConfirmBody({ name: attachment.fileName }))).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('lesson-attachment-delete-confirm'));
 
     await waitFor(() => expect(screen.queryByText(attachment.fileName)).not.toBeInTheDocument());
@@ -243,32 +243,32 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    await userEvent.type(await screen.findByLabelText(pl.common.name), 'Reordered Lesson');
+    await userEvent.type(await screen.findByLabelText(en.common.name), 'Reordered Lesson');
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await userEvent.type(await screen.findByLabelText(pl.lessons.storageKeyLabel), 'videos/intro.mp4');
-    await userEvent.type(screen.getByLabelText(pl.lessons.streamVideoIdLabel), 'vid-1');
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
+    await userEvent.type(await screen.findByLabelText(en.lessons.storageKeyLabel), 'videos/intro.mp4');
+    await userEvent.type(screen.getByLabelText(en.lessons.streamVideoIdLabel), 'vid-1');
 
     await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
+    await userEvent.click(await screen.findByRole('option', { name: en.lessons.typeEmbed }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
+    const embedUrlInput = await screen.findByLabelText(en.lessons.embedUrlLabel);
     await user.click(embedUrlInput);
     await user.paste('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
-      pl.lessons.typeVideo,
-      pl.lessons.typeEmbed,
+      en.lessons.typeVideo,
+      en.lessons.typeEmbed,
     ]);
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.moveUp({ index: 1 }) }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.moveUp({ index: 1 }) }));
 
     expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
-      pl.lessons.typeEmbed,
-      pl.lessons.typeVideo,
+      en.lessons.typeEmbed,
+      en.lessons.typeVideo,
     ]);
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.createLesson }));
 
     await waitFor(() => {
       expect(submitted.map((block) => block.type)).toEqual(['embed', 'video']);
@@ -302,10 +302,10 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    fireEvent.change(await screen.findByLabelText(pl.common.name), { target: { value: 'Preview' } });
-    expect(screen.getByRole('switch', { name: pl.lessons.previewLabel })).toBeDisabled();
-    expect(screen.getByText(pl.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+    fireEvent.change(await screen.findByLabelText(en.common.name), { target: { value: 'Preview' } });
+    expect(screen.getByRole('switch', { name: en.lessons.previewLabel })).toBeDisabled();
+    expect(screen.getByText(en.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.lessons.createLesson }));
 
     await waitFor(() => expect(submittedPreview).toBe(false));
   });
@@ -338,11 +338,11 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/lesson-1');
 
-    const preview = await screen.findByRole('switch', { name: pl.lessons.previewLabel });
+    const preview = await screen.findByRole('switch', { name: en.lessons.previewLabel });
     await waitFor(() => expect(preview).toBeEnabled());
-    expect(screen.getByText(pl.lessons.previewHelper)).toBeInTheDocument();
+    expect(screen.getByText(en.lessons.previewHelper)).toBeInTheDocument();
     await userEvent.click(preview);
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.saveLesson }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.saveLesson }));
 
     await waitFor(() => expect(submittedPreview).toBe(true));
   });
@@ -366,8 +366,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/lesson-1');
 
-    expect(await screen.findByRole('switch', { name: pl.lessons.previewLabel })).toBeDisabled();
-    expect(screen.getByText(pl.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
+    expect(await screen.findByRole('switch', { name: en.lessons.previewLabel })).toBeDisabled();
+    expect(screen.getByText(en.lessons.previewNeedsPublicCourseHint)).toBeInTheDocument();
   });
 
   it('preloads and updates the free preview setting for an existing lesson', async () => {
@@ -395,11 +395,11 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/lesson-preview');
 
-    const preview = await screen.findByRole('switch', { name: pl.lessons.previewLabel });
+    const preview = await screen.findByRole('switch', { name: en.lessons.previewLabel });
     expect(preview).toBeChecked();
     expect(preview).toBeEnabled();
     await userEvent.click(preview);
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.saveLesson }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.saveLesson }));
 
     await waitFor(() => expect(submittedPreview).toBe(false));
   });
@@ -409,21 +409,21 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    fireEvent.change(await screen.findByLabelText(pl.common.name), { target: { value: 'Provider validation' } });
+    fireEvent.change(await screen.findByLabelText(en.common.name), { target: { value: 'Provider validation' } });
     fireEvent.mouseDown(screen.getByRole('combobox'));
-    fireEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
-    fireEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
+    fireEvent.click(await screen.findByRole('option', { name: en.lessons.typeEmbed }));
+    fireEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
+    const embedUrlInput = await screen.findByLabelText(en.lessons.embedUrlLabel);
 
     fireEvent.change(embedUrlInput, { target: { value: 'https://youtube.com/watch?v=bad' } });
-    expect(screen.getByText(pl.lessons.embedInvalidYoutubeUrl)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
-    expect(screen.getByRole('alert')).toHaveTextContent(pl.lessons.embedInvalidYoutubeUrl);
+    expect(screen.getByText(en.lessons.embedInvalidYoutubeUrl)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.lessons.createLesson }));
+    expect(screen.getByRole('alert')).toHaveTextContent(en.lessons.embedInvalidYoutubeUrl);
 
     fireEvent.change(embedUrlInput, { target: { value: 'https://player.vimeo.com/video/not-a-number' } });
-    expect(screen.getByText(pl.lessons.embedInvalidVimeoUrl)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
-    expect(screen.getByRole('alert')).toHaveTextContent(pl.lessons.embedInvalidVimeoUrl);
+    expect(screen.getByText(en.lessons.embedInvalidVimeoUrl)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.lessons.createLesson }));
+    expect(screen.getByRole('alert')).toHaveTextContent(en.lessons.embedInvalidVimeoUrl);
   });
 
   it.each(privacyNoteScenarios)('renders inline previews and applicable privacy notes $name', async ({ secrets, showBunnyNote }) => {
@@ -445,9 +445,9 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await renderLessonsAt('/panel/lessons/provider-lesson', secrets);
 
     const expectedNotes = [
-      ...(showBunnyNote ? [pl.integrations.bunnySecurityHint] : []),
-      pl.lessons.youtubePrivacyNote,
-      pl.lessons.vimeoPrivacyNote,
+      ...(showBunnyNote ? [en.integrations.bunnySecurityHint] : []),
+      en.lessons.youtubePrivacyNote,
+      en.lessons.vimeoPrivacyNote,
     ];
     await waitFor(() => {
       expect(screen.getAllByRole('note').map((note) => note.textContent)).toEqual(expectedNotes);
@@ -481,13 +481,13 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
     await userEvent.click(await screen.findByTestId('bunny-picker-video'));
 
-    expect(screen.getByLabelText(pl.lessons.streamVideoIdLabel)).toHaveValue('guid-1');
-    expect(screen.getByLabelText(pl.lessons.streamLibraryIdLabel)).toHaveValue('lib-9');
-    expect(screen.getByLabelText(pl.lessons.storageKeyLabel)).toHaveValue('guid-1');
+    expect(screen.getByLabelText(en.lessons.streamVideoIdLabel)).toHaveValue('guid-1');
+    expect(screen.getByLabelText(en.lessons.streamLibraryIdLabel)).toHaveValue('lib-9');
+    expect(screen.getByLabelText(en.lessons.storageKeyLabel)).toHaveValue('guid-1');
   });
 
   it('keeps manual fields and shows a settings hint when Bunny Stream is not configured', async () => {
@@ -506,20 +506,20 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
 
     expect(await screen.findByTestId('bunny-picker-not-configured')).toHaveTextContent(
-      pl.lessons.videoPickerNotConfigured,
+      en.lessons.videoPickerNotConfigured,
     );
-    expect(screen.getByRole('link', { name: pl.lessons.videoPickerOpenIntegrations })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.lessons.videoPickerOpenIntegrations })).toHaveAttribute(
       'href',
       '/panel/integrations#video',
     );
 
-    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
-    expect(screen.getByLabelText(pl.lessons.storageKeyLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.lessons.streamVideoIdLabel)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.common.cancel }));
+    expect(screen.getByLabelText(en.lessons.storageKeyLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.lessons.streamVideoIdLabel)).toBeInTheDocument();
   });
 
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
@@ -529,23 +529,23 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     const { container } = await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeHtml }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(await screen.findByRole('option', { name: 'HTML' }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
 
-    const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
+    const editor = await screen.findByLabelText(en.lessons.htmlLabel);
     await user.click(editor);
     await user.paste('<p>Safe body</p><script>window.__xss=1</script>');
 
-    await userEvent.click(screen.getByRole('button', { name: pl.htmlEditor.toolbarBold }));
+    await userEvent.click(screen.getByRole('button', { name: en.htmlEditor.toolbarBold }));
     expect(editor).toHaveValue(
-      `<p>Safe body</p><script>window.__xss=1</script><strong>${pl.htmlEditor.placeholderBold}</strong>`,
+      `<p>Safe body</p><script>window.__xss=1</script><strong>${en.htmlEditor.placeholderBold}</strong>`,
     );
 
-    await userEvent.click(screen.getByRole('tab', { name: pl.htmlEditor.previewTab }));
+    await userEvent.click(screen.getByRole('tab', { name: en.htmlEditor.previewTab }));
 
     const preview = await screen.findByTestId('html-preview');
     expect(preview).toHaveTextContent('Safe body');
-    expect(preview).toHaveTextContent(pl.htmlEditor.placeholderBold);
+    expect(preview).toHaveTextContent(en.htmlEditor.placeholderBold);
     expect(container.querySelector('[data-testid="html-preview"] script')).toBeNull();
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
   });
@@ -557,12 +557,12 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeLink }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Link' }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
 
-    const urlField = await screen.findByLabelText(pl.lessons.linkUrlLabel);
-    expect(urlField).toHaveAccessibleName(pl.lessons.linkUrlLabel);
-    expect(urlField).toHaveAccessibleDescription(pl.lessons.technicalFieldHint({ field: 'url' }));
+    const urlField = await screen.findByLabelText(en.lessons.linkUrlLabel);
+    expect(urlField).toHaveAccessibleName(en.lessons.linkUrlLabel);
+    expect(urlField).toHaveAccessibleDescription(en.lessons.technicalFieldHint({ field: 'url' }));
 
     await user.click(urlField);
     await user.paste('javascript:alert(1)');
@@ -571,7 +571,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await user.clear(urlField);
     await user.paste('https://github.com/acme-courses/task-1');
     expect(await screen.findByTestId('lesson-links')).toBeInTheDocument();
-    expect(screen.getByText(pl.lessons.blockPreviewLabel)).toBeInTheDocument();
+    expect(screen.getByText(en.lessons.blockPreviewLabel)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /github\.com/ })).toHaveAttribute(
       'href',
       'https://github.com/acme-courses/task-1',
@@ -585,12 +585,12 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeLink }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Link' }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
 
-    await user.click(await screen.findByLabelText(pl.lessons.linkUrlLabel));
+    await user.click(await screen.findByLabelText(en.lessons.linkUrlLabel));
     await user.paste('https://codesandbox.io/s/abc123');
-    await userEvent.type(await screen.findByLabelText(pl.lessons.linkDescriptionLabel), 'Zadanie');
+    await userEvent.type(await screen.findByLabelText(en.lessons.linkDescriptionLabel), 'Assignment');
 
     const sandbox = await screen.findByTestId('lesson-sandbox');
     expect(sandbox).toHaveAttribute('src', 'https://codesandbox.io/embed/abc123');
@@ -628,23 +628,23 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt('/panel/lessons/new');
 
-    await userEvent.type(await screen.findByLabelText(pl.common.name), 'Dialogs');
+    await userEvent.type(await screen.findByLabelText(en.common.name), 'Dialogs');
     await userEvent.click(screen.getByRole('combobox'));
-    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await user.click(await screen.findByLabelText(pl.lessons.embedUrlLabel));
+    await userEvent.click(await screen.findByRole('option', { name: en.lessons.typeEmbed }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.addBlock }));
+    await user.click(await screen.findByLabelText(en.lessons.embedUrlLabel));
     await user.paste('https://codesandbox.io/s/alert-demo');
 
     expect(await screen.findByTestId('lesson-sandbox')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('checkbox', { name: pl.lessons.embedCollapsedLabel }));
+    await userEvent.click(screen.getByRole('checkbox', { name: en.lessons.embedCollapsedLabel }));
 
     await waitFor(() => {
       expect(screen.queryByTestId('lesson-sandbox')).not.toBeInTheDocument();
     });
     expect(screen.getByTestId('lesson-embed-collapsed-warning')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.createLesson }));
 
     await waitFor(() => {
       expect(submitted).toEqual([
@@ -694,7 +694,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     expect(screen.getByText('Video intro')).toBeInTheDocument();
 
     await userEvent.type(screen.getByTestId('lessons-search'), ' nothing-matches');
-    expect(await screen.findByText(pl.lessons.noMatches)).toBeInTheDocument();
+    expect(await screen.findByText(en.lessons.noMatches)).toBeInTheDocument();
   });
 
   it('shows what references a lesson and deletes it after confirmation', async () => {
@@ -758,16 +758,16 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
 
     await renderLessonsAt();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.lessons.deleteAria({ name: 'Intro lesson' }) }));
+    await userEvent.click(await screen.findByRole('button', { name: en.lessons.deleteAria({ name: 'Intro lesson' }) }));
 
-    expect(await screen.findByText(pl.lessons.deleteReferencesChapters({ count: 1 }))).toBeInTheDocument();
-    expect(screen.getByText(pl.lessons.deleteReferencesProducts({ count: 1 }))).toBeInTheDocument();
-    expect(screen.getByText(pl.lessons.deleteReferencesProgress({ count: 2 }))).toBeInTheDocument();
+    expect(await screen.findByText(en.lessons.deleteReferencesChapters({ count: 1 }))).toBeInTheDocument();
+    expect(screen.getByText(en.lessons.deleteReferencesProducts({ count: 1 }))).toBeInTheDocument();
+    expect(screen.getByText(en.lessons.deleteReferencesProgress({ count: 2 }))).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.deleteConfirm }));
+    await userEvent.click(screen.getByRole('button', { name: en.lessons.deleteConfirm }));
 
     await waitFor(() => expect(deleted).toBe(true));
-    expect(await screen.findByText(pl.lessons.empty)).toBeInTheDocument();
+    expect(await screen.findByText(en.lessons.empty)).toBeInTheDocument();
   });
 });
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';

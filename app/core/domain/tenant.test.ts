@@ -211,13 +211,13 @@ describe('resolveInvoiceVat', () => {
       ...base,
       invoiceVatMode: 'exempt',
       invoiceExemptionBasisKind: 'other_statute',
-      invoiceExemptionBasis: '§ 1 rozporządzenia',
+      invoiceExemptionBasis: 'Section 1 of the regulation',
     })).toEqual({
       ok: true,
       treatment: {
         kind: 'exempt',
         basisKind: 'other_statute',
-        basis: '§ 1 rozporządzenia',
+        basis: 'Section 1 of the regulation',
       },
     });
   });

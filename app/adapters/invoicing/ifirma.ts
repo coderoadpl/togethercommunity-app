@@ -82,7 +82,7 @@ export const ifirmaInvoicePayload = (
 ) => {
   const grossAmount = input.order.amountCents / 100;
   const billing = input.billing;
-  const discount = (input.order.discountCents / 100).toFixed(2).replace('.', ',');
+  const discount = (input.order.discountCents / 100).toFixed(2);
   const position = input.vat.kind === 'exempt'
     ? {
         StawkaVat: null,
@@ -90,7 +90,7 @@ export const ifirmaInvoicePayload = (
         CenaJednostkowa: grossAmount,
         NazwaPelna: input.order.couponId === null
           ? input.productName
-          : `${input.productName} (rabat kuponowy: ${discount} zł)`,
+          : `${input.productName} (coupon discount: PLN ${discount})`,
         Jednostka: 'szt.',
         TypStawkiVat: 'ZW',
         PodstawaPrawna: input.vat.basis,
@@ -101,7 +101,7 @@ export const ifirmaInvoicePayload = (
         CenaJednostkowa: grossAmount,
         NazwaPelna: input.order.couponId === null
           ? input.productName
-          : `${input.productName} (rabat kuponowy: ${discount} zł)`,
+          : `${input.productName} (coupon discount: PLN ${discount})`,
         Jednostka: 'szt.',
         PKWiU: '',
         TypStawkiVat: 'PRC',

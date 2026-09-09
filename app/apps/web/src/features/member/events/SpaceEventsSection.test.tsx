@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SpaceEventsSection } from './SpaceEventsSection.js';
@@ -77,7 +77,7 @@ describe('SpaceEventsSection', () => {
     expect(card).toHaveAttribute('href', '/community/s1/events/e1');
     expect(card).toHaveTextContent('Live Q&A');
     expect(screen.getByTestId('event-card-going-e1')).toHaveTextContent(
-      pl.events.goingCount({ count: 3 }),
+      en.events.goingCount({ count: 3 }),
     );
   });
 
@@ -89,7 +89,7 @@ describe('SpaceEventsSection', () => {
 
     await userEvent.click(screen.getByTestId('space-events-scope-past'));
 
-    expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(pl.events.emptyPast);
+    expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(en.events.emptyPast);
   });
 
   it('states that nothing is scheduled when the space has no upcoming events', async () => {
@@ -98,7 +98,7 @@ describe('SpaceEventsSection', () => {
     await renderSection();
 
     expect(await screen.findByTestId('space-events-empty')).toHaveTextContent(
-      pl.events.emptyUpcoming,
+      en.events.emptyUpcoming,
     );
   });
 });

@@ -8,7 +8,7 @@
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
       "defaultHomeSpaceId": null,
-      "defaultLanguage": "pl",
+      "defaultLanguage": "en",
       "directMessagesEnabled": true,
       "faviconUrl": "/assets/akademia-logo.svg",
       "invoiceExemptionBasis": null,
@@ -21,7 +21,7 @@
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
       "memberVideoAutoplayOverride": false,
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "ogDescription": null,
       "ogImageUrl": null,
       "ogTitle": null,
@@ -35,7 +35,7 @@
     "tenant": {
       "contentVersion": 1,
       "id": "tenant-akademia",
-      "name": "Akademia Samouka",
+      "name": "Self-learning Academy",
       "plan": "self_hosted",
       "slug": "akademia",
       "status": "active"
@@ -45,15 +45,15 @@
     {
       "active": true,
       "id": "consent-definition-akademia-news",
-      "label": "Chcę otrzymywać aktualności i praktyczne materiały e-mailem",
+      "label": "I would like to receive news and practical resources by email",
       "pendingConfirmation": false
     }
   ],
   "email": "student.akademia@together.dev",
   "globallySuppressed": false,
-  "language": "pl",
+  "language": "en",
   "nonce": "storybook",
   "scope": "consent:consent-definition-akademia-news",
-  "scopeLabel": "Chcę otrzymywać aktualności i praktyczne materiały e-mailem",
+  "scopeLabel": "I would like to receive news and practical resources by email",
   "token": "unsubscribe_akademia_visual_123456"
 }

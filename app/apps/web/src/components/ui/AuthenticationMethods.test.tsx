@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { ToastProvider } from './Toast.js';
 import {
   AuthenticationMethods,
@@ -49,8 +49,8 @@ describe('AuthenticationMethods', () => {
     renderMethods(props);
 
     expect(screen.getByTestId('add-passkey')).toBeDisabled();
-    await userEvent.click(screen.getByRole('button', { name: pl.security.removePasskey }));
-    expect(screen.getByRole('button', { name: pl.security.confirmRemovePasskey })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: en.security.removePasskey }));
+    expect(screen.getByRole('button', { name: en.security.confirmRemovePasskey })).toBeDisabled();
   });
 
   it('offers password setup before passkey management', async () => {
@@ -59,7 +59,7 @@ describe('AuthenticationMethods', () => {
       requestPasswordSetup: { ...idle, run: requestPasswordSetup },
     }));
 
-    expect(screen.getByText(pl.security.passkeyPasswordlessHint)).toBeInTheDocument();
+    expect(screen.getByText(en.security.passkeyPasswordlessHint)).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('passkey-set-password'));
 
     expect(requestPasswordSetup).toHaveBeenCalledOnce();
@@ -78,9 +78,9 @@ describe('AuthenticationMethods', () => {
     });
     renderMethods(props);
 
-    await userEvent.type(screen.getByLabelText(pl.security.passkeyPasswordLabel), 'current-password');
-    await userEvent.click(screen.getByRole('button', { name: pl.security.removePasskey }));
-    await userEvent.click(screen.getByRole('button', { name: pl.security.confirmRemovePasskey }));
+    await userEvent.type(screen.getByLabelText(en.security.passkeyPasswordLabel), 'current-password');
+    await userEvent.click(screen.getByRole('button', { name: en.security.removePasskey }));
+    await userEvent.click(screen.getByRole('button', { name: en.security.confirmRemovePasskey }));
 
     expect(remove).toHaveBeenCalledExactlyOnceWith({
       id: 'passkey-1',
@@ -101,7 +101,7 @@ describe('AuthenticationMethods', () => {
 
     expect(screen.getByText('once-one')).toBeInTheDocument();
     expect(screen.getByText('once-two')).toBeInTheDocument();
-    expect(within(toastStack()).getByText(pl.security.backupCodesRegenerated)).toBeInTheDocument();
+    expect(within(toastStack()).getByText(en.security.backupCodesRegenerated)).toBeInTheDocument();
   });
 
   it('hides issued backup codes after a later successful two-factor disable', () => {
@@ -122,7 +122,7 @@ describe('AuthenticationMethods', () => {
     }));
 
     expect(screen.queryByText('stale-code')).not.toBeInTheDocument();
-    expect(within(toastStack()).getByText(pl.security.twoFactorOff)).toBeInTheDocument();
+    expect(within(toastStack()).getByText(en.security.twoFactorOff)).toBeInTheDocument();
   });
   it('wraps the two-factor action row instead of stretching its buttons', () => {
     renderMethods(propsWith());

@@ -197,7 +197,7 @@ describe('testIntegration', () => {
     expect(subjects).toEqual(['Together test e-mail (ses)']);
   });
 
-  it('writes the test message in Polish without any stored language', async () => {
+  it('writes the test message in English without any stored language', async () => {
     const subjects: string[] = [];
 
     await testIntegration(
@@ -206,7 +206,7 @@ describe('testIntegration', () => {
       fakeDeps([], { subjects }),
     );
 
-    expect(subjects).toEqual(['Together — wiadomość testowa (ses)']);
+    expect(subjects).toEqual(['Together test e-mail (ses)']);
   });
 
   it('tests the tenant transport the layered sender would use instead of the platform port', async () => {

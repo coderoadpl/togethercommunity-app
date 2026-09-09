@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -15,7 +15,7 @@ import {
   type StaffSpace,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { productTypeLabel } from './product-type.js';
@@ -238,28 +238,28 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
 
-    const publish = screen.getByRole('button', { name: pl.products.publish });
+    const publish = screen.getByRole('button', { name: en.products.publish });
     await waitFor(() => expect(publish).toBeEnabled());
     await userEvent.click(publish);
-    expect(await screen.findByText(pl.products.publishConfirmIntro)).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: pl.products.publishPublicUrl })).toHaveTextContent(
+    expect(await screen.findByText(en.products.publishConfirmIntro)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: en.products.publishPublicUrl })).toHaveTextContent(
       `${window.location.origin}/checkout/draft-course`,
     );
-    expect(screen.getByText(/25,00/u)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.products.publishConfirm }));
+    expect(screen.getByText(/25\.00/u)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.products.publishConfirm }));
 
     await waitFor(() => {
-      expect(screen.getByText(pl.products.published)).toBeInTheDocument();
+      expect(within(screen.getByTestId('product-row')).getByText(en.products.published)).toBeInTheDocument();
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('opens product creation from the list and continues at the price editor', async () => {
     await renderProductsPanel();
-    await userEvent.click(await screen.findByRole('link', { name: `+ ${pl.common.add}` }));
-    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
-    await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await userEvent.click(await screen.findByRole('link', { name: `+ ${en.common.add}` }));
+    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'New Workshop');
+    await userEvent.type(screen.getByLabelText(en.common.description), 'Hands-on session');
+    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'New Workshop', level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('prices-section')).toBeInTheDocument();
@@ -269,15 +269,15 @@ describe('ProductsPanel', () => {
     const user = userEvent.setup();
     const { created } = await renderProductsPanel([], '/panel/products/new');
 
-    await user.click(await screen.findByRole('combobox', { name: pl.products.typeLabel }));
-    await user.click(screen.getByRole('option', { name: productTypeLabel(type, pl) }));
-    await user.type(screen.getByLabelText(pl.products.titleLabel), 'Creator Club');
-    await user.click(screen.getByLabelText(pl.products.coverUrlLabel));
+    await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel(type, en) }));
+    await user.type(screen.getByLabelText(en.products.titleLabel), 'Creator Club');
+    await user.click(screen.getByLabelText(en.products.coverUrlLabel));
     await user.paste('https://cdn.test/cover.jpg');
     expect(screen.getByTestId('product-cover-preview')).toHaveAttribute('src', 'https://cdn.test/cover.jpg');
-    await user.click(screen.getByLabelText(pl.common.description));
+    await user.click(screen.getByLabelText(en.common.description));
     await user.paste('<strong>Members only</strong>');
-    await user.click(screen.getByRole('button', { name: pl.products.create }));
+    await user.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByRole('heading', { name: 'Creator Club', level: 1 })).toBeInTheDocument();
     expect(created).toEqual([
@@ -294,8 +294,8 @@ describe('ProductsPanel', () => {
   it('continues the onboarding product flow at the price editor', async () => {
     const { router } = await renderProductsPanel([], '/panel/products/new#prices');
 
-    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'Priced Workshop');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'Priced Workshop');
+    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
 
     expect(await screen.findByTestId('prices-section')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel/products/product-2');
@@ -311,12 +311,12 @@ describe('ProductsPanel', () => {
       }, { status: 422 })),
     );
 
-    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'Draft Course');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await userEvent.type(await screen.findByLabelText(en.products.titleLabel), 'Draft Course');
+    await userEvent.click(screen.getByRole('button', { name: en.products.create }));
 
-    expect(await screen.findByText(pl.errors.messageSlugReservedGeneric)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.products.slugLabel)).toHaveAccessibleDescription(
-      pl.errors.messageSlugReservedGeneric,
+    expect(await screen.findByText(en.errors.messageSlugReservedGeneric)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.products.slugLabel)).toHaveAccessibleDescription(
+      en.errors.messageSlugReservedGeneric,
     );
   });
 
@@ -332,15 +332,15 @@ describe('ProductsPanel', () => {
     };
     await renderProductsPanel([], '/panel/products/membership-1', [membership]);
 
-    expect(await screen.findByText(pl.products.membershipPricesDescription)).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: pl.products.kindLabel })).toHaveAttribute(
+    expect(await screen.findByText(en.products.membershipPricesDescription)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: en.products.kindLabel })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    expect(screen.getByRole('combobox', { name: pl.products.kindLabel })).toHaveTextContent(
-      pl.products.recurring,
+    expect(screen.getByRole('combobox', { name: en.products.kindLabel })).toHaveTextContent(
+      en.products.recurring,
     );
-    expect(screen.getByRole('combobox', { name: pl.products.intervalLabel })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: en.products.intervalLabel })).toBeInTheDocument();
   });
 
   it('uploads an asset directly from a digital-download product editor', async () => {
@@ -355,13 +355,13 @@ describe('ProductsPanel', () => {
     };
     const rendered = await renderProductsPanel([], '/panel/products/download-1', [download]);
 
-    const input = await screen.findByLabelText(pl.products.downloadFileInput);
+    const input = await screen.findByLabelText(en.products.downloadFileInput);
     await userEvent.upload(input, new File(['content'], 'workbook.pdf', { type: 'application/pdf' }));
 
     await waitFor(() => expect(rendered.directUploadCalled()).toBe(true));
     expect(await screen.findByText('workbook.pdf')).toBeInTheDocument();
-    expect(screen.getByText(pl.products.downloadStatusReady)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: pl.access.heading, level: 2 })).toBeInTheDocument();
+    expect(screen.getByText(en.products.downloadStatusReady)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.access.heading, level: 2 })).toBeInTheDocument();
   });
 
   it('confirms before deleting a digital download asset', async () => {
@@ -385,10 +385,10 @@ describe('ProductsPanel', () => {
     };
     await renderProductsPanel([], '/panel/products/download-1', [download], [], [asset]);
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.products.deleteDownload({ name: asset.fileName }) }));
+    await userEvent.click(await screen.findByRole('button', { name: en.products.deleteDownload({ name: asset.fileName }) }));
 
-    expect(await screen.findByText(pl.products.deleteDownloadConfirmTitle)).toBeInTheDocument();
-    expect(screen.getByText(pl.products.deleteDownloadConfirmBody({ name: asset.fileName }))).toBeInTheDocument();
+    expect(await screen.findByText(en.products.deleteDownloadConfirmTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.products.deleteDownloadConfirmBody({ name: asset.fileName }))).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('product-download-delete-confirm'));
 
     await waitFor(() => expect(screen.queryByText(asset.fileName)).not.toBeInTheDocument());
@@ -397,7 +397,7 @@ describe('ProductsPanel', () => {
   it('shows the product type of every listed product', async () => {
     await renderProductsPanel();
 
-    expect(await screen.findByTestId('product-type-draft-1')).toHaveTextContent(pl.products.typeCourse);
+    expect(await screen.findByTestId('product-type-draft-1')).toHaveTextContent(en.products.typeCourse);
   });
 
   it('shows publish blockers for missing delivery and an inactive price', async () => {
@@ -405,10 +405,10 @@ describe('ProductsPanel', () => {
     if (product === undefined) throw new Error('Expected the base product fixture');
     await renderProductsPanel([], '/panel/products', [{ ...product, accessItems: [] }], []);
 
-    const publish = await screen.findByRole('button', { name: pl.products.publish });
+    const publish = await screen.findByRole('button', { name: en.products.publish });
     expect(publish).toBeDisabled();
-    expect(await screen.findByText(pl.products.publishNeedsDelivery)).toBeInTheDocument();
-    expect(await screen.findByText(pl.products.publishNeedsActivePrice)).toBeInTheDocument();
+    expect(await screen.findByText(en.products.publishNeedsDelivery)).toBeInTheDocument();
+    expect(await screen.findByText(en.products.publishNeedsActivePrice)).toBeInTheDocument();
   });
 
   it('allows publishing a digital product delivered by a ready download', async () => {
@@ -434,8 +434,8 @@ describe('ProductsPanel', () => {
     };
     await renderProductsPanel([], '/panel/products', [product], [price], [asset]);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: pl.products.publish })).toBeEnabled());
-    expect(screen.queryByText(pl.products.publishNeedsDelivery)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: en.products.publish })).toBeEnabled());
+    expect(screen.queryByText(en.products.publishNeedsDelivery)).not.toBeInTheDocument();
   });
 
   it('allows publishing a membership delivered by a product-gated space', async () => {
@@ -472,8 +472,8 @@ describe('ProductsPanel', () => {
     };
     await renderProductsPanel([], '/panel/products', [product], [price], [], [space]);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: pl.products.publish })).toBeEnabled());
-    expect(screen.queryByText(pl.products.publishNeedsDelivery)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: en.products.publish })).toBeEnabled());
+    expect(screen.queryByText(en.products.publishNeedsDelivery)).not.toBeInTheDocument();
   });
 
   it('offers a selectable checkout URL when clipboard writing fails', async () => {
@@ -483,30 +483,30 @@ describe('ProductsPanel', () => {
     });
     await renderProductsPanel();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.products.copyCheckoutLink }));
+    await userEvent.click(await screen.findByRole('button', { name: en.products.copyCheckoutLink }));
 
-    expect(await screen.findByText(pl.products.checkoutLinkCopyFailed)).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: pl.products.publishPublicUrl })).toHaveTextContent(
+    expect(await screen.findByText(en.products.checkoutLinkCopyFailed)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: en.products.publishPublicUrl })).toHaveTextContent(
       `${window.location.origin}/checkout/draft-course`,
     );
-    expect(screen.queryByText(pl.products.checkoutLinkCopied)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.products.checkoutLinkCopied)).not.toBeInTheDocument();
   });
 
   it('updates product details while keeping the slug read-only', async () => {
     const rendered = await renderProductsPanel([], '/panel/products/draft-1');
 
-    const title = await screen.findByLabelText(pl.products.titleLabel);
+    const title = await screen.findByLabelText(en.products.titleLabel);
     await userEvent.clear(title);
     await userEvent.type(title, 'Updated course offer');
-    await userEvent.clear(screen.getByLabelText(pl.products.coverUrlLabel));
-    await userEvent.type(screen.getByLabelText(pl.products.coverUrlLabel), 'https://cdn.test/new-cover.jpg');
-    expect(screen.getByLabelText(pl.products.slugLabel)).toHaveAttribute('readonly');
-    expect(screen.getByLabelText(pl.products.slugLabel)).toHaveAccessibleDescription(
-      pl.products.slugImmutableHint,
+    await userEvent.clear(screen.getByLabelText(en.products.coverUrlLabel));
+    await userEvent.type(screen.getByLabelText(en.products.coverUrlLabel), 'https://cdn.test/new-cover.jpg');
+    expect(screen.getByLabelText(en.products.slugLabel)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(en.products.slugLabel)).toHaveAccessibleDescription(
+      en.products.slugImmutableHint,
     );
-    await userEvent.click(screen.getByRole('button', { name: pl.products.saveDetails }));
+    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
 
-    expect(await screen.findByText(pl.products.detailsSaved)).toBeInTheDocument();
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
     expect(rendered.updatedProduct()).toMatchObject({
       title: 'Updated course offer',
       slug: 'draft-course',
@@ -519,11 +519,11 @@ describe('ProductsPanel', () => {
     if (product === undefined) throw new Error('Expected the base product fixture');
     await renderProductsPanel([], '/panel/products', [{ ...product, published: true }]);
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.products.unpublish }));
-    expect(await screen.findByText(pl.products.unpublishConfirmBody)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.products.unpublishConfirm }));
+    await userEvent.click(await screen.findByRole('button', { name: en.products.unpublish }));
+    expect(await screen.findByText(en.products.unpublishConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.products.unpublishConfirm }));
 
-    expect(await screen.findByRole('button', { name: pl.products.publish })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: en.products.publish })).toBeInTheDocument();
   });
 
   it('flags products whose access items point at missing content', async () => {
@@ -540,26 +540,26 @@ describe('ProductsPanel', () => {
     ]);
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
-    expect(await screen.findByText(pl.products.accessIssuesChip)).toBeInTheDocument();
-    expect(screen.getByText(`${pl.products.missingCoursesLabel}: ghost-course`)).toBeInTheDocument();
-    expect(screen.getByText(`${pl.products.missingLessonsLabel}: ghost-lesson`)).toBeInTheDocument();
+    expect(await screen.findByText(en.products.accessIssuesChip)).toBeInTheDocument();
+    expect(screen.getByText(`${en.products.missingCoursesLabel}: ghost-course`)).toBeInTheDocument();
+    expect(screen.getByText(`${en.products.missingLessonsLabel}: ghost-lesson`)).toBeInTheDocument();
     expect(
-      screen.getByText(`${pl.products.unreachableLessonsLabel}: detached-lesson`),
+      screen.getByText(`${en.products.unreachableLessonsLabel}: detached-lesson`),
     ).toBeInTheDocument();
   });
 
   it('adds a price and deactivates it through the confirmation dialog', async () => {
     await renderProductsPanel([], '/panel/products/draft-1');
 
-    await userEvent.type(await screen.findByLabelText(pl.products.priceLabel), '49.99');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.addPrice }));
+    await userEvent.type(await screen.findByLabelText(en.products.priceLabel), '49.99');
+    await userEvent.click(screen.getByRole('button', { name: en.products.addPrice }));
 
-    expect(await screen.findByTestId('price-row')).toHaveTextContent('49,99');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.deactivate }));
-    expect(await screen.findByText(pl.products.deactivateBody)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.products.deactivateConfirm }));
+    expect(await screen.findByTestId('price-row')).toHaveTextContent('49.99');
+    await userEvent.click(screen.getByRole('button', { name: en.products.deactivate }));
+    expect(await screen.findByText(en.products.deactivateBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.products.deactivateConfirm }));
 
-    await waitFor(() => expect(screen.getByTestId('price-row')).toHaveTextContent(pl.products.inactive));
-    expect(screen.queryByRole('button', { name: pl.products.deactivate })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('price-row')).toHaveTextContent(en.products.inactive));
+    expect(screen.queryByRole('button', { name: en.products.deactivate })).not.toBeInTheDocument();
   });
 });

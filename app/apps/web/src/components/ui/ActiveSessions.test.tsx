@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '../../i18n/index.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { ActiveSessions, type ActiveSessionsProps } from './ActiveSessions.js';
 
 const idle = { pending: false, success: false, error: null };
@@ -44,21 +44,21 @@ describe('ActiveSessions', () => {
   it('badges the current session and offers no sign-out for it', () => {
     renderSessions(propsWith());
 
-    expect(screen.getByText(pl.security.sessionCurrent)).toBeInTheDocument();
+    expect(screen.getByText(en.security.sessionCurrent)).toBeInTheDocument();
     expect(screen.getByText('Chrome · macOS')).toBeInTheDocument();
-    expect(screen.getByText(pl.security.sessionUnknownDevice)).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: pl.security.sessionRevoke })).toHaveLength(1);
+    expect(screen.getByText(en.security.sessionUnknownDevice)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: en.security.sessionRevoke })).toHaveLength(1);
   });
 
   it('revokes the chosen session once confirmed', async () => {
     const run = vi.fn();
     renderSessions(propsWith({ revokeSession: { ...idle, run } }));
 
-    await userEvent.click(screen.getByRole('button', { name: pl.security.sessionRevoke }));
+    await userEvent.click(screen.getByRole('button', { name: en.security.sessionRevoke }));
 
     expect(run).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog')).toHaveTextContent(pl.security.sessionRevokeConfirmTitle);
-    expect(screen.getByRole('dialog')).toHaveTextContent(pl.security.sessionRevokeConfirmBody);
+    expect(screen.getByRole('dialog')).toHaveTextContent(en.security.sessionRevokeConfirmTitle);
+    expect(screen.getByRole('dialog')).toHaveTextContent(en.security.sessionRevokeConfirmBody);
 
     await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
 
@@ -74,10 +74,10 @@ describe('ActiveSessions', () => {
 
     expect(run).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent(
-      pl.security.sessionsRevokeOthersConfirmTitle,
+      en.security.sessionsRevokeOthersConfirmTitle,
     );
     expect(screen.getByRole('dialog')).toHaveTextContent(
-      pl.security.sessionsRevokeOthersConfirmBody,
+      en.security.sessionsRevokeOthersConfirmBody,
     );
 
     await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
@@ -99,7 +99,7 @@ describe('ActiveSessions', () => {
     expect(revokeOthers).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: pl.security.sessionRevoke }));
+    await userEvent.click(screen.getByRole('button', { name: en.security.sessionRevoke }));
     await userEvent.click(screen.getByTestId('revoke-sessions-confirm-cancel'));
 
     expect(revoke).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe('ActiveSessions', () => {
       sessions: { data: undefined, pending: false, error: new Error('boom'), retry },
     }));
 
-    await userEvent.click(screen.getByRole('button', { name: pl.common.retry }));
+    await userEvent.click(screen.getByRole('button', { name: en.common.retry }));
 
     expect(retry).toHaveBeenCalledOnce();
   });

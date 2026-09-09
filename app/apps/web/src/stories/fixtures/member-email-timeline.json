@@ -11,7 +11,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "defaultHomeSpaceId": "space-studio-community",
-          "defaultLanguage": "pl",
+          "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
           "invoiceExemptionBasis": null,
@@ -67,13 +67,13 @@
             "source": "welcome-sign-in",
             "sourceApp": null,
             "status": "sent",
-            "subject": "Twoje konto na platformie Studio Demo jest gotowe",
+            "subject": "Your Studio Demo workspace account is ready",
             "tenantId": "tenant-studio",
             "transport": "platform"
           },
           {
             "campaignId": "campaign-studio-observability",
-            "campaignName": "Premiera kursu",
+            "campaignName": "Course launch",
             "createdAt": "2026-06-27T12:00:00.000Z",
             "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
             "deliveryStatus": "delivered",
@@ -88,7 +88,7 @@
             "source": "broadcast",
             "sourceApp": null,
             "status": "sent",
-            "subject": "Twój plan nauki na lipiec",
+            "subject": "Your learning plan for July",
             "tenantId": "tenant-studio",
             "transport": "tenant-ses"
           }
@@ -104,7 +104,7 @@
             "expiresAt": null,
             "id": "grant-studio-active",
             "productId": "product-js-full",
-            "productName": "Kurs JavaScript - pełny dostęp",
+            "productName": "JavaScript Course - full access",
             "source": "manual",
             "startsAt": "2026-06-01T12:00:00.000Z"
           },
@@ -113,7 +113,7 @@
             "expiresAt": null,
             "id": "grant-studio-active-workbook",
             "productId": "product-download-workbook",
-            "productName": "Workbook twórcy",
+            "productName": "Creator Workbook",
             "source": "manual",
             "startsAt": "2026-06-19T12:00:00.000Z"
           },
@@ -122,7 +122,7 @@
             "expiresAt": "2026-08-10T12:00:00.000Z",
             "id": "grant-studio-active-club",
             "productId": "product-club",
-            "productName": "Klub Studio — subskrypcja",
+            "productName": "Studio Club - subscription",
             "source": "manual",
             "startsAt": "2026-06-11T12:00:00.000Z"
           }
@@ -171,7 +171,7 @@
             "bannedReason": null,
             "createdAt": "2026-07-01T12:00:40.000Z",
             "deletedAt": null,
-            "displayName": "Kursant Aktywny",
+            "displayName": "Active Student",
             "email": "student.active@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-active",
@@ -189,7 +189,7 @@
             "bannedReason": null,
             "createdAt": "2026-07-01T12:00:41.000Z",
             "deletedAt": null,
-            "displayName": "Kursant Wygasły",
+            "displayName": "Expired Student",
             "email": "student.expired@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-expired",
@@ -205,7 +205,7 @@
             "bannedReason": null,
             "createdAt": "2026-07-01T12:00:42.000Z",
             "deletedAt": null,
-            "displayName": "Kursant Przyszły",
+            "displayName": "Future Student",
             "email": "student.future@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-future",
@@ -223,7 +223,7 @@
             "bannedReason": null,
             "createdAt": "2026-07-01T12:00:43.000Z",
             "deletedAt": null,
-            "displayName": "Kursant Modułowy",
+            "displayName": "Module Student",
             "email": "student.module@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-module",
@@ -238,10 +238,10 @@
               "product-free-preview"
             ],
             "bannedAt": "2026-06-29T12:00:00.000Z",
-            "bannedReason": "Powtarzające się reklamy w społeczności",
+            "bannedReason": "Repeated advertising in the community",
             "createdAt": "2026-07-01T12:00:44.000Z",
             "deletedAt": null,
-            "displayName": "Konto Free",
+            "displayName": "Free Account",
             "email": "free@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-free",
@@ -259,7 +259,7 @@
             "bannedReason": null,
             "createdAt": "2026-07-01T12:00:45.000Z",
             "deletedAt": null,
-            "displayName": "Kursant Abonent",
+            "displayName": "Subscriber Student",
             "email": "student.subscriber@together.dev",
             "externalCustomerIds": {},
             "id": "member-studio-subscriber",
@@ -289,7 +289,7 @@
             "published": true,
             "slug": "course-together-101",
             "tenantId": "tenant-studio",
-            "title": "Kurs Together 101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
@@ -305,7 +305,7 @@
             "published": false,
             "slug": "workshop-scenario",
             "tenantId": "tenant-studio",
-            "title": "Warsztat scenariuszowy",
+            "title": "Scenario Workshop",
             "type": "course"
           },
           {
@@ -319,14 +319,14 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:33.000Z",
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "legacyId": null,
             "priceCents": 39900,
             "published": true,
             "slug": "js-full",
             "tenantId": "tenant-studio",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
@@ -340,14 +340,14 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:34.000Z",
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "legacyId": null,
             "priceCents": 49900,
             "published": true,
             "slug": "react-full",
             "tenantId": "tenant-studio",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
@@ -364,14 +364,14 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:35.000Z",
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "legacyId": null,
             "priceCents": 9900,
             "published": true,
             "slug": "js-dom-module",
             "tenantId": "tenant-studio",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
@@ -399,7 +399,7 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:36.000Z",
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "legacyId": null,
             "priceCents": 0,
@@ -424,14 +424,14 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:38.000Z",
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "legacyId": null,
             "priceCents": 4900,
             "published": true,
             "slug": "club",
             "tenantId": "tenant-studio",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
@@ -440,14 +440,14 @@
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:39.000Z",
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "legacyId": null,
             "priceCents": 7900,
             "published": true,
             "slug": "download-workbook",
             "tenantId": "tenant-studio",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ]
@@ -461,9 +461,9 @@
             "openReportsForPost": 1,
             "post": {
               "authorAvatarUrl": null,
-              "authorDisplay": "Konto Free",
+              "authorDisplay": "Free Account",
               "authorIsStaff": false,
-              "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
               "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
@@ -479,10 +479,10 @@
             "report": {
               "createdAt": "2026-06-26T12:00:00.000Z",
               "id": "report-studio-resources",
-              "note": "Ten wpis wygląda jak reklama zewnętrznego serwisu.",
+              "note": "This post looks like an advertisement for an external service.",
               "postId": "post-community-resources",
               "reason": "off-topic",
-              "reporterDisplay": "Kursant Aktywny",
+              "reporterDisplay": "Active Student",
               "reporterUserId": "user-student-active",
               "resolvedAt": null,
               "resolvedByUserId": null,
@@ -491,7 +491,7 @@
               "status": "open",
               "tenantId": "tenant-studio"
             },
-            "spaceName": "Społeczność"
+            "spaceName": "Community"
           }
         ],
         "nextCursor": null,
@@ -536,7 +536,7 @@
             "memberId": "member-studio-active",
             "priceId": "price-club-monthly",
             "productId": "product-club",
-            "productTitle": "Klub Studio — subskrypcja",
+            "productTitle": "Studio Club - subscription",
             "provider": "stripe",
             "providerSubscriptionId": "sub_seed_active_club",
             "status": "active",
@@ -557,10 +557,10 @@
             "kind": "recurring",
             "memberEmail": "student.active@together.dev",
             "memberId": "member-studio-active",
-            "memberName": "Kursant Aktywny",
+            "memberName": "Active Student",
             "priceId": "price-club-monthly",
             "productId": "product-club",
-            "productTitle": "Klub Studio — subskrypcja",
+            "productTitle": "Studio Club - subscription",
             "provider": "stripe",
             "providerObjectIds": {
               "checkoutSession": "cs_seed_active_club",
@@ -581,10 +581,10 @@
             "kind": "one_time",
             "memberEmail": "student.active@together.dev",
             "memberId": "member-studio-active",
-            "memberName": "Kursant Aktywny",
+            "memberName": "Active Student",
             "priceId": "price-product-js-full",
             "productId": "product-js-full",
-            "productTitle": "Kurs JavaScript - pełny dostęp",
+            "productTitle": "JavaScript Course - full access",
             "provider": "simulated",
             "providerObjectIds": {
               "checkoutSession": "sim_cs_seed_active"
@@ -604,18 +604,18 @@
               "accessibleLessonCount": 8,
               "completedLessonCount": 2,
               "courseId": "course-js",
-              "courseName": "Kurs JavaScript od podstaw",
+              "courseName": "JavaScript from Scratch",
               "lastActivityAt": "2026-07-01T12:01:06.000Z",
               "latestCompletedLesson": {
                 "lessonId": "lesson-js-variables-2",
-                "name": "Typy proste i złożone"
+                "name": "Primitive and complex types"
               }
             },
             {
               "accessibleLessonCount": 6,
               "completedLessonCount": 0,
               "courseId": "course-react",
-              "courseName": "React w praktyce",
+              "courseName": "React in Practice",
               "lastActivityAt": null,
               "latestCompletedLesson": null
             }
@@ -636,7 +636,7 @@
               "cancelAtPeriodEnd": false,
               "currentPeriodEnd": "2026-07-11T12:00:00.000Z",
               "productId": "product-club",
-              "productTitle": "Klub Studio — subskrypcja",
+              "productTitle": "Studio Club - subscription",
               "provider": "stripe",
               "status": "active",
               "subscriptionId": "subscription-studio-active-club"
@@ -652,7 +652,7 @@
               "mailKind": "marketing",
               "sendId": "send-studio-marketing",
               "source": "broadcast",
-              "subject": "Nowości w kursie JavaScript",
+              "subject": "JavaScript course updates",
               "transport": "tenant-ses"
             },
             "tenantId": "tenant-studio",
@@ -664,9 +664,9 @@
             "occurredAt": "2026-06-26T12:00:00.000Z",
             "payload": {
               "courseId": "course-js",
-              "courseTitle": "Kurs JavaScript od podstaw",
+              "courseTitle": "JavaScript from Scratch",
               "lessonId": "lesson-js-variables-2",
-              "lessonTitle": "Typy proste i złożone"
+              "lessonTitle": "Primitive and complex types"
             },
             "tenantId": "tenant-studio",
             "type": "lesson-completion"
@@ -679,7 +679,7 @@
               "expiresAt": "2026-08-10T12:00:00.000Z",
               "grantId": "grant-studio-active-club",
               "productId": "product-club",
-              "productTitle": "Klub Studio — subskrypcja",
+              "productTitle": "Studio Club - subscription",
               "source": "stripe",
               "startsAt": "2026-06-11T12:00:00.000Z"
             },
@@ -696,7 +696,7 @@
               "kind": "recurring",
               "orderId": "order-studio-active-club",
               "productId": "product-club",
-              "productTitle": "Klub Studio — subskrypcja",
+              "productTitle": "Studio Club - subscription",
               "provider": "stripe",
               "status": "paid"
             },
@@ -729,13 +729,13 @@
               }
             ],
             "slug": "course-together-101",
-            "title": "Kurs Together 101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
             "priceCents": 39900,
@@ -749,13 +749,13 @@
               }
             ],
             "slug": "js-full",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
             "priceCents": 49900,
@@ -769,13 +769,13 @@
               }
             ],
             "slug": "react-full",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
             "priceCents": 9900,
@@ -789,13 +789,13 @@
               }
             ],
             "slug": "js-dom-module",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
             "priceCents": 0,
@@ -815,7 +815,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
             "priceCents": 4900,
@@ -836,13 +836,13 @@
               }
             ],
             "slug": "club",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
             "priceCents": 7900,
@@ -856,7 +856,7 @@
               }
             ],
             "slug": "download-workbook",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ],

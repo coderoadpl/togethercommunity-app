@@ -12,7 +12,7 @@ import {
 } from './theme-branding.js';
 import { createThemeForMode, MODES } from './theme.js';
 
-const ACCENT = '#0E7490';
+const ACCENT = "#0E7490";
 const ACCENTS = [ACCENT, '#F5C842', '#4F46E5', '#E8682A', '#000000', '#ffffff'];
 const SCHEMES = ['light', 'dark'] as const;
 const SURFACES = ['member', 'studio'] as const;

@@ -577,8 +577,8 @@ describe('host scope derivation', () => {
   it('separates hosts served by the base domain from custom ones', () => {
     expect(hostServedByBaseDomain('together.example', 'together.example')).toBe(true);
     expect(hostServedByBaseDomain('acme.together.example', 'together.example')).toBe(true);
-    expect(hostServedByBaseDomain('kurs.acme.example', 'together.example')).toBe(false);
-    expect(hostServedByBaseDomain('kurs.acme.localhost', 'localhost')).toBe(false);
+    expect(hostServedByBaseDomain('course.acme.example', 'together.example')).toBe(false);
+    expect(hostServedByBaseDomain('course.acme.localhost', 'localhost')).toBe(false);
   });
 
   it('recognizes the ceremonies that carry a relying party', () => {
@@ -588,8 +588,8 @@ describe('host scope derivation', () => {
   });
 
   it('reads the request host from the header, then the URL, without its port', () => {
-    expect(authRequestHost({ headers: new Headers({ host: 'KURS.acme.example:8443' }) }))
-      .toBe('kurs.acme.example');
+    expect(authRequestHost({ headers: new Headers({ host: 'COURSE.acme.example:8443' }) }))
+      .toBe('course.acme.example');
     expect(authRequestHost({ request: new Request('http://acme.localhost:48730/api/auth/ok') }))
       .toBe('acme.localhost');
     expect(authRequestHost({})).toBeNull();
@@ -599,7 +599,7 @@ describe('host scope derivation', () => {
 describe('host-scoped credentials', () => {
   const baseDomain = 'together.example';
   const tenantHost = `acme.${baseDomain}`;
-  const customHost = 'kurs.acme.example';
+  const customHost = 'course.acme.example';
 
   const buildHostAuth = () => buildAuth({
     baseDomain,

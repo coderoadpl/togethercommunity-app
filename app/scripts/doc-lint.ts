@@ -65,7 +65,7 @@ const countValues: Readonly<Record<string, number>> = {
 const countTokenPattern = /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g;
 const numericTestCountPatterns = [
   /\b\d+\s+test files?\b/i,
-  /\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b/i,
+  /\b\d+\s+plik(?:i|\u00f3w)? testow(?:e|y|ych)\b/i,
 ];
 const numericTestCountAllowlist = ['tasks/', 'app/tasks/'];
 const requiredCountTokens: Readonly<Record<string, readonly string[]>> = {

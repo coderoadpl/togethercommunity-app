@@ -27,7 +27,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Roczny dostęp do kursu Samodzielna nauka programowania.",
+            "description": "One year of access to Learning to Code on Your Own.",
             "id": "product-akademia-annual",
             "marketingConsents": [],
             "priceCents": 29900,
@@ -41,7 +41,7 @@
               }
             ],
             "slug": "akademia-annual",
-            "title": "Akademia - dostęp roczny",
+            "title": "Akademia - annual access",
             "type": "course"
           }
         ],
@@ -56,7 +56,7 @@
             "privacyUrl": null,
             "termsUrl": null
           },
-          "name": "Akademia Samouka",
+          "name": "Self-learning Academy",
           "slug": "akademia",
           "socialLinks": [],
           "support": {

@@ -38,7 +38,7 @@ Naming/props follow the existing idioms: slots are `ReactNode`, callers pass i18
 
 ```tsx
 interface FocusCardProps {
-  eyebrow: ReactNode;            // "logowanie · studio", "płatność przyjęta", "404"
+  eyebrow: ReactNode;
   children: ReactNode;           // body: fields, copy, CTA — composed by the feature
   width?: 'narrow' | 'wide';     // narrow ≈ 28rem (auth), wide ≈ 32rem (checkout, picker)
   brand?: ReactNode;             // defaults to <Wordmark>Together</Wordmark>; tenant-not-found may override
@@ -122,7 +122,7 @@ Includes one shared row/table wrapper: a `ResponsiveTable` child component (plai
 interface SectionCardProps {
   title: ReactNode;                        // always h2 — eyebrows go back to being eyebrows
   description?: ReactNode;
-  actions?: ReactNode;                     // footer row, right-aligned (Zapisz, Testuj połączenie)
+  actions?: ReactNode;
   children: ReactNode;                     // fields / content, standardized field gap
   'data-testid'?: string;
 }
@@ -203,7 +203,7 @@ Verdicts from the inventory carry over; "delta" = expected pixel change when onl
 | 25 | Course not found | `MemberPage(prose)` + `StatusView(not-found)` | Kills the unbounded-width bug instance | visible improvement |
 | 26 | Member account | `MemberPage(prose)` + 3× `SectionCard` | First card's eyebrow-title becomes h2 | minor alignment |
 | 27 | Panel dashboard | `PanelPage` | Gains a real title; tiles + recent list unchanged (recent rows → `ListSection` later) | minor alignment |
-| 28 | Panel products | `PanelPage(action: Nowy produkt)` + `ListSection` | List-first inversion; create per D2 | visible improvement |
+| 28 | Panel products | `PanelPage(action: New product)` + `ListSection` | List-first inversion; create per D2 | visible improvement |
 | 29 | Product access editor | unchanged inside row | Button casing = theme/content fix | none |
 | 30 | Panel courses | `PanelPage(action)` + `ListSection` | Same inversion as 28 | visible improvement |
 | 31 | Panel course detail | `PanelPage(backTo)` + `ListSection` (outline) + `SectionCard` (tools) | Largest redesign; stage last (§4 S6) | visible improvement |
@@ -253,11 +253,11 @@ The repo's spirit: conventions are lint rules with shrink-only baselines, layeri
 ## 6. Owner decision points
 
 - **D1 — Panel page-title treatment.** Member pages use the ledger h1 + eyebrow + hairline; the panel today has five treatments and often no title. Options: (a) panel adopts the full ledger header (one title language app-wide), (b) panel gets a quieter h1-without-eyebrow variant. **Recommendation: (b)** — one `PanelPage` header with h1 + optional description, no eyebrow/rule; the ledger treatment stays the member-facing signature, the panel reads as a tool. Both are the same component API either way; this is purely visual taste.
-- **D2 — Create flows: dialog vs collapsible vs always-open form.** Today create forms permanently occupy the top of every panel list (top issue #1). **Recommendation: header action ("Nowy produkt") opening a `Dialog`** for products/courses/lessons — smallest primitive surface, mobile-friendly, and the confirm-dialog theming already exists in all 7 modes. Collapsible-under-header is the fallback if you dislike modals for multi-field forms.
+- **D2 — Create flows: dialog vs collapsible vs always-open form.** Today create forms permanently occupy the top of every panel list (top issue #1). **Recommendation: header action ("New product") opening a `Dialog`** for products/courses/lessons — smallest primitive surface, mobile-friendly, and the confirm-dialog theming already exists in all 7 modes. Collapsible-under-header is the fallback if you dislike modals for multi-field forms.
 - **D3 — Width scale (density).** Proposal collapses 7 widths to 4 tokens: focus 28 / wide-focus 32 (FocusCard), prose 44, panel 60, wide 72. Open call: **my-courses currently sits at 52rem** — join `wide` (72rem, 3-column card grid on xl) or `prose`+ (stay ~44–52, 2 columns)? **Recommendation: wide 72 with a 3-up grid** — the library is a browsing surface and the card component can carry it; kills the last odd width.
 - **D4 — Member mobile navigation.** The ledger header's text links collapse poorly on 390px. Options: (a) fold all utilities into `MemberAccountMenu` on xs (bell stays visible), (b) bottom tab bar, (c) hamburger drawer like the panel. **Recommendation: (a)** — two nav destinations don't justify a drawer or tab bar; revisit only if member IA grows.
 - **D5 — Lesson editing: in-list swap vs dedicated route.** Today editing swaps the row into a mega-form and loses scroll/context. **Recommendation: dedicated route** (`/panel/lessons/:id`) rendered as `PanelPage(backTo)` + `SectionCard`s — it reuses the primitives with zero new layout, gives shareable URLs, and fixes the lost-scroll problem. Dialog is wrong here: the block builder is too deep for a modal.
-- **D6 — Button casing (small, but blocks copy churn during migration).** Lowercase ("utwórz produkt") vs sentence case ("Zapisz") are mixed on the same screens. **Recommendation: sentence case everywhere**, set once in `theme.ts` typography/button per mode — one-file-theme handles it; no per-screen edits.
+- **D6 — Button casing (small, but blocks copy churn during migration).** Lowercase ("create product") vs sentence case ("Save") are mixed on the same screens. **Recommendation: sentence case everywhere**, set once in `theme.ts` typography/button per mode — one-file-theme handles it; no per-screen edits.
 
 ---
 

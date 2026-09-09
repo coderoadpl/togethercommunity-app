@@ -11,7 +11,7 @@
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
           "defaultHomeSpaceId": "space-studio-community",
-          "defaultLanguage": "pl",
+          "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
           "invoiceExemptionBasis": null,
@@ -45,10 +45,10 @@
         "email": "free@together.dev",
         "emailVerified": true,
         "impersonation": null,
-        "name": "Konto Free",
+        "name": "Free Account",
         "tenant": {
           "banned": true,
-          "displayName": "Konto Free",
+          "displayName": "Free Account",
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
@@ -70,45 +70,45 @@
               "accessibleLessonCount": 4,
               "completedLessonCount": 0,
               "courseId": "course-js",
-              "courseName": "Kurs JavaScript od podstaw",
+              "courseName": "JavaScript from Scratch",
               "lastActivityAt": null
             },
             {
               "accessibleLessonCount": 2,
               "completedLessonCount": 0,
               "courseId": "course-react",
-              "courseName": "React w praktyce",
+              "courseName": "React in Practice",
               "lastActivityAt": null
             }
           ],
           "directMessagesEnabled": true,
           "lockedSpaces": [
             {
-              "description": "Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.",
+              "description": "A space for full JavaScript course members to share projects, review code, and take on challenges.",
               "id": "space-studio-club-js",
-              "name": "Klub JavaScriptu",
+              "name": "JavaScript Club",
               "productIds": [
                 "product-js-full"
               ],
               "products": [
                 {
                   "id": "product-js-full",
-                  "title": "Kurs JavaScript - pełny dostęp"
+                  "title": "JavaScript Course - full access"
                 }
               ],
               "slug": "club-js"
             },
             {
-              "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
+              "description": "A space for React in Practice members to share projects, ask questions, and review code.",
               "id": "space-studio-club-react",
-              "name": "Klub Reacta",
+              "name": "React Club",
               "productIds": [
                 "product-react-full"
               ],
               "products": [
                 {
                   "id": "product-react-full",
-                  "title": "React w praktyce - pełny dostęp"
+                  "title": "React in Practice - full access"
                 }
               ],
               "slug": "club-react"
@@ -119,7 +119,7 @@
               "courseIds": [],
               "id": "space-studio-community",
               "isFollowing": true,
-              "name": "Społeczność",
+              "name": "Community",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
@@ -154,13 +154,13 @@
               }
             ],
             "slug": "course-together-101",
-            "title": "Kurs Together 101",
+            "title": "Together 101 Course",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.",
+            "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
             "priceCents": 39900,
@@ -174,13 +174,13 @@
               }
             ],
             "slug": "js-full",
-            "title": "Kurs JavaScript - pełny dostęp",
+            "title": "JavaScript Course - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Pełny dostęp do kursu React w praktyce.",
+            "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
             "priceCents": 49900,
@@ -194,13 +194,13 @@
               }
             ],
             "slug": "react-full",
-            "title": "React w praktyce - pełny dostęp",
+            "title": "React in Practice - full access",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Dostęp wyłącznie do modułu DOM z kursu JavaScript.",
+            "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
             "priceCents": 9900,
@@ -214,13 +214,13 @@
               }
             ],
             "slug": "js-dom-module",
-            "title": "Pakiet: moduł DOM",
+            "title": "DOM Module Pack",
             "type": "course"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
             "priceCents": 0,
@@ -240,7 +240,7 @@
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
             "priceCents": 4900,
@@ -261,13 +261,13 @@
               }
             ],
             "slug": "club",
-            "title": "Klub Studio — subskrypcja",
+            "title": "Studio Club - subscription",
             "type": "membership"
           },
           {
             "coverUrl": null,
             "currency": "PLN",
-            "description": "Ćwiczenia i checklisty do samodzielnej pracy po zakupie.",
+            "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
             "priceCents": 7900,
@@ -281,7 +281,7 @@
               }
             ],
             "slug": "download-workbook",
-            "title": "Workbook twórcy",
+            "title": "Creator Workbook",
             "type": "digital_download"
           }
         ],
@@ -327,10 +327,10 @@
                       "contentId": "content-lesson-js-demo-video",
                       "durationMinutes": 4,
                       "lessonId": "lesson-js-demo-video",
-                      "name": "Demo wideo (Bunny Stream)"
+                      "name": "Video demo (Bunny Stream)"
                     }
                   ],
-                  "name": "Wprowadzenie"
+                  "name": "Introduction"
                 },
                 {
                   "accessStatus": "partially-accessible",
@@ -343,7 +343,7 @@
                       "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
                       "lessonId": "lesson-js-variables-1",
-                      "name": "Deklarowanie zmiennych"
+                      "name": "Declaring variables"
                     },
                     {
                       "accessStatus": "not-accessible",
@@ -351,11 +351,11 @@
                       "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
                       "lessonId": "lesson-js-variables-2",
-                      "name": "Typy proste i złożone",
+                      "name": "Primitive and complex types",
                       "unlockProductId": "product-club"
                     }
                   ],
-                  "name": "Zmienne i typy"
+                  "name": "Variables and types"
                 },
                 {
                   "accessStatus": "not-accessible",
@@ -368,7 +368,7 @@
                       "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
                       "lessonId": "lesson-js-functions-1",
-                      "name": "Funkcje i argumenty",
+                      "name": "Functions and arguments",
                       "unlockProductId": "product-club"
                     },
                     {
@@ -377,16 +377,16 @@
                       "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
                       "lessonId": "lesson-js-functions-2",
-                      "name": "Domknięcia i zakres",
+                      "name": "Closures and scope",
                       "unlockProductId": "product-club"
                     }
                   ],
-                  "name": "Funkcje"
+                  "name": "Functions"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-js-basics",
-              "name": "Część 1 - Podstawy"
+              "name": "Part 1 - Basics"
             },
             {
               "accessStatus": "partially-accessible",
@@ -402,7 +402,7 @@
                       "contentId": "content-lesson-js-dom-1",
                       "durationMinutes": 14,
                       "lessonId": "lesson-js-dom-1",
-                      "name": "Wybieranie elementów DOM"
+                      "name": "Selecting DOM elements"
                     },
                     {
                       "accessStatus": "not-accessible",
@@ -410,16 +410,16 @@
                       "contentId": "content-lesson-js-dom-2",
                       "durationMinutes": 19,
                       "lessonId": "lesson-js-dom-2",
-                      "name": "Zdarzenia i interakcja",
+                      "name": "Events and interaction",
                       "unlockProductId": "product-club"
                     }
                   ],
-                  "name": "Manipulacja DOM"
+                  "name": "DOM manipulation"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-js-dom",
-              "name": "Część 2 - DOM"
+              "name": "Part 2 - DOM"
             },
             {
               "accessStatus": "fully-accessible",
@@ -435,18 +435,18 @@
                       "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
                       "lessonId": "lesson-js-project-1",
-                      "name": "Projekt: lista zadań"
+                      "name": "Project: a to-do list"
                     }
                   ],
-                  "name": "Projekt końcowy"
+                  "name": "Final project"
                 }
               ],
               "completionStatus": "not-completed",
               "id": "module-js-projects",
-              "name": "Część 3 - Projekty"
+              "name": "Part 3 - Projects"
             }
           ],
-          "name": "Kurs JavaScript od podstaw"
+          "name": "JavaScript from Scratch"
         }
       }
     },
@@ -461,11 +461,11 @@
               "type": "embed"
             },
             {
-              "html": "<h3>Drzewo DOM</h3><p>DOM (Document Object Model) to reprezentacja strony w postaci drzewa węzłów. Elementy wybieramy metodami <code>querySelector</code> oraz <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.klasa&quot;)</code> — pierwszy pasujący element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> — lista wszystkich elementów.</li></ul>",
+              "html": "<h3>The DOM tree</h3><p>The DOM (Document Object Model) represents a page as a tree of nodes. Select elements with <code>querySelector</code> and <code>querySelectorAll</code>.</p><ul><li><code>document.querySelector(&quot;.example&quot;)</code> - the first matching element.</li><li><code>document.querySelectorAll(&quot;li&quot;)</code> - a list of all matching elements.</li></ul>",
               "type": "html"
             },
             {
-              "name": "Ściąga: metody DOM (PDF)",
+              "name": "DOM methods cheat sheet (PDF)",
               "pdfUrl": "/assets/sample-lesson.pdf",
               "type": "pdf"
             }
@@ -475,7 +475,7 @@
           "id": "lesson-js-dom-1",
           "isPreview": false,
           "legacyId": null,
-          "name": "Wybieranie elementów DOM",
+          "name": "Selecting DOM elements",
           "tenantId": "tenant-studio"
         }
       }
@@ -496,12 +496,12 @@
           "resume": {
             "firstIncomplete": {
               "id": "lesson-js-demo-video",
-              "name": "Demo wideo (Bunny Stream)"
+              "name": "Video demo (Bunny Stream)"
             },
             "isReview": false,
             "target": {
               "id": "lesson-js-demo-video",
-              "name": "Demo wideo (Bunny Stream)"
+              "name": "Video demo (Bunny Stream)"
             }
           }
         }

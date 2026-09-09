@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PostSearchHit, PublicPost } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { SearchPage } from './SearchPage.js';
@@ -52,12 +52,12 @@ const okNavigation = () =>
       data: {
         navigation: {
           spaces: [
-            { id: 's1', slug: 'ogolna', name: 'Ogólna', visibility: 'members', position: 0, isFollowing: true },
+            { id: 's1', slug: 'general', name: 'General', visibility: 'members', position: 0, isFollowing: true },
           ],
           courses: [
             {
               courseId: 'c1',
-              courseName: 'Kamper od podstaw',
+              courseName: 'Camper basics',
               completedLessonCount: 0,
               accessibleLessonCount: 2,
               lastActivityAt: null,
@@ -76,26 +76,26 @@ const okStructure = () =>
       data: {
         structure: {
           courseId: String(params.courseId),
-          name: 'Kamper od podstaw',
+          name: 'Camper basics',
           accessStatus: 'fully-accessible',
           completionStatus: 'not-completed',
           modules: [
             {
               id: 'm1',
-              name: 'Moduł',
+              name: en.courses.moduleLabel,
               accessStatus: 'fully-accessible',
               completionStatus: 'not-completed',
               chapters: [
                 {
                   id: 'ch1',
-                  name: 'Rozdział',
+                  name: en.courses.chapterLabel,
                   accessStatus: 'fully-accessible',
                   completionStatus: 'not-completed',
                   lessons: [
                     {
                       contentId: 'ct1',
                       lessonId: 'l1',
-                      name: 'Wybór silnika',
+                      name: 'Engine selection',
                       accessStatus: 'fully-accessible',
                       completionStatus: 'not-completed',
                     },
@@ -141,14 +141,14 @@ describe('SearchPage', () => {
     await user.type(screen.getByTestId('search-input'), 'silnik');
 
     const spaceGroup = await screen.findByTestId('search-space-s1');
-    expect(within(spaceGroup).getByRole('heading', { name: 'Ogólna' })).toBeInTheDocument();
+    expect(within(spaceGroup).getByRole('heading', { name: 'General' })).toBeInTheDocument();
     expect(within(spaceGroup).getByTestId('search-hit-h1')).toHaveAttribute(
       'href',
       '/community/s1/posts/h1',
     );
 
     const lessonGroup = await screen.findByTestId('search-lesson-l1');
-    expect(within(lessonGroup).getByRole('heading', { name: 'Wybór silnika' })).toBeInTheDocument();
+    expect(within(lessonGroup).getByRole('heading', { name: 'Engine selection' })).toBeInTheDocument();
     expect(within(lessonGroup).getByTestId('search-hit-h2')).toHaveAttribute(
       'href',
       '/my/courses/c1/lessons/l1',
@@ -182,7 +182,7 @@ describe('SearchPage', () => {
     await user.type(screen.getByTestId('search-input'), 'a');
     await user.type(screen.getByTestId('search-input'), 'b');
 
-    expect(await screen.findByTestId('search-empty')).toHaveTextContent(pl.search.empty);
+    expect(await screen.findByTestId('search-empty')).toHaveTextContent(en.search.empty);
     expect(requestedUrls.map((url) => new URL(url).searchParams.get('query'))).toEqual(['ab']);
   });
 
@@ -191,14 +191,14 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    expect(screen.getByTestId('search-hint')).toHaveTextContent(pl.search.hint);
-    expect(screen.queryByText(pl.search.stemHint)).not.toBeInTheDocument();
+    expect(screen.getByTestId('search-hint')).toHaveTextContent(en.search.hint);
+    expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
 
     await user.type(screen.getByTestId('search-input'), 'silnik');
 
     const empty = await screen.findByTestId('search-empty');
-    expect(empty).toHaveTextContent(pl.search.empty);
-    expect(within(empty).getByTestId('search-stem-hint')).toHaveTextContent(pl.search.stemHint);
+    expect(empty).toHaveTextContent(en.search.empty);
+    expect(within(empty).getByTestId('search-stem-hint')).toHaveTextContent(en.search.stemHint);
     expect(screen.queryByTestId('search-results')).not.toBeInTheDocument();
   });
 
@@ -214,7 +214,7 @@ describe('SearchPage', () => {
     await user.type(screen.getByTestId('search-input'), 'silnik');
 
     const section = await screen.findByTestId('search-unresolved');
-    expect(within(section).getByRole('heading', { name: pl.search.unresolvedHeading })).toBeInTheDocument();
+    expect(within(section).getByRole('heading', { name: en.search.unresolvedHeading })).toBeInTheDocument();
     expect(within(section).getByTestId('search-hit-h4')).not.toHaveAttribute('href');
   });
 
@@ -234,6 +234,6 @@ describe('SearchPage', () => {
     await renderSearch();
     await user.type(screen.getByTestId('search-input'), 'silnik');
 
-    expect(await screen.findByRole('button', { name: pl.common.retry })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });
 });

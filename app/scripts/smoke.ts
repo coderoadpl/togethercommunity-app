@@ -86,7 +86,7 @@ const progressRowSchema = z.object({
 const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
   const now = new Date().toISOString();
   await client.query(
-    `insert into courses (id, tenant_id, name, description, created_at) values ('AUDIT-course', 'tenant-studio', 'AUDYT kurs', '', $1)`,
+    `insert into courses (id, tenant_id, name, description, created_at) values ('AUDIT-course', 'tenant-studio', 'AUDYT course', '', $1)`,
     [now],
   );
   await client.query(

@@ -1,3 +1,5 @@
+import { communityPl } from '#core/domain/community.pl.js';
+
 const capitalizePart = (part: string): string => {
   const normalized = part.toLocaleLowerCase('pl-PL');
   return `${normalized.slice(0, 1).toLocaleUpperCase('pl-PL')}${normalized.slice(1)}`;
@@ -20,5 +22,5 @@ export const repairDiscussionAuthorDisplay = (
     .map(capitalizePart)
     .join(' ')
     .trim();
-  return fromEmail.length > 0 ? fromEmail : 'Uczestnik';
+  return fromEmail.length > 0 ? fromEmail : communityPl.participant;
 };

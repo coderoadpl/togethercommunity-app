@@ -86,7 +86,7 @@ Legend: source tags — [LEX] legal research, [C] binding contract
 - M12. Server-injected footer on every marketing send: tenant legal name +
   postal/electronic address (new tenant-settings fields, non-empty before
   broadcasts enable), "you receive this because…" consent reference,
-  unsubscribe link. Tenants and API callers cannot remove it (art. 9 UŚUDE +
+  unsubscribe link. Tenants and API callers cannot remove it (art. 9 Polish Electronic Services Act +
   Gmail/Yahoo). [LEX]
 
 **BYO SES & deliverability**
@@ -252,7 +252,7 @@ the same e-mail exists under many tenants). Names are suggestions; layering
 follows the codebase rules (zod schemas in `core/domain`, ports in
 `core/server/ports.ts`, Drizzle tables in `adapters/db/app-schema.ts`).
 
-### 2.1 Consent definitions — the KREATOR ZGÓD
+### 2.1 Consent definitions — the consent creator
 
 Builds ON TOP of the existing append-only consents slice
 (`core/domain/consent.ts`, `TermsConsentRepository`) — no redesign of what

@@ -16,7 +16,7 @@ const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 const renderForm = (
   onSubmit = vi.fn(),
   error: Error | null = null,
-  language: Language = 'pl',
+  language: Language = 'en',
 ) => {
   languagePreference.save(language);
   render(
@@ -62,7 +62,7 @@ describe('ChangePasswordForm', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await screen.findByTestId('change-password-local-error')).toHaveTextContent(
-      pl.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+      en.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
     );
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -73,7 +73,7 @@ describe('ChangePasswordForm', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await screen.findByTestId('change-password-local-error')).toHaveTextContent(
-      pl.changePassword.mismatch,
+      en.changePassword.mismatch,
     );
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -114,7 +114,7 @@ describe('ChangePasswordForm', () => {
     renderForm(vi.fn(), providerError);
 
     expect(screen.getByTestId(/^toast-error-/)).toHaveTextContent(
-      pl.changePassword.invalidCurrentPassword,
+      en.changePassword.invalidCurrentPassword,
     );
   });
   it('keeps the submit button at content width', () => {

@@ -547,11 +547,12 @@ describe('MemberShell', () => {
     );
     await renderShell('/messages');
     if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
-    const navigation = within(await screen.findByTestId('member-sidebar'));
-    const messages = await navigation.findByTestId('sidebar-messages');
+    const navigation = within(await screen.findByTestId(desktop ? 'member-sidebar' : 'member-menu-sheet'));
+    const messagesId = desktop ? 'sidebar-messages' : 'member-account-messages';
+    const messages = await navigation.findByTestId(messagesId);
     expect(messages).toHaveAttribute('href', '/messages');
-    expect(messages).toHaveAttribute('aria-current', 'page');
-    expect(await navigation.findByTestId('sidebar-messages-unread')).toHaveTextContent('3');
+    if (desktop) expect(messages).toHaveAttribute('aria-current', 'page');
+    expect(await navigation.findByTestId(`${messagesId}-unread`)).toHaveTextContent('3');
     expect(messages).toHaveTextContent(en.messages.unreadAria({ count: 3 }));
   });
 
@@ -951,10 +952,12 @@ describe('MemberShell', () => {
     expect(space.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect([
       within(actions).getByTestId('member-account-products'),
+      within(actions).getByTestId('member-account-messages'),
       within(actions).getByTestId('member-account-link'),
       within(actions).getByTestId('member-sign-out'),
     ].map((item) => item.textContent)).toEqual([
       en.student.myProducts,
+      en.messages.navLabel,
       en.account.menuAccount,
       en.tenant.signOut,
     ]);
@@ -962,13 +965,14 @@ describe('MemberShell', () => {
       'href',
       '/my/products',
     );
-    expect(within(sheet).getByTestId('sidebar-messages')).toHaveAttribute(
+    expect(within(actions).getByTestId('member-account-messages')).toHaveAttribute(
       'href',
       '/messages',
     );
     expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-messages')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
   });

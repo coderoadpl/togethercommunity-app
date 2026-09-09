@@ -4,10 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
+import { LanguageProvider } from '../../i18n/index.js';
 import { en } from '../../i18n/en.js';
+import { pl } from '../../i18n/pl.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
+import { MemberMenuSheet } from './shell/MemberMenuSheet.js';
 
 const me = (impersonation: unknown, staffRole: 'owner' | 'admin' | null = null) =>
   http.get('*/api/me', () =>
@@ -40,15 +44,19 @@ const activeImpersonation = {
   expiresAt: '2026-09-03T11:00:00.000Z',
 };
 
-const renderMenu = async () => {
-  const rootRoute = createRootRoute({ component: () => <MemberAccountMenu panelUrl="/panel/members" /> });
+const renderMenu = async (surface: 'menu' | 'sheet' = 'menu') => {
+  const rootRoute = createRootRoute({
+    component: () => surface === 'menu'
+      ? <MemberAccountMenu panelUrl="/panel/members" />
+      : <MemberMenuSheet open onClose={() => undefined} name="John Member" email="jan@example.com" avatarUrl={null} />,
+  });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/my'] }),
   });
   await router.load();
-  renderWithProviders(<RouterProvider router={router} />);
-  await userEvent.click(await screen.findByTestId('member-account-menu'));
+  renderWithProviders(<LanguageProvider><ThemeModeProvider><RouterProvider router={router} /></ThemeModeProvider></LanguageProvider>);
+  if (surface === 'menu') await userEvent.click(await screen.findByTestId('member-account-menu'));
 };
 
 describe('MemberAccountMenu', () => {
@@ -94,7 +102,13 @@ describe('MemberAccountMenu', () => {
     expect(authCalls).toHaveLength(1);
   });
 
-  it('marks waiting direct messages on the avatar and next to the messages entry', async () => {
+  it.each([
+    { surface: 'menu', language: 'en', t: en },
+    { surface: 'sheet', language: 'en', t: en },
+    { surface: 'menu', language: 'pl', t: pl },
+    { surface: 'sheet', language: 'pl', t: pl },
+  ] as const)('marks waiting direct messages in the $surface in $language', async ({ surface, language, t }) => {
+    window.localStorage.setItem('together-language', language);
     server.use(
       me(null),
       http.get('*/api/member/navigation', () =>
@@ -115,15 +129,20 @@ describe('MemberAccountMenu', () => {
       ),
     );
 
-    await renderMenu();
+    await renderMenu(surface);
 
     expect(await screen.findByTestId('member-account-messages-unread')).toHaveTextContent('3');
-    expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
-    expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
-      en.panel.accountMenuUnread({ count: 3 }),
-    );
+    if (surface === 'menu') {
+      expect(screen.getByTestId('member-account-unread')).toBeInTheDocument();
+      expect(screen.getByTestId('member-account-menu')).toHaveAccessibleName(
+        t.panel.accountMenuUnread({ count: 3 }),
+      );
+    } else {
+      expect(within(screen.getByTestId('member-menu-sheet')).getByTestId('member-account-messages'))
+        .toHaveAttribute('href', '/messages');
+    }
     expect(screen.getByTestId('member-account-messages')).toHaveTextContent(
-      en.messages.unreadAria({ count: 3 }),
+      t.messages.unreadAria({ count: 3 }),
     );
   });
 

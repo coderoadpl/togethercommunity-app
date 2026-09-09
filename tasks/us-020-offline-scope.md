@@ -33,7 +33,7 @@
     a demo app under a third-party zone; Together's own domain takes the simpler
     NS-delegated path. Both stay supported because the adapter is topology-blind.)
 - **Tenant custom domains are provider-agnostic in core.** A tenant points
-  `spolecznosc.example.com` at `SELF_HOST_TARGET_CNAME` (Vercel:
+  `community.example.com` at `SELF_HOST_TARGET_CNAME` (Vercel:
   `cname.vercel-dns.com`) and, when the provider demands ownership proof, adds
   the returned `TXT _vercel.example.com`. Core never learns the target value —
   it is adapter configuration.
@@ -137,7 +137,7 @@ Strict layer order; each step is independently mergeable and fully unit-tested.
    `tenantDomainsCreate: POST /api/tenant/domains`,
    `tenantDomainsCheck: POST /api/tenant/domains/check`,
    `tenantDomainsDelete: DELETE /api/tenant/domains/:domainId`.
-   Request stays `{ "domain": "spolecznosc.example.com" }`; responses carry
+   Request stays `{ "domain": "community.example.com" }`; responses carry
    `{ domain, requiredDnsRecords? }`.
 6. **Adapters** — `adapters/domain-provisioning/`:
    - `noop.ts` — empty record arrays, `check` resolves against the persisted row.

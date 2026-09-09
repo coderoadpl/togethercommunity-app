@@ -19,7 +19,7 @@ describe('priceMajorSchema', () => {
     expect(priceMajorSchema.parse('1.10')).toBe(110);
   });
 
-  it('accepts the Polish comma as a decimal separator', () => {
+  it('accepts a comma as a decimal separator', () => {
     expect(priceMajorSchema.parse('199,99')).toBe(19999);
     expect(priceMajorSchema.parse('49,90')).toBe(4990);
     expect(priceMajorSchema.parse('0,05')).toBe(5);
@@ -50,11 +50,11 @@ describe('priceMajorSchema', () => {
 
 describe('productSlugFromTitle', () => {
   it('lowercases and joins words with single hyphens', () => {
-    expect(productSlugFromTitle('  Kurs Together   101 ')).toBe('kurs-together-101');
+    expect(productSlugFromTitle('  Together Course   101 ')).toBe('together-course-101');
   });
 
-  it('strips Polish diacritics that decompose to ASCII', () => {
-    expect(productSlugFromTitle('Wstęp do programowania')).toBe('wstep-do-programowania');
+  it('strips diacritics that decompose to ASCII', () => {
+    expect(productSlugFromTitle('Café résumé')).toBe('cafe-resume');
   });
 
   it('produces a slug the schema accepts even when truncated', () => {
@@ -70,7 +70,7 @@ describe('productSlugFromTitle', () => {
 
 describe('productSlugSchema', () => {
   it('rejects uppercase, underscores and edge hyphens', () => {
-    for (const invalid of ['Kurs', 'kurs_101', '-kurs', 'kurs-', 'kurs--101', '']) {
+    for (const invalid of ['Course', 'course_101', '-course', 'course-', 'course--101', '']) {
       expect(productSlugSchema.safeParse(invalid).success).toBe(false);
     }
   });

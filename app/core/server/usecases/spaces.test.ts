@@ -1027,7 +1027,7 @@ describe('space feed', () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
       ctx(),
-      { contextKind: 'space', contextId: 's-open', body: 'ważne' },
+      { contextKind: 'space', contextId: 's-open', body: 'important' },
       f.deps,
     );
     if (!created.ok) throw new Error('post was not created');
@@ -1053,10 +1053,10 @@ describe('space feed', () => {
 
   it('resolves author avatars for pinned and unpinned feed rows', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'przypięty' }, f.deps);
+    const pinned = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body: 'pinned' }, f.deps);
     const plain = await createPost(
       ctx({ userId: 'u2', memberId: 'm2' }),
-      { contextKind: 'space', contextId: 's-open', body: 'zwykły' },
+      { contextKind: 'space', contextId: 's-open', body: 'plain' },
       f.deps,
     );
     if (!pinned.ok || !plain.ok) throw new Error('posts were not created');
@@ -1075,7 +1075,7 @@ describe('space feed', () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
       ctx(),
-      { contextKind: 'space', contextId: 's-open', body: 'do usunięcia' },
+      { contextKind: 'space', contextId: 's-open', body: 'delete me' },
       f.deps,
     );
     if (!created.ok) throw new Error('post was not created');
@@ -1159,7 +1159,7 @@ describe('space feed', () => {
 
   it('paginates newest-first with reply counts and reaction summaries', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
-    const bodies = ['pierwszy', 'drugi', 'trzeci'];
+    const bodies = ['first', 'second', 'third'];
     for (const body of bodies) {
       const created = await createPost(ctx(), { contextKind: 'space', contextId: 's-open', body }, f.deps);
       expect(created.ok).toBe(true);
@@ -1169,7 +1169,7 @@ describe('space feed', () => {
     if (!first) throw new Error('no root post');
     await createPost(
       ctx({ userId: 'u2', memberId: 'm2' }),
-      { contextKind: 'space', contextId: 's-open', parentPostId: first.id, body: 'odpowiedź' },
+      { contextKind: 'space', contextId: 's-open', parentPostId: first.id, body: 'reply' },
       f.deps,
     );
     await reactToPost(ctx({ userId: 'u2', memberId: 'm2' }), { postId: first.id, emoji: '👍' }, f.deps);
@@ -1177,7 +1177,7 @@ describe('space feed', () => {
     const pageOne = await getSpaceFeed(ctx(), { spaceId: 's-open', limit: 2 }, f.deps);
     expect(pageOne.ok).toBe(true);
     if (!pageOne.ok) return;
-    expect(pageOne.value.items.map((item) => item.body)).toEqual(['trzeci', 'drugi']);
+    expect(pageOne.value.items.map((item) => item.body)).toEqual(['third', 'second']);
     expect(pageOne.value.nextCursor).not.toBeNull();
 
     const pageTwo = await getSpaceFeed(
@@ -1187,7 +1187,7 @@ describe('space feed', () => {
     );
     expect(pageTwo.ok).toBe(true);
     if (!pageTwo.ok) return;
-    expect(pageTwo.value.items.map((item) => item.body)).toEqual(['pierwszy']);
+    expect(pageTwo.value.items.map((item) => item.body)).toEqual(['first']);
     expect(pageTwo.value.nextCursor).toBeNull();
     const firstItem = pageTwo.value.items[0];
     expect(firstItem?.replyCount).toBe(1);

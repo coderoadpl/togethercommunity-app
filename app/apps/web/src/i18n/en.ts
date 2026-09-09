@@ -884,6 +884,7 @@ export const en: Messages = {
     bunnyLibraryIdLabel: 'Library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnyCdnHostnameLabel: 'Stream CDN hostname',
+    bunnyCdnHostnamePlaceholder: 'vz-xxxxxxx-xxx.b-cdn.net',
     bunnyCdnHostnameHelper:
       'Found in your Bunny Stream library → Delivery. Needed for native app playback.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',

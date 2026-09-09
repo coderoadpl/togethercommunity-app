@@ -2,10 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import fixture from '../fixtures/anon-home-tiles.json';
 import { withPage } from '../page-decorators.js';
 
-const publicEventsCall = 'publicSpaceEvents:[{"limit":5,"scope":"upcoming","spaceId":"space-studio-spolecznosc"}]';
+const publicEventsCall = 'publicSpaceEvents:[{"limit":5,"scope":"upcoming","spaceId":"space-studio-community"}]';
 const anonSpaceFixture = {
   ...fixture,
-  route: '/community/space-studio-spolecznosc',
+  route: '/community/space-studio-community',
   calls: {
     ...fixture.calls,
     [publicEventsCall]: {

@@ -18,10 +18,10 @@ const notification: Notification = {
     courseId: 'c1',
     eventId: null,
     domain: null,
-    lessonName: 'Lekcja o hamakach',
-    authorDisplay: 'Ola',
+    lessonName: 'Hammock lesson',
+    authorDisplay: 'Olivia',
     authorAvatarUrl: null,
-    snippet: 'Świetne pytanie!',
+    snippet: 'Great question!',
   },
   sourceKey: null,
   readAt: null,
@@ -31,9 +31,9 @@ const notification: Notification = {
 const context: NotificationDeliveryContext = {
   recipientEmail: 'u2@example.com',
   tenantName: 'Caravan',
-  contextName: 'Lekcja o hamakach',
+  contextName: 'Hammock lesson',
   contextUrl: 'http://acme.localhost:48730/my/courses/c1/lessons/l1',
-  language: 'pl',
+  language: 'en',
 };
 
 const captureEmail = () => {
@@ -66,7 +66,7 @@ describe('email notification channel', () => {
     expect(delivered.ok).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe('u2@example.com');
-    expect(sent[0]?.payload).toMatchObject({ kind: 'thread-reply', lessonName: 'Lekcja o hamakach', authorDisplay: 'Ola', snippet: 'Świetne pytanie!', tenantName: 'Caravan' });
+    expect(sent[0]?.payload).toMatchObject({ kind: 'thread-reply', lessonName: 'Hammock lesson', authorDisplay: 'Olivia', snippet: 'Great question!', tenantName: 'Caravan' });
   });
 
   it('renders the spacePost template for space-post notifications', async () => {
@@ -81,18 +81,18 @@ describe('email notification channel', () => {
           contextKind: 'space',
           contextId: 's1',
           courseId: null,
-          lessonName: 'Społeczność',
+          lessonName: 'Community',
         },
       },
       {
         ...context,
-        contextName: 'Społeczność',
+        contextName: 'Community',
         contextUrl: 'http://acme.localhost:48730/community/s1/posts/p1',
       },
     );
 
     expect(delivered.ok).toBe(true);
-    expect(sent[0]?.payload).toMatchObject({ kind: 'space-post', spaceName: 'Społeczność', url: 'http://acme.localhost:48730/community/s1/posts/p1' });
+    expect(sent[0]?.payload).toMatchObject({ kind: 'space-post', spaceName: 'Community', url: 'http://acme.localhost:48730/community/s1/posts/p1' });
   });
 
   it('renders the lesson question template for lesson-question notifications', async () => {
@@ -104,7 +104,7 @@ describe('email notification channel', () => {
     );
 
     expect(delivered.ok).toBe(true);
-    expect(sent[0]?.payload).toMatchObject({ kind: 'lesson-question', language: 'en', lessonName: 'Lekcja o hamakach' });
+    expect(sent[0]?.payload).toMatchObject({ kind: 'lesson-question', language: 'en', lessonName: 'Hammock lesson' });
   });
 
   it('renders the directMessage template for dm-message notifications', async () => {
@@ -119,13 +119,13 @@ describe('email notification channel', () => {
           contextKind: 'dm',
           contextId: 'dc1',
           courseId: null,
-          lessonName: 'Ola',
-          snippet: 'Cześć, mam pytanie o hamaki',
+          lessonName: 'Olivia',
+          snippet: 'Hi, I have a question about hammocks',
         },
       },
       {
         ...context,
-        contextName: 'Ola',
+        contextName: 'Olivia',
         contextUrl: 'http://acme.localhost:48730/messages/dc1',
       },
     );
@@ -134,10 +134,10 @@ describe('email notification channel', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.payload).toMatchObject({
       kind: 'direct-message',
-      language: 'pl',
+      language: 'en',
       tenantName: 'Caravan',
-      senderDisplay: 'Ola',
-      snippet: 'Cześć, mam pytanie o hamaki',
+      senderDisplay: 'Olivia',
+      snippet: 'Hi, I have a question about hammocks',
       url: 'http://acme.localhost:48730/messages/dc1',
     });
   });

@@ -804,6 +804,7 @@ export interface Messages {
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnyCdnHostnameLabel: string;
+    bunnyCdnHostnamePlaceholder: string;
     bunnyCdnHostnameHelper: string;
     bunnySaveFirst: string;
     s3Heading: string;

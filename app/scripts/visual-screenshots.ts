@@ -180,8 +180,8 @@ const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> =
 
 const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
-  await requestMagicLink(page, 'kursant.aktywny@together.dev');
-  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
+  await requestMagicLink(page, 'student.active@together.dev');
+  const magicLink = page.getByRole('link', { name: 'Open magic link (development mode)' });
   await magicLink.waitFor(visible);
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');
@@ -307,7 +307,7 @@ try {
           } finally {
             if (preparation !== undefined) {
               await preparation.cleanup();
-              await page.getByRole('status', { name: 'Otwieranie Twojej platformy…' }).waitFor({ state: 'hidden', timeout: 20000 });
+              await page.getByRole('status', { name: 'Opening your workspace…' }).waitFor({ state: 'hidden', timeout: 20000 });
               await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
             }
           }

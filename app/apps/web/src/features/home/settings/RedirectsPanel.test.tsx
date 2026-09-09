@@ -128,7 +128,7 @@ const installBackend = (seed: TenantRedirect[], createResult?: 'conflict'): Back
       }
       const created = redirect({
         id: 'redirect-created',
-        fromPath: '/kurs/javascript',
+        fromPath: '/course/javascript',
         origin: 'manual',
         permanent: z.object({ permanent: z.boolean() }).parse(body).permanent,
       });
@@ -253,9 +253,9 @@ describe('RedirectsPanel', () => {
     await screen.findByText(pl.redirects.empty);
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.addHeading }));
 
-    await userEvent.type(screen.getByTestId('redirect-from-path'), '/Kurs/JavaScript/');
+    await userEvent.type(screen.getByTestId('redirect-from-path'), '/Course/JavaScript/');
     expect(screen.getByTestId('redirect-from-path-preview'))
-      .toHaveTextContent(pl.redirects.addSourcePreview({ path: '/kurs/javascript' }));
+      .toHaveTextContent(pl.redirects.addSourcePreview({ path: '/course/javascript' }));
 
     await userEvent.click(screen.getByRole('radio', { name: pl.redirects.targetLesson }));
     await userEvent.click(await screen.findByLabelText(pl.redirects.targetCourseLabel));
@@ -267,13 +267,13 @@ describe('RedirectsPanel', () => {
 
     await waitFor(() => {
       expect(backend.created).toEqual([{
-        fromPath: '/Kurs/JavaScript/',
+        fromPath: '/Course/JavaScript/',
         target: { kind: 'lesson', courseId: COURSE_ID, lessonId: LESSON_ID },
         permanent: true,
       }]);
     });
     expect(await findToast('success'))
-      .toHaveTextContent(pl.redirects.created({ fromPath: '/kurs/javascript' }));
+      .toHaveTextContent(pl.redirects.created({ fromPath: '/course/javascript' }));
   });
 
   it('defaults to a temporary path redirect and collapses after refreshing the list', async () => {
@@ -283,14 +283,14 @@ describe('RedirectsPanel', () => {
     await screen.findByText(pl.redirects.empty);
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.addHeading }));
 
-    await userEvent.type(screen.getByTestId('redirect-from-path'), '/oferta');
+    await userEvent.type(screen.getByTestId('redirect-from-path'), '/offer');
     await userEvent.click(screen.getByRole('radio', { name: pl.redirects.targetPath }));
     await userEvent.type(screen.getByTestId('redirect-target-path'), '/my');
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.submit }));
 
     await waitFor(() => {
       expect(backend.created).toEqual([{
-        fromPath: '/oferta',
+        fromPath: '/offer',
         target: { kind: 'path', path: '/my' },
         permanent: false,
       }]);
@@ -308,13 +308,13 @@ describe('RedirectsPanel', () => {
     await screen.findByText(pl.redirects.empty);
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.addHeading }));
 
-    await userEvent.type(screen.getByTestId('redirect-from-path'), '/oferta');
+    await userEvent.type(screen.getByTestId('redirect-from-path'), '/offer');
     await userEvent.click(screen.getByRole('radio', { name: pl.redirects.targetPath }));
     await userEvent.type(screen.getByTestId('redirect-target-path'), '/my');
     await userEvent.click(screen.getByRole('button', { name: pl.redirects.submit }));
 
     expect(await findToast('error')).toBeInTheDocument();
-    expect(screen.getByTestId('redirect-from-path')).toHaveValue('/oferta');
+    expect(screen.getByTestId('redirect-from-path')).toHaveValue('/offer');
   });
 
   it('deletes a redirect only after the confirmation', async () => {

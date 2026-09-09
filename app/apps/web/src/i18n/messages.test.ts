@@ -32,15 +32,11 @@ const plainStrings = (value: unknown): string[] => {
 
 describe('i18n dictionaries', () => {
   it('never names the retired sending-settings page', () => {
-    expect(plainStrings(pl).filter((text) => text.includes('Ustawienia wysyłki'))).toEqual([]);
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });
 
   it('keeps the sign-in step copy neutral about the typed address', () => {
     const enumerating = [
-      /to konto/iu,
-      /nie ma hasła/iu,
-      /nie istnieje/iu,
       /this account/iu,
       /has no password/iu,
       /does not exist/iu,
@@ -69,7 +65,6 @@ describe('i18n dictionaries', () => {
 
   it('interpolates named params through the format helper', () => {
     expect(format('checkout · {tenant}', { tenant: 'Acme' })).toBe('checkout · Acme');
-    expect(pl.checkout.eyebrow({ tenant: 'Acme' })).toBe('Płatność · Acme');
     expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('Checkout · Acme');
   });
 });

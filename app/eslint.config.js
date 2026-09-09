@@ -3,6 +3,7 @@ import tanstackQuery from '@tanstack/eslint-plugin-query';
 import react from 'eslint-plugin-react';
 import reactCompiler from 'eslint-plugin-react-compiler';
 import reactHooks from 'eslint-plugin-react-hooks';
+import i18next from 'eslint-plugin-i18next';
 import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
 import { readFileSync } from 'node:fs';
@@ -161,6 +162,26 @@ export default tseslint.config(
   },
   {
     linterOptions: { reportUnusedDisableDirectives: 'error' },
+  },
+  {
+    files: ['apps/web/src/**/*.tsx'],
+    ignores: ['apps/web/src/**/*.test.tsx', 'apps/web/src/**/*.stories.tsx', 'apps/web/src/i18n/**'],
+    plugins: { i18next },
+    rules: {
+      'i18next/no-literal-string': [
+        'error',
+        {
+          framework: 'react',
+          mode: 'jsx-only',
+          'jsx-attributes': {
+            include: ['aria-label', 'title', 'placeholder', 'alt'],
+          },
+          words: {
+            exclude: ['^[^A-Za-z]+$'],
+          },
+        },
+      ],
+    },
   },
   {
     files: ['**/*.js', '**/*.mjs'],

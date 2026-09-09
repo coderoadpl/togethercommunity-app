@@ -11,7 +11,7 @@ describe('slugify', () => {
 
   it('collapses punctuation and whitespace into single hyphens', () => {
     expect(slugify('Kurs: HTML & CSS!')).toBe('kurs-html-css');
-    expect(slugify('  Kurs Together   101 ')).toBe('kurs-together-101');
+    expect(slugify('  Course Together   101 ')).toBe('course-together-101');
   });
 
   it('transliterates German and Nordic letters that NFKD keeps intact', () => {

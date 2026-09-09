@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { notificationMarkReadInputSchema } from '#core/domain/index.js';
 
-import { pl } from './i18n/pl.js';
+import { en } from './i18n/en.js';
 import { renderWithProviders } from './test/render.js';
 import { server } from './test/server.js';
 import { NotificationBell } from './NotificationBell.js';
@@ -50,10 +50,10 @@ const notification = (input: {
     contextKind: input.contextKind ?? 'lesson',
     contextId: input.contextId ?? 'l1',
     courseId: input.courseId ?? null,
-    lessonName: 'Hamaki w kamperze',
-    authorDisplay: 'Ola',
+    lessonName: 'Hammocks in a camper',
+    authorDisplay: 'Olivia',
     authorAvatarUrl: input.authorAvatarUrl ?? null,
-    snippet: 'Świetne pytanie, już odpowiadam!',
+    snippet: 'Great question, I am answering now.',
   },
   readAt: input.read ? '2026-07-15T09:00:00.000Z' : null,
   createdAt: '2026-07-15T08:00:00.000Z',
@@ -77,7 +77,7 @@ const impersonatedMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -89,8 +89,8 @@ const impersonatedMe = () =>
         impersonation: {
           id: 'imp-1',
           subjectMemberId: 'mem-1',
-          subjectName: 'Jan Uczestnik',
-          actorName: 'Ola Operatorka',
+          subjectName: 'John Participant',
+          actorName: 'Olivia Operator',
           expiresAt: '2026-08-15T09:00:00.000Z',
         },
       },
@@ -173,7 +173,7 @@ describe('NotificationBell', () => {
     await waitFor(() =>
       expect(screen.getByTestId('notification-bell')).toHaveAttribute(
         'aria-label',
-        pl.notifications.unreadAria({ count: 3 }),
+        en.notifications.unreadAria({ count: 3 }),
       ),
     );
   });
@@ -189,7 +189,7 @@ describe('NotificationBell', () => {
     await renderBell();
 
     const bell = await screen.findByTestId('notification-bell');
-    await waitFor(() => expect(bell).toHaveAttribute('aria-label', pl.notifications.bell));
+    await waitFor(() => expect(bell).toHaveAttribute('aria-label', en.notifications.bell));
     expect(bell.querySelector('.MuiBadge-badge')).toHaveClass('MuiBadge-invisible');
   });
 
@@ -218,10 +218,10 @@ describe('NotificationBell', () => {
     const panel = await screen.findByTestId('notifications-panel');
     expect(panel).toHaveAttribute('role', 'dialog');
     expect(screen.getByTestId('notification-group-earlier')).toHaveTextContent(
-      pl.notifications.groupEarlier,
+      en.notifications.groupEarlier,
     );
     expect(screen.getByTestId('notification-n1')).toHaveTextContent(
-      pl.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }),
+      en.notifications.threadReply({ author: 'Olivia', lesson: 'Hammocks in a camper' }),
     );
     expect(screen.queryByTestId('notifications-panel-close')).toBeNull();
 
@@ -316,7 +316,7 @@ describe('NotificationBell', () => {
                 contextId: null,
                 courseId: null,
                 eventId: null,
-                domain: 'kurs.acme.example',
+                domain: 'course.acme.example',
                 lessonName: '',
                 authorDisplay: null,
                 authorAvatarUrl: null,
@@ -336,7 +336,7 @@ describe('NotificationBell', () => {
     const row = await screen.findByTestId('notification-n1');
     expect(within(row).queryByTestId('user-avatar')).toBeNull();
     expect(row).toHaveTextContent(
-      pl.notifications.tenantDomainVerified({ domain: 'kurs.acme.example' }),
+      en.notifications.tenantDomainVerified({ domain: 'course.acme.example' }),
     );
   });
 
@@ -348,8 +348,8 @@ describe('NotificationBell', () => {
     await userEvent.click(await screen.findByTestId('notification-bell'));
 
     const empty = await screen.findByTestId('notifications-empty');
-    expect(empty).toHaveTextContent(pl.notifications.empty);
-    expect(empty).toHaveTextContent(pl.notifications.emptyHint);
+    expect(empty).toHaveTextContent(en.notifications.empty);
+    expect(empty).toHaveTextContent(en.notifications.emptyHint);
   });
 
   it('opens a bottom sheet with a close control below md', async () => {
@@ -401,7 +401,7 @@ describe('NotificationBell', () => {
     await userEvent.click(await screen.findByTestId('notification-bell'));
 
     const viewAll = await screen.findByTestId('notifications-view-all');
-    expect(viewAll).toHaveTextContent(pl.notifications.viewAll);
+    expect(viewAll).toHaveTextContent(en.notifications.viewAll);
 
     await userEvent.click(viewAll);
 

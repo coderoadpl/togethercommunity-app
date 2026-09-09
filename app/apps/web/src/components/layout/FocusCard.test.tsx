@@ -7,42 +7,42 @@ import { FocusCard } from './FocusCard.js';
 describe('FocusCard', () => {
   it('renders the default Together wordmark, eyebrow and children', () => {
     render(
-      <FocusCard eyebrow="logowanie · studio" data-testid="card">
-        <p>Pola formularza</p>
+      <FocusCard eyebrow="sign in studio" data-testid="card">
+        <p>Form fields</p>
       </FocusCard>,
     );
 
     expect(screen.getByAltText('Together')).toBeInTheDocument();
-    expect(screen.getByText('logowanie · studio')).toBeInTheDocument();
-    expect(screen.getByText('Pola formularza')).toBeInTheDocument();
+    expect(screen.getByText('sign in studio')).toBeInTheDocument();
+    expect(screen.getByText('Form fields')).toBeInTheDocument();
   });
 
   it('lets a caller replace the brand slot', () => {
     render(
-      <FocusCard eyebrow="404" brand={<h1>Inna marka</h1>}>
-        <p>Treść</p>
+      <FocusCard eyebrow="404" brand={<h1>Other brand</h1>}>
+        <p>Content</p>
       </FocusCard>,
     );
 
     expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
-    expect(screen.getByText('Inna marka')).toBeInTheDocument();
+    expect(screen.getByText('Other brand')).toBeInTheDocument();
   });
 
   it('renders the footer after a divider', () => {
     render(
-      <FocusCard eyebrow="rejestracja" footer={<p>Masz już konto?</p>}>
-        <p>Treść</p>
+      <FocusCard eyebrow="registration" footer={<p>Already have an account?</p>}>
+        <p>Content</p>
       </FocusCard>,
     );
 
-    expect(screen.getByText('Masz już konto?')).toBeInTheDocument();
+    expect(screen.getByText('Already have an account?')).toBeInTheDocument();
     expect(screen.getByRole('separator')).toBeInTheDocument();
   });
 
   it('omits the divider when there is no footer', () => {
     render(
-      <FocusCard eyebrow="rejestracja">
-        <p>Treść</p>
+      <FocusCard eyebrow="registration">
+        <p>Content</p>
       </FocusCard>,
     );
     expect(screen.queryByRole('separator')).not.toBeInTheDocument();
@@ -52,13 +52,13 @@ describe('FocusCard', () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
     render(
-      <FocusCard eyebrow="logowanie" onSubmit={onSubmit} data-testid="card">
-        <button type="submit">Zaloguj się</button>
+      <FocusCard eyebrow="sign in" onSubmit={onSubmit} data-testid="card">
+        <button type="submit">Sign in</button>
       </FocusCard>,
     );
 
     expect(screen.getByTestId('card').tagName).toBe('FORM');
-    await user.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { ToastProvider } from '../../components/ui/Toast.js';
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -47,7 +47,7 @@ const stubSettings = (
 ) =>
   http.get('*/api/tenant/settings', () =>
     HttpResponse.json({ ok: true, data: { settings: {
-      name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
+          name: 'Academy', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
       memberVideoAutoplayOverride,
       videoAutoplayDefault,
     } } }),
@@ -95,7 +95,7 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=security');
 
     expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
-    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
+    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(en.security.noPasskeys);
     expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
   });
@@ -108,14 +108,14 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    const profileTab = await screen.findByRole('tab', { name: pl.account.tabs.profile });
+    const profileTab = await screen.findByRole('tab', { name: en.account.tabs.profile });
     expect(profileTab).toHaveAttribute('aria-selected', 'true');
     expect(profileTab).toHaveAttribute('aria-controls', 'account-panel-profile');
-    expect(screen.getByRole('tablist', { name: pl.account.tabsLabel })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: en.account.tabsLabel })).toBeInTheDocument();
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'account-panel-profile');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'account-tab-profile');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0');
-    expect(screen.queryByRole('heading', { name: pl.security.heading })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.security.heading })).not.toBeInTheDocument();
   });
 
   it('keeps the identity card above page-level fetch errors', async () => {
@@ -127,8 +127,8 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    const profile = await screen.findByRole('heading', { level: 2, name: pl.account.profileHeading });
-    const retry = await screen.findByRole('button', { name: pl.common.retry });
+    const profile = await screen.findByRole('heading', { level: 2, name: en.account.profileHeading });
+    const retry = await screen.findByRole('button', { name: en.common.retry });
     expect(profile.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeGreaterThan(0);
   });
@@ -141,13 +141,13 @@ describe('MemberAccountPage', () => {
     expect(email).toHaveTextContent('member@together.dev');
     expect(email).toHaveStyle({ overflowWrap: 'anywhere' });
     expect(email.closest('form')).toContainElement(
-      screen.getByLabelText(pl.account.displayNameLabel),
+      screen.getByLabelText(en.account.displayNameLabel),
     );
-    const caption = screen.getByText(pl.account.signedInAs);
+    const caption = screen.getByText(en.account.signedInAs);
     expect(caption.tagName).toBe('DT');
     expect(email.tagName).toBe('DD');
     expect(caption.parentElement).toBe(email.parentElement);
-    expect(screen.queryByRole('heading', { level: 2, name: pl.account.signedInAs }))
+    expect(screen.queryByRole('heading', { level: 2, name: en.account.signedInAs }))
       .not.toBeInTheDocument();
     expect(screen.getAllByText('member@together.dev')).toHaveLength(1);
   });
@@ -156,9 +156,9 @@ describe('MemberAccountPage', () => {
     server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
     await renderAccount();
 
-    const field = await screen.findByLabelText(pl.account.displayNameLabel);
-    expect(field).toHaveAccessibleDescription(pl.account.displayNameHint);
-    const hint = screen.getByText(pl.account.displayNameHint);
+    const field = await screen.findByLabelText(en.account.displayNameLabel);
+    expect(field).toHaveAccessibleDescription(en.account.displayNameHint);
+    const hint = screen.getByText(en.account.displayNameHint);
     expect(field.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeGreaterThan(0);
   });
@@ -204,7 +204,7 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     await userEvent.upload(
-      await screen.findByLabelText(pl.account.avatarUpload),
+      await screen.findByLabelText(en.account.avatarUpload),
       new File(['avatar'], 'avatar.png', { type: 'image/png' }),
     );
 
@@ -225,11 +225,11 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     await userEvent.upload(
-      await screen.findByLabelText(pl.account.avatarUpload),
+      await screen.findByLabelText(en.account.avatarUpload),
       new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.jpg', { type: 'image/jpeg' }),
     );
 
-    expect(await screen.findByText(pl.account.avatarTooLarge)).toBeInTheDocument();
+    expect(await screen.findByText(en.account.avatarTooLarge)).toBeInTheDocument();
     expect(requests).toBe(0);
   });
 
@@ -246,7 +246,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.account.avatarRemove }));
+    await userEvent.click(await screen.findByRole('button', { name: en.account.avatarRemove }));
 
     await waitFor(() => expect(removed).toBe(true));
   });
@@ -255,7 +255,7 @@ describe('MemberAccountPage', () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=security');
 
-    const securityTab = await screen.findByRole('tab', { name: pl.account.tabs.security });
+    const securityTab = await screen.findByRole('tab', { name: en.account.tabs.security });
     expect(securityTab).toHaveAttribute('aria-selected', 'true');
     expect(securityTab).toHaveAttribute('aria-controls', 'account-panel-security');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'account-panel-security');
@@ -276,11 +276,11 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=security');
 
-    expect(await screen.findByText(pl.emailVerification.pending({ email: 'member@together.dev' })))
+    expect(await screen.findByText(en.emailVerification.pending({ email: 'member@together.dev' })))
       .toBeInTheDocument();
     expect(screen.queryByTestId('account-data-export')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
-    expect(await findToast('success')).toHaveTextContent(pl.emailVerification.sent);
+    expect(await findToast('success')).toHaveTextContent(en.emailVerification.sent);
     expect(body).toEqual({
       email: 'member@together.dev',
       callbackURL: 'http://localhost:3000/login?verification=verified',
@@ -300,7 +300,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    const input = await screen.findByLabelText(pl.account.displayNameLabel);
+    const input = await screen.findByLabelText(en.account.displayNameLabel);
     expect(input).toHaveValue('Ada');
     const save = screen.getByTestId('account-display-name-save');
     expect(save).toBeDisabled();
@@ -310,7 +310,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(save);
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.account.displayNameSaved,
+      en.account.displayNameSaved,
     );
     expect(body).toEqual({ displayName: 'Ada Lovelace' });
   });
@@ -328,12 +328,12 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=notifications');
 
-    const toggle = await screen.findByRole('switch', { name: pl.messages.optOutLabel });
+    const toggle = await screen.findByRole('switch', { name: en.messages.optOutLabel });
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.messages.optOutSaved,
+      en.messages.optOutSaved,
     );
     expect(body).toEqual({ dmOptOut: true });
   });
@@ -354,12 +354,12 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=playback');
 
-    const toggle = await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel });
+    const toggle = await screen.findByRole('switch', { name: en.account.videoAutoplayLabel });
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.account.videoAutoplaySaved,
+      en.account.videoAutoplaySaved,
     );
     expect(body).toEqual({ videoAutoplay: true });
   });
@@ -367,7 +367,7 @@ describe('MemberAccountPage', () => {
   it('reflects a stored video autoplay preference and hides playback without a member row', async () => {
     server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null, false, true), stubBillingOrders());
     const { unmount } = await renderAccount('/account?tab=playback');
-    expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
+    expect(await screen.findByRole('switch', { name: en.account.videoAutoplayLabel })).toBeChecked();
     unmount();
 
     server.use(
@@ -403,7 +403,7 @@ describe('MemberAccountPage', () => {
     server.use(stubMe(true, { videoAutoplay: null }), stubSettings(null, false, true, true), stubBillingOrders());
     await renderAccount('/account?tab=playback');
 
-    expect(await screen.findByRole('switch', { name: pl.account.videoAutoplayLabel })).toBeChecked();
+    expect(await screen.findByRole('switch', { name: en.account.videoAutoplayLabel })).toBeChecked();
   });
 
   it('stores the picked e-mail language and states the stored one', async () => {
@@ -420,11 +420,11 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=notifications');
 
     expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
-      pl.account.emailLanguage.pl,
+      en.account.emailLanguage.pl,
     );
-    await userEvent.click(await screen.findByRole('button', { name: 'en' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'pl' }));
 
-    await waitFor(() => expect(body).toEqual({ language: 'en' }));
+    await waitFor(() => expect(body).toEqual({ language: 'pl' }));
   });
 
   it('names the platform default when the member has no stored e-mail language', async () => {
@@ -432,7 +432,7 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=notifications');
 
     expect(await screen.findByTestId('member-email-language')).toHaveTextContent(
-      pl.account.emailLanguage.unset,
+      en.account.emailLanguage.unset,
     );
     expect(screen.queryByTestId('member-email-language-reset')).not.toBeInTheDocument();
   });
@@ -465,7 +465,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=notifications');
 
-    await userEvent.click(await screen.findByRole('button', { name: 'en' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'pl' }));
 
     expect(await screen.findByTestId('email-language-error')).toBeInTheDocument();
   });
@@ -486,7 +486,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'en' }));
 
     expect(await screen.findByRole('tooltip'))
-      .toHaveTextContent(pl.account.emailLanguage.panelOnly);
+      .toHaveTextContent(en.account.emailLanguage.panelOnly);
     expect(posted).toBe(false);
   });
 
@@ -498,7 +498,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=notifications');
 
-    expect(await screen.findByRole('switch', { name: pl.messages.optOutLabel })).toBeChecked();
+    expect(await screen.findByRole('switch', { name: en.messages.optOutLabel })).toBeChecked();
   });
 
   it('hides the profile card for a staff identity without a member row', async () => {
@@ -510,10 +510,10 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     expect(await screen.findByTestId('account-email')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: pl.account.signedInAs }))
+    expect(screen.getByRole('heading', { level: 2, name: en.account.signedInAs }))
       .toBeInTheDocument();
-    expect(screen.queryByLabelText(pl.account.displayNameLabel)).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.account.displayNameLabel)).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: en.messages.optOutLabel })).not.toBeInTheDocument();
   });
 
   it('hides the direct-message privacy switch and the personal-data export while viewing as a member', async () => {
@@ -536,8 +536,8 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     expect(await screen.findByTestId('account-email')).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: pl.messages.optOutLabel })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: pl.messages.privacyHeading }))
+    expect(screen.queryByRole('switch', { name: en.messages.optOutLabel })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.messages.privacyHeading }))
       .not.toBeInTheDocument();
     expect(screen.queryByTestId('account-data-export')).not.toBeInTheDocument();
     expect(sessionCalls).toBe(0);
@@ -558,7 +558,7 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=security');
 
     expect(await screen.findByRole('tabpanel')).toHaveAttribute('id', 'account-panel-profile');
-    expect(screen.queryByRole('tab', { name: pl.account.tabs.security })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: en.account.tabs.security })).not.toBeInTheDocument();
     expect(screen.queryByTestId('account-security-methods')).not.toBeInTheDocument();
   });
 
@@ -593,19 +593,19 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    const send = await screen.findByRole('button', { name: pl.support.send });
+    const send = await screen.findByRole('button', { name: en.support.send });
     expect(send).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(pl.support.subjectLabel), 'Problem z lekcją');
+    await userEvent.type(screen.getByLabelText(en.support.subjectLabel), 'Lesson issue');
     expect(send).toBeDisabled();
-    await user.click(screen.getByLabelText(pl.support.bodyLabel));
-    await user.paste('Nie mogę uruchomić nagrania.');
+    await user.click(screen.getByLabelText(en.support.bodyLabel));
+    await user.paste('I cannot start the recording.');
     expect(send).toBeEnabled();
     await userEvent.click(send);
 
-    expect(await findToast('success')).toHaveTextContent(pl.support.sent);
-    expect(body).toEqual({ subject: 'Problem z lekcją', body: 'Nie mogę uruchomić nagrania.' });
-    expect(screen.getByLabelText(pl.support.subjectLabel)).toHaveValue('');
-    expect(screen.getByLabelText(pl.support.bodyLabel)).toHaveValue('');
+    expect(await findToast('success')).toHaveTextContent(en.support.sent);
+    expect(body).toEqual({ subject: 'Lesson issue', body: 'I cannot start the recording.' });
+    expect(screen.getByLabelText(en.support.subjectLabel)).toHaveValue('');
+    expect(screen.getByLabelText(en.support.bodyLabel)).toHaveValue('');
     expect(send).toBeDisabled();
   });
 
@@ -624,7 +624,7 @@ describe('MemberAccountPage', () => {
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
     expect(await findToast('success')).toHaveTextContent(
-      pl.security.resetSent,
+      en.security.resetSent,
     );
     expect(body).toEqual({
       email: 'member@together.dev',
@@ -647,7 +647,7 @@ describe('MemberAccountPage', () => {
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
 
-    expect(await findToast('success')).toHaveTextContent(pl.account.resetSent);
+    expect(await findToast('success')).toHaveTextContent(en.account.resetSent);
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
@@ -688,7 +688,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await findToast('success')).toHaveTextContent(
-      pl.changePassword.success,
+      en.changePassword.success,
     );
     expect(body).toEqual({
       currentPassword: 'current-password',
@@ -717,7 +717,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await findToast('error')).toHaveTextContent(
-      pl.changePassword.credentialAccountMissing,
+      en.changePassword.credentialAccountMissing,
     );
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
   });
@@ -733,7 +733,7 @@ describe('MemberAccountPage', () => {
         return HttpResponse.json({
           ok: true,
           data: {
-            filename: 'moje-dane-studio-1998-07-29.json',
+            filename: 'my-data-studio-1998-07-29.json',
             mimeType: 'application/json; charset=utf-8',
             content: '{}',
           },
@@ -784,10 +784,10 @@ describe('MemberAccountPage', () => {
     expect(button).toBeDisabled();
     expect(button.parentElement).toHaveStyle({ display: 'block' });
     expect(button).toHaveStyle({ minHeight: '44px' });
-    expect(screen.getByLabelText(pl.account.erasureConfirmLabel).closest('[data-mobile-keyboard-anchor]'))
+    expect(screen.getByLabelText(en.account.erasureConfirmLabel).closest('[data-mobile-keyboard-anchor]'))
       .not.toBeNull();
     await userEvent.type(
-      screen.getByLabelText(pl.account.erasureConfirmLabel),
+      screen.getByLabelText(en.account.erasureConfirmLabel),
       'member@together.dev',
     );
     expect(button).toBeEnabled();
@@ -804,16 +804,16 @@ describe('MemberAccountPage', () => {
         createdAt: '1998-07-27T10:00:00.000Z',
         billing: {
           nip: '5555555555',
-          companyName: 'Acme sp. z o.o.',
-          address: 'Prosta 1',
+          companyName: 'Acme LLC',
+          address: 'Main Street 1',
           postalCode: '00-001',
-          city: 'Warszawa',
+          city: 'Warsaw',
           country: 'PL',
         },
       }]),
     );
     await renderAccount();
-    expect(await screen.findByText('Acme sp. z o.o.')).toBeInTheDocument();
+    expect(await screen.findByText('Acme LLC')).toBeInTheDocument();
     expect(screen.getByText('5555555555')).toBeInTheDocument();
   });
 

@@ -80,9 +80,9 @@ export const prepareCampaignHtml = (
 ): string => mode === 'markdown' ? renderCampaignMarkdown(source) : sanitizeCampaignHtml(source);
 
 const previewData = {
-  brand: { identity: 'Studio Razem', name: 'Studio Razem' },
-  member: { email: 'anna@example.com', name: 'Anna Kowalska' },
-  tenant: { address: 'ul. Wspólna 1, Warszawa', legalName: 'Studio Razem sp. z o.o.', name: 'Studio Razem' },
+  brand: { identity: 'Studio Demo', name: 'Studio Demo' },
+  member: { email: 'anna@example.com', name: 'Anna Example' },
+  tenant: { address: '1 Example Street, London', legalName: 'Studio Demo Ltd.', name: 'Studio Demo' },
   unsubscribeUrl: 'https://example.com/u/sample',
 };
 

@@ -78,7 +78,7 @@ const setEnglish = async (context: BrowserContext): Promise<void> => {
 
 const signInMember = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await requestMagicLink(page, 'kursant.aktywny@together.dev');
+  await requestMagicLink(page, 'student.active@together.dev');
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor(visible);
   const link = sent.locator('a[href]').first();
@@ -120,12 +120,12 @@ const runMobileStartAndSearchJourney = async (page: Page, baseUrl: string): Prom
   const continueCta = page.getByTestId('start-continue-cta');
   await assertHref(
     continueCta,
-    '/my/courses/course-js/lessons/lesson-js-funkcje-1',
+    '/my/courses/course-js/lessons/lesson-js-functions-1',
     'Start continue CTA',
   );
   await assertText(page.getByTestId('course-progress-course-js'), '25%', 'Course progress');
   await assertHref(
-    page.getByTestId('locked-space-cta-space-studio-klub-react'),
+    page.getByTestId('locked-space-cta-space-studio-club-react'),
     '/checkout/product-react-full',
     'Locked React space CTA',
   );
@@ -135,7 +135,7 @@ const runMobileStartAndSearchJourney = async (page: Page, baseUrl: string): Prom
   const searchInput = page.getByTestId('search-input');
   await searchInput.waitFor(visible);
   await searchInput.fill('konsol');
-  await page.getByTestId('search-hit-post-js-zmienne-tip').waitFor(visible);
+  await page.getByTestId('search-hit-post-js-variables-tip').waitFor(visible);
   console.log('member-shell-e2e: mobile Start, sales surface, and search journey OK');
 };
 
@@ -147,8 +147,8 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
   assert(await sheet.getByTestId('sidebar-start').count() === 0, 'Menu sheet repeated the Start tab-bar destination');
   assert(await sheet.getByTestId('sidebar-search').count() === 0, 'Menu sheet repeated the Search tab-bar destination');
   await assertHref(
-    sheet.getByTestId('sidebar-space-space-studio-spolecznosc'),
-    '/community/space-studio-spolecznosc',
+    sheet.getByTestId('sidebar-space-space-studio-community'),
+    '/community/space-studio-community',
     'Menu space row',
   );
   await assertHref(
@@ -157,7 +157,7 @@ const runMobileMenuJourney = async (page: Page): Promise<void> => {
     'Menu course row',
   );
   await assertHref(
-    sheet.getByTestId('sidebar-locked-space-studio-klub-react'),
+    sheet.getByTestId('sidebar-locked-space-studio-club-react'),
     '/checkout/product-react-full',
     'Menu locked-space row',
   );
@@ -208,7 +208,7 @@ const runAccountMenuJourney = async (page: Page): Promise<void> => {
 
 const runCourseSidebarJourney = async (page: Page): Promise<void> => {
   await page.getByTestId('start-continue-cta').click();
-  await page.waitForURL('**/my/courses/course-js/lessons/lesson-js-funkcje-1');
+  await page.waitForURL('**/my/courses/course-js/lessons/lesson-js-functions-1');
   await page.getByTestId('program-button').waitFor(visible);
   await page.getByTestId('member-bottom-nav').waitFor(visible);
 
@@ -218,18 +218,18 @@ const runCourseSidebarJourney = async (page: Page): Promise<void> => {
   const courseSidebar = sheet.getByTestId('course-sidebar');
   await courseSidebar.waitFor(visible);
   await assertSelected(
-    courseSidebar.getByTestId('lesson-button-lesson-js-funkcje-1'),
+    courseSidebar.getByTestId('lesson-button-lesson-js-functions-1'),
     'First lesson in Program sheet',
   );
 
-  await courseSidebar.getByTestId('lesson-button-lesson-js-funkcje-2').click();
-  await page.waitForURL('**/my/courses/course-js/lessons/lesson-js-funkcje-2');
+  await courseSidebar.getByTestId('lesson-button-lesson-js-functions-2').click();
+  await page.waitForURL('**/my/courses/course-js/lessons/lesson-js-functions-2');
   await sheet.waitFor({ state: 'detached', timeout: 15000 });
   await page.getByTestId('program-button').click();
   const reopened = page.getByTestId('course-program-sheet');
   await reopened.waitFor(visible);
   await assertSelected(
-    reopened.getByTestId('lesson-button-lesson-js-funkcje-2'),
+    reopened.getByTestId('lesson-button-lesson-js-functions-2'),
     'Second lesson in reopened Program sheet',
   );
   await reopened.getByTestId('course-program-sheet-close').click();
@@ -245,7 +245,7 @@ const runDesktopSwapJourney = async (page: Page): Promise<void> => {
   const courseSidebar = page.getByTestId('course-sidebar');
   await courseSidebar.waitFor(visible);
   await assertSelected(
-    courseSidebar.getByTestId('lesson-button-lesson-js-funkcje-2'),
+    courseSidebar.getByTestId('lesson-button-lesson-js-functions-2'),
     'Second lesson in desktop course sidebar',
   );
   await courseSidebar.getByTestId('course-sidebar-back').click();

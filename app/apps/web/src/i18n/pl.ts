@@ -892,6 +892,7 @@ export const pl: Messages = {
     bunnyLibraryIdLabel: 'Identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnyCdnHostnameLabel: 'Nazwa hosta CDN Stream',
+    bunnyCdnHostnamePlaceholder: 'vz-xxxxxxx-xxx.b-cdn.net',
     bunnyCdnHostnameHelper:
       'Znajdziesz ją w bibliotece Bunny Stream → Delivery. Jest potrzebna do odtwarzania w aplikacji mobilnej.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',

@@ -15,19 +15,19 @@ type Story = StoryObj<typeof meta>;
 
 export const SignIn: Story = {
   args: {
-    eyebrow: 'Zaloguj się do panelu',
+    eyebrow: 'Sign in to the panel',
     children: (
       <Stack useFlexGap spacing="1rem">
         <FormControl fullWidth>
-          <FormLabel htmlFor="focus-email">Adres e-mail</FormLabel>
+          <FormLabel htmlFor="focus-email">Email address</FormLabel>
           <OutlinedInput id="focus-email" type="email" autoComplete="email" />
         </FormControl>
         <FormControl fullWidth>
-          <FormLabel htmlFor="focus-password">Hasło</FormLabel>
+          <FormLabel htmlFor="focus-password">Password</FormLabel>
           <OutlinedInput id="focus-password" type="password" autoComplete="current-password" />
         </FormControl>
         <Button variant="contained" fullWidth>
-          Zaloguj się
+          Sign in
         </Button>
       </Stack>
     ),
@@ -36,26 +36,26 @@ export const SignIn: Story = {
 
 export const WideWithFooter: Story = {
   args: {
-    eyebrow: 'Twórca kursów · Together',
+    eyebrow: 'Course creator · Together',
     width: 'wide',
     children: (
       <Stack useFlexGap spacing="1rem">
-        <CardTitle variant="h1">Załóż konto twórcy</CardTitle>
+        <CardTitle variant="h1">Create a creator account</CardTitle>
         <Typography variant="body1">
-          Uruchom własną szkołę online w kilka minut — bez kart kredytowych na start.
+          Launch your own online school in minutes — no credit card required to start.
         </Typography>
         <FormControl fullWidth>
-          <FormLabel htmlFor="focus-signup-email">Adres e-mail</FormLabel>
+          <FormLabel htmlFor="focus-signup-email">Email address</FormLabel>
           <OutlinedInput id="focus-signup-email" type="email" autoComplete="email" />
         </FormControl>
         <Button variant="contained" color="secondary" fullWidth>
-          Utwórz konto
+          Create account
         </Button>
       </Stack>
     ),
     footer: (
       <Typography variant="body2" color="text.secondary">
-        Masz już konto? Zaloguj się.
+        Already have an account? Sign in.
       </Typography>
     ),
   },

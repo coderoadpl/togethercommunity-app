@@ -45,13 +45,12 @@ tenant domain; on a real base domain one session spans all tenant subdomains.
 
 ## Demo data
 
-`pnpm run db:seed` provisions a rich, idempotent demo dataset (deterministic ids
-throughout, e.g. `course-js`, `lesson-js-zmienne-1`) meant for manually testing
-feature parity. Re-running the seed never duplicates anything.
-`pnpm run db:reseed` restores a pristine demo before audits/demos: it wipes all
-data in the three demo tenants (studio/acme/akademia) — including any leftovers
-and mutated progress from previous sessions — and re-runs the seed, leaving
-exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
+`pnpm run db:seed` provisions an idempotent English demo dataset with deterministic
+IDs such as `course-js` and `lesson-js-variables-1`. Re-running the seed never
+duplicates anything. All three demo tenants use English as their default language.
+`pnpm run db:reseed` restores a pristine demo before audits and demonstrations:
+it wipes data in studio, acme, and akademia, including leftover records and changed
+progress, then re-runs the seed. Other tenants are untouched.
 
 **Tenants and owners** (owners sign in with password `demo-password-15`):
 
@@ -63,42 +62,68 @@ exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
 
 **Courses**
 
-- **Studio** — `Kurs JavaScript od podstaw` (`course-js`): 3 modules with legacy
-  prefixes (`Część 1 - Podstawy` → 2 chapters, `Część 2 - DOM`, `Część 3 -
-  Projekty`); `React w praktyce` (`course-react`): 2 modules. Lessons mix
-  `embed` (YouTube-nocookie), `html` (Polish teaching prose), `link` and `pdf`
-  blocks.
-- **Akademia** — `Samodzielna nauka programowania` (`course-akademia`): 2 modules.
-- **Acme** keeps its original walking-skeleton data untouched.
+- **Studio** — `JavaScript from Scratch` (`course-js`): 3 modules with prefixes
+  (`Part 1 - Basics`, with 3 chapters; `Part 2 - DOM`; `Part 3 - Projects`).
+  `React in Practice` (`course-react`) has 2 modules: `Part 1 - Fundamentals`
+  and `Part 2 - Advanced patterns`.
+- **Akademia** — `Learning to Code on Your Own` (`course-akademia`): 2 modules,
+  `Part 1 - Learning from scratch` and `Part 2 - Practice`.
+- **Acme** — `Acme Course` (`course-acme`): one introductory module and lesson
+  for smoke testing.
 
-**Product tiers (Studio)** — all published, price in PLN grosze:
+Lessons combine Bunny Stream video, YouTube-nocookie embeds, English HTML teaching
+content, resource links, and PDF attachments. The tiny English PDF at
+`apps/web/public/assets/sample-lesson.pdf` is served from `/assets/sample-lesson.pdf`
+on the same origin so it can be displayed inline. Regenerate it with
+`pnpm exec tsx scripts/make-sample-pdf.ts`.
 
-| Product                          | Price   | Access level                                    |
-| -------------------------------- | ------- | ----------------------------------------------- |
-| `Kurs JavaScript - pełny dostęp` | 39900   | course-level → `course-js`                      |
-| `React w praktyce - pełny dostęp`| 49900   | course-level → `course-react`                   |
-| `Pakiet: moduł DOM`              | 9900    | module-level → only the DOM module of `course-js` |
-| `Free preview`                   | 0       | lesson-level → one lesson from every module of both courses |
+**Product tiers (Studio)** — published products, prices in PLN minor units:
 
-Akademia offers `Akademia - dostęp roczny` (29900, course-level).
+| Product | Price | Access |
+| --- | --- | --- |
+| `JavaScript Course - full access` | 39900 | All of `course-js` |
+| `React in Practice - full access` | 49900 | All of `course-react` |
+| `DOM Module Pack` | 9900 | Only the DOM module of `course-js` |
+| `Free preview` | 0 | One lesson per module in both courses, plus the video demo |
+| `Studio Club - subscription` | 4900 monthly / 49900 yearly | Both courses while the subscription is active |
+| `Creator Workbook` | 7900 | A downloadable workbook |
+| `Together 101 Course` | 19900 | A starter product with no course access items |
+
+`Scenario Workshop` (`product-studio-workshop`, slug `workshop-scenario`) is an
+unpublished product priced at 49900. `Together 101 Course` uses ID
+`product-studio-course-101` and checkout slug `course-together-101`.
+Akademia offers `Akademia - annual access` (29900, all of `course-akademia`),
+and Acme offers `Acme Course` (9900). Studio also includes paid and failed orders,
+monthly subscription renewals, and a `PARTNER20` coupon with a 20% discount.
 
 **Members** — sign in **passwordlessly via magic link** (CLI `login-magic
---email <e>`, or a checkout). Their grants exercise every access edge state:
+--email <e>`, or a checkout). Their grants exercise the access states:
 
-| Member                          | Tenant   | Grant                          | What they see                                                  |
-| ------------------------------- | -------- | ------------------------------ | ------------------------------------------------------------- |
-| `kursant.aktywny@together.dev`  | studio   | perpetual → JS course          | `course-js` fully-accessible, partially-completed (2 lessons done + last-viewed) |
-| `kursant.wygasly@together.dev`  | studio   | JS course, **expired 7d ago**  | course **absent** from `student courses`; structure `not-accessible` |
-| `kursant.przyszly@together.dev` | studio   | JS course, **starts in 7d**    | course **absent** (grant not yet active); structure `not-accessible` |
-| `kursant.modul@together.dev`    | studio   | active → DOM module pack        | `course-js` partially-accessible (only DOM module unlocked)   |
-| `free@together.dev`             | studio   | active → Free preview           | both courses partially-accessible (one lesson per module)     |
-| `kursant.akademia@together.dev` | akademia | active, expires in ~330d        | `course-akademia` fully-accessible, 1 lesson completed        |
+| Member | Tenant | Grant | What they see |
+| --- | --- | --- | --- |
+| `student.active@together.dev` | studio | Perpetual JS access, active club subscription, and workbook | Both courses accessible; JS has 2 completed lessons and a last-viewed lesson |
+| `student.expired@together.dev` | studio | JS access expired 7 days ago | Course absent from `student courses`; structure `not-accessible` |
+| `student.future@together.dev` | studio | JS access starts in 7 days | Course absent until the grant starts; structure `not-accessible` |
+| `student.module@together.dev` | studio | Active DOM Module Pack | Only the DOM module unlocked |
+| `free@together.dev` | studio | Active Free preview | Sample lessons in both courses; community posting is banned for repeated advertising |
+| `student.subscriber@together.dev` | studio | Active simulated monthly club subscription | Both courses accessible |
+| `student.akademia@together.dev` | akademia | Active annual access, expires in about 330 days | Akademia course accessible, with 1 completed lesson |
 
-The "absent vs. not-accessible" behaviour reflects `listMyCourses` semantics: it
-lists only courses whose access status (computed from **active** grants) is not
-`not-accessible`, so expired and future grants drop the course from the list
-entirely, while `student structure <courseId>` still resolves it as
+The "absent vs. not-accessible" behavior reflects `listMyCourses`: it lists only
+courses accessible through active grants. Expired and future grants drop the
+course from that list, while `student structure <courseId>` still resolves it as
 `not-accessible`.
+
+**Community and supporting content** — English discussions under
+`lesson-js-variables-1` and `lesson-js-dom-1` include student questions, creator
+replies, and a deleted-post placeholder. `student.active@together.dev` starts with
+one unread reply notification. The public `Community` space (`space-studio-community`,
+slug `community`) is the Studio home space. `JavaScript Club` and `React Club`
+are product-gated spaces. Seeded posts include introductions, learning resources,
+and a coding challenge, with reactions, follows, and an open moderation report.
+Akademia includes a published English privacy policy at slug `privacy-policy`,
+plus consent records and email preferences. Studio includes marketing campaigns,
+delivery events, and an English transactional outbox sample.
 
 ## CLI — the agent feedback loop
 
@@ -151,7 +176,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->381<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->385<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

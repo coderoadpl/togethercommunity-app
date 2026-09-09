@@ -4651,7 +4651,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-course',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript',
+      fromPath: '/course/javascript',
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
@@ -4663,7 +4663,7 @@ describe('tenant redirects', () => {
     {
       id: 'redirect-lesson',
       tenantId: acme.id,
-      fromPath: '/kurs/javascript/let',
+      fromPath: '/course/javascript/let',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
@@ -4724,23 +4724,23 @@ describe('tenant redirects', () => {
     redirectApp().request(path, { headers: { host } });
 
   it('redirects a permanent entry for good', async () => {
-    const response = await redirectGet('/kurs/javascript');
+    const response = await redirectGet('/course/javascript');
 
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe(coursePagePath);
   });
 
   it('redirects a non-permanent entry temporarily', async () => {
-    const response = await redirectGet('/kurs/javascript/let');
+    const response = await redirectGet('/course/javascript/let');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(lessonPagePath);
   });
 
   it.each([
-    ['a trailing slash', '/kurs/javascript/'],
-    ['upper case', '/Kurs/JavaScript'],
-    ['a repeated slash', '/kurs//javascript'],
+    ['a trailing slash', '/course/javascript/'],
+    ['upper case', '/Course/JavaScript'],
+    ['a repeated slash', '/course//javascript'],
   ])('normalises %s before the lookup', async (_case, path) => {
     const response = await redirectGet(path);
 
@@ -4769,7 +4769,7 @@ describe('tenant redirects', () => {
   );
 
   it('redirects on a verified custom domain and keeps the query string', async () => {
-    const response = await redirectGet('/kurs/javascript/let?utm_source=newsletter', 'kurs.acme.example');
+    const response = await redirectGet('/course/javascript/let?utm_source=newsletter', 'kurs.acme.example');
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
@@ -4777,7 +4777,7 @@ describe('tenant redirects', () => {
 
   it.each([
     ['an unconfigured path', '/kurs/python', acme],
-    ['a path configured for another workspace', '/kurs/javascript', globex],
+    ['a path configured for another workspace', '/course/javascript', globex],
   ])('leaves %s to the web app', async (_case, path, owner) => {
     const response = await redirectApp(owner).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4788,7 +4788,7 @@ describe('tenant redirects', () => {
   });
 
   it('leaves the platform host alone', async () => {
-    const response = await redirectGet('/kurs/javascript', 'start.localhost');
+    const response = await redirectGet('/course/javascript', 'start.localhost');
 
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import {
   languageFromRequest,
   renderHostedMarkdown,
@@ -74,13 +75,14 @@ describe('public marketing pages', () => {
   });
 
   it('adds a locale-aware immutable version notice only to versioned legal pages', () => {
+    const publishedAt = '2026-07-22T10:00:00.000Z';
+    const publishedDate = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long' }).format(new Date(publishedAt));
     const html = renderLegalDocumentPage({
       nonce: 'test-nonce',
-      brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Prywatność', content: 'Treść',
-      immutableVersion: { version: 2, publishedAt: '2026-07-22T10:00:00.000Z' },
+      brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Privacy', content: 'Body',
+      immutableVersion: { version: 2, publishedAt },
     });
-    expect(html).toContain('Wersja 2, opublikowana');
-    expect(html).toContain('22 lipca 2026');
+    expect(html).toContain(publicMarketingMessagesPl.immutableVersion({ version: 2, date: publishedDate }));
   });
 
   it('selects PL or EN from the explicit query, cookie, and accepted language', () => {

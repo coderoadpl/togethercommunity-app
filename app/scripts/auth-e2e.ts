@@ -279,7 +279,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     );
 
     await page.getByTestId('section-settings').click();
-    await page.getByRole('tab', { name: 'Bezpieczeństwo' }).click();
+    await page.getByRole('tab', { name: 'Security' }).click();
     await page.waitForURL(/#security$/);
     await page.getByTestId('passkey-name').fill('E2E Passkey');
     await page.getByTestId('passkey-proof-password').fill('demo-password-15');

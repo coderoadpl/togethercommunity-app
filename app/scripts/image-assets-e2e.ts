@@ -294,7 +294,7 @@ const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
 
 const signInMember = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await requestMagicLink(page, 'kursant.aktywny@together.dev');
+  await requestMagicLink(page, 'student.active@together.dev');
   const sent = page.getByTestId('magic-link-sent');
   await sent.waitFor(visible);
   const link = sent.locator('a[href]').first();

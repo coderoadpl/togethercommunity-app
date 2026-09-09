@@ -393,8 +393,7 @@ interface MagicLinkLabels {
   open: string;
 }
 
-const ENGLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Open magic link' };
-const POLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Otwórz magiczny link' };
+const ENGLISH_MAGIC_LINK: MagicLinkLabels = { open: 'Open magic link (development mode)' };
 
 const signInStudent = async (
   page: Page,
@@ -418,33 +417,33 @@ const setLanguage = async (context: BrowserContext, language: 'pl' | 'en'): Prom
   }, language);
 };
 
-const capturePolishSurfaces = async (
+const captureExtraSurfaces = async (
   browser: Browser,
   studioBaseUrl: string,
   fixture: StudentFixture,
   viewport: { width: number; height: number },
 ): Promise<void> => {
   const creatorContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
-  await setLanguage(creatorContext, 'pl');
+  await setLanguage(creatorContext, 'en');
   const creatorPage = await creatorContext.newPage();
   await signInCreator(creatorPage, studioBaseUrl);
   await creatorPage.getByTestId('section-products').waitFor({ state: 'visible', timeout: 20000 });
   await creatorPage.getByTestId('section-products').click();
-  await creatorPage.getByRole('heading', { name: 'Produkty', exact: true }).waitFor({ state: 'visible', timeout: 20000 });
+  await creatorPage.getByRole('heading', { name: 'Products', exact: true }).waitFor({ state: 'visible', timeout: 20000 });
   const productRow = creatorPage.getByTestId('product-row').filter({ hasText: fixture.mixedProductTitle }).first();
   await productRow.waitFor({ state: 'visible', timeout: 20000 });
   await creatorPage.evaluate(() => window.scrollTo(0, 0));
-  await shoot(creatorPage, '16-panel-pl.png');
+  await shoot(creatorPage, '16-panel-products.png');
   await creatorContext.close();
 
   const studentContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
-  await setLanguage(studentContext, 'pl');
+  await setLanguage(studentContext, 'en');
   const studentPage = await studentContext.newPage();
-  await signInStudent(studentPage, studioBaseUrl, fixture.studentEmail, POLISH_MAGIC_LINK);
+  await signInStudent(studentPage, studioBaseUrl, fixture.studentEmail);
   await studentPage.goto(`${studioBaseUrl}/my/courses/${fixture.courseId}`, { waitUntil: 'load' });
   await studentPage.getByTestId('course-tree').first().waitFor({ state: 'visible', timeout: 20000 });
   await studentPage.getByText('Advanced Patterns').first().waitFor({ state: 'visible', timeout: 20000 });
-  await shoot(studentPage, '17-student-tree-pl.png');
+  await shoot(studentPage, '17-student-tree-extra.png');
   await studentContext.close();
 };
 
@@ -454,23 +453,23 @@ const captureCommunitySurfaces = async (
   viewport: { width: number; height: number },
 ): Promise<void> => {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
-  await setLanguage(context, 'pl');
+  await setLanguage(context, 'en');
   const page = await context.newPage();
-  await signInStudent(page, studioBaseUrl, 'kursant.aktywny@together.dev', POLISH_MAGIC_LINK);
+  await signInStudent(page, studioBaseUrl, 'student.active@together.dev');
 
   await page.getByTestId('notification-bell').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('notification-bell').click();
-  await page.getByTestId('notification-notif-aktywny-zmienne-r2').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('notification-notif-aktywny-zmienne-r1').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('notification-notif-active-variables-r2').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('notification-notif-active-variables-r1').waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '19-notification-bell.png');
   await page.keyboard.press('Escape');
 
   await page.setViewportSize({ width: viewport.width, height: 1400 });
-  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-zmienne-1`, { waitUntil: 'load' });
+  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-variables-1`, { waitUntil: 'load' });
   await page.getByTestId('discussion-section').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('deleted-post-post-js-zmienne-tip-r1').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('follow-toggle-post-js-zmienne-q').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('author-chip-post-js-variables-q-r2').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('deleted-post-post-js-variables-tip-r1').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('follow-toggle-post-js-variables-q').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('discussion-composer-open').waitFor({ state: 'visible', timeout: 20000 });
   const section = await page.getByTestId('discussion-section').boundingBox();
   if (section) await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), section.y);
@@ -479,9 +478,9 @@ const captureCommunitySurfaces = async (
   await page.goto(`${studioBaseUrl}/my/courses/course-js`, { waitUntil: 'load' });
   const searchInput = page.getByTestId('course-discussion-search-input');
   await searchInput.waitFor({ state: 'visible', timeout: 20000 });
-  await searchInput.fill('lekcji');
+  await searchInput.fill('lesson');
   await page.getByTestId('course-search-results').waitFor({ state: 'visible', timeout: 20000 });
-  await page.getByTestId('search-group-lesson-js-zmienne-1').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('search-group-lesson-js-variables-1').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('search-group-lesson-js-dom-1').waitFor({ state: 'visible', timeout: 20000 });
   const searchSection = await page.getByTestId('course-discussion-search').boundingBox();
   if (searchSection) await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), searchSection.y);
@@ -642,7 +641,7 @@ try {
   await captureCreatorPanel(creatorContext, studioBaseUrl, fixture);
   await creatorContext.close();
 
-  await capturePolishSurfaces(browser, studioBaseUrl, fixture, viewport);
+  await captureExtraSurfaces(browser, studioBaseUrl, fixture, viewport);
 
   await captureCommunitySurfaces(browser, studioBaseUrl, viewport);
 

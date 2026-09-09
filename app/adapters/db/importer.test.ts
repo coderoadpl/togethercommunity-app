@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { memberTombstone } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
 import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
 import {
   createImportAuthGateway,
@@ -592,7 +592,7 @@ describe('importer', () => {
       deletedAt: removedAt,
       tombstoneEmail: memberTombstone(ids.u1).email,
       severedUserId: memberTombstone(ids.u1).userId,
-      postAuthorDisplay: 'Konto usunięte',
+      postAuthorDisplay: DELETED_MEMBER_DISPLAY,
     });
 
     const ordersBefore = await db.select().from(orders).where(eq(orders.id, 'order-import-erasure'));
@@ -741,7 +741,7 @@ describe('importer', () => {
       deletedAt: removedAt,
       tombstoneEmail: memberTombstone(nativeMemberId).email,
       severedUserId: memberTombstone(nativeMemberId).userId,
-      postAuthorDisplay: 'Konto usunięte',
+      postAuthorDisplay: DELETED_MEMBER_DISPLAY,
     });
 
     const second = await runImport(db, gateway, targets(bundle), {

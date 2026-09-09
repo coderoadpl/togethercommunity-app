@@ -17,6 +17,7 @@ interface FocusCardProps {
 }
 
 const CARD_WIDTH = { narrow: PAGE_WIDTH.focusNarrow, wide: PAGE_WIDTH.focusWide } as const;
+const defaultBrandAlt = 'Together';
 
 const DefaultBrand = () => {
   const theme = useTheme();
@@ -24,7 +25,7 @@ const DefaultBrand = () => {
     <Box
       component="img"
       src={publicAssetUrl(`/brand/together-horizontal-${theme.palette.mode}.svg`)}
-      alt="Together"
+      alt={defaultBrandAlt}
       sx={{ display: 'block', height: '2.5rem', mb: '0.6rem' }}
     />
   );

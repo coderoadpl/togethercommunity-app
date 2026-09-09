@@ -38,23 +38,23 @@
                 {
                   "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
-                  "id": "chapter-js-zmienne",
+                  "id": "chapter-js-variables",
                   "lessons": [
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-zmienne-1",
+                      "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
-                      "lessonId": "lesson-js-zmienne-1",
+                      "lessonId": "lesson-js-variables-1",
                       "name": "Deklarowanie zmiennych",
                       "unlockProductId": "product-club"
                     },
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-zmienne-2",
+                      "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
-                      "lessonId": "lesson-js-zmienne-2",
+                      "lessonId": "lesson-js-variables-2",
                       "name": "Typy proste i złożone",
                       "unlockProductId": "product-club"
                     }
@@ -64,23 +64,23 @@
                 {
                   "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
-                  "id": "chapter-js-funkcje",
+                  "id": "chapter-js-functions",
                   "lessons": [
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-funkcje-1",
+                      "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
-                      "lessonId": "lesson-js-funkcje-1",
+                      "lessonId": "lesson-js-functions-1",
                       "name": "Funkcje i argumenty",
                       "unlockProductId": "product-club"
                     },
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-funkcje-2",
+                      "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
-                      "lessonId": "lesson-js-funkcje-2",
+                      "lessonId": "lesson-js-functions-2",
                       "name": "Domknięcia i zakres",
                       "unlockProductId": "product-club"
                     }
@@ -89,7 +89,7 @@
                 }
               ],
               "completionStatus": "not-completed",
-              "id": "module-js-podstawy",
+              "id": "module-js-basics",
               "name": "Część 1 - Podstawy"
             },
             {
@@ -132,14 +132,14 @@
                 {
                   "accessStatus": "not-accessible",
                   "completionStatus": "not-completed",
-                  "id": "chapter-js-projekty",
+                  "id": "chapter-js-projects",
                   "lessons": [
                     {
                       "accessStatus": "not-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-projekt-1",
+                      "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
-                      "lessonId": "lesson-js-projekt-1",
+                      "lessonId": "lesson-js-project-1",
                       "name": "Projekt: lista zadań",
                       "unlockProductId": "product-club"
                     }
@@ -148,7 +148,7 @@
                 }
               ],
               "completionStatus": "not-completed",
-              "id": "module-js-projekty",
+              "id": "module-js-projects",
               "name": "Część 3 - Projekty"
             }
           ],
@@ -168,11 +168,11 @@
               "name": "Kurs JavaScript od podstaw"
             }
           ],
-          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultHomeSpaceId": "space-studio-community",
           "lockedSpaces": [
             {
               "description": "Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.",
-              "id": "space-studio-klub-js",
+              "id": "space-studio-club-js",
               "name": "Klub JavaScriptu",
               "productIds": [
                 "product-js-full"
@@ -183,11 +183,11 @@
                   "title": "Kurs JavaScript - pełny dostęp"
                 }
               ],
-              "slug": "klub-js"
+              "slug": "club-js"
             },
             {
               "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
-              "id": "space-studio-klub-react",
+              "id": "space-studio-club-react",
               "name": "Klub Reacta",
               "productIds": [
                 "product-react-full"
@@ -198,18 +198,18 @@
                   "title": "React w praktyce - pełny dostęp"
                 }
               ],
-              "slug": "klub-react"
+              "slug": "club-react"
             }
           ],
           "spaces": [
             {
               "description": "Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.",
-              "id": "space-studio-spolecznosc",
+              "id": "space-studio-community",
               "name": "Społeczność",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
-              "slug": "spolecznosc",
+              "slug": "community",
               "visibility": "members"
             }
           ]
@@ -226,19 +226,19 @@
             "coverUrl": null,
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "marketingConsents": [],
             "priceCents": 19900,
             "prices": [
               {
                 "amountCents": 19900,
                 "currency": "PLN",
-                "id": "price-product-studio-kurs-101",
+                "id": "price-product-studio-course-101",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "title": "Kurs Together 101",
             "type": "course"
           },

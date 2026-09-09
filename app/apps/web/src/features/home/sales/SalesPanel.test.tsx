@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SalesPanel } from './SalesPanel.js';
@@ -135,11 +135,11 @@ describe('SalesPanel', () => {
     expect(screen.getByRole('link', { name: 'Ada' }))
       .toHaveAttribute('href', '/panel/members/m1');
 
-    await user.click(screen.getByLabelText(pl.sales.status));
-    await user.click(await screen.findByRole('option', { name: pl.sales.paid }));
+    await user.click(screen.getByLabelText(en.sales.status));
+    await user.click(await screen.findByRole('option', { name: en.sales.paid }));
     await waitFor(() => expect(listQueries.some((query) => query.includes('status=paid'))).toBe(true));
 
-    await user.click(screen.getByLabelText(pl.sales.coupon));
+    await user.click(screen.getByLabelText(en.sales.coupon));
     await user.click(await screen.findByRole('option', { name: 'PARTNER20' }));
     await waitFor(() =>
       expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
@@ -190,7 +190,7 @@ describe('OrderDetailPage', () => {
     await renderOrderDetail();
 
     expect(await screen.findByText('PARTNER20')).toBeInTheDocument();
-    expect(screen.getByText('9,80 zł')).toBeInTheDocument();
+    expect(screen.getByText(en.sales.discount).parentElement).toHaveTextContent('PLN 9.80');
   });
 
   it('uses the authenticated app download route and exposes status refresh', async () => {
@@ -212,10 +212,10 @@ describe('OrderDetailPage', () => {
         discountCents: 0,
         billing: {
           nip: '5555555555',
-          companyName: 'Acme sp. z o.o.',
-          address: 'Prosta 1',
+          companyName: 'Acme LLC',
+          address: 'Main Street 1',
           postalCode: '00-001',
-          city: 'Warszawa',
+          city: 'Warsaw',
           country: 'PL',
         },
         createdAt: '2026-07-27T10:00:00.000Z',
@@ -247,9 +247,9 @@ describe('OrderDetailPage', () => {
     );
     await renderOrderDetail();
 
-    const download = await screen.findByRole('link', { name: /pobierz fakturę/i });
+    const download = await screen.findByRole('link', { name: en.sales.invoiceDownload });
     expect(download).toHaveAttribute('href', '/api/invoices/invoice-1/download');
-    await userEvent.click(screen.getByRole('button', { name: /odśwież status/i }));
+    await userEvent.click(screen.getByRole('button', { name: en.sales.refreshInvoice }));
     await waitFor(() => expect(refreshCalls).toBe(1));
   });
 
@@ -260,7 +260,7 @@ describe('OrderDetailPage', () => {
       schemaVersion: '1-0E',
       contextNip: '5555555555',
       sellerName: 'Together',
-      sellerAddress: 'Prosta 1',
+      sellerAddress: 'Main Street 1',
       p2: 'FV/2026/000001',
       invoiceType: 'VAT',
       issueDate: '2026-07-28',
@@ -273,7 +273,7 @@ describe('OrderDetailPage', () => {
       invoiceReference: 'reference-1',
       ksefNumber: '5555555555-20260728-ABCDEF-01',
       lastStatusCode: 200,
-      lastStatusDescription: 'Sukces',
+      lastStatusDescription: 'Success',
       lastStatusDetails: [],
       lastStatusExtensions: {},
       lastPolledAt: '2026-07-28T10:00:00.000Z',
@@ -336,8 +336,8 @@ describe('OrderDetailPage', () => {
       element?.tagName === 'P'
       && element.textContent?.includes('5555555555-20260728-ABCDEF-01') === true))
       .toBeInTheDocument();
-    expect(screen.getByText(pl.sales.ksefStates.awaiting_upo)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.sales.ksefPdfDownload }))
+    expect(screen.getByText(en.sales.ksefStates.awaiting_upo)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.sales.ksefPdfDownload }))
       .toHaveAttribute('href', '/api/invoices/invoice-1/download');
   });
 });

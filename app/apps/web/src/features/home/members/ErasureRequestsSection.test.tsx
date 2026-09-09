@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ErasureRequestsSection } from './ErasureRequestsSection.js';
@@ -76,8 +77,8 @@ describe('ErasureRequestsSection', () => {
     );
     await renderSection();
     expect(await screen.findByText(/member@example.com/)).toBeInTheDocument();
-    await userEvent.type(screen.getByPlaceholderText('Powód odrzucenia'), 'Retained');
-    await userEvent.click(screen.getByRole('button', { name: 'Odrzuć' }));
+    await userEvent.type(screen.getByPlaceholderText(en.members.erasureRejectNote), 'Retained');
+    await userEvent.click(screen.getByRole('button', { name: en.members.erasureReject }));
     await waitFor(() => expect(rejected).toBe(true));
   });
 });

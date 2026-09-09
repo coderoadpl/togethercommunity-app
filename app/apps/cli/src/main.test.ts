@@ -605,7 +605,7 @@ describe('redirect commands', () => {
   it('emits one validation envelope when a path and a course target are combined', async () => {
     await run(
       '--json', 'redirect', 'create',
-      '--from', '/legacy/five', '--path', '/oferta', '--course', 'course-js',
+      '--from', '/legacy/five', '--path', '/offer', '--course', 'course-js',
     );
 
     expect(h.createTenantRedirect).not.toHaveBeenCalled();

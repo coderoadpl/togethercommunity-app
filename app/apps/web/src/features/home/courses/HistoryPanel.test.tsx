@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { HistoryPanel } from './HistoryPanel.js';
@@ -42,17 +42,18 @@ describe('HistoryPanel', () => {
 
     renderWithProviders(<HistoryPanel courseId="course-1" />);
 
-    expect(await screen.findByText(pl.courses.historyHint)).toBeInTheDocument();
-    expect(screen.getByText(pl.courses.historyHeading)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.historyHint)).toBeInTheDocument();
+    expect(screen.getByText(en.courses.historyHeading)).toBeInTheDocument();
     expect(
-      await screen.findAllByText((content) => content.includes('Wersja ') && content.includes('Ada Creator')),
+      await screen.findAllByText((content) => content.includes('Version ') && content.includes('Ada Creator')),
     ).toHaveLength(2);
-    expect(screen.queryByText((content) => content.includes('Schemat v'))).not.toBeInTheDocument();
+    expect(screen.queryByText((content) => content.includes('Schema v'))).not.toBeInTheDocument();
     expect(
-      screen.getByText((content) => content.includes('Kurs: Course one') && content.includes('schemat v4')),
+      screen.getByText((content) => content.includes(en.courses.historySubjectCourse({ name: 'Course one' }))
+        && content.includes(en.courses.historyEntrySchema({ version: 4 }))),
     ).toBeInTheDocument();
     expect(
-      screen.getByText((content) => content.includes('Moduł: Foundations')),
+      screen.getByText((content) => content.includes(en.courses.historySubjectModule({ name: 'Foundations' }))),
     ).toBeInTheDocument();
   });
 
@@ -87,10 +88,10 @@ describe('HistoryPanel', () => {
 
     renderWithProviders(<HistoryPanel courseId="course-1" />);
     await userEvent.click(
-      await screen.findByRole('button', { name: pl.courses.historyOpenAria({ ordinal: 1 }) }),
+      await screen.findByRole('button', { name: en.courses.historyOpenAria({ ordinal: 1 }) }),
     );
 
-    expect(await screen.findByText(pl.courses.versionDialogTitle({ ordinal: 1 }))).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.versionDialogTitle({ ordinal: 1 }))).toBeInTheDocument();
     expect(screen.getByText('Old title')).toBeInTheDocument();
     expect(screen.getByText('New title')).toBeInTheDocument();
     expect(screen.getByTestId('version-field-title')).toHaveAttribute('data-changed', 'true');
@@ -132,18 +133,18 @@ describe('HistoryPanel', () => {
 
     renderWithProviders(<HistoryPanel courseId="course-1" />);
     await userEvent.click(
-      await screen.findByRole('button', { name: pl.courses.historyOpenAria({ ordinal: 1 }) }),
+      await screen.findByRole('button', { name: en.courses.historyOpenAria({ ordinal: 1 }) }),
     );
     await userEvent.click(await screen.findByTestId('version-restore'));
 
-    expect(await screen.findByText(pl.courses.versionRestoreConfirmTitle)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.versionRestoreConfirmTitle)).toBeInTheDocument();
     expect(restored).toEqual([]);
 
     await userEvent.click(screen.getByTestId('confirm-dialog-confirm'));
 
     await waitFor(() => expect(restored).toEqual([{ versionId: 'version-1' }]));
     expect(
-      await screen.findByText(pl.courses.versionRestoreDone({ ordinal: 1 })),
+      await screen.findByText(en.courses.versionRestoreDone({ ordinal: 1 })),
     ).toBeInTheDocument();
   });
 
@@ -156,7 +157,7 @@ describe('HistoryPanel', () => {
 
     renderWithProviders(<HistoryPanel courseId="course-2" />);
 
-    expect(await screen.findByText(pl.courses.historyEmpty)).toBeInTheDocument();
-    expect(screen.getByText(pl.courses.historyEmptyBody)).toBeInTheDocument();
+    expect(await screen.findByText(en.courses.historyEmpty)).toBeInTheDocument();
+    expect(screen.getByText(en.courses.historyEmptyBody)).toBeInTheDocument();
   });
 });

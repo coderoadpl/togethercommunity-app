@@ -10,7 +10,7 @@
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
-          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultHomeSpaceId": "space-studio-community",
           "defaultLanguage": "pl",
           "directMessagesEnabled": true,
           "faviconUrl": null,
@@ -118,7 +118,7 @@
             ],
             "createdAt": "2026-07-01T12:00:06.000Z",
             "durationMinutes": 12,
-            "id": "lesson-js-zmienne-1",
+            "id": "lesson-js-variables-1",
             "isPreview": false,
             "legacyId": null,
             "name": "Deklarowanie zmiennych",
@@ -137,7 +137,7 @@
             ],
             "createdAt": "2026-07-01T12:00:07.000Z",
             "durationMinutes": 15,
-            "id": "lesson-js-zmienne-2",
+            "id": "lesson-js-variables-2",
             "isPreview": false,
             "legacyId": null,
             "name": "Typy proste i złożone",
@@ -156,7 +156,7 @@
             ],
             "createdAt": "2026-07-01T12:00:08.000Z",
             "durationMinutes": 18,
-            "id": "lesson-js-funkcje-1",
+            "id": "lesson-js-functions-1",
             "isPreview": false,
             "legacyId": null,
             "name": "Funkcje i argumenty",
@@ -176,7 +176,7 @@
             ],
             "createdAt": "2026-07-01T12:00:09.000Z",
             "durationMinutes": 22,
-            "id": "lesson-js-funkcje-2",
+            "id": "lesson-js-functions-2",
             "isPreview": false,
             "legacyId": null,
             "name": "Domknięcia i zakres",
@@ -194,7 +194,7 @@
               },
               {
                 "name": "Ściąga: metody DOM (PDF)",
-                "pdfUrl": "/assets/sample-lekcja.pdf",
+                "pdfUrl": "/assets/sample-lesson.pdf",
                 "type": "pdf"
               }
             ],
@@ -248,7 +248,7 @@
             ],
             "createdAt": "2026-07-01T12:00:12.000Z",
             "durationMinutes": 35,
-            "id": "lesson-js-projekt-1",
+            "id": "lesson-js-project-1",
             "isPreview": false,
             "legacyId": null,
             "name": "Projekt: lista zadań",
@@ -404,7 +404,7 @@
             },
             "doubleOptIn": true,
             "id": "consent-definition-studio-news",
-            "key": "aktualnosci",
+            "key": "news",
             "kind": "optional_marketing",
             "status": "active",
             "tenantId": "tenant-studio",
@@ -433,33 +433,33 @@
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-zmienne-1",
-                    "lessonId": "lesson-js-zmienne-1",
+                    "id": "content-lesson-js-variables-1",
+                    "lessonId": "lesson-js-variables-1",
                     "name": "Deklarowanie zmiennych"
                   },
                   {
-                    "id": "content-lesson-js-zmienne-2",
-                    "lessonId": "lesson-js-zmienne-2",
+                    "id": "content-lesson-js-variables-2",
+                    "lessonId": "lesson-js-variables-2",
                     "name": "Typy proste i złożone"
                   }
                 ],
-                "id": "chapter-js-zmienne",
+                "id": "chapter-js-variables",
                 "name": "Zmienne i typy"
               },
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-funkcje-1",
-                    "lessonId": "lesson-js-funkcje-1",
+                    "id": "content-lesson-js-functions-1",
+                    "lessonId": "lesson-js-functions-1",
                     "name": "Funkcje i argumenty"
                   },
                   {
-                    "id": "content-lesson-js-funkcje-2",
-                    "lessonId": "lesson-js-funkcje-2",
+                    "id": "content-lesson-js-functions-2",
+                    "lessonId": "lesson-js-functions-2",
                     "name": "Domknięcia i zakres"
                   }
                 ],
-                "id": "chapter-js-funkcje",
+                "id": "chapter-js-functions",
                 "name": "Funkcje"
               }
             ],
@@ -467,7 +467,7 @@
               "course-js"
             ],
             "createdAt": "2026-07-01T12:00:23.000Z",
-            "id": "module-js-podstawy",
+            "id": "module-js-basics",
             "legacyId": null,
             "name": "Część 1 - Podstawy",
             "prefix": "Część 1",
@@ -509,12 +509,12 @@
               {
                 "contents": [
                   {
-                    "id": "content-lesson-js-projekt-1",
-                    "lessonId": "lesson-js-projekt-1",
+                    "id": "content-lesson-js-project-1",
+                    "lessonId": "lesson-js-project-1",
                     "name": "Projekt: lista zadań"
                   }
                 ],
-                "id": "chapter-js-projekty",
+                "id": "chapter-js-projects",
                 "name": "Projekt końcowy"
               }
             ],
@@ -522,7 +522,7 @@
               "course-js"
             ],
             "createdAt": "2026-07-01T12:00:25.000Z",
-            "id": "module-js-projekty",
+            "id": "module-js-projects",
             "legacyId": null,
             "name": "Część 3 - Projekty",
             "prefix": "Część 3",
@@ -568,7 +568,7 @@
               "course-react"
             ],
             "createdAt": "2026-07-01T12:00:26.000Z",
-            "id": "module-react-fundamenty",
+            "id": "module-react-fundamentals",
             "legacyId": null,
             "name": "Część 1 - Fundamenty",
             "prefix": "Część 1",
@@ -598,7 +598,7 @@
               "course-react"
             ],
             "createdAt": "2026-07-01T12:00:27.000Z",
-            "id": "module-react-zaawansowane",
+            "id": "module-react-advanced",
             "legacyId": null,
             "name": "Część 2 - Zaawansowane wzorce",
             "prefix": "Część 2",
@@ -615,7 +615,7 @@
           {
             "contentType": "application/pdf",
             "createdAt": "2026-06-19T12:00:00.000Z",
-            "fileName": "workbook-tworcy.pdf",
+            "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook",
             "productId": "product-download-workbook",
             "sizeBytes": 2416640,
@@ -653,11 +653,11 @@
             "createdAt": "2026-07-01T12:00:31.000Z",
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "legacyId": null,
             "priceCents": 19900,
             "published": true,
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "tenantId": "tenant-studio",
             "title": "Kurs Together 101",
             "type": "course"
@@ -669,11 +669,11 @@
             "createdAt": "2026-07-01T12:00:32.000Z",
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-warsztat",
+            "id": "product-studio-workshop",
             "legacyId": null,
             "priceCents": 49900,
             "published": false,
-            "slug": "warsztat-scenariuszowy",
+            "slug": "workshop-scenario",
             "tenantId": "tenant-studio",
             "title": "Warsztat scenariuszowy",
             "type": "course"
@@ -750,9 +750,9 @@
                 "courseId": "course-js",
                 "lessonIds": [
                   "lesson-js-demo-video",
-                  "lesson-js-zmienne-1",
+                  "lesson-js-variables-1",
                   "lesson-js-dom-1",
-                  "lesson-js-projekt-1"
+                  "lesson-js-project-1"
                 ],
                 "level": "lessons"
               },
@@ -834,26 +834,26 @@
               "authorDisplay": "Konto Free",
               "authorIsStaff": false,
               "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
-              "contextId": "space-studio-spolecznosc",
+              "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
               "editedAt": null,
-              "id": "post-spolecznosc-polecajki",
+              "id": "post-community-resources",
               "isOwn": false,
               "parentPostId": null,
               "pinnedAt": null,
-              "rootPostId": "post-spolecznosc-polecajki",
+              "rootPostId": "post-community-resources",
               "tenantId": "tenant-studio"
             },
             "report": {
               "createdAt": "2026-06-26T12:00:00.000Z",
-              "id": "report-studio-polecajki",
+              "id": "report-studio-resources",
               "note": "Ten wpis wygląda jak reklama zewnętrznego serwisu.",
-              "postId": "post-spolecznosc-polecajki",
+              "postId": "post-community-resources",
               "reason": "off-topic",
               "reporterDisplay": "Kursant Aktywny",
-              "reporterUserId": "user-kursant-aktywny",
+              "reporterUserId": "user-student-active",
               "resolvedAt": null,
               "resolvedByUserId": null,
               "signals": null,
@@ -901,19 +901,19 @@
             "coverUrl": null,
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "marketingConsents": [],
             "priceCents": 19900,
             "prices": [
               {
                 "amountCents": 19900,
                 "currency": "PLN",
-                "id": "price-product-studio-kurs-101",
+                "id": "price-product-studio-course-101",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "title": "Kurs Together 101",
             "type": "course"
           },

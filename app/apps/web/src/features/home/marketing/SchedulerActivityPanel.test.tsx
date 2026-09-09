@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SchedulerActivityDetailPage, SchedulerActivityPanel } from './SchedulerActivityPanel.js';
@@ -111,14 +112,14 @@ describe('scheduler activity panel', () => {
     await renderRoute('/panel/marketing/activity');
 
     expect(await screen.findByText('18')).toBeInTheDocument();
-    expect(screen.getByText(/wysłane: 3.*nieudane: 1.*pominięte: 2/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Szczegóły' })).toHaveAttribute(
+    expect(screen.getByText(en.marketing.activity.counts(tenant))).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.marketing.activity.details })).toHaveAttribute(
       'href',
       '/panel/marketing/activity/run-marketing-1',
     );
 
-    await userEvent.click(screen.getByLabelText('Status'));
-    await userEvent.click(screen.getByRole('option', { name: 'Nieudane' }));
+    await userEvent.click(screen.getByLabelText(en.marketing.statusLabel));
+    await userEvent.click(screen.getByRole('option', { name: en.marketing.activity.statuses.failed }));
 
     expect(await screen.findByText('18')).toBeInTheDocument();
     expect(requests.some((request) => new URL(request).searchParams.get('status') === 'failed')).toBe(true);
@@ -133,7 +134,7 @@ describe('scheduler activity panel', () => {
     expect(await screen.findByText('run-marketing-1')).toBeInTheDocument();
     expect(screen.getByText('quota service unavailable')).toBeInTheDocument();
     expect(screen.getByText('SES rejected recipient')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Zobacz wysyłki z tego uruchomienia' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: en.marketing.activity.viewSends })).toHaveAttribute(
       'href',
       '/panel/marketing/sends?runId=run-marketing-1',
     );
@@ -154,12 +155,12 @@ describe('scheduler activity panel', () => {
     );
 
     const list = await renderRoute('/panel/marketing/activity');
-    expect(await screen.findByText('usunięte dowody zgody: 6')).toBeInTheDocument();
+    expect(await screen.findByText(en.marketing.activity.purgeCount({ purged: 6 }))).toBeInTheDocument();
     list.unmount();
 
     await renderRoute('/panel/marketing/activity/run-purge-1');
-    expect(await screen.findByText('Usunięte dowody zgody')).toBeInTheDocument();
-    expect(screen.queryByText('Rozmiar partii')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Zobacz wysyłki z tego uruchomienia' })).not.toBeInTheDocument();
+    expect(await screen.findByText(en.marketing.activity.evidencePurged)).toBeInTheDocument();
+    expect(screen.queryByText(en.marketing.activity.batchSize)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.marketing.activity.viewSends })).not.toBeInTheDocument();
   });
 });

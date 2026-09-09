@@ -544,7 +544,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
-        const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'pl' };
+        const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'en' };
         resetPasswordContexts.delete(normalizedEmail);
         const actionUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
         const queued = await settings.emailOutbox.enqueue({
@@ -570,7 +570,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       sendVerificationEmail: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
         const context = emailVerificationContexts.get(normalizedEmail) ?? {
-          language: 'pl',
+          language: 'en',
           baseUrl: settings.baseUrl,
         };
         emailVerificationContexts.delete(normalizedEmail);
@@ -603,7 +603,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         sendMagicLink: async ({ email, url, token }) => {
           const normalizedEmail = normalizeEmail(email);
           const context = deliveryContexts.get(normalizedEmail) ?? {
-            language: 'pl',
+            language: 'en',
             mode: 'email' as const,
           };
           deliveryContexts.delete(normalizedEmail);
@@ -751,7 +751,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
     const normalizedEmail = normalizeEmail(email);
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
       tenantName: tenantName ?? 'Together',
-      language: language ?? 'pl',
+      language: language ?? 'en',
       mode: 'email',
       ...(baseUrl ? { baseUrl } : {}),
       ...(branding === undefined ? {} : { branding }),

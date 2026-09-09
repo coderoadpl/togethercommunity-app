@@ -29,11 +29,11 @@
               "name": "Kurs JavaScript od podstaw"
             }
           ],
-          "defaultHomeSpaceId": "space-studio-spolecznosc",
+          "defaultHomeSpaceId": "space-studio-community",
           "lockedSpaces": [
             {
               "description": "Przestrzeń dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.",
-              "id": "space-studio-klub-js",
+              "id": "space-studio-club-js",
               "name": "Klub JavaScriptu",
               "productIds": [
                 "product-js-full"
@@ -44,11 +44,11 @@
                   "title": "Kurs JavaScript - pełny dostęp"
                 }
               ],
-              "slug": "klub-js"
+              "slug": "club-js"
             },
             {
               "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
-              "id": "space-studio-klub-react",
+              "id": "space-studio-club-react",
               "name": "Klub Reacta",
               "productIds": [
                 "product-react-full"
@@ -59,18 +59,18 @@
                   "title": "React w praktyce - pełny dostęp"
                 }
               ],
-              "slug": "klub-react"
+              "slug": "club-react"
             }
           ],
           "spaces": [
             {
               "description": "Otwarta przestrzeń dla wszystkich uczestników — przedstaw się i pogadaj z innymi.",
-              "id": "space-studio-spolecznosc",
+              "id": "space-studio-community",
               "name": "Społeczność",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
-              "slug": "spolecznosc",
+              "slug": "community",
               "visibility": "members"
             }
           ]
@@ -87,19 +87,19 @@
             "coverUrl": null,
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "marketingConsents": [],
             "priceCents": 19900,
             "prices": [
               {
                 "amountCents": 19900,
                 "currency": "PLN",
-                "id": "price-product-studio-kurs-101",
+                "id": "price-product-studio-course-101",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "title": "Kurs Together 101",
             "type": "course"
           },

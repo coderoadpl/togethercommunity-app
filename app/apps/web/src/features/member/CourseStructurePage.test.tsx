@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
-import { pl } from '../../i18n/pl.js';
+import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -125,9 +125,9 @@ const okMe = () =>
       ok: true,
       data: {
         userId: 'u1',
-        email: 'jan@example.com',
+        email: 'john@example.com',
         emailVerified: true,
-        name: 'Jan Uczestnik',
+        name: 'John Participant',
         tenant: {
           id: 't1',
           slug: 'acme',
@@ -367,9 +367,13 @@ describe('CourseStructurePage', () => {
 
     const lessonsTile = await screen.findByTestId('stat-tile-lessons');
     expect(lessonsTile).toHaveTextContent('5');
-    expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent('1 godz. 0 min');
+    expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent(
+      en.courseOverview.durationHoursMinutes({ hours: 1, minutes: 0 }),
+    );
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
-    expect(screen.getByTestId('progress-summary')).toHaveTextContent('1 z 5 ukończone');
+    expect(screen.getByTestId('progress-summary')).toHaveTextContent(
+      en.courseOverview.completedOf({ done: 1, total: 5 }),
+    );
   });
 
   it('points the continue CTA at the last viewed lesson when it is unfinished', async () => {
@@ -378,9 +382,9 @@ describe('CourseStructurePage', () => {
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(cta).toHaveTextContent(en.courseOverview.continueLearning);
     expect(cta).toHaveTextContent('Advanced Variables');
-    expect(cta).toHaveAttribute('title', `${pl.courseOverview.continueLearning}: Advanced Variables`);
+    expect(cta).toHaveAttribute('title', `${en.courseOverview.continueLearning}: Advanced Variables`);
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
@@ -392,7 +396,7 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
     const link = await screen.findByTestId('first-lesson-link');
     expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
-    expect(link).toHaveTextContent(pl.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
+    expect(link).toHaveTextContent(en.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
@@ -401,7 +405,7 @@ describe('CourseStructurePage', () => {
 
     const cta = await screen.findByTestId('continue-cta');
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
-    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(cta).toHaveTextContent(en.courseOverview.continueLearning);
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
@@ -459,11 +463,11 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const cta = await screen.findByTestId('continue-cta');
-    expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
+    expect(cta).toHaveTextContent(en.courseOverview.reviewAgain);
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     const card = screen.getByTestId('course-progress-card');
     expect(within(card).getByTestId('completion-mark')).toHaveAccessibleName(
-      pl.courseOverview.courseCompleted,
+      en.courseOverview.courseCompleted,
     );
     expect(within(card).getByTestId('progress-percent')).toHaveTextContent('100%');
     expect(screen.queryByTestId('course-completed-note')).not.toBeInTheDocument();
@@ -499,8 +503,8 @@ describe('CourseStructurePage', () => {
 
     const empty = await screen.findByTestId('course-empty-state');
     expect(within(empty).getByTestId('empty-course-icon')).toBeInTheDocument();
-    expect(empty).toHaveTextContent(pl.courseTree.emptyCourseTitle);
-    expect(empty).toHaveTextContent(pl.courseTree.noPublishedContent);
+    expect(empty).toHaveTextContent(en.courseTree.emptyCourseTitle);
+    expect(empty).toHaveTextContent(en.courseTree.noPublishedContent);
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
   });
 
@@ -519,7 +523,7 @@ describe('CourseStructurePage', () => {
     );
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
-    expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseNotFound })).toBeInTheDocument();
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
@@ -528,7 +532,7 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByTestId('anon-course-program')).toHaveTextContent(
-      pl.anon.lockedCourseHint,
+      en.anon.lockedCourseHint,
     );
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
     expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
@@ -540,7 +544,7 @@ describe('CourseStructurePage', () => {
     for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-program']) {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
-    expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(pl.shell.start);
+    expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(en.shell.start);
   });
 
   it('crops the anonymous cover exactly like the member cover', async () => {

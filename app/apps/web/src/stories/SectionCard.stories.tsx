@@ -21,12 +21,12 @@ type Story = StoryObj<typeof meta>;
 
 export const Informational: Story = {
   args: {
-    title: 'Dostęp do kursu',
-    description: 'Kursanci z aktywnym dostępem widzą wszystkie opublikowane lekcje.',
+    title: 'Course access',
+    description: 'Learners with active access can see every published lesson.',
     children: (
       <Box>
-        Ten produkt otwiera dostęp do 3 kursów i 24 lekcji. Zmiany w zawartości są widoczne
-        natychmiast dla wszystkich kupujących.
+        This product unlocks access to 3 courses and 24 lessons. Content changes become visible
+        immediately for every buyer.
       </Box>
     ),
   },
@@ -34,24 +34,24 @@ export const Informational: Story = {
 
 export const FormWithActions: Story = {
   args: {
-    title: 'Integracja płatności',
-    description: 'Podłącz Stripe, aby przyjmować płatności kartą.',
+    title: 'Payment integration',
+    description: 'Connect Stripe to accept card payments.',
     children: (
       <>
         <FormControl fullWidth>
-          <FormLabel htmlFor="section-stripe-key">Klucz publiczny</FormLabel>
+          <FormLabel htmlFor="section-stripe-key">Publishable key</FormLabel>
           <OutlinedInput id="section-stripe-key" placeholder="pk_live_…" />
         </FormControl>
         <FormControl fullWidth>
-          <FormLabel htmlFor="section-stripe-secret">Klucz tajny</FormLabel>
+          <FormLabel htmlFor="section-stripe-secret">Secret key</FormLabel>
           <OutlinedInput id="section-stripe-secret" type="password" placeholder="sk_live_…" />
         </FormControl>
       </>
     ),
     actions: (
       <>
-        <Button variant="text">Testuj połączenie</Button>
-        <Button variant="contained">Zapisz</Button>
+        <Button variant="text">Test connection</Button>
+        <Button variant="contained">Save</Button>
       </>
     ),
   },

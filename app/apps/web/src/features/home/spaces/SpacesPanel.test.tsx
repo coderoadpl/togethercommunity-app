@@ -17,7 +17,7 @@ import {
   type StaffSpace,
 } from '#core/domain/index.js';
 
-import { pl } from '../../../i18n/pl.js';
+import { en } from '../../../i18n/en.js';
 import { PanelSpaceDetailRoute } from '../panel-routes.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -27,8 +27,8 @@ import { SpacesPanel } from './SpacesPanel.js';
 const staffSpace = (over: Partial<StaffSpace> & { id: string }): StaffSpace => ({
   tenantId: 't1',
   slug: over.id,
-  name: 'Ogólna',
-  description: 'Rozmowy o wszystkim.',
+  name: 'General',
+  description: 'Conversations about everything.',
   visibility: 'members',
   productIds: [],
   publicReadOnly: false,
@@ -48,7 +48,7 @@ const tenantSettings = (defaultHomeSpaceId: string | null = null) =>
       ok: true,
       data: {
         settings: {
-          name: 'Akademia',
+          name: 'Academy',
           socialLinks: [],
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
@@ -85,7 +85,7 @@ const renderPanel = async (initialEntry = '/panel/spaces') => {
 
 describe('spaces panel', () => {
   it('lists staff spaces with stats and creates a new one', async () => {
-    let spaces = [staffSpace({ id: 's1', name: 'Ogólna' })];
+    let spaces = [staffSpace({ id: 's1', name: 'General' })];
     const created: unknown[] = [];
     server.use(
       noProducts(),
@@ -102,20 +102,20 @@ describe('spaces panel', () => {
     await renderPanel();
 
     const row = await screen.findByTestId('space-row');
-    expect(row).toHaveTextContent('Ogólna');
-    expect(row).toHaveTextContent(pl.spacesPanel.postsNoun({ count: 4 }));
-    expect(row).toHaveTextContent(pl.spacesPanel.followersNoun({ count: 7 }));
+    expect(row).toHaveTextContent('General');
+    expect(row).toHaveTextContent(en.spacesPanel.postsNoun({ count: 4 }));
+    expect(row).toHaveTextContent(en.spacesPanel.followersNoun({ count: 7 }));
 
-    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
-    await userEvent.type(await screen.findByLabelText(pl.spacesPanel.nameLabel), 'Klub');
+    await userEvent.click(screen.getByRole('link', { name: `+ ${en.common.add}` }));
+    await userEvent.type(await screen.findByLabelText(en.spacesPanel.nameLabel), 'Club');
     await userEvent.click(screen.getByTestId('space-form-submit'));
 
     await waitFor(() =>
       expect(created).toEqual([
-        { slug: 'klub', name: 'Klub', visibility: 'members', productIds: [], publicReadOnly: false },
+        { slug: 'club', name: 'Club', visibility: 'members', productIds: [], publicReadOnly: false },
       ]),
     );
-    expect(await screen.findByText('Klub')).toBeInTheDocument();
+    expect(await screen.findByText('Club')).toBeInTheDocument();
   });
 
   it('badges publicly readable spaces so the public layer is visible at a glance', async () => {
@@ -126,8 +126,8 @@ describe('spaces panel', () => {
           ok: true,
           data: {
             spaces: [
-              staffSpace({ id: 's1', name: 'Ogólna', publicReadOnly: true }),
-              staffSpace({ id: 's2', name: 'Zamknięta' }),
+              staffSpace({ id: 's1', name: 'General', publicReadOnly: true }),
+              staffSpace({ id: 's2', name: 'Closed' }),
             ],
           },
         }),
@@ -136,12 +136,12 @@ describe('spaces panel', () => {
 
     await renderPanel();
 
-    expect(await screen.findByTestId('space-public-s1')).toHaveTextContent(pl.spacesPanel.publicChip);
+    expect(await screen.findByTestId('space-public-s1')).toHaveTextContent(en.spacesPanel.publicChip);
     expect(screen.queryByTestId('space-public-s2')).not.toBeInTheDocument();
   });
 
   it('archives a space through the confirm dialog', async () => {
-    let spaces = [staffSpace({ id: 's1', name: 'Ogólna' })];
+    let spaces = [staffSpace({ id: 's1', name: 'General' })];
     const archived: unknown[] = [];
     server.use(
       noProducts(),
@@ -167,7 +167,7 @@ describe('spaces panel', () => {
   });
 
   it('edits a space on the detail subpage', async () => {
-    const original = staffSpace({ id: 's1', name: 'Ogólna', description: 'Stary opis' });
+    const original = staffSpace({ id: 's1', name: 'General', description: 'Old description' });
     const updates: unknown[] = [];
     server.use(
       noProducts(),
@@ -182,18 +182,18 @@ describe('spaces panel', () => {
 
     await renderPanel('/panel/spaces/s1');
 
-    const nameField = await screen.findByLabelText(pl.spacesPanel.nameLabel);
-    expect(nameField).toHaveValue('Ogólna');
+    const nameField = await screen.findByLabelText(en.spacesPanel.nameLabel);
+    expect(nameField).toHaveValue('General');
     await userEvent.clear(nameField);
-    await userEvent.type(nameField, 'Ogólna 2.0');
+    await userEvent.type(nameField, 'General 2.0');
     await userEvent.click(screen.getByTestId('space-form-submit'));
 
     await waitFor(() =>
       expect(updates).toEqual([
         {
           id: 's1',
-          name: 'Ogólna 2.0',
-          description: 'Stary opis',
+          name: 'General 2.0',
+          description: 'Old description',
           visibility: 'members',
           productIds: [],
           publicReadOnly: false,
@@ -219,8 +219,8 @@ describe('spaces panel', () => {
 
     await renderPanel('/panel/spaces/s1');
 
-    const toggle = await screen.findByRole('checkbox', { name: pl.spacesPanel.publicReadOnlyLabel });
-    expect(screen.getByText(pl.spacesPanel.publicReadOnlyHelper)).toBeInTheDocument();
+    const toggle = await screen.findByRole('checkbox', { name: en.spacesPanel.publicReadOnlyLabel });
+    expect(screen.getByText(en.spacesPanel.publicReadOnlyHelper)).toBeInTheDocument();
     await userEvent.click(toggle);
     await userEvent.click(screen.getByTestId('space-form-submit'));
 
@@ -238,8 +238,8 @@ describe('spaces panel', () => {
     await renderPanel('/panel/spaces/s1');
 
     await waitFor(() =>
-      expect(screen.getByRole('checkbox', { name: pl.spacesPanel.publicReadOnlyLabel })).toBeDisabled(),
+      expect(screen.getByRole('checkbox', { name: en.spacesPanel.publicReadOnlyLabel })).toBeDisabled(),
     );
-    expect(screen.getByText(pl.spacesPanel.publicReadOnlyHomeSpaceBlocked)).toBeInTheDocument();
+    expect(screen.getByText(en.spacesPanel.publicReadOnlyHomeSpaceBlocked)).toBeInTheDocument();
   });
 });

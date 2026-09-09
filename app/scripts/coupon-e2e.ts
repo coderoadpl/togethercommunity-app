@@ -103,7 +103,7 @@ try {
     window.localStorage.setItem('together-language', 'pl');
   });
   const page = await context.newPage();
-  await page.goto(`${webBaseUrl}/checkout/product-studio-kurs-101`, {
+  await page.goto(`${webBaseUrl}/checkout/product-studio-course-101`, {
     waitUntil: 'networkidle',
   });
 
@@ -138,7 +138,7 @@ try {
     'discounted checkout did not keep the payment affordance visible',
   );
 
-  await page.goto(`${webBaseUrl}/checkout/product-studio-kurs-101?code=PARTNER20`, {
+  await page.goto(`${webBaseUrl}/checkout/product-studio-course-101?code=PARTNER20`, {
     waitUntil: 'networkidle',
   });
   await page.locator('#checkout-email').fill('buyer@together.dev');

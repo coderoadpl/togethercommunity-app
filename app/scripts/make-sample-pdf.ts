@@ -1,11 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/**
- * Emits a tiny, valid single-page PDF used as the seeded lesson attachment.
- * Kept ASCII-only (Helvetica/WinAnsi) so it renders without embedded fonts, and
- * served same-origin so the lesson player can frame it inline.
- */
 const objects = [
   '<< /Type /Catalog /Pages 2 0 R >>',
   '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -18,10 +13,10 @@ const stream = [
   'BT',
   '/F1 24 Tf',
   '72 760 Td',
-  '(Together - przykladowa lekcja PDF) Tj',
+  '(Together - sample lesson PDF) Tj',
   '0 -36 Td',
   '/F1 12 Tf',
-  '(Ten dokument jest hostowany same-origin, wiec osadza sie w ramce.) Tj',
+  '(This document is hosted on the same origin for inline viewing.) Tj',
   'ET',
 ].join('\n');
 
@@ -44,7 +39,7 @@ const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxr
 
 const pdf = Buffer.from(header + body + xref + trailer, 'latin1');
 
-const outPath = fileURLToPath(new URL('../apps/web/public/assets/sample-lekcja.pdf', import.meta.url));
+const outPath = fileURLToPath(new URL('../apps/web/public/assets/sample-lesson.pdf', import.meta.url));
 mkdirSync(fileURLToPath(new URL('../apps/web/public/assets/', import.meta.url)), { recursive: true });
 writeFileSync(outPath, pdf);
 console.log(`Wrote ${pdf.length} bytes to ${outPath}`);

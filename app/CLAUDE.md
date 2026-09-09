@@ -17,7 +17,7 @@ provenance trail lives in the private notes.
 
 - `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
   `license-lint` + `migration-lint` + `tenant-scope-check` + `tenant-neutral-lint` +
-  `depcruise` + `knip` + `doc-lint` + `test` —
+  `depcruise` + `knip` + `doc-lint` + `language-lint` + `test` —
   the **static** gate.
 - `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated

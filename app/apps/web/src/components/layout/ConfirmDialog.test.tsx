@@ -5,10 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConfirmDialog } from './ConfirmDialog.js';
 
 const baseProps = {
-  title: 'Usunąć lekcję?',
-  body: <p>Tej operacji nie można cofnąć.</p>,
-  confirmLabel: 'Usuń',
-  cancelLabel: 'Anuluj',
+  title: 'Delete lesson?',
+  body: <p>This action cannot be undone.</p>,
+  confirmLabel: 'Delete',
+  cancelLabel: 'Cancel',
 };
 
 describe('ConfirmDialog', () => {
@@ -22,8 +22,8 @@ describe('ConfirmDialog', () => {
   it('renders the title and consequence body when open', () => {
     render(<ConfirmDialog {...baseProps} open onConfirm={vi.fn()} onClose={vi.fn()} />);
 
-    expect(screen.getByRole('dialog', { name: 'Usunąć lekcję?' })).toBeInTheDocument();
-    expect(screen.getByText('Tej operacji nie można cofnąć.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Delete lesson?' })).toBeInTheDocument();
+    expect(screen.getByText('This action cannot be undone.')).toBeInTheDocument();
   });
 
   it('calls onConfirm on the destructive action', async () => {
@@ -31,7 +31,7 @@ describe('ConfirmDialog', () => {
     const onConfirm = vi.fn();
     render(<ConfirmDialog {...baseProps} open onConfirm={onConfirm} onClose={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: 'Usuń' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
@@ -40,7 +40,7 @@ describe('ConfirmDialog', () => {
     const onClose = vi.fn();
     render(<ConfirmDialog {...baseProps} open onConfirm={vi.fn()} onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Anuluj' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -49,8 +49,8 @@ describe('ConfirmDialog', () => {
       <ConfirmDialog {...baseProps} open pending onConfirm={vi.fn()} onClose={vi.fn()} />,
     );
 
-    expect(screen.getByRole('button', { name: 'Usuń' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Anuluj' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
 
   it('can disable only the destructive action', () => {
@@ -58,7 +58,7 @@ describe('ConfirmDialog', () => {
       <ConfirmDialog {...baseProps} open confirmDisabled onConfirm={vi.fn()} onClose={vi.fn()} />,
     );
 
-    expect(screen.getByRole('button', { name: 'Usuń' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Anuluj' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
   });
 });

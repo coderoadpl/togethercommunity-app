@@ -16,7 +16,7 @@
       "ok": true,
       "value": {
         "avatarUrl": null,
-        "email": "kursant.aktywny@together.dev",
+        "email": "student.active@together.dev",
         "emailVerified": true,
         "impersonation": null,
         "name": "Kursant Aktywny",
@@ -26,7 +26,7 @@
           "dmOptOut": false,
           "id": "tenant-studio",
           "language": null,
-          "memberId": "member-studio-aktywny",
+          "memberId": "member-studio-active",
           "name": "Studio Demo",
           "slug": "studio",
           "staffRole": null,
@@ -45,12 +45,12 @@
               "authorDisplay": "Studio Creator",
               "authorIsStaff": true,
               "body": "Wyzwanie tygodnia: napiszcie funkcję, która spłaszcza dowolnie zagnieżdżoną tablicę bez użycia Array.prototype.flat. Rozwiązania wrzucajcie w odpowiedziach!",
-              "contextId": "space-studio-klub-js",
+              "contextId": "space-studio-club-js",
               "contextKind": "space",
               "createdAt": "2026-06-27T12:00:00.000Z",
               "deletedAt": null,
               "editedAt": null,
-              "id": "post-klub-wyzwanie",
+              "id": "post-club-challenge",
               "isOwn": false,
               "parentPostId": null,
               "pinnedAt": null,
@@ -62,8 +62,8 @@
                 }
               ],
               "replyCount": 1,
-              "rootPostId": "post-klub-wyzwanie",
-              "spaceId": "space-studio-klub-js",
+              "rootPostId": "post-club-challenge",
+              "spaceId": "space-studio-club-js",
               "spaceName": "Klub JavaScriptu",
               "tenantId": "tenant-studio"
             },
@@ -72,12 +72,12 @@
               "authorDisplay": "Konto Free",
               "authorIsStaff": false,
               "body": "Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?",
-              "contextId": "space-studio-spolecznosc",
+              "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
               "deletedAt": null,
               "editedAt": null,
-              "id": "post-spolecznosc-polecajki",
+              "id": "post-community-resources",
               "isOwn": false,
               "parentPostId": null,
               "pinnedAt": null,
@@ -94,8 +94,8 @@
                 }
               ],
               "replyCount": 0,
-              "rootPostId": "post-spolecznosc-polecajki",
-              "spaceId": "space-studio-spolecznosc",
+              "rootPostId": "post-community-resources",
+              "spaceId": "space-studio-community",
               "spaceName": "Społeczność",
               "tenantId": "tenant-studio"
             },
@@ -104,12 +104,12 @@
               "authorDisplay": "Studio Creator",
               "authorIsStaff": true,
               "body": "Witajcie w Społeczności! To otwarta przestrzeń dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.",
-              "contextId": "space-studio-spolecznosc",
+              "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-17T12:00:00.000Z",
               "deletedAt": null,
               "editedAt": null,
-              "id": "post-spolecznosc-hello",
+              "id": "post-community-hello",
               "isOwn": false,
               "parentPostId": null,
               "pinnedAt": null,
@@ -126,8 +126,8 @@
                 }
               ],
               "replyCount": 1,
-              "rootPostId": "post-spolecznosc-hello",
-              "spaceId": "space-studio-spolecznosc",
+              "rootPostId": "post-community-hello",
+              "spaceId": "space-studio-community",
               "spaceName": "Społeczność",
               "tenantId": "tenant-studio"
             }
@@ -147,7 +147,7 @@
               "courseId": "course-js",
               "courseName": "Kurs JavaScript od podstaw",
               "lastActivityAt": "2026-07-01T12:01:06.000Z",
-              "lastViewedLessonId": "lesson-js-funkcje-1"
+              "lastViewedLessonId": "lesson-js-functions-1"
             },
             {
               "accessibleLessonCount": 6,
@@ -161,7 +161,7 @@
           "lockedSpaces": [
             {
               "description": "Przestrzeń dla posiadaczy kursu React w praktyce — projekty, pytania i przegląd kodu.",
-              "id": "space-studio-klub-react",
+              "id": "space-studio-club-react",
               "name": "Klub Reacta",
               "productIds": [
                 "product-react-full"
@@ -172,19 +172,19 @@
                   "title": "React w praktyce - pełny dostęp"
                 }
               ],
-              "slug": "klub-react"
+              "slug": "club-react"
             }
           ],
           "spaces": [
             {
               "courseIds": [],
-              "id": "space-studio-spolecznosc",
+              "id": "space-studio-community",
               "isFollowing": true,
               "name": "Społeczność",
               "position": 0,
               "products": [],
               "publicReadOnly": true,
-              "slug": "spolecznosc",
+              "slug": "community",
               "unread": true,
               "visibility": "members"
             },
@@ -192,7 +192,7 @@
               "courseIds": [
                 "course-js"
               ],
-              "id": "space-studio-klub-js",
+              "id": "space-studio-club-js",
               "isFollowing": true,
               "name": "Klub JavaScriptu",
               "position": 1,
@@ -203,7 +203,7 @@
                 }
               ],
               "publicReadOnly": false,
-              "slug": "klub-js",
+              "slug": "club-js",
               "unread": true,
               "visibility": "product"
             }
@@ -221,19 +221,19 @@
             "coverUrl": null,
             "currency": "PLN",
             "description": "",
-            "id": "product-studio-kurs-101",
+            "id": "product-studio-course-101",
             "marketingConsents": [],
             "priceCents": 19900,
             "prices": [
               {
                 "amountCents": 19900,
                 "currency": "PLN",
-                "id": "price-product-studio-kurs-101",
+                "id": "price-product-studio-course-101",
                 "interval": null,
                 "kind": "one_time"
               }
             ],
-            "slug": "kurs-together-101",
+            "slug": "course-together-101",
             "title": "Kurs Together 101",
             "type": "course"
           },
@@ -444,22 +444,22 @@
                 {
                   "accessStatus": "fully-accessible",
                   "completionStatus": "fully-completed",
-                  "id": "chapter-js-zmienne",
+                  "id": "chapter-js-variables",
                   "lessons": [
                     {
                       "accessStatus": "fully-accessible",
                       "completionStatus": "fully-completed",
-                      "contentId": "content-lesson-js-zmienne-1",
+                      "contentId": "content-lesson-js-variables-1",
                       "durationMinutes": 12,
-                      "lessonId": "lesson-js-zmienne-1",
+                      "lessonId": "lesson-js-variables-1",
                       "name": "Deklarowanie zmiennych"
                     },
                     {
                       "accessStatus": "fully-accessible",
                       "completionStatus": "fully-completed",
-                      "contentId": "content-lesson-js-zmienne-2",
+                      "contentId": "content-lesson-js-variables-2",
                       "durationMinutes": 15,
-                      "lessonId": "lesson-js-zmienne-2",
+                      "lessonId": "lesson-js-variables-2",
                       "name": "Typy proste i złożone"
                     }
                   ],
@@ -468,22 +468,22 @@
                 {
                   "accessStatus": "fully-accessible",
                   "completionStatus": "not-completed",
-                  "id": "chapter-js-funkcje",
+                  "id": "chapter-js-functions",
                   "lessons": [
                     {
                       "accessStatus": "fully-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-funkcje-1",
+                      "contentId": "content-lesson-js-functions-1",
                       "durationMinutes": 18,
-                      "lessonId": "lesson-js-funkcje-1",
+                      "lessonId": "lesson-js-functions-1",
                       "name": "Funkcje i argumenty"
                     },
                     {
                       "accessStatus": "fully-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-funkcje-2",
+                      "contentId": "content-lesson-js-functions-2",
                       "durationMinutes": 22,
-                      "lessonId": "lesson-js-funkcje-2",
+                      "lessonId": "lesson-js-functions-2",
                       "name": "Domknięcia i zakres"
                     }
                   ],
@@ -491,7 +491,7 @@
                 }
               ],
               "completionStatus": "partially-completed",
-              "id": "module-js-podstawy",
+              "id": "module-js-basics",
               "name": "Część 1 - Podstawy"
             },
             {
@@ -532,14 +532,14 @@
                 {
                   "accessStatus": "fully-accessible",
                   "completionStatus": "not-completed",
-                  "id": "chapter-js-projekty",
+                  "id": "chapter-js-projects",
                   "lessons": [
                     {
                       "accessStatus": "fully-accessible",
                       "completionStatus": "not-completed",
-                      "contentId": "content-lesson-js-projekt-1",
+                      "contentId": "content-lesson-js-project-1",
                       "durationMinutes": 35,
-                      "lessonId": "lesson-js-projekt-1",
+                      "lessonId": "lesson-js-project-1",
                       "name": "Projekt: lista zadań"
                     }
                   ],
@@ -547,7 +547,7 @@
                 }
               ],
               "completionStatus": "not-completed",
-              "id": "module-js-projekty",
+              "id": "module-js-projects",
               "name": "Część 3 - Projekty"
             }
           ],
@@ -560,13 +560,13 @@
       "value": {
         "progress": {
           "completedLessonIds": [
-            "lesson-js-zmienne-1",
-            "lesson-js-zmienne-2"
+            "lesson-js-variables-1",
+            "lesson-js-variables-2"
           ],
           "courseId": "course-js",
-          "lastViewedChapterId": "chapter-js-funkcje",
-          "lastViewedLessonId": "lesson-js-funkcje-1",
-          "lastViewedModuleId": "module-js-podstawy",
+          "lastViewedChapterId": "chapter-js-functions",
+          "lastViewedLessonId": "lesson-js-functions-1",
+          "lastViewedModuleId": "module-js-basics",
           "resume": {
             "firstIncomplete": {
               "id": "lesson-js-demo-video",
@@ -574,7 +574,7 @@
             },
             "isReview": false,
             "target": {
-              "id": "lesson-js-funkcje-1",
+              "id": "lesson-js-functions-1",
               "name": "Funkcje i argumenty"
             }
           }
@@ -594,7 +594,7 @@
       }
     }
   },
-  "principal": "kursant.aktywny@together.dev",
+  "principal": "student.active@together.dev",
   "route": "/start",
   "scenario": "start-menu-sheet",
   "tenant": "studio"

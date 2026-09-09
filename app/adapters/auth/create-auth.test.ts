@@ -675,7 +675,7 @@ describe('host-scoped credentials', () => {
     const { auth } = buildHostAuth();
     const email = `custom-magic-${Date.now()}@together.dev`;
     auth.setMagicLinkDeliveryContext(email, {
-      language: 'pl',
+      language: 'en',
       mode: 'capture',
       baseUrl: `http://${customHost}`,
     });
@@ -823,13 +823,13 @@ describe('soft email verification', () => {
     expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
   });
 
-  it('resends a Polish verification link through the outbox', async () => {
+  it('resends an English verification link through the outbox', async () => {
     const { auth, emails, flushEmails } = buildAuth();
     const email = `verification-resend-${Date.now()}@together.dev`;
     await signUp(auth, email);
     await flushEmails();
     auth.setEmailVerificationDeliveryContext(email, {
-      language: 'pl',
+      language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
 
@@ -841,7 +841,7 @@ describe('soft email verification', () => {
 
     expect(response.status).toBe(true);
     const message = await emails.findByRecipient(normalizeEmail(email));
-    expect(message?.subject).toBe('Potwierdź swój adres e-mail');
+    expect(message?.subject).toBe('Verify your email address');
     expect(message?.text).toContain('studio.localhost:48730');
   });
 
@@ -901,7 +901,7 @@ describe('soft email verification', () => {
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
-    expect(message?.subject).toBe('Potwierdź swój adres e-mail');
+    expect(message?.subject).toBe('Verify your email address');
     const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
     expect(new URL(actionUrl).host).toBe('localhost:48730');
   });
@@ -1013,21 +1013,21 @@ describe('createAuthPort.requestMagicLink', () => {
     expect(message?.html).toContain('studio.localhost:48730');
   });
 
-  it('sends a Polish email when the requested language is pl', async () => {
+  it('sends an English email when the requested language is en', async () => {
     const { authPort, emails, flushEmails } = buildAuth();
-    const email = `magic-pl-${Date.now()}@together.dev`;
+    const email = `magic-en-${Date.now()}@together.dev`;
 
     await authPort.requestMagicLink({
       email,
       callbackURL: 'http://studio.localhost:48730/my',
       tenantName: 'Studio',
-      language: 'pl',
+      language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
-    expect(message?.subject).toBe('Zaloguj się do Studio');
+    expect(message?.subject).toBe('Sign in to Studio');
   });
 
   it('keeps the base host when no tenant base URL is supplied', async () => {
@@ -1247,13 +1247,13 @@ describe('reset password email', () => {
     );
   });
 
-  it('sends a Polish email when the requested language is pl', async () => {
+  it('sends an English email when the requested language is en', async () => {
     const { auth, authPort, emails, flushEmails } = buildAuth();
-    const email = `reset-pl-${Date.now()}@together.dev`;
+    const email = `reset-en-selected-${Date.now()}@together.dev`;
     await authPort.ensureUser(email);
 
     auth.setResetPasswordDeliveryContext(email, {
-      language: 'pl',
+      language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
     await auth.api.requestPasswordReset({
@@ -1263,7 +1263,7 @@ describe('reset password email', () => {
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
-    expect(message?.subject).toBe('Zresetuj hasło');
+    expect(message?.subject).toBe('Reset your password');
     expect(message?.html).toContain('/api/auth/reset-password/');
   });
 
@@ -1322,7 +1322,7 @@ describe('reset password email', () => {
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
-    expect(message?.subject).toBe('Zresetuj hasło');
+    expect(message?.subject).toBe('Reset your password');
     const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
     expect(new URL(actionUrl).host).toBe('localhost:48730');
   });

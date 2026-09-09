@@ -13,12 +13,12 @@ const spaRoutePaths = (): string[] => {
 
 describe('normalizeRedirectPath', () => {
   it('lower-cases, collapses repeated slashes and drops the trailing slash', () => {
-    expect(normalizeRedirectPath('/Kurs/JavaScript/')).toBe('/kurs/javascript');
-    expect(normalizeRedirectPath('/kurs//javascript///wstep')).toBe('/kurs/javascript/wstep');
+    expect(normalizeRedirectPath('/Course/JavaScript/')).toBe('/course/javascript');
+    expect(normalizeRedirectPath('/course//javascript///wstep')).toBe('/course/javascript/wstep');
   });
 
   it('strips query strings and fragments', () => {
-    expect(normalizeRedirectPath('/kurs/javascript?ref=x#section')).toBe('/kurs/javascript');
+    expect(normalizeRedirectPath('/course/javascript?ref=x#section')).toBe('/course/javascript');
   });
 
   it('normalizes an empty or root-only path to /', () => {
@@ -47,7 +47,7 @@ describe('isReservedRedirectPath', () => {
     expect(isReservedRedirectPath('/panel')).toBe(true);
     expect(isReservedRedirectPath('/My/courses/course-js')).toBe(true);
     expect(isReservedRedirectPath('/paneller')).toBe(false);
-    expect(isReservedRedirectPath('/kurs/javascript')).toBe(false);
+    expect(isReservedRedirectPath('/course/javascript')).toBe(false);
   });
 
   it('reserves every top-level path the single-page app routes itself', () => {

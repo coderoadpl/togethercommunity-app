@@ -28,9 +28,9 @@ const managesPostgres = process.env['E2E_DATABASE_URL'] === undefined;
 const tenantSlug = 'marketing-verify';
 const tickSecret = 'marketing-e2e-tick-secret';
 const topicArn = 'arn:aws:sns:eu-central-1:123456789012:marketing-e2e';
-const legalName = 'Marketing Verify sp. z o.o.';
-const legalAddress = 'ul. Testowa 1, 00-001 Warszawa';
-const consentLabel = 'Chcę otrzymywać wiadomości o nowych materiałach';
+const legalName = 'Marketing Verify LLC';
+const legalAddress = '1 Test Street, 00-001 Warsaw';
+const consentLabel = 'I want to receive updates about new materials';
 const emails = {
   confirmedA: 'confirmed-a@marketing.test',
   confirmedB: 'confirmed-b@marketing.test',

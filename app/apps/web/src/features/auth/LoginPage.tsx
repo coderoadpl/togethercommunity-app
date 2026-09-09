@@ -83,6 +83,8 @@ const ChevronIcon = () => (
 
 const initialsOf = (email: string): string =>
   (email.match(/[a-z0-9]/giu)?.slice(0, 2).join('') ?? '?').toUpperCase();
+const demoAccountEmail = 'creator@together.dev';
+const demoAccountPassword = 'demo-password-15';
 
 const MethodCard = ({
   featured = false,
@@ -373,8 +375,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const footerItems = [
     showDemoAccount ? (
       <FinePrint key="demo" variant="caption" component="p">
-        {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
-        <DemoValue>demo-password-15</DemoValue>
+        {t.auth.demoAccount} <DemoValue>{demoAccountEmail}</DemoValue> /{' '}
+        <DemoValue>{demoAccountPassword}</DemoValue>
       </FinePrint>
     ) : null,
     accessPrompt,

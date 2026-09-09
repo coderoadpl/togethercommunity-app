@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SendsPanel, validateSendsSearch } from './SendsPanel.js';
@@ -36,12 +37,12 @@ describe('sends panel scheduler run filter', () => {
     );
     const { router } = await renderSendsPanel('/panel/marketing/sends?runId=run-linked');
 
-    expect(await screen.findByLabelText('ID uruchomienia harmonogramu')).toHaveValue('run-linked');
+    expect(await screen.findByLabelText(en.marketing.runIdFilter)).toHaveValue('run-linked');
     await waitFor(() => {
       expect(requests.some((request) => new URL(request).searchParams.get('runId') === 'run-linked')).toBe(true);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Wyczyść filtr uruchomienia' }));
+    fireEvent.click(screen.getByRole('button', { name: en.marketing.clearRunFilter }));
 
     await waitFor(() => {
       expect(requests.some((request) => !new URL(request).searchParams.has('runId'))).toBe(true);

@@ -72,9 +72,9 @@ const checkLockfileDrift = (): void => {
 };
 
 const DEMO_TENANT_IDS = ['tenant-studio', 'tenant-acme', 'tenant-akademia'];
-const CANONICAL_JS_MODULE_IDS = ['module-js-podstawy', 'module-js-dom', 'module-js-projekty'];
-const CANONICAL_AKTYWNY_COMPLETED = ['lesson-js-zmienne-1', 'lesson-js-zmienne-2'];
-const CANONICAL_AKTYWNY_LAST_VIEWED = 'lesson-js-funkcje-1';
+const CANONICAL_JS_MODULE_IDS = ['module-js-basics', 'module-js-dom', 'module-js-projects'];
+const CANONICAL_ACTIVE_COMPLETED = ['lesson-js-variables-1', 'lesson-js-variables-2'];
+const CANONICAL_ACTIVE_LAST_VIEWED = 'lesson-js-functions-1';
 
 const idRowsSchema = z.array(z.object({ id: z.string() }));
 const moduleOrderRowSchema = z.object({ module_order: z.array(z.string()) });
@@ -86,7 +86,7 @@ const progressRowSchema = z.object({
 const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
   const now = new Date().toISOString();
   await client.query(
-    `insert into courses (id, tenant_id, name, description, created_at) values ('AUDYT-kurs', 'tenant-studio', 'AUDYT kurs', '', $1)`,
+    `insert into courses (id, tenant_id, name, description, created_at) values ('AUDIT-course', 'tenant-studio', 'AUDYT kurs', '', $1)`,
     [now],
   );
   await client.query(
@@ -102,17 +102,17 @@ const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
     [now],
   );
   await client.query(
-    `insert into product_grants (id, tenant_id, member_id, product_id, source, created_at) values ('AUDYT-grant', 'tenant-studio', 'member-studio-aktywny', 'AUDYT-produkt', 'manual', $1)`,
+    `insert into product_grants (id, tenant_id, member_id, product_id, source, created_at) values ('AUDYT-grant', 'tenant-studio', 'member-studio-active', 'AUDYT-produkt', 'manual', $1)`,
     [now],
   );
   await client.query(
-    `update courses set module_order = '["module-js-projekty","module-js-podstawy","module-js-dom"]'::jsonb where tenant_id = 'tenant-studio' and id = 'course-js'`,
+    `update courses set module_order = '["module-js-projects","module-js-basics","module-js-dom"]'::jsonb where tenant_id = 'tenant-studio' and id = 'course-js'`,
   );
   await client.query(
     `update member_course_progress
-     set completed_lesson_ids = '["lesson-js-demo-video","lesson-js-zmienne-1","lesson-js-zmienne-2","lesson-js-funkcje-1","lesson-js-funkcje-2","lesson-js-dom-1","lesson-js-dom-2","lesson-js-projekt-1"]'::jsonb,
-         last_viewed_lesson_id = 'lesson-js-projekt-1'
-     where tenant_id = 'tenant-studio' and id = 'progress-member-studio-aktywny'`,
+     set completed_lesson_ids = '["lesson-js-demo-video","lesson-js-variables-1","lesson-js-variables-2","lesson-js-functions-1","lesson-js-functions-2","lesson-js-dom-1","lesson-js-dom-2","lesson-js-project-1"]'::jsonb,
+         last_viewed_lesson_id = 'lesson-js-project-1'
+     where tenant_id = 'tenant-studio' and id = 'progress-member-studio-active'`,
   );
 };
 
@@ -145,17 +145,17 @@ const verifyReseedRestoresCanonicalState = async (databaseUrl: string): Promise<
 
     const progressResult = await client.query(
       `select completed_lesson_ids, last_viewed_lesson_id from member_course_progress
-       where tenant_id = 'tenant-studio' and member_id = 'member-studio-aktywny' and course_id = 'course-js'`,
+       where tenant_id = 'tenant-studio' and member_id = 'member-studio-active' and course_id = 'course-js'`,
     );
-    assert(progressResult.rowCount === 1, 'reseed: kursant.aktywny should have exactly one course-js progress row');
+    assert(progressResult.rowCount === 1, 'reseed: student.active should have exactly one course-js progress row');
     const progressRow = progressRowSchema.parse(progressResult.rows[0]);
     assert(
-      JSON.stringify(progressRow.completed_lesson_ids) === JSON.stringify(CANONICAL_AKTYWNY_COMPLETED),
-      `reseed: kursant.aktywny should have exactly the seeded partial progress ${JSON.stringify(CANONICAL_AKTYWNY_COMPLETED)}, got ${JSON.stringify(progressRow.completed_lesson_ids)}`,
+      JSON.stringify(progressRow.completed_lesson_ids) === JSON.stringify(CANONICAL_ACTIVE_COMPLETED),
+      `reseed: student.active should have exactly the seeded partial progress ${JSON.stringify(CANONICAL_ACTIVE_COMPLETED)}, got ${JSON.stringify(progressRow.completed_lesson_ids)}`,
     );
     assert(
-      progressRow.last_viewed_lesson_id === CANONICAL_AKTYWNY_LAST_VIEWED,
-      `reseed: kursant.aktywny last viewed lesson should be ${CANONICAL_AKTYWNY_LAST_VIEWED}, got ${String(progressRow.last_viewed_lesson_id)}`,
+      progressRow.last_viewed_lesson_id === CANONICAL_ACTIVE_LAST_VIEWED,
+      `reseed: student.active last viewed lesson should be ${CANONICAL_ACTIVE_LAST_VIEWED}, got ${String(progressRow.last_viewed_lesson_id)}`,
     );
 
     const leftoversResult = await client.query(
@@ -368,10 +368,10 @@ const publicThreadSchema = z.object({
 
 const PUBLIC_COURSE_ID = 'course-js';
 const PRIVATE_COURSE_ID = 'course-react';
-const PUBLIC_PREVIEW_LESSON_ID = 'lesson-js-zmienne-1';
-const PUBLIC_HOME_SPACE_ID = 'space-studio-spolecznosc';
-const PUBLIC_THREAD_POST_ID = 'post-spolecznosc-hello';
-const LOCKED_SPACE_ID = 'space-studio-klub-js';
+const PUBLIC_PREVIEW_LESSON_ID = 'lesson-js-variables-1';
+const PUBLIC_HOME_SPACE_ID = 'space-studio-community';
+const PUBLIC_THREAD_POST_ID = 'post-community-hello';
+const LOCKED_SPACE_ID = 'space-studio-club-js';
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -1189,15 +1189,15 @@ const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> 
     cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], authorHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.active@together.dev'], authorHome),
     'community: author login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], replierHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.module@together.dev'], replierHome),
     'community: replier login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.wygasly@together.dev'], expiredHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.expired@together.dev'], expiredHome),
     'community: expired member login',
   );
 
@@ -1272,15 +1272,15 @@ const driveDirectMessagesFlow = async (port: number, homes: string[]): Promise<v
     cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], authorHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.active@together.dev'], authorHome),
     'dm: author login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], senderHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.module@together.dev'], senderHome),
     'dm: sender login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.wygasly@together.dev'], strangerHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.expired@together.dev'], strangerHome),
     'dm: stranger login',
   );
 
@@ -1367,7 +1367,7 @@ const driveEventsFlow = async (port: number, homes: string[]): Promise<void> => 
     'events: staff login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], followerHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.active@together.dev'], followerHome),
     'events: member login',
   );
 
@@ -1473,11 +1473,11 @@ const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => 
     'spaces: staff login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], entitledHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.active@together.dev'], entitledHome),
     'spaces: entitled member login',
   );
   expectOk(
-    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], moduleOnlyHome),
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'student.module@together.dev'], moduleOnlyHome),
     'spaces: module-only member login',
   );
 

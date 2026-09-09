@@ -162,7 +162,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'checkout',
     auth: 'public',
-    path: '/checkout/product-studio-kurs-101',
+    path: '/checkout/product-studio-course-101',
     ready: (page) => page.getByText('Kurs Together 101').first().waitFor(visible),
   },
   {
@@ -176,7 +176,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'hosted-legal-document',
     auth: 'public',
     tenantSlug: 'akademia',
-    path: '/legal/polityka-prywatnosci/v/1?lang=pl',
+    path: '/legal/privacy-policy/v/1?lang=pl',
     ready: (page) => page.getByTestId('hosted-legal-document').waitFor(visible),
   },
   {
@@ -231,13 +231,13 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'anon-space',
     auth: 'public',
-    path: '/community/space-studio-spolecznosc',
+    path: '/community/space-studio-community',
     fixtureName: 'anon-home-tiles',
     viewports: ['mobile'],
     ready: async (page) => {
       await page.getByTestId('anon-join-cta').waitFor(visible);
       await page.getByTestId('public-space-events-empty').waitFor(visible);
-      await page.getByTestId('public-post-body-post-spolecznosc-hello').waitFor(visible);
+      await page.getByTestId('public-post-body-post-community-hello').waitFor(visible);
     },
   },
   {
@@ -248,7 +248,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/start',
     ready: async (page) => {
       await page.getByTestId('start-continue-cta').waitFor(visible);
-      await page.getByTestId('home-feed-post-post-klub-wyzwanie').waitFor(visible);
+      await page.getByTestId('home-feed-post-post-club-challenge').waitFor(visible);
       await page.getByTestId('start-spaces').waitFor(visible);
       await page.getByTestId('start-courses').waitFor(visible);
       await page.getByTestId('start-locked').waitFor(visible);
@@ -264,7 +264,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('member-tab-menu').click();
       await page.getByTestId('member-menu-sheet').waitFor(visible);
       await page.getByTestId('sidebar-course-course-js').waitFor(visible);
-      await page.getByTestId('sidebar-space-space-studio-klub-js').waitFor(visible);
+      await page.getByTestId('sidebar-space-space-studio-club-js').waitFor(visible);
     },
     settled: async (page) => {
       // The opening sheet moves its sign-out row under the menu trigger's pointer position.
@@ -277,8 +277,8 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/search',
     ready: async (page) => {
       await page.getByTestId('search-input').fill('lekcj');
-      await page.getByTestId('search-space-space-studio-spolecznosc').waitFor(visible);
-      await page.getByTestId('search-lesson-lesson-js-zmienne-1').waitFor(visible);
+      await page.getByTestId('search-space-space-studio-community').waitFor(visible);
+      await page.getByTestId('search-lesson-lesson-js-variables-1').waitFor(visible);
       await page.getByTestId('search-lesson-lesson-js-dom-1').waitFor(visible);
     },
   },
@@ -404,7 +404,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'lesson-locked',
     auth: 'member-free',
-    path: '/my/courses/course-js/lessons/lesson-js-zmienne-2',
+    path: '/my/courses/course-js/lessons/lesson-js-variables-2',
     ready: async (page) => {
       await page.getByTestId('locked-lesson-upsell').waitFor(visible);
       await page.getByTestId('locked-product-price').waitFor(visible);
@@ -413,11 +413,11 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'lesson',
     auth: 'member',
-    path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
+    path: '/my/courses/course-js/lessons/lesson-js-variables-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
       await page.getByTestId('discussion-composer-open').waitFor(visible);
-      await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
+      await page.getByTestId('author-chip-post-js-variables-q-r2').waitFor(visible);
     },
   },
   {
@@ -425,18 +425,18 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'member',
     path: '/community',
     ready: async (page) => {
-      await page.getByTestId('space-card-space-studio-spolecznosc').waitFor(visible);
-      await page.getByTestId('space-card-space-studio-klub-js').waitFor(visible);
+      await page.getByTestId('space-card-space-studio-community').waitFor(visible);
+      await page.getByTestId('space-card-space-studio-club-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },
   {
     name: 'space-feed',
     auth: 'member',
-    path: '/community/space-studio-spolecznosc',
+    path: '/community/space-studio-community',
     ready: async (page) => {
-      await page.getByTestId('post-body-post-spolecznosc-hello').waitFor(visible);
-      await page.getByTestId('reaction-post-spolecznosc-hello-👍').waitFor(visible);
+      await page.getByTestId('post-body-post-community-hello').waitFor(visible);
+      await page.getByTestId('reaction-post-community-hello-👍').waitFor(visible);
       await page.getByTestId('space-follow-toggle').waitFor(visible);
       await waitForUnreadBadge(page);
     },
@@ -455,8 +455,8 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/spaces',
     ready: async (page) => {
-      await page.getByTestId('space-manage-space-studio-spolecznosc').waitFor(visible);
-      await page.getByTestId('space-manage-space-studio-klub-js').waitFor(visible);
+      await page.getByTestId('space-manage-space-studio-community').waitFor(visible);
+      await page.getByTestId('space-manage-space-studio-club-js').waitFor(visible);
     },
   },
   {
@@ -514,8 +514,8 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/settings/redirects',
     ready: async (page) => {
-      await page.getByTestId('redirect-row-redirect-studio-kurs-js').waitFor(visible);
-      await page.getByTestId('redirect-row-redirect-studio-oferta').waitFor(visible);
+      await page.getByTestId('redirect-row-redirect-studio-course-js').waitFor(visible);
+      await page.getByTestId('redirect-row-redirect-studio-offer').waitFor(visible);
     },
   },
   {
@@ -534,7 +534,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-lesson-attachments',
     auth: 'creator',
-    path: '/panel/lessons/lesson-js-zmienne-1',
+    path: '/panel/lessons/lesson-js-variables-1',
     ready: (page) => page.getByTestId('lesson-attachments-empty').waitFor(visible),
     settled: async (page) => {
       await page.locator('#block-1-html').evaluate((element) => { element.scrollTop = element.scrollHeight; });
@@ -581,7 +581,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'panel-order-detail',
     auth: 'creator',
-    path: '/panel/sales/order-studio-aktywny-js',
+    path: '/panel/sales/order-studio-active-js',
     ready: (page) => page.getByText('PARTNER20').waitFor(visible),
   },
   {
@@ -647,7 +647,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'member-detail',
     auth: 'creator',
-    path: '/panel/members/member-studio-aktywny',
+    path: '/panel/members/member-studio-active',
     ready: async (page) => {
       await page.getByTestId('member-purchase-row').first().waitFor(visible);
       await page.getByTestId('member-subscription-row').first().waitFor(visible);
@@ -659,7 +659,7 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'member-email-timeline',
     auth: 'creator',
-    path: '/panel/members/member-studio-aktywny',
+    path: '/panel/members/member-studio-active',
     ready: async (page) => {
       await page.getByRole('tab', { name: 'E-maile' }).click();
       await page.getByTestId('member-email-send').first().waitFor(visible);

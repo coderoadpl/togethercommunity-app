@@ -103,7 +103,9 @@ describe('demo seed lifecycle', () => {
   it('seeds a fresh migrated database', async () => {
     runDatabaseScript('seed.ts');
 
-    const tenants = await client.query<{ id: string }>('SELECT id FROM tenants ORDER BY id');
+    const tenants = await client.query<{ id: string; default_language: string }>(
+      'SELECT id, default_language FROM tenants ORDER BY id',
+    );
     const creators = await client.query<{ email: string }>(
       `SELECT email FROM "user" WHERE email LIKE 'creator%@together.dev' ORDER BY email`,
     );
@@ -122,6 +124,11 @@ describe('demo seed lifecycle', () => {
       'tenant-akademia',
       'tenant-studio',
     ]);
+    expect(tenants.rows.map(({ default_language: language }) => language)).toEqual(['en', 'en', 'en']);
+    const outbox = await client.query<{ language: string }>(
+      `SELECT payload->>'language' AS language FROM email_outbox WHERE id = 'send-studio-transactional'`,
+    );
+    expect(outbox.rows).toEqual([{ language: 'en' }]);
     expect(creators.rows.map(({ email }) => email)).toEqual([
       'creator3@together.dev',
       'creator@together.dev',
@@ -144,8 +151,8 @@ describe('demo seed lifecycle', () => {
     );
 
     expect(publicCourses.rows.map(({ id }) => id)).toEqual(['course-js']);
-    expect(publicSpaces.rows.map(({ id }) => id)).toEqual(['space-studio-spolecznosc']);
-    expect(homeSpace.rows).toEqual([{ default_home_space_id: 'space-studio-spolecznosc' }]);
+    expect(publicSpaces.rows.map(({ id }) => id)).toEqual(['space-studio-community']);
+    expect(homeSpace.rows).toEqual([{ default_home_space_id: 'space-studio-community' }]);
   }, 180_000);
 
   it('converges existing creator credentials without adding rows when repeated', async () => {
@@ -206,36 +213,36 @@ describe('demo seed lifecycle', () => {
     runDatabaseScript('seed.ts');
     await client.query(
       `INSERT INTO courses (id, tenant_id, name, description, created_at)
-       VALUES ('AUDYT-kurs', 'tenant-studio', 'AUDYT kurs', '', NOW())`,
+       VALUES ('AUDIT-course', 'tenant-studio', 'AUDIT course', '', NOW())`,
     );
     await client.query(
       `UPDATE courses
-       SET module_order = '["module-js-projekty","module-js-podstawy","module-js-dom"]'::jsonb
+       SET module_order = '["module-js-projects","module-js-basics","module-js-dom"]'::jsonb
        WHERE id = 'course-js'`,
     );
     await client.query(
       `UPDATE member_course_progress
-       SET completed_lesson_ids = '["lesson-js-projekt-1"]'::jsonb,
-           last_viewed_lesson_id = 'lesson-js-projekt-1'
-       WHERE id = 'progress-member-studio-aktywny'`,
+       SET completed_lesson_ids = '["lesson-js-project-1"]'::jsonb,
+           last_viewed_lesson_id = 'lesson-js-project-1'
+       WHERE id = 'progress-member-studio-active'`,
     );
     await client.query(
       `INSERT INTO tenants (id, slug, name, created_at)
-       VALUES ('AUDYT-tenant', 'audyt-tenant', 'AUDYT tenant', NOW()::text)`,
+       VALUES ('AUDIT-tenant', 'audit-tenant', 'AUDIT tenant', NOW()::text)`,
     );
     await client.query(
       `INSERT INTO scheduler_runs (
          id, kind, trigger, started_at, status, totals, created_at
        ) VALUES
          (
-           'AUDYT-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed', '{}'::jsonb, NOW()
+           'AUDIT-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed', '{}'::jsonb, NOW()
          ),
          (
-           'AUDYT-shared-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed',
+           'AUDIT-shared-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed',
            '{}'::jsonb, NOW()
          ),
          (
-           'AUDYT-tenantless-scheduler-run', 'outbox_dispatch', 'scheduled', NOW(), 'running',
+           'AUDIT-tenantless-scheduler-run', 'outbox_dispatch', 'scheduled', NOW(), 'running',
            '{}'::jsonb, NOW()
          )`,
     );
@@ -245,30 +252,30 @@ describe('demo seed lifecycle', () => {
          budget_computed, budget_used, errors, created_at
        ) VALUES
          (
-           'AUDYT-scheduler-run-tenant', 'AUDYT-scheduler-run', 'tenant-studio', 0, 0, 0, 0, 0,
+           'AUDIT-scheduler-run-tenant', 'AUDIT-scheduler-run', 'tenant-studio', 0, 0, 0, 0, 0,
            0, 0, '[]'::jsonb, NOW()
          ),
          (
-           'AUDYT-shared-scheduler-run-demo-tenant', 'AUDYT-shared-scheduler-run',
+           'AUDIT-shared-scheduler-run-demo-tenant', 'AUDIT-shared-scheduler-run',
            'tenant-studio', 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb, NOW()
          ),
          (
-           'AUDYT-shared-scheduler-run-non-demo-tenant', 'AUDYT-shared-scheduler-run',
-           'AUDYT-tenant', 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb, NOW()
+           'AUDIT-shared-scheduler-run-non-demo-tenant', 'AUDIT-shared-scheduler-run',
+           'AUDIT-tenant', 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb, NOW()
          )`,
     );
     await client.query(
       `INSERT INTO email_events (
          id, tenant_id, mail_kind, ref_id, type, occurred_at, created_at
        ) VALUES (
-         'AUDYT-email-event', 'tenant-studio', 'transactional', 'AUDYT-email', 'sent', NOW(), NOW()
+         'AUDIT-email-event', 'tenant-studio', 'transactional', 'AUDIT-email', 'sent', NOW(), NOW()
        )`,
     );
 
     runDatabaseScript('reseed.ts');
 
     const auditCourse = await client.query(
-      `SELECT id FROM courses WHERE id = 'AUDYT-kurs'`,
+      `SELECT id FROM courses WHERE id = 'AUDIT-course'`,
     );
     const course = await client.query<{ module_order: string[] }>(
       `SELECT module_order FROM courses WHERE id = 'course-js'`,
@@ -279,39 +286,39 @@ describe('demo seed lifecycle', () => {
     }>(
       `SELECT completed_lesson_ids, last_viewed_lesson_id
        FROM member_course_progress
-       WHERE id = 'progress-member-studio-aktywny'`,
+       WHERE id = 'progress-member-studio-active'`,
     );
     const staleSchedulerRun = await client.query(
-      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-scheduler-run'`,
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDIT-scheduler-run'`,
     );
     const tenantlessSchedulerRun = await client.query(
-      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-tenantless-scheduler-run'`,
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDIT-tenantless-scheduler-run'`,
     );
     const sharedSchedulerRun = await client.query(
-      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-shared-scheduler-run'`,
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDIT-shared-scheduler-run'`,
     );
     const sharedSchedulerRunTenants = await client.query<{ tenant_id: string }>(
       `SELECT tenant_id
        FROM scheduler_run_tenants
-       WHERE run_id = 'AUDYT-shared-scheduler-run'
+       WHERE run_id = 'AUDIT-shared-scheduler-run'
        ORDER BY tenant_id`,
     );
     const staleEmailEvent = await client.query(
-      `SELECT id FROM email_events WHERE id = 'AUDYT-email-event'`,
+      `SELECT id FROM email_events WHERE id = 'AUDIT-email-event'`,
     );
 
     expect(auditCourse.rowCount).toBe(0);
     expect(course.rows).toEqual([{ module_order: [] }]);
     expect(progress.rows).toEqual([
       {
-        completed_lesson_ids: ['lesson-js-zmienne-1', 'lesson-js-zmienne-2'],
-        last_viewed_lesson_id: 'lesson-js-funkcje-1',
+        completed_lesson_ids: ['lesson-js-variables-1', 'lesson-js-variables-2'],
+        last_viewed_lesson_id: 'lesson-js-functions-1',
       },
     ]);
     expect(staleSchedulerRun.rowCount).toBe(0);
     expect(tenantlessSchedulerRun.rowCount).toBe(0);
-    expect(sharedSchedulerRun.rows).toEqual([{ id: 'AUDYT-shared-scheduler-run' }]);
-    expect(sharedSchedulerRunTenants.rows).toEqual([{ tenant_id: 'AUDYT-tenant' }]);
+    expect(sharedSchedulerRun.rows).toEqual([{ id: 'AUDIT-shared-scheduler-run' }]);
+    expect(sharedSchedulerRunTenants.rows).toEqual([{ tenant_id: 'AUDIT-tenant' }]);
     expect(staleEmailEvent.rowCount).toBe(0);
   }, 180_000);
 });

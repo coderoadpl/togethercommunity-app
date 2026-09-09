@@ -42,20 +42,20 @@ const unavailableFixture = (reason: 'missing_library_id' | 'secret_invalid') => 
   ...fixture,
   calls: {
     ...fixture.calls,
-    'studentLesson:["lesson-js-zmienne-1"]': {
+    'studentLesson:["lesson-js-variables-1"]': {
       ok: true,
       value: {
-        ...fixture.calls['studentLesson:["lesson-js-zmienne-1"]'].value,
+        ...fixture.calls['studentLesson:["lesson-js-variables-1"]'].value,
         lesson: {
-          ...fixture.calls['studentLesson:["lesson-js-zmienne-1"]'].value.lesson,
+          ...fixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson,
           contents: [{ type: 'video', storageKey: 'video-1', streamVideoId: 'video-1' }],
         },
       },
     },
-    'studentLessonPlayback:["lesson-js-zmienne-1"]': {
+    'studentLessonPlayback:["lesson-js-variables-1"]': {
       ok: true,
       value: {
-        lessonId: 'lesson-js-zmienne-1',
+        lessonId: 'lesson-js-variables-1',
         expiresAt: '2026-09-08T12:00:00.000Z',
         videos: [{ kind: 'unavailable', storageKey: 'video-1', reason }],
       },

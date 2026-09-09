@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import { Alert, AppBar, Box, Button, IconButton, Toolbar, Tooltip, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -50,9 +50,11 @@ export const MemberShell = () => {
   });
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [openSheet, setOpenSheet] = useState<'menu' | 'program' | null>(null);
+  const [mobileKeyboardActive, setMobileKeyboardActive] = useState(false);
   const canOpenStudio = useCanOpenStudio();
   const shellRef = useRef<HTMLDivElement>(null);
   const appBarRef = useRef<HTMLElement>(null);
+  const mobileKeyboardAnchorRef = useRef<Element | null>(null);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -68,7 +70,22 @@ export const MemberShell = () => {
 
   useEffect(() => {
     setOpenSheet(null);
+    mobileKeyboardAnchorRef.current = null;
+    setMobileKeyboardActive(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const anchor = mobileKeyboardAnchorRef.current;
+    if (!mobileKeyboardActive || shell === null || anchor === null) return;
+    const observer = new MutationObserver(() => {
+      if (anchor.isConnected || mobileKeyboardAnchorRef.current !== anchor) return;
+      mobileKeyboardAnchorRef.current = null;
+      setMobileKeyboardActive(false);
+    });
+    observer.observe(shell, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [mobileKeyboardActive]);
 
   const tenant = me.data?.tenant ?? null;
   const isMember = viewer === 'member';
@@ -89,6 +106,27 @@ export const MemberShell = () => {
   const hasMobileNavigation = identity !== null && !isDesktop;
   const showBannedBanner = tenant?.banned === true;
   const closeSheet = () => setOpenSheet(null);
+  const mobileKeyboardAnchor = (target: EventTarget): Element | null =>
+    target instanceof Element ? target.closest('[data-mobile-keyboard-anchor]') : null;
+  const handleMobileFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (!hasMobileNavigation) return;
+    if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
+    const anchor = mobileKeyboardAnchor(event.target);
+    if (anchor === null) return;
+    if (mobileKeyboardAnchorRef.current === anchor) return;
+    mobileKeyboardAnchorRef.current = anchor;
+    setMobileKeyboardActive(true);
+    anchor.scrollIntoView({ block: 'center' });
+  };
+  const handleMobileBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!hasMobileNavigation) return;
+    const anchor = mobileKeyboardAnchor(event.target);
+    if (anchor === null) return;
+    if (event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
+    if (mobileKeyboardAnchorRef.current !== anchor) return;
+    mobileKeyboardAnchorRef.current = null;
+    setMobileKeyboardActive(false);
+  };
 
   const memberSidebar = identity === null ? null : (
     <MemberSidebar
@@ -110,7 +148,9 @@ export const MemberShell = () => {
 
   const mobileNavigation = !hasMobileNavigation || identity === null ? null : (
     <>
-      <MemberBottomBar menuOpen={openSheet === 'menu'} onOpenMenu={() => setOpenSheet('menu')} />
+      {mobileKeyboardActive ? null : (
+        <MemberBottomBar menuOpen={openSheet === 'menu'} onOpenMenu={() => setOpenSheet('menu')} />
+      )}
       <MemberMenuSheet
         open={openSheet === 'menu'}
         onClose={closeSheet}
@@ -177,7 +217,12 @@ export const MemberShell = () => {
 
   return (
     <>
-      <Box ref={shellRef} sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}>
+      <Box
+        ref={shellRef}
+        onFocusCapture={handleMobileFocus}
+        onBlurCapture={handleMobileBlur}
+        sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}
+      >
         {sidebar === null ? null : (
           <SidebarColumn
             component="aside"

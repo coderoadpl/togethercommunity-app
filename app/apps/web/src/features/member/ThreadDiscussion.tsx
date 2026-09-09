@@ -163,6 +163,8 @@ export const PostComposer = ({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
       data-testid={testId}
+      data-mobile-keyboard-anchor
+      sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
     >
       <TextField
         label={label}
@@ -181,11 +183,12 @@ export const PostComposer = ({
           variant="contained"
           disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
+          sx={{ minHeight: '44px' }}
         >
           {busy ? pendingLabel : submitLabel}
         </Button>
         {onCancel !== undefined && (
-          <Button variant="text" onClick={onCancel}>
+          <Button variant="text" onClick={onCancel} sx={{ minHeight: '44px' }}>
             {t.common.cancel}
           </Button>
         )}

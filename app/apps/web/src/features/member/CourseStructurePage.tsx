@@ -178,7 +178,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
             lastViewedLessonId={lastViewedLessonId}
           />
           {hasModules && isCompact ? (
-            <Box data-testid="course-tree-inline">
+            <Box data-testid="course-tree-inline" sx={{ mt: '1.5rem' }}>
               <Typography variant="overline" component="h2">
                 {t.courseOverview.curriculum}
               </Typography>

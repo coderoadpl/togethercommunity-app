@@ -393,9 +393,13 @@ describe('LoginPage', () => {
     failSignInMethods();
     await continueWithEmail();
 
-    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+    const failure = await screen.findByTestId('sign-in-methods-unavailable');
+    expect(failure).toHaveTextContent(
       pl.auth.signInMethodsUnavailable,
     );
+    const retry = within(failure).getByTestId('sign-in-methods-retry');
+    expect(retry).toHaveClass('MuiButton-outlined');
+    expect(retry).toHaveStyle({ width: '100%', minHeight: '44px' });
     expect(screen.getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
     expect(screen.getByTestId('choose-magic-link')).toHaveTextContent(
       pl.auth.signInMethodsChooseMagicLink,

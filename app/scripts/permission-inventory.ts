@@ -47,7 +47,6 @@ const allHumans = ['owner', 'admin', 'member', 'authenticated'] as const;
 const tenantActors = ['owner', 'admin', 'member'] as const;
 const staff = ['owner', 'admin'] as const;
 const owner = ['owner'] as const;
-const member = ['member'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
 const transactionalApiKey = ['transactional-api-key'] as const;
@@ -210,7 +209,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/courses' || path.startsWith('/api/courses/')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/modules') || path.startsWith('/api/lessons')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/student/')) {
-    if (path.includes('/progress') || path.includes('/last-viewed') || path.includes('/complete')) {
+    if (path.includes('/progress') || path.includes('/last-viewed') || path.includes('/complete') || path.includes('/uncomplete')) {
       return method === 'GET' ? 'member:progress:read' : 'member:progress:self-write';
     }
     return 'lesson:play';
@@ -264,7 +263,7 @@ const beforeForRoute = (
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
   if (path.startsWith('/api/me/sessions')) return tenantActors;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/me/profile' || path.startsWith('/api/me/avatar/') || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return tenantActors;
   if (path === '/api/member/navigation') return tenantActors;
   if (path === '/api/member/home-feed') return tenantActors;
   if (path === '/api/member/upcoming-events') return tenantActors;
@@ -272,7 +271,7 @@ const beforeForRoute = (
     return method === 'GET' || path === '/api/events/rsvp' ? tenantActors : staff;
   }
   if (path.startsWith('/api/student/')) {
-    return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
+    return tenantActors;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path === '/api/tenant/routing') return staff;
@@ -505,18 +504,18 @@ const beforeForUseCase = (
   }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
-  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
   if (file === 'entitlements.ts') {
-    return name === 'resolveMemberEntitlements' ? member : tenantActors;
+    return tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'image-assets.ts') {
-    if (capability === 'member:profile:self-write') return member;
+    if (capability === 'member:profile:self-write') return tenantActors;
     return capability === 'tenant:settings:write' ? owner : staff;
   }
-  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
-  if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
+  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? tenantActors : staff;
+  if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : tenantActors;
   if (file === 'lesson-playback.ts') return tenantActors;
   if (file === 'tenant-domains.ts' || file === 'tenant-redirects.ts') {
     return capability === 'tenant:domain:read' ? staff : owner;
@@ -667,6 +666,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
     '',
     'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
+    '',
+    'Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',

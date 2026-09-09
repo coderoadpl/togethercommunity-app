@@ -9,6 +9,7 @@ import {
   type TenantSocialLink,
 } from '#core/domain/index.js';
 
+import { DocumentTitleProvider } from './components/layout/document-title.js';
 import { actions } from './api.js';
 import { SocialLinksFooter } from './branding-social.js';
 import { LogoImage } from './components/ui/LogoImage.js';
@@ -149,17 +150,13 @@ export const BrandMark = ({
   );
 };
 
-/**
- * Applies the tenant accent over whatever theme is active and injects the
- * tenant favicon. Without branding it leaves the palette and the document head
- * alone, adding only the accent tokens every member surface reads.
- */
 export const TenantBrandingBoundary = ({
   children,
 }: {
   children: ReactNode;
 }) => {
-  const branding = useTenantBranding();
+  const tenant = useTenantOffer();
+  const branding = tenant?.branding ?? null;
   const outer = useTheme();
   const theme = useMemo(() => applyBranding(outer, branding), [outer, branding]);
   const faviconUrl = branding?.faviconUrl ?? null;
@@ -175,5 +172,9 @@ export const TenantBrandingBoundary = ({
     };
   }, [faviconUrl]);
 
-  return <ThemeProvider theme={theme}>{children}</ThemeProvider>;
+  return (
+    <DocumentTitleProvider tenantName={tenant?.name}>
+      <ThemeProvider theme={theme}>{children}</ThemeProvider>
+    </DocumentTitleProvider>
+  );
 };

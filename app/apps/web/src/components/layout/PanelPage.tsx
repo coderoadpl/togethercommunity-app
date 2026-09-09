@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
 import { LedgerHeader } from '../../theme.js';
+import { usePageDocumentTitle } from './document-title.js';
 import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
@@ -9,6 +10,7 @@ import { PAGE_WIDTH } from './widths.js';
 interface PanelPageProps {
   /** Quiet h1 (decision D1): title + optional description, no eyebrow. */
   title: ReactNode;
+  documentTitle?: string;
   description?: ReactNode;
   /** Primary action, top-right; wraps under the title on narrow viewports. */
   action?: ReactNode;
@@ -20,6 +22,7 @@ interface PanelPageProps {
 
 export const PanelPage = ({
   title,
+  documentTitle,
   description,
   action,
   backTo,
@@ -27,6 +30,7 @@ export const PanelPage = ({
   children,
   'data-testid': testId,
 }: PanelPageProps) => {
+  usePageDocumentTitle(documentTitle ?? title, true);
   const statusOnly = state !== undefined && state.kind !== 'ready';
 
   return (

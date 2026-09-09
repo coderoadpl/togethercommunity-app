@@ -224,7 +224,7 @@ export const en: Messages = {
     choose: 'Choose a workspace',
     eachOwnDomain: 'Every workspace lives on its own domain',
     welcome: 'Welcome to Together. Open an existing workspace or create a new one.',
-    create: 'Create a workspace',
+    create: 'Create a new workspace',
     nameLabel: 'Name',
     slugLabel: 'Workspace address',
     enterNameToPreview: 'Enter a name to preview the workspace URL.',

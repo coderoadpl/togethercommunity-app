@@ -157,6 +157,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const platformSurface = usesPlatformAuthSurface(hostname);
   const tenantName = publicOffer.data?.tenant.name ?? null;
   const tenantNamePending = resolveTenantOffer && publicOffer.isPending;
+  const magicLinkCallbackPath = isConfiguredBaseDomainHost(hostname) ? '/' : '/my';
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -284,7 +285,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     setMagicLinkResent(false);
     requestMagicLink.mutate({
       email,
-      callbackURL: `${window.location.origin}/my`,
+      callbackURL: new URL(magicLinkCallbackPath, window.location.origin).toString(),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };
@@ -295,7 +296,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     requestMagicLink.mutate(
       {
         email: requestedMagicEmail,
-        callbackURL: `${window.location.origin}/my`,
+        callbackURL: new URL(magicLinkCallbackPath, window.location.origin).toString(),
         ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
       },
       { onSuccess: () => setMagicLinkResent(true) },

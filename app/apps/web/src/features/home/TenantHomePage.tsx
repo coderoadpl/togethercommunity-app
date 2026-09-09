@@ -6,14 +6,13 @@ import {
   Container,
   FormControl,
   FormLabel,
-  Link,
   List,
   ListItem,
   ListItemButton,
   OutlinedInput,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
@@ -36,7 +35,8 @@ import { PlatformDataReset } from './PlatformDataReset.js';
 export const TenantHomePage = ({
   anonymousHome,
   hostname = window.location.hostname,
-}: { anonymousHome?: ReactNode; hostname?: string } = {}) => {
+  openTenant = (url) => { window.location.assign(url); },
+}: { anonymousHome?: ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
   const me = useQuery(actions.me);
@@ -67,25 +67,31 @@ export const TenantHomePage = ({
     );
   }
 
-  return <PickTenant account={{ email: me.data.email, emailVerified: me.data.emailVerified }} />;
+  return (
+    <PickTenant
+      account={{ email: me.data.email, emailVerified: me.data.emailVerified }}
+      openTenant={openTenant}
+    />
+  );
 };
 
-const PickTenant = ({ account }: { account: { email: string; emailVerified: boolean } }) => {
+const PickTenant = ({
+  account,
+  openTenant,
+}: {
+  account: { email: string; emailVerified: boolean };
+  openTenant: (url: string) => void;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const tenants = useQuery(actions.tenants);
   const [name, setName] = useState('');
   const [slugInput, setSlugInput] = useState('');
-  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
-  const queryClient = useQueryClient();
   const slugPreview = slugInput || slugify(name);
 
   const createTenant = useMutation({
     ...actions.createTenant,
-    onSuccess: async (data) => {
-      setCreatedSlug(data.tenant.slug);
-      await queryClient.invalidateQueries();
-    },
+    onSuccess: (data) => openTenant(tenantUrl(data.tenant.slug)),
   });
   const resendVerification = useMutation(actions.sendVerificationEmail);
 
@@ -182,9 +188,6 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
           </Button>
           {createTenant.isError ? (
             <Alert severity="error">{localizePanelError(createTenant.error, t)}</Alert>
-          ) : null}
-          {createdSlug ? (
-            <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>
           ) : null}
           </Box>
         ) : null}

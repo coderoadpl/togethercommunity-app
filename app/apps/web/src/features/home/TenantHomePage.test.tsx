@@ -6,6 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -157,6 +158,46 @@ describe('TenantHomePage dispatcher', () => {
 
     expect(await screen.findByTestId('resend-verification-email')).toBeInTheDocument();
     expect(await screen.findByLabelText(en.tenant.nameLabel)).toBeInTheDocument();
+  });
+
+  it('creates a workspace from the platform picker and opens its tenant host', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    let body: unknown;
+    const openTenant = vi.fn();
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
+      http.get('/api/tenants', () => HttpResponse.json({
+        ok: true,
+        data: { tenants: [], canCreateTenant: true },
+      })),
+      http.post('/api/tenants', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            tenant: {
+              id: 't-new',
+              slug: 'new-workspace',
+              name: 'New Workspace',
+              status: 'active',
+              plan: 'self_hosted',
+              contentVersion: 1,
+            },
+          },
+        });
+      }),
+    );
+    await renderHome(() => (
+      <TenantHomePage hostname="start.localhost" openTenant={openTenant} />
+    ));
+
+    await userEvent.type(await screen.findByLabelText(en.tenant.nameLabel), 'New Workspace');
+    await userEvent.click(screen.getByRole('button', { name: en.tenant.createButton }));
+
+    await waitFor(() => expect(openTenant).toHaveBeenCalledWith(
+      'http://new-workspace.localhost:3000',
+    ));
+    expect(body).toEqual({ name: 'New Workspace', slug: 'new-workspace' });
   });
 
   it('offers the data reset only when the deployment reports a resettable environment', async () => {

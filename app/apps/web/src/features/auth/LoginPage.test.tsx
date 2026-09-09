@@ -268,6 +268,27 @@ describe('LoginPage', () => {
     expect(offerCalls).toBe(0);
   });
 
+  it.each([
+    ['start.localhost', 'http://localhost:3000/'],
+    ['acme.localhost', 'http://localhost:3000/my'],
+  ])('uses the correct magic-link callback on %s', async (hostname, expectedCallbackURL) => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    let body: unknown;
+    server.use(
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+
+    await renderLoginPage(false, '/login', hostname, ['magic-link']);
+    await continueWithEmail('member@example.com');
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+
+    await screen.findByTestId('magic-link-sent');
+    expect(body).toMatchObject({ callbackURL: expectedCallbackURL });
+  });
+
   it('asks for the identifier alone before any credential', async () => {
     await renderLoginPage();
 

@@ -837,6 +837,7 @@ export interface Messages {
     storageCorsHeading: string;
     storageCorsDescription: string;
     storageCorsOriginLabel: (params: { number: number }) => string;
+    storageCorsJsonToggle: string;
     storageCorsJsonLabel: string;
     storageProbeDescription: string;
     storageProbeStart: string;

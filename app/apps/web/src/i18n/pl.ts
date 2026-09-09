@@ -929,8 +929,9 @@ export const pl: Messages = {
       'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie. W CORS bucketu dodaj Content-Type do AllowedHeaders. Przesyłanie z przeglądarki wymaga HTTPS, chyba że MinIO ma ten sam origin co Together. Prywatny endpoint wymaga też STORAGE_ALLOW_PRIVATE_ENDPOINTS=true na serwerze.',
     storageInstructionLink: 'Otwórz instrukcję dostawcy',
     storageCorsHeading: 'CORS bucketu',
-    storageCorsDescription: 'Zezwól na każdy poniższy origin. Skopiuj cały JSON do ustawień CORS bucketu.',
+    storageCorsDescription: 'Zezwól na każdy poniższy origin. Użyj przełącznika JSON CORS, aby skopiować całą politykę bucketu.',
     storageCorsOriginLabel: ({ number }) => format('Dozwolony origin {number}', { number }),
+    storageCorsJsonToggle: 'Pokaż JSON CORS',
     storageCorsJsonLabel: 'JSON CORS',
     storageProbeDescription:
       'Together wyśle mały plik testowy, odczyta go bajt po bajcie, usunie i sprawdzi CORS dla przeglądarki. Na tym etapie nic nie zostanie zapisane.',

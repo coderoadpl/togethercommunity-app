@@ -40,6 +40,7 @@ describe('contacts CSV to campaign delivery', () => {
     await fixture.db.insert(user).values({ id: 'existing-account', email: 'member@example.test', name: 'Member', emailVerified: true, createdAt: new Date(DELIVERY_NOW), updatedAt: new Date(DELIVERY_NOW) });
     await fixture.db.insert(tenantAdmins).values({ id: 'owner-grant', tenantId: 'delivery-a', userId: 'existing-account', role: 'owner' });
     await fixture.db.insert(members).values({ id: 'existing-member', tenantId: 'delivery-a', userId: 'existing-account', email: 'member@example.test', displayName: 'Member', createdAt: DELIVERY_NOW });
+    await fixture.directory.contacts.upsertByEmail('delivery-a', { email: 'member@example.test', displayName: 'Member' });
     const importCsv = async (csv: string, kind: 'contacts' | 'suppressions', key: string) => {
       const preview = directoryValue(await api.uploadMarketingContactImport({ csv, metadata: { datasetVersion: 'together-marketing-contacts/v1', kind, fileName: `${kind}.csv`, idempotencyKey: key, ...(kind === 'contacts' ? { consentDefinitionId: 'consent' } : {}) } }));
       expect(preview.canCommit).toBe(true);

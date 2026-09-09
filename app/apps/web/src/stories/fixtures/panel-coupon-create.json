@@ -65,7 +65,8 @@
             "slug": "course-together-101",
             "tenantId": "tenant-studio",
             "title": "Together 101 Course",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [],
@@ -81,7 +82,8 @@
             "slug": "workshop-scenario",
             "tenantId": "tenant-studio",
             "title": "Scenario Workshop",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -102,7 +104,8 @@
             "slug": "js-full",
             "tenantId": "tenant-studio",
             "title": "JavaScript Course - full access",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -123,7 +126,8 @@
             "slug": "react-full",
             "tenantId": "tenant-studio",
             "title": "React in Practice - full access",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -147,7 +151,8 @@
             "slug": "js-dom-module",
             "tenantId": "tenant-studio",
             "title": "DOM Module Pack",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -182,7 +187,8 @@
             "slug": "free-preview",
             "tenantId": "tenant-studio",
             "title": "Free preview",
-            "type": "course"
+            "type": "course",
+            "visibility": "listed"
           },
           {
             "accessItems": [
@@ -207,7 +213,8 @@
             "slug": "club",
             "tenantId": "tenant-studio",
             "title": "Studio Club - subscription",
-            "type": "membership"
+            "type": "membership",
+            "visibility": "listed"
           },
           {
             "accessItems": [],
@@ -223,7 +230,8 @@
             "slug": "download-workbook",
             "tenantId": "tenant-studio",
             "title": "Creator Workbook",
-            "type": "digital_download"
+            "type": "digital_download",
+            "visibility": "listed"
           }
         ]
       }

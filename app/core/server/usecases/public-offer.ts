@@ -82,12 +82,16 @@ export interface PublicOfferDeps {
 export const getPublicOffer = async (
   tenant: Tenant,
   deps: PublicOfferDeps,
+  productRef?: string,
 ): Promise<Result<PublicOffer, AppError>> => {
-  const [products, lessons, courses] = await Promise.all([
+  const [publishedProducts, lessons, courses] = await Promise.all([
     deps.products.listPublishedByTenant(tenant.id),
     deps.lessons.listPreviews(tenant.id),
     deps.courses.list(tenant.id),
   ]);
+  const products = publishedProducts.filter((product) => product.published && (productRef === undefined
+    ? product.visibility === 'listed'
+    : product.id === productRef || product.slug === productRef));
   const publicCourseIds = new Set(
     courses.filter((course) => course.publiclyVisible).map((course) => course.id),
   );

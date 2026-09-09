@@ -955,6 +955,11 @@ export const pl: Messages = {
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
+    visibilityLabel: 'Widoczność',
+    listed: 'Widoczny w ofercie',
+    unlisted: 'Ukryty w ofercie',
+    visibilityHelper: 'Produkty ukryte w ofercie są dostępne przez bezpośredni link do zakupu i pozostają w bibliotekach kupujących.',
+
     newProduct: 'Nowy produkt',
     detailsHeading: 'Dane produktu',
     titleLabel: 'Tytuł',

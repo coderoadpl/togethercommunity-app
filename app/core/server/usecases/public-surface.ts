@@ -88,12 +88,13 @@ export const getPublicNavigation = async (
   tenant: Tenant,
   deps: PublicNavigationDeps,
 ): Promise<Result<PublicNavigation, AppError>> => {
-  const [spaces, courses, products, settings] = await Promise.all([
+  const [spaces, courses, publishedProducts, settings] = await Promise.all([
     deps.spaces.list(tenant.id),
     deps.courses.list(tenant.id),
     deps.products.listPublishedByTenant(tenant.id),
     deps.tenants.findSettings(tenant.id),
   ]);
+  const products = publishedProducts.filter((product) => product.visibility === 'listed');
   const publishedProductIds = new Set(products.map((product) => product.id));
   const productsById = new Map(
     products.map((product) => [product.id, { id: product.id, title: product.title }]),
@@ -169,11 +170,12 @@ export const getPublicCourseStructure = async (
   if (course === null || !course.publiclyVisible) {
     return err(notFound(`No course "${courseId}" in this tenant`));
   }
-  const [modules, lessons, products] = await Promise.all([
+  const [modules, lessons, publishedProducts] = await Promise.all([
     deps.modules.list(tenant.id),
     deps.lessons.list(tenant.id),
     deps.products.listPublishedByTenant(tenant.id),
   ]);
+  const products = publishedProducts.filter((product) => product.visibility === 'listed');
   const product = products
     .filter((entry) => entry.published && entry.accessItems.some((item) => item.courseId === courseId))
     .sort((a, b) => a.priceCents - b.priceCents || a.id.localeCompare(b.id))[0];

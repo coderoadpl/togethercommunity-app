@@ -391,6 +391,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
+        visibility: product.visibility,
         priceCents: product.priceCents,
         currency: product.currency,
         published: product.published,
@@ -413,6 +414,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
+        visibility: product.visibility,
       })
       .where(and(eq(products.tenantId, tenantId), eq(products.id, product.id)))
       .returning();
@@ -2983,6 +2985,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           coverUrl: products.coverUrl,
           priceCents: products.priceCents,
           currency: products.currency,
+          visibility: products.visibility,
           published: products.published,
           accessItems: products.accessItems,
           legacyId: products.legacyId,

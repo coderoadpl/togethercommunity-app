@@ -34,6 +34,7 @@ const granted: Product = {
   coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
+  visibility: 'unlisted',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,

@@ -810,11 +810,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
       { body: '', headers: { [EMAIL_DISPATCH_SECRET_HEADER]: secret } },
     ),
-  publicOffer: (signal?: AbortSignal) =>
+  publicOffer: (signal?: AbortSignal, productRef?: string) =>
     request(
       options,
       API_ROUTES.publicOffer.method,
-      API_ROUTES.publicOffer.path,
+      productRef === undefined ? API_ROUTES.publicOffer.path
+        : `${API_ROUTES.publicOffer.path}?productRef=${encodeURIComponent(productRef)}`,
       publicOfferOutputSchema,
       undefined,
       signal,

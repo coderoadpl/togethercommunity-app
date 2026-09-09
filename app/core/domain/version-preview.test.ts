@@ -119,6 +119,7 @@ describe('version previews', () => {
         coverUrl: null,
         priceCents: 9_900,
         currency: 'PLN',
+        visibility: 'listed',
         published: false,
         accessItems: [],
         legacyId: null,

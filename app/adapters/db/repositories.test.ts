@@ -161,6 +161,7 @@ const product = (over: Partial<Product> & { id: string; tenantId: string }): Pro
   coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
+  visibility: 'listed',
   published: true,
   accessItems: [],
   legacyId: null,

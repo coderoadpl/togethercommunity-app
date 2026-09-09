@@ -180,6 +180,15 @@ export const startCheckoutSession = async (
       checkoutSessionId,
     };
   }
+  if ((price?.amountCents ?? product.priceCents) === 0 && price?.kind !== 'recurring') {
+    if (input.email === undefined) return err(validation('An email is required for free checkout'));
+    return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true });
+  }
+  if (input.couponCode === undefined) {
+    const configured = await getPaymentConfig(tenant.id, deps);
+    if (!configured.ok) return configured;
+    if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
+  }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     productId: product.id,
@@ -234,12 +243,5 @@ export const createCheckoutSession = async (
 
   const selection = await validateCheckoutSelection(tenant.id, parsed.data, deps);
   if (!selection.ok) return selection;
-  if (parsed.data.couponCode === undefined) {
-    const configured = await getPaymentConfig(tenant.id, deps);
-    if (!configured.ok) return configured;
-    if (!configured.value.stripeConfigured) {
-      return err(validation('Stripe is not configured for this tenant'));
-    }
-  }
   return startCheckoutSession(tenant, tenantBaseUrl, parsed.data, selection.value, deps);
 };

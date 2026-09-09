@@ -25,10 +25,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   priceMajorSchema,
+  productVisibilitySchema,
   SUPPORTED_CURRENCIES,
   type PriceKind,
   type Product,
   type ProductPrice,
+  type ProductVisibility,
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -43,12 +45,18 @@ import { ProductAccessEditor } from './ProductAccessEditor.js';
 const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const [visibility, setVisibility] = useState<ProductVisibility>(product.visibility);
   const [title, setTitle] = useState(product.title);
   const [description, setDescription] = useState(product.description);
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
   const save = useMutation({
     ...actions.updateProduct,
-    onSuccess: async () => queryClient.invalidateQueries(actions.productsInvalidates()),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.productsInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+      ]);
+    },
   });
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -56,6 +64,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
     save.mutate({
       id: product.id,
       title: title.trim(),
+      visibility,
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -97,6 +106,22 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
           inputProps={{ 'aria-describedby': 'product-slug-helper' }}
         />
         <FormHelperText id="product-slug-helper">{t.products.slugImmutableHint}</FormHelperText>
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel id="product-visibility-label">{t.products.visibilityLabel}</FormLabel>
+        <Select
+          labelId="product-visibility-label"
+          value={visibility}
+          inputProps={{ 'aria-describedby': 'product-visibility-helper' }}
+          onChange={(event) => {
+            resetFeedback();
+            setVisibility(productVisibilitySchema.parse(event.target.value));
+          }}
+        >
+          <MenuItem value="listed">{t.products.listed}</MenuItem>
+          <MenuItem value="unlisted">{t.products.unlisted}</MenuItem>
+        </Select>
+        <FormHelperText id="product-visibility-helper">{t.products.visibilityHelper}</FormHelperText>
       </FormControl>
       <HtmlEditor
         id="product-description"

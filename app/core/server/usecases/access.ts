@@ -190,6 +190,7 @@ const cheapestUnlockingProduct = (
   let cheapestPaid: Product | null = null;
   let cheapestFree: Product | null = null;
   for (const product of publishedProducts) {
+    if (product.visibility !== 'listed') continue;
     const lookup = buildAccessLookup(product.accessItems);
     if (!isLessonAccessibleByLookup(lookup, location)) continue;
     if (product.priceCents > 0) {

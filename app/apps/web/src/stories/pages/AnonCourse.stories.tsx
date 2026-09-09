@@ -68,3 +68,7 @@ export const WithoutOfferMobilePlLight: Story = guestStory('login', 'mobile', 'p
 export const WithoutOfferMobilePlDark: Story = guestStory('login', 'mobile', 'pl', 'dark');
 export const WithoutOfferMobileEnLight: Story = guestStory('login', 'mobile', 'en', 'light');
 export const WithoutOfferMobileEnDark: Story = guestStory('login', 'mobile', 'en', 'dark');
+
+
+export const UnlistedProductEn: Story = guestStory('login', 'desktop', 'en', 'light');
+export const UnlistedProductPl: Story = guestStory('login', 'mobile', 'pl', 'light');

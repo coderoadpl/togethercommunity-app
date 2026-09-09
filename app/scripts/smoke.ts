@@ -532,6 +532,50 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     'the anonymously fetched public offer did not include the newly published product',
   );
 
+  expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'update', created.product.id, '--visibility', 'unlisted'], authedHome),
+    'unlist published product',
+  );
+  const freeProduct = createSchema.parse(expectOk(
+    await cli([
+      '--json', '--api-url', url, '--tenant', 'acme', 'product', 'create',
+      '--title', `Free checkout ${randomUUID()}`, '--price-cents', '0',
+      '--visibility', 'unlisted', '--access-items', accessItems,
+    ], authedHome),
+    'create unlisted free product',
+  ));
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'price', 'add', '--product', freeProduct.product.id,
+    '--kind', 'one_time', '--price-cents', '0', '--currency', 'PLN',
+  ], authedHome), 'add free product price');
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'product', 'publish', freeProduct.product.id,
+  ], authedHome), 'publish unlisted free product');
+  const unlistedOffer = publicOfferSchema.parse(expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'public', 'offer'], anonHome),
+    'public offer after unlisting',
+  ));
+  assert(!unlistedOffer.products.some((product) => [created.product.id, freeProduct.product.id].includes(product.id)),
+    'unlisted products leaked into the public offer');
+  const freeCheckout = checkoutSessionSchema.parse(expectOk(
+    await cli([
+      '--json', '--api-url', url, '--tenant', 'acme', 'checkout', 'session',
+      '--product', freeProduct.product.id, '--email', 'free-smoke@together.dev',
+    ], anonHome),
+    'guest free checkout without Stripe configuration',
+  ));
+  assert(new URL(freeCheckout.url).pathname === `/checkout/${freeProduct.product.id}`
+    && new URL(freeCheckout.url).searchParams.get('status') === 'success',
+  'free checkout did not return the local success screen');
+  const freeMembers = membersSchema.parse(expectOk(
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'member', 'list'], authedHome),
+    'members after free checkout',
+  ));
+  assert(freeMembers.members.find((member) => member.email === 'free-smoke@together.dev')?.productIds.includes(freeProduct.product.id) === true,
+    'free checkout did not grant access');
+  const freeEmail = await waitForDevEmail('free-smoke@together.dev');
+  assert(freeEmail.email !== null, 'free checkout did not send the account welcome email');
+
   const webhookSecret = 'whsec_smoke_known_secret';
   expectOk(
     await cli(

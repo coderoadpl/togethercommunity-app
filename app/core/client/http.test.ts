@@ -326,3 +326,21 @@ describe('unwrap', () => {
     }
   });
 });
+
+
+it('requests a product-specific checkout offer without changing the listing query', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async (input) => {
+      urls.push(String(input));
+      return jsonResponse({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } });
+    },
+  });
+  expect((await client.publicOffer()).ok).toBe(true);
+  expect((await client.publicOffer(undefined, 'direct-product')).ok).toBe(true);
+  expect(urls).toEqual([
+    'https://api.example.test/api/public/offer',
+    'https://api.example.test/api/public/offer?productRef=direct-product',
+  ]);
+});

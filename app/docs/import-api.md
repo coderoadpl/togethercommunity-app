@@ -273,7 +273,7 @@ A full re-run of a finished import returns an all-`unchanged` summary. That is t
 | Request body | 2 MiB | 10 MiB |
 | Requests | 60 per minute per key | 30 per hour per key |
 
-All write endpoints on a key share one daily record counter. Content, grant, and progress requests can claim against a 20,000-record ceiling; member requests can claim only while that same counter remains within 2,000. Use a separate `import:users` key for member batches if you also expect to import more than 2,000 grants or progress records that day. Counters are per key and independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
+All write endpoints on a key share one daily record counter. Member requests use `IMPORT_DAILY_MEMBER_RECORD_LIMIT` (default: 10,000); all other record kinds use `IMPORT_DAILY_RECORD_LIMIT` (default: 20,000). Both server environment settings must be positive integers and apply per day to each API key within its tenant. A request can claim records only while the shared counter remains within its configured ceiling. Use a separate `import:users` key for member batches if other records would exhaust that ceiling. Counters are independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
 
 ## Errors
 

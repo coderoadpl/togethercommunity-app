@@ -147,6 +147,7 @@ import {
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
+  postPurgeOutputSchema,
   postPinOutputSchema,
   postReportOutputSchema,
   reportResolveOutputSchema,
@@ -1867,6 +1868,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
+  purgePost: (input: PostDeleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsPurge.method,
+      API_ROUTES.postsPurge.path.replace(':postId', encodeURIComponent(input.id)),
+      postPurgeOutputSchema,
+      undefined,
+      signal,
+    ),
   deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>
     request(
       options,

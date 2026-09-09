@@ -24,7 +24,7 @@ const ownFixture = {
 const tombstoneFixture = {
   ...staffFixture,
   calls: { ...staffFixture.calls, [feedKey]: { ok: true, value: { feed: { ...feed, items: feed.items.map((item, index) => ({
-    ...item, body: 'Deleted post', deletedAt: '2026-07-01T12:00:00.000Z', deletedBy: index === 0 ? 'author' : 'moderator', replyCount: index === 0 ? 2 : 0, reactions: [],
+    ...item, body: 'Deleted post', deletedAt: '2026-07-01T12:00:00.000Z', deletedBy: index === 0 ? 'author' : 'moderator', replyCount: 2, reactions: [],
   })) } } } },
 };
 

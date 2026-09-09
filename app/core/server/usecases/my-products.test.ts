@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, MemberGrant, Product } from '#core/domain/index.js';
+import type { Identity, MemberGrant, Product, ProductPrice } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
-import type { ProductGrantRepository } from '../ports.js';
+import type { ProductGrantRepository, ProductPriceRepository } from '../ports.js';
 import { listMyProducts } from './my-products.js';
 
 const identity = (tenantId: string | null, memberId: string | null): Identity => ({
@@ -72,6 +72,26 @@ const downloadAssets = {
   delete: async () => false,
 };
 
+const publicPrice: ProductPrice = {
+  id: 'price-1',
+  tenantId: 't-acme',
+  productId: 'p1',
+  kind: 'one_time',
+  interval: null,
+  amountCents: 9900,
+  currency: 'PLN',
+  active: true,
+  createdAt: '2026-07-12T00:00:00.000Z',
+};
+
+const prices: ProductPriceRepository = {
+  listByProduct: async () => [publicPrice],
+  listActiveByProducts: async () => [publicPrice],
+  findById: async () => publicPrice,
+  create: async () => undefined,
+  setActive: async () => null,
+};
+
 const grants = (products: Product[], memberGrants: MemberGrant[]): ProductGrantRepository => ({
   findById: async () => null,
   findGrant: async () => null,
@@ -90,6 +110,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -101,6 +122,26 @@ describe('listMyProducts', () => {
     });
   });
 
+  it.each([
+    { published: true, hasPublicPrice: true, purchasable: true },
+    { published: false, hasPublicPrice: true, purchasable: false },
+    { published: true, hasPublicPrice: false, purchasable: false },
+    { published: false, hasPublicPrice: false, purchasable: false },
+  ])('reports renewal availability for %j', async ({ published, hasPublicPrice, purchasable }) => {
+    const listActiveByProducts = vi.fn(async () => hasPublicPrice ? [publicPrice] : []);
+    const result = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+      grants: grants([{ ...granted, published }], [
+        memberGrant({ active: false, expiresAt: '2026-07-08T00:00:00.000Z' }),
+      ]),
+      clock,
+      subscriptions,
+      downloadAssets,
+      prices: { ...prices, listActiveByProducts },
+    });
+    expect(result).toMatchObject({ ok: true, value: [{ grantStatus: 'expired', purchasable }] });
+    expect(listActiveByProducts).toHaveBeenCalledWith('t-acme', ['p1']);
+  });
+
   it('marks an elapsed window as expired', async () => {
     const result = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
       grants: grants([granted], [
@@ -109,6 +150,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -124,6 +166,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -140,6 +183,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'active' }] });
     if (result.ok) expect(result.value).toHaveLength(1);
@@ -151,6 +195,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
@@ -161,6 +206,7 @@ describe('listMyProducts', () => {
       clock,
       subscriptions,
       downloadAssets,
+      prices,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });

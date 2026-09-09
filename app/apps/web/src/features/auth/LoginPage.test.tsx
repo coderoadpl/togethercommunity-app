@@ -11,6 +11,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
+import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 import { LoginPage } from './LoginPage.js';
 
 const stubAuthConfig = (exposeMagicLinks = false, googleClientId: string | null = null) =>
@@ -100,8 +101,13 @@ const renderLoginPage = async (
     path: '/login',
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
+  const forgotPasswordRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/forgot-password',
+    component: ForgotPasswordPage,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
+    routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -237,8 +243,13 @@ describe('LoginPage', () => {
       path: '/login',
       component: () => <LoginPage hostname="localhost" />,
     });
+    const forgotPasswordRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/forgot-password',
+      component: ForgotPasswordPage,
+    });
     const router = createRouter({
-      routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
+      routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
       history: createMemoryHistory({ initialEntries: ['/login'] }),
     });
     await router.load();
@@ -278,6 +289,27 @@ describe('LoginPage', () => {
     expect(window.getComputedStyle(passkey).getPropertyValue('min-height')).toBe('48px');
   });
 
+  it.each(['success', 'failure', 'rate-limit'])('keeps configured Google available after lookup %s', async (outcome) => {
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), 'google-client-id');
+    expect(await screen.findByTestId('continue-google')).toBeInTheDocument();
+    if (outcome === 'failure') failSignInMethods();
+    if (outcome === 'rate-limit') rateLimitSignInMethods();
+    await continueWithEmail();
+    if (outcome !== 'success') await userEvent.click(await screen.findByTestId('choose-magic-link'));
+    await screen.findByTestId('send-magic-link');
+    expect(screen.getByTestId('continue-google')).toBeEnabled();
+  });
+
+  it('carries the entered email into the editable password-reset form', async () => {
+    await renderLoginPage();
+    await continueWithEmail('member+login@example.com');
+    await userEvent.click(await screen.findByTestId('forgot-password'));
+    expect(await screen.findByTestId('forgot-password-email')).toHaveValue('member+login@example.com');
+    await userEvent.clear(screen.getByTestId('forgot-password-email'));
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'another@example.com');
+    expect(screen.getByTestId('forgot-password-email')).toHaveValue('another@example.com');
+  });
+
   it('opens the password step for an account that has a password', async () => {
     await renderLoginPage();
     await continueWithEmail();
@@ -290,7 +322,7 @@ describe('LoginPage', () => {
     expect(screen.queryByLabelText(en.auth.emailLabel)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.auth.forgotPassword })).toHaveAttribute(
       'href',
-      '/forgot-password',
+      '/forgot-password?email=creator%40together.dev',
     );
     expect(screen.getByTestId('send-magic-link')).toHaveTextContent(en.auth.methodMagicLinkTitle);
     expect(screen.getByTestId('signin-passkey')).toHaveTextContent(en.auth.methodPasskeyTitle);
@@ -339,7 +371,9 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('login-identity')).toHaveTextContent('learner@together.dev');
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
     expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).toHaveTextContent(en.auth.methodPasswordTitle);
+    expect(screen.queryByTestId('use-password')).not.toBeInTheDocument();
+    expect(screen.getByText(en.auth.passwordNotNeeded)).toBeInTheDocument();
+    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
   });
 
   it('answers an unknown address exactly like a passwordless account', async () => {
@@ -351,8 +385,8 @@ describe('LoginPage', () => {
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
-  it('offers every method on one step, with the link card first', async () => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link']);
+  it('offers password when reported, with the link card first', async () => {
+    await renderLoginPage(false, '/login', undefined, ['password']);
     await continueWithEmail();
 
     const cards = await screen.findAllByRole('listitem');
@@ -362,7 +396,7 @@ describe('LoginPage', () => {
       expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    await userEvent.click(screen.getByTestId('use-password'));
+    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
@@ -460,14 +494,17 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
-  it('opens the magic-link step from the failed lookup', async () => {
+  it.each([failSignInMethods, rateLimitSignInMethods])('offers all methods after a failed lookup: %s', async (failLookup) => {
     await renderLoginPage();
-    failSignInMethods();
+    failLookup();
     await continueWithEmail();
 
     await userEvent.click(await screen.findByTestId('choose-magic-link'));
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).toBeInTheDocument();
+    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
+    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 

@@ -236,6 +236,7 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
+      createRoute({ getParentRoute: () => shellRoute, path: '/messages', component: page(en.messages.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/start', component: page('Start') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page(en.search.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
@@ -523,7 +524,7 @@ describe('MemberShell', () => {
     expect(within(sidebar).getByText(en.shell.spacesSection)).toBeInTheDocument();
   });
 
-  it('moves products, messages and the account out of the sidebar into the avatar menu', async () => {
+  it('keeps messages in the sidebar and avatar menu', async () => {
     stubViewport(true);
     server.use(okMe(), okNavigation(), okOffer(), noNotifications());
     const user = userEvent.setup();
@@ -532,7 +533,7 @@ describe('MemberShell', () => {
 
     const sidebar = await screen.findByTestId('member-sidebar');
     expect(within(sidebar).queryByTestId('sidebar-products')).toBeNull();
-    expect(within(sidebar).queryByTestId('sidebar-messages')).toBeNull();
+    expect(await within(sidebar).findByTestId('sidebar-messages')).toHaveAttribute('href', '/messages');
     expect(within(sidebar).queryByTestId('sidebar-account')).toBeNull();
     expect(within(sidebar).queryByTestId('notification-nav')).toBeNull();
 
@@ -569,6 +570,23 @@ describe('MemberShell', () => {
     expect(await screen.findByTestId('member-account-products')).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByTestId('member-account-messages')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('sidebar-messages')).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])('shows the messages unread badge (desktop: %s)', async (desktop) => {
+    stubViewport(desktop);
+    server.use(okMe(), okNavigation(), okOffer(), noNotifications(),
+      http.get('/api/messages/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 3 } })),
+    );
+    await renderShell('/messages');
+    if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
+    const navigation = within(await screen.findByTestId(desktop ? 'member-sidebar' : 'member-menu-sheet'));
+    const messagesId = desktop ? 'sidebar-messages' : 'member-account-messages';
+    const messages = await navigation.findByTestId(messagesId);
+    expect(messages).toHaveAttribute('href', '/messages');
+    if (desktop) expect(messages).toHaveAttribute('aria-current', 'page');
+    expect(await navigation.findByTestId(`${messagesId}-unread`)).toHaveTextContent('3');
+    expect(messages).toHaveTextContent(en.messages.unreadAria({ count: 3 }));
   });
 
   it('marks a space row with an unread dot and a labelled row', async () => {
@@ -987,6 +1005,7 @@ describe('MemberShell', () => {
     expect(within(actions).getByTestId('member-account-link')).toHaveAttribute('href', '/account');
     expect(within(sheet).getByTestId('color-scheme-switcher')).toBeInTheDocument();
     expect(within(sheet).queryByTestId('notification-nav')).not.toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sidebar-messages')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-start')).not.toBeInTheDocument();
     expect(within(sheet).queryByTestId('sidebar-search')).not.toBeInTheDocument();
   });

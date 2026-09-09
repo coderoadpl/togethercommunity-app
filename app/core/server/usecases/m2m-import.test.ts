@@ -603,6 +603,8 @@ describe('m2m import rate limits', () => {
       mode: 'content', recordCount: 200,
     }, {
       clock: { nowIso: () => NOW },
+      importDailyMemberRecordLimit: 321,
+      importDailyRecordLimit: 654,
       rateLimits: {
         claim: async (_tenantId, input) => {
           claims.push({ period: input.period, cost: input.cost ?? 1 });
@@ -619,12 +621,17 @@ describe('m2m import rate limits', () => {
     expect(releases).toEqual(['minute']);
   });
 
-  it('uses the lower daily record budget for member imports', async () => {
+  it.each([
+    [{ mode: 'users', kind: 'member', recordCount: 200 }, 321],
+    [{ mode: 'users', kind: 'grant', recordCount: 200 }, 654],
+    [{ mode: 'users', kind: 'progress', recordCount: 200 }, 654],
+    [{ mode: 'content', recordCount: 200 }, 654],
+  ] as const)('uses the injected daily record budget for %j', async (input, expectedLimit) => {
     const limits: number[] = [];
-    const result = await claimM2mImportRateLimit(TENANT_ID, apiKey, {
-      mode: 'users', kind: 'member', recordCount: 200,
-    }, {
+    const result = await claimM2mImportRateLimit(TENANT_ID, apiKey, input, {
       clock: { nowIso: () => NOW },
+      importDailyMemberRecordLimit: 321,
+      importDailyRecordLimit: 654,
       rateLimits: {
         claim: async (_tenantId, input) => {
           limits.push(input.limit);
@@ -635,6 +642,6 @@ describe('m2m import rate limits', () => {
     });
 
     expect(result).toEqual({ ok: true, value: undefined });
-    expect(limits).toEqual([60, 2_000]);
+    expect(limits).toEqual([60, expectedLimit]);
   });
 });

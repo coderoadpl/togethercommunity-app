@@ -10,9 +10,13 @@ export const usePostMutations = () => {
       queryClient.invalidateQueries(actions.spacesInvalidates()),
       queryClient.invalidateQueries(actions.memberHomeFeedInvalidates()),
       queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+      queryClient.invalidateQueries(actions.reportsInvalidates()),
+      queryClient.invalidateQueries(actions.notificationsInvalidates()),
+      queryClient.invalidateQueries(actions.eventsInvalidates()),
     ]);
   };
   const update = useMutation({ ...actions.updatePost, onSettled: invalidate });
   const remove = useMutation({ ...actions.deletePost, onSettled: invalidate });
-  return { update, remove };
+  const purge = useMutation({ ...actions.purgePost, onSettled: invalidate });
+  return { update, remove, purge };
 };

@@ -86,7 +86,8 @@ describe('StartMessageButton', () => {
 
     const { router } = await renderButton();
 
-    await userEvent.click(await screen.findByTestId('start-message-post-1'));
+    expect(await screen.findByTestId('start-message-post-1')).toHaveTextContent(en.messages.messageAuthor);
+    await userEvent.click(screen.getByTestId('start-message-post-1'));
 
     expect(startBody).toEqual({ recipient: { kind: 'post-author', postId: 'post-1' } });
     await waitFor(() => expect(router.state.location.pathname).toBe('/messages/c9'));
@@ -105,7 +106,8 @@ describe('StartMessageButton', () => {
 
     const { router } = await renderButton();
 
-    await userEvent.click(await screen.findByTestId('start-message-post-1'));
+    expect(await screen.findByTestId('start-message-post-1')).toHaveTextContent(en.messages.messageAuthor);
+    await userEvent.click(screen.getByTestId('start-message-post-1'));
 
     expect(await screen.findByText(en.messages.recipientUnavailable)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/community/s1');

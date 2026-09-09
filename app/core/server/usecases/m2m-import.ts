@@ -101,6 +101,8 @@ export type M2mImportContentDeps = ImportReaders & ImportAssetUrlDeps & {
 };
 
 export type M2mImportRateLimitDeps = {
+  importDailyMemberRecordLimit: number;
+  importDailyRecordLimit: number;
   rateLimits: ApiKeyRateLimitRepository;
   clock: Clock;
 };
@@ -951,7 +953,9 @@ export const claimM2mImportRateLimit = async (
   }
   const dayDurationMs = 86_400_000;
   const dayStartedAt = windowStart(now, dayDurationMs);
-  const dailyLimit = input.mode === 'users' && input.kind === 'member' ? 2_000 : 20_000;
+  const dailyLimit = input.mode === 'users' && input.kind === 'member'
+    ? deps.importDailyMemberRecordLimit
+    : deps.importDailyRecordLimit;
   const dayClaimed = await deps.rateLimits.claim(tenantId, {
     apiKeyId: apiKey.id,
     period: 'day',

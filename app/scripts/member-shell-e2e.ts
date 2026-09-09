@@ -257,6 +257,7 @@ const runDesktopSwapJourney = async (page: Page): Promise<void> => {
     await memberSidebar.getByTestId('sidebar-start').getAttribute('aria-current') === 'page',
     'Desktop Start row was not active after leaving the course sidebar',
   );
+  await assertHref(memberSidebar.getByTestId('sidebar-messages'), '/messages', 'Desktop messages row');
   assert(await page.getByTestId('member-bottom-nav').count() === 0, 'Desktop retained the mobile bottom navigation');
   assert(await page.getByTestId('program-button').count() === 0, 'Desktop retained the mobile Program button');
   console.log('member-shell-e2e: desktop sidebar swap and return journey OK');

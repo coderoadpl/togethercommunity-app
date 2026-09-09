@@ -54,7 +54,12 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       authenticated.value.tenant.id,
       authenticated.value.apiKey,
       { mode: 'validate' },
-      { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+      {
+        rateLimits: deps.apiKeyRateLimits,
+        clock: deps.clock,
+        importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
+        importDailyRecordLimit: deps.importDailyRecordLimit,
+      },
     );
     if (!limited.ok) {
       const headers = retryHeaders(limited);
@@ -93,7 +98,12 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         authenticated.value.tenant.id,
         authenticated.value.apiKey,
         { mode: 'content', recordCount: parsed.data.records.length },
-        { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+        {
+          rateLimits: deps.apiKeyRateLimits,
+          clock: deps.clock,
+          importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
+          importDailyRecordLimit: deps.importDailyRecordLimit,
+        },
       );
       if (!limited.ok) {
         const responseHeaders = retryHeaders(limited);
@@ -144,7 +154,12 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         authenticated.value.tenant.id,
         authenticated.value.apiKey,
         { mode: 'users', kind, recordCount: parsed.data.records.length },
-        { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+        {
+          rateLimits: deps.apiKeyRateLimits,
+          clock: deps.clock,
+          importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
+          importDailyRecordLimit: deps.importDailyRecordLimit,
+        },
       );
       if (!limited.ok) {
         const responseHeaders = retryHeaders(limited);
@@ -182,7 +197,12 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       authenticated.value.tenant.id,
       authenticated.value.apiKey,
       { mode: 'content', recordCount: parsed.data.records.length },
-      { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+      {
+        rateLimits: deps.apiKeyRateLimits,
+        clock: deps.clock,
+        importDailyMemberRecordLimit: deps.importDailyMemberRecordLimit,
+        importDailyRecordLimit: deps.importDailyRecordLimit,
+      },
     );
     if (!limited.ok) {
       const responseHeaders = retryHeaders(limited);

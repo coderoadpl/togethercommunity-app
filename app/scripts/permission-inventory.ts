@@ -219,6 +219,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     }
     return 'lesson:play';
   }
+  if (path === '/api/posts/:postId/permanent') return 'community:moderate';
   if (path === '/api/posts/pin') return 'community:pin';
   if (path === '/api/posts/report') return 'community:report';
   if (path === '/api/reports') return 'community:report:read';
@@ -285,6 +286,7 @@ const beforeForRoute = (
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
+  if (path === '/api/posts/:postId/permanent') return staff;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications') || path.startsWith('/api/messages')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
@@ -534,6 +536,7 @@ const beforeForUseCase = (
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
+  if (file === 'community.ts' && name === 'purgePost') return staff;
   if (
     file === 'community-access.ts'
     || file === 'community.ts'

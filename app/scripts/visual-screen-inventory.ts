@@ -601,6 +601,24 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByText('PARTNER20').waitFor(visible),
   },
   {
+    name: 'panel-marketing-contacts',
+    auth: 'creator',
+    path: '/panel/marketing/contacts',
+    ready: (page) => page.getByRole('table', { name: 'Kontakty', exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-lists',
+    auth: 'creator',
+    path: '/panel/marketing/lists',
+    ready: (page) => page.getByRole('table', { name: 'Listy', exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-contact-import',
+    auth: 'creator',
+    path: '/panel/marketing/contacts/import',
+    ready: (page) => page.locator('input[type="file"]').waitFor(visible),
+  },
+  {
     name: 'panel-marketing-campaigns',
     auth: 'creator',
     path: '/panel/marketing/campaigns',

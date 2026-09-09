@@ -79,11 +79,11 @@ export const runMarketingCsvImport = async (ctx: MarketingCliContext, file: stri
   }
   return batch.status === 'failed' || batch.status === 'cancelled' ? err(validation(`Import ${batch.status}: ${batch.lastError ?? importId}`, { import: batch })) : ok({ import: batch });
 };
-const filtersSchema = z.object({ search: z.string().optional(), tag: z.array(z.string()).optional(), list: z.string().optional(), consentDefinition: z.string().optional(), consentState: z.enum(['none', 'pending_confirmation', 'active', 'withdrawn']).optional(), suppressed: z.enum(['true', 'false']).optional(), linkedMember: z.enum(['true', 'false']).optional(), archived: z.boolean().optional(), limit: z.coerce.number().int().min(1).max(100).default(50), cursor: z.string().optional(), out: z.string().optional(), spreadsheetSafe: z.boolean().default(false), apiKeyEnv: z.string().optional() });
+const filtersSchema = z.object({ id: z.string().optional(), search: z.string().optional(), tag: z.array(z.string()).optional(), list: z.string().optional(), consentDefinition: z.string().optional(), consentState: z.enum(['none', 'pending_confirmation', 'active', 'withdrawn']).optional(), suppressed: z.enum(['true', 'false']).optional(), linkedMember: z.enum(['true', 'false']).optional(), archived: z.boolean().optional(), limit: z.coerce.number().int().min(1).max(100).default(50), cursor: z.string().optional(), out: z.string().optional(), spreadsheetSafe: z.boolean().default(false), apiKeyEnv: z.string().optional() });
 const filterInput = async (api: ApiClient, options: z.output<typeof filtersSchema>, transport: { apiKey?: string }) => {
   const list = options.list === undefined ? null : await api.getMarketingList({ listId: options.list }, transport);
   if (list !== null && !list.ok) return list;
-  return ok({ search: options.search, tags: options.tag, listId: list?.ok ? list.value.list.id : undefined, consentDefinitionId: options.consentDefinition, consentState: options.consentState,
+  return ok({ id: options.id, search: options.search, tags: options.tag, listId: list?.ok ? list.value.list.id : undefined, consentDefinitionId: options.consentDefinition, consentState: options.consentState,
     suppressed: options.suppressed === undefined ? undefined : options.suppressed === 'true', linkedMember: options.linkedMember === undefined ? undefined : options.linkedMember === 'true', archived: options.archived, limit: options.limit, cursor: options.cursor });
 };
 export const registerMarketingCommands = (program: Command, context: () => Result<MarketingCliContext, AppError>): void => {
@@ -103,7 +103,7 @@ export const registerMarketingCommands = (program: Command, context: () => Resul
       .action(run(z.tuple([z.string(), importOptionsSchema]), (ctx, [file, options]) => runMarketingCsvImport(ctx, file, options, kind)));
   }
   for (const command of ['list', 'export']) {
-    contacts.command(command).option('--search <text>').option('--tag <tags...>').option('--list <key-or-id>').option('--consent-definition <id>').option('--consent-state <state>').option('--suppressed <boolean>').option('--linked-member <boolean>').option('--archived').option('--limit <number>', 'Page size', '50').option('--cursor <cursor>').option('--out <file>').option('--spreadsheet-safe').option('--api-key-env <name>')
+    contacts.command(command).option('--id <contact-id>').option('--search <text>').option('--tag <tags...>').option('--list <key-or-id>').option('--consent-definition <id>').option('--consent-state <state>').option('--suppressed <boolean>').option('--linked-member <boolean>').option('--archived').option('--limit <number>', 'Page size', '50').option('--cursor <cursor>').option('--out <file>').option('--spreadsheet-safe').option('--api-key-env <name>')
       .action(run(z.tuple([filtersSchema]), async (ctx, [options]) => {
         const transport = keyTransport(options.apiKeyEnv); if (!transport.ok) return transport;
         const input = await filterInput(ctx.api, options, transport.value); if (!input.ok) return input;

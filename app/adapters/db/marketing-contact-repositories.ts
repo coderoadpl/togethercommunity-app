@@ -21,13 +21,15 @@ export const createMarketingDirectoryEventRepository = (db: Db): MarketingDirect
 const append = async (db: Db, deps: DirectoryRepositoryDeps, tenantId: string, subjectKind: MarketingDirectoryEvent['subjectKind'], subjectId: string, type: MarketingDirectoryEvent['type']) => {
   await createMarketingDirectoryEventRepository(db).append(tenantId, { id: deps.ids.nextId(), tenantId, subjectKind, subjectId, type, actor: 'directory', importId: null, payload: {}, occurredAt: deps.clock.nowIso(), createdAt: deps.clock.nowIso() });
 };
+// Drizzle removes column qualifiers in single-table projections; nested references must remain correlated.
+const contactReference = (column: 'id' | 'email' | 'email_hmac') => sql`${contacts}.${sql.identifier(column)}`;
 const consentStateSql = (tenantId: string, definitionId: string): SQL<string> => sql<string>`coalesce((
   SELECT CASE WHEN mc.status = 'withdrawn' THEN 'withdrawn' WHEN mc.status = 'confirmed' OR NOT cd.double_opt_in THEN 'active' ELSE 'pending_confirmation' END
   FROM marketing_consents mc JOIN consent_definitions cd ON cd.tenant_id = mc.tenant_id AND cd.id = mc.definition_id
-  WHERE mc.tenant_id = ${tenantId} AND mc.email = ${contacts.email} AND mc.definition_id = ${definitionId}
+  WHERE mc.tenant_id = ${tenantId} AND mc.email = ${contactReference('email')} AND mc.definition_id = ${definitionId}
   ORDER BY mc.occurred_at DESC, mc.id DESC LIMIT 1
 ), 'none')`;
-const suppressionSql = (tenantId: string): SQL<string | null> => sql<string | null>`(SELECT s.reason FROM suppressions s WHERE s.tenant_id = ${tenantId} AND s.email_hmac = ${contacts.emailHmac} AND s.lifted_at IS NULL LIMIT 1)`;
+const suppressionSql = (tenantId: string): SQL<string | null> => sql<string | null>`(SELECT s.reason FROM suppressions s WHERE s.tenant_id = ${tenantId} AND s.email_hmac = ${contactReference('email_hmac')} AND s.lifted_at IS NULL LIMIT 1)`;
 const ruleSql = (tenantId: string, rule: MarketingListRule, asOf: string): SQL => {
   if (rule.kind === 'tag') return rule.match === 'all'
     ? sql`${contacts.tags} @> ${JSON.stringify(rule.tags)}::jsonb`
@@ -39,6 +41,7 @@ const ruleSql = (tenantId: string, rule: MarketingListRule, asOf: string): SQL =
 };
 const contactFilters = async (db: Db, tenantId: string, query: MarketingContactListQuery, asOf: string): Promise<SQL[]> => {
   const filters: SQL[] = [eq(contacts.tenantId, tenantId), query.archived === true ? isNotNull(contacts.archivedAt) : isNull(contacts.archivedAt)];
+  if (query.id !== undefined) filters.push(eq(contacts.id, query.id));
   if (query.search) {
     const pattern = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;
     filters.push(sql`(${contacts.email} ILIKE ${pattern} OR ${contacts.displayName} ILIKE ${pattern} OR ${contacts.firstName} ILIKE ${pattern} OR ${contacts.lastName} ILIKE ${pattern})`);
@@ -51,7 +54,7 @@ const contactFilters = async (db: Db, tenantId: string, query: MarketingContactL
     const [list] = await db.select().from(lists).where(and(eq(lists.tenantId, tenantId), eq(lists.id, query.listId), isNull(lists.archivedAt)));
     if (list === undefined) filters.push(sql`false`);
     else if (list.rule !== null) filters.push(ruleSql(tenantId, marketingListSchema.parse(list).rule ?? list.rule, asOf));
-    else filters.push(sql`EXISTS (SELECT 1 FROM marketing_list_memberships mm WHERE mm.tenant_id = ${tenantId} AND mm.list_id = ${list.id} AND mm.contact_id = ${contacts.id} AND mm.removed_at IS NULL)`);
+    else filters.push(sql`EXISTS (SELECT 1 FROM marketing_list_memberships mm WHERE mm.tenant_id = ${tenantId} AND mm.list_id = ${list.id} AND mm.contact_id = ${contactReference('id')} AND mm.removed_at IS NULL)`);
   }
   return filters;
 };
@@ -69,7 +72,7 @@ export const createMarketingContactRepository = (db: Db, deps: DirectoryReposito
     const filters = await contactFilters(db, tenantId, query, asOf);
     if (query.cursor !== undefined) filters.push(sql`${contacts.id} COLLATE "C" > ${query.cursor.slice(query.cursor.indexOf(':') + 1)} COLLATE "C"`);
     const rows = await db.select({ contact: contacts,
-      listKeys: sql<string[]>`ARRAY(SELECT ml.key FROM marketing_list_memberships mm JOIN marketing_lists ml ON ml.tenant_id = mm.tenant_id AND ml.id = mm.list_id WHERE mm.tenant_id = ${tenantId} AND mm.contact_id = ${contacts.id} AND mm.removed_at IS NULL AND ml.archived_at IS NULL ORDER BY ml.key COLLATE "C")`,
+      listKeys: sql<string[]>`ARRAY(SELECT ml.key FROM marketing_list_memberships mm JOIN marketing_lists ml ON ml.tenant_id = mm.tenant_id AND ml.id = mm.list_id WHERE mm.tenant_id = ${tenantId} AND mm.contact_id = ${contactReference('id')} AND mm.removed_at IS NULL AND ml.archived_at IS NULL ORDER BY ml.key COLLATE "C")`,
       consentState: query.consentDefinitionId === undefined ? sql<null>`NULL` : consentStateSql(tenantId, query.consentDefinitionId), suppressionReason: suppressionSql(tenantId),
     }).from(contacts).where(and(...filters)).orderBy(sql`${contacts.id} COLLATE "C"`).limit(query.limit + 1);
     const filterQuery = Object.fromEntries(Object.entries(query).filter(([key]) => key !== 'cursor'));

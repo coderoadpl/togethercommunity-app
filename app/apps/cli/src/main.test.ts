@@ -124,7 +124,6 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
-    listCourses: h.listCourses,
     updateCourse: h.updateCourse,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
@@ -182,7 +181,6 @@ beforeEach(() => {
   h.loadError = null;
   h.saved = [];
   h.health.mockReset();
-  h.listCourses.mockReset();
   h.updateCourse.mockReset();
   h.health.mockResolvedValue(ok({
     status: 'ok',

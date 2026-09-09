@@ -157,7 +157,7 @@ const SCREENS: ScreenSpec[] = [
     viewports: memberViewports,
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
-      await page.getByTestId('discussion-composer-open').waitFor(visible);
+      await page.getByTestId('discussion-composer-input').waitFor(visible);
     },
   },
   {

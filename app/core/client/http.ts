@@ -2,6 +2,7 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  marketingDirectoryContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -382,7 +383,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body?: string; headers: Record<string, string> },
+  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -391,7 +392,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(body === undefined && raw?.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...((body === undefined && raw?.body === undefined) || raw?.multipart === true ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
         ...raw?.headers,
@@ -460,7 +461,154 @@ const uploadImageAsset = (
   );
 
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
+const directoryQuery = (input: object): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !['contactId', 'listId', 'importId'].includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
+
 export const createApiClient = (options: ApiClientOptions) => ({
+  uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
+    const form = new FormData();
+    form.append('file', new Blob([input.csv], { type: 'text/csv' }), input.metadata.fileName);
+    form.append('metadata', JSON.stringify(input.metadata));
+    return request(options, 'POST', API_ROUTES.marketingContactImportUpload.path, marketingDirectoryContracts.uploadMarketingContactImport.output, undefined, signal, { body: form, headers: {}, multipart: true });
+  },
+  previewMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.previewMarketingContactImport.input>, signal?: AbortSignal) =>
+    request(options, 'POST', API_ROUTES.marketingContactImportPreview.path.replace(':id', encodeURIComponent(input.importId)), marketingDirectoryContracts.previewMarketingContactImport.output, input, signal),
+
+  listMarketingContacts: (input: z.input<typeof marketingDirectoryContracts.listMarketingContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mListMarketingContacts : API_ROUTES.listMarketingContacts;
+    const path = route.path;
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.listMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  exportMarketingContacts: (input: z.input<typeof marketingDirectoryContracts.exportMarketingContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mExportMarketingContacts : API_ROUTES.exportMarketingContacts;
+    const path = route.path;
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.exportMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  upsertMarketingContact: (input: z.input<typeof marketingDirectoryContracts.upsertMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mUpsertMarketingContact : API_ROUTES.upsertMarketingContact;
+    const path = route.path;
+    return request(options, route.method, path, marketingDirectoryContracts.upsertMarketingContact.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  getMarketingContact: (input: z.input<typeof marketingDirectoryContracts.getMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mGetMarketingContact : API_ROUTES.getMarketingContact;
+    const path = route.path.replace(':id', encodeURIComponent(input.contactId));
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.getMarketingContact.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  updateMarketingContact: (input: z.input<typeof marketingDirectoryContracts.updateMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mUpdateMarketingContact : API_ROUTES.updateMarketingContact;
+    const path = route.path.replace(':id', encodeURIComponent(input.contactId));
+    return request(options, route.method, path, marketingDirectoryContracts.updateMarketingContact.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  archiveMarketingContact: (input: z.input<typeof marketingDirectoryContracts.archiveMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mArchiveMarketingContact : API_ROUTES.archiveMarketingContact;
+    const path = route.path.replace(':id', encodeURIComponent(input.contactId));
+    return request(options, route.method, path, marketingDirectoryContracts.archiveMarketingContact.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  restoreMarketingContact: (input: z.input<typeof marketingDirectoryContracts.restoreMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mRestoreMarketingContact : API_ROUTES.restoreMarketingContact;
+    const path = route.path.replace(':id', encodeURIComponent(input.contactId));
+    return request(options, route.method, path, marketingDirectoryContracts.restoreMarketingContact.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  listMarketingLists: (input: z.input<typeof marketingDirectoryContracts.listMarketingLists.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mListMarketingLists : API_ROUTES.listMarketingLists;
+    const path = route.path;
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.listMarketingLists.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  createMarketingList: (input: z.input<typeof marketingDirectoryContracts.createMarketingList.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mCreateMarketingList : API_ROUTES.createMarketingList;
+    const path = route.path;
+    return request(options, route.method, path, marketingDirectoryContracts.createMarketingList.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  getMarketingList: (input: z.input<typeof marketingDirectoryContracts.getMarketingList.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mGetMarketingList : API_ROUTES.getMarketingList;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.getMarketingList.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  updateMarketingList: (input: z.input<typeof marketingDirectoryContracts.updateMarketingList.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mUpdateMarketingList : API_ROUTES.updateMarketingList;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, path, marketingDirectoryContracts.updateMarketingList.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  archiveMarketingList: (input: z.input<typeof marketingDirectoryContracts.archiveMarketingList.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mArchiveMarketingList : API_ROUTES.archiveMarketingList;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, path, marketingDirectoryContracts.archiveMarketingList.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  addMarketingListContacts: (input: z.input<typeof marketingDirectoryContracts.addMarketingListContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mAddMarketingListContacts : API_ROUTES.addMarketingListContacts;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, path, marketingDirectoryContracts.addMarketingListContacts.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  removeMarketingListContacts: (input: z.input<typeof marketingDirectoryContracts.removeMarketingListContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mRemoveMarketingListContacts : API_ROUTES.removeMarketingListContacts;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, path, marketingDirectoryContracts.removeMarketingListContacts.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  previewMarketingList: (input: z.input<typeof marketingDirectoryContracts.previewMarketingList.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mPreviewMarketingList : API_ROUTES.previewMarketingList;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, path, marketingDirectoryContracts.previewMarketingList.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  getMarketingListContacts: (input: z.input<typeof marketingDirectoryContracts.getMarketingListContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mGetMarketingListContacts : API_ROUTES.getMarketingListContacts;
+    const path = route.path.replace(':id', encodeURIComponent(input.listId));
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.getMarketingListContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  createMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.createMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mCreateMarketingContactImport : API_ROUTES.createMarketingContactImport;
+    const path = route.path;
+    return request(options, route.method, path, marketingDirectoryContracts.createMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  appendMarketingContactImportRows: (input: z.input<typeof marketingDirectoryContracts.appendMarketingContactImportRows.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mAppendMarketingContactImportRows : API_ROUTES.appendMarketingContactImportRows;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.appendMarketingContactImportRows.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  validateMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.validateMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mValidateMarketingContactImport : API_ROUTES.validateMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.validateMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  commitMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.commitMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mCommitMarketingContactImport : API_ROUTES.commitMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.commitMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  getMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.getMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mGetMarketingContactImport : API_ROUTES.getMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.getMarketingContactImport.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  getMarketingContactImportRows: (input: z.input<typeof marketingDirectoryContracts.getMarketingContactImportRows.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mGetMarketingContactImportRows : API_ROUTES.getMarketingContactImportRows;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.getMarketingContactImportRows.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  retryMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.retryMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mRetryMarketingContactImport : API_ROUTES.retryMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.retryMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  cancelMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.cancelMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mCancelMarketingContactImport : API_ROUTES.cancelMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.cancelMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  importMarketingSuppressions: (input: z.input<typeof marketingDirectoryContracts.importMarketingSuppressions.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mImportMarketingSuppressions : API_ROUTES.importMarketingSuppressions;
+    const path = route.path;
+    return request(options, route.method, path, marketingDirectoryContracts.importMarketingSuppressions.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  processMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.processMarketingContactImport.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mProcessMarketingContactImport : API_ROUTES.processMarketingContactImport;
+    const path = route.path.replace(':id', encodeURIComponent(input.importId));
+    return request(options, route.method, path, marketingDirectoryContracts.processMarketingContactImport.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+  syncMarketingMemberContacts: (input: z.input<typeof marketingDirectoryContracts.syncMarketingMemberContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
+    const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mSyncMarketingMemberContacts : API_ROUTES.syncMarketingMemberContacts;
+    const path = route.path;
+    return request(options, route.method, path, marketingDirectoryContracts.syncMarketingMemberContacts.output, input, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+  },
+
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
   healthLive: (signal?: AbortSignal) =>

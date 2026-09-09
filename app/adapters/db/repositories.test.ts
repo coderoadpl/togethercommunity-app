@@ -115,6 +115,7 @@ import {
   emailEvents,
   invoices,
   erasedMemberImports,
+  marketingMemberSyncJobs,
   memberBlocks,
   memberCourseProgress,
   memberEvents,
@@ -598,6 +599,7 @@ describe('purchase repository', () => {
     });
 
     expect(result.grantCreated).toBe(true);
+    expect(await db.select().from(marketingMemberSyncJobs).where(and(eq(marketingMemberSyncJobs.tenantId, ACME), eq(marketingMemberSyncJobs.memberId, 'member-simulated-purchase')))).toMatchObject([{ status: 'pending' }]);
     expect(await createMemberEventRepository(db).listForMember(
       ACME,
       'member-simulated-purchase',

@@ -1102,6 +1102,11 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
   },
 });
 
+const visiblePostThread = sql`(${posts.deletedAt} is null or ${posts.deletedBy} is distinct from 'author' or exists (
+  select 1 from posts reply
+  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null
+))`;
+
 export const createPostRepository = (db: Db): PostRepository => ({
   createPost: async (tenantId, post, fanoutJob) => {
     const row = await db.transaction(async (tx) => {
@@ -1178,6 +1183,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           sql`${posts.parentPostId} is null`,
+          visiblePostThread,
           ...(cursor === null
             ? []
             : [
@@ -1218,6 +1224,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, 'space'),
           inArray(posts.contextId, query.spaceIds),
           sql`${posts.parentPostId} is null`,
+          visiblePostThread,
           ...(cursor === null
             ? []
             : [sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -1256,17 +1263,18 @@ export const createPostRepository = (db: Db): PostRepository => ({
   softDelete: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ deletedAt: input.deletedAt, pinnedAt: null })
-      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .set({ deletedAt: input.deletedAt, deletedBy: input.deletedBy, deletedByUserId: input.deletedByUserId, pinnedAt: null })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), isNull(posts.deletedAt)))
       .returning();
-    const row = rows[0];
+    const row = rows[0] ?? (await db.select().from(posts)
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id))).limit(1))[0];
     return row ? parsePost(row) : null;
   },
   setPinned: async (tenantId, input) => {
     const rows = await db
       .update(posts)
       .set({ pinnedAt: input.pinnedAt })
-      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), isNull(posts.deletedAt)))
       .returning();
     const row = rows[0];
     return row ? parsePost(row) : null;

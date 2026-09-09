@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Chip, Stack, Typography } from '@mui/material';
+import { Button, Chip, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { useCanOpenStudio } from '../viewer.js';
 import { EventSummaryCard } from './EventSummaryCard.js';
 
 const PAGE_SIZE = 5;
@@ -14,10 +16,14 @@ type Scope = 'upcoming' | 'past';
 export const SpaceEventsSection = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
   const [scope, setScope] = useState<Scope>('upcoming');
-  const events = useQuery({
-    ...actions.spaceEvents({ spaceId, scope, limit: PAGE_SIZE }),
-    placeholderData: (previous) => previous,
-  });
+  const staff = useCanOpenStudio();
+  const upcoming = useQuery(actions.spaceEvents({ spaceId, scope: 'upcoming', limit: PAGE_SIZE }));
+  const past = useQuery(actions.spaceEvents({ spaceId, scope: 'past', limit: PAGE_SIZE }));
+  const empty = upcoming.isSuccess && past.isSuccess &&
+    upcoming.data.events.length === 0 && past.data.events.length === 0;
+  const events = scope === 'upcoming' ? upcoming : past;
+
+  if (empty && !staff) return null;
 
   const scopeChip = (value: Scope, label: string) => (
     <Chip
@@ -64,6 +70,16 @@ export const SpaceEventsSection = ({ spaceId }: { spaceId: string }) => {
           ))}
         </Stack>
       )}
+      {empty && staff ? (
+        <Button
+          component={Link}
+          to={`/panel/spaces/${encodeURIComponent(spaceId)}/events/new`}
+          variant="text"
+          data-testid="space-events-add"
+        >
+          {t.events.addEvent}
+        </Button>
+      ) : null}
     </SectionCard>
   );
 };

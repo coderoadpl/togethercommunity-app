@@ -315,7 +315,7 @@ export interface PostRepository {
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */
-  softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null>;
+  softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null>;
   setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null>;
   listPinnedForContext(
     tenantId: string,

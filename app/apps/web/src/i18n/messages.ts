@@ -998,6 +998,8 @@ export interface Messages {
     newCourse: string;
     detailsHeading: string;
     titleLabel: string;
+    salesUrl: string;
+    salesUrlHint: string;
     imageUrl: string;
     imagePreview: string;
     creating: string;
@@ -1364,6 +1366,11 @@ export interface Messages {
     emptyBody: string;
   };
   anon: {
+    salesCta: string;
+    contactCreator: string;
+    previewChip: string;
+    monthlyPrice: (params: { price: string }) => string;
+    yearlyPrice: (params: { price: string }) => string;
     eyebrow: string;
     homeTitle: string;
     coursesSection: string;

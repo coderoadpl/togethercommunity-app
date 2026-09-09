@@ -1,6 +1,6 @@
 {
-  "hash": "ff3b796971c1c84bfdb930afd6e3068f044d7332d34f9c2c12b86efbe7fdcfd7",
-  "shortId": "ff3b796971c1",
+  "hash": "d7781c3c621275a9322a9f1919d5d2bbed8d456d72296f5a398db324bc1bd310",
+  "shortId": "d7781c3c6212",
   "schema": {
     "constraints": [
       {
@@ -3068,6 +3068,14 @@
             "identity": "",
             "name": "name",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_url",
+            "notNull": false,
             "type": "text"
           },
           {

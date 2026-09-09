@@ -713,6 +713,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
   const [name, setName] = useState(course.name);
   const [description, setDescription] = useState(course.description);
   const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const [salesUrl, setSalesUrl] = useState(course.salesUrl ?? '');
   const [publiclyVisible, setPubliclyVisible] = useState(course.publiclyVisible);
   const errorId = 'course-details-error';
   const save = useMutation({
@@ -732,6 +733,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
       description,
       imageUrl: imageUrl.trim() === '' ? null : imageUrl.trim(),
       publiclyVisible,
+      salesUrl: salesUrl.trim() || null,
     });
   };
 
@@ -773,6 +775,17 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           }}
         />
       </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-sales-url">{t.courses.salesUrl}</FormLabel>
+        <OutlinedInput
+          id="course-sales-url"
+          type="url"
+          value={salesUrl}
+          inputProps={{ pattern: 'https://.*' }}
+          onChange={(event) => { resetFeedback(); setSalesUrl(event.target.value); }}
+        />
+        <FormHelperText>{t.courses.salesUrlHint}</FormHelperText>
+      </FormControl>
       <ImageAssetField
         id="course-image"
         label={t.courses.imageUrl}
@@ -808,6 +821,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
             { name: 'name', id: 'course-name', label: t.courses.titleLabel },
             { name: 'description', id: 'course-description', label: t.common.description },
             { name: 'imageUrl', id: 'course-image', label: t.courses.imageUrl },
+            { name: 'salesUrl', id: 'course-sales-url', label: t.courses.salesUrl },
           ]}
         />
       ) : null}

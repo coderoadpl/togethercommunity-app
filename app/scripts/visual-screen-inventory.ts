@@ -273,9 +273,6 @@ export const SCREENS: readonly ScreenSpec[] = [
       // The opening sheet moves its sign-out row under the menu trigger's pointer position.
       await page.mouse.move(0, 0);
     },
-    settled: async (page) => {
-      await page.mouse.move(0, 0);
-    },
   },
   {
     name: 'search',

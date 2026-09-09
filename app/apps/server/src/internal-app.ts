@@ -143,7 +143,6 @@ import {
   memberExportFormatSchema,
   ok,
   tenantNotFound,
-  toPublicPost,
   unauthorized,
   validation,
   type EmailBranding,
@@ -270,6 +269,7 @@ import {
   createTenantRedirect,
   deleteTenantRedirect,
   getTenantSetupReadiness,
+  toRenderedPublicPost,
   grantProductToMember,
   listBunnyVideos,
   listCampaignsWithEngagement,
@@ -2996,7 +2996,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const result = await setPostPinned(ctxOf(c), parsed.data, deps);
     return respond(
       result.ok
-        ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
+        ? ok({ post: toRenderedPublicPost(result.value, c.get('identity').userId) })
         : result,
     );
   });

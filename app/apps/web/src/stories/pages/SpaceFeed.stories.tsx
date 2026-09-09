@@ -21,6 +21,34 @@ const ownFixture = {
   ...fixture,
   calls: { ...fixture.calls, [feedKey]: { ok: true, value: { feed: { ...feed, items: feed.items.map((item) => ({ ...item, isOwn: true })) } } } },
 };
+const postContentFixture = {
+  ...fixture,
+  calls: {
+    ...fixture.calls,
+    [feedKey]: {
+      ok: true,
+      value: {
+        feed: {
+          ...feed,
+          items: [
+            {
+              ...feed.items[0],
+              body: 'Read https://javascript.info and share your favorite learning resource.',
+              bodyFormat: 'plain',
+              bodyHtml: 'Read <a href="https://javascript.info/" target="_blank" rel="noopener noreferrer nofollow ugc">https://javascript.info</a> and share your favorite learning resource.',
+            },
+            {
+              ...feed.items[1],
+              body: '**Welcome to the community.**\n\n- Introduce yourself\n- Share what you are learning',
+              bodyFormat: 'markdown',
+              bodyHtml: '<p><strong>Welcome to the community.</strong></p>\n<ul>\n<li>Introduce yourself</li><li>Share what you are learning</li></ul>\n',
+            },
+          ],
+        },
+      },
+    },
+  },
+};
 const tombstoneFixture = {
   ...staffFixture,
   calls: { ...staffFixture.calls, [feedKey]: { ok: true, value: { feed: { ...feed, items: feed.items.map((item, index) => ({
@@ -32,6 +60,8 @@ export const EmptyEventsMember: Story = {};
 export const EmptyEventsStaff: Story = { parameters: { fixture: staffFixture } };
 export const DeletedThreads: Story = { parameters: { fixture: tombstoneFixture } };
 export const DeletedThreadsEnglish: Story = { parameters: { fixture: tombstoneFixture, locale: 'en' } };
+export const PostContentEnglish: Story = { parameters: { fixture: postContentFixture, locale: 'en' } };
+export const PostContentPolish: Story = { parameters: { fixture: postContentFixture, locale: 'pl' } };
 export const OwnPostMenu: Story = {
   parameters: { fixture: ownFixture },
   play: async ({ canvasElement }) => {

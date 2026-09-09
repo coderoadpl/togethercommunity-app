@@ -834,6 +834,13 @@
       "when": 1788928689745,
       "tag": "0118_product_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1788928689746,
+      "tag": "0119_post_content_format",
+      "breakpoints": true
     }
   ]
 }

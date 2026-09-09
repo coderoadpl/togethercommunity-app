@@ -26,6 +26,9 @@ const post = (input: Partial<PublicPost> & { id: string }): PublicPost => ({
   deletedAt: null,
   pinnedAt: null,
   ...input,
+  bodyFormat: input.bodyFormat ?? 'plain',
+  bodyHtml: input.bodyHtml ?? input.body ?? 'Post body',
+  bodyPlainText: input.bodyPlainText ?? input.body ?? 'Post body',
 });
 
 const asThread = (root: PublicPost, replies: DiscussionPost[] = []): DiscussionPost => ({
@@ -101,22 +104,24 @@ describe('DiscussionSection', () => {
 
   it('spaces post bodies and safely links URLs in roots and replies', async () => {
     const body = '<img src=x onerror=alert(1)> Read https://courses.example.org/guide?a=1&b=2.\njavascript:alert(1)';
+    const bodyHtml = `&lt;img src=x onerror=alert(1)&gt; Read <a href="https://courses.example.org/guide?a=1&amp;b=2" target="_blank" rel="noopener noreferrer nofollow ugc">https://courses.example.org/guide?a=1&amp;b=2</a>.<br>javascript:alert(1)`;
     server.use(okMe(), okDiscussion([
-      asThread(post({ id: 'root', body }), [
-        asThread(post({ id: 'reply', body: 'See www.courses.example.org/notes.', parentPostId: 'root', rootPostId: 'root' })),
+      asThread(post({ id: 'root', body, bodyHtml }), [
+        asThread(post({ id: 'reply', body: 'See www.courses.example.org/notes.', bodyHtml: `See <a href="https://www.courses.example.org/notes" target="_blank" rel="noopener noreferrer nofollow ugc">www.courses.example.org/notes</a>.`, parentPostId: 'root', rootPostId: 'root' })),
       ]),
     ]));
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
     const root = await screen.findByTestId('post-body-root');
-    expect(root.textContent).toBe(body);
+    expect(root.textContent).toBe(body.replace('\n', ''));
+    expect(root.querySelector('br')).not.toBeNull();
     expect(root.querySelector('img')).toBeNull();
     expect(root).toHaveStyle({ marginTop: '0.75rem', whiteSpace: 'pre-wrap' });
     expect(within(root).getAllByRole('link')).toHaveLength(1);
     const link = within(root).getByRole('link');
     expect(link).toHaveAttribute('href', 'https://courses.example.org/guide?a=1&b=2');
     expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow ugc');
     expect(link).toHaveStyle({ textDecoration: 'underline' });
     const reply = screen.getByTestId('post-body-reply');
     expect(reply).toHaveStyle({ marginTop: '0.75rem' });
@@ -338,7 +343,7 @@ describe('DiscussionSection', () => {
 
     await waitFor(() =>
       expect(bodies).toEqual([
-        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply' },
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply', bodyFormat: 'plain' },
       ]),
     );
 
@@ -397,7 +402,7 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('My reply');
     expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();
     expect(bodies).toEqual([
-      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply' },
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply', bodyFormat: 'plain' },
     ]);
     expect(discussionReads).toBeGreaterThan(readsBefore);
   });

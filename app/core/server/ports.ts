@@ -280,7 +280,6 @@ export interface ProductDownloadAssetRepository {
 export interface PostSearchRow {
   post: Post;
   lessonId: string;
-  snippet: string;
 }
 
 export interface PostRepository {
@@ -313,7 +312,10 @@ export interface PostRepository {
     query: { spaceIds: string[]; cursor?: string; limit: number },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
-  updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
+  updateBody(
+    tenantId: string,
+    input: { id: string; body: string; bodyFormat: Post['bodyFormat']; editedAt: string },
+  ): Promise<Post | null>;
   /** Clears pinnedAt when marking a post deleted. */
   softDelete(tenantId: string, input: { id: string; deletedAt: string; deletedBy: 'author' | 'moderator'; deletedByUserId: string }): Promise<Post | null>;
   setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null>;

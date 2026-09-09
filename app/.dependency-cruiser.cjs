@@ -3,6 +3,7 @@ const coreDomainExternal = 'node_modules/zod(/|$)';
 const coreContractExternal = 'node_modules/zod(/|$)';
 const coreClientExternal = 'node_modules/(@tanstack/query-core|zod)(/|$)';
 const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/|$)';
+const coreServerExternal = 'node_modules/(marked|parse5)(/|$)';
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
 const adapterDbTestExternal =
@@ -182,7 +183,7 @@ module.exports = {
       name: 'core-server-external-allowlist',
       severity: 'error',
       from: { path: '^core/server', pathNot: '\\.test\\.tsx?$' },
-      to: { path: external },
+      to: { path: external, pathNot: coreServerExternal },
     },
     {
       name: 'core-server-test-external-allowlist',

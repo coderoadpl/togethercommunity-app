@@ -39,6 +39,7 @@ import type {
   TenantRepository,
   ThreadSubscriptionRepository,
 } from '../ports.js';
+import { renderPostContent } from '../post-content.js';
 import { avatarUrlForAuthor } from './avatar.js';
 import { tenantEmailLanguage } from './email-language.js';
 import { notificationRecipient, spaceNotificationRecipient } from './community-access.js';
@@ -197,7 +198,7 @@ const postPlan = async (
   deps: PostFanoutDeps,
 ): Promise<FanoutPlan | null> => {
   const authorAvatarUrl = await avatarUrlForAuthor(job.tenantId, post.authorUserId, deps);
-  const snippet = postSnippet(post.body);
+  const snippet = postSnippet(renderPostContent(post.body, post.bodyFormat).plainText);
   if (job.kind === 'space-post') {
     const space = await deps.spaces.findById(job.tenantId, post.contextId);
     if (space === null) return null;

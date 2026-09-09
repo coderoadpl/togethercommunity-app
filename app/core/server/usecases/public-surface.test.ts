@@ -131,6 +131,7 @@ const post = (input: {
   authorDisplay: 'Author',
   authorIsStaff: false,
   body: `Body ${input.id}`,
+  bodyFormat: 'plain',
   createdAt: '1998-01-01T00:00:00.000Z',
   editedAt: null,
   deletedAt: null,

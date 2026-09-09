@@ -13,12 +13,10 @@ import {
   otherDmParticipant,
   postReportEventSchema,
   postReportSchema,
-  renderPost,
   reportDmConversationInputSchema,
   reportPostInputSchema,
   resolveDmReportInputSchema,
   resolveReportInputSchema,
-  toPublicPost,
   validation,
   type AppError,
   type DmReport,
@@ -32,6 +30,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { toRenderedPublicPost } from '../post-content.js';
 import type {
   DmConversationRepository,
   DmMessageRepository,
@@ -141,7 +140,7 @@ export const listReports = async (
     if (post === undefined) continue;
     items.push({
       report,
-      post: toPublicPost(renderPost(post), actor.value.userId),
+      post: toRenderedPublicPost(post, actor.value.userId),
       spaceName: post.contextKind === 'space'
         ? spacesById.get(post.contextId)?.name ?? null
         : null,

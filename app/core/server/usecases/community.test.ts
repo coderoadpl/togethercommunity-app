@@ -322,10 +322,13 @@ class FakePosts implements PostRepository {
     return this.rows.filter((post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null);
   }
 
-  async updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null> {
+  async updateBody(
+    tenantId: string,
+    input: { id: string; body: string; bodyFormat: Post['bodyFormat']; editedAt: string },
+  ): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, body: input.body, editedAt: input.editedAt };
+    const next = { ...post, body: input.body, bodyFormat: input.bodyFormat, editedAt: input.editedAt };
     this.replace(next);
     return next;
   }
@@ -1142,6 +1145,53 @@ describe('community use-cases', () => {
     expect(isolated).toEqual({ ok: true, value: [] });
   });
 
+  it('uses rendered plain text for Markdown search snippets', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    await createPost(
+      ctx(),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: '**Formatted phrase** with [a guide](https://example.com)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    const hits = await searchPosts(ctx(), { query: 'formatted' }, d);
+    expect(hits).toMatchObject({
+      ok: true,
+      value: [{ snippet: 'Formatted phrase with a guide', post: { bodyFormat: 'markdown' } }],
+    });
+  });
+
+  it('uses rendered plain text in notifications for Markdown posts', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const root = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'root' },
+      d,
+    );
+    if (!root.ok) throw new Error('root failed');
+    await createPost(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        parentPostId: root.value.id,
+        body: '**Helpful reply** with [a guide](https://example.com)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    const listed = await listNotifications(ctx({ userId: 'u1', memberId: 'm1' }), {}, d);
+    expect(listed).toMatchObject({
+      ok: true,
+      value: { notifications: [{ payload: { snippet: 'Helpful reply with a guide' } }] },
+    });
+  });
+
   it('paginates notifications, counts unread and marks reads', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
     const root = await createPost(ctx({ userId: 'u1', memberId: 'm1' }), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
@@ -1319,6 +1369,70 @@ describe('community guard and error branches', () => {
 
     const edited = await editPost(memberCtx, { id: created.value.id, body: `${markupLike} onclick=1` }, d);
     expect(edited).toMatchObject({ ok: true, value: { body: `${markupLike} onclick=1` } });
+  });
+
+  it('keeps legacy edits plain and renders explicit Markdown writes', async () => {
+    const d = access();
+    const created = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', body: 'Visit https://example.com' },
+      d,
+    );
+    expect(created).toMatchObject({
+      ok: true,
+      value: {
+        bodyFormat: 'plain',
+        bodyHtml: expect.stringContaining('rel="noopener noreferrer nofollow ugc"'),
+      },
+    });
+    if (!created.ok) return;
+
+    const legacyEdit = await editPost(
+      memberCtx,
+      { id: created.value.id, body: 'Legacy edit' },
+      d,
+    );
+    expect(legacyEdit).toMatchObject({ ok: true, value: { bodyFormat: 'plain' } });
+
+    const edited = await editPost(
+      memberCtx,
+      { id: created.value.id, body: '**Rendered**', bodyFormat: 'markdown' },
+      d,
+    );
+    expect(edited).toMatchObject({
+      ok: true,
+      value: { bodyFormat: 'markdown', bodyHtml: '<p><strong>Rendered</strong></p>\n' },
+    });
+    if (!edited.ok) return;
+
+    const retained = await editPost(
+      memberCtx,
+      { id: created.value.id, body: '**Still rendered**' },
+      d,
+    );
+    expect(retained).toMatchObject({
+      ok: true,
+      value: { bodyFormat: 'markdown', bodyHtml: '<p><strong>Still rendered</strong></p>\n' },
+    });
+  });
+
+  it('counts rendered Markdown destinations for link-flood moderation', async () => {
+    const d = access();
+    const created = await createPost(
+      memberCtx,
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: '[one](https://one.test) [two](https://two.test) [three](https://three.test)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    expect(created).toMatchObject({ ok: true });
+    expect(d.reports).toBeInstanceOf(FakeReports);
+    if (!(d.reports instanceof FakeReports)) return;
+    expect(d.reports.rows).toMatchObject([{ signals: ['link-flood'] }]);
   });
 
   it('rejects a reply whose parent belongs to another discussion', async () => {
@@ -1524,6 +1638,7 @@ describe('renderPost', () => {
     authorDisplay: 'Ala',
     authorIsStaff: false,
     body: 'sekret',
+    bodyFormat: 'plain',
     createdAt: NOW,
     editedAt: null,
     deletedAt: NOW,

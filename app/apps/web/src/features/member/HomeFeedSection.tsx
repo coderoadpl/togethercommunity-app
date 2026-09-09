@@ -16,10 +16,9 @@ import {
   DeletedPostText,
   DiscussionThread,
   PostAuthorName,
-  PostBody,
   PostMetaText,
 } from '../../theme.js';
-import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
+import { PostContent } from '../../components/ui/PostContent.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { FeedPostMenu } from './FeedPostMenu.js';
 import { DeletePostDialog } from './DeletePostDialog.js';
@@ -95,9 +94,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
               testId={`edit-composer-${item.id}`}
             />
           ) : (
-            <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`home-feed-body-${item.id}`}>
-              <LinkifiedText text={item.body} />
-            </PostBody>
+            <PostContent html={item.bodyHtml} format={item.bodyFormat} sx={{ mt: '0.75rem' }} data-testid={`home-feed-body-${item.id}`} />
           )}
         </Box>
 

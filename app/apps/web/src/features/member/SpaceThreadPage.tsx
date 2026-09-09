@@ -99,7 +99,7 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
   }
 
   const rootPost = discussion.data?.discussion.threads.find((thread) => thread.id === postId);
-  const headline = rootPost === undefined ? null : threadHeadline(rootPost.body);
+  const headline = rootPost === undefined ? null : threadHeadline(rootPost.bodyPlainText);
 
   return (
     <MemberSurface

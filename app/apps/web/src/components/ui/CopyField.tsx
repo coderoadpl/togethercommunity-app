@@ -16,15 +16,15 @@ import { useTranslations } from '../../i18n/index.js';
 import { copyText } from '../../lib/clipboard.js';
 import { CopyFieldSurface, CopyFieldText, FONT_MONO } from '../../theme.js';
 
-export const COPIED_FEEDBACK_MS = 2_000;
+const COPIED_FEEDBACK_MS = 2_000;
 
-export const CopyGlyph = () => (
+const CopyGlyph = () => (
   <SvgIcon fontSize="small" aria-hidden viewBox="0 0 24 24">
     <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z" />
   </SvgIcon>
 );
 
-export const selectCopyTarget = (target: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null) => {
+const selectCopyTarget = (target: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     target.select();
     return;

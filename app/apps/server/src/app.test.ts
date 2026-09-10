@@ -2088,7 +2088,7 @@ describe('marketing HTTP surfaces', () => {
     const body = await response.text();
     expect(body).toContain('Immutable terms');
     expect(nonce).toBeDefined();
-    expect(body).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
+    expect(body).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(body).not.toContain('together-theme-mode');
   });
 

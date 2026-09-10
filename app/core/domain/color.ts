@@ -35,3 +35,24 @@ export const deriveLightAccent = (
   }
   return darken(low);
 };
+
+export const deriveDarkAccent = (
+  accent: string,
+  backgrounds: readonly string[] = ['#0F1012', '#17181B', '#1B1D20'],
+): string => {
+  const passes = (color: string): boolean =>
+    backgrounds.every((background) => contrastRatio(color, background) >= 4.5);
+  if (passes(accent)) return accent;
+  const lighten = (weight: number): string => `#${[0, 2, 4].map((offset) => {
+    const channel = hexChannel(accent, offset);
+    return Math.round(channel + (255 - channel) * weight).toString(16).padStart(2, '0');
+  }).join('')}`;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 24; step += 1) {
+    const middle = (low + high) / 2;
+    if (passes(lighten(middle))) high = middle;
+    else low = middle;
+  }
+  return lighten(high);
+};

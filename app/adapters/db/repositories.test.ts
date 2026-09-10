@@ -42,6 +42,7 @@ import type { Db } from './client.js';
 import {
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountSecurityReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -132,6 +133,7 @@ import {
   productPriceHistory,
   productPrices,
   suppressions,
+  twoFactor,
   user,
 } from './schema.js';
 import { createNotificationFanoutJobRepository, insertFanoutJob } from './notification-fanout-jobs.js';
@@ -4113,6 +4115,30 @@ describe('createSignInMethodReader', () => {
       expect(
         await explainPredicate(tx, sql`lower(btrim(${user.email})) = 'owner-acme@together.dev'`),
       ).not.toContain('Index Cond');
+    });
+  });
+});
+
+describe('createAccountSecurityReader', () => {
+  it('projects password and verified two-factor state from the auth tables', async () => {
+    await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, 'user-acme-owner'));
+    await db.insert(twoFactor).values({
+      id: 'two-factor-security-reader',
+      secret: 'encrypted-secret',
+      backupCodes: 'encrypted-codes',
+      userId: 'user-acme-owner',
+      verified: true,
+    });
+
+    const reader = createAccountSecurityReader(db);
+
+    await expect(reader.read('user-acme-owner')).resolves.toEqual({
+      hasPassword: true,
+      twoFactorEnabled: true,
+    });
+    await expect(reader.read('user-acme-buyer')).resolves.toEqual({
+      hasPassword: false,
+      twoFactorEnabled: false,
     });
   });
 });

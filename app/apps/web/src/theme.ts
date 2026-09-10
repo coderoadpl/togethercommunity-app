@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, TextField, Typography } from '@mui/material';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Tabs, TextField, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -117,6 +117,8 @@ export const BORDER_INPUT: Record<ResolvedColorScheme, string> = {
   light: '#8C8A85',
   dark: '#666B73',
 };
+
+const BORDER_INPUT_HOVER: Record<ResolvedColorScheme, string> = { light: '#71717a', dark: '#a1a1aa' };
 
 const MEMBER_CONTROL_MIN_HEIGHT = 48;
 const STUDIO_CONTROL_MIN_HEIGHT = 44;
@@ -622,7 +624,7 @@ const createShadcnTheme = (scheme: ResolvedColorScheme, surface: ThemeSurface = 
             minHeight: controlMinHeight,
             backgroundColor: SHADCN_INPUT,
             '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_INPUT },
-            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: BORDER_INPUT_HOVER[scheme] },
             '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
               borderColor: theme.focusRing ?? SHADCN_RING,
@@ -3931,3 +3933,70 @@ export const ThreadHeadline = styled('span')({
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 });
+
+export const AccountPanel = styled(Box)<AsElement>(({ theme }) => ({
+  display: 'grid',
+  gap: '1rem',
+  marginTop: '1.5rem',
+  alignItems: 'start',
+  minWidth: 0,
+  '& > *': { minWidth: 0 },
+  '& [data-account-wide]': { gridColumn: '1 / -1' },
+  '& [data-account-danger] > .MuiPaper-root': { borderColor: theme.palette.error.main },
+  '& [data-account-danger] h2': { color: theme.palette.error.main },
+  '@media (min-width: 1024px)': {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '1.5rem',
+    '& [data-account-identity]': { gridColumn: '1' },
+    '& [data-account-compact]': { gridColumn: '2' },
+  },
+}));
+
+export const AccountTabs = styled(Tabs)(({ theme }) => {
+  const accent = accentOnSurface(theme.brandAccent ?? theme.emberCta?.main ?? '#E8682A', theme.palette.background.default, 4.5);
+  return {
+    '& .MuiTab-root': { minHeight: 48, gap: 8, color: theme.palette.text.secondary, '&:hover': { color: theme.palette.text.primary } },
+    '& .MuiTab-icon': { margin: 0 },
+    '& .MuiTab-root.Mui-selected': { color: accent, fontWeight: 600 },
+    '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
+    '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },
+    '& .MuiTabScrollButton-root.Mui-disabled': { display: 'none' },
+  };
+});
+
+export const AccountDisclosure = styled(Box)<AsElement>(({ theme }) => ({
+  minWidth: 0,
+  '& > summary': { cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, listStyle: 'none', borderRadius: 6 },
+  '& > summary::-webkit-details-marker': { display: 'none' },
+  '& > summary:focus-visible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
+  '& > summary > svg:last-child': { marginLeft: 'auto', flexShrink: 0 },
+  '&[open] > summary > svg:last-child': { transform: 'rotate(180deg)' },
+  '& > :not(summary)': { marginTop: 16 },
+}));
+
+export const AccountSessionRow = styled(Stack)(({ theme }) => ({
+  padding: '1rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  '&[data-current=true]': { backgroundColor: theme.palette.action.selected, borderRadius: 8 },
+  '& p': { overflowWrap: 'anywhere' },
+}));
+
+export const AccountSessionDisclosure = styled(ButtonBase)(({ theme }) => ({
+  display: 'flex', width: '100%', gap: 8, minHeight: 48, justifyContent: 'flex-start', textAlign: 'left', borderRadius: 6,
+  '& > svg:last-of-type': { marginLeft: 'auto' },
+  '&[aria-expanded=true] > svg:last-of-type': { transform: 'rotate(180deg)' },
+  '&.Mui-focusVisible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+
+export const AccountGlyph = styled(SvgIcon)({ fill: 'none' });
+export const AccountWrappingText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
+export const AccountBackupCode = styled(Typography)<AsElement>({ fontFamily: FONT_MONO });
+export const AccountQrCanvas = styled('canvas')({
+  width: 'min(240px, 100%)',
+  height: 'auto',
+  backgroundColor: '#fff',
+  borderRadius: 8,
+});
+
+export const OutlineEmptyStateIcon = styled(EmptyStateIcon)({ fill: 'none' });
+export const OutlineStatTileIcon = styled(StatTileIcon)({ fill: 'none' });

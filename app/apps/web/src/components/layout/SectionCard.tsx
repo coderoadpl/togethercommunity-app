@@ -3,6 +3,7 @@ import { Box, Paper, Stack, Typography } from '@mui/material';
 
 interface SectionCardProps {
   title: ReactNode;
+  mobilePadding?: boolean;
   description?: ReactNode;
   actions?: ReactNode;
   headerActions?: ReactNode;
@@ -13,6 +14,7 @@ interface SectionCardProps {
 
 export const SectionCard = ({
   title,
+  mobilePadding = false,
   description,
   actions,
   headerActions,
@@ -24,7 +26,7 @@ export const SectionCard = ({
     elevation={1}
     component={onSubmit === undefined ? 'div' : 'form'}
     onSubmit={onSubmit}
-    sx={{ p: '1.5rem' }}
+    sx={{ p: mobilePadding ? '1rem' : '1.5rem', '@media (min-width: 1024px)': { p: '1.5rem' }, minWidth: 0 }}
     data-testid={testId}
   >
     {headerActions === undefined ? (

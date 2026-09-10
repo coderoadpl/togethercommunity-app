@@ -2219,6 +2219,13 @@ export interface SignInMethodReader {
   hasPasskey(tenantId: string, email: string): Promise<boolean>;
 }
 
+export interface AccountSecurityReader {
+  read(userId: string): Promise<{
+    hasPassword: boolean;
+    twoFactorEnabled: boolean;
+  }>;
+}
+
 /** Established authenticated session, before tenant resolution. */
 export interface AuthenticatedUser {
   sessionId: string;

@@ -71,6 +71,7 @@ const preview: Preview = {
     controls: { expanded: true },
     viewport: {
       options: {
+        boundary: { name: 'Layout boundary 1024', styles: { width: '1024px', height: '900px' }, type: 'desktop' },
         'mobile-375': { name: 'Mobile 375×812', styles: { width: '375px', height: '812px' }, type: 'mobile' },
         mobile: { name: 'Mobile 390×844', styles: { width: '390px', height: '844px' }, type: 'mobile' },
         desktop: { name: 'Desktop 1440×900', styles: { width: '1440px', height: '900px' }, type: 'desktop' },

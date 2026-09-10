@@ -129,6 +129,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountSecurityReader,
   SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -210,6 +211,7 @@ import {
   tenants,
   tenantAuditEvents,
   threadSubscriptions,
+  twoFactor,
   user,
 } from './schema.js';
 
@@ -4372,6 +4374,36 @@ export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
       ))
       .limit(1);
     return (rows[0]?.passkeyId ?? null) !== null;
+  },
+});
+
+export const createAccountSecurityReader = (db: Db): AccountSecurityReader => ({
+  read: async (userId) => {
+    const [credentialRows, twoFactorRows] = await Promise.all([
+      db
+        .select({ id: account.id })
+        .from(account)
+        .where(and(
+          eq(account.userId, userId),
+          eq(account.providerId, 'credential'),
+          isNotNull(account.password),
+        ))
+        .limit(1),
+      db
+        .select({ enabled: user.twoFactorEnabled, verified: twoFactor.verified })
+        .from(user)
+        .leftJoin(twoFactor, and(
+          eq(twoFactor.userId, user.id),
+          eq(twoFactor.verified, true),
+        ))
+        .where(eq(user.id, userId))
+        .limit(1),
+    ]);
+    const twoFactorRow = twoFactorRows[0];
+    return {
+      hasPassword: credentialRows.length > 0,
+      twoFactorEnabled: twoFactorRow?.enabled === true && twoFactorRow.verified === true,
+    };
   },
 });
 

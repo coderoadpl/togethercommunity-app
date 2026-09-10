@@ -1,17 +1,16 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { BellIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
+import { useEffect, useState } from 'react';
 import {
   Alert,
+  Divider,
+  Chip,
   Box,
   Button,
-  FormControl,
   FormControlLabel,
   FormHelperText,
-  FormLabel,
-  OutlinedInput,
   Stack,
   Switch,
   Tab,
-  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +20,9 @@ import { ApiError } from '#core/client/index.js';
 import { AVATAR_IMAGE_MAX_BYTES, resolveVideoAutoplay } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
+import { AccountCard as SectionCard } from './AccountCard.js';
+import { AccountHelp } from '../../components/ui/AccountHelp.js';
 import { ActiveSessions } from '../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
@@ -30,9 +31,13 @@ import { EmailVerificationStatus } from '../../components/ui/EmailVerificationSt
 import { useToastOutcome } from '../../components/ui/Toast.js';
 import { EmailLanguagePicker, useEmailLanguagePreference } from '../../EmailLanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { AccountPanel, AccountTabs, AccountWrappingText } from '../../theme.js';
+import { AccountNameFields } from './AccountNameFields.js';
+import { AccountSupportForm } from './AccountSupportForm.js';
+import { AccountExportCard } from './AccountExportCard.js';
+import { AccountErasureCard } from './AccountErasureCard.js';
+import { AccountAvatar } from './AccountAvatar.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
-import { WrapAnywhereText } from '../../theme.js';
-import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
 
@@ -55,9 +60,9 @@ const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 
   if (variant === 'card') {
     return (
       <SectionCard title={t.account.signedInAs}>
-        <WrapAnywhereText variant="body1" data-testid="account-email">
+        <AccountWrappingText variant="body1" data-testid="account-email">
           {email}
-        </WrapAnywhereText>
+        </AccountWrappingText>
       </SectionCard>
     );
   }
@@ -67,9 +72,9 @@ const SignedInAddress = ({ email, variant }: { email: string; variant: 'card' | 
       <Typography component="dt" variant="caption" color="text.secondary">
         {t.account.signedInAs}
       </Typography>
-      <WrapAnywhereText component="dd" variant="body1" sx={{ m: 0 }} data-testid="account-email">
+      <AccountWrappingText component="dd" variant="body1" sx={{ m: 0 }} data-testid="account-email">
         {email}
-      </WrapAnywhereText>
+      </AccountWrappingText>
     </Stack>
   );
 };
@@ -271,7 +276,7 @@ export const MemberAccountPage = () => {
 
   return (
     <MemberSurface title={t.account.title}>
-      <Tabs
+      <AccountTabs
         value={selectedTab}
         onChange={(_event, value: AccountTab) => {
           void navigate({ to: '/account', search: { tab: value } });
@@ -280,53 +285,40 @@ export const MemberAccountPage = () => {
         variant="scrollable"
         allowScrollButtonsMobile
       >
-        <Tab id="account-tab-profile" aria-controls="account-panel-profile" value="profile" label={t.account.tabs.profile} />
+        <Tab icon={<UserRoundIcon />} iconPosition="start" id="account-tab-profile" aria-controls="account-panel-profile" value="profile" label={t.account.tabs.profile} />
         {impersonating ? null : (
-          <Tab id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
+          <Tab icon={<ShieldCheckIcon />} iconPosition="start" id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
         )}
-        <Tab id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
+        <Tab icon={<BellIcon />} iconPosition="start" id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
         {me.data.tenant?.memberId == null || !memberVideoAutoplayOverride ? null : (
-          <Tab id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
+          <Tab icon={<PlayIcon />} iconPosition="start" id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
         )}
-      </Tabs>
-      <Stack
+      </AccountTabs>
+      <AccountPanel
         component="section"
-        useFlexGap
-        spacing="1.5rem"
         role="tabpanel"
         id={`account-panel-${selectedTab}`}
         aria-labelledby={`account-tab-${selectedTab}`}
         tabIndex={0}
-        sx={{ mt: '1.5rem' }}
       >
         {selectedTab === 'profile' && me.data.tenant?.memberId ? (
-          <SectionCard
+          <Box data-account-identity>
+          <SectionCard icon={<UserRoundIcon />}
             title={t.account.profileHeading}
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() });
-            }}
+
           >
             <SignedInAddress email={email} variant="inline" />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <UserAvatar
-                name={displayName.trim() === '' ? me.data.name : displayName}
-                email={email}
-                imageUrl={me.data.avatarUrl}
-                size="lg"
-              />
-              <Typography variant="caption" color="text.secondary">
-                {t.account.avatarHint}
-              </Typography>
-            </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
-              <Button component="label" variant="outlined" disabled={uploadAvatar.isPending}>
-                {uploadAvatar.isPending ? t.account.avatarUploading : t.account.avatarUpload}
-                <input
-                  hidden
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => {
+            <AccountAvatar
+              name={savedDisplayName.trim() === '' ? me.data.name : savedDisplayName}
+              email={email}
+              avatarUrl={me.data.avatarUrl}
+              uploadPending={uploadAvatar.isPending}
+              removePending={removeAvatar.isPending}
+              uploadError={uploadAvatar.error}
+              removeError={removeAvatar.error}
+              avatarError={avatarError}
+              onRemove={() => removeAvatar.mutate(undefined)}
+                  onUpload={(event) => {
                     const file = event.target.files?.[0];
                     event.target.value = '';
                     if (file !== undefined && file.size > AVATAR_IMAGE_MAX_BYTES) {
@@ -344,49 +336,10 @@ export const MemberAccountPage = () => {
                       body: file,
                     });
                   }}
-                />
-              </Button>
-              {me.data.avatarUrl === null ? null : (
-                <Button
-                  variant="text"
-                  color="error"
-                  disabled={removeAvatar.isPending}
-                  onClick={() => removeAvatar.mutate(undefined)}
-                >
-                  {t.account.avatarRemove}
-                </Button>
-              )}
-            </Stack>
-            {uploadAvatar.isError ? (
-              <Alert severity="error">{localizeError(uploadAvatar.error, t)}</Alert>
-            ) : null}
-            {avatarError === null ? null : <Alert severity="error">{avatarError}</Alert>}
-            {removeAvatar.isError ? (
-              <Alert severity="error">{localizeError(removeAvatar.error, t)}</Alert>
-            ) : null}
-            <FormControl fullWidth>
-              <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
-              <OutlinedInput
-                id="account-display-name"
-                inputProps={{ maxLength: 200, 'aria-describedby': 'account-display-name-helper' }}
-                value={displayName}
-                onChange={(event) => setDisplayNameDraft(event.target.value)}
-              />
-              <FormHelperText id="account-display-name-helper">
-                {t.account.displayNameHint}
-              </FormHelperText>
-            </FormControl>
-            <Box>
-              <Button
-                type="submit"
-                variant="contained"
-                data-testid="account-display-name-save"
-                disabled={updateProfile.isPending || displayName.trim() === savedDisplayName.trim()}
-              >
-                {t.account.displayNameSave}
-              </Button>
-            </Box>
+            />
+            <AccountNameFields savedDisplayName={savedDisplayName} onCancel={() => setDisplayNameDraft(null)} success={updateProfile.isSuccess} error={updateProfile.error} onSubmit={() => updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() })} displayName={displayName} onChange={setDisplayNameDraft} pending={updateProfile.isPending} dirty={displayName.trim() !== savedDisplayName.trim()} />
           </SectionCard>
+          </Box>
         ) : selectedTab === 'profile' ? (
           <SignedInAddress email={email} variant="card" />
         ) : null}
@@ -400,7 +353,7 @@ export const MemberAccountPage = () => {
 
         {selectedTab === 'security' && !impersonating ? (
           <>
-            <SectionCard title={t.emailVerification.heading}>
+            <Box data-account-wide><SectionCard icon={<MailCheckIcon />} title={t.emailVerification.heading}>
               <EmailVerificationStatus
                 email={email}
                 emailVerified={me.data.emailVerified}
@@ -413,31 +366,65 @@ export const MemberAccountPage = () => {
                   language,
                 })}
               />
-            </SectionCard>
+            </SectionCard></Box>
 
-            <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
-                <ChangePasswordForm
-                  pending={changePassword.isPending}
-                  success={changePassword.isSuccess}
-                  error={changePassword.error}
-                  onSubmit={(input) => changePassword.mutate(input)}
-                />
-                <Box>
+            <Box role="group" aria-label={t.security.heading} data-account-wide data-testid="account-security-methods">
+              <AuthenticationMethods
+                twoFactorEnabled={me.data.twoFactorEnabled}
+                onSecurityRefresh={() => {
+                  void queryClient.invalidateQueries(actions.meInvalidates());
+                }}
+                passwordCard={<Box><SectionCard icon={<LockKeyholeIcon />} title={t.account.passwordHeading} description={me.data.hasPassword ? t.account.passwordDescription : t.account.passwordLinkDescription} headerActions={<Chip size="small" color={me.data.hasPassword ? 'success' : 'default'} variant="outlined" label={me.data.hasPassword ? t.account.passwordStatusSet : t.account.passwordStatusUnset} />}>
+                {me.data.hasPassword ? <>
+                  <ChangePasswordForm
+                    dialog
+                    showHeading={false}
+                    pending={changePassword.isPending}
+                    success={changePassword.isSuccess}
+                    error={changePassword.error}
+                    onSubmit={(input) => changePassword.mutate(input)}
+                  />
+                  <Divider />
+                </> : null}
+                <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <Button
-                    variant="outlined"
+                    variant={me.data.hasPassword ? 'text' : 'contained'}
                     data-testid="account-reset-password"
                     disabled={requestPasswordReset.isPending}
                     onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
                   >
-                    {requestPasswordReset.isPending
-                      ? t.account.resetSending
-                      : t.account.setOrResetPassword}
+                    {requestPasswordReset.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.setOrResetPassword : t.account.setPassword}
                   </Button>
-                </Box>
-            </SectionCard>
-
-            <SectionCard title={t.security.heading} data-testid="account-security-methods">
-              <AuthenticationMethods
+                  <AccountHelp title={t.account.passwordLinkHelp}>
+                    <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
+                    <AccountWrappingText variant="body2">{email}</AccountWrappingText>
+                    <Typography variant="body2">{t.account.passwordIntro}</Typography>
+                  </AccountHelp>
+                </Stack>
+                {requestPasswordReset.error ? <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert> : null}
+            </SectionCard></Box>}
+                sessionsCard={<ActiveSessions
+                Card={SectionCard}
+                sessions={{
+                  data: accountSessions.data?.sessions,
+                  pending: accountSessions.isPending,
+                  error: accountSessions.error,
+                  retry: () => void accountSessions.refetch(),
+                }}
+                revokeSession={{
+                  pending: revokeAccountSession.isPending,
+                  success: revokeAccountSession.isSuccess,
+                  error: revokeAccountSession.error,
+                  run: revokeAccountSession.mutate,
+                }}
+                revokeOtherSessions={{
+                  pending: revokeOtherAccountSessions.isPending,
+                  success: revokeOtherAccountSessions.isSuccess,
+                  error: revokeOtherAccountSessions.error,
+                  run: () => revokeOtherAccountSessions.mutate(undefined),
+                }}
+              />}
+                Card={SectionCard}
                 passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
                 registerPasskey={{
                   pending: registerPasskey.isPending,
@@ -466,6 +453,7 @@ export const MemberAccountPage = () => {
                   run: enableTwoFactor.mutate,
                 }}
                 verifyTotp={{
+                  submittedAt: verifyTotp.submittedAt,
                   pending: verifyTotp.isPending,
                   success: verifyTotp.isSuccess,
                   error: verifyTotp.error,
@@ -487,27 +475,8 @@ export const MemberAccountPage = () => {
                   run: regenerateBackupCodes.mutate,
                 }}
               />
-              <ActiveSessions
-                sessions={{
-                  data: accountSessions.data?.sessions,
-                  pending: accountSessions.isPending,
-                  error: accountSessions.error,
-                  retry: () => void accountSessions.refetch(),
-                }}
-                revokeSession={{
-                  pending: revokeAccountSession.isPending,
-                  success: revokeAccountSession.isSuccess,
-                  error: revokeAccountSession.error,
-                  run: revokeAccountSession.mutate,
-                }}
-                revokeOtherSessions={{
-                  pending: revokeOtherAccountSessions.isPending,
-                  success: revokeOtherAccountSessions.isSuccess,
-                  error: revokeOtherAccountSessions.error,
-                  run: () => revokeOtherAccountSessions.mutate(undefined),
-                }}
-              />
-            </SectionCard>
+
+            </Box>
           </>
         ) : null}
 
@@ -530,10 +499,9 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {selectedTab === 'notifications' ? <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
+        {selectedTab === 'notifications' ? <SectionCard title={t.account.languageHeading} description={t.account.languageDescription}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <EmailLanguagePicker preference={emailLanguagePreference} />
-            <ColorSchemeSwitcher />
           </Stack>
           {me.data.tenant?.memberId == null ? null : (
             <>
@@ -558,28 +526,27 @@ export const MemberAccountPage = () => {
           )}
         </SectionCard> : null}
 
+        {selectedTab === 'notifications' ? <SectionCard title={t.account.appearanceHeading} description={t.account.appearanceDescription}><ColorSchemeSwitcher /></SectionCard> : null}
+
         {selectedTab === 'playback' && !impersonating && me.data.tenant?.memberId != null && memberVideoAutoplayOverride ? (
-          <SectionCard
+          <Box data-account-wide><SectionCard icon={<PlayIcon />}
             title={t.account.playbackHeading}
             description={t.account.playbackIntro}
             data-testid="account-playback"
+            headerActions={
+              <FormControlLabel
+                control={<Switch checked={videoAutoplay} disabled={updatePlayback.isPending} onChange={(event) => updatePlayback.mutate({ videoAutoplay: event.target.checked })} />}
+                label={t.account.videoAutoplayLabel}
+              />
+            }
           >
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={videoAutoplay}
-                  disabled={updatePlayback.isPending}
-                  onChange={(event) => updatePlayback.mutate({ videoAutoplay: event.target.checked })}
-                />
-              )}
-              label={t.account.videoAutoplayLabel}
-            />
             <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText>
-          </SectionCard>
+          </SectionCard></Box>
         ) : null}
 
-        {selectedTab === 'profile' && billingPortalUrl ? (
-          <SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
+        {selectedTab === 'profile' && (billingPortalUrl || !impersonating) ? <Stack data-account-compact useFlexGap spacing="1.5rem">
+        {billingPortalUrl ? (
+          <Box><SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
                   component="a"
@@ -592,8 +559,14 @@ export const MemberAccountPage = () => {
                   {t.account.managePayments}
                 </Button>
               </Box>
-          </SectionCard>
+          </SectionCard></Box>
         ) : null}
+
+        {!impersonating ? (
+          <AccountExportCard pending={dataExport.isFetching} error={dataExport.error} onDownload={() => void downloadDataExport()} />
+        ) : null}
+
+        </Stack> : null}
 
         {selectedTab === 'profile' && billedOrders.length > 0 ? (
           <SectionCard title={t.account.invoiceOrdersHeading}>
@@ -634,44 +607,7 @@ export const MemberAccountPage = () => {
         ) : null}
 
         {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
-          <SectionCard
-            title={t.support.heading}
-            description={t.support.intro}
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              support.mutate({ subject: supportSubject, body: supportBody });
-            }}
-          >
-            <FormControl fullWidth>
-              <FormLabel htmlFor="support-subject">{t.support.subjectLabel}</FormLabel>
-              <OutlinedInput
-                id="support-subject"
-                value={supportSubject}
-                onChange={(event) => setSupportSubject(event.target.value)}
-                required
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="support-body">{t.support.bodyLabel}</FormLabel>
-              <OutlinedInput
-                id="support-body"
-                multiline
-                minRows={5}
-                value={supportBody}
-                onChange={(event) => setSupportBody(event.target.value)}
-                required
-              />
-            </FormControl>
-            <Box>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={support.isPending || supportSubject.trim() === '' || supportBody.trim() === ''}
-              >
-                {support.isPending ? t.support.sending : t.support.send}
-              </Button>
-            </Box>
-          </SectionCard>
+          <AccountSupportForm success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
         ) : null}
 
         {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (
@@ -685,113 +621,15 @@ export const MemberAccountPage = () => {
           </Button>
         ) : null}
 
-        {selectedTab === 'profile' && !impersonating ? (
-          <SectionCard
-            title={t.account.dataExportHeading}
-            description={t.account.dataExportIntro}
-          >
-            <Box>
-              <Button
-                variant="outlined"
-                data-testid="account-data-export"
-                disabled={dataExport.isFetching}
-                onClick={() => void downloadDataExport()}
-              >
-                {dataExport.isFetching ? t.account.dataExportPreparing : t.account.dataExportButton}
-              </Button>
-            </Box>
-            {dataExport.isError ? (
-              <StatusView
-                state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
-              />
-            ) : null}
-          </SectionCard>
-        ) : null}
-
-        {selectedTab === 'profile' ? <SectionCard
-          title={t.account.erasureHeading}
-          description={t.account.erasureIntro}
-        >
-          {erasureRequest.isPending ? (
-            <StatusView state={{ kind: 'loading', label: t.common.loading }} />
-          ) : erasureRequest.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(erasureRequest.error, t), retry: { label: t.common.retry, onRetry: () => void erasureRequest.refetch() } }} />
-          ) : erasureRequest.data.request === null ? (
-            <Stack
-              useFlexGap
-              spacing="1rem"
-              data-mobile-keyboard-anchor
-              sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
-            >
-              <FormControl fullWidth>
-                <FormLabel htmlFor="erasure-confirm-email">
-                  {t.account.erasureConfirmLabel}
-                </FormLabel>
-                <OutlinedInput
-                  id="erasure-confirm-email"
-                  value={erasureConfirmEmail}
-                  onChange={(event) => setErasureConfirmEmail(event.target.value)}
-                />
-              </FormControl>
-              <Box>
-                <Button
-                  color="error"
-                  variant="contained"
-                  data-testid="account-erasure-create"
-                  disabled={
-                    createErasureRequest.isPending ||
-                    erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()
-                  }
-                  onClick={() =>
-                    createErasureRequest.mutate({ confirmEmail: erasureConfirmEmail })
-                  }
-                  sx={{ minHeight: '44px' }}
-                >
-                  {t.account.erasureRequestButton}
-                </Button>
-              </Box>
-            </Stack>
-          ) : erasureRequest.data.request.status === 'open' ? (
-            <>
-              <Typography>
-                {t.account.erasureOpen({
-                  dueAt: new Date(erasureRequest.data.request.dueAt).toLocaleDateString(
-                    language,
-                  ),
-                })}
-              </Typography>
-              <Box>
-                <Button
-                  variant="outlined"
-                  data-testid="account-erasure-cancel"
-                  disabled={cancelErasureRequest.isPending}
-                  onClick={() => cancelErasureRequest.mutate(undefined)}
-                >
-                  {t.account.erasureCancelButton}
-                </Button>
-              </Box>
-            </>
-          ) : (
-            <Typography>
-              {t.account.erasureResolved({
-                status: t.account.erasureRequestStatus[
-                  erasureRequest.data.request.status
-                ],
-                resolvedAt:
-                  erasureRequest.data.request.resolvedAt === null
-                    ? '—'
-                    : new Date(
-                        erasureRequest.data.request.resolvedAt,
-                      ).toLocaleDateString(language),
-              })}
-            </Typography>
-          )}
-          {createErasureRequest.isError ? (
-            <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
-          ) : null}
-          {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
-        </SectionCard> : null}
-      </Stack>
+        {selectedTab === 'profile' ? <AccountErasureCard
+          request={erasureRequest.data?.request ?? null}
+          pending={erasureRequest.isPending} error={erasureRequest.error}
+          createPending={createErasureRequest.isPending} createError={createErasureRequest.error}
+          cancelPending={cancelErasureRequest.isPending} cancelError={cancelErasureRequest.error}
+          email={email} erasureConfirmEmail={erasureConfirmEmail} onConfirmEmailChange={setErasureConfirmEmail}
+          onCreate={(input) => createErasureRequest.mutate(input)} onCancel={() => cancelErasureRequest.mutate(undefined)} onRetry={() => void erasureRequest.refetch()}
+        /> : null}
+      </AccountPanel>
     </MemberSurface>
   );
 };

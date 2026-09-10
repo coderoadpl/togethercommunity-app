@@ -1,4 +1,7 @@
-import { useId, useState } from 'react';
+import type { ComponentType } from 'react';
+import type { AccountSectionProps } from './AccountSection.js';
+import { ChevronDownIcon, MonitorIcon } from './account-icons.js';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -10,11 +13,14 @@ import {
   DialogTitle,
   Stack,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatDateTime } from '../../lib/format.js';
-import { Eyebrow } from '../../theme.js';
+import { AccountSessionDisclosure, AccountSessionRow } from '../../theme.js';
+import { AccountSection } from './AccountSection.js';
 import { summarizeUserAgent } from './user-agent.js';
 
 interface OperationState {
@@ -34,6 +40,8 @@ interface SessionRow {
 }
 
 export interface ActiveSessionsProps {
+  Card?: ComponentType<AccountSectionProps>;
+  presentation?: 'account' | 'embedded';
   sessions: {
     data: SessionRow[] | undefined;
     pending: boolean;
@@ -49,30 +57,56 @@ export interface ActiveSessionsProps {
 }
 
 export const ActiveSessions = ({
+  presentation = 'account',
+  Card = AccountSection,
   sessions,
   revokeSession,
   revokeOtherSessions,
 }: ActiveSessionsProps) => {
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const [waiting, setWaiting] = useState(false);
   const t = useTranslations();
   const { language } = useLanguage();
   const [pendingRevoke, setPendingRevoke] = useState<PendingRevoke | null>(null);
   const confirmTitleId = useId();
-  const rows = sessions.data ?? [];
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(presentation === 'embedded');
+  const [confirmedRevoke, setConfirmedRevoke] = useState(false);
+  const summaryRef = useRef<HTMLButtonElement>(null);
+  const rows = [...(sessions.data ?? [])].sort((left, right) => Number(right.current) - Number(left.current));
+  const currentSession = rows.find((session) => session.current);
   const otherCount = rows.filter((session) => !session.current).length;
   const revokingOthers = pendingRevoke?.kind === 'others';
+
+  const operation = revokingOthers ? revokeOtherSessions : revokeSession;
+  useEffect(() => {
+    if (operation.pending) setWaiting(true);
+    else if (waiting) {
+      setWaiting(false);
+      if (operation.success) { setPendingRevoke(null); setConfirmedRevoke(true); }
+    }
+  }, [operation.pending, operation.success, waiting]);
 
   const confirmRevoke = () => {
     if (pendingRevoke === null) return;
     if (pendingRevoke.kind === 'others') revokeOtherSessions.run();
     else revokeSession.run({ sessionId: pendingRevoke.sessionId });
-    setPendingRevoke(null);
+
   };
 
   return (
-    <Box component="section" sx={{ display: 'grid', gap: '0.8rem' }} data-testid="active-sessions">
-      <Eyebrow variant="overline" component="h3">
-        {t.security.sessionsHeading}
-      </Eyebrow>
+    <Box>
+    <Card icon={<MonitorIcon />} title={presentation === 'embedded' ? t.security.sessionsHeading : (
+      <AccountSessionDisclosure ref={summaryRef} aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(!expanded)} data-testid="active-sessions-disclosure">
+        <Typography component="span" variant="h2">{t.security.sessionsHeading}</Typography>
+        <Chip size="small" variant="outlined" aria-label={sessions.pending || sessions.error || sessions.data === undefined ? undefined : t.security.sessionsSummary({ count: rows.length })} label={sessions.pending ? t.security.sessionsLoading : sessions.error || sessions.data === undefined ? t.security.sessionsUnavailable : String(rows.length)} />
+        <ChevronDownIcon />
+      </AccountSessionDisclosure>
+    )} description={currentSession && presentation === 'account' ? `${t.security.sessionCurrent}: ${summarizeUserAgent(currentSession.userAgent) ?? t.security.sessionUnknownDevice}` : undefined}>
+    <Box data-testid="active-sessions">
+      <Box id={contentId} hidden={!expanded}>
+        {expanded ? <Stack useFlexGap spacing="1rem" sx={{ mt: '1rem' }}>
       <Typography variant="body2">{t.security.sessionsIntro}</Typography>
       {sessions.pending ? (
         <Typography variant="body2">{t.security.sessionsLoading}</Typography>
@@ -83,8 +117,9 @@ export const ActiveSessions = ({
         </Typography>
       ) : null}
       {rows.map((session) => (
-        <Stack
+        <AccountSessionRow
           key={session.id}
+          data-current={session.current}
           direction={{ xs: 'column', sm: 'row' }}
           useFlexGap
           spacing="0.6rem"
@@ -92,7 +127,8 @@ export const ActiveSessions = ({
           data-testid={`session-${session.id}`}
         >
           <Box>
-            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <MonitorIcon />
               <Typography variant="body2">
                 {summarizeUserAgent(session.userAgent) ?? t.security.sessionUnknownDevice}
               </Typography>
@@ -101,12 +137,12 @@ export const ActiveSessions = ({
               ) : null}
             </Stack>
             <Typography variant="caption" component="p">
-              {t.security.sessionSignedInAt({ date: formatDateTime(session.createdAt, language) })}
-            </Typography>
-            <Typography variant="caption" component="p">
               {t.security.sessionLastActiveAt({
                 date: formatDateTime(session.lastActiveAt, language),
               })}
+            </Typography>
+            <Typography variant="caption" component="p">
+              {t.security.sessionSignedInAt({ date: formatDateTime(session.createdAt, language) })}
             </Typography>
           </Box>
           {session.current ? null : (
@@ -119,7 +155,7 @@ export const ActiveSessions = ({
               {revokeSession.pending ? t.security.sessionRevoking : t.security.sessionRevoke}
             </Button>
           )}
-        </Stack>
+        </AccountSessionRow>
       ))}
       {otherCount > 0 ? (
         <Box>
@@ -137,6 +173,8 @@ export const ActiveSessions = ({
           </Button>
         </Box>
       ) : null}
+        </Stack> : null}
+      </Box>
       {revokeSession.success ? (
         <Typography variant="caption" data-testid="session-revoked">
           {t.security.sessionRevoked}
@@ -162,8 +200,15 @@ export const ActiveSessions = ({
         </Box>
       ) : null}
       <Dialog
+        fullScreen={fullScreen}
+        fullWidth maxWidth="sm"
+        disableRestoreFocus={confirmedRevoke && presentation === 'account'}
+        slotProps={{ transition: { onExited: () => {
+          if (confirmedRevoke) summaryRef.current?.focus();
+          setConfirmedRevoke(false);
+        } } }}
         open={pendingRevoke !== null}
-        onClose={() => setPendingRevoke(null)}
+        onClose={() => { if (!operation.pending) setPendingRevoke(null); }}
         aria-labelledby={confirmTitleId}
         data-testid="revoke-sessions-confirm"
       >
@@ -172,16 +217,18 @@ export const ActiveSessions = ({
             ? t.security.sessionsRevokeOthersConfirmTitle
             : t.security.sessionRevokeConfirmTitle}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ flex: '0 1 auto' }}>
           <Typography variant="body2">
             {revokingOthers
               ? t.security.sessionsRevokeOthersConfirmBody
               : t.security.sessionRevokeConfirmBody}
           </Typography>
+          {operation.error ? <Alert severity="error">{localizeError(operation.error, t)}</Alert> : null}
         </DialogContent>
         <DialogActions>
           <Button
             variant="text"
+            disabled={operation.pending}
             data-testid="revoke-sessions-confirm-cancel"
             onClick={() => setPendingRevoke(null)}
           >
@@ -190,6 +237,7 @@ export const ActiveSessions = ({
           <Button
             variant="contained"
             color="error"
+            disabled={operation.pending}
             data-testid="revoke-sessions-confirm-accept"
             onClick={confirmRevoke}
           >
@@ -197,6 +245,8 @@ export const ActiveSessions = ({
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+    </Card>
     </Box>
   );
 };

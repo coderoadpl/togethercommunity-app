@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, Link as MuiLink, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { ReactionEmoji, ReactionSummary, SpaceFeedItem } from '#core/domain/index.js';
@@ -10,8 +10,9 @@ import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
+import { PostContent } from '../../components/ui/PostContent.js';
 import { formatRelativeTime } from '../../lib/format.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import {
   AuthorChip,
   DeletedPostText,
@@ -107,9 +108,7 @@ const FeedPost = ({
               />
             </Box>
           ) : (
-            <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`post-body-${item.id}`}>
-              <LinkifiedText text={item.body} />
-            </PostBody>
+            <PostContent html={item.bodyHtml} format={item.bodyFormat} sx={{ mt: '0.75rem' }} data-testid={`post-body-${item.id}`} />
           )}
         </Box>
 
@@ -197,7 +196,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
 const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const queryClient = useQueryClient();
 
   const spaces = useQuery(actions.spaces);
@@ -241,8 +240,8 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   const unauthorized = isUnauthorized(spaces.error) || isUnauthorized(feed.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const feedReadable = feed.isSuccess;
   useEffect(() => {
@@ -380,7 +379,7 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           disabled={banned}
           surface
           onSubmit={(body, reset) =>
-            create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
+            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat: 'plain' }, { onSuccess: () => reset() })
           }
           testId="space-composer"
         />

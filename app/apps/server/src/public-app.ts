@@ -164,6 +164,14 @@ const authEmailLanguage = async (
   return resolveEmailLanguage(member?.language, requested, settings?.defaultLanguage);
 };
 
+const platformAuthBaseUrl = (hostHeader: string, deps: AppDeps): string | null => {
+  const host = (hostHeader.split(':')[0] ?? '').replace(/\.+$/u, '').toLowerCase();
+  if (deps.platformHost === null || host !== deps.platformHost.toLowerCase()) return null;
+  const url = new URL(deps.appBaseUrl);
+  url.hostname = deps.platformHost;
+  return url.origin;
+};
+
 const withAuthDeliveryContext = async (
   c: Context,
   deps: AppDeps,
@@ -196,7 +204,8 @@ const withAuthDeliveryContext = async (
     await setContext({
       email,
       resolved,
-      baseUrl: await authLinkBaseUrl(resolved, deps),
+      baseUrl: platformAuthBaseUrl(c.req.header('host') ?? '', deps)
+        ?? await authLinkBaseUrl(resolved, deps),
       language: await authEmailLanguage(
         email,
         resolved,

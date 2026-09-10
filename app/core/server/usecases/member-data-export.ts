@@ -97,6 +97,7 @@ export const exportMyData = async (
       contextKind: post.contextKind,
       contextId: post.contextId,
       body: post.body,
+      bodyFormat: post.bodyFormat,
       createdAt: post.createdAt,
       editedAt: post.editedAt,
       deletedAt: post.deletedAt,

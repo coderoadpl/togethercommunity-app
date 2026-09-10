@@ -79,6 +79,7 @@ const post = (
   authorDisplay: 'Autor',
   authorIsStaff: false,
   body: `Body ${id}`,
+  bodyFormat: 'plain',
   createdAt,
   editedAt: null,
   deletedAt: null,
@@ -301,7 +302,7 @@ describe('member home feed', () => {
     expect(second.value.nextCursor).toBeNull();
   });
 
-  it('omits empty legacy and attributed deletions and retains roots with live replies', async () => {
+  it('lists legacy and attributed deletion tombstones without live replies', async () => {
     const f = fixture({ spaces: [space('s1')], posts: [
       post('legacy-empty', 's1', NOW, { deletedAt: NOW }),
       post('author-empty', 's1', NOW, { deletedAt: NOW, deletedBy: 'author' }),
@@ -311,7 +312,14 @@ describe('member home feed', () => {
     ] });
     const result = await getMemberHomeFeed(ctx(), {}, f.deps);
     if (!result.ok) throw new Error('Feed failed');
-    expect(result.value.items.map((item) => item.id).sort()).toEqual(['author-thread']);
+    expect(result.value.items.map((item) => item.id).sort()).toEqual([
+      'author-empty',
+      'author-thread',
+      'legacy-empty',
+      'moderator-empty',
+    ]);
+    expect(result.value.items.find((item) => item.id === 'author-empty')).toMatchObject({ body: '[deleted-post]', replyCount: 0 });
+    expect(result.value.items.find((item) => item.id === 'moderator-empty')).toMatchObject({ body: 'This post was deleted by a moderator.', replyCount: 0 });
   });
 
   it('masks a deleted root and carries its reaction summary', async () => {

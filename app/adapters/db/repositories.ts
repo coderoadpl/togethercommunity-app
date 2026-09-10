@@ -129,6 +129,7 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
+  AccountSecurityReader,
   SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -184,6 +185,7 @@ import {
   notifications,
   notificationFanoutJobs,
   orders,
+  passkey,
   postReactions,
   postReportEvents,
   postReports,
@@ -209,6 +211,7 @@ import {
   tenants,
   tenantAuditEvents,
   threadSubscriptions,
+  twoFactor,
   user,
 } from './schema.js';
 
@@ -1110,11 +1113,6 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
   },
 });
 
-const visiblePostThread = sql`(${posts.deletedAt} is null or exists (
-  select 1 from posts reply
-  where reply.tenant_id = ${posts.tenantId} and reply.root_post_id = ${posts.id} and reply.parent_post_id is not null and reply.deleted_at is null
-))`;
-
 export const createPostRepository = (db: Db): PostRepository => ({
   createPost: async (tenantId, post, fanoutJob) => {
     const row = await db.transaction(async (tx) => {
@@ -1191,7 +1189,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           sql`${posts.parentPostId} is null`,
-          visiblePostThread,
           ...(cursor === null
             ? []
             : [
@@ -1232,7 +1229,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, 'space'),
           inArray(posts.contextId, query.spaceIds),
           sql`${posts.parentPostId} is null`,
-          visiblePostThread,
           ...(cursor === null
             ? []
             : [sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`]),
@@ -1262,7 +1258,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
   updateBody: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ body: input.body, editedAt: input.editedAt })
+      .set({ body: input.body, bodyFormat: input.bodyFormat, editedAt: input.editedAt })
       .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), sql`${posts.deletedAt} is null`))
       .returning();
     const row = rows[0];
@@ -1332,7 +1328,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
             eq(posts.contextKind, query.contextKind),
             eq(posts.contextId, query.contextId),
             isNotNull(posts.pinnedAt),
-            visiblePostThread,
           ),
         )
         .orderBy(desc(posts.pinnedAt), desc(posts.id))
@@ -1348,7 +1343,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           isNotNull(posts.pinnedAt),
-          visiblePostThread,
         ),
       );
     return rows[0]?.value ?? 0;
@@ -1386,7 +1380,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const rows = await db
       .select({
         post: posts,
-        snippet: sql<string>`left(regexp_replace(${posts.body}, '\\s+', ' ', 'g'), 180)`,
       })
       .from(posts)
       .where(
@@ -1403,7 +1396,6 @@ export const createPostRepository = (db: Db): PostRepository => ({
       (row): PostSearchRow => ({
         post: parsePost(row.post),
         lessonId: row.post.contextId,
-        snippet: row.snippet,
       }),
     );
   },
@@ -4361,6 +4353,57 @@ export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
       ))
       .limit(1);
     return (rows[0]?.credentialId ?? null) !== null;
+  },
+  hasPasskey: async (tenantId, email) => {
+    const rows = await db
+      .select({ passkeyId: passkey.id })
+      .from(user)
+      .leftJoin(members, and(
+        eq(members.userId, user.id),
+        eq(members.tenantId, tenantId),
+        isNull(members.deletedAt),
+      ))
+      .leftJoin(tenantAdmins, and(
+        eq(tenantAdmins.userId, user.id),
+        eq(tenantAdmins.tenantId, tenantId),
+      ))
+      .leftJoin(passkey, eq(passkey.userId, user.id))
+      .where(and(
+        eq(user.email, normalizeEmail(email)),
+        or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
+      ))
+      .limit(1);
+    return (rows[0]?.passkeyId ?? null) !== null;
+  },
+});
+
+export const createAccountSecurityReader = (db: Db): AccountSecurityReader => ({
+  read: async (userId) => {
+    const [credentialRows, twoFactorRows] = await Promise.all([
+      db
+        .select({ id: account.id })
+        .from(account)
+        .where(and(
+          eq(account.userId, userId),
+          eq(account.providerId, 'credential'),
+          isNotNull(account.password),
+        ))
+        .limit(1),
+      db
+        .select({ enabled: user.twoFactorEnabled, verified: twoFactor.verified })
+        .from(user)
+        .leftJoin(twoFactor, and(
+          eq(twoFactor.userId, user.id),
+          eq(twoFactor.verified, true),
+        ))
+        .where(eq(user.id, userId))
+        .limit(1),
+    ]);
+    const twoFactorRow = twoFactorRows[0];
+    return {
+      hasPassword: credentialRows.length > 0,
+      twoFactorEnabled: twoFactorRow?.enabled === true && twoFactorRow.verified === true,
+    };
   },
 });
 

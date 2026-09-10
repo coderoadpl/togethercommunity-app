@@ -19,6 +19,7 @@ describe('linkify', () => {
     ['[https://courses.example.org/a?q=one&b=two#part]', 'https://courses.example.org/a?q=one&b=two#part'],
     ['http://courses.example.org/a,', 'http://courses.example.org/a'],
     ['www.courses.example.org/a;', 'https://www.courses.example.org/a'],
+    ['mailto:ola@example.org!', 'mailto:ola@example.org'],
   ])('links %s without surrounding punctuation', (text, href) => {
     const segments = linkify(text);
     expect(segments.map((segment) => segment.text).join('')).toBe(text);

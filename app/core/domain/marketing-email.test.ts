@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { marketingConsentConfirmationPl } from './marketing-email.pl.js';
+import { marketingConsentConfirmationPl, marketingFooterCopyPl } from './marketing-email.pl.js';
 import {
   bounceAction,
   buildEmailHeaders,
@@ -13,6 +13,8 @@ import {
   deriveMarketingEligibility,
   emailLayoutSchema,
   liftSuppression,
+  marketingFooterCopy,
+  consentDefinitionSchema,
   consentConfirmationTokenSchema,
   marketingConsentConfirmation,
   marketingConsentCreatorSchema,
@@ -95,6 +97,16 @@ describe('U1 consent state derivation', () => {
 });
 
 describe('U2 consent creator validation', () => {
+  it('accepts a trimmed nullable footer label on consent definitions', () => {
+    const parsed = consentDefinitionSchema.parse({
+      ...definition(true),
+      footerLabel: '  Product news  ',
+    });
+    expect(parsed.footerLabel).toBe('Product news');
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: null }).success).toBe(true);
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: 'x'.repeat(201) }).success).toBe(false);
+  });
+
   it('rejects required or pre-ticked marketing and channels other than the single email channel', () => {
     const valid = { kind: 'optional_marketing', channel: 'email', required: false, preTicked: false };
     expect(marketingConsentCreatorSchema.safeParse(valid).success).toBe(true);
@@ -239,12 +251,17 @@ describe('U8 campaign state machine', () => {
 
 describe('U9 bounce classification', () => {
   it('classifies bounce and complaint events with fixed threshold actions', () => {
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', status: '5.1.1' })).toBe('hard');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', status: '4.2.2' })).toBe('soft');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', status: '5.4.4' })).toBe('hard');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Unknown', status: null })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', bounceSubType: 'General', status: '5.1.1' })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', bounceSubType: 'Suppressed', status: null })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'General', status: '4.2.2' })).toBe('soft');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'MailboxFull', status: null })).toBe('soft');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'General', status: '5.4.4' })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Undetermined', bounceSubType: 'Undetermined', status: null })).toBe('unresolved');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Unknown', bounceSubType: null, status: null })).toBe('unresolved');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Sidetracked', bounceSubType: 'Whatever', status: null })).toBe('unresolved');
     expect(classifySesEvent({ kind: 'complaint' })).toBe('complaint');
     expect(bounceAction('soft')).toEqual({ threshold: 2, suppress: false, permanent: false });
+    expect(bounceAction('unresolved')).toEqual({ threshold: 1, suppress: false, permanent: false });
     expect(bounceAction('hard')).toEqual({ threshold: 1, suppress: true, permanent: false });
     expect(bounceAction('complaint')).toEqual({ threshold: 1, suppress: true, permanent: true });
   });
@@ -307,6 +324,21 @@ describe('SES identity freshness', () => {
         now,
       ),
     ).toBe('stale');
+  });
+});
+
+describe('marketing footer copy', () => {
+  it('uses Polish unsubscribe and consent basis copy for Polish tenants', () => {
+    expect(marketingFooterCopy('pl')).toEqual(marketingFooterCopyPl);
+  });
+
+  it('falls back to English for unsupported or missing languages', () => {
+    expect(marketingFooterCopy('de')).toEqual({
+      unsubscribe: 'Unsubscribe',
+      basisPrefix: 'You receive this message based on your consent: “',
+      basisSuffix: '”.',
+    });
+    expect(marketingFooterCopy(undefined).unsubscribe).toBe('Unsubscribe');
   });
 });
 

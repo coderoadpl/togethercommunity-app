@@ -15,6 +15,82 @@ const fixture = directoryTestFixtures['panel-marketing-contacts'];
 
 const page = marketingDirectoryContracts.listMarketingContacts.output.parse(fixtureValue(fixture, 'listMarketingContacts'));
 describe('marketing contacts', () => {
+  it('distinguishes an empty directory from filters with no matches', async () => {
+    installDirectoryFixture(fixture);
+    server.use(http.get('/api/marketing/contacts', () => HttpResponse.json({ ok: true, data: { contacts: [], nextCursor: null } })));
+    await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
+    expect(await screen.findByText(en.directory.emptyDirectoryTitle)).toBeInTheDocument();
+    expect(screen.getByText(en.directory.emptyDirectoryBody)).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: en.directory.consentState })).not.toBeInTheDocument();
+    expect(screen.queryByText(en.directory.empty)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: en.directory.contactsTitle })).toHaveLength(1);
+  });
+
+  it('clears filters from the filtered empty state', async () => {
+    installDirectoryFixture(fixture);
+    const requests: URL[] = [];
+    server.use(http.get('/api/marketing/contacts', ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(url);
+      return HttpResponse.json({ ok: true, data: url.searchParams.get('search') === 'Anna' ? { contacts: [], nextCursor: null } : page });
+    }));
+    await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
+    expect(await screen.findByRole('row', { name: /Anna Example/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Anna' } });
+    await waitFor(() => expect(screen.getByText(en.directory.empty)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: en.directory.clearFilters }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.has('search')).toBe(false));
+    expect(requests.at(-1)?.searchParams.get('limit')).toBe('50');
+    expect(requests.at(-1)?.searchParams.get('archived')).toBe('false');
+    expect(requests.at(-1)?.searchParams.has('consentDefinitionId')).toBe(false);
+  });
+
+  it('defaults the consent definition when one active marketing definition exists', async () => {
+    installDirectoryFixture(fixture);
+    const requests: URL[] = [];
+    server.use(http.get('/api/marketing/contacts', ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(url);
+      const contacts = page.contacts.map((contact) => ({ ...contact, consentState: contact.id === 'contact-anna' ? 'active' : 'none' }));
+      return HttpResponse.json({ ok: true, data: { ...page, contacts } });
+    }));
+    await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
+    await waitFor(() => expect(requests.some((url) => url.searchParams.get('consentDefinitionId') === 'definition-news')).toBe(true));
+    expect(screen.getByRole('combobox', { name: en.directory.consentState })).toBeEnabled();
+    expect(screen.queryByText(en.directory.selectConsent)).not.toBeInTheDocument();
+    expect(await screen.findByText(en.directory.activeConsent)).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /Anna Example/ });
+    expect(within(row).getByRole('link', { name: 'Anna Example' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('combobox', { name: en.directory.consentDefinition }));
+    await userEvent.click(screen.getByRole('option', { name: en.directory.all }));
+    await waitFor(() => expect(requests.at(-1)?.searchParams.has('consentDefinitionId')).toBe(false));
+    expect(screen.getAllByText('—')).toHaveLength(page.contacts.length);
+  });
+
+  it('shows unselected consent state once when multiple active definitions exist', async () => {
+    installDirectoryFixture(fixture);
+    server.use(
+      http.get('/api/marketing/consent-definitions', () => HttpResponse.json({ ok: true, data: { definitions: [
+        { id: 'definition-news', tenantId: 'tenant-studio', key: 'directory-news', kind: 'optional_marketing', channel: 'email', doubleOptIn: false, documentRef: { mode: 'url', url: 'https://courses.example.org/privacy' }, status: 'active', createdAt: '2026-07-01T12:00:00.000Z', updatedAt: '2026-07-01T12:00:00.000Z' },
+        { id: 'definition-events', tenantId: 'tenant-studio', key: 'directory-events', kind: 'optional_marketing', channel: 'email', doubleOptIn: false, documentRef: { mode: 'url', url: 'https://courses.example.org/privacy' }, status: 'active', createdAt: '2026-07-01T12:00:00.000Z', updatedAt: '2026-07-01T12:00:00.000Z' },
+      ] } })),
+      http.get('/api/marketing/contacts', () => HttpResponse.json({ ok: true, data: { ...page, contacts: page.contacts.map((contact) => ({ ...contact, consentState: 'active' })) } })),
+    );
+    await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
+    expect(await screen.findByText(en.directory.selectConsent)).toBeInTheDocument();
+    expect(screen.getAllByText(en.directory.selectConsent)).toHaveLength(1);
+    expect(screen.getAllByText('—')).toHaveLength(page.contacts.length);
+  });
+
+  it('explains why the consent-state filter is disabled', async () => {
+    installDirectoryFixture(fixture);
+    server.use(http.get('/api/marketing/consent-definitions', () => HttpResponse.json({ ok: true, data: { definitions: [] } })));
+    await renderDirectory(ContactsPanel, '/panel/marketing/contacts');
+    expect(await screen.findByRole('combobox', { name: en.directory.consentState })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText(en.directory.consentStateDisabledHint)).toBeInTheDocument();
+  });
+
   it('returns from page four to page three and resets history with filters', async () => {
     installDirectoryFixture(fixture);
     const cursors: (string | null)[] = [];
@@ -54,7 +130,7 @@ describe('marketing contacts', () => {
     await userEvent.click(screen.getByRole('combobox', { name: en.directory.suppression }));
     await userEvent.click(screen.getByRole('option', { name: en.directory.notSuppressed }));
     await waitFor(() => expect(requests.at(-1)?.searchParams.get('suppressed')).toBe('false'));
-    expect(requests.at(-1)?.searchParams.has('consentDefinitionId')).toBe(false);
+    expect(requests.at(-1)?.searchParams.get('consentDefinitionId')).toBe('definition-news');
   });
 
   it('archives a contact and invalidates only the current tenant directory', async () => {

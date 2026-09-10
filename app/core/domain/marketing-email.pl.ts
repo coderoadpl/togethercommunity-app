@@ -5,3 +5,9 @@ export const marketingConsentConfirmationPl = (input: { wording: string; confirm
     text: `Cześć!\n\nPotwierdź, że chcesz otrzymywać od nas wiadomości w zakresie:\n\n${input.wording}\n\nPotwierdzam zgodę: ${input.confirmationUrl}\n\nJeśli to nie Ty zapisujesz się na te wiadomości, zignoruj tę wiadomość.`,
   };
 };
+
+export const marketingFooterCopyPl = {
+  unsubscribe: 'Wypisz się',
+  basisPrefix: 'Wysyłamy Ci tę wiadomość na podstawie zgody: „',
+  basisSuffix: '”.',
+} as const;

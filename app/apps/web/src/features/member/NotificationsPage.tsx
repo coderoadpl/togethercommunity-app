@@ -9,6 +9,7 @@ import type { Notification } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { ListSection, PanelPage, type PageState } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { NotificationList } from '../../NotificationList.js';
 import { notificationTarget, useNotificationNavigation } from '../../notification-links.js';
 import { useNotifications } from '../../notifications-data.js';
@@ -28,6 +29,7 @@ export const NotificationsPage = ({
 }: { filter?: NotificationsFilter; basePath?: NotificationsBasePath } = {}) => {
   const t = useTranslations();
   const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const navigateToTarget = useNotificationNavigation();
   const { impersonating, unread, unreadCount, markRead, markAllRead } = useNotifications();
 
@@ -37,8 +39,8 @@ export const NotificationsPage = ({
 
   const unauthorized = isUnauthorized(list.error) || isUnauthorized(unread.error);
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const openNotification = (notification: Notification) => {
     if (notification.readAt === null && !impersonating) markRead.mutate({ id: notification.id });

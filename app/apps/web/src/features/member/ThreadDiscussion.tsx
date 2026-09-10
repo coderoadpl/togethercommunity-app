@@ -19,12 +19,11 @@ import {
   NotificationDot,
   PendingPostBox,
   PostAuthorName,
-  PostBody,
   PostMetaText,
   PostToolbarButton,
   ReplyIndent,
 } from '../../theme.js';
-import { LinkifiedText } from '../../components/ui/LinkifiedText.js';
+import { PostContent } from '../../components/ui/PostContent.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
@@ -207,9 +206,7 @@ interface ThreadActions {
 const PendingPostView = ({ author, body }: { author: string; body: string }) => (
   <PendingPostBox data-testid="pending-post">
     <PostAuthorName component="span">{author}</PostAuthorName>
-    <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }}>
-      <LinkifiedText text={body} />
-    </PostBody>
+    <PostContent plainText={body} sx={{ mt: '0.75rem' }} />
   </PendingPostBox>
 );
 
@@ -257,9 +254,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
           />
         </Box>
       ) : (
-        <PostBody variant="body1" component="p" sx={{ mt: '0.75rem' }} data-testid={`post-body-${post.id}`}>
-          <LinkifiedText text={post.body} />
-        </PostBody>
+        <PostContent html={post.bodyHtml} format={post.bodyFormat} sx={{ mt: '0.75rem' }} data-testid={`post-body-${post.id}`} />
       )}
 
       {deleted && a.viewer?.canModerate ? (
@@ -507,7 +502,7 @@ export const ThreadDiscussion = ({
     setEditingId,
     submitReply: (parent, body, reset) => {
       create.mutate(
-        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body },
+        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat: 'plain' },
         {
           onSuccess: () => {
             reset();
@@ -636,7 +631,7 @@ export const ThreadDiscussion = ({
               surface
               onSubmit={(body, reset) => {
                 create.mutate(
-                  { contextKind: context.contextKind, contextId: context.contextId, body },
+                  { contextKind: context.contextKind, contextId: context.contextId, body, bodyFormat: 'plain' },
                   { onSuccess: () => reset() },
                 );
               }}

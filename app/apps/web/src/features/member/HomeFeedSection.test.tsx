@@ -41,6 +41,9 @@ const item = (
   spaceId: 's1',
   spaceName: 'General',
   ...overrides,
+  bodyFormat: overrides.bodyFormat ?? 'plain',
+  bodyHtml: overrides.bodyHtml ?? overrides.body ?? `Content ${id}`,
+  bodyPlainText: overrides.bodyPlainText ?? overrides.body ?? `Content ${id}`,
 });
 
 const okFeed = (
@@ -97,14 +100,14 @@ describe('HomeFeedSection', () => {
     expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
   });
 
-  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+  it('confirms deletion and keeps an empty own root as a tombstone without reloading', async () => {
     let post = item('p1', { isOwn: true });
     const deletedIds: string[] = [];
     server.use(
       okMe(),
       http.get('/api/member/home-feed', () => HttpResponse.json({
         ok: true,
-        data: { feed: { items: post.deletedAt === null ? [post] : [], nextCursor: null } },
+        data: { feed: { items: [post], nextCursor: null } },
       })),
       http.delete('/api/posts/:postId', ({ params }) => {
         deletedIds.push(String(params['postId']));
@@ -125,9 +128,9 @@ describe('HomeFeedSection', () => {
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
     await userEvent.click(screen.getByTestId('confirm-delete-post'));
-    await waitFor(() => expect(screen.queryByTestId('home-feed-post-p1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('home-feed-deleted-p1')).toHaveTextContent(en.discussion.deletedPost));
     expect(deletedIds).toEqual(['p1']);
-    expect(screen.getByTestId('start-feed-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-feed-empty')).not.toBeInTheDocument();
   });
 
   it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {
@@ -161,7 +164,14 @@ describe('HomeFeedSection', () => {
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
         expect(input.id).toBe('p1');
-        post = { ...post, body: input.body, editedAt: '2026-08-12T11:00:00.000Z' };
+        expect(input.bodyFormat).toBeUndefined();
+        post = {
+          ...post,
+          body: input.body,
+          bodyHtml: input.body,
+          bodyPlainText: input.body,
+          editedAt: '2026-08-12T11:00:00.000Z',
+        };
         return HttpResponse.json({ ok: true, data: { post } });
       }),
     );
@@ -189,7 +199,7 @@ describe('HomeFeedSection', () => {
               reactions: [{ emoji: '👍', count: 2, viewerReacted: false }],
               authorAvatarUrl: 'https://cdn.test/ada.png',
             }),
-            item('p2', { spaceId: 's2', spaceName: 'Club', contextId: 's2', body: 'See https://courses.example.org/guide.' }),
+            item('p2', { spaceId: 's2', spaceName: 'Club', contextId: 's2', body: 'See https://courses.example.org/guide.', bodyHtml: `See <a href="https://courses.example.org/guide" target="_blank" rel="noopener noreferrer nofollow ugc">https://courses.example.org/guide</a>.` }),
           ],
           nextCursor: null,
         },
@@ -228,7 +238,7 @@ describe('HomeFeedSection', () => {
     });
     expect(bodyLink).toHaveAttribute('href', 'https://courses.example.org/guide');
     expect(bodyLink).toHaveAttribute('target', '_blank');
-    expect(bodyLink).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(bodyLink).toHaveAttribute('rel', 'noopener noreferrer nofollow ugc');
     expect(within(other).queryByTestId('user-avatar-image')).toBeNull();
     expect(within(other).getByTestId('user-avatar')).toHaveTextContent('AN');
     expect(within(other).getByTestId('home-feed-space-p2')).toHaveAttribute('href', '/community/s2');

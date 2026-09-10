@@ -1,5 +1,6 @@
-import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Alert, Button, Chip, Stack } from '@mui/material';
 
+import { AccountWrappingText } from '../../theme.js';
 import { useTranslations } from '../../i18n/index.js';
 import { useToastOutcome } from './Toast.js';
 
@@ -52,12 +53,13 @@ export const EmailVerificationStatus = ({
   );
 
   return (
-    <Stack useFlexGap spacing="0.8rem" data-testid="email-verification-status">
-      <Typography variant="body2">
+    <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem" sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', flexWrap: 'wrap' }} data-testid="email-verification-status">
+      <Chip size="small" variant="outlined" color={emailVerified ? 'success' : 'warning'} label={emailVerified ? t.account.verified : t.account.unverified} />
+      <AccountWrappingText variant="body2" component="div" sx={{ minWidth: 0, flex: 1 }}>
         {emailVerified
           ? t.emailVerification.verifiedStatus
           : t.emailVerification.pending({ email })}
-      </Typography>
+      </AccountWrappingText>
       {!emailVerified ? (
         <Button
           variant="outlined"

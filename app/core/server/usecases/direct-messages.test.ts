@@ -116,6 +116,7 @@ const post = (overrides: Partial<Post> & { id: string; authorUserId: string }): 
   authorDisplay: 'Autor',
   authorIsStaff: false,
   body: 'Wpis',
+  bodyFormat: 'plain',
   createdAt: NOW,
   editedAt: null,
   deletedAt: null,

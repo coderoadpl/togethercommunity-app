@@ -59,6 +59,8 @@ import {
   type ProductGrant,
   type Space,
   type SpaceEvent,
+  type StorageConfiguration,
+  type StorageCorsCacheEntry,
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
@@ -157,6 +159,8 @@ const deps = (input: {
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
+  accountSecurity?: { hasPassword: boolean; twoFactorEnabled: boolean };
+  passkeyAccounts?: readonly string[];
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -840,6 +844,11 @@ const deps = (input: {
     signInMethods: {
       hasCredentialAccount: async (_tenantId, email) =>
         (input.passwordAccounts ?? []).includes(email),
+      hasPasskey: async (_tenantId, email) =>
+        (input.passkeyAccounts ?? []).includes(email),
+    },
+    accountSecurity: {
+      read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
@@ -912,6 +921,7 @@ const scopedApp = (
     authorDisplay: 'Author',
     authorIsStaff: false,
     body: 'Pinned',
+    bodyFormat: 'plain',
     createdAt: '1998-07-12T00:00:00.000Z',
     editedAt: null,
     deletedAt: null,
@@ -2078,7 +2088,7 @@ describe('marketing HTTP surfaces', () => {
     const body = await response.text();
     expect(body).toContain('Immutable terms');
     expect(nonce).toBeDefined();
-    expect(body).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
+    expect(body).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(body).not.toContain('together-theme-mode');
   });
 
@@ -2098,6 +2108,27 @@ describe('marketing HTTP surfaces', () => {
     expect(post.status).toBe(200);
     expect(await post.text()).toContain('Unsubscribe confirmed');
     expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).at(-1)?.status).toBe('withdrawn');
+  });
+
+  it('posts the rendered preference presence field through the public route', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const app = marketingApp(marketing);
+    const get = await app.request('/u/unsubscribe_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    const page = await get.text();
+    expect(page).toContain('name="present-consent" value="definition-news"');
+    expect(page).toContain('name="consent" value="definition-news" checked');
+
+    const post = await app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ 'present-consent': 'definition-news' }),
+    });
+    expect(post.status).toBe(200);
+    expect(await post.text()).toContain('Preferences saved');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test'))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
   });
 
   it('keeps RFC one-click POST empty and requires an idempotent DOI confirmation POST', async () => {
@@ -2200,6 +2231,88 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(200);
     expect((await settings.findByTenant('t-acme'))?.webhookVerifiedAt).toBeNull();
     expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'pending' }]);
+  });
+
+  it('preserves bounce diagnostics through durable webhook processing', async () => {
+    const marketing = marketingDeps();
+    const now = '1998-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-undetermined', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Undetermined bounce', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-undetermined',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
+    }]);
+    const message = {
+      eventType: 'Bounce',
+      mail: { messageId: 'ses-undetermined', timestamp: now },
+      bounce: {
+        timestamp: now,
+        bounceType: 'Undetermined',
+        bounceSubType: 'Undetermined',
+        bouncedRecipients: [{
+          emailAddress: 'member@example.test',
+          status: '5.0.0',
+          diagnosticCode: 'smtp; 250 automated response',
+          action: 'failed',
+        }],
+      },
+    };
+    marketing.sns = new FakeSnsVerifier(ok({
+      messageId: 'sns-undetermined', type: 'Notification', topicArn,
+      message: JSON.stringify(message), subscribeUrl: null,
+    }));
+
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST',
+      body: JSON.stringify({ Message: JSON.stringify(message) }),
+    });
+    const workerDeps = deps();
+    const processed = await processMarketingSnsInbox({
+      identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
+        tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
+        memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
+      capabilities: capabilitiesForPrincipal('webhook'),
+    }, { workerId: 'worker', deadlineAt: '1998-07-22T00:00:50.000Z', maxEvents: 10 }, {
+      ...marketing, sends: marketing.campaignSends, outbox: workerDeps.emailOutbox,
+      credentials: marketing.marketingCredentials, clock: { nowIso: () => now }, ids: workerDeps.ids,
+    });
+
+    expect(response.status).toBe(200);
+    expect(processed).toEqual(ok({ processed: 1, retried: 0 }));
+    expect(await sends.correlateBySesMessageId('t-acme', 'ses-undetermined'))
+      .toMatchObject({ deliveryStatus: null, deliveryOccurredAt: null });
+    expect((await events.listByRef('t-acme', 'marketing', 'send-undetermined')).at(-1)).toMatchObject({
+      type: 'bounced',
+      meta: {
+        classification: 'unresolved',
+        rawProviderPayload: {
+          bounce: {
+            bounceSubType: 'Undetermined',
+            bouncedRecipients: [{
+              diagnosticCode: 'smtp; 250 automated response',
+              action: 'failed',
+            }],
+          },
+        },
+      },
+    });
   });
 
   it('durably records engagement receipts before event application', async () => {
@@ -2941,6 +3054,82 @@ describe('tenant domain check route', () => {
     expect(response.status).toBe(200);
     expect(checkTenantDomains).toHaveBeenCalledOnce();
   });
+
+  it('checks storage CORS for one verified custom domain through the tenant route', async () => {
+    const storageConfiguration: StorageConfiguration = {
+      provider: 'minio',
+      endpoint: 'https://storage.example.test',
+      region: 'us-east-1',
+      bucket: 'tenant-assets',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+    };
+    const writes: Array<{ tenantId: string; entry: StorageCorsCacheEntry }> = [];
+    let cachedCors: StorageCorsCacheEntry | null = null;
+    const probeCors = vi.fn(async (_configuration: StorageConfiguration, origins: string[]) =>
+      origins.map((origin) => ({ origin, status: 'blocked' as const })),
+    );
+    const app = scopedApp('owner', {
+      overrides: {
+        tenantDomains: tenantDomainRepositoryStub({
+          listByTenant: async (tenantId) => [tenantDomainFixture({
+            id: 'domain-1',
+            tenantId,
+            domain: 'courses.acme.example',
+            verified: true,
+          })],
+        }),
+        secretResolver: {
+          resolve: async (_tenantId, key) =>
+            key === 's3.configuration'
+              ? ok(JSON.stringify(storageConfiguration))
+              : err(notFound(`No secret "${key}"`)),
+        },
+        storage: {
+          objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+          probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+          probeCors,
+          presignPut: (input) => ok(input.url),
+          presignGet: (input) => ok(input.url),
+          delete: async () => ok({ deleted: true }),
+          head: async () => ok({ sizeBytes: 1 }),
+          healthcheck: async () => ok({ healthy: true }),
+          test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+        },
+        storageCorsCache: {
+          read: async () => cachedCors,
+          write: async (tenantId, entry) => {
+            cachedCors = entry;
+            writes.push({ tenantId, entry });
+          },
+        },
+      },
+    });
+
+    const response = await app.request(API_PATHS.tenantDomainStorageCorsCheck, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ domain: 'courses.acme.example' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        routing: {
+          customDomains: [{ domain: 'courses.acme.example', storageCorsStatus: 'blocked' }],
+        },
+      },
+    });
+    expect(probeCors).toHaveBeenCalledExactlyOnceWith(storageConfiguration, ['https://courses.acme.example']);
+    expect(writes).toEqual([{
+      tenantId: acme.id,
+      entry: {
+        checkedAt: '1998-07-12T00:00:00.000Z',
+        results: [{ origin: 'https://courses.acme.example', status: 'blocked' }],
+      },
+    }]);
+  });
 });
 
 describe('health route', () => {
@@ -3389,6 +3578,18 @@ describe('server edge security baseline', () => {
     });
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('projects account security fields through GET /api/me', async () => {
+    const read = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const app = scopedApp('member', { overrides: { accountSecurity: { read } } });
+    const response = await app.request(API_PATHS.me, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { userId: 'user-1', hasPassword: true, twoFactorEnabled: true },
+    });
+    expect(read).toHaveBeenCalledExactlyOnceWith('user-1');
   });
 });
 
@@ -5263,6 +5464,7 @@ describe('anonymous public surface routes', () => {
     authorDisplay: 'Author',
     authorIsStaff: false,
     body: `Body ${id}`,
+    bodyFormat: 'plain',
     createdAt: '1998-07-12T00:00:00.000Z',
     editedAt: null,
     deletedAt: null,
@@ -5852,6 +6054,18 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toEqual({
       ok: true,
       data: { methods: ['password', 'magic-link'] },
+    });
+  });
+
+  it('offers passkey when the tenant account has one registered', async () => {
+    const app = buildApp(deps({ passkeyAccounts: ['creator@together.dev'] }));
+
+    const response = await resolve(app, 'creator@together.dev');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { methods: ['passkey', 'magic-link'] },
     });
   });
 
@@ -6841,6 +7055,27 @@ describe('tenant-host magic links on checkout', () => {
 });
 
 describe('tenant-host magic links on login', () => {
+  it('sets the platform origin from the configured platform host', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'start.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'new@together.dev', callbackURL: 'http://start.localhost:48730/' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://start.localhost:48730',
+    });
+    expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+
   it('sets the tenant name, language and host from the subdomain request', async () => {
     const { app, captured } = capturingApp();
 
@@ -7290,7 +7525,8 @@ describe('impersonation HTTP surface', () => {
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
-    const { app, audit } = impersonatingApp();
+    const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const { app, audit } = impersonatingApp({ accountSecurity: { read: accountSecurityRead } });
 
     const started = await app.request(API_PATHS.impersonationStart, {
       method: 'POST',
@@ -7309,8 +7545,14 @@ describe('impersonation HTTP surface', () => {
 
     const me = await app.request(API_PATHS.me, { headers: impersonated });
     expect(await me.json()).toMatchObject({
-      data: { tenant: { memberId: 'member-1', staffRole: null }, impersonation: { subjectMemberId: 'member-1' } },
+      data: {
+        hasPassword: false,
+        twoFactorEnabled: false,
+        tenant: { memberId: 'member-1', staffRole: null },
+        impersonation: { subjectMemberId: 'member-1' },
+      },
     });
+    expect(accountSecurityRead).not.toHaveBeenCalled();
 
     const write = await app.request(API_PATHS.postsCreate, {
       method: 'POST',

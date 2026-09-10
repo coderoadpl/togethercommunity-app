@@ -4,7 +4,7 @@ import type { Post } from '#core/domain/index.js';
 
 import type { Db } from './client.js';
 import { createPostRepository } from './repositories.js';
-import { tenants } from './schema.js';
+import { posts, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -31,6 +31,7 @@ const post = (id: string, body: string): Post => ({
   authorDisplay: 'Author',
   authorIsStaff: false,
   body,
+  bodyFormat: 'plain',
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -62,6 +63,11 @@ beforeAll(async () => {
   await repo.createPost(TENANT_ID, post('p1', 'Variable scope in JavaScript'));
   await repo.createPost(TENANT_ID, post('p2', 'Variable declaration and types'));
   await repo.createPost(TENANT_ID, post('p3', 'Higher-order functions'));
+  await db.insert(posts).values({
+    ...post('p4', 'Legacy database default'),
+    bodyFormat: undefined,
+  });
+  await repo.createPost(TENANT_ID, { ...post('p5', '**Markdown persistence**'), bodyFormat: 'markdown' });
 });
 
 describe('post search prefix matching', () => {
@@ -82,5 +88,11 @@ describe('post search prefix matching', () => {
 
   it('returns nothing for an unrelated stem', async () => {
     expect(await bodiesFor('camper')).toEqual([]);
+  });
+
+  it('persists explicit formats and reads the database default as plain', async () => {
+    const repo = createPostRepository(db);
+    await expect(repo.findById(TENANT_ID, 'p4')).resolves.toMatchObject({ bodyFormat: 'plain' });
+    await expect(repo.findById(TENANT_ID, 'p5')).resolves.toMatchObject({ bodyFormat: 'markdown' });
   });
 });

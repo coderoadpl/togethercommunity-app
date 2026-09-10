@@ -164,17 +164,64 @@ describe('browser magic-link request', () => {
 
     expect(await auth.requestMagicLink({
       email: 'member@example.com',
-      callbackURL: 'https://studio.example/my',
+      callbackURL: 'https://studio.example/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
       language: 'en',
     })).toEqual({ ok: true, value: undefined });
 
     const [, init] = fetch.mock.calls[0] ?? [];
     expect(JSON.parse(String(init?.body))).toEqual({
       email: 'member@example.com',
-      callbackURL: 'https://studio.example/my',
-      errorCallbackURL: 'https://studio.example/login?error=INVALID_TOKEN',
+      callbackURL: 'https://studio.example/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+      errorCallbackURL: 'https://studio.example/login?error=INVALID_TOKEN&returnTo=%2Fmy%2Fcourses%2Fc1',
     });
     expect(new Headers(init?.headers).get('x-together-language')).toBe('en');
+  });
+
+  it('builds the error callback for a relative callback URL', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('https://studio.example');
+
+    expect(await auth.requestMagicLink({
+      email: 'member@example.com',
+      callbackURL: '/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+    })).toEqual({ ok: true, value: undefined });
+
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'member@example.com',
+      callbackURL: '/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+      errorCallbackURL: 'https://studio.example/login?error=INVALID_TOKEN&returnTo=%2Fmy%2Fcourses%2Fc1',
+    });
+  });
+});
+
+describe('browser Google sign-in', () => {
+  it('sends the callback URL to Better Auth', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ redirect: false }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('https://studio.example');
+
+    expect(await auth.signInWithGoogle({
+      callbackURL: 'https://studio.example/my/courses/c1/lessons/l1',
+    })).toEqual({ ok: true, value: undefined });
+
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toEqual(new URL('https://studio.example/api/auth/sign-in/social'));
+    expect(JSON.parse(String(init?.body))).toEqual({
+      provider: 'google',
+      callbackURL: 'https://studio.example/my/courses/c1/lessons/l1',
+    });
   });
 });
 

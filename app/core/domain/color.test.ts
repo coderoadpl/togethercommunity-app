@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, deriveLightAccent, relativeLuminance } from './color.js';
+import { contrastRatio, deriveDarkAccent, deriveLightAccent, relativeLuminance } from './color.js';
 
 const ACCENTS = ['#F5C842', '#FFC42B', '#ff0000', '#00ff00', '#0000ff', '#00ffff', '#ff00ff', '#808080', '#ffffff', '#000000', '#0E7490'];
 const BACKGROUNDS = ['#FFFFFF', '#F7F4EF', '#F4F4F2', '#FAFAF9'];
@@ -37,5 +37,26 @@ describe('brand colors', () => {
     const backgrounds = ['#f6f2ea', '#fdfbf6'];
     const derived = deriveLightAccent('#F5C842', backgrounds);
     for (const background of backgrounds) expect(contrastRatio(derived, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  describe('deriveDarkAccent', () => {
+    it('returns an accent that already passes unchanged', () => {
+      expect(deriveDarkAccent('#F5C842')).toBe('#F5C842');
+    });
+
+    it('lightens dark accents for every dark surface', () => {
+      const accent = '#0E7490';
+      const derived = deriveDarkAccent(accent);
+      expect(derived).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(relativeLuminance(derived)).toBeGreaterThan(relativeLuminance(accent));
+      for (const background of ['#0F1012', '#17181B', '#1B1D20']) {
+        expect(contrastRatio(derived, background)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('is idempotent after deriving a readable dark accent', () => {
+      const derived = deriveDarkAccent('#0E7490');
+      expect(deriveDarkAccent(derived)).toBe(derived);
+    });
   });
 });

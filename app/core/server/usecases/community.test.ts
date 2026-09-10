@@ -323,10 +323,13 @@ class FakePosts implements PostRepository {
     return this.rows.filter((post) => post.tenantId === tenantId && post.rootPostId === rootPostId && post.parentPostId !== null);
   }
 
-  async updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null> {
+  async updateBody(
+    tenantId: string,
+    input: { id: string; body: string; bodyFormat: Post['bodyFormat']; editedAt: string },
+  ): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, body: input.body, editedAt: input.editedAt };
+    const next = { ...post, body: input.body, bodyFormat: input.bodyFormat, editedAt: input.editedAt };
     this.replace(next);
     return next;
   }
@@ -1103,7 +1106,7 @@ describe('community use-cases', () => {
     expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
-  it.each([false, true])('hides legacy deleted roots with only deleted replies: %s', async (withReply) => {
+  it.each([false, true])('lists legacy deleted roots with only deleted replies: %s', async (withReply) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
     const created = await createPost(ctx(), { ...input, body: 'Legacy content' }, d);
@@ -1118,7 +1121,10 @@ describe('community use-cases', () => {
     stored.deletedAt = NOW;
     delete stored.deletedBy;
     delete stored.deletedByUserId;
-    expect(await listDiscussion(ctx(), input, d)).toMatchObject({ ok: true, value: { threads: [] } });
+    const listed = await listDiscussion(ctx(), input, d);
+    expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]', replyCount: 0 }] } });
+    if (!listed.ok) throw new Error('Discussion failed');
+    expect(listed.value.threads[0]?.replies).toHaveLength(withReply ? 1 : 0);
   });
 
   it('denies author purge and lets staff remove a tombstone and its descendants', async () => {
@@ -1147,12 +1153,12 @@ describe('community use-cases', () => {
   });
 
   it.each([
-    { own: true, staffRole: null, replies: false, visible: false, deletedBy: 'author' },
-    { own: true, staffRole: 'admin', replies: false, visible: false, deletedBy: 'author' },
-    { own: true, staffRole: null, replies: true, visible: true, deletedBy: 'author' },
-    { own: false, staffRole: 'owner', replies: false, visible: false, deletedBy: 'moderator' },
-    { own: false, staffRole: 'admin', replies: true, visible: true, deletedBy: 'moderator' },
-  ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, visible, deletedBy }) => {
+    { own: true, staffRole: null, replies: false, deletedBy: 'author' },
+    { own: true, staffRole: 'admin', replies: false, deletedBy: 'author' },
+    { own: true, staffRole: null, replies: true, deletedBy: 'author' },
+    { own: false, staffRole: 'owner', replies: false, deletedBy: 'moderator' },
+    { own: false, staffRole: 'admin', replies: true, deletedBy: 'moderator' },
+  ] as const)('preserves deletion provenance and thread visibility: $deletedBy, replies=$replies, staff=$staffRole', async ({ own, staffRole, replies, deletedBy }) => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;
     const root = await createPost(ctx(), { ...input, body: 'Private original' }, d);
@@ -1173,13 +1179,10 @@ describe('community use-cases', () => {
     expect(await d.posts.findById('t1', root.value.id)).toMatchObject({ deletedBy, deletedByUserId: actor.identity.userId });
     const listed = await listDiscussion(ctx(), input, d);
     if (!listed.ok) throw new Error('Discussion failed');
-    expect(listed.value.threads).toHaveLength(visible ? 1 : 0);
-    if (visible) {
-      expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
-      if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
-    } else {
-      expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
-    }
+    expect(listed.value.threads).toHaveLength(1);
+    expect(listed.value.threads[0]).toMatchObject({ deletedBy, replyCount: replies ? 1 : 0 });
+    if (replies) expect(listed.value.threads[0]?.replies[0]).toMatchObject({ deletedAt: null });
+    expect(await createPost(ctx(), { ...input, parentPostId: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: true });
     expect(await editPost(ctx(), { id: root.value.id, body: 'Revive' }, d)).toMatchObject({ ok: false });
   });
 
@@ -1191,6 +1194,53 @@ describe('community use-cases', () => {
     expect(hits).toMatchObject({ ok: true, value: [{ lessonId: 'l2' }] });
     const isolated = await searchPosts(ctx({ tenantId: 't2' }), { query: 'needle', limit: 10 }, d);
     expect(isolated).toEqual({ ok: true, value: [] });
+  });
+
+  it('uses rendered plain text for Markdown search snippets', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    await createPost(
+      ctx(),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: '**Formatted phrase** with [a guide](https://example.com)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    const hits = await searchPosts(ctx(), { query: 'formatted' }, d);
+    expect(hits).toMatchObject({
+      ok: true,
+      value: [{ snippet: 'Formatted phrase with a guide', post: { bodyFormat: 'markdown' } }],
+    });
+  });
+
+  it('uses rendered plain text in notifications for Markdown posts', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const root = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'root' },
+      d,
+    );
+    if (!root.ok) throw new Error('root failed');
+    await createPost(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        parentPostId: root.value.id,
+        body: '**Helpful reply** with [a guide](https://example.com)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    const listed = await listNotifications(ctx({ userId: 'u1', memberId: 'm1' }), {}, d);
+    expect(listed).toMatchObject({
+      ok: true,
+      value: { notifications: [{ payload: { snippet: 'Helpful reply with a guide' } }] },
+    });
   });
 
   it('paginates notifications, counts unread and marks reads', async () => {
@@ -1370,6 +1420,70 @@ describe('community guard and error branches', () => {
 
     const edited = await editPost(memberCtx, { id: created.value.id, body: `${markupLike} onclick=1` }, d);
     expect(edited).toMatchObject({ ok: true, value: { body: `${markupLike} onclick=1` } });
+  });
+
+  it('keeps legacy edits plain and renders explicit Markdown writes', async () => {
+    const d = access();
+    const created = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', body: 'Visit https://example.com' },
+      d,
+    );
+    expect(created).toMatchObject({
+      ok: true,
+      value: {
+        bodyFormat: 'plain',
+        bodyHtml: expect.stringContaining('rel="noopener noreferrer nofollow ugc"'),
+      },
+    });
+    if (!created.ok) return;
+
+    const legacyEdit = await editPost(
+      memberCtx,
+      { id: created.value.id, body: 'Legacy edit' },
+      d,
+    );
+    expect(legacyEdit).toMatchObject({ ok: true, value: { bodyFormat: 'plain' } });
+
+    const edited = await editPost(
+      memberCtx,
+      { id: created.value.id, body: '**Rendered**', bodyFormat: 'markdown' },
+      d,
+    );
+    expect(edited).toMatchObject({
+      ok: true,
+      value: { bodyFormat: 'markdown', bodyHtml: '<p><strong>Rendered</strong></p>\n' },
+    });
+    if (!edited.ok) return;
+
+    const retained = await editPost(
+      memberCtx,
+      { id: created.value.id, body: '**Still rendered**' },
+      d,
+    );
+    expect(retained).toMatchObject({
+      ok: true,
+      value: { bodyFormat: 'markdown', bodyHtml: '<p><strong>Still rendered</strong></p>\n' },
+    });
+  });
+
+  it('counts rendered Markdown destinations for link-flood moderation', async () => {
+    const d = access();
+    const created = await createPost(
+      memberCtx,
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: '[one](https://one.test) [two](https://two.test) [three](https://three.test)',
+        bodyFormat: 'markdown',
+      },
+      d,
+    );
+
+    expect(created).toMatchObject({ ok: true });
+    expect(d.reports).toBeInstanceOf(FakeReports);
+    if (!(d.reports instanceof FakeReports)) return;
+    expect(d.reports.rows).toMatchObject([{ signals: ['link-flood'] }]);
   });
 
   it('rejects a reply whose parent belongs to another discussion', async () => {
@@ -1575,6 +1689,7 @@ describe('renderPost', () => {
     authorDisplay: 'Ala',
     authorIsStaff: false,
     body: 'sekret',
+    bodyFormat: 'plain',
     createdAt: NOW,
     editedAt: null,
     deletedAt: NOW,

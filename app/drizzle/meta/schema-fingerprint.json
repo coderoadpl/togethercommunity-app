@@ -1,6 +1,6 @@
 {
-  "hash": "0cc09cd2c6eaa2b0f827cd74c2133738dc2191eda755199e57369bdf7c3dedb1",
-  "shortId": "0cc09cd2c6ea",
+  "hash": "2ac66b6db853f63f07a4ee5864c9445f5c624beeeb5b863abf6a626337ff4581",
+  "shortId": "2ac66b6db853",
   "schema": {
     "constraints": [
       {
@@ -47,6 +47,11 @@
         "definition": "CHECK (((value >= 0) AND ((kind <> 'percent'::text) OR (value <= 100))))",
         "name": "coupons_value_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
+        "name": "posts_body_format_check",
+        "table": "posts"
       },
       {
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
@@ -4134,6 +4139,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "footer_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -4411,6 +4424,155 @@
           }
         ],
         "name": "product_download_assets"
+      },
+      {
+        "columns": [
+          {
+            "default": "'plain'::text",
+            "generated": "",
+            "identity": "",
+            "name": "body_format",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "author_is_staff",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "to_tsvector('simple'::regconfig, COALESCE(body, ''::text))",
+            "generated": "s",
+            "identity": "",
+            "name": "body_tsvector",
+            "notNull": false,
+            "type": "tsvector"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "author_display",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "author_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "context_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "context_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_by_user_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "edited_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "parent_post_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "pinned_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "root_post_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "posts"
       },
       {
         "columns": [
@@ -6014,147 +6176,6 @@
           }
         ],
         "name": "tenant_transactional_email_pools"
-      },
-      {
-        "columns": [
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "author_is_staff",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": "to_tsvector('simple'::regconfig, COALESCE(body, ''::text))",
-            "generated": "s",
-            "identity": "",
-            "name": "body_tsvector",
-            "notNull": false,
-            "type": "tsvector"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "author_display",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "author_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "body",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "context_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "context_kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "deleted_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "deleted_by",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "deleted_by_user_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "edited_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "parent_post_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "pinned_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "root_post_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "posts"
       },
       {
         "columns": [

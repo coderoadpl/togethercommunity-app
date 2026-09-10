@@ -73,6 +73,7 @@ const post: Post = {
   authorDisplay: 'Autorka',
   authorIsStaff: false,
   body: 'New post',
+  bodyFormat: 'plain',
   createdAt: NOW,
   editedAt: null,
   deletedAt: null,

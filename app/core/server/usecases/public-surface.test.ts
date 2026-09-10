@@ -131,6 +131,7 @@ const post = (input: {
   authorDisplay: 'Author',
   authorIsStaff: false,
   body: `Body ${input.id}`,
+  bodyFormat: 'plain',
   createdAt: '1998-01-01T00:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -690,14 +691,14 @@ describe('getPublicSpaceThread', () => {
     ).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
-  it.each([null, 'author', 'moderator'] as const)('applies %s deletion visibility to public feeds and permalinks', async (deletedBy) => {
+  it.each([null, 'author', 'moderator'] as const)('lists %s deleted roots in public feeds and permalinks', async (deletedBy) => {
     const root = { ...post({ id: 'deleted-root', contextId: open.id }), deletedAt: PUBLIC_NOW, deletedBy };
     const deps = spaceDeps({ spaces: [open], posts: [root] });
     deps.posts.listThreadsForContext = async () => ({ threads: [{ post: root, replyCount: 0 }], nextCursor: null });
     const feed = await getPublicSpaceFeed(tenant, { spaceId: open.id }, deps);
-    expect(feed).toMatchObject({ ok: true, value: { items: [] } });
+    expect(feed).toMatchObject({ ok: true, value: { items: [{ id: root.id, deletedAt: PUBLIC_NOW, replyCount: 0 }] } });
     const thread = await getPublicSpaceThread(tenant, { spaceId: open.id, postId: root.id }, deps);
-    expect(thread).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(thread).toMatchObject({ ok: true, value: { threads: [{ id: root.id, deletedAt: PUBLIC_NOW, replyCount: 0, replies: [] }] } });
   });
 
   it('rejects a malformed thread query', async () => {

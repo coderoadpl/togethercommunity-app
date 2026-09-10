@@ -71,6 +71,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
   createProductDownloadAssetRepository,
@@ -165,6 +166,7 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
   AuthPort,
@@ -495,6 +497,7 @@ export interface AppDeps {
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   signInMethods: SignInMethodReader;
+  accountSecurity: AccountSecurityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
@@ -809,6 +812,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     : undefined);
   const tenantAccess = createTenantAccessReader(db);
   const signInMethods = createSignInMethodReader(db);
+  const accountSecurity = createAccountSecurityReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
   const ids = { nextId: () => randomUUID() };
@@ -1063,7 +1067,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox, delivery, waiter,
       htmlToText: createHtmlToText(), batchCap: env.MARKETING_BATCH_CAP,
-      quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
+      quotaReader, throttle: marketingThrottle, hmac: emailHmac, tenants, ids, tokens, clock,
       unsubscribeBaseUrl, outbox: emailOutbox, scheduler, runs: schedulerRuns,
       ...(production ? { silenceSmokeTenant: true } : {}),
     });
@@ -1170,20 +1174,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     return marketing;
   };
   const realtimeBus = createRealtimeTransport({ env, db, logger });
-  const tenantDomainDeps = {
-    tenantDomains,
-    domainEvents: tenantDomainEvents,
-    provisioner: domainProvisioner,
-    rateLimit: publicRateLimitBuckets,
-    notifications: notificationRepository,
-    tenantAccess,
-    realtimeBus,
-    ids,
-    clock,
-    routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
-    customDomainTarget,
-    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
-  };
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const memberLink = async (tenantId: string, tenantSlug: string | null, path: string): Promise<string> =>
     new URL(path, await resolveTenantOrigin({ id: tenantId, slug: tenantSlug }, { ...routing, tenantDomains })).toString();
@@ -1207,6 +1197,24 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     corsOrigin: env.APP_BASE_URL,
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
+  const tenantDomainDeps = {
+    tenantDomains,
+    domainEvents: tenantDomainEvents,
+    provisioner: domainProvisioner,
+    rateLimit: publicRateLimitBuckets,
+    notifications: notificationRepository,
+    tenantAccess,
+    realtimeBus,
+    ids,
+    clock,
+    storage,
+    secretResolver,
+    storageCorsCache,
+    logger,
+    routing,
+    customDomainTarget,
+    customDomainApexARecord: env.DOMAIN_PROVISIONER_APEX_A_RECORD,
+  };
   const accountAvatars = createAccountAvatarRepository(db);
   const accountAvatarTenants = createAccountAvatarTenantReader(db);
   const avatarImages = createAvatarImageProcessor(storage);
@@ -1403,6 +1411,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,
     signInMethods,
+    accountSecurity,
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',

@@ -297,7 +297,7 @@ const schedulerRunsListOptionsSchema = z.object({
 });
 const schedulerRunShowOptionsSchema = z.object({ secret: z.string().min(1) });
 const consentDefinitionCreateOptionsSchema = z.object({
-  key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
+  key: z.string().min(1), label: z.string().min(1), footerLabel: z.string().trim().max(200).optional(), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
 });
 const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
   try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
@@ -3379,12 +3379,14 @@ consentDefinition.command('list').action(withCtx(async (ctx) => {
 consentDefinition.command('create')
   .requiredOption('--key <key>')
   .requiredOption('--label <label>')
+  .option('--footer-label <label>')
   .requiredOption('--document-url <url>')
   .option('--single-opt-in')
   .action(withInput(z.tuple([consentDefinitionCreateOptionsSchema]), async (ctx, [options]) => {
     emit(await ctx.api.createMarketingConsentDefinition({
       key: options.key, label: options.label, documentRef: { mode: 'url', url: options.documentUrl },
       doubleOptIn: options.singleOptIn !== true,
+      footerLabel: options.footerLabel ?? null,
     }), ctx.json, (data) => `created consent definition ${data.definition?.key ?? options.key} (${data.definition?.id ?? 'unknown'})`);
   }));
 

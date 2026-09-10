@@ -11,6 +11,13 @@ their applicable notices in the distribution.
 
 ## Project-level notices
 
+### Lucide SVG icons
+
+The account interface includes selected Lucide 0.468.0 SVG icons under ISC,
+with Feather-derived icons under MIT. The complete notices are distributed in
+[app/apps/web/public/licenses/lucide.txt](app/apps/web/public/licenses/lucide.txt).
+Source: https://github.com/lucide-icons/lucide/tree/0.468.0/icons.
+
 **Foundation files synchronized from
 [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** are
 included under the MIT license, © 2026 Mateusz Choma. `FOUNDATION.md` lists the
@@ -48,7 +55,9 @@ as `@fontsource` packages and imported in `app/apps/web/src/main.tsx`. They are
 licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/),
 whose copyright notice and license text must accompany every copy of the font
 files; each package carries the full license in its `LICENSE` file under
-`app/node_modules/@fontsource/`.
+`app/node_modules/@fontsource/`. Inter and Poppins subsets are additionally
+served to the server-rendered public pages from `app/apps/web/public/fonts/`,
+where the same license text ships as `OFL-Inter.txt` and `OFL-Poppins.txt`.
 
 - Fraunces — Copyright 2020 The Fraunces Project Authors
   ([undercasetype/Fraunces](https://github.com/undercasetype/Fraunces))
@@ -508,6 +517,7 @@ invoices can be checked locally.
 - [@types/parse-json@4.0.2](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/parse-json) - MIT
 - [@types/pg@8.20.0](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/pg) - MIT
 - [@types/prop-types@15.7.15](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/prop-types) - MIT
+- [@types/qrcode@1.5.6](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/qrcode) - MIT
 - [@types/react-dom@19.2.3](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) - MIT
 - [@types/react-transition-group@4.4.12](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-transition-group) - MIT
 - [@types/react@19.2.17](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) - MIT
@@ -615,6 +625,7 @@ invoices can be checked locally.
 - [call-bind@1.0.9](https://github.com/ljharb/call-bind#readme) - MIT
 - [call-bound@1.0.4](https://github.com/ljharb/call-bound#readme) - MIT
 - [callsites@3.1.0](https://github.com/sindresorhus/callsites#readme) - MIT
+- [camelcase@5.3.1](https://github.com/sindresorhus/camelcase#readme) - MIT
 - [caniuse-lite@1.0.30001800](https://github.com/browserslist/caniuse-lite#readme) - CC-BY-4.0
 - [chai@5.3.3](http://chaijs.com) - MIT
 - [chai@6.2.2](http://chaijs.com) - MIT
@@ -622,6 +633,7 @@ invoices can be checked locally.
 - [check-error@2.1.3](https://github.com/chaijs/check-error#readme) - MIT
 - [chromatic@18.7.2](https://www.chromatic.com) - MIT
 - [cli-width@4.1.0](https://github.com/knownasilya/cli-width) - ISC
+- [cliui@6.0.0](https://github.com/yargs/cliui#readme) - ISC
 - [cliui@8.0.1](https://github.com/yargs/cliui#readme) - ISC
 - [clsx@2.1.1](https://github.com/lukeed/clsx#readme) - MIT
 - [color-convert@2.0.1](https://github.com/Qix-/color-convert#readme) - MIT
@@ -644,6 +656,7 @@ invoices can be checked locally.
 - [data-view-byte-offset@1.0.1](https://github.com/inspect-js/data-view-byte-offset#readme) - MIT
 - [debug@3.2.7](https://github.com/debug-js/debug#readme) - MIT
 - [debug@4.4.3](https://github.com/debug-js/debug#readme) - MIT
+- [decamelize@1.2.0](https://github.com/sindresorhus/decamelize#readme) - MIT
 - [decimal.js@10.6.0](https://github.com/MikeMcl/decimal.js#readme) - MIT
 - [deep-eql@5.0.2](https://github.com/chaijs/deep-eql#readme) - MIT
 - [deep-is@0.1.4](https://github.com/thlorenz/deep-is#readme) - MIT
@@ -656,6 +669,7 @@ invoices can be checked locally.
 - [dependency-cruiser@16.10.4](https://github.com/sverweij/dependency-cruiser) - MIT
 - [dequal@2.0.3](https://github.com/lukeed/dequal#readme) - MIT
 - [detect-libc@2.1.2](https://github.com/lovell/detect-libc#readme) - Apache-2.0
+- [dijkstrajs@1.0.3](https://github.com/tcort/dijkstrajs) - MIT
 - [doctrine@2.1.0](https://github.com/eslint/doctrine) - Apache-2.0
 - [doctrine@3.0.0](https://github.com/eslint/doctrine) - Apache-2.0
 - [dom-accessibility-api@0.5.16](https://github.com/eps1lon/dom-accessibility-api#readme) - MIT
@@ -721,6 +735,7 @@ invoices can be checked locally.
 - [file-entry-cache@8.0.0](https://github.com/jaredwray/file-entry-cache#readme) - MIT
 - [fill-range@7.1.1](https://github.com/jonschlinkert/fill-range) - MIT
 - [find-root@1.1.0](https://github.com/js-n/find-root#readme) - MIT
+- [find-up@4.1.0](https://github.com/sindresorhus/find-up#readme) - MIT
 - [find-up@5.0.0](https://github.com/sindresorhus/find-up#readme) - MIT
 - [flat-cache@4.0.1](https://github.com/jaredwray/flat-cache#readme) - MIT
 - [flatted@3.4.2](https://github.com/WebReflection/flatted#readme) - ISC
@@ -834,6 +849,7 @@ invoices can be checked locally.
 - [kysely@0.29.2](https://kysely.dev) - MIT
 - [levn@0.4.1](https://github.com/gkz/levn) - MIT
 - [lines-and-columns@1.2.4](https://github.com/eventualbuddha/lines-and-columns#readme) - MIT
+- [locate-path@5.0.0](https://github.com/sindresorhus/locate-path#readme) - MIT
 - [locate-path@6.0.0](https://github.com/sindresorhus/locate-path#readme) - MIT
 - [lodash.merge@4.6.2](https://lodash.com/) - MIT
 - [loose-envify@1.4.0](https://github.com/zertosh/loose-envify) - MIT
@@ -885,8 +901,11 @@ invoices can be checked locally.
 - [oxc-parser@0.127.0](https://oxc.rs/docs/guide/usage/parser) - MIT
 - [oxc-parser@0.140.0](https://oxc.rs/docs/guide/usage/parser) - MIT
 - [oxc-resolver@11.24.2](https://oxc.rs) - MIT
+- [p-limit@2.3.0](https://github.com/sindresorhus/p-limit#readme) - MIT
 - [p-limit@3.1.0](https://github.com/sindresorhus/p-limit#readme) - MIT
+- [p-locate@4.1.0](https://github.com/sindresorhus/p-locate#readme) - MIT
 - [p-locate@5.0.0](https://github.com/sindresorhus/p-locate#readme) - MIT
+- [p-try@2.2.0](https://github.com/sindresorhus/p-try#readme) - MIT
 - [parent-module@1.0.1](https://github.com/sindresorhus/parent-module#readme) - MIT
 - [parse-json@5.2.0](https://github.com/sindresorhus/parse-json#readme) - MIT
 - [parse5@8.0.1](https://parse5.js.org) - MIT
@@ -911,6 +930,7 @@ invoices can be checked locally.
 - [picomatch@4.0.5](https://github.com/micromatch/picomatch) - MIT
 - [pixelmatch@7.2.0](https://github.com/mapbox/pixelmatch#readme) - ISC
 - [playwright-core@1.62.0](https://playwright.dev) - Apache-2.0
+- [pngjs@5.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [pngjs@7.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [possible-typed-array-names@1.1.0](https://github.com/ljharb/possible-typed-array-names#readme) - MIT
 - [postcss@8.5.23](https://postcss.org/) - MIT
@@ -925,6 +945,7 @@ invoices can be checked locally.
 - [punycode@2.3.1](https://mths.be/punycode) - MIT
 - [pvtsutils@1.3.6](https://github.com/PeculiarVentures/pvtsutils#readme) - MIT
 - [pvutils@1.1.5](https://github.com/PeculiarVentures/pvutils#readme) - MIT
+- [qrcode@1.5.4](http://github.com/soldair/node-qrcode) - MIT
 - [qs@6.16.0](https://github.com/ljharb/qs) - BSD-3-Clause
 - [react-docgen-typescript@2.4.0](https://github.com/styleguidist/react-docgen-typescript/) - MIT
 - [react-docgen@8.0.3](https://github.com/reactjs/react-docgen#readme) - MIT
@@ -944,6 +965,7 @@ invoices can be checked locally.
 - [regexp.prototype.flags@1.5.4](https://github.com/es-shims/RegExp.prototype.flags#readme) - MIT
 - [require-directory@2.1.1](https://github.com/troygoode/node-require-directory/) - MIT
 - [require-from-string@2.0.2](https://github.com/floatdrop/require-from-string#readme) - MIT
+- [require-main-filename@2.0.0](https://github.com/yargs/require-main-filename#readme) - ISC
 - [requireindex@1.1.0](https://github.com/stephenhandley/requireindex#readme) - MIT
 - [resolve-from@4.0.0](https://github.com/sindresorhus/resolve-from#readme) - MIT
 - [resolve-pkg-maps@1.0.0](https://github.com/privatenumber/resolve-pkg-maps#readme) - MIT
@@ -963,6 +985,7 @@ invoices can be checked locally.
 - [semver@7.8.5](https://github.com/npm/node-semver#readme) - ISC
 - [seroval-plugins@1.5.6](https://github.com/lxsmnsyc/seroval/tree/main/packages/plugins) - MIT
 - [seroval@1.5.6](https://github.com/lxsmnsyc/seroval/tree/main/packages/seroval) - MIT
+- [set-blocking@2.0.0](https://github.com/yargs/set-blocking#readme) - ISC
 - [set-cookie-parser@3.1.1](https://github.com/nfriedly/set-cookie-parser) - MIT
 - [set-function-length@1.2.2](https://github.com/ljharb/set-function-length#readme) - MIT
 - [set-function-name@2.0.2](https://github.com/ljharb/set-function-name#readme) - MIT
@@ -1065,22 +1088,27 @@ invoices can be checked locally.
 - [which-boxed-primitive@1.1.1](https://github.com/inspect-js/which-boxed-primitive#readme) - MIT
 - [which-builtin-type@1.2.1](https://github.com/inspect-js/which-builtin-type#readme) - MIT
 - [which-collection@1.0.2](https://github.com/inspect-js/which-collection#readme) - MIT
+- [which-module@2.0.1](https://github.com/nexdrew/which-module#readme) - ISC
 - [which-typed-array@1.1.22](https://github.com/inspect-js/which-typed-array#readme) - MIT
 - [which@2.0.2](https://github.com/isaacs/node-which#readme) - ISC
 - [why-is-node-running@2.3.0](https://github.com/mafintosh/why-is-node-running) - MIT
 - [word-wrap@1.2.5](https://github.com/jonschlinkert/word-wrap) - MIT
 - [wordwrap@1.0.0](https://github.com/substack/node-wordwrap#readme) - MIT
+- [wrap-ansi@6.2.0](https://github.com/chalk/wrap-ansi#readme) - MIT
 - [wrap-ansi@7.0.0](https://github.com/chalk/wrap-ansi#readme) - MIT
 - [ws@8.21.1](https://github.com/websockets/ws) - MIT
 - [wsl-utils@0.1.0](https://github.com/sindresorhus/wsl-utils#readme) - MIT
 - [xml-name-validator@5.0.0](https://github.com/jsdom/xml-name-validator#readme) - Apache-2.0
 - [xmlchars@2.2.0](https://github.com/lddubeau/xmlchars#readme) - MIT
 - [xtend@4.0.2](https://github.com/Raynos/xtend) - MIT
+- [y18n@4.0.3](https://github.com/yargs/y18n) - ISC
 - [y18n@5.0.8](https://github.com/yargs/y18n) - ISC
 - [yallist@3.1.1](https://github.com/isaacs/yallist#readme) - ISC
 - [yaml@1.10.3](https://eemeli.org/yaml/) - ISC
 - [yaml@2.9.0](https://eemeli.org/yaml/) - ISC
+- [yargs-parser@18.1.3](https://github.com/yargs/yargs-parser#readme) - ISC
 - [yargs-parser@21.1.1](https://github.com/yargs/yargs-parser#readme) - ISC
+- [yargs@15.4.1](https://yargs.js.org/) - MIT
 - [yargs@17.7.3](https://yargs.js.org/) - MIT
 - [yocto-queue@0.1.0](https://github.com/sindresorhus/yocto-queue#readme) - MIT
 - [zod-validation-error@3.5.4](https://github.com/causaly/zod-validation-error#readme) - MIT

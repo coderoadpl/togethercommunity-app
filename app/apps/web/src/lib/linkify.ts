@@ -16,11 +16,12 @@ const trimUrl = (text: string): string => {
 export const linkify = (text: string): TextSegment[] => {
   const segments: TextSegment[] = [];
   let cursor = 0;
-  for (const match of text.matchAll(/\b(?:https?:\/\/|www\.)[^\s<>"']+/giu)) {
+  for (const match of text.matchAll(/\b(?:https?:\/\/|mailto:|www\.)[^\s<>"']+/giu)) {
     const url = trimUrl(match[0]);
     const href = /^www\./iu.test(url) ? `https://${url}` : url;
     try {
-      new URL(href);
+      const url = new URL(href);
+      if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) continue;
     } catch {
       continue;
     }

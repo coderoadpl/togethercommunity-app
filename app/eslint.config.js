@@ -530,6 +530,10 @@ export default tseslint.config(
               allow: ['@tanstack/query-core', 'zod'],
             },
             {
+              from: ['core-server'],
+              allow: ['marked', 'parse5'],
+            },
+            {
               from: ['adapter-db'],
               allow: ['@neondatabase/serverless', 'drizzle-orm', 'pg'],
             },
@@ -643,6 +647,7 @@ export default tseslint.config(
                 '@testing-library/react',
                 '@testing-library/user-event',
                 'dompurify',
+                'qrcode',
                 'react',
                 'vitest',
               ],

@@ -1,3 +1,4 @@
+import { BellIcon as MemberBellIcon } from './components/ui/account-icons.js';
 import { useId, useState, type MouseEvent } from 'react';
 import {
   Alert,
@@ -179,7 +180,7 @@ export const NotificationBell = ({
           sx={{ minHeight: '48px', minWidth: '48px' }}
         >
           <NotificationCountBadge badgeContent={unreadCount} max={99} data-testid="notification-badge">
-            <BellIcon />
+            {viewAllTo === '/notifications' ? <MemberBellIcon /> : <BellIcon />}
           </NotificationCountBadge>
         </IconButton>
       </Tooltip>

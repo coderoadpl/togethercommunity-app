@@ -65,6 +65,7 @@ const post = (overrides: Partial<Post> = {}): Post => ({
   authorDisplay: 'Post Author',
   authorIsStaff: false,
   body: 'A post that can be reviewed',
+  bodyFormat: 'plain',
   createdAt: NOW,
   editedAt: null,
   deletedAt: null,

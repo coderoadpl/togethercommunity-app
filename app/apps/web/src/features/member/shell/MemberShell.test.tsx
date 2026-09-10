@@ -9,7 +9,7 @@ import { lazy, useState, type FunctionComponent } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CourseStructureWithAccess,
@@ -226,14 +226,22 @@ const stubMatchingViewport = (dimension: 'min-width' | 'max-width') => {
   }));
 };
 
-const renderShell = async (path: string, lessonComponent: FunctionComponent = page(en.redirects.targetLesson), courseComponent: FunctionComponent = page(en.redirects.targetCourse)) => {
+const renderShell = async (
+  path: string,
+  lessonComponent: FunctionComponent = page(en.redirects.targetLesson),
+  courseComponent: FunctionComponent = page(en.redirects.targetCourse),
+  hostname?: string,
+) => {
   const rootRoute = createRootRoute();
   const shellRoute = createRoute({
     getParentRoute: () => rootRoute,
     id: 'member-shell',
-    component: MemberShell,
+    component: () => hostname === undefined
+      ? <MemberShell />
+      : <MemberShell hostname={hostname} />,
   });
   const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: '/', component: page('Workspace picker') }),
     createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: page('Studio') }),
     shellRoute.addChildren([
       createRoute({ getParentRoute: () => shellRoute, path: '/messages', component: page(en.messages.title) }),
@@ -270,7 +278,23 @@ const renderShell = async (path: string, lessonComponent: FunctionComponent = pa
   };
 };
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe('MemberShell', () => {
+  it('redirects member routes on the platform host to the workspace picker', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+
+    const { router } = await renderShell(
+      '/my',
+      page(en.redirects.targetLesson),
+      page(en.redirects.targetCourse),
+      'start.localhost',
+    );
+
+    expect(await screen.findByText('Workspace picker')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
+  });
+
   it.each([en, pl])('uses localized Start and search titles', (t) => {
     const tree = (title: string) => (
       <DocumentTitleProvider tenantName="Acme">

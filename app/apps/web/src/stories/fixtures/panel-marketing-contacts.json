@@ -59,6 +59,7 @@
               "url": "https://courses.example.org/privacy"
             },
             "doubleOptIn": false,
+            "footerLabel": null,
             "id": "definition-directory-news",
             "key": "directory-news",
             "kind": "optional_marketing",
@@ -74,6 +75,7 @@
               "url": "https://studio.example.test/privacy"
             },
             "doubleOptIn": true,
+            "footerLabel": null,
             "id": "consent-definition-studio-news",
             "key": "news",
             "kind": "optional_marketing",
@@ -269,6 +271,9 @@
               "authorDisplay": "Free Account",
               "authorIsStaff": false,
               "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyFormat": "plain",
+              "bodyHtml": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyPlainText": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
               "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
@@ -310,6 +315,7 @@
         "avatarUrl": null,
         "email": "creator@together.dev",
         "emailVerified": true,
+        "hasPassword": true,
         "impersonation": null,
         "name": "Studio Creator",
         "tenant": {
@@ -324,6 +330,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
     },

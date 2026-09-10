@@ -20,6 +20,15 @@ export type StagingSeedDecision =
   | { action: 'seed' }
   | { action: 'skip'; reason: 'markers-present' };
 
+export interface MigrationJournalState {
+  tables: number;
+  journalRows: number;
+}
+
+export type MigrationJournalDecision =
+  | { action: 'allowed' }
+  | { action: 'refused'; message: string };
+
 export const isStagingDeployment = (env: VercelBuildPolicyEnv): boolean => {
   if (isProductionEnvironment(env)) return false;
   if (env.VERCEL_ENV === 'preview' && env.VERCEL_GIT_COMMIT_REF === 'staging') return true;
@@ -39,3 +48,14 @@ export const stagingSeedCandidate = (
 
 export const stagingSeedDecision = (markersPresent: boolean): StagingSeedDecision =>
   markersPresent ? { action: 'skip', reason: 'markers-present' } : { action: 'seed' };
+
+export const migrationJournalDecision = (
+  state: MigrationJournalState,
+): MigrationJournalDecision =>
+  state.tables > 0 && state.journalRows === 0
+    ? {
+        action: 'refused',
+        message:
+          `the database has ${state.tables} tables but no migration journal; it looks like a schema-only copy. Recreate it as an empty database (see docs/staging.md).`,
+      }
+    : { action: 'allowed' };

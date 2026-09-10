@@ -33,7 +33,11 @@ describe('public marketing pages', () => {
       nonce: 'test-nonce',
       brand, language: 'en', token: 'token_1234567890123456789012', email: 'member@example.test',
       scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
-      definitions: [{ id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false }],
+      definitions: [
+        { id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false },
+        { id: 'events', label: 'Event announcements', active: false, pendingConfirmation: true },
+        { id: 'offers', label: 'Partner offers', active: false, pendingConfirmation: false },
+      ],
     });
     expect(html).toContain('lang="en"');
     expect(html).toContain('/brand.svg');
@@ -43,11 +47,30 @@ describe('public marketing pages', () => {
     );
     expect(html).toContain('Unsubscribe me from this scope');
     expect(html).toContain('Unsubscribe me from everything from Studio Demo');
+    expect(html).toContain('name="present-consent" value="newsletter"');
+    expect(html).toContain('name="present-consent" value="events"');
+    expect(html).toContain('name="present-consent" value="offers"');
     expect(html).toContain('name="consent" value="newsletter" checked');
+    expect(html).toContain('name="consent" value="events" checked');
+    expect(html).toContain('name="consent" value="offers"');
+    expect(html).not.toContain('name="consent" value="offers" checked');
+    expect(html).toContain('Waiting for confirmation from the email we sent.');
+    const plHtml = renderPreferencesPage({
+      nonce: 'test-nonce',
+      brand, language: 'pl', token: 'token_1234567890123456789012', email: 'member@example.test',
+      scope: 'consent:events', scopeLabel: 'Event announcements', globallySuppressed: false,
+      definitions: [{ id: 'events', label: 'Event announcements', active: false, pendingConfirmation: true }],
+    });
+    expect(plHtml).toContain(publicMarketingMessagesPl.pendingConfirmation);
     expect(html).toContain('.brand img{display:block;width:auto;height:auto;min-width:0;max-width:min(10rem,100%)');
+    expect(html).toContain('.languages{display:inline-flex;flex:none;gap:.125rem;padding:.1875rem;border:1px solid var(--line);');
     expect(html).toContain('.languages a{display:inline-flex');
     expect(html).toContain('min-height:44px');
-    expect(html).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
+    expect(html).toContain('@media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}');
+    expect(html).toContain('.prose h1{font-size:1.5rem}');
+    expect(html).toContain('<div class="brand-mark"><img class="brand-logo" src="/brand.svg" alt="Studio Demo"></div>');
+    expect(html).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
+    expect(html).toContain(':root{color-scheme:light dark;');
     expect(html).not.toContain('together-theme-mode');
   });
 
@@ -58,11 +81,35 @@ describe('public marketing pages', () => {
       brand: { ...brand, settings: { ...brand.settings, accentColor: '#F5C842', accentLight } },
       language: 'en', path: '/legal/privacy', title: 'Privacy', content: '[Policy](https://courses.example.org/privacy)', immutableVersion: null,
     });
-    const accent = /<html[^>]+style="--accent:(#[0-9a-f]{6})"/i.exec(html)?.[1] ?? '';
-    expect(accent).toBe(accentLight ?? deriveLightAccent('#F5C842'));
-    for (const background of ['#fafafa', '#ffffff']) {
-      expect(contrastRatio(accent, background)).toBeGreaterThanOrEqual(4.5);
+    const match = /<html[^>]+style="--accent-light:(#[0-9a-f]{6});--accent-dark:(#[0-9a-f]{6})"/i.exec(html);
+    if (match === null) throw new Error('Missing accent variables');
+    const light = match[1] ?? '';
+    const dark = match[2] ?? '';
+    expect(light).toBe(accentLight ?? deriveLightAccent('#F5C842'));
+    for (const background of ['#F7F4EF', '#FFFFFF']) {
+      expect(contrastRatio(light, background)).toBeGreaterThanOrEqual(4.5);
     }
+    for (const background of ['#0F1012', '#17181B']) {
+      expect(contrastRatio(dark, background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('uses self-hosted fonts and the no-JS dark scheme switch', () => {
+    const html = renderPreferencesPage({
+      nonce: 'test-nonce',
+      brand, language: 'en', token: 'token_1234567890123456789012', email: 'member@example.test',
+      scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
+      definitions: [{ id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false }],
+    });
+    expect(html).toContain('<link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin>');
+    expect(html).toContain('<link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin>');
+    expect(html).toContain('@media(prefers-color-scheme:dark)');
+    expect(html).toContain("src:url(/fonts/inter-latin-400-normal.woff2) format('woff2')");
+    expect(html).toContain("src:url(/fonts/poppins-latin-700-normal.woff2) format('woff2')");
+    expect(html).not.toContain('fonts.googleapis.com');
+    expect(html).not.toContain('Fraunces');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('together-theme-mode');
   });
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {

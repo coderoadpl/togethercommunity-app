@@ -143,7 +143,6 @@ import {
   memberExportFormatSchema,
   ok,
   tenantNotFound,
-  toPublicPost,
   unauthorized,
   validation,
   type EmailBranding,
@@ -175,6 +174,7 @@ import {
   authLinkBaseUrl,
   createTenantOriginResolver,
   autoIssueOnPayment,
+  authorize,
   authorizeRequiredTenant,
   authorizeTenant,
   avatarUrlFor,
@@ -261,6 +261,7 @@ import {
   getTenantDocument,
   addTenantDomain,
   checkTenantDomain,
+  checkTenantDomainStorageCors,
   getTenantRouting,
   removeTenantDomain,
   resubscribeSesWebhookAfterDomainRemoval,
@@ -271,6 +272,7 @@ import {
   createTenantRedirect,
   deleteTenantRedirect,
   getTenantSetupReadiness,
+  toRenderedPublicPost,
   grantProductToMember,
   listBunnyVideos,
   listCampaignsWithEngagement,
@@ -1267,7 +1269,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
       quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
-      hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
+      hmac: deps.marketing.hmac, tenants: deps.tenants, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
       scheduler: deps.marketing.scheduler,
       runs: deps.marketing.runs,
@@ -1554,13 +1556,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.get(API_PATHS.me, async (c) => {
+    const denial = authorize(ctxOf(c), 'tenant:list-own', { asImpersonationActor: true });
+    if (denial !== null) return respond(err(denial));
     const identity = c.get('identity');
+    const security = c.get('impersonation') === undefined
+      ? await deps.accountSecurity.read(identity.userId)
+      : { hasPassword: false, twoFactorEnabled: false };
     return respond(
       ok({
         userId: identity.userId,
         email: identity.email,
         name: identity.name,
         emailVerified: identity.emailVerified,
+        hasPassword: security.hasPassword,
+        twoFactorEnabled: security.twoFactorEnabled,
         avatarUrl: avatarUrlFor(identity.image),
         tenant:
           identity.tenantId &&
@@ -2127,6 +2136,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     realtimeBus: deps.realtimeBus,
     ids: deps.ids,
     clock: deps.clock,
+    storage: deps.storage,
+    secretResolver: deps.secretResolver,
     logger: deps.logger,
     ...(marketing === undefined || sesOnboarding === undefined ? {} : {
       resubscribeSesWebhookAfterDomainRemoval: (tenantId: string, domain: string) =>
@@ -2199,6 +2210,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = await parseTenantDomainInput(c);
     if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
     const result = await checkTenantDomain(ctxOf(c), parsed.data, tenantDomainDeps);
+    return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantDomainStorageCorsCheck, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await checkTenantDomainStorageCors(ctxOf(c), parsed.data, tenantDomainDeps);
     return respond(result.ok ? ok({ routing: result.value }) : result);
   });
 
@@ -2998,7 +3016,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const result = await setPostPinned(ctxOf(c), parsed.data, deps);
     return respond(
       result.ok
-        ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
+        ? ok({ post: toRenderedPublicPost(result.value, c.get('identity').userId) })
         : result,
     );
   });

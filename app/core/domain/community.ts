@@ -7,6 +7,10 @@ export const postContextKindSchema = z.enum(['lesson', 'space']);
 
 export type PostContextKind = z.output<typeof postContextKindSchema>;
 
+export const postBodyFormatSchema = z.enum(['plain', 'markdown']);
+
+export type PostBodyFormat = z.output<typeof postBodyFormatSchema>;
+
 export const postSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
@@ -19,6 +23,7 @@ export const postSchema = z.object({
   // Default keeps rows persisted before this field existed parseable.
   authorIsStaff: z.boolean().default(false),
   body: z.string().min(1).max(5000),
+  bodyFormat: postBodyFormatSchema.default('plain'),
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
   deletedAt: z.string().datetime().nullable(),
@@ -35,6 +40,8 @@ export type Post = z.output<typeof postSchema>;
  */
 export const publicPostSchema = postSchema.omit({ authorUserId: true, deletedByUserId: true }).extend({
   isOwn: z.boolean(),
+  bodyHtml: z.string(),
+  bodyPlainText: z.string(),
   // Anonymous public JSON must not carry an e-mail hash, so authorAvatarUrl stays null here.
   authorAvatarUrl: z.string().nullable().default(null),
 });
@@ -46,11 +53,13 @@ export const createPostInputSchema = z.object({
   contextId: z.string().min(1),
   parentPostId: z.string().min(1).optional(),
   body: z.string().min(1).max(5000),
+  bodyFormat: postBodyFormatSchema.default('plain'),
 });
 
 export const updatePostInputSchema = z.object({
   id: z.string().min(1),
   body: z.string().min(1).max(5000),
+  bodyFormat: postBodyFormatSchema.optional(),
 });
 
 export const deletePostInputSchema = z.object({
@@ -203,9 +212,6 @@ const MODERATOR_DELETED_POST_PLACEHOLDER: Record<Language, string> = {
   en: 'This post was deleted by a moderator.',
 };
 
-export const isVisiblePostThread = (post: Post, replyCount: number): boolean =>
-  post.parentPostId !== null || post.deletedAt === null || replyCount > 0;
-
 export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): Post =>
   post.deletedAt === null
     ? post
@@ -220,6 +226,8 @@ export const renderPost = (post: Post, language: Language = DEFAULT_LANGUAGE): P
 export const toPublicPost = (
   post: Post,
   viewerUserId: string,
+  bodyHtml: string,
+  bodyPlainText: string,
   authorAvatarUrl: string | null = null,
 ): PublicPost => ({
   id: post.id,
@@ -231,6 +239,9 @@ export const toPublicPost = (
   authorDisplay: post.authorDisplay,
   authorIsStaff: post.authorIsStaff,
   body: post.body,
+  bodyFormat: post.bodyFormat,
+  bodyHtml,
+  bodyPlainText,
   createdAt: post.createdAt,
   editedAt: post.editedAt,
   deletedAt: post.deletedAt,

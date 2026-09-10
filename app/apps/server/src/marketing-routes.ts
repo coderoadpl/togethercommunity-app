@@ -133,6 +133,7 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps) => {
     consents: marketing.marketingConsents,
     suppressions: marketing.suppressions,
     hmac: marketing.hmac,
+    tenants: deps.tenants,
     sends: marketing.campaignSends,
     events: marketing.events,
     layouts: marketing.layouts,
@@ -656,9 +657,11 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const token = c.req.param('token');
     const form = await c.req.formData();
     const selectedDefinitionIds = form.getAll('consent').filter((value): value is string => typeof value === 'string');
+    const presentDefinitionIds = form.getAll('present-consent').filter((value): value is string => typeof value === 'string');
     const result = await saveMarketingConsentPreferences(tokenCtx(resolved.value.tenant), {
       token,
       selectedDefinitionIds,
+      presentDefinitionIds,
       evidence: {
         collectedAt: deps.clock.nowIso(),
         proofRef: `preference:${token}`,

@@ -16,8 +16,9 @@ require interactive transactions, so every environment uses
 
 `main` is the default and production branch. Feature pull requests merge into
 `staging`; production promotion is an owner-approved pull request from `staging`
-to `main`. Preserve merge commits and their GitHub-generated subjects: the
-[version derivation](versioning.md) counts those events.
+to `main`. Follow the [production promotion runbook](promotion.md). Preserve
+merge commits and their GitHub-generated subjects: the [version
+derivation](versioning.md) counts those events.
 
 Set Vercel Production Branch Tracking to `main`. Merges to `staging` create
 Preview deployments only, using the integration-managed Neon staging branch.

@@ -9,6 +9,7 @@ import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingSns
 import { renderMarketingPayload } from './marketing-render.js';
 import {
   appError,
+  bounceAction,
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
@@ -19,6 +20,7 @@ import {
   forbidden,
   isSmokeTenant,
   liftSuppression,
+  marketingFooterCopy,
   normalizeEmail,
   notFound,
   ok,
@@ -97,6 +99,7 @@ export const createMarketingConsentDefinition = async (
     key: string;
     label: string;
     doubleOptIn: boolean;
+    footerLabel?: string | null | undefined;
     documentUrl?: string;
     documentRef?: ConsentDocumentRef;
   },
@@ -122,7 +125,7 @@ export const createMarketingConsentDefinition = async (
   const definition = {
     id: deps.ids.nextId(), tenantId: tenantId.value, key: input.key,
     kind: 'optional_marketing' as const, channel: 'email' as const,
-    doubleOptIn: input.doubleOptIn, documentRef,
+    doubleOptIn: input.doubleOptIn, footerLabel: input.footerLabel ?? null, documentRef,
     status: 'active' as const, createdAt: now, updatedAt: now,
   };
   await deps.definitions.create(tenantId.value, definition, {
@@ -431,6 +434,7 @@ export const saveMarketingConsentPreferences = async (
   input: {
     token: string;
     selectedDefinitionIds: string[];
+    presentDefinitionIds: string[];
     evidence: ConsentEvidence;
     confirmationBaseUrl: string;
   },
@@ -447,6 +451,7 @@ export const saveMarketingConsentPreferences = async (
     return err(validation('Invalid marketing consent preference'));
   }
   const selectedIds = new Set(input.selectedDefinitionIds);
+  const presentIds = new Set(input.presentDefinitionIds.filter((definitionId) => allowedIds.has(definitionId)));
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
   if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
     return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
@@ -459,7 +464,7 @@ export const saveMarketingConsentPreferences = async (
       definition,
     );
     const selected = selectedIds.has(definition.id);
-    if (!selected && state.state !== 'none' && state.state !== 'withdrawn') {
+    if (presentIds.has(definition.id) && !selected && state.state !== 'none' && state.state !== 'withdrawn') {
       const withdrawn = await withdrawMarketingConsent(ctx, {
         email: token.email,
         definitionId: definition.id,
@@ -820,6 +825,7 @@ export const cancelCampaign = async (
 
 export interface SendDeps extends EligibilityDeps {
   contacts?: MarketingContactRepository | undefined;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   htmlToText: HtmlToText;
   delivery: MarketingDeliveryTransaction;
   marketingOutbox: MarketingOutboxRepository;
@@ -889,13 +895,18 @@ const recordValue = (value: unknown): Record<string, unknown> =>
     ? Object.fromEntries(Object.entries(value))
     : {};
 
+const consentFooterReference = (definition: { footerLabel?: string | null | undefined }, wording: string): string => {
+  const footerLabel = definition.footerLabel?.trim();
+  return footerLabel === undefined || footerLabel === '' ? wording : footerLabel;
+};
+
 const eligibilityFor = async (tenantId: string, input: MarketingMessageInput, deps: SendDeps) => {
   const definition = await deps.definitions.findById(tenantId, input.consentDefinitionId);
   if (definition === null) return null;
   const rows = await deps.consents.listByEmail(tenantId, input.to, definition.id);
   const consent = deriveConsentState(rows, definition);
   const suppressed = await deps.suppressions.isSuppressed(tenantId, deps.hmac.compute(tenantId, normalizeEmail(input.to)));
-  return { eligibility: deriveMarketingEligibility({ consent, suppressed }), latest: consent.row };
+  return { definition, eligibility: deriveMarketingEligibility({ consent, suppressed }), latest: consent.row };
 };
 
 /**
@@ -927,6 +938,7 @@ const enqueueMarketingMessagesExecution = async (
   if (!credentials.ok) return credentials;
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
+  const footerCopy = marketingFooterCopy((await deps.tenants.findSettings(tenantId.value))?.defaultLanguage);
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
@@ -1047,9 +1059,12 @@ const enqueueMarketingMessagesExecution = async (
         unsubscribeUrl,
       },
       unsubscribeUrl,
+      unsubscribeLabel: footerCopy.unsubscribe,
       legalName: settings.footerLegalName,
       address: settings.footerAddress,
-      consentReference: dequeue.eligibility.consentRow.wordingSnapshot,
+      consentReference: consentFooterReference(dequeue.definition, dequeue.eligibility.consentRow.wordingSnapshot),
+      consentBasisPrefix: footerCopy.basisPrefix,
+      consentBasisSuffix: footerCopy.basisSuffix,
       layoutHtml: layout?.bodyHtml ?? null,
     }, deps);
     if (!rendered.ok) {
@@ -1363,12 +1378,17 @@ export const testSendCampaignToSelf = async (
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (campaign === null) return err(notFound('Campaign was not found'));
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  const tenantSettings = await deps.tenants.findSettings(tenantId.value);
+  const footerCopy = marketingFooterCopy(tenantSettings?.defaultLanguage);
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
+  const definition = await deps.definitions.findById(tenantId.value, campaign.consentDefinitionId);
+  if (definition === null) return err(notFound('Consent definition was not found'));
   const versions = await deps.definitions.listVersions(tenantId.value, campaign.consentDefinitionId);
-  const consentReference = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
-  if (consentReference === undefined) return err(validation('Consent definition has no wording version'));
+  const wording = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
+  if (wording === undefined) return err(validation('Consent definition has no wording version'));
+  const consentReference = consentFooterReference(definition, wording);
   const layout = campaign.layoutId === null ? null : await deps.layouts.findById(tenantId.value, campaign.layoutId);
   if (campaign.layoutId !== null && layout === null) return err(notFound('Marketing e-mail layout was not found'));
   const unsubscribeTokenId = deps.ids.nextId();
@@ -1400,9 +1420,12 @@ export const testSendCampaignToSelf = async (
       unsubscribeUrl,
     },
     unsubscribeUrl,
+    unsubscribeLabel: footerCopy.unsubscribe,
     legalName: settings.footerLegalName,
     address: settings.footerAddress,
     consentReference,
+    consentBasisPrefix: footerCopy.basisPrefix,
+    consentBasisSuffix: footerCopy.basisSuffix,
     layoutHtml: layout?.bodyHtml ?? null,
   }, deps);
   if (!rendered.ok) return rendered;
@@ -1475,6 +1498,21 @@ export const applyVerifiedSesEvent = async (
       const classification = event.kind === 'delivery'
         ? null
         : classifySesEvent(event);
+      if (classification === 'unresolved') {
+        await deps.events.append(
+          tenantId.value,
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'transactional',
+            outbox.id,
+            'bounced',
+            { classification, rawProviderPayload: event.raw },
+            event.occurredAt,
+          ),
+        );
+        return ok({ kind: 'applied' });
+      }
       const status = event.kind === 'delivery'
         ? 'delivered'
         : event.kind === 'complaint'
@@ -1499,7 +1537,7 @@ export const applyVerifiedSesEvent = async (
         ),
       });
       if (!marked.ok) return marked;
-      if (classification === 'hard' || classification === 'complaint') {
+      if (classification !== null && bounceAction(classification).suppress) {
         const reason =
           classification === 'complaint' ? 'complaint' : 'hard_bounce';
         await deps.suppressions.record(
@@ -1567,7 +1605,12 @@ export const applyVerifiedSesEvent = async (
     const deliveryStatus = classification === 'complaint' ? 'complained' : 'bounced';
     await deps.sends.update(
       tenantId.value,
-      { ...send, ...(send.deliveryStatus === 'complained' ? {} : { deliveryStatus, deliveryOccurredAt: event.occurredAt }) },
+      {
+        ...send,
+        ...(classification === 'unresolved' || send.deliveryStatus === 'complained'
+          ? {}
+          : { deliveryStatus, deliveryOccurredAt: event.occurredAt }),
+      },
       [lifecycleEvent(
         deps,
         tenantId.value,
@@ -1580,7 +1623,7 @@ export const applyVerifiedSesEvent = async (
         event.occurredAt,
       )],
     );
-    if (classification !== 'soft') {
+    if (bounceAction(classification).suppress) {
       await deps.suppressions.record(
         tenantId.value,
         {

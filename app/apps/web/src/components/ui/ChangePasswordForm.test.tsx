@@ -45,14 +45,14 @@ describe('ChangePasswordForm', () => {
     renderForm(vi.fn(), null, 'pl');
 
     expect(
-      screen.getByText(pl.changePassword.intro({ min: PASSWORD_MIN_LENGTH })),
+      screen.getByText(pl.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })),
     ).toBeInTheDocument();
     cleanup();
 
     renderForm(vi.fn(), null, 'en');
 
     expect(
-      screen.getByText(en.changePassword.intro({ min: PASSWORD_MIN_LENGTH })),
+      screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })),
     ).toBeInTheDocument();
   });
 

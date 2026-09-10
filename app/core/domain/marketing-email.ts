@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { marketingConsentConfirmationPl } from './marketing-email.pl.js';
+import { marketingConsentConfirmationPl, marketingFooterCopyPl } from './marketing-email.pl.js';
 import { contactCampaignAudienceSchema, marketingAudienceSkipReasonSchema } from './marketing-audience.js';
 import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
@@ -12,6 +12,21 @@ export const isoDateTimeSchema = z.string().datetime();
 export const transactionalSesConfigurationSetName = (
   marketingConfigurationSet: string,
 ): string => `${marketingConfigurationSet.slice(0, 50)}-transactional`;
+
+export interface MarketingFooterCopy {
+  unsubscribe: string;
+  basisPrefix: string;
+  basisSuffix: string;
+}
+
+const marketingFooterCopyEn: MarketingFooterCopy = {
+  unsubscribe: 'Unsubscribe',
+  basisPrefix: 'You receive this message based on your consent: “',
+  basisSuffix: '”.',
+};
+
+export const marketingFooterCopy = (language: string | null | undefined): MarketingFooterCopy =>
+  languageOrDefault(language ?? '') === 'pl' ? marketingFooterCopyPl : marketingFooterCopyEn;
 
 export const consentDocumentRefSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('url'), url: z.string().url() }),
@@ -34,6 +49,7 @@ export const consentDefinitionSchema = z.object({
   kind: z.enum(['required_terms', 'optional_marketing']),
   channel: z.literal('email'),
   doubleOptIn: z.boolean(),
+  footerLabel: z.string().trim().max(200).nullable().optional(),
   documentRef: consentDocumentRefSchema,
   status: z.enum(['active', 'archived']),
   createdAt: isoDateTimeSchema,
@@ -490,15 +506,22 @@ export const campaignEngagementStatsSchema = z.object({
 
 export type CampaignEngagementStats = z.output<typeof campaignEngagementStatsSchema>;
 
-export type BounceClassification = 'soft' | 'hard' | 'complaint';
+export type BounceClassification = 'soft' | 'hard' | 'unresolved' | 'complaint';
 
 export const classifySesEvent = (event:
   | { kind: 'complaint' }
-  | { kind: 'bounce'; bounceType: string; status: string | null }
+  | {
+    kind: 'bounce';
+    bounceType: string;
+    bounceSubType: string | null;
+    status: string | null;
+  }
 ): BounceClassification => {
   if (event.kind === 'complaint') return 'complaint';
   if (event.status === '5.4.4') return 'hard';
-  return event.bounceType === 'Transient' ? 'soft' : 'hard';
+  if (event.bounceType === 'Permanent') return 'hard';
+  if (event.bounceType === 'Transient') return 'soft';
+  return 'unresolved';
 };
 
 export const bounceAction = (classification: BounceClassification): {
@@ -507,6 +530,7 @@ export const bounceAction = (classification: BounceClassification): {
   permanent: boolean;
 } => {
   if (classification === 'soft') return { threshold: 2, suppress: false, permanent: false };
+  if (classification === 'unresolved') return { threshold: 1, suppress: false, permanent: false };
   if (classification === 'hard') return { threshold: 1, suppress: true, permanent: false };
   return { threshold: 1, suppress: true, permanent: true };
 };

@@ -28,6 +28,7 @@ export interface TenantScopeSource {
 }
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
   'AccountAvatarTenantReader.listTenantIdsForUser': 'Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary.',
@@ -80,6 +81,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
 };
 
 export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
+  AuthenticationMethodsProps: 'UI component callbacks with no persistence access.',
   ApiClientOptions: 'HTTP client callback configuration with no persistence access.',
   ApiKeyCrypto: 'Cryptographic primitive with no persistence access.',
   AppDeps: 'Server composition callbacks with no direct persistence access.',

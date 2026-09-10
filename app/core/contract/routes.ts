@@ -271,6 +271,8 @@ export const meOutputSchema = z.object({
   email: z.string(),
   name: z.string(),
   emailVerified: z.boolean(),
+  hasPassword: z.boolean().default(false),
+  twoFactorEnabled: z.boolean().default(false),
   avatarUrl: z.string().nullable().default(null),
   tenant: z
     .object({
@@ -1559,6 +1561,7 @@ export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   label: z.string().trim().min(1),
   doubleOptIn: z.boolean().default(true),
+  footerLabel: z.string().trim().max(200).nullable().default(null),
   documentRef: consentDocumentRefSchema,
 });
 
@@ -1572,6 +1575,7 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   definitionId: z.string().min(1),
   label: z.string().trim().min(1),
   doubleOptIn: z.boolean(),
+  footerLabel: z.string().trim().max(200).nullable().default(null),
   documentRef: consentDocumentRefSchema,
   status: z.enum(['active', 'archived']),
 });
@@ -2028,6 +2032,7 @@ export const API_ROUTES = {
   tenantRedirectDelete: { method: 'POST', path: '/api/tenant/redirects/remove' },
   tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
   tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
+  tenantDomainStorageCorsCheck: { method: 'POST', path: '/api/tenant/domains/storage-cors/check' },
   tenantDomainRemove: { method: 'POST', path: '/api/tenant/domains/remove' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   supportMessage: { method: 'POST', path: '/api/support/message' },
@@ -2345,6 +2350,7 @@ export const API_PATHS = {
   tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
   tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,
   tenantDomainCheck: API_ROUTES.tenantDomainCheck.path,
+  tenantDomainStorageCorsCheck: API_ROUTES.tenantDomainStorageCorsCheck.path,
   tenantDomainRemove: API_ROUTES.tenantDomainRemove.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   supportMessage: API_ROUTES.supportMessage.path,

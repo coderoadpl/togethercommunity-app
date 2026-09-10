@@ -26,6 +26,8 @@ import {
   isAdditionalTwoFactorPath,
   isSensitivePasskeyPath,
   isSuccessfulPasswordVerification,
+  magicLinkCallbackOriginCheck,
+  magicLinkCallbackOriginMatches,
   MAGIC_LINK_CONTEXT_MAX_ENTRIES,
   MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
@@ -95,6 +97,25 @@ describe('ASVS authentication policy', () => {
     )).toBe(false);
     expect(passwordResetOriginMatches({ redirectTo: 'not-a-url' }, headers)).toBe(false);
     expect(passwordResetOriginMatches({ redirectTo: 'https://one.example/reset' }, undefined)).toBe(false);
+  });
+
+  it('confines magic-link callbacks to the requesting origin while allowing returnTo', () => {
+    const headers = new Headers({ origin: 'https://one.example' });
+    expect(magicLinkCallbackOriginMatches(
+      { callbackURL: 'https://one.example/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1' },
+      headers,
+    )).toBe(true);
+    expect(magicLinkCallbackOriginMatches(
+      { callbackURL: 'https://two.example/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1' },
+      headers,
+    )).toBe(false);
+    expect(magicLinkCallbackOriginMatches({ callbackURL: '/my' }, headers)).toBe(true);
+    expect(magicLinkCallbackOriginCheck({ callbackURL: 'https://two.example/login' }, headers)).toBe('origin-mismatch');
+    expect(magicLinkCallbackOriginCheck({ callbackURL: '' }, headers)).toBe('invalid-callback-url');
+    expect(magicLinkCallbackOriginMatches(
+      { callbackURL: 'https://one.example/login?verification=verified' },
+      undefined,
+    )).toBe(true);
   });
 
   it.each([
@@ -990,6 +1011,53 @@ describe('createAuthPort.ensureUser', () => {
 });
 
 describe('createAuthPort.requestMagicLink', () => {
+  it('accepts a same-origin post-verification callback with returnTo and rejects a foreign one', async () => {
+    const { auth } = buildAuth();
+    const request = (email: string, callbackURL: string) => auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/magic-link', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+        },
+        body: JSON.stringify({ email, callbackURL }),
+      }),
+    );
+    const invalid = (email: string) => auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/magic-link', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+        },
+        body: JSON.stringify({ email, callbackURL: '' }),
+      }),
+    );
+
+    const accepted = await request(
+      `magic-return-ok-${Date.now()}@together.dev`,
+      'http://studio.localhost:48730/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+    );
+    const relative = await request(
+      `magic-return-relative-${Date.now()}@together.dev`,
+      '/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+    );
+    const rejected = await request(
+      `magic-return-bad-${Date.now()}@together.dev`,
+      'http://evil.localhost:48730/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1',
+    );
+    const malformed = await invalid(`magic-return-invalid-${Date.now()}@together.dev`);
+
+    expect(accepted.status).toBe(200);
+    expect(relative.status).toBe(200);
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: 'INVALID_MAGIC_LINK_CALLBACK_ORIGIN' });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({ code: 'INVALID_MAGIC_LINK_CALLBACK_URL' });
+  });
+
   it('rebases the verify link onto the requesting tenant host and sends an English email', async () => {
     const { authPort, magicLinks, emails, flushEmails } = buildAuth();
     const email = `magic-en-${Date.now()}@together.dev`;
@@ -1007,10 +1075,30 @@ describe('createAuthPort.requestMagicLink', () => {
     expect(link).not.toBeNull();
     expect(new URL(link?.url ?? '').host).toBe('studio.localhost:48730');
     expect(link?.url).toContain('/api/auth/magic-link/verify');
+    expect(new URL(link?.url ?? '').searchParams.get('callbackURL'))
+      .toBe('http://studio.localhost:48730/my');
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Sign in to Studio');
     expect(message?.html).toContain('studio.localhost:48730');
+  });
+
+  it('rebases a platform request onto the platform host and returns to its picker', async () => {
+    const { authPort, magicLinks } = buildAuth();
+    const email = `magic-platform-${Date.now()}@together.dev`;
+
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://start.localhost:48730/',
+      language: 'en',
+      baseUrl: 'http://start.localhost:48730',
+    });
+
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const parsed = new URL(link?.url ?? '');
+    expect(parsed.host).toBe('start.localhost:48730');
+    expect(parsed.pathname).toBe('/api/auth/magic-link/verify');
+    expect(parsed.searchParams.get('callbackURL')).toBe('http://start.localhost:48730/');
   });
 
   it('sends an English email when the requested language is en', async () => {

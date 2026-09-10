@@ -144,9 +144,13 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   replyCount: 0,
   reactions: [],
   ...input,
+  bodyFormat: input.bodyFormat ?? 'plain',
+  bodyHtml: input.bodyHtml ?? input.body ?? 'First post in the space',
+  bodyPlainText: input.bodyPlainText ?? input.body ?? 'First post in the space',
 });
 
 const markupLikeBody = 'Generic<T> plus <script>alert(1)</script> https://courses.example.org/guide.';
+const markupLikeBodyHtml = `Generic&lt;T&gt; plus &lt;script&gt;alert(1)&lt;/script&gt; <a href="https://courses.example.org/guide" target="_blank" rel="noopener noreferrer nofollow ugc">https://courses.example.org/guide</a>.`;
 
 const okMemberNavigation = (lockedSpaces: MemberNavigation['lockedSpaces']) =>
   http.get('/api/member/navigation', () =>
@@ -364,7 +368,7 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'General' })]),
-      okFeed('s1', [feedItem({ id: 'p1', body: markupLikeBody })]),
+      okFeed('s1', [feedItem({ id: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml })]),
       okSeen(),
     );
 
@@ -376,7 +380,7 @@ describe('community pages', () => {
     expect(body.innerHTML).toContain('&lt;script&gt;');
     expect(body).toHaveStyle({ marginTop: '0.75rem' });
     expect(within(body).getByRole('link')).toHaveAttribute('href', 'https://courses.example.org/guide');
-    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow ugc');
     expect(within(body).getByRole('link')).toHaveAttribute('target', '_blank');
   });
 
@@ -387,8 +391,8 @@ describe('community pages', () => {
       okSpaces([space({ id: 's1', name: 'General' })]),
       okDiscussion([
         {
-          ...feedItem({ id: 'p1', body: markupLikeBody }),
-          replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody }), replies: [] }],
+          ...feedItem({ id: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }),
+          replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }), replies: [] }],
         },
       ]),
     );
@@ -429,7 +433,7 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() =>
-      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'My new post' }]),
+      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'My new post', bodyFormat: 'plain' }]),
     );
   });
 
@@ -469,12 +473,22 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'General' })]),
-      okDiscussion([{ ...feedItem({ id: 'p1', body: 'Followed thread' }), replies: [] }]),
+      okDiscussion([{
+        ...feedItem({
+          id: 'p1',
+          body: '**Followed** [thread](https://example.com)',
+          bodyFormat: 'markdown',
+          bodyHtml: '<p><strong>Followed</strong> <a href="https://example.com">thread</a></p>',
+          bodyPlainText: 'Followed thread',
+        }),
+        replies: [],
+      }]),
     );
 
     await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
 
     const crumbs = await screen.findByTestId('member-breadcrumbs');
+    expect(screen.getByRole('heading', { level: 1, name: 'Followed thread' })).toBeInTheDocument();
     expect(within(crumbs).getByRole('link', { name: 'General' })).toHaveAttribute('href', '/community/s1');
     expect(within(crumbs).getByRole('link', { name: en.community.heading })).toBeVisible();
     expect(within(crumbs).queryByText(en.community.threadTitle)).toBeNull();
@@ -555,12 +569,12 @@ describe('community pages', () => {
     expect(screen.queryByTestId('edit-button-p1') !== null).toBe(canEdit);
   });
 
-  it('confirms deletion and removes an empty own root from the feed without reloading', async () => {
+  it('confirms deletion and keeps an empty own root as a tombstone without reloading', async () => {
     let item = feedItem({ id: 'p1', isOwn: true, replyCount: 0 });
     const deletedIds: string[] = [];
     server.use(okMe(), noNotifications(), okSpaces([space({ id: 's1' })]), okSeen(),
       http.get('/api/spaces/:spaceId/feed', () => HttpResponse.json({ ok: true,
-        data: { feed: { spaceId: 's1', items: [], pinned: item.deletedAt === null ? [item] : [], nextCursor: null, isFollowing: false } } })),
+        data: { feed: { spaceId: 's1', items: item.pinnedAt === null ? [item] : [], pinned: item.pinnedAt === null ? [] : [item], nextCursor: null, isFollowing: false } } })),
       http.delete('/api/posts/:postId', ({ params }) => {
         deletedIds.push(String(params['postId']));
         item = { ...item, body: 'Deleted post', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author', pinnedAt: null };
@@ -576,9 +590,9 @@ describe('community pages', () => {
     await userEvent.click(screen.getByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('delete-button-p1'));
     await userEvent.click(screen.getByTestId('confirm-delete-post'));
-    await waitFor(() => expect(screen.queryByTestId('feed-post-p1')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('deleted-post-p1')).toHaveTextContent(en.discussion.deletedPost));
     expect(deletedIds).toEqual(['p1']);
-    expect(screen.getByTestId('feed-empty-state')).toBeInTheDocument();
+    expect(screen.queryByTestId('feed-empty-state')).not.toBeInTheDocument();
   });
 
   it.each(['author', 'moderator'] as const)('keeps a %s tombstone readable with only a permanent-delete menu', async (deletedBy) => {
@@ -611,7 +625,14 @@ describe('community pages', () => {
         data: { feed: { spaceId: 's1', items: [item], nextCursor: null, isFollowing: false } } })),
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
-        item = { ...item, body: input.body, editedAt: '2026-07-20T09:00:00.000Z' };
+        expect(input.bodyFormat).toBeUndefined();
+        item = {
+          ...item,
+          body: input.body,
+          bodyHtml: input.body,
+          bodyPlainText: input.body,
+          editedAt: '2026-07-20T09:00:00.000Z',
+        };
         return HttpResponse.json({ ok: true, data: { post: item } });
       }));
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
@@ -823,7 +844,7 @@ describe('community pages', () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
-      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post https://courses.example.org/guide.', replyCount: 2 })]),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post https://courses.example.org/guide.', bodyHtml: `Public post <a href="https://courses.example.org/guide" target="_blank" rel="noopener noreferrer nofollow ugc">https://courses.example.org/guide</a>.`, replyCount: 2 })]),
     );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
@@ -832,7 +853,7 @@ describe('community pages', () => {
     const body = screen.getByTestId('public-post-body-p1');
     expect(body).toHaveStyle({ marginTop: '0.75rem' });
     expect(within(body).getByRole('link')).toHaveAttribute('href', 'https://courses.example.org/guide');
-    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(within(body).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer nofollow ugc');
     expect(within(body).getByRole('link')).toHaveAttribute('target', '_blank');
     expect(screen.getByTestId('public-open-thread-p1')).toHaveAttribute(
       'href',
@@ -895,7 +916,13 @@ describe('community pages', () => {
       okPublicNavigation(),
       okPublicThread([
         {
-          ...feedItem({ id: 'p1', body: 'Public thread' }),
+          ...feedItem({
+            id: 'p1',
+            body: '**Public** [thread](https://example.com)',
+            bodyFormat: 'markdown',
+            bodyHtml: '<p><strong>Public</strong> <a href="https://example.com">thread</a></p>',
+            bodyPlainText: 'Public thread',
+          }),
           replies: [{ ...feedItem({ id: 'r1', body: 'Reply' }), replies: [], replyCount: 0 }],
           replyCount: 1,
         },
@@ -908,6 +935,7 @@ describe('community pages', () => {
     );
 
     expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Public thread');
+    expect(screen.getByRole('heading', { level: 1, name: 'Public thread' })).toBeInTheDocument();
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Reply');
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();

@@ -1,6 +1,5 @@
 import {
   err,
-  isVisiblePostThread,
   listSpaceEventsInputSchema,
   listSpaceFeedInputSchema,
   MAX_PINNED_POSTS_PER_SPACE,
@@ -8,9 +7,7 @@ import {
   ok,
   publicSpaceEventRefSchema,
   publicSpaceThreadInputSchema,
-  renderPost,
   toAnonymousSpaceEvent,
-  toPublicPost,
   validation,
   type AppError,
   type CourseLesson,
@@ -39,6 +36,7 @@ import type {
   SpaceRepository,
   TenantRepository,
 } from '../ports.js';
+import { toRenderedPublicPost } from '../post-content.js';
 import { buildCourseStructure, type AccessLookup } from './access.js';
 import { nestReplies } from './community.js';
 
@@ -253,14 +251,14 @@ export const getPublicSpaceFeed = async (
   return ok({
     spaceId: space.value.id,
     pinned: pinnedPosts.map((post, index) => ({
-      ...toPublicPost(renderPost(post), NO_VIEWER),
+      ...toRenderedPublicPost(post, NO_VIEWER),
       replyCount: pinnedReplies[index]?.length ?? 0,
       reactions: reactions.get(post.id) ?? [],
     })),
     items: listed.threads
-      .filter((thread) => !pinnedIds.has(thread.post.id) && isVisiblePostThread(thread.post, thread.replyCount))
+      .filter((thread) => !pinnedIds.has(thread.post.id))
       .map((thread) => ({
-        ...toPublicPost(renderPost(thread.post), NO_VIEWER),
+        ...toRenderedPublicPost(thread.post, NO_VIEWER),
         replyCount: thread.replyCount,
         reactions: reactions.get(thread.post.id) ?? [],
       })),
@@ -348,11 +346,10 @@ export const getPublicSpaceThread = async (
     return err(notFound('Thread not found'));
   }
   const replies = await deps.posts.listReplies(tenant.id, root.rootPostId);
-  if (!isVisiblePostThread(root, replies.filter((reply) => reply.deletedAt === null).length)) return err(notFound('Thread not found'));
   return ok({
     threads: [
       {
-        ...toPublicPost(renderPost(root), NO_VIEWER),
+        ...toRenderedPublicPost(root, NO_VIEWER),
         replyCount: replies.length,
         replies: nestReplies(root.id, replies, NO_VIEWER),
       },

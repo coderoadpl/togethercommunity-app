@@ -464,7 +464,7 @@ const uploadImageAsset = (
   );
 
 /** The single typed gateway to the API. No client ever hand-writes HTTP. */
-const directoryQuery = (input: object): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !['contactId', 'listId', 'importId'].includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
+const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
   uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
@@ -479,12 +479,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
   listMarketingContacts: (input: z.input<typeof marketingDirectoryContracts.listMarketingContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
     const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mListMarketingContacts : API_ROUTES.listMarketingContacts;
     const path = route.path;
-    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.listMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+    return request(options, route.method, `${path}?${directoryQuery(input, ['contactId', 'importId'])}`, marketingDirectoryContracts.listMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
   },
   exportMarketingContacts: (input: z.input<typeof marketingDirectoryContracts.exportMarketingContacts.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
     const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mExportMarketingContacts : API_ROUTES.exportMarketingContacts;
     const path = route.path;
-    return request(options, route.method, `${path}?${directoryQuery(input)}`, marketingDirectoryContracts.exportMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
+    return request(options, route.method, `${path}?${directoryQuery(input, ['contactId', 'importId'])}`, marketingDirectoryContracts.exportMarketingContacts.output, undefined, signal, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } });
   },
   upsertMarketingContact: (input: z.input<typeof marketingDirectoryContracts.upsertMarketingContact.input>, transport?: { apiKey?: string; m2m?: boolean }, signal?: AbortSignal) => {
     const route = transport?.m2m === true || transport?.apiKey !== undefined ? API_ROUTES.m2mUpsertMarketingContact : API_ROUTES.upsertMarketingContact;
@@ -2519,6 +2519,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.tenantDomainCheck.method,
       API_ROUTES.tenantDomainCheck.path,
+      tenantRoutingOutputSchema,
+      input,
+      signal,
+    ),
+  checkTenantDomainStorageCors: (input: TenantDomainInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantDomainStorageCorsCheck.method,
+      API_ROUTES.tenantDomainStorageCorsCheck.path,
       tenantRoutingOutputSchema,
       input,
       signal,

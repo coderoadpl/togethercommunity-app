@@ -617,7 +617,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-marketing-contact-import',
     auth: 'creator',
     path: '/panel/marketing/contacts/import',
-    ready: (page) => page.locator('input[type="file"]').waitFor(visible),
+    ready: (page) => page.locator('input[type="file"]').waitFor({ state: 'attached', timeout: 20000 }),
   },
   {
     name: 'panel-marketing-campaigns',

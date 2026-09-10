@@ -169,10 +169,11 @@ export interface Messages {
     methodMagicLinkTitle: string;
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
-    passwordNotNeeded: string;
     methodPasswordBody: string;
+    methodPasswordDisabledTooltip: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
+    methodPasskeyDisabledTooltip: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;
@@ -652,6 +653,31 @@ export interface Messages {
     providerError: string;
   };
   security: {
+    passkeyProofShort: string;
+    passkeyHelp: string;
+    passkeyDescription: string;
+    passkeysUnavailable: string;
+    sessionsUnavailable: string;
+    sessionsSummary: ({ count }: { count: number }) => string;
+    passkeyCount: ({ count }: { count: number }) => string;
+    continueSetup: string;
+    disableTwoFactorConfirm: string;
+    wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
+    twoFactorStatusUnknown: string;
+    twoFactorStatusIncomplete: string;
+    twoFactorStatusOn: string;
+    twoFactorStatusOff: string;
+    scanQrCode: string;
+    qrCodeLabel: string;
+    manualSetup: string;
+    secretLabel: string;
+    copyBackupCodes: string;
+    backupCodesCopied: string;
+    downloadBackupCodes: string;
+    backupCodesSaved: string;
+    finishSetup: string;
+    setupComplete: string;
+    twoFactorDescription: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;
@@ -659,7 +685,6 @@ export interface Messages {
     resetSent: string;
     passkeys: string;
     passkeyIntro: string;
-    passkeyProofHint: string;
     passkeyPasswordlessHint: string;
     passkeySetPassword: string;
     passkeyNameLabel: string;
@@ -1689,6 +1714,16 @@ export interface Messages {
     noMatches: string;
   };
   account: {
+    passwordDescription: string;
+    passwordLinkDescription: string;
+    passwordLinkHelp: string;
+    avatarUploadHint: string;
+    verified: string;
+    unverified: string;
+    languageHeading: string;
+    languageDescription: string;
+    appearanceHeading: string;
+    appearanceDescription: string;
     menuStudio: string;
     menuAccount: string;
     title: string;
@@ -1701,11 +1736,16 @@ export interface Messages {
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
+    avatarHelp: string;
     avatarHint: string;
     avatarUpload: string;
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    editName: string;
+    passwordStatusSet: string;
+    passwordStatusUnset: string;
+    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;
@@ -1717,8 +1757,6 @@ export interface Messages {
     invoiceOrdersHeading: string;
     invoiceOrderLabel: (params: { date: string }) => string;
     invoiceDownload: string;
-    preferencesHeading: string;
-    preferencesIntro: string;
     emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
     playbackHeading: string;
     playbackIntro: string;
@@ -1739,13 +1777,14 @@ export interface Messages {
     erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   changePassword: {
+    minimumHint: ({ min }: { min: number }) => string;
+    revokeScopeHint: string;
     heading: string;
     intro: (params: { min: number }) => string;
     currentPasswordLabel: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;
     revokeOtherSessions: string;
-    revokeOtherSessionsHelp: string;
     submitIdle: string;
     submitPending: string;
     success: string;
@@ -1960,6 +1999,8 @@ export interface Messages {
     docsLink: string;
     storageCorsHint: string;
     storageCorsLink: string;
+    storageCorsUnknown: string;
+    storageCorsCheck: string;
     redirectsCount: (params: { count: number }) => string;
     redirectsManage: string;
   };
@@ -2105,6 +2146,10 @@ export interface Messages {
     result: string;
     fileHint: string;
     file: string;
+    chooseFile: string;
+    dropFile: string;
+    downloadSample: string;
+    encodingError: string;
     delimiter: string;
     auto: string;
     comma: string;
@@ -2113,6 +2158,24 @@ export interface Messages {
     parseError: string;
     ignoreColumn: string;
     unknownColumns: string;
+    previewHint: string;
+    importFields: {
+      email: string;
+      name: string;
+      firstName: string;
+      lastName: string;
+      tags: string;
+      source: string;
+      consentSource: string;
+      consentAt: string;
+      lists: string;
+      reason: string;
+      at: string;
+    };
+    importErrors: {
+      emailMissing: string;
+      emailInvalid: string;
+    };
     validate: string;
     previewStale: string;
     next: string;
@@ -2148,6 +2211,7 @@ export interface Messages {
     consentBlockedByWithdrawal: string;
     suppressionsCreated: string;
     suppressionsExisting: string;
+    searchLabel: string;
     search: string;
     tags: string;
     list: string;
@@ -2202,7 +2266,6 @@ export interface Messages {
     remove: string;
     add: string;
     loadMore: string;
-    selectConsent: string;
     none: string;
     pending_confirmation: string;
     withdrawn: string;
@@ -2216,8 +2279,19 @@ export interface Messages {
     completed_with_errors: string;
     failed: string;
     cancelled: string;
+    statusGuidance: {
+      draft: string;
+      ready: string;
+      queued: string;
+      processing: string;
+      completed: string;
+      completed_with_errors: string;
+      failed: string;
+      cancelled: string;
+    };
     retryImport: string;
     cancelImport: string;
+    errorsPurged: string;
     reason: string;
     at: string;
     defaultSource: string;
@@ -2230,6 +2304,20 @@ export interface Messages {
     noDefault: string;
     save: string;
     loading: string;
+    searchHint: string;
+    tagsHint: string;
+    listHint: string;
+    consentStateHint: string;
+    consentStateDisabledHint: string;
+    suppressionHint: string;
+    memberHint: string;
+    archiveStateHint: string;
+    consentDefinitionHint: string;
+    selectConsent: string;
+    clearFilters: string;
+    emptyDirectoryTitle: string;
+    emptyDirectoryBody: string;
+    contactsSectionTitle: string;
   };
   marketing: {
     contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
@@ -2256,6 +2344,8 @@ export interface Messages {
     allSends: string;
     exportCsv: string;
     exporting: string;
+    showSendLogDetails: string;
+    hideSendLogDetails: string;
     runIdFilter: string;
     clearRunFilter: string;
     all: string;
@@ -2282,6 +2372,8 @@ export interface Messages {
     deliveryDelivered: string;
     deliveryBounced: string;
     deliveryComplained: string;
+    sendBouncedAlert: (params: { date: string }) => string;
+    sendComplainedAlert: (params: { date: string }) => string;
     statusQueued: string;
     statusPending: string;
     statusSending: string;
@@ -2295,9 +2387,14 @@ export interface Messages {
     rawMeta: string;
     sesMessageId: string;
     skipReason: string;
-    bounceClassification: string;
+    suppressionReason: string;
+    bounceTypeLabel: string;
+    bounceProviderType: string;
+    bounceSubType: string;
+    diagnosticCode: string;
     clickedLink: string;
     eventError: string;
+    unknownReason: string;
     eventTypes: Record<
       'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
       | 'skipped' | 'failed' | 'retried' | 'uncertain' | 'suppressed_written' | 'unsubscribed',
@@ -2314,6 +2411,7 @@ export interface Messages {
       failedLast24Hours: string;
       lastRun: string;
       noLastRun: string;
+      detailTitle: (params: { runId: string }) => string;
       runId: string;
       runError: string;
       runKind: string;
@@ -2331,7 +2429,12 @@ export interface Messages {
       budget: string;
       errors: string;
       noErrors: string;
+      failedWithoutRecordedErrors: string;
       viewSends: string;
+      viewFailedSends: string;
+      runNotFoundTitle: string;
+      runNotFoundBody: string;
+      backToRuns: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2350,6 +2453,11 @@ export interface Messages {
     totalClicks: string;
     compactOpens: (params: { unique: number; total: number }) => string;
     compactClicks: (params: { unique: number; total: number }) => string;
+    compactOpensUnavailable: string;
+    compactClicksUnavailable: string;
+    trackingDisabledCampaignMetrics: string;
+    createdTimeValue: (params: { date: string }) => string;
+    scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;
     campaignDetails: string;
     allCampaigns: string;
@@ -2388,6 +2496,8 @@ export interface Messages {
     finishedCampaignHint: string;
     counters: (params: { toSend: number; sent: number; failed: number }) => string;
     status: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    scheduleCardTitle: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    workerPickupHint: string;
     consentsTitle: string;
     consentsDescription: string;
     consentsEmpty: string;
@@ -2397,9 +2507,13 @@ export interface Messages {
     allConsents: string;
     keyLabel: string;
     keyFormatHint: string;
+    keyFormatError: string;
+    keyImmutableHint: string;
     createConsentAction: string;
     saveConsentAction: string;
     wordingLabel: string;
+    footerLabelLabel: string;
+    footerLabelHint: string;
     purposeLabel: string;
     purposeMarketing: string;
     channelLabel: string;
@@ -2408,17 +2522,22 @@ export interface Messages {
     notPreticked: string;
     doubleOptInLabel: string;
     doubleOptInHint: string;
+    doubleOptInChip: string;
+    singleOptInChip: string;
     singleOptInWarning: string;
     documentModeLabel: string;
     documentUrlMode: string;
     documentHostedMode: string;
     documentUrlLabel: string;
     hostedDocumentLabel: string;
+    noPublishedDocuments: string;
+    noPublishedDocumentsSelect: string;
+    createDocumentLink: string;
     active: string;
     archived: string;
     versions: string;
-    versionEntry: (params: { version: number; date: string }) => string;
     versionLabel: (params: { version: number }) => string;
+    copyDocumentReference: string;
     viewVersion: string;
     hideVersion: string;
     documentsTitle: string;
@@ -2570,5 +2689,20 @@ export interface Messages {
     sandboxWarning: string;
     broadcastsEnabled: string;
     broadcastsDisabled: string;
+    readinessOptional: string;
+    readinessAttentionItems: (input: { items: string }) => string;
+    readinessComplete: string;
+    identityCheckFailedChip: string;
+    identityCheckRetry: string;
+    identityCheckDetails: string;
+    identityVerifiedSince: (input: { checkedAt: string }) => string;
+    identityErrorInvalidClientTokenId: string;
+    identityErrorAccessDenied: string;
+    identityErrorSignatureDoesNotMatch: string;
+    identityErrorThrottling: string;
+    identityErrorUnknown: string;
+    skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
+    suppressionReasons: Record<'hard_bounce' | 'complaint' | 'manual' | 'unsubscribe_global' | 'erasure', string>;
+    bounceClassifications: Record<'soft' | 'hard' | 'unresolved' | 'complaint', string>;
   };
 }

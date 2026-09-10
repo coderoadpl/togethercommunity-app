@@ -3,6 +3,7 @@ const coreDomainExternal = 'node_modules/zod(/|$)';
 const coreContractExternal = 'node_modules/zod(/|$)';
 const coreClientExternal = 'node_modules/(@tanstack/query-core|zod)(/|$)';
 const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/|$)';
+const coreServerExternal = 'node_modules/(marked|parse5)(/|$)';
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
 const adapterDbTestExternal =
@@ -29,7 +30,7 @@ const appCliTestExternal = 'node_modules/vitest(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
 const webExternal =
-  'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|poppins|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|marked|msw|react|react-dom|vite|vitest|zod)(/|$)';
+  'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|poppins|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|marked|msw|qrcode|react|react-dom|vite|vitest|zod)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
   'node_modules/(drizzle-orm|otplib|pg|pixelmatch|playwright-core|pngjs|typescript|yaml|zod)(/|$)';
@@ -182,7 +183,7 @@ module.exports = {
       name: 'core-server-external-allowlist',
       severity: 'error',
       from: { path: '^core/server', pathNot: '\\.test\\.tsx?$' },
-      to: { path: external },
+      to: { path: external, pathNot: coreServerExternal },
     },
     {
       name: 'core-server-test-external-allowlist',

@@ -9,10 +9,11 @@ import {
   Link as MuiLink,
   Stack,
   SvgIcon,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
 import type { SignInMethod } from '#core/domain/index.js';
 
@@ -22,6 +23,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { errorCodeOf, localizeError, retryAfterSecondsOf, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
+import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
@@ -91,6 +93,7 @@ const MethodCard = ({
   body,
   testId,
   disabled = false,
+  unavailableReason,
   onClick,
   panel,
 }: {
@@ -100,9 +103,16 @@ const MethodCard = ({
   body: string;
   testId: string;
   disabled?: boolean;
+  unavailableReason?: string | undefined;
   onClick?: () => void;
   panel?: ReactNode;
 }) => {
+  const unavailable = unavailableReason !== undefined;
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const showUnavailableTooltip = () => {
+    if (unavailable) setTooltipOpen(true);
+  };
+  const hideUnavailableTooltip = () => setTooltipOpen(false);
   const label = (
     <>
       <AuthMethodIcon>{icon}</AuthMethodIcon>
@@ -112,18 +122,40 @@ const MethodCard = ({
       </span>
     </>
   );
+  const action = onClick === undefined ? (
+    <AuthMethodHead data-testid={testId}>{label}</AuthMethodHead>
+  ) : (
+    <AuthMethodButton
+      type="button"
+      data-testid={testId}
+      disabled={!unavailable && disabled}
+      aria-disabled={unavailable ? true : undefined}
+      tabIndex={unavailable ? 0 : undefined}
+      onClick={unavailable ? undefined : onClick}
+      onFocus={showUnavailableTooltip}
+      onBlur={hideUnavailableTooltip}
+      onMouseEnter={showUnavailableTooltip}
+      onMouseLeave={hideUnavailableTooltip}
+    >
+      {label}
+      <AuthMethodChevron>
+        <ChevronIcon />
+      </AuthMethodChevron>
+    </AuthMethodButton>
+  );
   return (
-    <AuthMethodCard featured={featured}>
-      {onClick === undefined ? (
-        <AuthMethodHead data-testid={testId}>{label}</AuthMethodHead>
-      ) : (
-        <AuthMethodButton type="button" data-testid={testId} disabled={disabled} onClick={onClick}>
-          {label}
-          <AuthMethodChevron>
-            <ChevronIcon />
-          </AuthMethodChevron>
-        </AuthMethodButton>
-      )}
+    <AuthMethodCard featured={featured} unavailable={unavailable}>
+      {unavailable ? (
+        <Tooltip
+          title={unavailableReason}
+          open={tooltipOpen}
+          disableFocusListener
+          disableHoverListener
+          disableTouchListener
+        >
+          {action}
+        </Tooltip>
+      ) : action}
       {panel === undefined ? null : <AuthMethodPanel>{panel}</AuthMethodPanel>}
     </AuthMethodCard>
   );
@@ -132,7 +164,13 @@ const MethodCard = ({
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
-  const me = useRedirectSignedInWithTenant();
+  const search = useSearch({ strict: false });
+  const returnTo = safeReturnTo(typeof search.returnTo === 'string' ? search.returnTo : null);
+  const postVerification = search.verification === 'verified';
+  const postLoginTarget =
+    returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
+  const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
+  const me = useRedirectSignedInWithTenant(postLoginTarget);
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
@@ -189,7 +227,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         return;
       }
       await queryClient.invalidateQueries();
-      await navigate({ to: '/' });
+      await navigate({ href: postLoginTarget });
     },
   });
 
@@ -201,7 +239,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         return;
       }
       queryClient.clear();
-      await navigate({ to: '/' });
+      await navigate({ href: postLoginTarget });
     },
   });
 
@@ -211,13 +249,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   useEffect(() => {
     const clientId = authConfig.data?.googleClientId;
     if (clientId === null || clientId === undefined || me.isPending || me.data !== undefined) return;
-    promptGoogleOneTap({ clientId, callbackURL: window.location.origin });
-  }, [authConfig.data?.googleClientId, me.data, me.isPending, promptGoogleOneTap]);
+    promptGoogleOneTap({ clientId, callbackURL: postLoginUrl });
+  }, [authConfig.data?.googleClientId, me.data, me.isPending, postLoginUrl, promptGoogleOneTap]);
 
   const completeTwoFactor = async () => {
     setTwoFactorRequired(false);
     queryClient.clear();
-    await navigate({ to: '/' });
+    await navigate({ href: postLoginTarget });
   };
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
@@ -284,7 +322,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     setMagicLinkResent(false);
     requestMagicLink.mutate({
       email,
-      callbackURL: `${window.location.origin}/my`,
+      callbackURL: loginCallbackUrl(returnTo),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };
@@ -295,7 +333,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     requestMagicLink.mutate(
       {
         email: requestedMagicEmail,
-        callbackURL: `${window.location.origin}/my`,
+        callbackURL: loginCallbackUrl(returnTo),
         ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
       },
       { onSuccess: () => setMagicLinkResent(true) },
@@ -349,7 +387,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthIdentityChip>
   );
 
-  const passwordAvailable = resolveSignInMethods.data?.methods.includes('password') ?? true;
+  const methodAvailable = (candidate: SignInMethod): boolean =>
+    resolveSignInMethods.data?.methods.includes(candidate) ?? true;
+  const passwordAvailable = methodAvailable('password');
+  const passkeyAvailable = methodAvailable('passkey');
 
   const resolveRetryAfterSeconds = retryAfterSecondsOf(resolveFailure);
   const resolveFailureMessage =
@@ -368,7 +409,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const accessPrompt = platformSurface ? (
     <FinePrint key="access" variant="caption" component="p" data-testid="login-register-prompt">
-      {t.auth.registerPrompt} <MuiLink component={Link} to="/register">{t.auth.registerLink}</MuiLink>
+      {t.auth.registerPrompt} <MuiLink component={Link} to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registerLink}</MuiLink>
     </FinePrint>
   ) : null;
 
@@ -470,6 +511,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             href={devMagicLink.data.magicLink.url}
             variant="outlined"
             size="small"
+            data-testid="open-magic-link"
             sx={{ alignSelf: 'flex-start' }}
           >
             {t.auth.openMagicLink}
@@ -665,7 +707,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               variant="outlined"
               fullWidth
               disabled={signInWithGoogle.isPending}
-              onClick={() => signInWithGoogle.mutate()}
+              onClick={() => signInWithGoogle.mutate({ callbackURL: postLoginUrl })}
             >
               {t.auth.continueWithGoogle}
             </Button>
@@ -721,74 +763,71 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           disabled={requestMagicLink.isPending}
           onClick={sendMagicLink}
         />
-        {passwordAvailable ? null : (
-          <AuthHelp component="li">{t.auth.passwordNotNeeded}</AuthHelp>
-        )}
-        {passwordAvailable ? (
-          <MethodCard
-            icon={<LockIcon />}
-            title={t.auth.methodPasswordTitle}
-            body={t.auth.methodPasswordBody}
-            testId="use-password"
-            {...(method === 'password'
-              ? {}
-              : { onClick: () => switchMethod('password') })}
-            {...(method === 'password'
-              ? {
-                  panel: (
-                    <>
-                      <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
-                        <VisuallyHidden aria-hidden>
-                          <input
-                            type="email"
-                            name="username"
-                            autoComplete="username"
-                            value={email}
-                            readOnly
-                            tabIndex={-1}
-                            data-testid="login-identity-email"
-                          />
-                        </VisuallyHidden>
-                        <FormControl fullWidth>
-                          <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
-                          <AuthInput
-                            id="login-password"
-                            type="password"
-                            value={password}
-                            onChange={(event) => setPassword(event.target.value)}
-                            autoComplete="current-password"
-                            autoFocus
-                            inputProps={{ 'data-testid': 'login-password' }}
-                            required
-                          />
-                        </FormControl>
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          fullWidth
-                          disabled={signIn.isPending}
-                          data-testid="signin-submit"
-                        >
-                          {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
-                        </Button>
-                      </Stack>
-                      <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
-                        <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}`} data-testid="forgot-password">
-                          {t.auth.forgotPassword}
-                        </MuiLink>
-                      </FinePrint>
-                    </>
-                  ),
-                }
-              : {})}
-          />
-        ) : null}
+        <MethodCard
+          icon={<LockIcon />}
+          title={t.auth.methodPasswordTitle}
+          body={t.auth.methodPasswordBody}
+          testId="use-password"
+          unavailableReason={passwordAvailable ? undefined : t.auth.methodPasswordDisabledTooltip}
+          {...(method === 'password' && passwordAvailable
+            ? {}
+            : { onClick: () => switchMethod('password') })}
+          {...(method === 'password' && passwordAvailable
+            ? {
+                panel: (
+                  <>
+                    <Stack component="form" onSubmit={submitPassword} useFlexGap spacing="1rem">
+                      <VisuallyHidden aria-hidden>
+                        <input
+                          type="email"
+                          name="username"
+                          autoComplete="username"
+                          value={email}
+                          readOnly
+                          tabIndex={-1}
+                          data-testid="login-identity-email"
+                        />
+                      </VisuallyHidden>
+                      <FormControl fullWidth>
+                        <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
+                        <AuthInput
+                          id="login-password"
+                          type="password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          autoComplete="current-password"
+                          autoFocus
+                          inputProps={{ 'data-testid': 'login-password' }}
+                          required
+                        />
+                      </FormControl>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        fullWidth
+                        disabled={signIn.isPending}
+                        data-testid="signin-submit"
+                      >
+                        {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
+                      </Button>
+                    </Stack>
+                    <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
+                      <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`} data-testid="forgot-password">
+                        {t.auth.forgotPassword}
+                      </MuiLink>
+                    </FinePrint>
+                  </>
+                ),
+              }
+            : {})}
+        />
         <MethodCard
           icon={<PasskeyIcon />}
           title={t.auth.methodPasskeyTitle}
           body={signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.methodPasskeyBody}
           testId="signin-passkey"
           disabled={signInWithPasskey.isPending}
+          unavailableReason={passkeyAvailable ? undefined : t.auth.methodPasskeyDisabledTooltip}
           onClick={() => signInWithPasskey.mutate()}
         />
         {authConfig.data?.googleEnabled ? (
@@ -798,7 +837,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               variant="text"
               fullWidth
               disabled={signInWithGoogle.isPending}
-              onClick={() => signInWithGoogle.mutate()}
+              onClick={() => signInWithGoogle.mutate({ callbackURL: postLoginUrl })}
               sx={{ minHeight: 64 }}
             >
               {t.auth.continueWithGoogle}

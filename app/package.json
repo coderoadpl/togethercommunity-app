@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "FSL-1.1-ALv2",
-  "description": "Together \u2014 source-available platform for creators: digital product sales, marketing, course delivery and community in one self-hostable app",
+  "description": "Together — source-available platform for creators: digital product sales, marketing, course delivery and community in one self-hostable app",
   "imports": {
     "#core/*": "./core/*",
     "#adapters/*": "./adapters/*"
@@ -119,6 +119,7 @@
     "nodemailer": "^9.1.1",
     "parse5": "8.0.1",
     "pg": "^8.16.3",
+    "qrcode": "1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sharp": "^0.35.4",
@@ -137,6 +138,7 @@
     "@types/node": "^24.0.14",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.15.4",
+    "@types/qrcode": "1.5.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.7.0",

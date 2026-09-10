@@ -6,11 +6,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
+import type { Language } from '#core/domain/index.js';
+
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
+import { validateLoginSearch } from '../../lib/auth-return.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
-import { ThemeModeProvider } from '../../theme-mode.js';
+import { languagePreference, ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 import { LoginPage } from './LoginPage.js';
 
@@ -84,6 +90,7 @@ const renderLoginPage = async (
   publicCourseIds: readonly string[] = [],
   meHandler = anonymousMe(),
   googleClientId: string | null = null,
+  language?: Language,
 ) => {
   stubAuthConfig(exposeMagicLinks, googleClientId);
   stubPublicNavigation(publicCourseIds);
@@ -99,6 +106,7 @@ const renderLoginPage = async (
   const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
+    validateSearch: validateLoginSearch,
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
   const forgotPasswordRoute = createRoute({
@@ -106,24 +114,52 @@ const renderLoginPage = async (
     path: '/forgot-password',
     component: ForgotPasswordPage,
   });
+  const registerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/register',
+    component: () => <div>Register</div>,
+  });
+  const startRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/start',
+    component: () => <div>Start</div>,
+  });
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    component: () => <div>Lesson target</div>,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
+    routeTree: rootRoute.addChildren([
+      indexRoute,
+      loginRoute,
+      forgotPasswordRoute,
+      registerRoute,
+      startRoute,
+      lessonRoute,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
+  if (language !== undefined) languagePreference.save(language);
+  const page = (
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>
+  );
   return {
     ...renderWithProviders(
-      <ThemeModeProvider>
-        <RouterProvider router={router} />
-      </ThemeModeProvider>,
+      language === undefined ? page : <LanguageProvider>{page}</LanguageProvider>,
     ),
     router,
   };
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
+  window.localStorage.clear();
   delete window.google;
 });
 
@@ -135,6 +171,13 @@ const continueWithEmail = async (email = 'creator@together.dev') => {
 const fillCredentials = async () => {
   await continueWithEmail();
   await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
+};
+
+const tabTo = async (target: HTMLElement) => {
+  for (let index = 0; index < 20 && document.activeElement !== target; index += 1) {
+    await userEvent.tab();
+  }
+  expect(target).toHaveFocus();
 };
 
 describe('LoginPage', () => {
@@ -268,6 +311,173 @@ describe('LoginPage', () => {
     expect(offerCalls).toBe(0);
   });
 
+  it('returns password sign-in to the safe returnTo path', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+    await continueWithEmail();
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+    expect(router.state.location.searchStr).toBe('?thread=t1');
+  });
+
+  it('returns passkey sign-in to the safe returnTo path', async () => {
+    vi.spyOn(actions.signInWithPasskey, 'mutationFn').mockResolvedValue({
+      token: null,
+      twoFactorRedirect: false,
+    });
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await userEvent.click(await screen.findByTestId('signin-passkey'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+  });
+
+  it('returns two-factor completion to the safe returnTo path', async () => {
+    server.use(
+      http.post('*', ({ request }) => {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/sign-in/email')) return HttpResponse.json({ twoFactorRedirect: true });
+        if (path.endsWith('/two-factor/verify-totp')) return HttpResponse.json({ token: 'session-token' });
+        return undefined;
+      }),
+    );
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+    await userEvent.type(await screen.findByLabelText(en.auth.twoFactorCodeLabel), '123456');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+  });
+
+  it('sends Google sign-in to the safe returnTo callback URL', async () => {
+    const signInWithGoogle = vi.spyOn(actions.signInWithGoogle, 'mutationFn').mockResolvedValue(undefined);
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    window.google = { accounts: { id: { initialize: vi.fn(), prompt: vi.fn() } } };
+    const initialEntry = '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1';
+    const callbackURL = 'http://localhost:3000/my/courses/course-1/lessons/lesson-1?thread=t1';
+
+    const identifierStep = await renderLoginPage(
+      false,
+      initialEntry,
+      'togethercommunity.app',
+      ['magic-link'],
+      [],
+      anonymousMe(),
+      'google-client-id',
+    );
+    await userEvent.click(await screen.findByTestId('continue-google'));
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledWith({ callbackURL }, expect.anything()));
+    identifierStep.unmount();
+    signInWithGoogle.mockClear();
+
+    await renderLoginPage(
+      false,
+      initialEntry,
+      'togethercommunity.app',
+      ['magic-link'],
+      [],
+      anonymousMe(),
+      'google-client-id',
+    );
+    await continueWithEmail();
+    await screen.findByTestId('send-magic-link');
+    await userEvent.click(screen.getByTestId('continue-google'));
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledWith({ callbackURL }, expect.anything()));
+  });
+
+  it('sends magic links back to login with the safe returnTo preserved', async () => {
+    let submitted: unknown;
+    server.use(
+      http.post('*', async ({ request }) => {
+        if (new URL(request.url).pathname.endsWith('/sign-in/magic-link')) submitted = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+
+    await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      undefined,
+      ['magic-link'],
+    );
+    await continueWithEmail('member@example.com');
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+
+    await waitFor(() => expect(submitted).toMatchObject({
+      callbackURL: 'http://localhost:3000/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    }));
+  });
+
+  it('post-verification landing uses returnTo and falls back to Start', async () => {
+    const returned = await renderLoginPage(
+      false,
+      '/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+      undefined,
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(returned.router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+    returned.unmount();
+
+    const fallback = await renderLoginPage(false, '/login?verification=verified', undefined, ['password'], [], staffMe());
+    await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/start'));
+  });
+
+  it('post-verification landing on the platform host lands on the workspace picker', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    const fallback = await renderLoginPage(
+      false,
+      '/login?verification=verified',
+      'start.localhost',
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/'));
+  });
+
+  it('keeps returnTo on register and forgot-password links', async () => {
+    await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+
+    expect(await screen.findByTestId('login-register-prompt')).toContainElement(
+      screen.getByRole('link', { name: en.auth.registerLink }),
+    );
+    expect(screen.getByRole('link', { name: en.auth.registerLink })).toHaveAttribute(
+      'href',
+      '/register?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('forgot-password')).toHaveAttribute(
+      'href',
+      '/forgot-password?email=creator%40together.dev&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+  });
+
   it('asks for the identifier alone before any credential', async () => {
     await renderLoginPage();
 
@@ -361,19 +571,79 @@ describe('LoginPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('opens the magic-link step for a passwordless account', async () => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link']);
+  it.each([
+    {
+      label: 'both available',
+      methods: ['password', 'passkey', 'magic-link'],
+      passwordAvailable: true,
+      passkeyAvailable: true,
+    },
+    {
+      label: 'password only',
+      methods: ['password', 'magic-link'],
+      passwordAvailable: true,
+      passkeyAvailable: false,
+    },
+    {
+      label: 'passkey only',
+      methods: ['passkey', 'magic-link'],
+      passwordAvailable: false,
+      passkeyAvailable: true,
+    },
+    {
+      label: 'none',
+      methods: ['magic-link'],
+      passwordAvailable: false,
+      passkeyAvailable: false,
+    },
+  ])('renders all method cards with resolved availability: $label', async ({
+    methods,
+    passwordAvailable,
+    passkeyAvailable,
+  }) => {
+    await renderLoginPage(false, '/login', undefined, methods);
     await continueWithEmail('learner@together.dev');
 
-    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toBeInTheDocument();
-    expect(screen.getByText(en.auth.methodMagicLinkBody)).toBeInTheDocument();
+    const cards = await screen.findAllByRole('listitem');
+    expect(cards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining(en.auth.methodMagicLinkTitle),
+      expect.stringContaining(en.auth.methodPasswordTitle),
+      expect.stringContaining(en.auth.methodPasskeyTitle),
+    ]);
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
     expect(screen.getByTestId('login-identity')).toHaveTextContent('learner@together.dev');
-    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
-    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('use-password')).not.toBeInTheDocument();
-    expect(screen.getByText(en.auth.passwordNotNeeded)).toBeInTheDocument();
-    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
+
+    const passwordCard = screen.getByTestId('use-password');
+    const passkeyCard = screen.getByTestId('signin-passkey');
+    if (passwordAvailable) {
+      expect(passwordCard).not.toHaveAttribute('aria-disabled');
+    } else {
+      expect(passwordCard).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(passwordCard);
+      expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    }
+    if (passkeyAvailable) {
+      expect(passkeyCard).not.toHaveAttribute('aria-disabled');
+    } else {
+      expect(passkeyCard).toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('shows disabled method tooltips in $language', async ({ language, t }) => {
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'learner@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
+
+    const passwordCard = await screen.findByTestId('use-password');
+    await tabTo(passwordCard);
+    expect(await screen.findByText(t.auth.methodPasswordDisabledTooltip)).toBeInTheDocument();
+
+    const passkeyCard = screen.getByTestId('signin-passkey');
+    await tabTo(passkeyCard);
+    expect(await screen.findByText(t.auth.methodPasskeyDisabledTooltip)).toBeInTheDocument();
   });
 
   it('answers an unknown address exactly like a passwordless account', async () => {
@@ -383,10 +653,12 @@ describe('LoginPage', () => {
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
     expect(screen.getByTestId('login-identity')).toHaveTextContent('nobody@example.com');
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('signin-passkey')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('offers password when reported, with the link card first', async () => {
-    await renderLoginPage(false, '/login', undefined, ['password']);
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link']);
     await continueWithEmail();
 
     const cards = await screen.findAllByRole('listitem');
@@ -396,7 +668,6 @@ describe('LoginPage', () => {
       expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
@@ -459,6 +730,7 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('choose-password')).toHaveTextContent(
       en.auth.signInMethodsChoosePassword,
     );
+    expect(screen.queryByTestId('choose-passkey')).not.toBeInTheDocument();
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
@@ -502,9 +774,8 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('choose-magic-link'));
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).toBeInTheDocument();
-    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
-    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 

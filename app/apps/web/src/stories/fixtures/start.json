@@ -18,6 +18,7 @@
         "avatarUrl": null,
         "email": "student.active@together.dev",
         "emailVerified": true,
+        "hasPassword": false,
         "impersonation": null,
         "name": "Active Student",
         "tenant": {
@@ -32,6 +33,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-15a98ce40564caec"
       }
     },
@@ -45,6 +47,9 @@
               "authorDisplay": "Studio Creator",
               "authorIsStaff": true,
               "body": "This week’s challenge: write a function that flattens an arbitrarily nested array without using Array.prototype.flat. Share your solutions in the replies!",
+              "bodyFormat": "plain",
+              "bodyHtml": "This week’s challenge: write a function that flattens an arbitrarily nested array without using Array.prototype.flat. Share your solutions in the replies!",
+              "bodyPlainText": "This week’s challenge: write a function that flattens an arbitrarily nested array without using Array.prototype.flat. Share your solutions in the replies!",
               "contextId": "space-studio-club-js",
               "contextKind": "space",
               "createdAt": "2026-06-27T12:00:00.000Z",
@@ -73,6 +78,9 @@
               "authorDisplay": "Free Account",
               "authorIsStaff": false,
               "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyFormat": "plain",
+              "bodyHtml": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyPlainText": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
               "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-25T12:00:00.000Z",
@@ -106,6 +114,9 @@
               "authorDisplay": "Studio Creator",
               "authorIsStaff": true,
               "body": "Welcome to the Community! This space is open to all members. Introduce yourself in the replies and tell us what you are learning.",
+              "bodyFormat": "plain",
+              "bodyHtml": "Welcome to the Community! This space is open to all members. Introduce yourself in the replies and tell us what you are learning.",
+              "bodyPlainText": "Welcome to the Community! This space is open to all members. Introduce yourself in the replies and tell us what you are learning.",
               "contextId": "space-studio-community",
               "contextKind": "space",
               "createdAt": "2026-06-17T12:00:00.000Z",

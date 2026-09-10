@@ -87,6 +87,43 @@ describe('createApiClient', () => {
     await expect(client.studentLessonPlayback('lesson/one')).resolves.toEqual(ok(output));
   });
 
+  it('posts the tenant domain storage CORS check to the contract route', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/tenant/domains/storage-cors/check');
+      expect(init).toMatchObject({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({ domain: 'courses.example.test' }),
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          routing: {
+            tenantHost: 'academy.example.test',
+            storageCorsOrigins: ['https://academy.example.test', 'https://courses.example.test'],
+            canonicalOrigin: 'https://courses.example.test',
+            customDomains: [{
+              domain: 'courses.example.test',
+              verified: true,
+              status: 'active',
+              records: [],
+              lastCheckedAt: null,
+              lastError: null,
+              storageCorsStatus: 'ok',
+            }],
+            customDomainTarget: 'target.example.test',
+            apexDomainsSupported: false,
+            canAddCustomDomain: true,
+          },
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.checkTenantDomainStorageCors({ domain: 'courses.example.test' }))
+      .resolves.toMatchObject({ ok: true, value: { routing: { customDomains: [{ storageCorsStatus: 'ok' }] } } });
+  });
+
   it('sends the shared secret header and parses the dispatch envelope', async () => {
     let seen: Headers | undefined;
     const fetchImpl: typeof fetch = async (input, init) => {
@@ -142,6 +179,84 @@ describe('createApiClient', () => {
       transport: 'smtp',
       sourceApp: 'orders-app',
     })).resolves.toMatchObject({ ok: true, value: { filename: 'email-sends-alpha.csv' } });
+  });
+
+  it('keeps the selected list in session marketing contact list queries', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/marketing/contacts?listId=list-alpha&limit=25&search=member');
+      expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+      return jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.listMarketingContacts({
+      listId: 'list-alpha',
+      limit: 25,
+      search: 'member',
+    })).resolves.toEqual({
+      ok: false,
+      error: { code: 'unauthorized', message: 'Login required' },
+    });
+  });
+
+  it('keeps the selected list in M2M marketing contact list queries', async () => {
+    let seen: Headers | undefined;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/m2m/marketing/contacts?listId=list-beta&suppressed=false');
+      expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+      seen = new Headers(init?.headers);
+      return jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.listMarketingContacts(
+      { listId: 'list-beta', suppressed: false },
+      { apiKey: 'test-api-key' },
+    )).resolves.toEqual({
+      ok: false,
+      error: { code: 'unauthorized', message: 'Login required' },
+    });
+    expect(seen?.get('x-api-key')).toBe('test-api-key');
+  });
+
+  it('keeps the selected list in marketing contact exports', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/marketing/contacts/export?listId=list-gamma&archived=false');
+      expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+      return jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.exportMarketingContacts({
+      listId: 'list-gamma',
+      archived: false,
+    })).resolves.toEqual({
+      ok: false,
+      error: { code: 'unauthorized', message: 'Login required' },
+    });
+  });
+
+  it('keeps path identifiers out of marketing directory query strings', async () => {
+    const urls: URL[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      urls.push(new URL(String(input)));
+      return jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await client.getMarketingContact({ contactId: 'contact/one' });
+    await client.getMarketingContactImport({ importId: 'import/one' });
+    await client.getMarketingContactImportRows({ importId: 'import/one', offset: 10, limit: 20 });
+
+    expect(urls.map((url) => url.pathname)).toEqual([
+      '/api/marketing/contacts/contact%2Fone',
+      '/api/marketing/contact-imports/import%2Fone',
+      '/api/marketing/contact-imports/import%2Fone/rows',
+    ]);
+    expect(urls.map((url) => url.searchParams.has('contactId'))).toEqual([false, false, false]);
+    expect(urls.map((url) => url.searchParams.has('importId'))).toEqual([false, false, false]);
+    expect(urls[2]?.searchParams.get('offset')).toBe('10');
+    expect(urls[2]?.searchParams.get('limit')).toBe('20');
   });
 
   it('serializes both lesson and space filters on post search', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isStagingDeployment,
+  migrationJournalDecision,
   stagingSeedCandidate,
   stagingSeedDecision,
 } from './vercel-build-policy.js';
@@ -78,5 +79,21 @@ describe('vercel build staging seed policy', () => {
   it('seeds only when the marker probe finds no seed markers', () => {
     expect(stagingSeedDecision(false)).toEqual({ action: 'seed' });
     expect(stagingSeedDecision(true)).toEqual({ action: 'skip', reason: 'markers-present' });
+  });
+
+  it('allows an empty database before migrations', () => {
+    expect(migrationJournalDecision({ tables: 0, journalRows: 0 })).toEqual({ action: 'allowed' });
+  });
+
+  it('allows a database with migration journal rows', () => {
+    expect(migrationJournalDecision({ tables: 24, journalRows: 12 })).toEqual({ action: 'allowed' });
+  });
+
+  it('refuses a schema-only copy before migrations', () => {
+    expect(migrationJournalDecision({ tables: 24, journalRows: 0 })).toEqual({
+      action: 'refused',
+      message:
+        'the database has 24 tables but no migration journal; it looks like a schema-only copy. Recreate it as an empty database (see docs/staging.md).',
+    });
   });
 });

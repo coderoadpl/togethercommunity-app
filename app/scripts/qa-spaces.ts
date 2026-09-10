@@ -133,7 +133,7 @@ const signInMember = async (page: Page, baseUrl: string, email: string): Promise
   const href = await magicLink.getAttribute('href');
   if (href === null) throw new Error('no magic link');
   await page.goto(href, { waitUntil: 'load' });
-  await page.waitForURL('**/my', { timeout: 20000 });
+  await page.waitForURL(/\/(?:my|start)(?:[/?#]|$)/, { timeout: 20000 });
 };
 
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {

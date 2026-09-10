@@ -106,6 +106,10 @@
             "termsUrl": null
           },
           "name": "Acme Courses",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "acme",
           "socialLinks": [],
           "support": {

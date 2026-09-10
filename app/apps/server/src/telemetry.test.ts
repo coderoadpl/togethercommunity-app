@@ -1,3 +1,6 @@
+import { createHash, createHmac, hkdfSync } from 'node:crypto';
+import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH } from '#adapters/auth/create-auth.js';
+import { signInTimingMiddleware } from './sign-in-timing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import {
   InMemorySpanExporter,
@@ -144,4 +147,29 @@ describe('telemetryMiddleware', () => {
     expect(span.attributes['http.route']).toBeUndefined();
     expect(span.name).not.toContain('live-');
   });
+});
+
+
+it('records only an email hash and uniform sign-in outcome codes', async () => {
+  const app = new Hono();
+  app.use('*', telemetryMiddleware);
+  app.use('*', signInTimingMiddleware('test-sign-in-telemetry-secret'));
+  app.post(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, (c) => c.json({ error: 'invalid_credentials' }, 401));
+  await app.request(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: '  Member@Example.com  ', password: 'secret-password', callbackURL: 'https://example.com/private-link' }),
+  });
+  const span = await soleSpan();
+  expect(span.attributes['auth.email_hash']).toBe(
+    createHmac('sha256', Buffer.from(hkdfSync('sha256', 'test-sign-in-telemetry-secret', '', 'together:sign-in-telemetry:email-hash:v1', 32))).update('member@example.com').digest('hex'),
+  );
+  expect(span.attributes['auth.email_hash']).not.toBe(createHash('sha256').update('member@example.com').digest('hex'));
+  expect(span.attributes['auth.email_hash']).not.toBe(createHmac('sha256', 'test-sign-in-telemetry-secret').update('member@example.com').digest('hex'));
+  expect(span.attributes['auth.outcome']).toBe('rejected');
+  expect(span.attributes['auth.reason']).toBe('invalid_credentials');
+  const serialized = JSON.stringify(span.attributes);
+  expect(serialized).not.toContain('Member@Example.com');
+  expect(serialized).not.toContain('secret-password');
+  expect(serialized).not.toContain('private-link');
 });

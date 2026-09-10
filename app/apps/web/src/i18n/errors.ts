@@ -40,11 +40,6 @@ export const providerCodeOf = (error: unknown): string | null => stringDetailOf(
 export const rejectedCorsOriginOf = (error: unknown): string | null =>
   stringDetailOf(error, 'corsOrigin');
 
-export const retryAfterSecondsOf = (error: unknown): number | null => {
-  const value = errorDetailOf(error, 'retryAfterSeconds');
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
-};
-
 export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {
     case 'unauthorized':

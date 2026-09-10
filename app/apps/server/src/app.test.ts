@@ -17,6 +17,7 @@ import {
 import {
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_PASSWORD_SIGN_IN_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
   BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
@@ -158,9 +159,7 @@ const deps = (input: {
   paymentRefunds?: AppDeps['paymentRefunds'];
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
-  passwordAccounts?: readonly string[];
   accountSecurity?: { hasPassword: boolean; twoFactorEnabled: boolean };
-  passkeyAccounts?: readonly string[];
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -806,6 +805,7 @@ const deps = (input: {
         tenants.some((tenant) => tenant.id === tenantId) ? {
           name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
           socialLinks: [],
+          signInNotice: { enabled: false, text: '' },
           billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
           accentColor: null,
           accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -841,12 +841,7 @@ const deps = (input: {
       findMember: async (tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
-    signInMethods: {
-      hasCredentialAccount: async (_tenantId, email) =>
-        (input.passwordAccounts ?? []).includes(email),
-      hasPasskey: async (_tenantId, email) =>
-        (input.passkeyAccounts ?? []).includes(email),
-    },
+    signInTelemetrySecret: 'test-sign-in-telemetry-secret',
     accountSecurity: {
       read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
@@ -2665,6 +2660,70 @@ describe('KSeF HTTP surfaces', () => {
 });
 
 describe('public rate limiting', () => {
+  it.each([
+    [API_PATHS.authResolve, 'methods'],
+    [BETTER_AUTH_MAGIC_LINK_PATH, 'magic-link'],
+    [BETTER_AUTH_PASSWORD_SIGN_IN_PATH, 'password'],
+  ])('hashes normalized email keys and enforces sign-in budgets at %s', async (path, scope) => {
+    const claims: Array<{ scope: string; key: string }> = [];
+    const emailScope = scope === 'magic-link' ? 'auth-link:email' : `sign-in:${scope}:email`;
+    const app = buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => {
+          claims.push(input);
+          return input.scope !== emailScope;
+        },
+        purgeExpired: async () => 0,
+      },
+    }));
+    const keys: string[] = [];
+    for (const email of ['Member@Example.com', 'member@example.com', ' member@example.com ']) {
+      claims.length = 0;
+      const response = await app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password: 'incorrect-password' }),
+      });
+      expect(response.status).toBe(429);
+      expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+      expect(claims.map((claim) => claim.scope)).toEqual([
+        `sign-in:${scope}:ip`,
+        ...(scope === 'magic-link' ? ['public-write:ip'] : []),
+        emailScope,
+      ]);
+      const key = claims.at(-1)?.key ?? '';
+      expect(key).toMatch(/^[a-f0-9]{64}$/u);
+      keys.push(key);
+    }
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it.each([API_PATHS.authResolve, BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_SIGN_IN_PATH])(
+    'allows eleven distinct visitors behind one IP at %s with production budgets', async (path) => {
+      const counts = new Map<string, number>();
+      const configured = deps({
+        rateLimitBuckets: {
+          claim: async ({ scope, key, limit }) => {
+            const bucket = `${scope}:${key}`;
+            const count = (counts.get(bucket) ?? 0) + 1;
+            counts.set(bucket, count);
+            return count <= limit;
+          },
+          purgeExpired: async () => 0,
+        },
+      });
+      configured.publicRateLimitPolicies = selectPublicRateLimitPolicies({ NODE_ENV: 'production' });
+      configured.auth = { ...configured.auth, handler: async () => new Response(null, { status: 200 }) };
+      const app = buildApp(configured);
+      const responses = await Promise.all(Array.from({ length: 11 }, (_, index) => app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: `member-${index}@example.com`, password: 'incorrect-password' }),
+      })));
+      expect(responses.map((response) => response.status)).toEqual(Array.from({ length: 11 }, () => 200));
+    },
+  );
+
   const exhausted: AppDeps['rateLimitBuckets'] = {
     claim: async () => false,
     purgeExpired: async () => 0,
@@ -2716,7 +2775,7 @@ describe('public rate limiting', () => {
       body: JSON.stringify({ email: 'buyer@together.dev' }),
     })).status).toBe(200);
 
-    expect(scopes).toEqual(['auth-resolve:ip', 'auth-resolve:tenant']);
+    expect(scopes).toEqual(['sign-in:methods:ip', 'sign-in:methods:email', 'auth-resolve:ip', 'auth-resolve:tenant']);
   });
 
   it('claims the production lookup budget of 60 per address and 1000 per tenant', async () => {
@@ -2738,6 +2797,8 @@ describe('public rate limiting', () => {
     });
 
     expect(claims).toEqual([
+      { scope: 'sign-in:methods:ip', limit: 60 },
+      { scope: 'sign-in:methods:email', limit: 10 },
       { scope: 'auth-resolve:ip', limit: 60 },
       { scope: 'auth-resolve:tenant', limit: 1_000 },
     ]);
@@ -2804,7 +2865,11 @@ describe('public rate limiting', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ email: 'Buyer@Together.dev' });
-    expect(keys).toEqual(['public-write:ip:unattributed', 'auth-link:email:buyer@together.dev']);
+    expect(keys).toEqual([
+      'sign-in:magic-link:ip:unattributed',
+      'public-write:ip:unattributed',
+      expect.stringMatching(/^auth-link:email:[a-f0-9]{64}$/u),
+    ]);
   });
 
   it('leaves public reads and unthrottled writes alone', async () => {
@@ -3761,6 +3826,7 @@ describe('student lesson playback route', () => {
           findSettings: async () => ({
             name: acme.name,
             socialLinks: [],
+            signInNotice: { enabled: false, text: '' },
             billingPortalUrl: null,
             bunnyStreamLibraryId: 'library-1',
             bunnyStreamCdnHostname: 'vz-demo.b-cdn.net',
@@ -6045,38 +6111,16 @@ describe('public auth-resolve route', () => {
       body: JSON.stringify({ email }),
     });
 
-  it('offers the password step to an account holding a credential', async () => {
-    const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
-
-    const response = await resolve(app, 'creator@together.dev');
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      data: { methods: ['password', 'magic-link'] },
-    });
-  });
-
-  it('offers passkey when the tenant account has one registered', async () => {
-    const app = buildApp(deps({ passkeyAccounts: ['creator@together.dev'] }));
-
-    const response = await resolve(app, 'creator@together.dev');
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      data: { methods: ['passkey', 'magic-link'] },
-    });
-  });
-
-  it('answers a passwordless member and an unknown address identically', async () => {
-    const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
-
-    const passwordless = await resolve(app, 'student@together.dev');
-    const unknown = await resolve(app, 'nobody@example.com');
-
-    expect(await passwordless.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
-    expect(await unknown.json()).toEqual({ ok: true, data: { methods: ['magic-link'] } });
+  it('answers member and unknown addresses with identical methods and status', async () => {
+    const app = buildApp(deps());
+    for (const email of ['creator@together.dev', 'student@together.dev', 'nobody@example.com']) {
+      const response = await resolve(app, email);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { methods: ['password', 'passkey', 'magic-link'] },
+      });
+    }
   });
 
   it('rejects a payload without a usable identifier', async () => {
@@ -6271,6 +6315,7 @@ const consentApp = (simulatedPayments: boolean, authTrustedProxyHeader: string |
           ? {
               name: acme.name,
               socialLinks: [],
+              signInNotice: { enabled: false, text: '' },
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
               bunnyStreamCdnHostname: null,
@@ -6577,6 +6622,7 @@ describe('checkout consent ordering', () => {
             ? {
                 name: acme.name,
                 socialLinks: [],
+                signInNotice: { enabled: false, text: '' },
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
                 bunnyStreamCdnHostname: null,
@@ -7979,7 +8025,7 @@ describe('unlisted and free checkout', () => {
     base.consents.record = recordConsent;
     base.tenants.findSettings = async () => ({
       name: 'Acme', logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null,
-      faviconUrl: null, socialLinks: [], billingPortalUrl: null,
+      faviconUrl: null, socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null,
       bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
       ogTitle: null, ogDescription: null, ogImageUrl: null,
       supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',

@@ -9,7 +9,6 @@ import {
   Link as MuiLink,
   Stack,
   SvgIcon,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,12 +20,13 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizeError, retryAfterSecondsOf, useLanguage, useTranslations } from '../../i18n/index.js';
+import { errorCodeOf, localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
+  AuthNotice,
   AuthDivider,
   AuthHelp,
   AuthIdentityAvatar,
@@ -93,7 +93,6 @@ const MethodCard = ({
   body,
   testId,
   disabled = false,
-  unavailableReason,
   onClick,
   panel,
 }: {
@@ -103,16 +102,9 @@ const MethodCard = ({
   body: string;
   testId: string;
   disabled?: boolean;
-  unavailableReason?: string | undefined;
   onClick?: () => void;
   panel?: ReactNode;
 }) => {
-  const unavailable = unavailableReason !== undefined;
-  const [tooltipOpen, setTooltipOpen] = useState(false);
-  const showUnavailableTooltip = () => {
-    if (unavailable) setTooltipOpen(true);
-  };
-  const hideUnavailableTooltip = () => setTooltipOpen(false);
   const label = (
     <>
       <AuthMethodIcon>{icon}</AuthMethodIcon>
@@ -128,14 +120,8 @@ const MethodCard = ({
     <AuthMethodButton
       type="button"
       data-testid={testId}
-      disabled={!unavailable && disabled}
-      aria-disabled={unavailable ? true : undefined}
-      tabIndex={unavailable ? 0 : undefined}
-      onClick={unavailable ? undefined : onClick}
-      onFocus={showUnavailableTooltip}
-      onBlur={hideUnavailableTooltip}
-      onMouseEnter={showUnavailableTooltip}
-      onMouseLeave={hideUnavailableTooltip}
+      disabled={disabled}
+      onClick={onClick}
     >
       {label}
       <AuthMethodChevron>
@@ -144,18 +130,8 @@ const MethodCard = ({
     </AuthMethodButton>
   );
   return (
-    <AuthMethodCard featured={featured} unavailable={unavailable}>
-      {unavailable ? (
-        <Tooltip
-          title={unavailableReason}
-          open={tooltipOpen}
-          disableFocusListener
-          disableHoverListener
-          disableTouchListener
-        >
-          {action}
-        </Tooltip>
-      ) : action}
+    <AuthMethodCard featured={featured}>
+      {action}
       {panel === undefined ? null : <AuthMethodPanel>{panel}</AuthMethodPanel>}
     </AuthMethodCard>
   );
@@ -204,11 +180,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const resolveSignInMethods = useMutation({
     ...actions.resolveSignInMethods,
-    onSuccess: (result, variables) => {
-      const hasPassword = result.methods.includes('password');
-      setPasswordKnownFor(hasPassword ? variables.email : null);
+    onSuccess: (_, variables) => {
+      setPasswordKnownFor(variables.email);
       setResolveFailure(null);
-      setMethod(hasPassword && !magicLinkExpired ? 'password' : 'magic-link');
+      setMethod(!magicLinkExpired ? 'password' : 'magic-link');
     },
     onError: (error, variables) => {
       if (passwordKnownFor === variables.email && !magicLinkExpired) {
@@ -242,6 +217,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       await navigate({ href: postLoginTarget });
     },
   });
+
+  const { mutate: signInWithDiscoverablePasskey } = signInWithPasskey;
+  useEffect(() => {
+    if (method !== null || requestedMagicEmail !== '' || twoFactorRequired || resolveFailure !== null) return;
+    if (typeof PublicKeyCredential === 'undefined' || !PublicKeyCredential.isConditionalMediationAvailable) return;
+    let active = true;
+    void PublicKeyCredential.isConditionalMediationAvailable().then((available) => {
+      if (active && available) signInWithDiscoverablePasskey({ autoFill: true });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [method, requestedMagicEmail, twoFactorRequired, resolveFailure, signInWithDiscoverablePasskey]);
 
   const signInWithGoogle = useMutation(actions.signInWithGoogle);
   const { mutate: promptGoogleOneTap } = useMutation(actions.promptGoogleOneTap);
@@ -387,18 +373,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthIdentityChip>
   );
 
-  const methodAvailable = (candidate: SignInMethod): boolean =>
-    resolveSignInMethods.data?.methods.includes(candidate) ?? true;
-  const passwordAvailable = methodAvailable('password');
-  const passkeyAvailable = methodAvailable('passkey');
-
-  const resolveRetryAfterSeconds = retryAfterSecondsOf(resolveFailure);
-  const resolveFailureMessage =
-    errorCodeOf(resolveFailure) === 'rate_limited'
-      ? resolveRetryAfterSeconds === null
-        ? t.auth.signInMethodsRateLimited
-        : t.auth.signInMethodsRateLimitedRetryAfter({ seconds: resolveRetryAfterSeconds })
-      : t.auth.signInMethodsUnavailable;
+  const resolveFailureMessage = errorCodeOf(resolveFailure) === 'rate_limited'
+    ? t.auth.signInRateLimited
+    : t.auth.signInMethodsUnavailable;
+  const signInErrorCode = errorCodeOf(signIn.error);
+  const signInErrorMessage = signInErrorCode === 'rate_limited'
+    ? t.auth.signInRateLimited
+    : signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials'
+      ? t.auth.invalidCredentials
+      : localizeError(signIn.error, t);
 
   const showDemoAccount =
     authConfig.data?.exposeMagicLinks === true &&
@@ -446,6 +429,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
     <AuthShell title={t.auth.signInTitle} hostname={hostname} footer={pageFooter}>
       {notices}
+      {publicOffer.data?.tenant.signInNotice?.enabled && publicOffer.data.tenant.signInNotice.text.trim() ? (
+        <AuthNotice severity="info" role="note" aria-label={t.auth.signInNoticeLabel} data-testid="sign-in-notice" sx={{ mb: '1.5rem' }}>
+          {publicOffer.data.tenant.signInNotice.text}
+        </AuthNotice>
+      ) : null}
       {children}
     </AuthShell>
   );
@@ -482,7 +470,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           {changeIdentifierLink(t.auth.changeIdentifier)}
         </FinePrint>
         {requestMagicLink.isError ? (
-          <Alert severity="error">{localizeError(requestMagicLink.error, t)}</Alert>
+          <Alert severity="error">{errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}</Alert>
         ) : null}
         {devMagicLink.isLoading ? (
           <FinePrint variant="caption" component="p">
@@ -654,7 +642,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                 setIdentifierInvalid(false);
               }}
               placeholder={t.auth.emailPlaceholder}
-              autoComplete="email"
+              autoComplete="username webauthn"
               autoFocus
               readOnly={resolveSignInMethods.isPending}
               aria-busy={resolveSignInMethods.isPending}
@@ -700,14 +688,14 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             variant="text"
             fullWidth
             data-testid="signin-passkey"
-            disabled={signInWithPasskey.isPending}
-            onClick={() => signInWithPasskey.mutate()}
+            disabled={signInWithPasskey.isPending && !signInWithPasskey.variables?.autoFill}
+            onClick={() => signInWithPasskey.mutate(undefined)}
           >
             <PasskeyOutlineIcon />
-            {signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.passkeyLink}
+            {signInWithPasskey.isPending && !signInWithPasskey.variables?.autoFill ? t.auth.passkeyPending : t.auth.passkeyLink}
           </AuthPasskeyLink>
           {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
-          {signInWithPasskey.isError ? (
+          {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
             <Alert severity="error">{localizeError(signInWithPasskey.error, t)}</Alert>
           ) : null}
         </Stack>
@@ -729,12 +717,12 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       ) : null}
       {signIn.isError ? (
         <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="signin-error">
-          {localizeError(signIn.error, t)}
+          {signInErrorMessage}
         </Alert>
       ) : null}
       {requestMagicLink.isError ? (
         <Alert severity="error" role="alert" sx={{ mb: '1rem' }}>
-          {localizeError(requestMagicLink.error, t)}
+          {errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}
         </Alert>
       ) : null}
       <AuthMethodList>
@@ -752,11 +740,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           title={t.auth.methodPasswordTitle}
           body={t.auth.methodPasswordBody}
           testId="use-password"
-          unavailableReason={passwordAvailable ? undefined : t.auth.methodPasswordDisabledTooltip}
-          {...(method === 'password' && passwordAvailable
+          {...(method === 'password'
             ? {}
             : { onClick: () => switchMethod('password') })}
-          {...(method === 'password' && passwordAvailable
+          {...(method === 'password'
             ? {
                 panel: (
                   <>
@@ -808,11 +795,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         <MethodCard
           icon={<PasskeyIcon />}
           title={t.auth.methodPasskeyTitle}
-          body={signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.methodPasskeyBody}
+          body={signInWithPasskey.isPending && !signInWithPasskey.variables?.autoFill ? t.auth.passkeyPending : t.auth.methodPasskeyBody}
           testId="signin-passkey"
-          disabled={signInWithPasskey.isPending}
-          unavailableReason={passkeyAvailable ? undefined : t.auth.methodPasskeyDisabledTooltip}
-          onClick={() => signInWithPasskey.mutate()}
+          disabled={signInWithPasskey.isPending && !signInWithPasskey.variables?.autoFill}
+          onClick={() => signInWithPasskey.mutate(undefined)}
         />
         {authConfig.data?.googleEnabled ? (
           <AuthMethodCard>
@@ -829,7 +815,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           </AuthMethodCard>
         ) : null}
       </AuthMethodList>
-      {signInWithPasskey.isError ? (
+      {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
         <Alert severity="error" sx={{ mt: '1rem' }}>{localizeError(signInWithPasskey.error, t)}</Alert>
       ) : null}
       {signInWithGoogle.isError ? (

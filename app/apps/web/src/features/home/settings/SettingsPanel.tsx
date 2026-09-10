@@ -102,6 +102,53 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
 
 const isRetiredBillingHash = (hash: string): boolean => hash.replace(/^#/, '') === 'billing';
 
+const SignInNoticeSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [draft, setDraft] = useState<{ enabled: boolean; text: string } | null>(null);
+  const value = draft ?? settings.data?.settings.signInNotice ?? { enabled: false, text: '' };
+  const update = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+      await queryClient.invalidateQueries(actions.publicOfferInvalidates());
+      setDraft(null);
+    },
+  });
+  const unavailable = !settings.isSuccess || update.isPending;
+  useToastOutcome(update.isSuccess, t.common.saved, update.error === null ? null : localizePanelError(update.error, t));
+  return (
+    <SectionCard
+      title={t.signInNoticeSettings.heading}
+      actions={canEdit ? <Button type="submit" variant="contained" disabled={unavailable}>{t.signInNoticeSettings.save}</Button> : undefined}
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({ signInNotice: value });
+      }}
+    >
+      <FormControlLabel
+        label={t.signInNoticeSettings.enabled}
+        control={<Switch checked={value.enabled} disabled={!canEdit || unavailable} onChange={(_, enabled) => setDraft({ ...value, enabled })} />}
+      />
+      <FormControl fullWidth>
+        <FormLabel htmlFor="sign-in-notice-text">{t.signInNoticeSettings.label}</FormLabel>
+        <OutlinedInput
+          id="sign-in-notice-text"
+          multiline
+          minRows={3}
+          value={value.text}
+          disabled={!canEdit || unavailable}
+          inputProps={{ maxLength: 600, 'aria-describedby': 'sign-in-notice-helper sign-in-notice-counter' }}
+          onChange={(event) => setDraft({ ...value, text: event.target.value })}
+        />
+        <FormHelperText id="sign-in-notice-helper">{t.signInNoticeSettings.helper}</FormHelperText>
+        <FormHelperText id="sign-in-notice-counter">{t.signInNoticeSettings.counter({ count: value.text.length })}</FormHelperText>
+      </FormControl>
+    </SectionCard>
+  );
+};
+
 const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -1729,6 +1776,9 @@ export const SettingsPanel = () => {
 
       {section === 'company' ? (
         <Stack id="settings-panel-company" role="tabpanel" aria-labelledby="settings-tab-company" useFlexGap spacing="1.5rem">
+          <Box id="sign-in" sx={{ scrollMarginTop: '1rem' }}>
+            <SignInNoticeSettingsPanel canEdit={canEdit} />
+          </Box>
           <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
             <SupportSettingsPanel canEdit={canEdit} />
           </Box>

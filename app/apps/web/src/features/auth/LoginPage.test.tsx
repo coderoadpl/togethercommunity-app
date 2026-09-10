@@ -158,6 +158,7 @@ const renderLoginPage = async (
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   window.sessionStorage.clear();
   window.localStorage.clear();
   delete window.google;
@@ -173,14 +174,52 @@ const fillCredentials = async () => {
   await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
 };
 
-const tabTo = async (target: HTMLElement) => {
-  for (let index = 0; index < 20 && document.activeElement !== target; index += 1) {
-    await userEvent.tab();
-  }
-  expect(target).toHaveFocus();
-};
-
 describe('LoginPage', () => {
+  it('starts conditional passkey sign-in only on the identifier step', async () => {
+    const available = vi.fn(async () => true);
+    vi.stubGlobal('PublicKeyCredential', { isConditionalMediationAvailable: available });
+    const signIn = vi.spyOn(actions.signInWithPasskey, 'mutationFn').mockRejectedValue(new Error('No credential selected'));
+
+    await renderLoginPage();
+    await waitFor(() => expect(signIn).toHaveBeenCalledWith({ autoFill: true }, expect.anything()));
+    await continueWithEmail();
+    await screen.findByLabelText(en.auth.passwordLabel);
+    expect(available).toHaveBeenCalledOnce();
+    expect(signIn).toHaveBeenCalledOnce();
+  });
+
+  it('does not start conditional passkey sign-in on a two-factor mount', async () => {
+    const available = vi.fn(async () => true);
+    vi.stubGlobal('PublicKeyCredential', { isConditionalMediationAvailable: available });
+    const signIn = vi.spyOn(actions.signInWithPasskey, 'mutationFn');
+
+    await renderLoginPage(false, '/login?twoFactor=required');
+    await screen.findByTestId('two-factor-code');
+    expect(available).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { enabled: true, text: 'First line\n<script>plain text</script>', visible: true },
+    { enabled: false, text: 'Hidden notice', visible: false },
+    { enabled: true, text: '   ', visible: false },
+  ])('renders the public notice as plain text only when enabled and nonempty: $visible', async ({ enabled, text, visible }) => {
+    server.use(http.get('*/api/public/offer', () => HttpResponse.json({
+      ok: true,
+      data: { tenant: { slug: 'acme', name: 'Acme', signInNotice: { enabled, text } }, contentVersion: 1, products: [] },
+    })));
+    await renderLoginPage(false, '/login', 'acme.localhost');
+    await screen.findByRole('heading', { name: en.auth.signInToTenant({ tenant: 'Acme' }) });
+    if (visible) {
+      const notice = screen.getByRole('note', { name: en.auth.signInNoticeLabel });
+      expect(notice.textContent).toBe(text);
+      expect(notice.querySelector('script')).toBeNull();
+      expect(notice.compareDocumentPosition(screen.getByTestId('login-email')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    } else {
+      expect(screen.queryByTestId('sign-in-notice')).not.toBeInTheDocument();
+    }
+  });
+
   it('prompts with Google One Tap only for an anonymous visitor on login', async () => {
     const prompt = vi.fn();
     window.google = { accounts: { id: { initialize: vi.fn(), prompt } } };
@@ -572,89 +611,27 @@ describe('LoginPage', () => {
   });
 
   it.each([
-    {
-      label: 'both available',
-      methods: ['password', 'passkey', 'magic-link'],
-      passwordAvailable: true,
-      passkeyAvailable: true,
-    },
-    {
-      label: 'password only',
-      methods: ['password', 'magic-link'],
-      passwordAvailable: true,
-      passkeyAvailable: false,
-    },
-    {
-      label: 'passkey only',
-      methods: ['passkey', 'magic-link'],
-      passwordAvailable: false,
-      passkeyAvailable: true,
-    },
-    {
-      label: 'none',
-      methods: ['magic-link'],
-      passwordAvailable: false,
-      passkeyAvailable: false,
-    },
-  ])('renders all method cards with resolved availability: $label', async ({
-    methods,
-    passwordAvailable,
-    passkeyAvailable,
-  }) => {
+    ['password', 'passkey', 'magic-link'],
+    ['password', 'magic-link'],
+    ['passkey', 'magic-link'],
+    ['magic-link'],
+  ])('keeps every method available regardless of a legacy lookup response: %s', async (...methods) => {
     await renderLoginPage(false, '/login', undefined, methods);
-    await continueWithEmail('learner@together.dev');
-
-    const cards = await screen.findAllByRole('listitem');
-    expect(cards.map((card) => card.textContent)).toEqual([
-      expect.stringContaining(en.auth.methodMagicLinkTitle),
-      expect.stringContaining(en.auth.methodPasswordTitle),
-      expect.stringContaining(en.auth.methodPasskeyTitle),
-    ]);
+    await continueWithEmail('nobody@example.com');
+    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeEnabled();
-    expect(screen.getByTestId('login-identity')).toHaveTextContent('learner@together.dev');
-
-    const passwordCard = screen.getByTestId('use-password');
-    const passkeyCard = screen.getByTestId('signin-passkey');
-    if (passwordAvailable) {
-      expect(passwordCard).not.toHaveAttribute('aria-disabled');
-    } else {
-      expect(passwordCard).toHaveAttribute('aria-disabled', 'true');
-      await userEvent.click(passwordCard);
-      expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
-    }
-    if (passkeyAvailable) {
-      expect(passkeyCard).not.toHaveAttribute('aria-disabled');
-    } else {
-      expect(passkeyCard).toHaveAttribute('aria-disabled', 'true');
-    }
+    expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
   });
 
   it.each([
     { language: 'en', t: en },
     { language: 'pl', t: pl },
-  ] as const)('shows disabled method tooltips in $language', async ({ language, t }) => {
+  ] as const)('offers uniform methods without account-specific explanations in $language', async ({ language }) => {
     await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
     await userEvent.type(screen.getByTestId('login-email'), 'learner@together.dev');
     await userEvent.click(screen.getByTestId('login-continue'));
-
-    const passwordCard = await screen.findByTestId('use-password');
-    await tabTo(passwordCard);
-    expect(await screen.findByText(t.auth.methodPasswordDisabledTooltip)).toBeInTheDocument();
-
-    const passkeyCard = screen.getByTestId('signin-passkey');
-    await tabTo(passkeyCard);
-    expect(await screen.findByText(t.auth.methodPasskeyDisabledTooltip)).toBeInTheDocument();
-  });
-
-  it('answers an unknown address exactly like a passwordless account', async () => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link']);
-    await continueWithEmail('nobody@example.com');
-
-    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByTestId('login-identity')).toHaveTextContent('nobody@example.com');
-    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByTestId('signin-passkey')).toHaveAttribute('aria-disabled', 'true');
+    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
   });
 
   it('offers password when reported, with the link card first', async () => {
@@ -735,13 +712,13 @@ describe('LoginPage', () => {
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
-  it('quotes the retry delay when the resolver rate-limits the visitor', async () => {
+  it('uses calm copy when the resolver rate-limits the visitor with a retry delay', async () => {
     await renderLoginPage();
     rateLimitSignInMethods(42);
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
-      en.auth.signInMethodsRateLimitedRetryAfter({ seconds: 42 }),
+      en.auth.signInRateLimited,
     );
   });
 
@@ -751,7 +728,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
-      en.auth.signInMethodsRateLimited,
+      en.auth.signInRateLimited,
     );
   });
 
@@ -1031,10 +1008,27 @@ describe('LoginPage', () => {
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
-    const alert = (await screen.findByText(en.errors.messageInvalidCredentials)).closest('[role="alert"]');
+    const alert = (await screen.findByText(en.auth.invalidCredentials)).closest('[role="alert"]');
     expect(alert).not.toBeNull();
-    expect(alert).toHaveTextContent(en.errors.messageInvalidCredentials);
+    expect(alert).toHaveTextContent(en.auth.invalidCredentials);
     expect(alert).not.toHaveTextContent(en.errors.messageUnauthorized);
+  });
+
+  it.each([
+    { status: 500, message: en.errors.messageInternal },
+    { status: 429, message: en.auth.signInRateLimited },
+    { status: 0, message: en.errors.messageUnknown },
+  ])('preserves operational error copy for password failures with status $status', async ({ status, message }) => {
+    server.use(http.post('*', () => status === 0
+      ? HttpResponse.error()
+      : HttpResponse.json({ message: 'Request failed' }, { status })));
+
+    await renderLoginPage();
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    expect(await screen.findByTestId('signin-error')).toHaveTextContent(message);
+    expect(screen.getByTestId('signin-error')).not.toHaveTextContent(en.auth.invalidCredentials);
   });
 
   it('disables submit while the sign-in mutation is pending', async () => {
@@ -1221,13 +1215,13 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
-    await screen.findByText(en.errors.messageInvalidCredentials);
+    await screen.findByText(en.auth.invalidCredentials);
 
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveValue('');
-    expect(screen.queryByText(en.errors.messageInvalidCredentials)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.auth.invalidCredentials)).not.toBeInTheDocument();
   });
 
   it('explains the expired link again on the magic-link step', async () => {

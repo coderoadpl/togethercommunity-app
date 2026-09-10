@@ -18,6 +18,7 @@ import {
   PUBLIC_ROUTE_MANIFEST,
 } from './public-route-manifest.js';
 import { registerPublicRoutes } from './public-app.js';
+import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
 import { registerSocialPreviewRoute } from './social-preview.js';
@@ -90,6 +91,7 @@ export const buildApp = (deps: AppDeps) => {
     })(c, next);
   });
   app.use('*', telemetryMiddleware);
+  app.use('*', signInTimingMiddleware(deps.signInTelemetrySecret));
   app.use('*', publicRateLimitMiddleware(deps));
   app.use('/api/*', async (c, next) => {
     if (c.req.path.startsWith(betterAuthPathPrefix)) {

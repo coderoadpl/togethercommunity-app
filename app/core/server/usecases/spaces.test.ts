@@ -637,6 +637,7 @@ const productRepo = (contentVersionBumps: string[], products: Product[]): Produc
 const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
   name: 'Tenant',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,

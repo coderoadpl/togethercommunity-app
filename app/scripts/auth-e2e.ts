@@ -225,11 +225,11 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
     };
 
     assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
-    assert(await step('student2@together.dev') === 'magic-link', 'a passwordless acme member was offered a password');
-    assert(await step('nobody@together.dev') === 'magic-link', 'an unknown address did not fall back to the magic link');
+    assert(await step('student2@together.dev') === 'password', 'a passwordless member did not receive the uniform options');
+    assert(await step('nobody@together.dev') === 'password', 'an unknown address did not receive the uniform options');
     assert(
-      await step('creator@together.dev') === 'magic-link',
-      'the acme login revealed a password account that belongs to another tenant',
+      await step('creator@together.dev') === 'password',
+      'a different tenant account did not receive the uniform options',
     );
 
     await page.getByTestId('login-change-email').click();
@@ -290,6 +290,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
+    await page.addInitScript(
+      "Object.defineProperty(PublicKeyCredential, 'isConditionalMediationAvailable', { configurable: true, value: () => Promise.resolve(false) })",
+    );
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -328,8 +331,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
-    await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 15000 });
-
+    await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
     await page.getByTestId('signin-passkey').click();
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
@@ -338,7 +340,11 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
       (await page.getByTestId('tenant-name').textContent()) === 'Acme Courses',
       'passkey sign-in did not open the Acme workspace',
     );
-    console.log('auth-e2e: passkey path OK');
+    await page.getByTestId('user-menu').click();
+    await page.getByTestId('sign-out').click();
+    await page.getByTestId('signin-passkey').click();
+    await page.waitForURL('**/start', { timeout: 15000 });
+    console.log('auth-e2e: identifier and discoverable passkey paths OK');
   } finally {
     if (browser) await browser.close();
   }

@@ -130,7 +130,6 @@ import type {
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
   AccountSecurityReader,
-  SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
   TenantDirectory,
@@ -185,7 +184,6 @@ import {
   notifications,
   notificationFanoutJobs,
   orders,
-  passkey,
   postReactions,
   postReportEvents,
   postReports,
@@ -4078,6 +4076,7 @@ export const createTenantRepository = (
         bunnyStreamCdnHostname: tenants.bunnyStreamCdnHostname,
         logoUrl: tenants.logoUrl,
         logoDarkUrl: tenants.logoDarkUrl,
+        signInNotice: tenants.signInNotice,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
@@ -4116,6 +4115,7 @@ export const createTenantRepository = (
           bunnyStreamCdnHostname: row.bunnyStreamCdnHostname,
           logoUrl: row.logoUrl,
           logoDarkUrl: row.logoDarkUrl,
+          signInNotice: row.signInNotice,
           accentColor: row.accentColor,
           accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
@@ -4170,6 +4170,7 @@ export const createTenantRepository = (
         bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
         logoUrl: settings.logoUrl,
         logoDarkUrl: settings.logoDarkUrl,
+        signInNotice: settings.signInNotice,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
@@ -4204,6 +4205,7 @@ export const createTenantRepository = (
       bunnyStreamCdnHostname: settings.bunnyStreamCdnHostname,
       logoUrl: settings.logoUrl,
       logoDarkUrl: settings.logoDarkUrl,
+      signInNotice: settings.signInNotice,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,
@@ -4325,55 +4327,6 @@ export const createOnboardingStateRepository = (db: Db): OnboardingStateReposito
       .update(tenants)
       .set({ onboardingDismissedAt: dismissedAt })
       .where(eq(tenants.id, tenantId));
-  },
-});
-
-export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
-  hasCredentialAccount: async (tenantId, email) => {
-    const rows = await db
-      .select({ credentialId: account.id })
-      .from(user)
-      .leftJoin(members, and(
-        eq(members.userId, user.id),
-        eq(members.tenantId, tenantId),
-        isNull(members.deletedAt),
-      ))
-      .leftJoin(tenantAdmins, and(
-        eq(tenantAdmins.userId, user.id),
-        eq(tenantAdmins.tenantId, tenantId),
-      ))
-      .leftJoin(account, and(
-        eq(account.userId, user.id),
-        eq(account.providerId, 'credential'),
-        isNotNull(account.password),
-      ))
-      .where(and(
-        eq(user.email, normalizeEmail(email)),
-        or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
-      ))
-      .limit(1);
-    return (rows[0]?.credentialId ?? null) !== null;
-  },
-  hasPasskey: async (tenantId, email) => {
-    const rows = await db
-      .select({ passkeyId: passkey.id })
-      .from(user)
-      .leftJoin(members, and(
-        eq(members.userId, user.id),
-        eq(members.tenantId, tenantId),
-        isNull(members.deletedAt),
-      ))
-      .leftJoin(tenantAdmins, and(
-        eq(tenantAdmins.userId, user.id),
-        eq(tenantAdmins.tenantId, tenantId),
-      ))
-      .leftJoin(passkey, eq(passkey.userId, user.id))
-      .where(and(
-        eq(user.email, normalizeEmail(email)),
-        or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
-      ))
-      .limit(1);
-    return (rows[0]?.passkeyId ?? null) !== null;
   },
 });
 

@@ -540,6 +540,31 @@ describe('provider avatar hooks', () => {
 });
 
 describe('auth cookie scope', () => {
+  it('returns identical password failures and magic-link acknowledgements for known and unknown accounts', async () => {
+    const { auth, authPort } = buildAuth();
+    const known = `uniform-known-${crypto.randomUUID()}@example.com`;
+    const unknown = `uniform-unknown-${crypto.randomUUID()}@example.com`;
+    expect((await signUp(auth, known)).status).toBe(200);
+    const passwordless = `uniform-passwordless-${crypto.randomUUID()}@example.com`;
+    await authPort.ensureUser(passwordless);
+    const request = (path: string, email: string) => auth.handler(new Request(`http://studio.localhost:48730/api/auth/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://studio.localhost:48730', 'x-forwarded-for': '198.51.100.249' },
+      body: JSON.stringify({ email, password: 'incorrect-password', callbackURL: 'http://studio.localhost:48730/' }),
+    }));
+    for (const path of ['sign-in/email', 'sign-in/magic-link']) {
+      const knownResponse = await request(path, known);
+      const unknownResponse = await request(path, unknown);
+      expect(knownResponse.status).toBe(path === 'sign-in/email' ? 401 : 200);
+      expect(unknownResponse.status).toBe(knownResponse.status);
+      const knownBody: unknown = await knownResponse.json();
+      expect(await unknownResponse.json()).toEqual(knownBody);
+      const passwordlessResponse = await request(path, passwordless);
+      expect(passwordlessResponse.status).toBe(knownResponse.status);
+      expect(await passwordlessResponse.json()).toEqual(knownBody);
+    }
+  });
+
   it('composes soft email verification without blocking password sign-in', async () => {
     const { auth } = buildAuth();
     const options = (await auth.$context).options;

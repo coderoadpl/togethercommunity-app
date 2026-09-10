@@ -8,6 +8,8 @@ import { normalizeEmail } from '#core/domain/index.js';
 
 import { API_PATHS } from '#core/contract/index.js';
 
+export const SIGN_IN_RESPONSE_FLOOR_MS = 300;
+
 const SIGN_IN_PATHS = new Set<string>([
   API_PATHS.authResolve,
   BETTER_AUTH_MAGIC_LINK_PATH,
@@ -29,8 +31,8 @@ export const signInTimingMiddleware = (secret: string): MiddlewareHandler => asy
   } finally {
     span?.setAttribute('auth.outcome', c.res.status < 400 ? 'accepted' : 'rejected');
     span?.setAttribute('auth.reason', c.res.status === 429 ? 'rate_limited' : c.res.status === 401 ? 'invalid_credentials' : c.res.status < 400 ? 'completed' : 'request_failed');
-    while (performance.now() - startedAt < 300) {
-      await new Promise((resolve) => setTimeout(resolve, Math.ceil(300 - (performance.now() - startedAt))));
+    while (performance.now() - startedAt < SIGN_IN_RESPONSE_FLOOR_MS) {
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(SIGN_IN_RESPONSE_FLOOR_MS - (performance.now() - startedAt))));
     }
   }
 };

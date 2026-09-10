@@ -2189,6 +2189,7 @@ export interface Messages {
     consentBlockedByWithdrawal: string;
     suppressionsCreated: string;
     suppressionsExisting: string;
+    searchLabel: string;
     search: string;
     tags: string;
     list: string;
@@ -2243,7 +2244,6 @@ export interface Messages {
     remove: string;
     add: string;
     loadMore: string;
-    selectConsent: string;
     none: string;
     pending_confirmation: string;
     withdrawn: string;
@@ -2282,6 +2282,20 @@ export interface Messages {
     noDefault: string;
     save: string;
     loading: string;
+    searchHint: string;
+    tagsHint: string;
+    listHint: string;
+    consentStateHint: string;
+    consentStateDisabledHint: string;
+    suppressionHint: string;
+    memberHint: string;
+    archiveStateHint: string;
+    consentDefinitionHint: string;
+    selectConsent: string;
+    clearFilters: string;
+    emptyDirectoryTitle: string;
+    emptyDirectoryBody: string;
+    contactsSectionTitle: string;
   };
   marketing: {
     contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;

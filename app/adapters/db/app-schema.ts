@@ -1980,7 +1980,7 @@ export const campaignSends = pgTable(
   'campaign_sends',
   {
     id: text('id').primaryKey(),
-    runId: text('run_id').references(() => schedulerRuns.id, { onDelete: 'restrict' }),
+    runId: text('run_id').references(() => schedulerRuns.id, { onDelete: 'set null' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),

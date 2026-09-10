@@ -107,32 +107,32 @@
               "error": null,
               "finishedAt": "2026-07-01T09:36:00.000Z",
               "id": "scheduler-run-studio-marketing",
-              "idle": true,
+              "idle": false,
               "kind": "marketing_tick",
               "startedAt": "2026-07-01T09:36:00.000Z",
               "status": "completed",
               "totals": {
-                "campaignsTouched": 0,
+                "campaignsTouched": 1,
                 "failed": 0,
                 "reEnqueued": false,
-                "sendsAttempted": 0,
-                "sent": 0,
+                "sendsAttempted": 1,
+                "sent": 1,
                 "skipped": 0
               },
               "trigger": "cron"
             },
             "tenant": {
-              "batchSize": 0,
+              "batchSize": 1,
               "budgetComputed": 25,
-              "budgetUsed": 0,
-              "campaignsTouched": 0,
+              "budgetUsed": 1,
+              "campaignsTouched": 1,
               "createdAt": "2026-07-01T09:36:00.000Z",
               "errors": [],
               "failed": 0,
               "id": "scheduler-run-tenant-studio-marketing",
               "purged": null,
               "runId": "scheduler-run-studio-marketing",
-              "sent": 0,
+              "sent": 1,
               "skipped": 0,
               "tenantId": "tenant-studio"
             }
@@ -186,22 +186,22 @@
             "error": null,
             "finishedAt": "2026-07-01T09:36:00.000Z",
             "id": "scheduler-run-studio-marketing",
-            "idle": true,
+            "idle": false,
             "kind": "marketing_tick",
             "startedAt": "2026-07-01T09:36:00.000Z",
             "status": "completed",
             "totals": {
-              "campaignsTouched": 0,
+              "campaignsTouched": 1,
               "failed": 0,
               "reEnqueued": false,
-              "sendsAttempted": 0,
-              "sent": 0,
+              "sendsAttempted": 1,
+              "sent": 1,
               "skipped": 0
             },
             "trigger": "cron"
           },
           "runsLast24Hours": 2,
-          "sentLast24Hours": 1
+          "sentLast24Hours": 2
         }
       }
     },

@@ -1,6 +1,6 @@
 {
-  "hash": "078a1e5a82bfee2dcaa40305e0c36a1fe0f70bdb9e3b42a0a07de1eef03b3743",
-  "shortId": "078a1e5a82bf",
+  "hash": "ab54d833089e665b0787cf8bbf13dd35b26c212da3cdd6d04a80f30b816e205e",
+  "shortId": "ab54d833089e",
   "schema": {
     "constraints": [
       {
@@ -319,7 +319,7 @@
         "table": "scheduler_run_tenants"
       },
       {
-        "definition": "FOREIGN KEY (run_id) REFERENCES scheduler_runs(id) ON DELETE RESTRICT",
+        "definition": "FOREIGN KEY (run_id) REFERENCES scheduler_runs(id) ON DELETE SET NULL",
         "name": "campaign_sends_run_id_scheduler_runs_id_fk",
         "table": "campaign_sends"
       },

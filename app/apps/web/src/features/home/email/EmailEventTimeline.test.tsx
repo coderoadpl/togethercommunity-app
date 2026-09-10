@@ -41,7 +41,8 @@ describe('EmailEventTimeline', () => {
 
     expect(screen.getAllByTestId('email-event')).toHaveLength(2);
     expect(screen.getByText('ses-1')).toBeInTheDocument();
-    expect(screen.getByText('hard')).toBeInTheDocument();
+    expect(screen.getByText(en.marketing.bounceClassifications.hard)).toBeInTheDocument();
+    expect(screen.getByText(/:01:00/)).toBeInTheDocument();
     expect(screen.getAllByText(en.marketing.rawMeta)).toHaveLength(2);
   });
 });

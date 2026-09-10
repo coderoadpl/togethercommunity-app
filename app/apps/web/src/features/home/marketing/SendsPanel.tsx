@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -11,6 +11,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -33,7 +34,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EmailEventTimeline } from '../email/index.js';
-import { deliveryStatusColor, deliveryStatusLabel, sendKindLabel, sendStatusColor, sendStatusLabel } from './EmailSendSummary.js';
+import { deliveryStatusColor, deliveryStatusLabel, reasonLabel, sendKindLabel, sendStatusColor, sendStatusLabel } from './EmailSendSummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -89,6 +90,7 @@ export const SendsPanel = () => {
   const [cursor, setCursor] = useState<string | undefined>();
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
   const [exporting, setExporting] = useState(false);
+  const [showSendLogDetails, setShowSendLogDetails] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search);
   const debouncedSourceApp = useDebouncedValue(sourceApp);
@@ -291,9 +293,14 @@ export const SendsPanel = () => {
             </Stack>
           ),
           actions: (
-            <Button variant="outlined" disabled={exporting} onClick={() => void download()}>
-              {exporting ? t.marketing.exporting : t.marketing.exportCsv}
-            </Button>
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+              <Button variant="outlined" onClick={() => setShowSendLogDetails((visible) => !visible)}>
+                {showSendLogDetails ? t.marketing.hideSendLogDetails : t.marketing.showSendLogDetails}
+              </Button>
+              <Button variant="outlined" disabled={exporting} onClick={() => void download()}>
+                {exporting ? t.marketing.exporting : t.marketing.exportCsv}
+              </Button>
+            </Stack>
           ),
         }}
         pagination={(
@@ -340,60 +347,70 @@ export const SendsPanel = () => {
           <StatusView state={{ kind: 'error', message: localizePanelError(sends.error, t), retry: { label: t.common.retry, onRetry: () => void sends.refetch() } }} />
         ) : (
           <ResponsiveTable>
-            <Table size="small" aria-label={t.marketing.sendsTitle}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>{t.marketing.kind}</TableCell>
-                  <TableCell>{t.marketing.recipient}</TableCell>
-                  <TableCell>{t.marketing.subject}</TableCell>
-                  <TableCell>{t.marketing.statusLabel}</TableCell>
-                  <TableCell>{t.marketing.deliveryStatusLabel}</TableCell>
-                  <TableCell>{t.marketing.transportLabel}</TableCell>
-                  <TableCell>{t.marketing.source}</TableCell>
-                  <TableCell>{t.marketing.sourceApp}</TableCell>
-                  <TableCell>{t.marketing.sentTime}</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((send) => (
-                  <TableRow key={`${send.kind}:${send.id}`} data-testid="email-send-row">
-                    <TableCell><Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} /></TableCell>
-                    <TableCell>{send.contactId ? <Link to="/panel/marketing/contacts/$contactId" params={{ contactId: send.contactId }}>{send.recipient}</Link> : send.recipient}</TableCell>
-                    <TableCell>{send.subject}</TableCell>
-                    <TableCell>
-                      <Stack useFlexGap spacing="0.25rem">
-                        <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
-                        {send.failureCode === null ? null : (
-                          <Typography variant="caption" color="error.main">
-                            {send.failureCode}: {send.failureMessage}
-                          </Typography>
-                        )}
-                      </Stack>
-                    </TableCell>
-                    <TableCell><Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
-                    <TableCell>
-                      <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
-                        <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />
-                        {send.transport === 'smtp' ? <Chip size="small" color="warning" label={t.marketing.limitedTracking} /> : null}
-                      </Stack>
-                    </TableCell>
-                    <TableCell><SendCampaign send={send} /></TableCell>
-                    <TableCell>{send.sourceApp ?? '—'}</TableCell>
-                    <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
-                    <TableCell align="right">
-                      <Button
-                        component={Link}
-                        size="small"
-                        to={`/panel/marketing/sends/${encodeURIComponent(send.kind)}/${encodeURIComponent(send.id)}`}
-                      >
-                        {t.marketing.sendDetails}
-                      </Button>
-                    </TableCell>
+            <TableContainer>
+              <Table size="small" aria-label={t.marketing.sendsTitle}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{t.marketing.kind}</TableCell>
+                    <TableCell>{t.marketing.recipient}</TableCell>
+                    <TableCell>{t.marketing.subject}</TableCell>
+                    <TableCell>{t.marketing.statusLabel}</TableCell>
+                    <TableCell>{t.marketing.deliveryStatusLabel}</TableCell>
+                    {showSendLogDetails ? (
+                      <>
+                        <TableCell>{t.marketing.transportLabel}</TableCell>
+                        <TableCell>{t.marketing.source}</TableCell>
+                        <TableCell>{t.marketing.sourceApp}</TableCell>
+                        <TableCell>{t.marketing.sentTime}</TableCell>
+                      </>
+                    ) : null}
+                    <TableCell />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {rows.map((send) => (
+                    <TableRow key={`${send.kind}:${send.id}`} data-testid="email-send-row">
+                      <TableCell><Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} /></TableCell>
+                      <TableCell>{send.contactId ? <Link to="/panel/marketing/contacts/$contactId" params={{ contactId: send.contactId }}>{send.recipient}</Link> : send.recipient}</TableCell>
+                      <TableCell>{send.subject}</TableCell>
+                      <TableCell>
+                        <Stack useFlexGap spacing="0.25rem">
+                          <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
+                          {send.failureCode === null ? null : (
+                            <Typography variant="caption" color="error.main">
+                              {send.failureCode}: {send.failureMessage}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell><Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
+                      {showSendLogDetails ? (
+                        <>
+                          <TableCell>
+                            <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
+                              <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />
+                              {send.transport === 'smtp' ? <Chip size="small" color="warning" label={t.marketing.limitedTracking} /> : null}
+                            </Stack>
+                          </TableCell>
+                          <TableCell><SendCampaign send={send} /></TableCell>
+                          <TableCell>{send.sourceApp ?? '—'}</TableCell>
+                          <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
+                        </>
+                      ) : null}
+                      <TableCell align="right">
+                        <Button
+                          component={Link}
+                          size="small"
+                          to={`/panel/marketing/sends/${encodeURIComponent(send.kind)}/${encodeURIComponent(send.id)}`}
+                        >
+                          {t.marketing.sendDetails}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </ResponsiveTable>
         )}
       </ListSection>
@@ -418,25 +435,59 @@ export const SendDetailPage = () => {
   if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
 
   const send = detail.data.send;
+  const skipReason = send.skipReason === null ? { label: t.marketing.skipReason, value: '—' } : reasonLabel(send.skipReason, t);
+  const campaignValue = send.campaignId === null ? '—' : (
+    <Link to="/panel/marketing/campaigns/$campaignId" params={{ campaignId: send.campaignId }}>
+      {send.campaignName ?? t.marketing.campaignLabel}
+    </Link>
+  );
+  const recipientValue = send.contactId === undefined || send.contactId === null ? send.recipient : (
+    <Link to="/panel/marketing/contacts/$contactId" params={{ contactId: send.contactId }}>
+      {send.recipient}
+    </Link>
+  );
+  const outcomeAlert = send.deliveryStatus === 'bounced'
+    ? <Alert severity="error">{t.marketing.deliveryOutcomeBounced}</Alert>
+    : send.deliveryStatus === 'complained'
+      ? <Alert severity="warning">{t.marketing.deliveryOutcomeComplained}</Alert>
+      : null;
+  const detailRows: Array<[string, ReactNode]> = [
+    [t.marketing.kind, <Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} />],
+    [t.marketing.recipient, recipientValue],
+    [t.marketing.subject, send.subject],
+    [t.marketing.statusLabel, (
+      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
+        {send.failureCode === null ? null : (
+          <Typography variant="caption" color="error.main">
+            {send.failureCode}: {send.failureMessage}
+          </Typography>
+        )}
+      </Stack>
+    )],
+    [t.marketing.deliveryStatusLabel, <Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} />],
+    [t.marketing.transportLabel, (
+      <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
+        <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />
+        {send.transport === 'smtp' ? <Chip size="small" color="warning" label={t.marketing.limitedTracking} /> : null}
+      </Stack>
+    )],
+    [t.marketing.source, send.source],
+    [t.marketing.campaignLabel, campaignValue],
+    [t.marketing.sourceApp, send.sourceApp ?? '—'],
+    [t.marketing.sentTime, send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)],
+    [t.marketing.createdTime, formatDateTime(send.createdAt, language)],
+    [t.marketing.sesMessageId, send.sesMessageId ?? '—'],
+    [skipReason.label, skipReason.value],
+    [t.marketing.eventError, send.failureCode === null ? '—' : `${send.failureCode}: ${send.failureMessage ?? ''}`],
+  ];
+
   return (
     <PanelPage title={send.subject} backTo={<PanelBackLink to="/panel/marketing/sends">{t.marketing.allSends}</PanelBackLink>}>
+      {outcomeAlert}
       <SectionCard title={t.marketing.projection}>
         <Stack component="dl" useFlexGap spacing="0.75rem" sx={{ m: 0 }}>
-          {[
-            [t.marketing.kind, sendKindLabel(send.kind, t)],
-            [t.marketing.recipient, send.recipient],
-            [t.marketing.subject, send.subject],
-            [t.marketing.statusLabel, sendStatusLabel(send.status, t)],
-            [t.marketing.deliveryStatusLabel, deliveryStatusLabel(send.deliveryStatus, t)],
-            [t.marketing.transportLabel, transportLabel(send.transport, t)],
-            [t.marketing.source, send.campaignName ?? send.source],
-            [t.marketing.sourceApp, send.sourceApp ?? '—'],
-            [t.marketing.sentTime, send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)],
-            [t.marketing.createdTime, formatDateTime(send.createdAt, language)],
-            [t.marketing.sesMessageId, send.sesMessageId ?? '—'],
-            [t.marketing.skipReason, send.skipReason ?? '—'],
-            [t.marketing.eventError, send.failureCode === null ? '—' : `${send.failureCode}: ${send.failureMessage ?? ''}`],
-          ].map(([label, value]) => (
+          {detailRows.map(([label, value]) => (
             <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.25rem">
               <Typography component="dt" variant="body2" color="text.secondary" sx={{ minWidth: { sm: '10rem' } }}>{label}</Typography>
               <Typography component="dd" variant="body2" sx={{ m: 0, overflowWrap: 'anywhere' }}>{value}</Typography>

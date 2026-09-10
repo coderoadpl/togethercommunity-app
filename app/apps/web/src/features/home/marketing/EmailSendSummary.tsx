@@ -2,9 +2,11 @@ import { Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import type {
+  BounceClassification,
   EmailDeliveryStatus,
   EmailSendProjection,
   EmailSendStatus,
+  Suppression,
 } from '#core/domain/index.js';
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -35,6 +37,53 @@ export const sendStatusColor = (status: EmailSendStatus): 'success' | 'warning' 
 
 export const deliveryStatusColor = (status: EmailDeliveryStatus | null): 'success' | 'warning' | 'error' | 'default' =>
   status === 'delivered' ? 'success' : status === 'bounced' ? 'error' : status === 'complained' ? 'warning' : 'default';
+
+const localizedSkipReasons = [
+  'suppressed',
+  'unsubscribed',
+  'not_consented',
+  'pending_confirmation',
+  'contact_archived',
+  'contact_address_changed',
+] as const;
+
+const localizedSuppressionReasons = [
+  'hard_bounce',
+  'complaint',
+  'manual',
+  'unsubscribe_global',
+  'erasure',
+] as const satisfies readonly Suppression['reason'][];
+
+const localizedBounceClassifications = [
+  'soft',
+  'hard',
+  'unresolved',
+  'complaint',
+] as const satisfies readonly BounceClassification[];
+
+const isLocalizedSkipReason = (reason: string): reason is keyof Messages['marketing']['skipReasons'] =>
+  localizedSkipReasons.some((key) => key === reason);
+
+const isLocalizedSuppressionReason = (reason: string): reason is keyof Messages['marketing']['suppressionReasons'] =>
+  localizedSuppressionReasons.some((key) => key === reason);
+
+const isLocalizedBounceClassification = (classification: string): classification is keyof Messages['marketing']['bounceClassifications'] =>
+  localizedBounceClassifications.some((key) => key === classification);
+
+export const skipReasonLabel = (reason: string, t: Messages): string =>
+  isLocalizedSkipReason(reason) ? t.marketing.skipReasons[reason] : t.marketing.unknownReason;
+
+export const suppressionReasonLabel = (reason: string, t: Messages): string =>
+  isLocalizedSuppressionReason(reason) ? t.marketing.suppressionReasons[reason] : t.marketing.unknownReason;
+
+export const bounceClassificationLabel = (classification: string, t: Messages): string =>
+  isLocalizedBounceClassification(classification) ? t.marketing.bounceClassifications[classification] : t.marketing.unknownReason;
+
+export const reasonLabel = (reason: string, t: Messages): { label: string; value: string } =>
+  isLocalizedSuppressionReason(reason)
+    ? { label: t.marketing.suppressionReason, value: suppressionReasonLabel(reason, t) }
+    : { label: t.marketing.skipReason, value: skipReasonLabel(reason, t) };
 
 export const EmailSendSummary = ({ send }: { send: EmailSendProjection }) => {
   const t = useTranslations();

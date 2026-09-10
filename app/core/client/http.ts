@@ -711,6 +711,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams();
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.includeIdle !== undefined) params.set('includeIdle', String(input.includeIdle));
     if (input.since !== undefined) params.set('since', input.since);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -737,6 +739,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams();
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.since !== undefined) params.set('since', input.since);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));

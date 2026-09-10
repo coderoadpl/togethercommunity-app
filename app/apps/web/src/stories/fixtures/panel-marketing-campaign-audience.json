@@ -53,7 +53,18 @@
           "subject": "Updates for newsletter contacts",
           "tenantId": "tenant-studio",
           "toSend": 0,
-          "unresolved": 0
+          "unresolved": 0,
+          "results": {
+            "candidates": 0,
+            "waiting": 0,
+            "sent": 0,
+            "failed": 0,
+            "skipped": 0,
+            "delivered": 0,
+            "bounced": 0,
+            "complained": 0,
+            "unresolved": 0
+          }
         }
       }
     },

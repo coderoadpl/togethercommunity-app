@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
+import type { Campaign, CampaignEngagementStats, CampaignResults } from '#core/domain/index.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -44,6 +44,7 @@ type CampaignRow = Campaign & {
   engagement: CampaignEngagementStats;
   queued: number;
   unresolved: number;
+  results: CampaignResults;
 };
 
 const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
@@ -51,6 +52,7 @@ const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   engagement: { uniqueOpens: 0, totalOpens: 0, uniqueClicks: 0, totalClicks: 0 },
   queued: 0,
   unresolved: 0,
+  results: { candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 },
   ...overrides,
 });
 
@@ -121,6 +123,9 @@ const consentDefinitionsHandler = () =>
       },
     }));
 
+const listsHandler = () =>
+  http.get('/api/marketing/lists', () => HttpResponse.json({ ok: true, data: { lists: [], nextCursor: null } }));
+
 const productsHandler = () =>
   http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } }));
 
@@ -190,10 +195,9 @@ describe('campaign reputation warning', () => {
                 status: 'scheduled',
                 sendAt: '2026-07-28T09:30:00.000Z',
                 audienceVersion: 2,
-                candidateCount: 12,
+                candidateCount: 5_000,
                 skipped: 2,
-                queued: 5,
-                unresolved: 1,
+                results: { candidates: 12, waiting: 5, sent: 4, failed: 1, skipped: 2, delivered: 3, bounced: 1, complained: 0, unresolved: 0 },
                 engagement: { uniqueOpens: 3, totalOpens: 8, uniqueClicks: 1, totalClicks: 2 },
               }),
               campaignRow({
@@ -205,6 +209,7 @@ describe('campaign reputation warning', () => {
                 toSend: 7,
                 sent: 3,
                 failed: 1,
+                results: { candidates: 7, waiting: 2, sent: 3, failed: 1, skipped: 1, delivered: 2, bounced: 0, complained: 0, unresolved: 1 },
               }),
             ],
           },
@@ -228,8 +233,9 @@ describe('campaign reputation warning', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByText(en.marketing.trackingDisabledCampaignMetrics)).toBeInTheDocument();
-    expect(await screen.findByText('12 candidates · 2 skipped · 5 queued · 1 unresolved')).toBeInTheDocument();
-    expect(screen.getByText('to send: 7 · sent: 3 · failed: 1')).toBeInTheDocument();
+    expect(await screen.findByText('sent 4/5000')).toBeInTheDocument();
+    expect(screen.getByText('sent 3/7')).toBeInTheDocument();
+    expect(screen.getByText('delivered 3 · bounces 1 · complaints 0')).toBeInTheDocument();
     expect(screen.getByText('Opens 3 unique · 8 total')).toBeInTheDocument();
     expect(screen.getByText('Clicks 1 unique · 2 total')).toBeInTheDocument();
     expect(await screen.findAllByText(en.marketing.compactOpensUnavailable)).toHaveLength(1);
@@ -310,6 +316,9 @@ describe('campaign reputation warning', () => {
               name: 'Detail campaign',
               status: 'running',
               sent: 4,
+              candidateCount: 5_000,
+              unresolved: 2,
+              results: { candidates: 8, waiting: 2, sent: 4, failed: 1, skipped: 1, delivered: 3, bounced: 1, complained: 0, unresolved: 0 },
               engagement: { uniqueOpens: 6, totalOpens: 10, uniqueClicks: 2, totalClicks: 3 },
             }),
           },
@@ -317,7 +326,9 @@ describe('campaign reputation warning', () => {
       consentDefinitionsHandler(),
       productsHandler(),
       layoutsHandler(),
+      listsHandler(),
       settingsHandler(),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({ ok: true, data: { items: [], summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null }, nextCursor: null } })),
     );
     const root = createRootRoute();
     const route = createRoute({
@@ -340,6 +351,47 @@ describe('campaign reputation warning', () => {
     expect(within(screen.getByTestId('campaign-engagement-stats')).getByText('10')).toBeInTheDocument();
     expect(within(screen.getByTestId('campaign-engagement-stats')).getByText('2')).toBeInTheDocument();
     expect(within(screen.getByTestId('campaign-engagement-stats')).getByText('3')).toBeInTheDocument();
-    expect(screen.getByLabelText(en.marketing.layoutLabel)).toHaveTextContent(en.marketing.noLayout);
+    expect(screen.getByText('75% of sent')).toBeInTheDocument();
+    expect(screen.getByText('25% of sent')).toBeInTheDocument();
+    expect(screen.getByText('5000 contacts · sent 4 · waiting 2 · skipped 1 · failed 1')).toBeInTheDocument();
+    expect(screen.getByText(en.marketing.unresolvedAcceptance({ count: 2 }))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Show message preview/ }).querySelector('svg')).not.toBeNull();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('routes drafts to the editor and finished campaigns to the report', async () => {
+    let detail = campaignRow({ id: 'campaign-status-routing', name: 'Status routing', status: 'draft' });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(true),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({ ok: true, data: { items: [], summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null }, nextCursor: null } })),
+    );
+    const root = createRootRoute();
+    const route = createRoute({ getParentRoute: () => root, path: '/panel/marketing/campaigns/$campaignId', component: CampaignDetailPage });
+    const router = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/panel/marketing/campaigns/campaign-status-routing'] }) });
+    await router.load();
+    const view = renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByLabelText(en.marketing.nameLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('campaign-result-stats')).not.toBeInTheDocument();
+    view.unmount();
+
+    detail = campaignRow({
+      id: 'campaign-status-routing', name: 'Status routing', status: 'finished',
+      results: { candidates: 10, waiting: 0, sent: 8, failed: 1, skipped: 1, delivered: 6, bounced: 1, complained: 1, unresolved: 0 },
+    });
+    const secondRouter = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/panel/marketing/campaigns/campaign-status-routing'] }) });
+    await secondRouter.load();
+    renderWithProviders(<RouterProvider router={secondRouter} />);
+
+    expect(await screen.findByTestId('campaign-result-stats')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.marketing.testSend })).not.toBeInTheDocument();
   });
 });

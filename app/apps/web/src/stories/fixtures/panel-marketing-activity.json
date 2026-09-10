@@ -173,6 +173,42 @@
               "skipped": 0,
               "tenantId": "tenant-studio"
             }
+          },
+          {
+            "run": {
+              "createdAt": "2026-07-01T09:36:00.000Z",
+              "durationMs": 684,
+              "error": null,
+              "finishedAt": "2026-07-01T09:36:00.000Z",
+              "id": "scheduler-run-studio-idle",
+              "kind": "marketing_tick",
+              "startedAt": "2026-07-01T09:36:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 0,
+                "failed": 0,
+                "reEnqueued": false,
+                "sendsAttempted": 0,
+                "sent": 0,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 0,
+              "budgetComputed": 25,
+              "budgetUsed": 0,
+              "campaignsTouched": 0,
+              "createdAt": "2026-07-01T09:36:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-idle",
+              "purged": null,
+              "runId": "scheduler-run-studio-idle",
+              "sent": 0,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
           }
         ],
         "nextCursor": null,
@@ -197,7 +233,7 @@
             },
             "trigger": "cron"
           },
-          "runsLast24Hours": 2,
+          "runsLast24Hours": 3,
           "sentLast24Hours": 2
         }
       }
@@ -407,6 +443,68 @@
       "ok": true,
       "value": {
         "unread": 0
+      }
+    },
+    "listMarketingCampaigns:[]": {
+      "ok": true,
+      "value": {
+        "campaigns": [
+          {
+            "audience": null,
+            "audienceFilter": null,
+            "audienceNameSnapshot": "All eligible members",
+            "audienceSnapshotId": null,
+            "audienceVersion": 1,
+            "bodyHtml": "<p>Learning plan</p>",
+            "bodySource": "<p>Learning plan</p>",
+            "bodyText": null,
+            "candidateCount": 0,
+            "consentDefinitionId": "consent-definition-studio-news",
+            "consentLabelSnapshot": "I would like to receive news by email",
+            "createdAt": "2026-06-26T12:00:00.000Z",
+            "cursorContactId": null,
+            "cursorMemberId": "member-studio-active",
+            "engagement": {
+              "totalClicks": 0,
+              "totalOpens": 0,
+              "uniqueClicks": 0,
+              "uniqueOpens": 0
+            },
+            "errorCount": 0,
+            "failed": 0,
+            "finishedAt": null,
+            "id": "campaign-studio-observability",
+            "layoutId": null,
+            "lockedBy": null,
+            "lockedUntil": null,
+            "name": "Course launch",
+            "pausedReason": null,
+            "queued": 0,
+            "replyTo": null,
+            "sendAt": "2026-06-27T12:00:00.000Z",
+            "sent": 1,
+            "skipped": 0,
+            "snapshotMaxContactId": null,
+            "snapshotMaxMemberId": "member-studio-active",
+            "startedAt": "2026-06-27T12:00:00.000Z",
+            "status": "running",
+            "subject": "Your learning plan for July",
+            "tenantId": "tenant-studio",
+            "toSend": 1,
+            "unresolved": 0,
+            "results": {
+              "candidates": 20,
+              "waiting": 7,
+              "sent": 10,
+              "failed": 1,
+              "skipped": 2,
+              "delivered": 8,
+              "bounced": 1,
+              "complained": 0,
+              "unresolved": 1
+            }
+          }
+        ]
       }
     }
   },

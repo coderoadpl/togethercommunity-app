@@ -86,6 +86,7 @@ import type {
   AutomationIdempotencyKey,
   Campaign,
   CampaignEngagementStats,
+  CampaignResults,
   CampaignSend,
   CheckoutConsentCapture,
   Coupon,
@@ -1947,6 +1948,7 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
+  results(tenantId: string, campaignIds: string[]): Promise<Map<string, CampaignResults>>;
   progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>>;
   claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;

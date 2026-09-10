@@ -124,6 +124,17 @@
               "uniqueClicks": 0,
               "uniqueOpens": 0
             },
+            "results": {
+              "candidates": 1,
+              "waiting": 0,
+              "sent": 1,
+              "failed": 0,
+              "skipped": 0,
+              "delivered": 1,
+              "bounced": 0,
+              "complained": 0,
+              "unresolved": 0
+            },
             "errorCount": 0,
             "failed": 0,
             "finishedAt": "2026-06-27T12:00:00.000Z",

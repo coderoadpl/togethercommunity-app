@@ -74,14 +74,23 @@ const schedulerRunCursorSchema = z.string().min(1).superRefine((value, ctx) => {
 export const schedulerRunListQuerySchema = z.object({
   kind: schedulerRunKindSchema.optional(),
   status: schedulerRunStatusSchema.optional(),
+  campaignId: z.string().min(1).optional(),
+  includeIdle: z.union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')]).optional(),
   since: isoDateTime.optional(),
   cursor: schedulerRunCursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+export const schedulerRunCampaignCountsSchema = z.object({
+  sent: nonNegativeInteger,
+  failed: nonNegativeInteger,
+  skipped: nonNegativeInteger,
+});
+
 export const schedulerRunTenantItemSchema = z.object({
   run: schedulerRunSchema,
   tenant: schedulerRunTenantSchema,
+  campaignCounts: schedulerRunCampaignCountsSchema.nullable().default(null),
 });
 
 export const schedulerRunTenantSummarySchema = z.object({
@@ -97,6 +106,7 @@ export type SchedulerRunStatus = z.output<typeof schedulerRunStatusSchema>;
 export type SchedulerRunTotals = z.output<typeof schedulerRunTotalsSchema>;
 export type SchedulerRun = z.output<typeof schedulerRunSchema>;
 export type SchedulerRunTenant = z.output<typeof schedulerRunTenantSchema>;
+export type SchedulerRunCampaignCounts = z.output<typeof schedulerRunCampaignCountsSchema>;
 export type SchedulerRunListQuery = z.output<typeof schedulerRunListQuerySchema>;
 export type SchedulerRunTenantItem = z.output<typeof schedulerRunTenantItemSchema>;
 export type SchedulerRunTenantSummary = z.output<typeof schedulerRunTenantSummarySchema>;

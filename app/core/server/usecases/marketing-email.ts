@@ -32,6 +32,7 @@ import {
   type Capability,
   type Campaign,
   type CampaignEngagementStats,
+  type CampaignResults,
   type CampaignSend,
   type ConsentDocumentRef,
   type ConsentDocumentVersionRef,
@@ -694,32 +695,57 @@ const emptyEngagementStats = (): CampaignEngagementStats => ({
   totalClicks: 0,
 });
 
+const emptyCampaignResults = (): CampaignResults => ({
+  candidates: 0,
+  waiting: 0,
+  sent: 0,
+  failed: 0,
+  skipped: 0,
+  delivered: 0,
+  bounced: 0,
+  complained: 0,
+  unresolved: 0,
+});
+
 export const getCampaignWithEngagement = async (
   ctx: Ctx,
   input: { campaignId: string },
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }, AppError>> => {
+): Promise<Result<Campaign & { engagement: CampaignEngagementStats; results: CampaignResults; queued: number; unresolved: number }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaign = await getCampaign(ctx, input, deps);
   if (!campaign.ok) return campaign;
-  const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
-  const progress = await deps.sends.progressStats(campaign.value.tenantId, [campaign.value.id]);
-  return ok({ ...campaign.value, ...(progress.get(campaign.value.id) ?? { queued: 0, unresolved: 0 }), engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
+  const [stats, results, progress] = await Promise.all([
+    deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]),
+    deps.sends.results(campaign.value.tenantId, [campaign.value.id]),
+    deps.sends.progressStats(campaign.value.tenantId, [campaign.value.id]),
+  ]);
+  return ok({
+    ...campaign.value,
+    ...(progress.get(campaign.value.id) ?? { queued: 0, unresolved: 0 }),
+    results: results.get(campaign.value.id) ?? emptyCampaignResults(),
+    engagement: stats.get(campaign.value.id) ?? emptyEngagementStats(),
+  });
 };
 
 export const listCampaignsWithEngagement = async (
   ctx: Ctx,
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
-): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats; queued: number; unresolved: number }>, AppError>> => {
+): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats; results: CampaignResults; queued: number; unresolved: number }>, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaigns = await deps.campaigns.list(tenantId.value);
-  const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
-  const progress = await deps.sends.progressStats(tenantId.value, campaigns.map((campaign) => campaign.id));
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const [stats, results, progress] = await Promise.all([
+    deps.sends.engagementStats(tenantId.value, campaignIds),
+    deps.sends.results(tenantId.value, campaignIds),
+    deps.sends.progressStats(tenantId.value, campaignIds),
+  ]);
   return ok(campaigns.map((campaign) => ({
     ...campaign,
     ...(progress.get(campaign.id) ?? { queued: 0, unresolved: 0 }),
+    results: results.get(campaign.id) ?? emptyCampaignResults(),
     engagement: stats.get(campaign.id) ?? emptyEngagementStats(),
   })));
 };

@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, lt, or, sql, sum } from 'drizzle-orm';
+import { and, desc, eq, exists, gte, inArray, lt, ne, or, sql, sum } from 'drizzle-orm';
 
 import {
   schedulerRunSchema,
+  schedulerRunCampaignCountsSchema,
   schedulerRunTenantItemSchema,
   schedulerRunTenantSummarySchema,
   schedulerRunTenantSchema,
@@ -11,7 +12,7 @@ import {
 import type { SchedulerRunRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { schedulerRuns, schedulerRunTenants } from './schema.js';
+import { campaignSends, schedulerRuns, schedulerRunTenants } from './schema.js';
 
 const parseRun = (row: typeof schedulerRuns.$inferSelect): SchedulerRun => schedulerRunSchema.parse({
   ...row,
@@ -34,7 +35,7 @@ const decodeCursor = (cursor: string): { startedAt: string; id: string } => {
 };
 
 export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => {
-  const filtersFor = (input: SchedulerRunListQuery) => {
+  const filtersFor = (input: SchedulerRunListQuery, tenantId?: string) => {
     const cursor = input.cursor === undefined ? undefined : decodeCursor(input.cursor);
     const cursorFilter = cursor === undefined ? undefined : or(
       lt(schedulerRuns.startedAt, cursor.startedAt),
@@ -43,6 +44,22 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
     return [
       input.kind === undefined ? undefined : eq(schedulerRuns.kind, input.kind),
       input.status === undefined ? undefined : eq(schedulerRuns.status, input.status),
+      input.campaignId === undefined ? undefined : exists(
+        db.select({ id: campaignSends.id }).from(campaignSends).where(and(
+          eq(campaignSends.runId, schedulerRuns.id),
+          eq(campaignSends.campaignId, input.campaignId),
+          tenantId === undefined ? undefined : eq(campaignSends.tenantId, tenantId),
+        )),
+      ),
+      input.includeIdle === true || tenantId === undefined ? undefined : or(
+        ne(schedulerRuns.kind, 'marketing_tick'),
+        ne(schedulerRuns.status, 'completed'),
+        ne(schedulerRunTenants.batchSize, 0),
+        ne(schedulerRunTenants.sent, 0),
+        ne(schedulerRunTenants.failed, 0),
+        ne(schedulerRunTenants.skipped, 0),
+        sql`jsonb_array_length(${schedulerRunTenants.errors}) > 0`,
+      ),
       input.since === undefined ? undefined : gte(schedulerRuns.startedAt, input.since),
       cursorFilter,
     ];
@@ -66,12 +83,29 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
     const selected = await db.select({ run: schedulerRuns, tenant: schedulerRunTenants })
       .from(schedulerRunTenants)
       .innerJoin(schedulerRuns, eq(schedulerRuns.id, schedulerRunTenants.runId))
-      .where(and(eq(schedulerRunTenants.tenantId, tenantId), ...filtersFor(input)))
+      .where(and(eq(schedulerRunTenants.tenantId, tenantId), ...filtersFor(input, tenantId)))
       .orderBy(desc(schedulerRuns.startedAt), desc(schedulerRuns.id))
       .limit(input.limit + 1);
-    const items = selected.slice(0, input.limit).map(({ run, tenant }) => ({
+    const pageRows = selected.slice(0, input.limit);
+    const runIds = pageRows.map(({ run }) => run.id);
+    const campaignRows = input.campaignId === undefined || runIds.length === 0 ? [] : await db.select({
+      runId: campaignSends.runId,
+      sent: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent')::int`,
+      failed: sql<number>`count(*) filter (where ${campaignSends.status} = 'failed')::int`,
+      skipped: sql<number>`count(*) filter (where ${campaignSends.status} = 'skipped')::int`,
+    }).from(campaignSends).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      eq(campaignSends.campaignId, input.campaignId),
+      inArray(campaignSends.runId, runIds),
+    )).groupBy(campaignSends.runId);
+    const campaignCounts = new Map(campaignRows.flatMap((row) => row.runId === null
+      ? []
+      : [[row.runId, schedulerRunCampaignCountsSchema.parse(row)]]
+    ));
+    const items = pageRows.map(({ run, tenant }) => schedulerRunTenantItemSchema.parse({
       run: parseRun(run),
       tenant: parseTenant(tenant),
+      campaignCounts: campaignCounts.get(run.id) ?? null,
     }));
     const last = items.at(-1)?.run;
     return {
@@ -134,7 +168,7 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
           eq(schedulerRunTenants.tenantId, tenantId),
           gte(schedulerRuns.startedAt, since),
         ));
-      const latest = await listTenant(tenantId, { limit: 1 });
+      const latest = await listTenant(tenantId, { includeIdle: true, limit: 1 });
       return schedulerRunTenantSummarySchema.parse({
         runsLast24Hours: totals?.runs ?? 0,
         sentLast24Hours: totals?.sent ?? 0,

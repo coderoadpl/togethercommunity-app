@@ -171,6 +171,7 @@ import {
   tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
+  campaignResultsSchema,
   consentDefinitionVersionSchema,
   consentDocumentRefSchema,
   consentDefinitionSchema,
@@ -1605,10 +1606,10 @@ export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.str
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) }),
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) }),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) })),
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });

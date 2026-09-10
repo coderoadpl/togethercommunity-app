@@ -24,20 +24,25 @@ export const SearchField = ({
   label,
   placeholder,
   testId,
+  id,
+  fullWidth = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   label: string;
   placeholder: string;
   testId: string;
+  id?: string;
+  fullWidth?: boolean;
 }) => (
   <OutlinedInput
+    id={id}
     type="search"
     size="small"
     value={value}
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
     inputProps={{ 'aria-label': label, 'data-testid': testId }}
-    sx={{ minWidth: { xs: '100%', sm: '15rem' } }}
+    sx={{ width: fullWidth ? '100%' : undefined, minWidth: { xs: fullWidth ? 0 : '100%', sm: fullWidth ? 0 : '15rem' } }}
   />
 );

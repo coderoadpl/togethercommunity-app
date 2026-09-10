@@ -234,7 +234,7 @@ export const pl: Messages = {
     choose: 'Wybierz platformę',
     eachOwnDomain: 'Każda platforma ma własną domenę',
     welcome: 'Witaj w Together. Otwórz istniejącą platformę albo utwórz nową.',
-    create: 'Utwórz platformę',
+    create: 'Utwórz nową platformę',
     nameLabel: 'Nazwa',
     slugLabel: 'Adres platformy',
     enterNameToPreview: 'Wpisz nazwę, aby zobaczyć podgląd adresu platformy.',

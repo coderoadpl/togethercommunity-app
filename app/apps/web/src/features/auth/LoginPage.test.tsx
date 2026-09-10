@@ -444,6 +444,19 @@ describe('LoginPage', () => {
     await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/start'));
   });
 
+  it('post-verification landing on the platform host lands on the workspace picker', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    const fallback = await renderLoginPage(
+      false,
+      '/login?verification=verified',
+      'start.localhost',
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/'));
+  });
+
   it('keeps returnTo on register and forgot-password links', async () => {
     await renderLoginPage(
       false,

@@ -167,7 +167,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const search = useSearch({ strict: false });
   const returnTo = safeReturnTo(typeof search.returnTo === 'string' ? search.returnTo : null);
   const postVerification = search.verification === 'verified';
-  const postLoginTarget = returnTo ?? (postVerification ? START_PATH : '/');
+  const postLoginTarget =
+    returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
   const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
   const me = useRedirectSignedInWithTenant(postLoginTarget);
   const magicLinkExpired = invalidTokenFromLocation();

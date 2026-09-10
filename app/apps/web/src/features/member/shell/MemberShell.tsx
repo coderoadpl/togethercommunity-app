@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState, type FocusEvent, type ReactNode 
 import { Alert, AppBar, Box, Button, IconButton, Toolbar, Tooltip, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
-import { Link, Outlet, useRouterState } from '@tanstack/react-router';
+import { Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -13,6 +13,7 @@ import { StatusView } from '../../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { isConfiguredBaseDomainHost } from '../../../lib/tenant.js';
 import { NotificationBell } from '../../../NotificationBell.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { StudioIcon } from '../account-icons.js';
@@ -37,7 +38,14 @@ const isUnauthorized = (error: Error | null) =>
 const isNotFound = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'not_found';
 
-export const MemberShell = () => {
+export const MemberShell = ({
+  hostname = window.location.hostname,
+}: { hostname?: string } = {}) =>
+  isConfiguredBaseDomainHost(hostname)
+    ? <Navigate to="/" replace />
+    : <TenantMemberShell />;
+
+const TenantMemberShell = () => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();

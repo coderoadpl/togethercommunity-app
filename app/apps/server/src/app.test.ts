@@ -6952,6 +6952,27 @@ describe('tenant-host magic links on checkout', () => {
 });
 
 describe('tenant-host magic links on login', () => {
+  it('sets the platform origin from the configured platform host', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'start.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'new@together.dev', callbackURL: 'http://start.localhost:48730/' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://start.localhost:48730',
+    });
+    expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+
   it('sets the tenant name, language and host from the subdomain request', async () => {
     const { app, captured } = capturingApp();
 

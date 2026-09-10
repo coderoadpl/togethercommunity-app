@@ -416,7 +416,7 @@
         },
         "errors": [
           {
-            "message": "Invalid row: email: Invalid email",
+            "message": "Invalid row: email: marketing_import.email_invalid",
             "rowNumber": 4
           }
         ],
@@ -670,7 +670,7 @@
             },
             "duplicateOf": null,
             "errors": [
-              "Invalid row: email: Invalid email"
+              "Invalid row: email: marketing_import.email_invalid"
             ],
             "importId": "import-contacts",
             "normalizedEmailHmac": null,

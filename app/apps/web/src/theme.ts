@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, Tabs, TextField, Typography } from '@mui/material';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -3637,6 +3637,33 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
   },
   '& th:first-of-type': { zIndex: 2 },
 }));
+
+export const ResponsiveTableContainer = styled(TableContainer)(({ theme }) => ({
+  overflowX: 'auto',
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 8,
+  '& th:first-of-type, & td:first-of-type': {
+    position: 'sticky',
+    left: 0,
+    zIndex: 1,
+    backgroundColor: theme.palette.background.paper,
+    boxShadow: `2px 0 0 ${alpha(theme.palette.common.black, 0.08)}`,
+    [theme.breakpoints.up('sm')]: {
+      position: 'static',
+      boxShadow: 'none',
+      backgroundColor: 'inherit',
+    },
+  },
+  '& th:first-of-type': { zIndex: 2 },
+}));
+
+export const EllipsisTableCell = styled(TableCell)({
+  maxWidth: '22rem',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+});
 
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
   const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);

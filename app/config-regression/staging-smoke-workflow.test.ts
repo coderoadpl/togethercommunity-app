@@ -97,7 +97,9 @@ describe('staging-smoke workflow', () => {
     expect(step('Fail the run on a stale staging alias').if)
       .toBe("steps.alias.outputs.matched == 'false'");
     expect(step('Collect the failing checks').run).toContain('failing="deployment-alias"');
-    expect(step('Send an SMS alert').if).toBe("steps.alert.outputs.should_page == 'true'");
+    expect(step('Send an SMS alert').if).toBe(
+      "steps.alert.outputs.should_page == 'true' && vars.STAGING_SMS_ALERTS == 'true'",
+    );
   });
 
   it('pages only on a state change, through the one gate every monitor shares', () => {

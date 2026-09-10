@@ -72,10 +72,10 @@ const isLocalizedSuppressionReason = (reason: string): reason is keyof Messages[
 const isLocalizedBounceClassification = (classification: string): classification is keyof Messages['marketing']['bounceClassifications'] =>
   localizedBounceClassifications.some((key) => key === classification);
 
-export const skipReasonLabel = (reason: string, t: Messages): string =>
+const skipReasonLabel = (reason: string, t: Messages): string =>
   isLocalizedSkipReason(reason) ? t.marketing.skipReasons[reason] : reason;
 
-export const suppressionReasonLabel = (reason: string, t: Messages): string =>
+const suppressionReasonLabel = (reason: string, t: Messages): string =>
   isLocalizedSuppressionReason(reason) ? t.marketing.suppressionReasons[reason] : reason;
 
 export const bounceClassificationLabel = (classification: string, t: Messages): string =>

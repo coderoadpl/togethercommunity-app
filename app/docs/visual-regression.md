@@ -170,6 +170,7 @@ workflow code and never executes pull-request code.
 The `preview` project publishes a Storybook preview permalink for non-draft pull requests
 targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
 available and changes affect `app/apps/web/**`, `app/.storybook/**`,
+`app/apps/server/src/**`, `app/package.json`, `app/pnpm-lock.yaml`,
 `app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
 The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
 instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
@@ -179,10 +180,24 @@ Chromatic snapshot testing runs only for promotion pull requests targeting `main
 before promotion; it is not the visual regression gate and does not replace
 `pnpm run visual` or the committed route goldens.
 
+Pull-request workflows check out `github.event.pull_request.head.sha` with full
+history before running Chromatic. TurboSnap compares the real PR head with
+baseline ancestors; the synthetic merge commit from the default pull-request
+checkout does not provide a usable changed-file range and makes Chromatic fall
+back to the full Storybook catalogue.
+
+Before the Chromatic command, the workflow diffs the pull-request base and head
+for `app/apps/web/**`, `app/apps/server/src/**`, `app/.storybook/**`,
+`app/package.json`, and `app/pnpm-lock.yaml`. Pull requests with no matching
+files run the Chromatic CLI with `--skip`, leaving the check green and refreshing
+the sticky PR comment with `Chromatic skipped: no UI changes`. Dependency file
+changes are included because installed package changes can alter rendering.
+
 The free plan budget is 5,000 snapshots per month in Chrome. The snapshot cost follows the current catalogue size. With
 TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot
 only stories affected by the pull request instead of the whole catalogue. Manual
 runs still spend quota according to the number of stories Chromatic snapshots.
+The skip rule keeps non-UI pull requests from spending monthly snapshots.
 
 Review Chromatic from the UI Review status on the pull request. Inspect each
 changed snapshot, accept only intentional UI baseline changes in Chromatic, and

@@ -1495,7 +1495,7 @@ describe('marketing e-mail use-case integration', () => {
     ]);
   });
 
-  it('saves optional preferences, queues DOI when re-subscribing, and supports global withdrawal', async () => {
+  it('distinguishes absent preferences and withdraws explicitly unchecked active or pending consent', async () => {
     const deps = await setup();
     const token = 'preferences_token_123456789012345';
     await deps.unsubscribes.create('tenant-1', {
@@ -1504,17 +1504,86 @@ describe('marketing e-mail use-case integration', () => {
       scope: `consent:${definition.id}`, createdAt: NOW, usedAt: null,
     });
     expect(await saveMarketingConsentPreferences(anonymousCtx, {
-      token, selectedDefinitionIds: [], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      token, selectedDefinitionIds: [], presentDefinitionIds: [],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({
+      ok: true, value: { definitions: [{ active: true, pendingConfirmation: false }] },
+    });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [], presentDefinitionIds: ['retired-definition'],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
       confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
     }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
     expect(await saveMarketingConsentPreferences(anonymousCtx, {
-      token, selectedDefinitionIds: [definition.id], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      token, selectedDefinitionIds: [], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [definition.id], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
       confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
     }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 1 } });
     expect(deps.outbox.items).toHaveLength(1);
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({
+      ok: true, value: { definitions: [{ active: false, pendingConfirmation: false }] },
+    });
+    expect((await deps.consents.listByEmail('tenant-1', 'member@example.test', definition.id))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn', 'granted', 'withdrawn']);
     expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
     expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+  });
+
+  it('withdraws only the unchecked active scope from a mixed preference form', async () => {
+    const deps = await setup();
+    const uncheckedDefinition = { ...definition, id: 'definition-2', key: 'events' };
+    const pendingDefinition = { ...definition, id: 'definition-3', key: 'updates' };
+    await deps.definitions.create('tenant-1', uncheckedDefinition, {
+      ...version, id: 'version-2', definitionId: uncheckedDefinition.id, label: 'I want event announcements',
+    });
+    await deps.definitions.create('tenant-1', pendingDefinition, {
+      ...version, id: 'version-3', definitionId: pendingDefinition.id, label: 'I want product updates',
+    });
+    await deps.consents.record('tenant-1', {
+      ...consent('member@example.test'), id: 'consent-active-unchecked', definitionId: uncheckedDefinition.id,
+      wordingSnapshot: 'I want event announcements',
+    });
+    await deps.consents.record('tenant-1', {
+      ...consent('member@example.test', 'granted'), id: 'consent-pending-kept', definitionId: pendingDefinition.id,
+      wordingSnapshot: 'I want product updates',
+    });
+    const token = 'mixed_preferences_token_123456789';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'unsubscribe-mixed-preferences', tenantId: 'tenant-1', token,
+      email: 'member@example.test', memberId: 'member-1', campaignSendId: null,
+      scope: 'all_marketing', createdAt: NOW, usedAt: null,
+    });
+
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token,
+      selectedDefinitionIds: [definition.id, pendingDefinition.id],
+      presentDefinitionIds: [definition.id, uncheckedDefinition.id, pendingDefinition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 1 } });
+    expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).map((row) => ({
+      definitionId: row.definitionId,
+      status: row.status,
+    }))).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: uncheckedDefinition.id, status: 'confirmed' },
+      { definitionId: pendingDefinition.id, status: 'granted' },
+      { definitionId: uncheckedDefinition.id, status: 'withdrawn' },
+    ]);
+    expect(deps.outbox.items).toHaveLength(0);
   });
 
   it('supports suppression lifting, campaign CRUD gates, and retention orchestration', async () => {

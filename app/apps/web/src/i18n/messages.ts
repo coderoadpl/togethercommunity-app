@@ -2366,6 +2366,7 @@ export interface Messages {
       failedLast24Hours: string;
       lastRun: string;
       noLastRun: string;
+      detailTitle: (params: { runId: string }) => string;
       runId: string;
       runError: string;
       runKind: string;
@@ -2383,7 +2384,12 @@ export interface Messages {
       budget: string;
       errors: string;
       noErrors: string;
+      failedWithoutRecordedErrors: string;
       viewSends: string;
+      viewFailedSends: string;
+      runNotFoundTitle: string;
+      runNotFoundBody: string;
+      backToRuns: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;

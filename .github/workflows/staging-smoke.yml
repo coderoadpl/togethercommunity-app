@@ -221,7 +221,7 @@ jobs:
           checks: ${{ steps.failures.outputs.checks }}
           github-token: ${{ github.token }}
       - name: Send an SMS alert
-        if: steps.alert.outputs.should_page == 'true'
+        if: steps.alert.outputs.should_page == 'true' && vars.STAGING_SMS_ALERTS == 'true'
         uses: ./.github/actions/alert-sms
         with:
           message: 'Together STAGING smoke FAILED: ${{ steps.alert.outputs.pageable }}'
@@ -229,7 +229,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.ALERT_AWS_SECRET_ACCESS_KEY }}
           phone-number: ${{ secrets.ALERT_SMS_PHONE }}
       - name: Send a recovery SMS
-        if: steps.alert.outputs.recovered == 'true'
+        if: steps.alert.outputs.recovered == 'true' && vars.STAGING_SMS_ALERTS == 'true'
         uses: ./.github/actions/alert-sms
         with:
           message: 'Together STAGING smoke RECOVERED'

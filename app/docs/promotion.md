@@ -51,3 +51,19 @@ Production is promoted through a pull request from `staging` to `main`.
    before this workflow file has been promoted to `main`, the only ways to
    refresh the check on open pull requests are `gh run rerun` or pushing a new
    commit to the pull request branch.
+
+## Promotion Guard
+
+The `promotion-guard` workflow rejects production promotion pull requests unless
+the head branch is `staging`, the head SHA still matches `origin/staging`, and
+`STAGING_FREEZE=true`. It also requires successful `ci.yml` and
+`staging-smoke.yml` runs for that exact staging SHA.
+
+The guard comment inventories the merged pull requests between `main` and the
+promotion head, added migrations under `app/drizzle`, changed top-level areas,
+and links to the staging runs it evaluated.
+
+`promote-*` branches are retired. Promotion pull requests come from `staging`
+itself so the production candidate is the same commit that passed staging.
+
+The owner adds `promotion-guard` to the `main` ruleset as a required check.

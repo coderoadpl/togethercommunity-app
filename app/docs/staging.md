@@ -27,6 +27,14 @@ schema-only Neon branch. It is not a copy of production data.
 9. Delete the old data-copied staging branch after the new deployment and smoke
    are green.
 
+## Promotion to Production
+
+Production promotions are pull requests from `staging` itself to `main` while
+`STAGING_FREEZE=true`. The `promotion-guard` workflow rejects retired
+`promote-*` branches, stale staging heads, unfrozen staging, and missing
+successful `ci.yml` or `staging-smoke.yml` runs for the exact staging SHA. See
+[Promotion](promotion.md) for the owner runbook.
+
 ## Deployed Seed Behavior
 
 `app/scripts/vercel-build.ts` always runs migrations before the app build. On

@@ -160,6 +160,7 @@ const deps = (input: {
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
   accountSecurity?: { hasPassword: boolean; twoFactorEnabled: boolean };
+  passkeyAccounts?: readonly string[];
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -843,6 +844,8 @@ const deps = (input: {
     signInMethods: {
       hasCredentialAccount: async (_tenantId, email) =>
         (input.passwordAccounts ?? []).includes(email),
+      hasPasskey: async (_tenantId, email) =>
+        (input.passkeyAccounts ?? []).includes(email),
     },
     accountSecurity: {
       read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
@@ -5948,6 +5951,18 @@ describe('public auth-resolve route', () => {
     expect(await response.json()).toEqual({
       ok: true,
       data: { methods: ['password', 'magic-link'] },
+    });
+  });
+
+  it('offers passkey when the tenant account has one registered', async () => {
+    const app = buildApp(deps({ passkeyAccounts: ['creator@together.dev'] }));
+
+    const response = await resolve(app, 'creator@together.dev');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { methods: ['passkey', 'magic-link'] },
     });
   });
 

@@ -170,10 +170,13 @@ export const pl: Messages = {
     methodMagicLinkTitle: 'Wyślij link na e-mail',
     methodMagicLinkBody: 'Kliknij link w skrzynce — wejdziesz bez hasła.',
     methodPasswordTitle: 'Wpisz hasło',
-    passwordNotNeeded: 'Hasła nie potrzebujesz — ustawisz je po zalogowaniu w Moje konto → Bezpieczeństwo.',
     methodPasswordBody: 'Jeśli ustawiłeś je wcześniej.',
+    methodPasswordDisabledTooltip:
+      'To konto nie ma jeszcze hasła. Zaloguj się linkiem, potem ustawisz hasło w Moje konto → Bezpieczeństwo.',
     methodPasskeyTitle: 'Użyj klucza dostępu',
     methodPasskeyBody: 'Face ID, Touch ID albo Windows Hello.',
+    methodPasskeyDisabledTooltip:
+      'To konto nie ma jeszcze klucza dostępu. Zaloguj się linkiem, potem dodasz klucz w Moje konto → Bezpieczeństwo.',
     passkeyLink: 'Zaloguj się kluczem dostępu',
     passkeyPending: 'Logowanie…',
     twoFactorTitle: 'Weryfikacja dwuetapowa',

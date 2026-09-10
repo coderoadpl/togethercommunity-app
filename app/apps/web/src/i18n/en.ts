@@ -163,10 +163,13 @@ export const en: Messages = {
     methodMagicLinkTitle: 'Email me a link',
     methodMagicLinkBody: 'Click the link in your inbox — no password needed.',
     methodPasswordTitle: 'Enter a password',
-    passwordNotNeeded: "You don't need a password — you can set one after signing in under My account → Security.",
     methodPasswordBody: 'If you set one earlier.',
+    methodPasswordDisabledTooltip:
+      'This account does not have a password yet. Sign in with a link, then set a password in My account → Security.',
     methodPasskeyTitle: 'Use a passkey',
     methodPasskeyBody: 'Face ID, Touch ID or Windows Hello.',
+    methodPasskeyDisabledTooltip:
+      'This account does not have a passkey yet. Sign in with a link, then add a passkey in My account → Security.',
     passkeyLink: 'Sign in with a passkey',
     passkeyPending: 'Signing in…',
     twoFactorTitle: 'Two-factor verification',

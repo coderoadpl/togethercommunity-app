@@ -124,6 +124,7 @@ import {
   members,
   memberErasureRequestEvents,
   orders,
+  passkey,
   postReportEvents,
   postReports,
   posts,
@@ -4074,6 +4075,16 @@ describe('createSignInMethodReader', () => {
       password: 'hashed-password',
       updatedAt: new Date(NOW),
     });
+    await db.insert(passkey).values({
+      id: 'passkey-signin-lookup',
+      publicKey: 'public-key',
+      userId: 'user-acme-member',
+      credentialID: 'credential-id',
+      counter: 0,
+      deviceType: 'singleDevice',
+      backedUp: false,
+      createdAt: new Date(NOW),
+    });
   });
 
   it('resolves a mixed-case identifier exactly like the stored address', async () => {
@@ -4083,6 +4094,15 @@ describe('createSignInMethodReader', () => {
     expect(await reader.hasCredentialAccount(ACME, '  Owner-Acme@Together.DEV ')).toBe(true);
     expect(await reader.hasCredentialAccount(ACME, 'buyer-acme@together.dev')).toBe(false);
     expect(await reader.hasCredentialAccount(GLOBEX, 'owner-acme@together.dev')).toBe(false);
+  });
+
+  it('resolves a tenant-scoped passkey for the stored address', async () => {
+    const reader = createSignInMethodReader(db);
+
+    expect(await reader.hasPasskey(ACME, 'buyer-acme@together.dev')).toBe(true);
+    expect(await reader.hasPasskey(ACME, '  Buyer-Acme@Together.DEV ')).toBe(true);
+    expect(await reader.hasPasskey(ACME, 'owner-acme@together.dev')).toBe(false);
+    expect(await reader.hasPasskey(GLOBEX, 'buyer-acme@together.dev')).toBe(false);
   });
 
   it('keeps the identifier predicate on the unique e-mail index', async () => {

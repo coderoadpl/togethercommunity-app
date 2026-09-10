@@ -185,6 +185,7 @@ import {
   notifications,
   notificationFanoutJobs,
   orders,
+  passkey,
   postReactions,
   postReportEvents,
   postReports,
@@ -4352,6 +4353,27 @@ export const createSignInMethodReader = (db: Db): SignInMethodReader => ({
       ))
       .limit(1);
     return (rows[0]?.credentialId ?? null) !== null;
+  },
+  hasPasskey: async (tenantId, email) => {
+    const rows = await db
+      .select({ passkeyId: passkey.id })
+      .from(user)
+      .leftJoin(members, and(
+        eq(members.userId, user.id),
+        eq(members.tenantId, tenantId),
+        isNull(members.deletedAt),
+      ))
+      .leftJoin(tenantAdmins, and(
+        eq(tenantAdmins.userId, user.id),
+        eq(tenantAdmins.tenantId, tenantId),
+      ))
+      .leftJoin(passkey, eq(passkey.userId, user.id))
+      .where(and(
+        eq(user.email, normalizeEmail(email)),
+        or(isNotNull(members.id), isNotNull(tenantAdmins.id)),
+      ))
+      .limit(1);
+    return (rows[0]?.passkeyId ?? null) !== null;
   },
 });
 

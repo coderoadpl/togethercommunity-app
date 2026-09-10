@@ -2216,6 +2216,7 @@ export interface TenantAccessReader {
  */
 export interface SignInMethodReader {
   hasCredentialAccount(tenantId: string, email: string): Promise<boolean>;
+  hasPasskey(tenantId: string, email: string): Promise<boolean>;
 }
 
 export interface AccountSecurityReader {

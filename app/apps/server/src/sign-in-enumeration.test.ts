@@ -11,7 +11,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
-import { SIGN_IN_RESPONSE_FLOOR_MS } from './sign-in-timing.js';
+
 
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -95,8 +95,8 @@ describe('sign-in enumeration resistance', () => {
     expect(unknownAddress.status).toBe(wrongPassword.status);
     expect(withoutVolatileValues(unknownAddress.body))
       .toEqual(withoutVolatileValues(wrongPassword.body));
-    expect(wrongPassword.elapsedMs).toBeGreaterThanOrEqual(SIGN_IN_RESPONSE_FLOOR_MS);
-    expect(unknownAddress.elapsedMs).toBeGreaterThanOrEqual(SIGN_IN_RESPONSE_FLOOR_MS);
+    expect(wrongPassword.elapsedMs).toBeGreaterThanOrEqual(300);
+    expect(unknownAddress.elapsedMs).toBeGreaterThanOrEqual(300);
   });
 
   it('acknowledges a magic link for a registered and an unknown address identically', async () => {
@@ -109,7 +109,7 @@ describe('sign-in enumeration resistance', () => {
     expect(unknownLink.status).toBe(registeredLink.status);
     expect(withoutVolatileValues(unknownLink.body))
       .toEqual(withoutVolatileValues(registeredLink.body));
-    expect(registeredLink.elapsedMs).toBeGreaterThanOrEqual(SIGN_IN_RESPONSE_FLOOR_MS);
-    expect(unknownLink.elapsedMs).toBeGreaterThanOrEqual(SIGN_IN_RESPONSE_FLOOR_MS);
+    expect(registeredLink.elapsedMs).toBeGreaterThanOrEqual(300);
+    expect(unknownLink.elapsedMs).toBeGreaterThanOrEqual(300);
   });
 });

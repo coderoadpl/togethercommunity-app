@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { LanguageProvider } from '../../../i18n/index.js';
+import { pl } from '../../../i18n/pl.js';
+import { languagePreference } from '../../../theme-mode.js';
 import { EmailTab } from './EmailTab.js';
 
 const now = '2026-07-27T10:00:00.000Z';
@@ -141,7 +144,7 @@ describe('email transport wizard', () => {
     expect(testedTransports).toEqual(['ses', 'smtp', 'resend']);
   }, 15_000);
 
-  it('derives SNS readiness from the confirmed subscription instead of the topic ARN', async () => {
+  it('reports an unconfirmed SNS subscription as optional instead of blocking sending', async () => {
     server.use(
       http.get('/api/marketing/ses-settings', () => HttpResponse.json({
         ...sesSettings,
@@ -164,11 +167,82 @@ describe('email transport wizard', () => {
     renderWithProviders(<EmailTab />);
 
     const subscriptionRow = (await screen.findByText("SNS subscription")).closest('li') ?? document.body;
-    expect(within(subscriptionRow).getByText("Action needed")).toBeInTheDocument();
+    expect(within(subscriptionRow).getByText("Optional")).toBeInTheDocument();
+    expect(within(subscriptionRow).queryByText("Action needed")).not.toBeInTheDocument();
     expect(await screen.findByTestId('marketing-sns-last-delivery')).toHaveTextContent(
       /Last SNS event: SubscriptionConfirmation · .* · confirmation failed/,
     );
   }, 15_000);
+
+  it('blocks a stale verified identity, localizes the AWS error and offers a re-check', async () => {
+    const rawError = 'Could not poll the SES identity status. Check the tenant AWS key permissions and Region, then retry. AWS: InvalidClientTokenId: The security token included in the request is invalid';
+    const recheckError = 'Could not poll the SES identity status. Check the tenant AWS key permissions and Region, then retry. AWS: AccessDeniedException: User is not authorized to perform this action';
+    let rechecks = 0;
+    languagePreference.save('pl');
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json({
+        ...sesSettings,
+        data: {
+          ...sesSettings.data,
+          settings: {
+            ...sesSettings.data.settings,
+            identityCheckError: rawError,
+            webhookVerifiedAt: now,
+            broadcastsEnabled: true,
+          },
+        },
+      })),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+      http.post('/api/marketing/ses-onboarding/poll', () => {
+        rechecks += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'integration_unavailable', message: recheckError } },
+          { status: 503 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<LanguageProvider><EmailTab /></LanguageProvider>);
+
+    const identityRow = (await screen.findByText(pl.marketing.identityVerified)).closest('li') ?? document.body;
+    expect(within(identityRow).getByText(pl.marketing.identityCheckFailedChip)).toBeInTheDocument();
+    expect(within(identityRow).queryByText(pl.marketing.ready)).not.toBeInTheDocument();
+    expect(screen.getByText(new RegExp(pl.marketing.identityErrorInvalidClientTokenId.slice(0, 20)))).toBeVisible();
+    expect(screen.getByText(pl.marketing.readinessAttentionItems({ items: pl.marketing.identityVerified }))).toBeInTheDocument();
+    expect(screen.getByText(/Zweryfikowano:/)).toBeInTheDocument();
+
+    const technicalDetails = screen.getByText(pl.marketing.identityCheckDetails);
+    expect(screen.getByText(rawError)).not.toBeVisible();
+    await user.click(technicalDetails);
+    expect(screen.getByText(rawError)).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: pl.marketing.identityCheckRetry }));
+    await vi.waitFor(() => expect(rechecks).toBe(1));
+    expect(await screen.findByText(pl.marketing.wizardAwsRejected)).toBeInTheDocument();
+    expect(screen.getByText(recheckError)).toBeVisible();
+  }, 15_000);
+
+  it.each([
+    ['AccessDeniedException', /AWS key cannot check the identity/],
+    ['ThrottlingException', /AWS temporarily limited the requests/],
+  ])('localizes the %s AWS identity error variant', async (code, expectedMessage) => {
+    server.use(
+      http.get('/api/marketing/ses-settings', () => HttpResponse.json({
+        ...sesSettings,
+        data: {
+          ...sesSettings.data,
+          settings: {
+            ...sesSettings.data.settings,
+            identityCheckError: `Could not poll the SES identity status. Check the tenant AWS key permissions and Region, then retry. AWS: ${code}: Request failed`,
+          },
+        },
+      })),
+      http.get('/api/marketing/reputation', () => HttpResponse.json(reputation)),
+    );
+    renderWithProviders(<EmailTab />);
+
+    expect(await screen.findByText(expectedMessage)).toBeVisible();
+  });
 
   it('reports what provisioning created and polls AWS again without a page reload', async () => {
     let settingsReads = 0;

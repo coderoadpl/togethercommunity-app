@@ -2146,6 +2146,10 @@ export interface Messages {
     result: string;
     fileHint: string;
     file: string;
+    chooseFile: string;
+    dropFile: string;
+    downloadSample: string;
+    encodingError: string;
     delimiter: string;
     auto: string;
     comma: string;
@@ -2154,6 +2158,24 @@ export interface Messages {
     parseError: string;
     ignoreColumn: string;
     unknownColumns: string;
+    previewHint: string;
+    importFields: {
+      email: string;
+      name: string;
+      firstName: string;
+      lastName: string;
+      tags: string;
+      source: string;
+      consentSource: string;
+      consentAt: string;
+      lists: string;
+      reason: string;
+      at: string;
+    };
+    importErrors: {
+      emailMissing: string;
+      emailInvalid: string;
+    };
     validate: string;
     previewStale: string;
     next: string;
@@ -2380,6 +2402,7 @@ export interface Messages {
       failedLast24Hours: string;
       lastRun: string;
       noLastRun: string;
+      detailTitle: (params: { runId: string }) => string;
       runId: string;
       runError: string;
       runKind: string;
@@ -2397,7 +2420,12 @@ export interface Messages {
       budget: string;
       errors: string;
       noErrors: string;
+      failedWithoutRecordedErrors: string;
       viewSends: string;
+      viewFailedSends: string;
+      runNotFoundTitle: string;
+      runNotFoundBody: string;
+      backToRuns: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2463,6 +2491,8 @@ export interface Messages {
     allConsents: string;
     keyLabel: string;
     keyFormatHint: string;
+    keyFormatError: string;
+    keyImmutableHint: string;
     createConsentAction: string;
     saveConsentAction: string;
     wordingLabel: string;
@@ -2474,17 +2504,22 @@ export interface Messages {
     notPreticked: string;
     doubleOptInLabel: string;
     doubleOptInHint: string;
+    doubleOptInChip: string;
+    singleOptInChip: string;
     singleOptInWarning: string;
     documentModeLabel: string;
     documentUrlMode: string;
     documentHostedMode: string;
     documentUrlLabel: string;
     hostedDocumentLabel: string;
+    noPublishedDocuments: string;
+    noPublishedDocumentsSelect: string;
+    createDocumentLink: string;
     active: string;
     archived: string;
     versions: string;
-    versionEntry: (params: { version: number; date: string }) => string;
     versionLabel: (params: { version: number }) => string;
+    copyDocumentReference: string;
     viewVersion: string;
     hideVersion: string;
     documentsTitle: string;
@@ -2636,6 +2671,18 @@ export interface Messages {
     sandboxWarning: string;
     broadcastsEnabled: string;
     broadcastsDisabled: string;
+    readinessOptional: string;
+    readinessAttentionItems: (input: { items: string }) => string;
+    readinessComplete: string;
+    identityCheckFailedChip: string;
+    identityCheckRetry: string;
+    identityCheckDetails: string;
+    identityVerifiedSince: (input: { checkedAt: string }) => string;
+    identityErrorInvalidClientTokenId: string;
+    identityErrorAccessDenied: string;
+    identityErrorSignatureDoesNotMatch: string;
+    identityErrorThrottling: string;
+    identityErrorUnknown: string;
     skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
   };
 }

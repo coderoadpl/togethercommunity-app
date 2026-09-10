@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { LanguageProvider } from '../../../i18n/index.js';
+import { pl } from '../../../i18n/pl.js';
 import { languagePreference } from '../../../theme-mode.js';
 import { EmailTab } from './EmailTab.js';
 
@@ -203,21 +204,21 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<LanguageProvider><EmailTab /></LanguageProvider>);
 
-    const identityRow = (await screen.findByText('Tożsamość i DKIM')).closest('li') ?? document.body;
-    expect(within(identityRow).getByText('Nie udało się sprawdzić')).toBeInTheDocument();
-    expect(within(identityRow).queryByText('Gotowe')).not.toBeInTheDocument();
-    expect(screen.getByText(/Klucz AWS został odrzucony/)).toBeVisible();
-    expect(screen.getByText('Sprawdź te elementy gotowości: Tożsamość i DKIM')).toBeInTheDocument();
+    const identityRow = (await screen.findByText(pl.marketing.identityVerified)).closest('li') ?? document.body;
+    expect(within(identityRow).getByText(pl.marketing.identityCheckFailedChip)).toBeInTheDocument();
+    expect(within(identityRow).queryByText(pl.marketing.ready)).not.toBeInTheDocument();
+    expect(screen.getByText(new RegExp(pl.marketing.identityErrorInvalidClientTokenId.slice(0, 20)))).toBeVisible();
+    expect(screen.getByText(pl.marketing.readinessAttentionItems({ items: pl.marketing.identityVerified }))).toBeInTheDocument();
     expect(screen.getByText(/Zweryfikowano:/)).toBeInTheDocument();
 
-    const technicalDetails = screen.getByText('Szczegóły techniczne');
+    const technicalDetails = screen.getByText(pl.marketing.identityCheckDetails);
     expect(screen.getByText(rawError)).not.toBeVisible();
     await user.click(technicalDetails);
     expect(screen.getByText(rawError)).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Sprawdź ponownie' }));
+    await user.click(screen.getByRole('button', { name: pl.marketing.identityCheckRetry }));
     await vi.waitFor(() => expect(rechecks).toBe(1));
-    expect(await screen.findByText('Usługa AWS odrzuciła operację')).toBeInTheDocument();
+    expect(await screen.findByText(pl.marketing.wizardAwsRejected)).toBeInTheDocument();
     expect(screen.getByText(recheckError)).toBeVisible();
   }, 15_000);
 

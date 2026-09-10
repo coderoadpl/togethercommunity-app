@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -7,6 +7,7 @@ import {
   FormControlLabel,
   FormHelperText,
   FormLabel,
+  Link as MuiLink,
   MenuItem,
   OutlinedInput,
   Select,
@@ -21,10 +22,27 @@ import type { ConsentDefinition, ConsentDefinitionVersion } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { CopyButton } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { FONT_MONO } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { MarketingSummaryRow } from './MarketingSummaryRow.js';
+
+const consentStatusColor: Record<ConsentDefinition['status'], 'success' | 'warning'> = {
+  active: 'success',
+  archived: 'warning',
+};
+
+const ConsentStatusChip = ({ status, label }: { status: ConsentDefinition['status']; label: string }) => (
+  <Chip size="small" color={consentStatusColor[status]} variant="outlined" label={label} />
+);
+
+const CopyDocumentReferenceButton = ({ value }: { value: string }) => {
+  const t = useTranslations();
+
+  return <CopyButton value={value} label={t.marketing.copyDocumentReference} testId="marketing-consent-document-reference" minTouchTarget manualFallback />;
+};
 
 export const ConsentForm = ({ definition, versions = [] }: { definition?: ConsentDefinition | undefined; versions?: ConsentDefinitionVersion[] | undefined }) => {
   const t = useTranslations();
@@ -40,7 +58,20 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
   const [documentMode, setDocumentMode] = useState<'url' | 'hosted'>(definition?.documentRef.mode ?? 'url');
   const [documentUrl, setDocumentUrl] = useState(definition?.documentRef.mode === 'url' ? definition.documentRef.url : '');
   const [hostedDocumentId, setHostedDocumentId] = useState(definition?.documentRef.mode === 'hosted' ? definition.documentRef.documentId : '');
-  const documentRef = documentMode === 'url'
+  const hostedUnavailableHintId = useId();
+  const allDocuments = documents.data?.documents ?? [];
+  const publishedDocuments = allDocuments.filter((document) => document.status === 'published');
+  const currentHostedDocumentId = definition?.documentRef.mode === 'hosted' ? definition.documentRef.documentId : null;
+  const currentHostedDocument = currentHostedDocumentId === null
+    ? null
+    : allDocuments.find((document) => document.id === currentHostedDocumentId) ?? { id: currentHostedDocumentId, title: currentHostedDocumentId };
+  const currentHostedDocumentIsPublished = currentHostedDocumentId !== null && publishedDocuments.some((document) => document.id === currentHostedDocumentId);
+  const hostedDocumentOptions = currentHostedDocument === null || currentHostedDocumentIsPublished ? publishedDocuments : [currentHostedDocument, ...publishedDocuments];
+  const hostedDocumentsUnavailable = documents.isSuccess && publishedDocuments.length === 0;
+  const existingHostedDocument = currentHostedDocumentId !== null;
+  const effectiveDocumentMode = hostedDocumentsUnavailable && !existingHostedDocument ? 'url' : documentMode;
+  const hostedModeDisabled = hostedDocumentsUnavailable && !existingHostedDocument;
+  const documentRef = effectiveDocumentMode === 'url'
     ? { mode: 'url' as const, url: documentUrl }
     : { mode: 'hosted' as const, documentId: hostedDocumentId };
 
@@ -65,7 +96,6 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
     else update.mutate({ definitionId: definition.id, label, doubleOptIn, documentRef, status });
   };
   const pending = create.isPending || update.isPending;
-  const publishedDocuments = (documents.data?.documents ?? []).filter((document) => document.status === 'published');
 
   return (
     <SectionCard
@@ -82,10 +112,11 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
             setKey(event.target.value);
             setKeyError(false);
           }}
-          disabled={definition !== undefined}
+          readOnly={definition !== undefined}
+          inputProps={definition === undefined ? undefined : { style: { fontFamily: FONT_MONO } }}
           required
         />
-        {definition === undefined ? <FormHelperText>{t.marketing.keyFormatHint}</FormHelperText> : null}
+        <FormHelperText>{definition === undefined ? (keyError ? t.marketing.keyFormatError : t.marketing.keyFormatHint) : t.marketing.keyImmutableHint}</FormHelperText>
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-consent-wording">{t.marketing.wordingLabel}</FormLabel>
@@ -93,12 +124,16 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
       </FormControl>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
         <FormControl fullWidth>
-          <FormLabel>{t.marketing.purposeLabel}</FormLabel>
-          <OutlinedInput value={t.marketing.purposeMarketing} readOnly />
+          <FormLabel component="span">{t.marketing.purposeLabel}</FormLabel>
+          <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', pt: '0.5rem' }}>
+            <Chip size="small" variant="outlined" label={t.marketing.purposeMarketing} />
+          </Stack>
         </FormControl>
         <FormControl fullWidth>
-          <FormLabel>{t.marketing.channelLabel}</FormLabel>
-          <OutlinedInput value={t.marketing.channelEmail} readOnly />
+          <FormLabel component="span">{t.marketing.channelLabel}</FormLabel>
+          <Stack direction="row" useFlexGap sx={{ gap: '0.5rem', pt: '0.5rem' }}>
+            <Chip size="small" variant="outlined" label={t.marketing.channelEmail} />
+          </Stack>
         </FormControl>
       </Stack>
       <Alert severity="info">{t.marketing.optionalOnly} {t.marketing.notPreticked}</Alert>
@@ -110,12 +145,12 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
       {doubleOptIn ? null : <Alert severity="warning">{t.marketing.singleOptInWarning}</Alert>}
       <FormControl fullWidth>
         <FormLabel id="marketing-consent-document-mode">{t.marketing.documentModeLabel}</FormLabel>
-        <Select labelId="marketing-consent-document-mode" value={documentMode} onChange={(event) => setDocumentMode(event.target.value)}>
+        <Select labelId="marketing-consent-document-mode" value={effectiveDocumentMode} onChange={(event) => setDocumentMode(event.target.value)}>
           <MenuItem value="url">{t.marketing.documentUrlMode}</MenuItem>
-          <MenuItem value="hosted">{t.marketing.documentHostedMode}</MenuItem>
+          <MenuItem value="hosted" disabled={hostedModeDisabled}>{t.marketing.documentHostedMode}</MenuItem>
         </Select>
       </FormControl>
-      {documentMode === 'url' ? (
+      {effectiveDocumentMode === 'url' ? (
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-consent-document-url">{t.marketing.documentUrlLabel}</FormLabel>
           <OutlinedInput id="marketing-consent-document-url" type="url" value={documentUrl} onChange={(event) => setDocumentUrl(event.target.value)} required />
@@ -124,10 +159,28 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
         <FormControl fullWidth>
           <FormLabel id="marketing-consent-hosted-document">{t.marketing.hostedDocumentLabel}</FormLabel>
           <Select labelId="marketing-consent-hosted-document" value={hostedDocumentId} onChange={(event) => setHostedDocumentId(event.target.value)} required>
-            {publishedDocuments.map((document) => <MenuItem key={document.id} value={document.id}>{document.title}</MenuItem>)}
+            {hostedDocumentOptions.map((document) => <MenuItem key={document.id} value={document.id}>{document.title}</MenuItem>)}
           </Select>
         </FormControl>
       )}
+      {hostedModeDisabled ? (
+        <FormControl fullWidth>
+          <FormLabel id="marketing-consent-hosted-document-unavailable">{t.marketing.hostedDocumentLabel}</FormLabel>
+          <Select
+            labelId="marketing-consent-hosted-document-unavailable"
+            value=""
+            disabled
+            displayEmpty
+            inputProps={{ 'aria-describedby': hostedUnavailableHintId }}
+          >
+            <MenuItem value="">{t.marketing.noPublishedDocumentsSelect}</MenuItem>
+          </Select>
+          <Alert severity="info" id={hostedUnavailableHintId}>
+            {t.marketing.noPublishedDocuments}{' '}
+            <MuiLink component={Link} to="/panel/marketing/documents/new">{t.marketing.createDocumentLink}</MuiLink>
+          </Alert>
+        </FormControl>
+      ) : null}
       {definition === undefined ? null : (
         <FormControl fullWidth>
           <FormLabel id="marketing-consent-status">{t.common.status}</FormLabel>
@@ -153,8 +206,10 @@ const ConsentVersions = ({ versions }: { versions: ConsentDefinitionVersion[] })
           <MarketingSummaryRow
             key={version.id}
             title={version.label}
-            summary={version.documentVersionRef.mode === 'url' ? version.documentVersionRef.url : version.documentVersionRef.documentVersionId}
-            date={t.marketing.versionEntry({ version: version.version, date: formatDateTime(version.createdAt, language) })}
+            chips={<Chip size="small" variant="outlined" label={t.marketing.versionLabel({ version: version.version })} />}
+            summary={version.documentVersionRef.mode === 'url' ? version.documentVersionRef.url : undefined}
+            date={formatDateTime(version.createdAt, language)}
+            actions={version.documentVersionRef.mode === 'hosted' ? <CopyDocumentReferenceButton value={version.documentVersionRef.documentVersionId} /> : undefined}
           />
         ))}
       </Stack>
@@ -176,7 +231,7 @@ export const ConsentsPanel = () => {
               <MarketingSummaryRow
                 key={definition.id}
                 title={definition.key}
-                chips={<><Chip size="small" label={definition.status === 'active' ? t.marketing.active : t.marketing.archived} /><Chip size="small" variant="outlined" label={definition.doubleOptIn ? t.marketing.doubleOptInLabel : t.marketing.singleOptInWarning} /></>}
+                chips={<><ConsentStatusChip status={definition.status} label={definition.status === 'active' ? t.marketing.active : t.marketing.archived} /><Chip size="small" color={definition.doubleOptIn ? 'success' : 'warning'} variant="outlined" label={definition.doubleOptIn ? t.marketing.doubleOptInChip : t.marketing.singleOptInChip} /></>}
                 summary={`${t.marketing.purposeMarketing} · ${t.marketing.channelEmail}`}
                 date={formatDateTime(definition.updatedAt, language)}
                 actions={<Button onClick={() => void navigate({ to: '/panel/marketing/consents/$consentId', params: { consentId: definition.id } })}>{t.marketing.consentCreator}</Button>}

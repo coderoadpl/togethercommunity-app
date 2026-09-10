@@ -211,7 +211,6 @@ export const pl: Messages = {
     publicNavCommunity: 'Społeczność',
     cannotSignInPrompt: 'Nie możesz się zalogować?',
     cannotSignInLink: 'Napisz do nas',
-    previewLessons: 'Bezpłatne lekcje próbne',
     creatingAccount: 'Zakładanie konta…',
     createAccount: 'Załóż konto',
     createAccountLead: 'Podaj dane, którymi będziesz się logować.',

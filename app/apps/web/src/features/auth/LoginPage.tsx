@@ -421,8 +421,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       </Stack>
     ) : null;
 
-  const previewLessons = publicOffer.data?.previewLessons ?? [];
-
   const footerItems = [
     showDemoAccount ? (
       <FinePrint key="demo" variant="caption" component="p">
@@ -431,20 +429,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       </FinePrint>
     ) : null,
     accessPrompt,
-    previewLessons.length === 0 ? null : (
-      <Box key="preview">
-        <FinePrint variant="caption" component="p" sx={{ mb: '0.35em' }}>
-          {t.auth.previewLessons}
-        </FinePrint>
-        <Stack useFlexGap spacing="0.25em">
-          {previewLessons.map((lesson) => (
-            <MuiLink key={`${lesson.courseId}:${lesson.id}`} component={Link} to={`/my/courses/${encodeURIComponent(lesson.courseId)}/lessons/${encodeURIComponent(lesson.id)}`}>
-              {lesson.name}
-            </MuiLink>
-          ))}
-        </Stack>
-      </Box>
-    ),
     platformSurface ? (
       <Box key="build" sx={{ display: 'flex', justifyContent: 'flex-start' }}>
         <BuildStamp />

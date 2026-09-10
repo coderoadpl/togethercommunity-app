@@ -207,7 +207,6 @@ export interface Messages {
     publicNavCommunity: string;
     cannotSignInPrompt: string;
     cannotSignInLink: string;
-    previewLessons: string;
     creatingAccount: string;
     createAccount: string;
     createAccountLead: string;

@@ -24,7 +24,14 @@ export type VerifiedSesEvent = {
   | { kind: 'open' }
   | { kind: 'click'; linkUrl: string }
   | { kind: 'complaint' }
-  | { kind: 'bounce'; bounceType: string; status: string | null }
+  | {
+    kind: 'bounce';
+    bounceType: string;
+    bounceSubType: string | null;
+    status: string | null;
+    diagnosticCode: string | null;
+    action: string | null;
+  }
 );
 export const storedSnsEnvelopeSchema = z.object({ Message: z.string(), SubscribeURL: z.string().optional() });
 export const marketingSnsReceiptSchema = marketingSnsInboxSchema.omit({ rawBody: true });
@@ -34,7 +41,17 @@ const payloadSchema = z.object({
   delivery: z.object({ timestamp: z.string().datetime(), recipients: z.array(z.string().email()).optional() }).optional(),
   open: z.object({ timestamp: z.string().datetime() }).optional(),
   click: z.object({ timestamp: z.string().datetime(), link: z.string().min(1) }).optional(),
-  bounce: z.object({ timestamp: z.string().datetime(), bounceType: z.string(), bouncedRecipients: z.array(z.object({ emailAddress: z.string().email().optional(), status: z.string().optional() })) }).optional(),
+  bounce: z.object({
+    timestamp: z.string().datetime(),
+    bounceType: z.string(),
+    bounceSubType: z.string().min(1).optional(),
+    bouncedRecipients: z.array(z.object({
+      emailAddress: z.string().email().optional(),
+      status: z.string().optional(),
+      diagnosticCode: z.string().optional(),
+      action: z.string().optional(),
+    })),
+  }).optional(),
   complaint: z.object({ timestamp: z.string().datetime(), complainedRecipients: z.array(z.object({ emailAddress: z.string().email().optional() })).optional() }).optional(),
 });
 export const marketingSnsJsonValue = (raw: string): unknown => { try { return JSON.parse(raw); } catch { return null; } };
@@ -57,7 +74,17 @@ export const parseMarketingSesEvents = (raw: unknown, topicArn: string): Verifie
   }
   if (type === 'Bounce' && value.bounce !== undefined) {
     const bounce = value.bounce;
-    return bounce.bouncedRecipients.map((recipient) => ({ ...base, kind: 'bounce', occurredAt: bounce.timestamp, bounceType: bounce.bounceType, status: recipient.status ?? null, recipient: recipient.emailAddress }));
+    return bounce.bouncedRecipients.map((recipient) => ({
+      ...base,
+      kind: 'bounce',
+      occurredAt: bounce.timestamp,
+      bounceType: bounce.bounceType,
+      bounceSubType: bounce.bounceSubType ?? null,
+      status: recipient.status ?? null,
+      diagnosticCode: recipient.diagnosticCode ?? null,
+      action: recipient.action ?? null,
+      recipient: recipient.emailAddress,
+    }));
   }
   return [];
 };

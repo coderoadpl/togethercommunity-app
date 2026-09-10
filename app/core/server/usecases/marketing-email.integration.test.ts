@@ -765,7 +765,18 @@ describe('marketing e-mail use-case integration', () => {
       liftedAt: null,
       liftedBy: null,
     });
-    const hard = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Permanent', status: null, occurredAt: NOW, raw: { event: 1 } }, deps);
+    const hard = await applyVerifiedSesEvent(ctx, {
+      topicArn,
+      messageId: 'fake-ses-message',
+      kind: 'bounce',
+      bounceType: 'Permanent',
+      bounceSubType: 'General',
+      status: null,
+      diagnosticCode: null,
+      action: null,
+      occurredAt: NOW,
+      raw: { event: 1 },
+    }, deps);
     expect(hard).toEqual(ok({ kind: 'applied' }));
     const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
     expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).map((item) => item.type))
@@ -777,13 +788,52 @@ describe('marketing e-mail use-case integration', () => {
     expect(mismatch).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
-  it('I9 records soft bounces without suppression and complaints permanently suppress', async () => {
-    const deps = await setup(['soft@example.test', 'complaint@example.test']);
+  it('I9 records soft and unresolved bounces without suppression and complaints permanently suppress', async () => {
+    const deps = await setup(['soft@example.test', 'unresolved@example.test', 'complaint@example.test']);
     await enqueueAndDispatchMessages(ctx, [{ to: 'soft@example.test', memberId: 'member-1', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
+    await enqueueAndDispatchMessages(ctx, [{ to: 'unresolved@example.test', memberId: 'member-2', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
     await enqueueAndDispatchMessages(ctx, [{ to: 'complaint@example.test', memberId: 'member-2', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
-    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Transient', status: '4.2.2', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message',
+      kind: 'bounce',
+      bounceType: 'Transient',
+      bounceSubType: 'MailboxFull',
+      status: '4.2.2',
+      diagnosticCode: null,
+      action: 'failed',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'soft@example.test'))).toBe(false);
-    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message-2', kind: 'complaint', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message-2',
+      kind: 'bounce',
+      bounceType: 'Undetermined',
+      bounceSubType: 'Undetermined',
+      status: '5.0.0',
+      diagnosticCode: 'smtp; 250 automated response',
+      action: 'failed',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'unresolved@example.test'))).toBe(false);
+    expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2'))
+      .toMatchObject({ deliveryStatus: null, deliveryOccurredAt: null });
+    const unresolvedSend = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', unresolvedSend?.id ?? '')).at(-1))
+      .toMatchObject({ type: 'bounced', meta: { classification: 'unresolved' } });
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message-2',
+      kind: 'delivery',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2'))
+      .toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
+    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message-3', kind: 'complaint', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
     const complaint = await deps.suppressions.findActive('tenant-1', deps.hmac.compute('tenant-1', 'complaint@example.test'));
     expect(complaint).toMatchObject({ reason: 'complaint' });
     expect(await liftMarketingSuppression(ctx, { suppressionId: complaint?.id ?? '', actorId: 'staff-1' }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -860,6 +910,7 @@ describe('marketing e-mail use-case integration', () => {
       kind: 'bounce',
       bounceType: 'Permanent',
       status: '5.1.1',
+      eventType: 'bounced',
       deliveryStatus: 'bounced',
       suppressionReason: 'hard_bounce',
     },
@@ -868,12 +919,23 @@ describe('marketing e-mail use-case integration', () => {
       kind: 'bounce',
       bounceType: 'Transient',
       status: '4.2.2',
+      eventType: 'bounced',
       deliveryStatus: 'bounced',
+      suppressionReason: null,
+    },
+    {
+      name: 'unresolved bounce',
+      kind: 'bounce',
+      bounceType: 'Undetermined',
+      status: '5.0.0',
+      eventType: 'bounced',
+      deliveryStatus: null,
       suppressionReason: null,
     },
     {
       name: 'complaint',
       kind: 'complaint',
+      eventType: 'complained',
       deliveryStatus: 'complained',
       suppressionReason: 'complaint',
     },
@@ -922,7 +984,10 @@ describe('marketing e-mail use-case integration', () => {
                 ...common,
                 kind: 'bounce',
                 bounceType: input.bounceType,
+                bounceSubType: null,
                 status: input.status,
+                diagnosticCode: null,
+                action: null,
               },
               deps,
             )
@@ -946,7 +1011,7 @@ describe('marketing e-mail use-case integration', () => {
       'claimed',
       'rendered',
       'accepted',
-        input.deliveryStatus,
+        input.eventType,
         ...(input.suppressionReason === null ? [] : ['suppressed_written']),
       ]);
       if (input.suppressionReason !== null) {
@@ -959,8 +1024,16 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
         .toMatchObject({
           deliveryStatus: input.deliveryStatus,
-          deliveryOccurredAt: NOW,
+          deliveryOccurredAt: input.deliveryStatus === null ? null : NOW,
         });
+      if (input.deliveryStatus === null) {
+        expect(await applyVerifiedSesEvent(ctx, {
+          ...common,
+          kind: 'delivery',
+        }, deps)).toEqual(ok({ kind: 'applied' }));
+        expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
+          .toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
+      }
     },
   );
 

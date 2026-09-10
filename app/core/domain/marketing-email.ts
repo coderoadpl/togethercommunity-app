@@ -49,6 +49,7 @@ export const consentDefinitionSchema = z.object({
   kind: z.enum(['required_terms', 'optional_marketing']),
   channel: z.literal('email'),
   doubleOptIn: z.boolean(),
+  footerLabel: z.string().trim().max(200).nullable().optional(),
   documentRef: consentDocumentRefSchema,
   status: z.enum(['active', 'archived']),
   createdAt: isoDateTimeSchema,

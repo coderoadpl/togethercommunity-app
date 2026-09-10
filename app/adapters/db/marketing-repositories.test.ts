@@ -237,8 +237,12 @@ describe('marketing database repositories', () => {
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {
     const definitions = createConsentDefinitionRepository(db);
     await definitions.create('tenant-a', definition('tenant-a'), version('tenant-a'));
-    await definitions.create('tenant-b', definition('tenant-b'), version('tenant-b'));
+    await definitions.create('tenant-b', { ...definition('tenant-b'), footerLabel: 'Tenant B updates' }, version('tenant-b'));
     expect((await definitions.list('tenant-a')).map((item) => item.tenantId)).toEqual(['tenant-a']);
+    expect(await definitions.findById('tenant-b', 'definition-tenant-b')).toMatchObject({
+      tenantId: 'tenant-b',
+      footerLabel: 'Tenant B updates',
+    });
 
     const campaigns = createCampaignRepository(db);
     await campaigns.create('tenant-a', campaign('tenant-a'));

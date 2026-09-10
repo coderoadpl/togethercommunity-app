@@ -14,6 +14,7 @@ import {
   emailLayoutSchema,
   liftSuppression,
   marketingFooterCopy,
+  consentDefinitionSchema,
   consentConfirmationTokenSchema,
   marketingConsentConfirmation,
   marketingConsentCreatorSchema,
@@ -96,6 +97,16 @@ describe('U1 consent state derivation', () => {
 });
 
 describe('U2 consent creator validation', () => {
+  it('accepts a trimmed nullable footer label on consent definitions', () => {
+    const parsed = consentDefinitionSchema.parse({
+      ...definition(true),
+      footerLabel: '  Product news  ',
+    });
+    expect(parsed.footerLabel).toBe('Product news');
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: null }).success).toBe(true);
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: 'x'.repeat(201) }).success).toBe(false);
+  });
+
   it('rejects required or pre-ticked marketing and channels other than the single email channel', () => {
     const valid = { kind: 'optional_marketing', channel: 'email', required: false, preTicked: false };
     expect(marketingConsentCreatorSchema.safeParse(valid).success).toBe(true);

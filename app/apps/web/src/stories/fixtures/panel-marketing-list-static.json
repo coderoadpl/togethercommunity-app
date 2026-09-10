@@ -153,6 +153,7 @@
               "url": "https://courses.example.org/privacy"
             },
             "doubleOptIn": false,
+            "footerLabel": null,
             "id": "definition-directory-news",
             "key": "directory-news",
             "kind": "optional_marketing",
@@ -168,6 +169,7 @@
               "url": "https://studio.example.test/privacy"
             },
             "doubleOptIn": true,
+            "footerLabel": null,
             "id": "consent-definition-studio-news",
             "key": "news",
             "kind": "optional_marketing",

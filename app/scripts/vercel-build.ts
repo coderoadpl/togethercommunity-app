@@ -3,15 +3,21 @@ import { join } from 'node:path';
 
 import {
   deploymentDatabaseVerdict,
+  isProductionDeployment,
   unnamedDeploymentSlotWarning,
   type DeploymentDatabaseVerdict,
 } from '#core/domain/index.js';
+import { migrationJournalState } from '#adapters/db/migration-journal.js';
 import { deploymentMarkers } from '#adapters/db/reseed-guard.js';
 import { seedMarkersPresent } from '#adapters/db/seed-markers.js';
 
 import { deriveVersion } from './derive-version.js';
 import { stampManifestVersion } from './stamp-manifest-version.js';
-import { stagingSeedCandidate, stagingSeedDecision } from './vercel-build-policy.js';
+import {
+  migrationJournalDecision,
+  stagingSeedCandidate,
+  stagingSeedDecision,
+} from './vercel-build-policy.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const manifestPath = join(appRoot, 'package.json');
@@ -55,6 +61,25 @@ const assertDeploymentDatabase = (): DeploymentDatabaseVerdict => {
   return verdict;
 };
 
+const assertMigrationJournalReady = async (): Promise<void> => {
+  if (isProductionDeployment(process.env)) return;
+  if (process.env['DATABASE_URL'] === undefined || process.env['DATABASE_URL'] === '') return;
+  let state: Awaited<ReturnType<typeof migrationJournalState>>;
+  try {
+    state = await migrationJournalState(process.env['DATABASE_URL']);
+  } catch (cause) {
+    process.stderr.write(`vercel-build: migration journal probe failed -- ${
+      cause instanceof Error ? cause.message : String(cause)
+    }\n`);
+    process.exit(1);
+  }
+  const decision = migrationJournalDecision(state);
+  if (decision.action === 'refused') {
+    process.stderr.write(`vercel-build: refusing to migrate -- ${decision.message}\n`);
+    process.exit(1);
+  }
+};
+
 const seedEmptyStagingDeployment = async (verdict: DeploymentDatabaseVerdict): Promise<void> => {
   const candidate = stagingSeedCandidate(process.env, verdict);
   if (candidate.action === 'skip') {
@@ -86,6 +111,7 @@ const seedEmptyStagingDeployment = async (verdict: DeploymentDatabaseVerdict): P
 
 applyDerivedVersion();
 const deploymentVerdict = assertDeploymentDatabase();
+await assertMigrationJournalReady();
 run('pnpm', ['run', 'db:migrate']);
 await seedEmptyStagingDeployment(deploymentVerdict);
 run('pnpm', ['run', 'build']);

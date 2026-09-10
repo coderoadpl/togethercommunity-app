@@ -33,7 +33,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EmailEventTimeline } from '../email/index.js';
-import { deliveryStatusLabel, sendKindLabel, sendStatusLabel } from './EmailSendSummary.js';
+import { deliveryStatusColor, deliveryStatusLabel, sendKindLabel, sendStatusColor, sendStatusLabel } from './EmailSendSummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -42,12 +42,6 @@ export const validateSendsSearch = (search: Record<string, unknown>): { runId?: 
   const contactId = search['contactId'];
   return { ...(typeof runId === 'string' && runId.trim() ? { runId: runId.trim() } : {}), ...(typeof contactId === 'string' && contactId.trim() ? { contactId: contactId.trim() } : {}) };
 };
-
-const statusColor = (status: EmailSendStatus): 'success' | 'warning' | 'error' | 'default' =>
-  status === 'sent' ? 'success' : status === 'failed' ? 'error' : status === 'sending' ? 'warning' : 'default';
-
-const deliveryColor = (status: EmailDeliveryStatus | null): 'success' | 'warning' | 'error' | 'default' =>
-  status === 'delivered' ? 'success' : status === 'bounced' || status === 'complained' ? 'error' : 'default';
 
 const isSendStatus = (value: string): value is EmailSendStatus =>
   ['queued', 'pending', 'sending', 'sent', 'failed', 'skipped'].includes(value);
@@ -369,7 +363,7 @@ export const SendsPanel = () => {
                     <TableCell>{send.subject}</TableCell>
                     <TableCell>
                       <Stack useFlexGap spacing="0.25rem">
-                        <Chip size="small" color={statusColor(send.status)} label={sendStatusLabel(send.status, t)} />
+                        <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
                         {send.failureCode === null ? null : (
                           <Typography variant="caption" color="error.main">
                             {send.failureCode}: {send.failureMessage}
@@ -377,7 +371,7 @@ export const SendsPanel = () => {
                         )}
                       </Stack>
                     </TableCell>
-                    <TableCell><Chip size="small" variant="outlined" color={deliveryColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
+                    <TableCell><Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
                     <TableCell>
                       <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
                         <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />

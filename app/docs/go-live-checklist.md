@@ -546,8 +546,10 @@ After item 16 creates `staging`, set Vercel Production Branch Tracking to
 `main` and verify that a `staging` merge creates staging only. Staging is the
 `staging`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
 to Preview with branch `staging`, and its pooled and unpooled database URLs must
-point at the schema-only staging database branch described in
-[staging.md](staging.md). A fourth verified trap is member-role mapping on the
+point at the empty database on the protected Neon branch described in
+[staging.md](staging.md). Migrations must run from `0000` at build time, the
+deployed seed must populate that database, and the build must refuse a
+schema-only copy. A fourth verified trap is member-role mapping on the
 hosting team: when a git identity that pushes or merges (including a machine account
 merging pull requests) maps to a hosting-team member whose role cannot create
 deployments (a read-only viewer seat), the platform silently drops every

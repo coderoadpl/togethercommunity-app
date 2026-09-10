@@ -101,7 +101,9 @@ Auth page stories render the production AuthShell. The default build reproduces
 the committed goldens' unconfigured base-domain fallback. Run
 `APP_BASE_DOMAIN=localhost pnpm run storybook` to inspect the tenant public
 navigation and footer on `studio.localhost:9009`. Login's Method Cards story
-resolves the seeded creator's sign-in methods before rendering the choices.
+renders the same sign-in choices for every email address. Tenant login stories
+include short and long notices, English and Polish UI, light and dark schemes,
+and desktop and mobile viewports.
 Registration is available at both viewport sizes without a committed golden.
 
 For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.

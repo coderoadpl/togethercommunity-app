@@ -676,7 +676,7 @@ const couponHarness = (
 const consentHarness = async () => {
   const h = harness({ prices: [monthlyPrice(tenantA.id)] });
   h.deps.tenants.findSettings = async () => ({
-    name: 'Acme', socialLinks: [], billingPortalUrl: null,
+    name: 'Acme', socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null,
     bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
     logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null,
     ogTitle: null, ogDescription: null, ogImageUrl: null,

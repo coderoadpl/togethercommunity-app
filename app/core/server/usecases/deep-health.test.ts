@@ -32,6 +32,7 @@ const acme: Tenant = {
 const settings: TenantSettings = {
   name: 'Acme',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
@@ -556,6 +557,7 @@ describe('checkDeepHealth', () => {
     const unparsable: TenantSettings = {
       ...settings,
       socialLinks: [0, 1, 2].map((index) => ({ label: `Link ${String(index)}`, url: 'not-a-url' })),
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: 'not-a-url',
       logoUrl: 'not-a-url',
       logoDarkUrl: 'not-a-url',

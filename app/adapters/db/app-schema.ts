@@ -54,6 +54,7 @@ export const tenants = pgTable(
     onboardingDismissedAt: text('onboarding_dismissed_at'),
     logoUrl: text('logo_url'),
     logoDarkUrl: text('logo_dark_url'),
+    signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),
     accentColor: text('accent_color'),
     accentLight: text('accent_light'),
     faviconUrl: text('favicon_url'),

@@ -109,7 +109,6 @@ import {
   createProcessedPaymentEventRepository,
   createProductRepository,
   createOnboardingStateRepository,
-  createSignInMethodReader,
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createApiKeyRateLimitRepository,
@@ -271,7 +270,6 @@ import type {
   SpaceRepository,
   SpaceSeenRepository,
   SpaceSubscriptionRepository,
-  SignInMethodReader,
   TenantAccessReader,
   TenantApiKeyRepository,
   ApiKeyRateLimitRepository,
@@ -496,7 +494,7 @@ export interface AppDeps {
   consents: TermsConsentRepository;
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
-  signInMethods: SignInMethodReader;
+  signInTelemetrySecret: string;
   accountSecurity: AccountSecurityReader;
   health: HealthPort;
   appVersion: string;
@@ -811,7 +809,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
       }
     : undefined);
   const tenantAccess = createTenantAccessReader(db);
-  const signInMethods = createSignInMethodReader(db);
   const accountSecurity = createAccountSecurityReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
@@ -1414,7 +1411,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     consents,
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,
-    signInMethods,
+    signInTelemetrySecret: env.BETTER_AUTH_SECRET,
     accountSecurity,
     health: createHealthPort(db),
     appVersion: APP_VERSION,

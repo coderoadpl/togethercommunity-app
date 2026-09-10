@@ -1,6 +1,6 @@
 {
-  "hash": "ab54d833089e665b0787cf8bbf13dd35b26c212da3cdd6d04a80f30b816e205e",
-  "shortId": "ab54d833089e",
+  "hash": "9495e9e3307b39f86f35d4c919061440b5d409b85e6934c3ac7bf18e7c485e8f",
+  "shortId": "9495e9e3307b",
   "schema": {
     "constraints": [
       {
@@ -3428,6 +3428,14 @@
             "name": "plan",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "sign_in_notice",
+            "notNull": true,
+            "type": "jsonb"
           },
           {
             "default": "1",

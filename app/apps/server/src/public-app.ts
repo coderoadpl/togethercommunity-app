@@ -667,11 +667,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid sign-in lookup payload', parsed.error.flatten())));
     }
-    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
-    if (!tenant.ok) return respondPublic(tenant);
-    return respondPublic(
-      await resolveSignInMethods(tenant.value?.tenant.id ?? null, parsed.data, deps),
-    );
+    return respondPublic(resolveSignInMethods());
   });
 
   app.post(BETTER_AUTH_MAGIC_LINK_PATH, (c) =>

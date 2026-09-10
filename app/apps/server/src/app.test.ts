@@ -2110,6 +2110,27 @@ describe('marketing HTTP surfaces', () => {
     expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).at(-1)?.status).toBe('withdrawn');
   });
 
+  it('posts the rendered preference presence field through the public route', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const app = marketingApp(marketing);
+    const get = await app.request('/u/unsubscribe_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    const page = await get.text();
+    expect(page).toContain('name="present-consent" value="definition-news"');
+    expect(page).toContain('name="consent" value="definition-news" checked');
+
+    const post = await app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ 'present-consent': 'definition-news' }),
+    });
+    expect(post.status).toBe(200);
+    expect(await post.text()).toContain('Preferences saved');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test'))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+  });
+
   it('keeps RFC one-click POST empty and requires an idempotent DOI confirmation POST', async () => {
     const marketing = await memberSurfaceMarketing();
     const oneClick = await marketingApp(marketing).request('/u/unsubscribe_token_123456789012345', {

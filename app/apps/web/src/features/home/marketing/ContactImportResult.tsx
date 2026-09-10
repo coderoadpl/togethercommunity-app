@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Alert, Button, Chip, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -8,7 +8,29 @@ import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
-import { DirectoryError } from './DirectoryFields.js';
+import { DirectoryActions, DirectoryError } from './DirectoryFields.js';
+
+type ImportStatus = MarketingContactImport['status'];
+
+const importStatusColor = (status: ImportStatus): 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error' => {
+  switch (status) {
+    case 'draft':
+    case 'ready':
+      return 'default';
+    case 'queued':
+      return 'primary';
+    case 'processing':
+      return 'info';
+    case 'completed':
+      return 'success';
+    case 'completed_with_errors':
+      return 'warning';
+    case 'failed':
+      return 'error';
+    case 'cancelled':
+      return 'default';
+  }
+};
 
 export const importErrorCsv = (rows: MarketingImportRowReceipt[]): string => {
   const cell = (value: string) => `"${(/^[=+@\-\t\r]/.test(value) ? `'${value}` : value).replaceAll('"', '""')}"`;
@@ -59,8 +81,22 @@ export const ContactImportResult = ({ importId }: { importId: string }) => {
   const data: MarketingContactImport | undefined = batch.data?.import;
   const status = data?.status;
   useEffect(() => { if (status && ['completed', 'completed_with_errors'].includes(status)) void cache.invalidateQueries(actions.directory.invalidates(tenant.id)); }, [cache, status, tenant.id]);
+  const isProcessing = data?.status === 'queued' || data?.status === 'processing';
+  const hasRejectedRows = data !== undefined && data.resultCounts.rejectedRows > 0;
+  const canDownloadErrors = data !== undefined && hasRejectedRows && data.stagedDataPurgedAt === null;
   return <SectionCard title={t.directory.result}>
     <DirectoryError error={batch.error ?? retry.error ?? cancel.error} />{batch.isPending ? <StatusView state={{ kind: 'loading', label: t.directory.loading }} /> : null}
-    {data ? <><Typography>{t.directory.batchId}: {data.id}</Typography><Typography role="status">{t.directory[data.status]}</Typography><Typography>{data.fileName} · {t.directory.totalRows}: {data.rowCount}</Typography><Alert severity="info">{t.directory.processingHint}</Alert>{data.lastError ? <Alert severity="error">{data.lastError}</Alert> : null}<ImportCounts counts={data.resultCounts} /><ImportErrorsDownload importId={data.id} />{data.status === 'failed' ? <Button disabled={retry.isPending} onClick={() => retry.mutate({ importId })}>{t.directory.retryImport}</Button> : null}{['draft', 'ready', 'queued', 'processing', 'failed'].includes(data.status) ? <Button disabled={cancel.isPending} onClick={() => cancel.mutate({ importId })}>{t.directory.cancelImport}</Button> : null}<Button component={Link} to="/panel/marketing/contacts">{t.directory.contactsTitle}</Button></> : null}
+    {data ? <Stack useFlexGap spacing="0.75rem">
+      <Chip role="status" color={importStatusColor(data.status)} label={t.directory[data.status]} size="small" sx={{ alignSelf: 'flex-start' }} />
+      <Typography>{data.fileName} · {t.directory.totalRows}: {data.rowCount}</Typography>
+      <Typography>{t.directory.statusGuidance[data.status]}</Typography>
+      {isProcessing ? <Alert severity="info">{t.directory.processingHint}</Alert> : null}
+      {data.lastError ? <Alert severity="error">{data.lastError}</Alert> : null}
+      <ImportCounts counts={data.resultCounts} />
+      {canDownloadErrors ? <ImportErrorsDownload importId={data.id} /> : null}
+      {hasRejectedRows && data.stagedDataPurgedAt !== null ? <Typography color="text.secondary">{t.directory.errorsPurged}</Typography> : null}
+      <DirectoryActions>{data.status === 'failed' ? <Button disabled={retry.isPending} onClick={() => retry.mutate({ importId })}>{t.directory.retryImport}</Button> : null}{['draft', 'ready', 'queued', 'processing', 'failed'].includes(data.status) ? <Button disabled={cancel.isPending} onClick={() => cancel.mutate({ importId })}>{t.directory.cancelImport}</Button> : null}<Button component={Link} to="/panel/marketing/contacts">{t.directory.contactsTitle}</Button></DirectoryActions>
+      <Typography variant="caption" color="text.secondary">{t.directory.batchId}: {data.id}</Typography>
+    </Stack> : null}
   </SectionCard>;
 };

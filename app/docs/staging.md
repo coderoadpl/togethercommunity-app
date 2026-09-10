@@ -60,5 +60,5 @@ Use it to reset staging data from the deployed seed after staging already
 exists; do not use build-time seed as a reset mechanism.
 
 `POST /api/internal/sanitize-staging-secrets` remains available for the
-transition from an old copied staging branch. On a schema-only branch with no
-copied tenant secrets it has nothing to delete.
+transition from an old copied staging branch. On an empty staging database
+populated by the deployed seed, it has nothing to delete.

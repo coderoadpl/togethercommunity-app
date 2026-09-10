@@ -313,8 +313,10 @@ they carried — SES, S3, Stripe, Bunny, iFirma, KSeF — was encrypted with the
 production `SECRETS_MASTER_KEY`. Staging holds a different key, so those rows
 decrypt to nothing there: `/api/health/deep` fails `tenant-secret-decryption`,
 and `storage-presign` fails with it because the S3 configuration is one of the
-unreadable rows. New staging databases are schema-only branches seeded by the
-deployed build, so there may be no copied secrets to sanitize.
+unreadable rows. New staging databases are empty databases on the protected Neon
+branch: migrations run from `0000` at build time, the deployed seed populates
+them, and the build refuses schema-only copies, so there may be no copied secrets
+to sanitize.
 
 `POST /api/internal/sanitize-staging-secrets` resolves that. Guarded by the same
 `x-scheduler-operator-secret` header the acme reseed uses, it scans every stored
@@ -334,8 +336,9 @@ secrets an operator entered on staging.
 `OPERATOR_SECRET_STAGING` repository secret through the deployment-protection
 bypass header. Absent secret → the step prints a notice and the smoke runs
 against staging as it stands; a failing call does not fail the job, so a sanitize
-problem never masquerades as a staging outage. On a schema-only staging branch
-the route is a no-op when no copied secret rows exist.
+problem never masquerades as a staging outage. On an empty staging database
+populated by the deployed seed, the route is a no-op when no copied secret rows
+exist.
 
 To give staging its own working integrations, sign in to Studio on the staging
 host and re-enter them there — Studio → Integrations for e-mail, storage,

@@ -1112,6 +1112,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
       runs: schedulerRuns,
       ids,
       clock,
+      logger,
       dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger, deadlineAt),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({
         identity: workerIdentity(tenantId),

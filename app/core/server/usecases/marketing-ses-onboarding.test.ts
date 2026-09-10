@@ -603,6 +603,7 @@ describe('SES onboarding wizard', () => {
       { arn: 'arn:new', endpoint: WEBHOOK_URL },
       { arn: 'arn:old', endpoint: `${LEGACY_WEBHOOK_URL}/` },
       { arn: 'arn:foreign', endpoint: 'https://other.test/api/webhooks/ses/another_webhook_token' },
+      { arn: 'arn:same-host-other-path', endpoint: `https://${new URL(WEBHOOK_URL).host}/api/webhooks/ses/another_webhook_token` },
     ];
 
     await pollSesOnboarding(ctx, deps(repository, controlPlane));
@@ -617,6 +618,7 @@ describe('SES onboarding wizard', () => {
     expect(controlPlane.subscriptions).toEqual([
       { arn: 'arn:new', endpoint: WEBHOOK_URL },
       { arn: 'arn:foreign', endpoint: 'https://other.test/api/webhooks/ses/another_webhook_token' },
+      { arn: 'arn:same-host-other-path', endpoint: `https://${new URL(WEBHOOK_URL).host}/api/webhooks/ses/another_webhook_token` },
     ]);
   });
 
@@ -678,7 +680,7 @@ describe('SES onboarding wizard', () => {
     expect(controlPlane.unsubscribeAttempts).toEqual(['arn:old-one', 'arn:old-two']);
     expect(controlPlane.unsubscribedArns).toEqual(['arn:old-two']);
     expect(warnings).toEqual([
-      expect.stringContaining('subscription=arn:old-one'),
+      '[marketing-ses] subscription cleanup failed tenant=tenant-1 step=unsubscribe error=integration_unavailable',
     ]);
   });
 
@@ -702,7 +704,7 @@ describe('SES onboarding wizard', () => {
 
     expect(result.ok).toBe(true);
     expect(warnings).toEqual([
-      expect.stringContaining('SNS subscriptions could not be listed'),
+      '[marketing-ses] subscription cleanup failed tenant=tenant-1 step=list error=integration_unavailable',
     ]);
   });
 

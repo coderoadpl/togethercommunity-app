@@ -1706,6 +1706,7 @@ export const scheduleMarketingRetentionJobs = async (
 export const SES_IDENTITY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const SCHEDULER_RUN_PURGE_BATCH_SIZE = 500;
 const SCHEDULER_RUN_PURGE_TIME_BUDGET_MS = 5_000;
+const SCHEDULER_RUN_PURGE_MIN_BATCH_MS = 1_500;
 
 export const runScheduledMarketingJobs = async (
   input: {
@@ -1738,6 +1739,7 @@ export const runScheduledMarketingJobs = async (
     runReputationAlerts(
       tenantId: string,
     ): Promise<Result<{ sent: number }, AppError>>;
+    logger: { warn(message: string): void };
   },
 ): Promise<Result<{
   campaignsDispatched: number;
@@ -1764,15 +1766,24 @@ export const runScheduledMarketingJobs = async (
   let maintenanceIncomplete = false;
   if (maintenanceDue) {
     const purgeDeadlineMs = Date.now() + SCHEDULER_RUN_PURGE_TIME_BUDGET_MS;
-    while (Date.now() < purgeDeadlineMs && input.shouldContinue?.() !== false) {
-      const purged = await deps.runs.purge({
-        runsBefore: input.schedulerRunsOlderThan,
-        idleRunsBefore: input.schedulerIdleRunsOlderThan,
-      }, {
-        batchSize: SCHEDULER_RUN_PURGE_BATCH_SIZE,
-        timeoutMs: Math.max(1, purgeDeadlineMs - Date.now()),
-      });
-      if (purged < SCHEDULER_RUN_PURGE_BATCH_SIZE) break;
+    while (input.shouldContinue?.() !== false) {
+      const remainingMs = purgeDeadlineMs - Date.now();
+      if (remainingMs < SCHEDULER_RUN_PURGE_MIN_BATCH_MS) break;
+      let batch: { purged: number; cancelled: boolean };
+      try {
+        batch = await deps.runs.purge({
+          runsBefore: input.schedulerRunsOlderThan,
+          idleRunsBefore: input.schedulerIdleRunsOlderThan,
+        }, { batchSize: SCHEDULER_RUN_PURGE_BATCH_SIZE, timeoutMs: remainingMs });
+      } catch {
+        deps.logger.warn('[marketing] scheduler run purge stopped reason=purge_failed');
+        break;
+      }
+      if (batch.cancelled) {
+        deps.logger.warn('[marketing] scheduler run purge stopped reason=budget_exhausted');
+        break;
+      }
+      if (batch.purged < SCHEDULER_RUN_PURGE_BATCH_SIZE) break;
     }
     if (input.shouldContinue?.() === false) maintenanceIncomplete = true;
   }

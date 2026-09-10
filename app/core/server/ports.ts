@@ -2187,7 +2187,7 @@ export interface SchedulerRunRepository {
   purge(
     input: { runsBefore: string; idleRunsBefore: string },
     options: { batchSize: number; timeoutMs: number },
-  ): Promise<number>;
+  ): Promise<{ purged: number; cancelled: boolean }>;
 }
 
 export interface EmailHmac {

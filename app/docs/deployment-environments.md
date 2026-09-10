@@ -110,6 +110,11 @@ additionally sets `APP_ENV=production`, `NODE_ENV=production`, secure cookies,
 real payments, production KSeF, and cron secrets. Preview and staging values
 must never reuse production credentials.
 
+The database client rewrites `sslmode=require`, `sslmode=prefer` and
+`sslmode=verify-ca` in `DATABASE_URL` to `sslmode=verify-full`, so a connection
+string copied from a provider console still validates the server hostname. An
+explicit `sslmode=disable` is left untouched for local development.
+
 Vercel sets `NODE_ENV=production` on Preview deployments as well, so `NODE_ENV`
 cannot decide the boot posture on its own. `APP_ENV` names the environment:
 `preview` and `staging` are the only values that relax the production

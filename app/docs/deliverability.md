@@ -82,8 +82,10 @@ WHERE s.tenant_id = $1
 ```
 
 Legacy rows without payloads require operator investigation; the worker does not reconstruct or
-resend them. Completed outbox bodies and processed/ignored SNS raw envelopes are purged after
-30 days by the existing retention pass. Pending and uncertain payloads remain available for recovery.
+resend them. The retention pass purges completed outbox bodies after
+`MARKETING_RETENTION_RENDERED_BODIES_DAYS` and processed or ignored SNS raw envelopes after
+`MARKETING_RETENTION_RAW_SNS_INBOX_DAYS`; both windows are configurable and default below.
+Pending and uncertain payloads remain available for recovery.
 Member erasure removes matching payloads immediately, fences active claims and preserves receipt
 identities and audit events; unprocessed SNS envelopes containing that recipient become ignored.
 

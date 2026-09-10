@@ -280,7 +280,7 @@ describe('marketing database repositories', () => {
     await expect(repository.purge({
       runsBefore: '1998-07-01T00:00:00.000Z',
       idleRunsBefore: '1998-07-20T00:00:00.000Z',
-    }, { batchSize: 500, timeoutMs: 5_000 })).resolves.toBe(2);
+    }, { batchSize: 500, timeoutMs: 5_000 })).resolves.toEqual({ purged: 2, cancelled: false });
 
     expect(await repository.getWithTenants('retention-regular-old')).toBeNull();
     expect(await repository.getWithTenants('retention-idle-old')).toBeNull();
@@ -290,6 +290,24 @@ describe('marketing database repositories', () => {
     expect(await repository.getWithTenants('retention-only-kind')).not.toBeNull();
     expect(await db.select().from(schedulerRunTenants).where(eq(schedulerRunTenants.id, 'retention-idle-old-tenant')))
       .toEqual([]);
+  });
+
+  it('reports a purge batch cancelled by its statement timeout instead of throwing', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const blocker = new pg.Client({ connectionString: testUrl });
+    await blocker.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE scheduler_runs IN ACCESS EXCLUSIVE MODE');
+
+      await expect(repository.purge({
+        runsBefore: '1998-07-01T00:00:00.000Z',
+        idleRunsBefore: '1998-07-20T00:00:00.000Z',
+      }, { batchSize: 500, timeoutMs: 300 })).resolves.toEqual({ purged: 0, cancelled: true });
+    } finally {
+      await blocker.query('ROLLBACK');
+      await blocker.end();
+    }
   });
 
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {

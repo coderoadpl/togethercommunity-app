@@ -95,13 +95,13 @@ export const staleSesWebhookEndpoint = (
     : subscribed;
 };
 
-const supersededTenantWebhook = (endpoint: string, currentEndpoint: string): boolean => {
+const supersededTenantWebhook = (endpoint: string, tenantWebhookUrl: string): boolean => {
   try {
     const candidate = new URL(normalizeSesWebhookEndpoint(endpoint));
-    const current = new URL(normalizeSesWebhookEndpoint(currentEndpoint));
+    const tenant = new URL(normalizeSesWebhookEndpoint(tenantWebhookUrl));
     return candidate.protocol === 'https:'
-      && candidate.host !== current.host
-      && candidate.pathname === current.pathname;
+      && candidate.host !== tenant.host
+      && candidate.pathname === tenant.pathname;
   } catch {
     return false;
   }
@@ -111,22 +111,22 @@ const removeSupersededSubscriptions = async (
   deps: SesOnboardingDeps,
   credentials: SesMarketingCredentials,
   topicArn: string,
-  currentEndpoint: string,
+  tenantWebhookUrl: string,
   tenantId: string,
 ): Promise<void> => {
   const subscriptions = await deps.controlPlane.listSubscriptions(credentials, topicArn);
   if (!subscriptions.ok) {
-    deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} error=${subscriptions.error.message}`);
+    deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} step=list error=${subscriptions.error.code}`);
     return;
   }
   for (const subscription of subscriptions.value) {
     if (
       subscription.arn === null
-      || !supersededTenantWebhook(subscription.endpoint, currentEndpoint)
+      || !supersededTenantWebhook(subscription.endpoint, tenantWebhookUrl)
     ) continue;
     const removed = await deps.controlPlane.unsubscribe(credentials, subscription.arn);
     if (!removed.ok) {
-      deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} subscription=${subscription.arn} error=${removed.error.message}`);
+      deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} step=unsubscribe error=${removed.error.code}`);
     }
   }
 };
@@ -160,7 +160,7 @@ const migrateStaleSubscription = async (
     deps,
     input.credentials,
     input.topicArn,
-    subscription.value.endpoint,
+    input.webhookUrl,
     input.tenantId,
   );
   return ok(current);
@@ -419,7 +419,7 @@ export const pollSesOnboarding = async (
       deps,
       context.value.credentials,
       current.snsTopicArn,
-      current.snsSubscriptionEndpoint,
+      context.value.webhookUrl,
       context.value.tenantId,
     );
   }

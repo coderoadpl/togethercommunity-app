@@ -160,7 +160,7 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
   async purge(
     input: { runsBefore: string; idleRunsBefore: string },
     options: { batchSize: number; timeoutMs: number },
-  ): Promise<number> {
+  ): Promise<{ purged: number; cancelled: boolean }> {
     const newestIds = new Set<string>();
     for (const run of this.runs) {
       const newest = this.runs
@@ -184,7 +184,7 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
       const tenant = this.tenants[index];
       if (tenant !== undefined && removedIds.has(tenant.runId)) this.tenants.splice(index, 1);
     }
-    return removedIds.size;
+    return { purged: removedIds.size, cancelled: false };
   }
 
   private page(rows: SchedulerRun[], input: SchedulerRunListQuery): { runs: SchedulerRun[]; nextCursor: string | null } {

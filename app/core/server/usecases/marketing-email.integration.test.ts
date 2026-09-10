@@ -1296,7 +1296,7 @@ describe('marketing e-mail use-case integration', () => {
         },
         listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
@@ -1363,7 +1363,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => [],
         listSesTenantIds: async () => [],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
       refreshIdentity: async () => ok(undefined),
@@ -1407,7 +1407,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
         listSesTenantIds: async () => ['tenant-1'],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);
         return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);

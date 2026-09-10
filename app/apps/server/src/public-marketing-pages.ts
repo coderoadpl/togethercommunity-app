@@ -277,7 +277,7 @@ export const renderPreferencesPage = (input: {
     : t.scopeNamed({ scope: input.scopeLabel ?? input.scope.slice('consent:'.length) });
   const choices = input.definitions.length === 0
     ? `<p class="fine">${escapeHtml(t.noOptionalConsents)}</p>`
-    : input.definitions.map((definition) => `<label class="choice"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active ? ' checked' : ''}${input.globallySuppressed ? ' disabled' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
+    : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : ''}${input.globallySuppressed ? ' disabled' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
   const preferenceForm = input.globallySuppressed
     ? `<p class="notice">${escapeHtml(t.globallyUnsubscribed({ tenant: input.brand.tenant.name }))}</p>`
     : `<form method="post" action="${path}/preferences${formSuffix}">${choices}<div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form>`;

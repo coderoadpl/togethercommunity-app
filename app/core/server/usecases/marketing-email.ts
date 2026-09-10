@@ -433,6 +433,7 @@ export const saveMarketingConsentPreferences = async (
   input: {
     token: string;
     selectedDefinitionIds: string[];
+    presentDefinitionIds: string[];
     evidence: ConsentEvidence;
     confirmationBaseUrl: string;
   },
@@ -449,6 +450,7 @@ export const saveMarketingConsentPreferences = async (
     return err(validation('Invalid marketing consent preference'));
   }
   const selectedIds = new Set(input.selectedDefinitionIds);
+  const presentIds = new Set(input.presentDefinitionIds.filter((definitionId) => allowedIds.has(definitionId)));
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
   if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
     return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
@@ -461,7 +463,7 @@ export const saveMarketingConsentPreferences = async (
       definition,
     );
     const selected = selectedIds.has(definition.id);
-    if (!selected && state.state !== 'none' && state.state !== 'withdrawn') {
+    if (presentIds.has(definition.id) && !selected && state.state !== 'none' && state.state !== 'withdrawn') {
       const withdrawn = await withdrawMarketingConsent(ctx, {
         email: token.email,
         definitionId: definition.id,

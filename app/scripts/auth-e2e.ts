@@ -332,6 +332,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
     await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
+    await page.getByTestId('login-password').waitFor({ state: 'visible', timeout: 15000 });
     await page.getByTestId('signin-passkey').click();
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });

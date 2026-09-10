@@ -220,6 +220,37 @@ describe('LoginPage', () => {
     }
   });
 
+  it.each(['identifier', 'methods'])('preserves the %s controls when the public notice arrives', async (step) => {
+    let releaseOffer = () => {};
+    const offerReady = new Promise<void>((resolve) => { releaseOffer = resolve; });
+    server.use(http.get('*/api/public/offer', async () => {
+      await offerReady;
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          tenant: { slug: 'acme', name: 'Acme', signInNotice: { enabled: true, text: 'Welcome back.' } },
+          contentVersion: 1,
+          products: [],
+        },
+      });
+    }));
+    await renderLoginPage(false, '/login', 'acme.localhost', ['password', 'passkey', 'magic-link']);
+    if (step === 'methods') {
+      await continueWithEmail();
+      await screen.findByLabelText(en.auth.passwordLabel);
+    }
+    const content = screen.getByTestId('sign-in-content');
+    const noticeSlot = screen.getByTestId('sign-in-notice-slot');
+    const passkey = screen.getByTestId('signin-passkey');
+    passkey.focus();
+    releaseOffer();
+    await screen.findByTestId('sign-in-notice');
+    expect(screen.getByTestId('sign-in-content')).toBe(content);
+    expect(screen.getByTestId('sign-in-notice-slot')).toBe(noticeSlot);
+    expect(screen.getByTestId('signin-passkey')).toBe(passkey);
+    expect(passkey).toHaveFocus();
+  });
+
   it('prompts with Google One Tap only for an anonymous visitor on login', async () => {
     const prompt = vi.fn();
     window.google = { accounts: { id: { initialize: vi.fn(), prompt } } };

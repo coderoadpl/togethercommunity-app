@@ -429,12 +429,14 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
     <AuthShell title={t.auth.signInTitle} hostname={hostname} footer={pageFooter}>
       {notices}
-      {publicOffer.data?.tenant.signInNotice?.enabled && publicOffer.data.tenant.signInNotice.text.trim() ? (
-        <AuthNotice severity="info" role="note" aria-label={t.auth.signInNoticeLabel} data-testid="sign-in-notice" sx={{ mb: '1.5rem' }}>
-          {publicOffer.data.tenant.signInNotice.text}
-        </AuthNotice>
-      ) : null}
-      {children}
+      <Box data-testid="sign-in-notice-slot">
+        {publicOffer.data?.tenant.signInNotice?.enabled && publicOffer.data.tenant.signInNotice.text.trim() ? (
+          <AuthNotice severity="info" role="note" aria-label={t.auth.signInNoticeLabel} data-testid="sign-in-notice" sx={{ mb: '1.5rem' }}>
+            {publicOffer.data.tenant.signInNotice.text}
+          </AuthNotice>
+        ) : null}
+      </Box>
+      <Box data-testid="sign-in-content">{children}</Box>
     </AuthShell>
   );
 

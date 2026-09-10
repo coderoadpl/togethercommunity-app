@@ -1,8 +1,10 @@
 import { BETTER_AUTH_MAGIC_LINK_PATH, BETTER_AUTH_PASSWORD_SIGN_IN_PATH } from '#adapters/auth/create-auth.js';
-import { createHmac } from 'node:crypto';
+import { createHmac, hkdfSync } from 'node:crypto';
 import { trace } from '@opentelemetry/api';
 import { z } from 'zod';
 import type { MiddlewareHandler } from 'hono';
+
+import { normalizeEmail } from '#core/domain/index.js';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -19,9 +21,9 @@ export const signInTimingMiddleware = (secret: string): MiddlewareHandler => asy
   }
   const startedAt = performance.now();
   const payload: unknown = await c.req.raw.clone().json().catch(() => null);
-  const input = z.object({ email: z.string().trim().toLowerCase().email() }).safeParse(payload);
+  const input = z.object({ email: z.string().transform(normalizeEmail).pipe(z.string().email()) }).safeParse(payload);
   const span = trace.getActiveSpan();
-  if (input.success) span?.setAttribute('auth.email_hash', createHmac('sha256', secret).update(input.data.email).digest('hex'));
+  if (input.success) span?.setAttribute('auth.email_hash', createHmac('sha256', Buffer.from(hkdfSync('sha256', secret, '', 'together:sign-in-telemetry:email-hash:v1', 32))).update(input.data.email).digest('hex'));
   try {
     await next();
   } finally {

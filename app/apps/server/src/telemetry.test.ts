@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, hkdfSync } from 'node:crypto';
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH } from '#adapters/auth/create-auth.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
@@ -158,14 +158,14 @@ it('records only an email hash and uniform sign-in outcome codes', async () => {
   await app.request(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'Member@Example.com', password: 'secret-password', callbackURL: 'https://example.com/private-link' }),
+    body: JSON.stringify({ email: '  Member@Example.com  ', password: 'secret-password', callbackURL: 'https://example.com/private-link' }),
   });
   const span = await soleSpan();
   expect(span.attributes['auth.email_hash']).toBe(
-    createHmac('sha256', 'test-sign-in-telemetry-secret').update('member@example.com').digest('hex'),
+    createHmac('sha256', Buffer.from(hkdfSync('sha256', 'test-sign-in-telemetry-secret', '', 'together:sign-in-telemetry:email-hash:v1', 32))).update('member@example.com').digest('hex'),
   );
   expect(span.attributes['auth.email_hash']).not.toBe(createHash('sha256').update('member@example.com').digest('hex'));
-  expect(span.attributes['auth.email_hash']).not.toBe(createHmac('sha256', 'another-secret').update('member@example.com').digest('hex'));
+  expect(span.attributes['auth.email_hash']).not.toBe(createHmac('sha256', 'test-sign-in-telemetry-secret').update('member@example.com').digest('hex'));
   expect(span.attributes['auth.outcome']).toBe('rejected');
   expect(span.attributes['auth.reason']).toBe('invalid_credentials');
   const serialized = JSON.stringify(span.attributes);

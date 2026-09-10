@@ -40,6 +40,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -134,6 +138,10 @@
             "termsUrl": null
           },
           "name": "Acme Courses",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "acme",
           "socialLinks": [],
           "support": {

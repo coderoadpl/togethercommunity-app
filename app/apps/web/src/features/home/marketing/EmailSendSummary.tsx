@@ -6,6 +6,7 @@ import type {
   EmailDeliveryStatus,
   EmailSendProjection,
   EmailSendStatus,
+  MarketingAudienceContact,
   Suppression,
 } from '#core/domain/index.js';
 
@@ -45,7 +46,7 @@ const localizedSkipReasons = [
   'pending_confirmation',
   'contact_archived',
   'contact_address_changed',
-] as const;
+] as const satisfies readonly NonNullable<MarketingAudienceContact['skipReason']>[];
 
 const localizedSuppressionReasons = [
   'hard_bounce',
@@ -72,16 +73,16 @@ const isLocalizedBounceClassification = (classification: string): classification
   localizedBounceClassifications.some((key) => key === classification);
 
 export const skipReasonLabel = (reason: string, t: Messages): string =>
-  isLocalizedSkipReason(reason) ? t.marketing.skipReasons[reason] : t.marketing.unknownReason;
+  isLocalizedSkipReason(reason) ? t.marketing.skipReasons[reason] : reason;
 
 export const suppressionReasonLabel = (reason: string, t: Messages): string =>
-  isLocalizedSuppressionReason(reason) ? t.marketing.suppressionReasons[reason] : t.marketing.unknownReason;
+  isLocalizedSuppressionReason(reason) ? t.marketing.suppressionReasons[reason] : reason;
 
 export const bounceClassificationLabel = (classification: string, t: Messages): string =>
-  isLocalizedBounceClassification(classification) ? t.marketing.bounceClassifications[classification] : t.marketing.unknownReason;
+  isLocalizedBounceClassification(classification) ? t.marketing.bounceClassifications[classification] : classification;
 
 export const reasonLabel = (reason: string, t: Messages): { label: string; value: string } =>
-  isLocalizedSuppressionReason(reason)
+  isLocalizedSuppressionReason(reason) || reason.startsWith('suppressed:')
     ? { label: t.marketing.suppressionReason, value: suppressionReasonLabel(reason, t) }
     : { label: t.marketing.skipReason, value: skipReasonLabel(reason, t) };
 

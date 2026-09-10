@@ -2325,8 +2325,8 @@ export interface Messages {
     deliveryDelivered: string;
     deliveryBounced: string;
     deliveryComplained: string;
-    deliveryOutcomeBounced: string;
-    deliveryOutcomeComplained: string;
+    sendBouncedAlert: (params: { date: string }) => string;
+    sendComplainedAlert: (params: { date: string }) => string;
     statusQueued: string;
     statusPending: string;
     statusSending: string;
@@ -2341,7 +2341,10 @@ export interface Messages {
     sesMessageId: string;
     skipReason: string;
     suppressionReason: string;
-    bounceClassification: string;
+    bounceTypeLabel: string;
+    bounceProviderType: string;
+    bounceSubType: string;
+    diagnosticCode: string;
     clickedLink: string;
     eventError: string;
     unknownReason: string;

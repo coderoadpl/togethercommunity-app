@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { EmailEvent, EmailSendProjection } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SendDetailPage, SendsPanel, validateSendsSearch } from './SendsPanel.js';
@@ -41,7 +42,21 @@ const bouncedEvent: EmailEvent = {
   refId: 'send-1',
   type: 'bounced',
   occurredAt: '2026-09-09T10:05:30.000Z',
-  meta: { classification: 'hard', rawProviderPayload: { bounceType: 'Permanent' } },
+  meta: {
+    classification: 'hard',
+    rawProviderPayload: { bounceType: 'Permanent', bounceSubType: 'General', diagnosticCode: 'smtp; 550 mailbox unavailable' },
+  },
+  createdAt: '2026-09-09T10:05:30.000Z',
+};
+
+const suppressedEvent: EmailEvent = {
+  id: 'event-2',
+  tenantId: 'tenant-1',
+  mailKind: 'marketing',
+  refId: 'send-1',
+  type: 'suppressed_written',
+  occurredAt: '2026-09-09T10:05:31.000Z',
+  meta: { reason: 'hard_bounce' },
   createdAt: '2026-09-09T10:05:30.000Z',
 };
 
@@ -114,14 +129,47 @@ describe('sends panel delivery rendering', () => {
     await renderSendsPanel('/panel/marketing/sends');
 
     const table = await screen.findByRole('table', { name: en.marketing.sendsTitle });
-    expect(within(table).getAllByRole('columnheader')).toHaveLength(6);
+    expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      en.marketing.recipient,
+      en.marketing.subject,
+      en.marketing.deliveryStatusLabel,
+      en.marketing.campaignLabel,
+      en.marketing.sentTime,
+      '',
+    ]);
     expect(within(table).queryByRole('columnheader', { name: en.marketing.transportLabel })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: en.marketing.showSendLogDetails }));
 
-    expect(within(table).getAllByRole('columnheader')).toHaveLength(10);
+    expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      en.marketing.recipient,
+      en.marketing.subject,
+      en.marketing.deliveryStatusLabel,
+      en.marketing.campaignLabel,
+      en.marketing.sentTime,
+      en.marketing.kind,
+      en.marketing.statusLabel,
+      en.marketing.transportLabel,
+      en.marketing.sourceApp,
+      '',
+    ]);
     expect(within(table).getByRole('columnheader', { name: en.marketing.transportLabel })).toBeInTheDocument();
     expect(within(table).getByRole('columnheader', { name: en.marketing.sourceApp })).toBeInTheDocument();
+  });
+
+  it('truncates long subjects in the log while keeping the full title', async () => {
+    const longSubject = 'Quarterly campaign update with a subject long enough to require truncation in the delivery log table';
+    server.use(
+      http.get('/api/marketing/campaigns', () =>
+        HttpResponse.json({ ok: true, data: { campaigns: [] } })),
+      http.get('/api/marketing/sends', () =>
+        HttpResponse.json({ ok: true, data: { sends: [{ ...baseSend, subject: longSubject }], nextCursor: null } })),
+    );
+    await renderSendsPanel('/panel/marketing/sends');
+
+    const subjectCell = await screen.findByTitle(longSubject);
+    expect(subjectCell).toHaveTextContent(longSubject);
+    expect(subjectCell).toHaveStyle({ maxWidth: '22rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
   });
 
   it('surfaces bounced outcomes and localizes suppression details', async () => {
@@ -129,24 +177,42 @@ describe('sends panel delivery rendering', () => {
       ...baseSend,
       id: 'bounced-send',
       subject: 'Bounced campaign',
-      skipReason: 'hard_bounce',
+      skipReason: null,
       deliveryStatus: 'bounced',
       deliveryOccurredAt: '2026-09-09T10:05:30.000Z',
     };
     server.use(
       http.get('/api/marketing/sends/:kind/:id', () =>
-        HttpResponse.json({ ok: true, data: { send: bouncedSend, events: [bouncedEvent] } })),
+        HttpResponse.json({ ok: true, data: { send: bouncedSend, events: [bouncedEvent, suppressedEvent] } })),
     );
 
     await renderSendsPanel('/panel/marketing/sends/marketing/bounced-send');
 
-    expect(await screen.findByText(en.marketing.deliveryOutcomeBounced)).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(within(alert).getByText(en.marketing.sendBouncedAlert({ date: formatDateTime(bouncedSend.deliveryOccurredAt ?? '', 'en') }))).toBeInTheDocument();
+    expect(within(alert).getByRole('link', { name: bouncedSend.recipient })).toHaveAttribute('href', '/panel/marketing/contacts/contact-1');
     expect(screen.getAllByText(en.marketing.deliveryBounced).length).toBeGreaterThan(0);
-    expect(screen.getByText(en.marketing.suppressionReason)).toBeInTheDocument();
+    expect(screen.getByText(`${en.marketing.suppressionReason}:`)).toBeInTheDocument();
     expect(screen.getByText(en.marketing.suppressionReasons.hard_bounce)).toBeInTheDocument();
     expect(screen.getByText(en.marketing.bounceClassifications.hard)).toBeInTheDocument();
+    expect(screen.getByText('Permanent')).toBeInTheDocument();
+    expect(screen.getByText('General')).toBeInTheDocument();
+    expect(screen.getByText('smtp; 550 mailbox unavailable')).toBeInTheDocument();
     expect(screen.queryByText('hard_bounce')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: bouncedSend.recipient })).toHaveAttribute('href', '/panel/marketing/contacts/contact-1');
+    expect(screen.getAllByRole('link', { name: bouncedSend.recipient }).some((link) => link.getAttribute('href') === '/panel/marketing/contacts/contact-1')).toBe(true);
     expect(screen.getByRole('link', { name: bouncedSend.campaignName ?? '' })).toHaveAttribute('href', '/panel/marketing/campaigns/campaign-1');
+  });
+
+  it('renders delivered detail without an outcome alert and with a success delivery chip', async () => {
+    server.use(
+      http.get('/api/marketing/sends/:kind/:id', () =>
+        HttpResponse.json({ ok: true, data: { send: baseSend, events: [] } })),
+    );
+
+    await renderSendsPanel('/panel/marketing/sends/marketing/send-1');
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const deliveredChip = (await screen.findAllByText(en.marketing.deliveryDelivered))[0]?.closest('.MuiChip-root');
+    expect(deliveredChip).toHaveClass('MuiChip-colorSuccess');
   });
 });

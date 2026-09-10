@@ -2257,8 +2257,19 @@ export interface Messages {
     completed_with_errors: string;
     failed: string;
     cancelled: string;
+    statusGuidance: {
+      draft: string;
+      ready: string;
+      queued: string;
+      processing: string;
+      completed: string;
+      completed_with_errors: string;
+      failed: string;
+      cancelled: string;
+    };
     retryImport: string;
     cancelImport: string;
+    errorsPurged: string;
     reason: string;
     at: string;
     defaultSource: string;
@@ -2623,5 +2634,6 @@ export interface Messages {
     identityErrorSignatureDoesNotMatch: string;
     identityErrorThrottling: string;
     identityErrorUnknown: string;
+    skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
   };
 }

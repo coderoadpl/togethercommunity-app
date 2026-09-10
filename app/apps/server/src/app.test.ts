@@ -2212,6 +2212,88 @@ describe('marketing HTTP surfaces', () => {
     expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'pending' }]);
   });
 
+  it('preserves bounce diagnostics through durable webhook processing', async () => {
+    const marketing = marketingDeps();
+    const now = '1998-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-undetermined', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Undetermined bounce', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-undetermined',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      replyTo: null, identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
+      snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
+    }]);
+    const message = {
+      eventType: 'Bounce',
+      mail: { messageId: 'ses-undetermined', timestamp: now },
+      bounce: {
+        timestamp: now,
+        bounceType: 'Undetermined',
+        bounceSubType: 'Undetermined',
+        bouncedRecipients: [{
+          emailAddress: 'member@example.test',
+          status: '5.0.0',
+          diagnosticCode: 'smtp; 250 automated response',
+          action: 'failed',
+        }],
+      },
+    };
+    marketing.sns = new FakeSnsVerifier(ok({
+      messageId: 'sns-undetermined', type: 'Notification', topicArn,
+      message: JSON.stringify(message), subscribeUrl: null,
+    }));
+
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST',
+      body: JSON.stringify({ Message: JSON.stringify(message) }),
+    });
+    const workerDeps = deps();
+    const processed = await processMarketingSnsInbox({
+      identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
+        tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
+        memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
+      capabilities: capabilitiesForPrincipal('webhook'),
+    }, { workerId: 'worker', deadlineAt: '1998-07-22T00:00:50.000Z', maxEvents: 10 }, {
+      ...marketing, sends: marketing.campaignSends, outbox: workerDeps.emailOutbox,
+      credentials: marketing.marketingCredentials, clock: { nowIso: () => now }, ids: workerDeps.ids,
+    });
+
+    expect(response.status).toBe(200);
+    expect(processed).toEqual(ok({ processed: 1, retried: 0 }));
+    expect(await sends.correlateBySesMessageId('t-acme', 'ses-undetermined'))
+      .toMatchObject({ deliveryStatus: null, deliveryOccurredAt: null });
+    expect((await events.listByRef('t-acme', 'marketing', 'send-undetermined')).at(-1)).toMatchObject({
+      type: 'bounced',
+      meta: {
+        classification: 'unresolved',
+        rawProviderPayload: {
+          bounce: {
+            bounceSubType: 'Undetermined',
+            bouncedRecipients: [{
+              diagnosticCode: 'smtp; 250 automated response',
+              action: 'failed',
+            }],
+          },
+        },
+      },
+    });
+  });
+
   it('durably records engagement receipts before event application', async () => {
     const marketing = marketingDeps();
     const now = '1998-07-22T00:00:00.000Z';

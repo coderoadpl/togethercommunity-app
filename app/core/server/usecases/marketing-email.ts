@@ -9,6 +9,7 @@ import type { MarketingDeliveryRepos, MarketingDeliveryTransaction, MarketingSns
 import { renderMarketingPayload } from './marketing-render.js';
 import {
   appError,
+  bounceAction,
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
@@ -1486,6 +1487,21 @@ export const applyVerifiedSesEvent = async (
       const classification = event.kind === 'delivery'
         ? null
         : classifySesEvent(event);
+      if (classification === 'unresolved') {
+        await deps.events.append(
+          tenantId.value,
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'transactional',
+            outbox.id,
+            'bounced',
+            { classification, rawProviderPayload: event.raw },
+            event.occurredAt,
+          ),
+        );
+        return ok({ kind: 'applied' });
+      }
       const status = event.kind === 'delivery'
         ? 'delivered'
         : event.kind === 'complaint'
@@ -1510,7 +1526,7 @@ export const applyVerifiedSesEvent = async (
         ),
       });
       if (!marked.ok) return marked;
-      if (classification === 'hard' || classification === 'complaint') {
+      if (classification !== null && bounceAction(classification).suppress) {
         const reason =
           classification === 'complaint' ? 'complaint' : 'hard_bounce';
         await deps.suppressions.record(
@@ -1578,7 +1594,12 @@ export const applyVerifiedSesEvent = async (
     const deliveryStatus = classification === 'complaint' ? 'complained' : 'bounced';
     await deps.sends.update(
       tenantId.value,
-      { ...send, ...(send.deliveryStatus === 'complained' ? {} : { deliveryStatus, deliveryOccurredAt: event.occurredAt }) },
+      {
+        ...send,
+        ...(classification === 'unresolved' || send.deliveryStatus === 'complained'
+          ? {}
+          : { deliveryStatus, deliveryOccurredAt: event.occurredAt }),
+      },
       [lifecycleEvent(
         deps,
         tenantId.value,
@@ -1591,7 +1612,7 @@ export const applyVerifiedSesEvent = async (
         event.occurredAt,
       )],
     );
-    if (classification !== 'soft') {
+    if (bounceAction(classification).suppress) {
       await deps.suppressions.record(
         tenantId.value,
         {

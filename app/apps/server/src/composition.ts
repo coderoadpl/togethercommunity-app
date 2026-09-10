@@ -71,6 +71,7 @@ import {
   createAvatarSourceReader,
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountSecurityReader,
   createCourseLessonRepository,
   createLessonAttachmentRepository,
   createProductDownloadAssetRepository,
@@ -165,6 +166,7 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
   AuthPort,
@@ -495,6 +497,7 @@ export interface AppDeps {
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   signInMethods: SignInMethodReader;
+  accountSecurity: AccountSecurityReader;
   health: HealthPort;
   appVersion: string;
   commitSha: string;
@@ -809,6 +812,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     : undefined);
   const tenantAccess = createTenantAccessReader(db);
   const signInMethods = createSignInMethodReader(db);
+  const accountSecurity = createAccountSecurityReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
   const ids = { nextId: () => randomUUID() };
@@ -1403,6 +1407,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess,
     signInMethods,
+    accountSecurity,
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',

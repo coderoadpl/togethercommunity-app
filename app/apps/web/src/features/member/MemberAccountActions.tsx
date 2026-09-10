@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { ManageAccountIcon } from '../../components/ui/ManageAccountIcon.js';
+import { UserRoundIcon as ManageAccountIcon } from '../../components/ui/account-icons.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';

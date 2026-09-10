@@ -652,6 +652,31 @@ export interface Messages {
     providerError: string;
   };
   security: {
+    passkeyProofShort: string;
+    passkeyHelp: string;
+    passkeyDescription: string;
+    passkeysUnavailable: string;
+    sessionsUnavailable: string;
+    sessionsSummary: ({ count }: { count: number }) => string;
+    passkeyCount: ({ count }: { count: number }) => string;
+    continueSetup: string;
+    disableTwoFactorConfirm: string;
+    wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
+    twoFactorStatusUnknown: string;
+    twoFactorStatusIncomplete: string;
+    twoFactorStatusOn: string;
+    twoFactorStatusOff: string;
+    scanQrCode: string;
+    qrCodeLabel: string;
+    manualSetup: string;
+    secretLabel: string;
+    copyBackupCodes: string;
+    backupCodesCopied: string;
+    downloadBackupCodes: string;
+    backupCodesSaved: string;
+    finishSetup: string;
+    setupComplete: string;
+    twoFactorDescription: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;
@@ -659,7 +684,6 @@ export interface Messages {
     resetSent: string;
     passkeys: string;
     passkeyIntro: string;
-    passkeyProofHint: string;
     passkeyPasswordlessHint: string;
     passkeySetPassword: string;
     passkeyNameLabel: string;
@@ -1689,6 +1713,16 @@ export interface Messages {
     noMatches: string;
   };
   account: {
+    passwordDescription: string;
+    passwordLinkDescription: string;
+    passwordLinkHelp: string;
+    avatarUploadHint: string;
+    verified: string;
+    unverified: string;
+    languageHeading: string;
+    languageDescription: string;
+    appearanceHeading: string;
+    appearanceDescription: string;
     menuStudio: string;
     menuAccount: string;
     title: string;
@@ -1701,11 +1735,16 @@ export interface Messages {
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
+    avatarHelp: string;
     avatarHint: string;
     avatarUpload: string;
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    editName: string;
+    passwordStatusSet: string;
+    passwordStatusUnset: string;
+    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
     setOrResetPassword: string;
@@ -1717,8 +1756,6 @@ export interface Messages {
     invoiceOrdersHeading: string;
     invoiceOrderLabel: (params: { date: string }) => string;
     invoiceDownload: string;
-    preferencesHeading: string;
-    preferencesIntro: string;
     emailLanguage: { pl: string; en: string; unset: string; reset: string; panelOnly: string };
     playbackHeading: string;
     playbackIntro: string;
@@ -1739,13 +1776,14 @@ export interface Messages {
     erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   changePassword: {
+    minimumHint: ({ min }: { min: number }) => string;
+    revokeScopeHint: string;
     heading: string;
     intro: (params: { min: number }) => string;
     currentPasswordLabel: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;
     revokeOtherSessions: string;
-    revokeOtherSessionsHelp: string;
     submitIdle: string;
     submitPending: string;
     success: string;

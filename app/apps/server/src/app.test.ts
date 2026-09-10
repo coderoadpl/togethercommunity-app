@@ -157,6 +157,7 @@ const deps = (input: {
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
+  accountSecurity?: { hasPassword: boolean; twoFactorEnabled: boolean };
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -840,6 +841,9 @@ const deps = (input: {
     signInMethods: {
       hasCredentialAccount: async (_tenantId, email) =>
         (input.passwordAccounts ?? []).includes(email),
+    },
+    accountSecurity: {
+      read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
@@ -3390,6 +3394,18 @@ describe('server edge security baseline', () => {
     });
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('projects account security fields through GET /api/me', async () => {
+    const read = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const app = scopedApp('member', { overrides: { accountSecurity: { read } } });
+    const response = await app.request(API_PATHS.me, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { userId: 'user-1', hasPassword: true, twoFactorEnabled: true },
+    });
+    expect(read).toHaveBeenCalledExactlyOnceWith('user-1');
   });
 });
 
@@ -7292,7 +7308,8 @@ describe('impersonation HTTP surface', () => {
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
-    const { app, audit } = impersonatingApp();
+    const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const { app, audit } = impersonatingApp({ accountSecurity: { read: accountSecurityRead } });
 
     const started = await app.request(API_PATHS.impersonationStart, {
       method: 'POST',
@@ -7311,8 +7328,14 @@ describe('impersonation HTTP surface', () => {
 
     const me = await app.request(API_PATHS.me, { headers: impersonated });
     expect(await me.json()).toMatchObject({
-      data: { tenant: { memberId: 'member-1', staffRole: null }, impersonation: { subjectMemberId: 'member-1' } },
+      data: {
+        hasPassword: false,
+        twoFactorEnabled: false,
+        tenant: { memberId: 'member-1', staffRole: null },
+        impersonation: { subjectMemberId: 'member-1' },
+      },
     });
+    expect(accountSecurityRead).not.toHaveBeenCalled();
 
     const write = await app.request(API_PATHS.postsCreate, {
       method: 'POST',

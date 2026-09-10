@@ -174,6 +174,7 @@ import {
   authLinkBaseUrl,
   createTenantOriginResolver,
   autoIssueOnPayment,
+  authorize,
   authorizeRequiredTenant,
   authorizeTenant,
   avatarUrlFor,
@@ -1554,13 +1555,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.get(API_PATHS.me, async (c) => {
+    const denial = authorize(ctxOf(c), 'tenant:list-own', { asImpersonationActor: true });
+    if (denial !== null) return respond(err(denial));
     const identity = c.get('identity');
+    const security = c.get('impersonation') === undefined
+      ? await deps.accountSecurity.read(identity.userId)
+      : { hasPassword: false, twoFactorEnabled: false };
     return respond(
       ok({
         userId: identity.userId,
         email: identity.email,
         name: identity.name,
         emailVerified: identity.emailVerified,
+        hasPassword: security.hasPassword,
+        twoFactorEnabled: security.twoFactorEnabled,
         avatarUrl: avatarUrlFor(identity.image),
         tenant:
           identity.tenantId &&

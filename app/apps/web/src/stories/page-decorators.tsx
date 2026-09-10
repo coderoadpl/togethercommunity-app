@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Decorator } from '@storybook/react-vite';
-import { CssBaseline } from '@mui/material';
+import { Box, CssBaseline, ThemeProvider } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { z } from 'zod';
 import { MEMBER_ROUTE_PATHS } from '#core/contract/index.js';
+import { createThemeForMode } from '../theme.js';
 import { RegisterRoute } from '../routes/register.js';
 import { LoginRoute } from '../routes/login.js';
 import { ForgotPasswordRoute } from '../routes/forgot-password.js';
@@ -164,3 +165,14 @@ const ClockBoundary = ({ parameters }: { parameters: z.infer<typeof pageParamete
   return ready ? <PageStory parameters={parameters} /> : null;
 };
 export const withPage: Decorator = (_Story, context) => <ClockBoundary key={context.id} parameters={pageParameters.parse(context.parameters)} />;
+
+const parametersSchema = z.object({ colorScheme: z.enum(['light', 'dark']).default('light'), locale: z.enum(['pl', 'en']).default('pl') });
+const Preview = ({ parameters, children }: { parameters: z.infer<typeof parametersSchema>; children: ReactNode }) => {
+  useState(() => languagePreference.save(parameters.locale));
+  return <ThemeProvider theme={createThemeForMode('shadcn', undefined, parameters.colorScheme, 'member')}>
+    <CssBaseline /><LanguageProvider><ToastProvider><Box sx={{ p: { xs: '1rem', sm: '1.5rem' }, maxWidth: '72rem', mx: 'auto' }}>{children}</Box></ToastProvider></LanguageProvider>
+  </ThemeProvider>;
+};
+export const withAccountPreview: Decorator = (Story, context) => <Preview key={context.id} parameters={parametersSchema.parse(context.parameters)}><Story /></Preview>;
+export const idleOperation = { pending: false, success: false, error: null, run: () => undefined };
+export const previewFailure = new Error('Preview operation failed');

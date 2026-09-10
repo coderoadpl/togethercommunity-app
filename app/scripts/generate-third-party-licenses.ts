@@ -90,6 +90,13 @@ their applicable notices in the distribution.
 
 ## Project-level notices
 
+### Lucide SVG icons
+
+The account interface includes selected Lucide 0.468.0 SVG icons under ISC,
+with Feather-derived icons under MIT. The complete notices are distributed in
+[app/apps/web/public/licenses/lucide.txt](app/apps/web/public/licenses/lucide.txt).
+Source: https://github.com/lucide-icons/lucide/tree/0.468.0/icons.
+
 **Foundation files synchronized from
 [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** are
 included under the MIT license, © 2026 Mateusz Choma. \`FOUNDATION.md\` lists the

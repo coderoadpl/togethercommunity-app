@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +20,7 @@ const stubMe = (
   tenant: Record<string, unknown> = {},
   impersonation: unknown = null,
   avatarUrl: string | null = null,
+  security: { hasPassword?: boolean; twoFactorEnabled?: boolean } = {},
 ) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
@@ -29,6 +30,8 @@ const stubMe = (
         email: 'member@together.dev',
         name: 'Member',
         emailVerified,
+        hasPassword: security.hasPassword ?? true,
+        twoFactorEnabled: security.twoFactorEnabled ?? false,
         avatarUrl,
         tenant: {
           id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false,
@@ -93,11 +96,17 @@ describe('MemberAccountPage', () => {
   it('mounts passkey and two-factor management on the member surface', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=security');
+    for (const tab of await screen.findAllByRole('tab')) {
+      expect(tab.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(tab).toHaveAccessibleName();
+    }
+
 
     expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
     expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(en.security.noPasskeys);
-    expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
-    expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
+    expect(screen.getByTestId('enable-2fa-open')).toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-manage')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('enable-2fa-password')).not.toBeInTheDocument();
   });
 
   it('renders accessible tabs and keeps profile as the default deep-link target', async () => {
@@ -139,10 +148,8 @@ describe('MemberAccountPage', () => {
 
     const email = await screen.findByTestId('account-email');
     expect(email).toHaveTextContent('member@together.dev');
-    expect(email).toHaveStyle({ overflowWrap: 'anywhere' });
-    expect(email.closest('form')).toContainElement(
-      screen.getByLabelText(en.account.displayNameLabel),
-    );
+    expect(email.closest('.MuiPaper-root')).toContainElement(screen.getByTestId('account-name-open'));
+    expect(screen.queryByLabelText(en.account.displayNameLabel)).not.toBeInTheDocument();
     const caption = screen.getByText(en.account.signedInAs);
     expect(caption.tagName).toBe('DT');
     expect(email.tagName).toBe('DD');
@@ -156,6 +163,7 @@ describe('MemberAccountPage', () => {
     server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
     await renderAccount();
 
+    await userEvent.click(await screen.findByTestId('account-name-open'));
     const field = await screen.findByLabelText(en.account.displayNameLabel);
     expect(field).toHaveAccessibleDescription(en.account.displayNameHint);
     const hint = screen.getByText(en.account.displayNameHint);
@@ -287,6 +295,26 @@ describe('MemberAccountPage', () => {
     });
   });
 
+  it.each(['close', 'escape'])('discards a cancelled name draft through %s across tab switches', async (dismiss) => {
+    server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+    await userEvent.click(await screen.findByTestId('account-name-open'));
+    const input = screen.getByLabelText(en.account.displayNameLabel);
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Discarded name');
+    expect(screen.getByText('Ada')).toBeInTheDocument();
+    if (dismiss === 'escape') await userEvent.keyboard('{Escape}');
+    else await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada')).toBeVisible();
+    expect(screen.queryByText('Discarded name')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.notifications }));
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.profile }));
+    await userEvent.click(screen.getByTestId('account-name-open'));
+    expect(screen.getByLabelText(en.account.displayNameLabel)).toHaveValue('Ada');
+    expect(screen.getByTestId('account-display-name-save')).toBeDisabled();
+  });
+
   it('saves the community display name and confirms the write', async () => {
     let body: unknown;
     server.use(
@@ -300,6 +328,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
+    await userEvent.click(await screen.findByTestId('account-name-open'));
     const input = await screen.findByLabelText(en.account.displayNameLabel);
     expect(input).toHaveValue('Ada');
     const save = screen.getByTestId('account-display-name-save');
@@ -313,6 +342,9 @@ describe('MemberAccountPage', () => {
       en.account.displayNameSaved,
     );
     expect(body).toEqual({ displayName: 'Ada Lovelace' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('account-name-open'));
+    expect(screen.getByRole('dialog')).toBeVisible();
   });
 
   it('toggles the direct-message opt-out without dropping the display name', async () => {
@@ -355,6 +387,9 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=playback');
 
     const toggle = await screen.findByRole('switch', { name: en.account.videoAutoplayLabel });
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    for (const tab of screen.getAllByRole('tab')) expect(tab.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+
     expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
@@ -593,6 +628,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
+    await userEvent.click(await screen.findByTestId('account-support-open'));
     const send = await screen.findByRole('button', { name: en.support.send });
     expect(send).toBeDisabled();
     await userEvent.type(screen.getByLabelText(en.support.subjectLabel), 'Lesson issue');
@@ -604,9 +640,11 @@ describe('MemberAccountPage', () => {
 
     expect(await findToast('success')).toHaveTextContent(en.support.sent);
     expect(body).toEqual({ subject: 'Lesson issue', body: 'I cannot start the recording.' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('account-support-open'));
     expect(screen.getByLabelText(en.support.subjectLabel)).toHaveValue('');
     expect(screen.getByLabelText(en.support.bodyLabel)).toHaveValue('');
-    expect(send).toBeDisabled();
+    expect(screen.getByRole('button', { name: en.support.send })).toBeDisabled();
   });
 
   it('requests password setup from member passkey management', async () => {
@@ -622,7 +660,9 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=security');
 
-    await userEvent.click(await screen.findByTestId('passkey-set-password'));
+    await userEvent.click(await screen.findByTestId('add-passkey-open'));
+    await userEvent.click(await screen.findByText(en.security.passkeyHelp));
+    await userEvent.click(screen.getByTestId('passkey-set-password'));
     expect(await findToast('success')).toHaveTextContent(
       en.security.resetSent,
     );
@@ -682,6 +722,7 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=security');
 
+    await userEvent.click(await screen.findByTestId('change-password-open'));
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
@@ -698,30 +739,25 @@ describe('MemberAccountPage', () => {
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
   });
 
-  it('keeps the reset path available when the provider reports a passwordless account', async () => {
+  it('keeps the reset path available for a passwordless account', async () => {
+    let body: unknown;
     server.use(
-      stubMe(),
+      stubMe(true, {}, null, null, { hasPassword: false }),
       stubSettings(null),
       stubBillingOrders(),
-      http.post('*', () =>
-        HttpResponse.json(
-          { code: 'CREDENTIAL_ACCOUNT_NOT_FOUND', message: 'Credential account not found' },
-          { status: 400 },
-        )),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
     );
     await renderAccount('/account?tab=security');
 
-    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
-    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
-    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
-    await userEvent.click(screen.getByTestId('change-password-submit'));
-
-    expect(await findToast('error')).toHaveTextContent(
-      en.changePassword.credentialAccountMissing,
-    );
-    expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
+    expect(screen.queryByTestId('change-password-open')).not.toBeInTheDocument();
+    const setup = await screen.findByTestId('account-reset-password');
+    expect(setup).toHaveTextContent(en.account.setPassword);
+    await userEvent.click(setup);
+    expect(body).toMatchObject({ email: 'member@together.dev' });
   });
-
   it('downloads the authenticated member data export', async () => {
     let requested = false;
     server.use(
@@ -780,12 +816,10 @@ describe('MemberAccountPage', () => {
       }),
     );
     await renderAccount();
+    await userEvent.click(await screen.findByTestId('account-erasure-open'));
     const button = await screen.findByTestId('account-erasure-create');
     expect(button).toBeDisabled();
-    expect(button.parentElement).toHaveStyle({ display: 'block' });
-    expect(button).toHaveStyle({ minHeight: '44px' });
-    expect(screen.getByLabelText(en.account.erasureConfirmLabel).closest('[data-mobile-keyboard-anchor]'))
-      .not.toBeNull();
+    expect(screen.getByRole('dialog')).toContainElement(button);
     await userEvent.type(
       screen.getByLabelText(en.account.erasureConfirmLabel),
       'member@together.dev',

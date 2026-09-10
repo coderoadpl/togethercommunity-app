@@ -1,3 +1,14 @@
+import {
+  sendVerificationEmailMutation,
+  requestPasswordResetMutation,
+  changePasswordMutation,
+  registerPasskeyMutation,
+  removePasskeyMutation,
+  enableTwoFactorMutation,
+  verifyTotpMutation,
+  disableTwoFactorMutation,
+  regenerateBackupCodesMutation,
+} from '#core/client/index.js';
 import { z } from 'zod';
 import { createApiClient, type ApiClient, type AuthClientPort } from '#core/client/index.js';
 import { abortVisualMutation } from '../../../../scripts/visual-request-policy.js';
@@ -44,7 +55,29 @@ export const fixtureClient: ApiClient = new Proxy(createApiClient({ baseUrl: '',
   },
 });
 
-export const fixtureAuth: Pick<AuthClientPort, 'listPasskeys'> = {
+const unavailableAuthPreview = () => Promise.resolve({ ok: false, error: { code: 'internal', message: 'This operation is available in the focused account previews.' } } as const);
+export const fixtureAuth = {
+  signUp: unavailableAuthPreview,
+  signIn: unavailableAuthPreview,
+  requestMagicLink: unavailableAuthPreview,
+  resetPassword: unavailableAuthPreview,
+  signOut: unavailableAuthPreview,
+  signInWithPasskey: unavailableAuthPreview,
+  verifyBackupCode: unavailableAuthPreview,
+  signInWithGoogle: unavailableAuthPreview,
+  promptGoogleOneTap: unavailableAuthPreview,
+
+  sendVerificationEmail: unavailableAuthPreview,
+  requestPasswordReset: unavailableAuthPreview,
+  changePassword: unavailableAuthPreview,
+  registerPasskey: unavailableAuthPreview,
+  removePasskey: unavailableAuthPreview,
+  verifyTotp: unavailableAuthPreview,
+  disableTwoFactor: unavailableAuthPreview,
+  regenerateBackupCodes: unavailableAuthPreview,
+  enableTwoFactor: () => active?.scenario === 'SecurityTwoFactorSetup'
+    ? Promise.resolve({ ok: true, value: { totpURI: 'otpauth://totp/Together:demo@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Together', backupCodes: ['demo-once-1111', 'demo-once-2222'] } })
+    : unavailableAuthPreview(),
   listPasskeys: () => {
     const key = fixtureKey('listPasskeys', []);
     fixtureCalls.add(key);
@@ -60,4 +93,16 @@ export const fixtureAuth: Pick<AuthClientPort, 'listPasskeys'> = {
     const result = z.object({ ok: z.literal(true), value: z.array(z.object({ id: z.string(), name: z.string(), createdAt: z.string() })) }).parse(active?.calls[key]);
     return Promise.resolve(result);
   },
+} satisfies AuthClientPort;
+
+export const fixtureAuthActions = {
+  sendVerificationEmail: sendVerificationEmailMutation(fixtureAuth),
+  requestPasswordReset: requestPasswordResetMutation(fixtureAuth),
+  changePassword: changePasswordMutation(fixtureAuth),
+  registerPasskey: registerPasskeyMutation(fixtureAuth),
+  removePasskey: removePasskeyMutation(fixtureAuth),
+  enableTwoFactor: enableTwoFactorMutation(fixtureAuth),
+  verifyTotp: verifyTotpMutation(fixtureAuth),
+  disableTwoFactor: disableTwoFactorMutation(fixtureAuth),
+  regenerateBackupCodes: regenerateBackupCodesMutation(fixtureAuth),
 };

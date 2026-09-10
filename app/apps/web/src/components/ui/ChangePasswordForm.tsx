@@ -7,16 +7,19 @@ import {
   FormControl,
   FormControlLabel,
   FormLabel,
+  FormHelperText,
   OutlinedInput,
   Typography,
 } from '@mui/material';
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/password.js';
 
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
-import { Eyebrow } from '../../theme.js';
+import { AccountDialog } from './AccountDialog.js';
 import { useToastError, useToastSuccess } from './Toast.js';
 
 interface ChangePasswordFormProps {
+  showHeading?: boolean;
+  dialog?: boolean;
   pending: boolean;
   success: boolean;
   error: Error | null;
@@ -28,12 +31,15 @@ interface ChangePasswordFormProps {
 }
 
 export const ChangePasswordForm = ({
+  showHeading = true,
+  dialog = false,
   pending,
   success,
   error,
   onSubmit,
 }: ChangePasswordFormProps) => {
   const t = useTranslations();
+  const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -41,11 +47,20 @@ export const ChangePasswordForm = ({
   const [localError, setLocalError] = useState<string | null>(null);
   useEffect(() => {
     if (success) {
+      setOpen(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     }
   }, [success]);
+
+  const close = () => {
+    setOpen(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setLocalError(null);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -73,16 +88,12 @@ export const ChangePasswordForm = ({
   useToastSuccess(success, t.changePassword.success);
   useToastError(remoteError);
 
-  return (
+  const form = (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
-      <Box>
-        <Eyebrow variant="overline" component="h3">
-          {t.changePassword.heading}
-        </Eyebrow>
-        <Typography variant="body2">
-          {t.changePassword.intro({ min: PASSWORD_MIN_LENGTH })}
-        </Typography>
-      </Box>
+      {showHeading ? <Box>
+        <Typography component="h3" variant="subtitle2">{t.changePassword.heading}</Typography>
+        <Typography variant="body2">{t.changePassword.intro({ min: PASSWORD_MIN_LENGTH })}</Typography>
+      </Box> : null}
       <FormControl fullWidth>
         <FormLabel htmlFor="change-current-password">{t.changePassword.currentPasswordLabel}</FormLabel>
         <OutlinedInput
@@ -103,9 +114,10 @@ export const ChangePasswordForm = ({
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
           autoComplete="new-password"
-          inputProps={{ 'data-testid': 'change-new-password' }}
+          inputProps={{ 'data-testid': 'change-new-password', 'aria-describedby': 'change-password-minimum' }}
           required
         />
+        <FormHelperText id="change-password-minimum">{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="change-confirm-password">{t.changePassword.confirmPasswordLabel}</FormLabel>
@@ -130,19 +142,24 @@ export const ChangePasswordForm = ({
         label={t.changePassword.revokeOtherSessions}
       />
       <Typography variant="caption" component="p">
-        {t.changePassword.revokeOtherSessionsHelp}
+        {t.changePassword.revokeScopeHint}
       </Typography>
       <Box>
         <Button
           type="submit"
-          variant="outlined"
+          variant="contained"
           data-testid="change-password-submit"
           disabled={pending}
         >
           {pending ? t.changePassword.submitPending : t.changePassword.submitIdle}
         </Button>
       </Box>
+      {remoteError ? <Alert severity="error" data-testid="change-password-remote-error">{remoteError}</Alert> : null}
       {localError ? <Alert severity="error" data-testid="change-password-local-error">{localError}</Alert> : null}
     </Box>
   );
+  return dialog ? <>
+    <Box><Button variant="contained" data-testid="change-password-open" onClick={() => setOpen(true)}>{t.changePassword.submitIdle}</Button></Box>
+    <AccountDialog open={open} title={t.changePassword.heading} pending={pending} onClose={close}>{form}</AccountDialog>
+  </> : form;
 };

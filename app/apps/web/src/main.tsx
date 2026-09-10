@@ -56,7 +56,7 @@ import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { TenantGate } from './features/tenant-not-found/TenantNotFoundPage.js';
 import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
-import { LoginRoute } from './routes/login.js';
+import { LoginRoute, validateLoginSearch } from './routes/login.js';
 import {
   ContactsPanel,
   ContactDetailPanel,
@@ -166,6 +166,7 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
+  validateSearch: validateLoginSearch,
   component: LoginRoute,
 });
 const checkoutRoute = createRoute({

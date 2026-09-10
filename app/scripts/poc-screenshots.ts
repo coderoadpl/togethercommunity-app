@@ -220,7 +220,7 @@ const captureBuyerJourney = async (
   await shoot(page, '05-checkout-success.png');
 
   await magicLink.click();
-  await page.waitForURL('**/my', { timeout: 20000 });
+  await page.waitForURL(/\/(?:my|start)(?:[/?#]|$)/, { timeout: 20000 });
   await page.goto(`${studioBaseUrl}/my/products`, { waitUntil: 'load' });
   await page.getByRole('heading', { name: 'My products' }).waitFor({ state: 'visible', timeout: 20000 });
   await page.getByText('Together 101 Course').first().waitFor({ state: 'visible', timeout: 20000 });

@@ -30,6 +30,7 @@ import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLi
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
 import {
   DataValue,
@@ -293,6 +294,7 @@ export const LessonPlayerPage = ({
     enabled: authenticated && lesson.isSuccess,
   });
   const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
 
   const unauthorized = isUnauthorized(lesson.error);
 
@@ -373,8 +375,8 @@ export const LessonPlayerPage = ({
   });
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {

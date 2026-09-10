@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { returnToFromSearch } from '../../lib/auth-return.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
@@ -26,6 +27,7 @@ export const ForgotPasswordPage = () => {
   const { explicitLanguage } = useLanguage();
   useRedirectSignedInWithTenant();
   const search = useRouterState({ select: (state) => state.location.searchStr });
+  const returnTo = returnToFromSearch(search);
   const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
@@ -47,7 +49,7 @@ export const ForgotPasswordPage = () => {
 
   const footer = (
     <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
-      <MuiLink component={Link} to="/login">{t.forgotPassword.backToLogin}</MuiLink>
+      <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.forgotPassword.backToLogin}</MuiLink>
     </FinePrint>
   );
 

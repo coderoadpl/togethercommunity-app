@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
+import { validateLoginSearch } from '../../lib/auth-return.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
@@ -99,6 +101,7 @@ const renderLoginPage = async (
   const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
+    validateSearch: validateLoginSearch,
     component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
   });
   const forgotPasswordRoute = createRoute({
@@ -106,8 +109,30 @@ const renderLoginPage = async (
     path: '/forgot-password',
     component: ForgotPasswordPage,
   });
+  const registerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/register',
+    component: () => <div>Register</div>,
+  });
+  const startRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/start',
+    component: () => <div>Start</div>,
+  });
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    component: () => <div>Lesson target</div>,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, loginRoute, forgotPasswordRoute]),
+    routeTree: rootRoute.addChildren([
+      indexRoute,
+      loginRoute,
+      forgotPasswordRoute,
+      registerRoute,
+      startRoute,
+      lessonRoute,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -122,6 +147,7 @@ const renderLoginPage = async (
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
   delete window.google;
@@ -268,25 +294,171 @@ describe('LoginPage', () => {
     expect(offerCalls).toBe(0);
   });
 
-  it.each([
-    ['start.localhost', 'http://localhost:3000/'],
-    ['acme.localhost', 'http://localhost:3000/my'],
-  ])('uses the correct magic-link callback on %s', async (hostname, expectedCallbackURL) => {
-    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
-    let body: unknown;
+  it('returns password sign-in to the safe returnTo path', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+    await continueWithEmail();
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+    expect(router.state.location.searchStr).toBe('?thread=t1');
+  });
+
+  it('returns passkey sign-in to the safe returnTo path', async () => {
+    vi.spyOn(actions.signInWithPasskey, 'mutationFn').mockResolvedValue({
+      token: null,
+      twoFactorRedirect: false,
+    });
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await userEvent.click(await screen.findByTestId('signin-passkey'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+  });
+
+  it('returns two-factor completion to the safe returnTo path', async () => {
+    server.use(
+      http.post('*', ({ request }) => {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/sign-in/email')) return HttpResponse.json({ twoFactorRedirect: true });
+        if (path.endsWith('/two-factor/verify-totp')) return HttpResponse.json({ token: 'session-token' });
+        return undefined;
+      }),
+    );
+
+    const { router } = await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await fillCredentials();
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+    await userEvent.type(await screen.findByLabelText(en.auth.twoFactorCodeLabel), '123456');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+  });
+
+  it('sends Google sign-in to the safe returnTo callback URL', async () => {
+    const signInWithGoogle = vi.spyOn(actions.signInWithGoogle, 'mutationFn').mockResolvedValue(undefined);
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    window.google = { accounts: { id: { initialize: vi.fn(), prompt: vi.fn() } } };
+    const initialEntry = '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1';
+    const callbackURL = 'http://localhost:3000/my/courses/course-1/lessons/lesson-1?thread=t1';
+
+    const identifierStep = await renderLoginPage(
+      false,
+      initialEntry,
+      'togethercommunity.app',
+      ['magic-link'],
+      [],
+      anonymousMe(),
+      'google-client-id',
+    );
+    await userEvent.click(await screen.findByTestId('continue-google'));
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledWith({ callbackURL }, expect.anything()));
+    identifierStep.unmount();
+    signInWithGoogle.mockClear();
+
+    await renderLoginPage(
+      false,
+      initialEntry,
+      'togethercommunity.app',
+      ['magic-link'],
+      [],
+      anonymousMe(),
+      'google-client-id',
+    );
+    await continueWithEmail();
+    await screen.findByTestId('send-magic-link');
+    await userEvent.click(screen.getByTestId('continue-google'));
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledWith({ callbackURL }, expect.anything()));
+  });
+
+  it('sends magic links back to login with the safe returnTo preserved', async () => {
+    let submitted: unknown;
     server.use(
       http.post('*', async ({ request }) => {
-        body = await request.json();
+        if (new URL(request.url).pathname.endsWith('/sign-in/magic-link')) submitted = await request.json();
         return HttpResponse.json({ status: true });
       }),
     );
 
-    await renderLoginPage(false, '/login', hostname, ['magic-link']);
+    await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      undefined,
+      ['magic-link'],
+    );
     await continueWithEmail('member@example.com');
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
-    await screen.findByTestId('magic-link-sent');
-    expect(body).toMatchObject({ callbackURL: expectedCallbackURL });
+    await waitFor(() => expect(submitted).toMatchObject({
+      callbackURL: 'http://localhost:3000/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    }));
+  });
+
+  it('post-verification landing uses returnTo and falls back to Start', async () => {
+    const returned = await renderLoginPage(
+      false,
+      '/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+      undefined,
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(returned.router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+    returned.unmount();
+
+    const fallback = await renderLoginPage(false, '/login?verification=verified', undefined, ['password'], [], staffMe());
+    await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/start'));
+  });
+
+  it('post-verification landing on the platform host lands on the workspace picker', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    const fallback = await renderLoginPage(
+      false,
+      '/login?verification=verified',
+      'start.localhost',
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/'));
+  });
+
+  it('keeps returnTo on register and forgot-password links', async () => {
+    await renderLoginPage(
+      false,
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+
+    expect(await screen.findByTestId('login-register-prompt')).toContainElement(
+      screen.getByRole('link', { name: en.auth.registerLink }),
+    );
+    expect(screen.getByRole('link', { name: en.auth.registerLink })).toHaveAttribute(
+      'href',
+      '/register?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('forgot-password')).toHaveAttribute(
+      'href',
+      '/forgot-password?email=creator%40together.dev&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+    );
   });
 
   it('asks for the identifier alone before any credential', async () => {

@@ -7,6 +7,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { ThreadHeadline } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceThreadPage } from './PublicSpaceThreadPage.js';
@@ -46,6 +47,7 @@ export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: 
 const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: string }) => {
   const t = useTranslations();
   const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const spaces = useQuery(actions.spaces);
   const discussion = useQuery(
     actions.discussion({ contextKind: 'space', contextId: spaceId, limit: PAGE_SIZE }),
@@ -53,8 +55,8 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
   const unauthorized = isUnauthorized(spaces.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (spaces.isPending) {
     return (

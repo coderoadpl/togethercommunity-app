@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
 import { Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -20,12 +21,12 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
   const courses = useQuery(actions.studentCourses);
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (products.isPending) {
     return (

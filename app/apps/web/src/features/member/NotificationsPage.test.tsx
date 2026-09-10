@@ -369,5 +369,6 @@ describe('NotificationsPage', () => {
     const { router } = await renderPage();
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    expect(router.state.location.search).toEqual({ returnTo: '/notifications' });
   });
 });

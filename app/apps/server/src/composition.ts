@@ -1063,7 +1063,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox, delivery, waiter,
       htmlToText: createHtmlToText(), batchCap: env.MARKETING_BATCH_CAP,
-      quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
+      quotaReader, throttle: marketingThrottle, hmac: emailHmac, tenants, ids, tokens, clock,
       unsubscribeBaseUrl, outbox: emailOutbox, scheduler, runs: schedulerRuns,
       ...(production ? { silenceSmokeTenant: true } : {}),
     });

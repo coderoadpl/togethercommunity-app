@@ -2721,5 +2721,13 @@ export const en: Messages = {
     webhookHint: 'Paste this as the SNS subscription endpoint in AWS, then run a test through the SES simulator.', quota: 'SES quota',
     rateQuota: ({ rate, daily }) => `${rate}/s · ${daily} messages per 24 hours`, quotaUnknown: 'Quota has not been fetched yet.', sandboxWarning: 'The SES account is in sandbox; broadcasts are disabled.',
     broadcastsEnabled: 'Campaigns are ready to send.', broadcastsDisabled: 'Campaigns remain disabled until the checklist is complete.',
+    skipReasons: {
+      suppressed: 'Suppressed',
+      unsubscribed: 'Unsubscribed',
+      not_consented: 'No active consent',
+      pending_confirmation: 'Pending confirmation',
+      contact_archived: 'Contact archived',
+      contact_address_changed: 'Contact address changed',
+    },
   },
 };

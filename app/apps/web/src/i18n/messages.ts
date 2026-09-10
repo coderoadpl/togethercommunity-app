@@ -2611,5 +2611,6 @@ export interface Messages {
     sandboxWarning: string;
     broadcastsEnabled: string;
     broadcastsDisabled: string;
+    skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
   };
 }

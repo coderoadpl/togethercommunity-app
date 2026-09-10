@@ -2748,5 +2748,13 @@ export const pl: Messages = {
     footerConfigured: 'Dane stopki', webhookUrl: 'URL webhooka SES/SNS', webhookHint: 'Wklej ten adres jako endpoint subskrypcji SNS w AWS i wykonaj test przez symulator SES.',
     quota: 'Limity SES', rateQuota: ({ rate, daily }) => `${rate}/s · ${daily} wiadomości na 24 godziny`, quotaUnknown: 'Limit nie został jeszcze pobrany.',
     sandboxWarning: 'Konto SES działa w sandboxie — kampanie są wyłączone.', broadcastsEnabled: 'Kampanie są gotowe do wysyłki.', broadcastsDisabled: 'Kampanie pozostają wyłączone do ukończenia konfiguracji.',
+    skipReasons: {
+      suppressed: 'Zablokowany',
+      unsubscribed: 'Wypisany',
+      not_consented: 'Brak aktywnej zgody',
+      pending_confirmation: 'Oczekuje na potwierdzenie',
+      contact_archived: 'Kontakt zarchiwizowany',
+      contact_address_changed: 'Adres kontaktu zmieniony',
+    },
   },
 };

@@ -53,6 +53,7 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
   const [key, setKey] = useState(definition?.key ?? '');
   const [keyError, setKeyError] = useState(false);
   const [label, setLabel] = useState(latest?.label ?? '');
+  const [footerLabel, setFooterLabel] = useState(definition?.footerLabel ?? '');
   const [doubleOptIn, setDoubleOptIn] = useState(definition?.doubleOptIn ?? true);
   const [status, setStatus] = useState<ConsentDefinition['status']>(definition?.status ?? 'active');
   const [documentMode, setDocumentMode] = useState<'url' | 'hosted'>(definition?.documentRef.mode ?? 'url');
@@ -92,8 +93,9 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
       setKeyError(true);
       return;
     }
-    if (definition === undefined) create.mutate({ key, label, doubleOptIn, documentRef });
-    else update.mutate({ definitionId: definition.id, label, doubleOptIn, documentRef, status });
+    const normalizedFooterLabel = footerLabel.trim() === '' ? null : footerLabel;
+    if (definition === undefined) create.mutate({ key, label, doubleOptIn, footerLabel: normalizedFooterLabel, documentRef });
+    else update.mutate({ definitionId: definition.id, label, doubleOptIn, footerLabel: normalizedFooterLabel, documentRef, status });
   };
   const pending = create.isPending || update.isPending;
 
@@ -121,6 +123,11 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-consent-wording">{t.marketing.wordingLabel}</FormLabel>
         <OutlinedInput id="marketing-consent-wording" value={label} onChange={(event) => setLabel(event.target.value)} multiline minRows={3} required />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-consent-footer-label">{t.marketing.footerLabelLabel}</FormLabel>
+        <OutlinedInput id="marketing-consent-footer-label" value={footerLabel} onChange={(event) => setFooterLabel(event.target.value)} inputProps={{ maxLength: 200 }} />
+        <FormHelperText>{t.marketing.footerLabelHint}</FormHelperText>
       </FormControl>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
         <FormControl fullWidth>

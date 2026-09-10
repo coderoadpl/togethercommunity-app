@@ -193,12 +193,15 @@ describe('ConsentForm', () => {
 
     await userEvent.clear(await screen.findByLabelText(en.marketing.wordingLabel));
     await userEvent.type(screen.getByLabelText(en.marketing.wordingLabel), 'Updated product updates');
+    expect(screen.getByText(en.marketing.footerLabelHint)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(en.marketing.footerLabelLabel), 'Product updates');
     await userEvent.click(screen.getByRole('button', { name: en.marketing.saveConsentAction }));
 
     await waitFor(() => expect(updateBody).toEqual({
       definitionId: definition.id,
       label: 'Updated product updates',
       doubleOptIn: definition.doubleOptIn,
+      footerLabel: 'Product updates',
       documentRef: definition.documentRef,
       status: definition.status,
     }));

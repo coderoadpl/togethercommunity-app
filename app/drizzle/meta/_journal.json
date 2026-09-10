@@ -841,6 +841,13 @@
       "when": 1788928689746,
       "tag": "0119_post_content_format",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1789010400000,
+      "tag": "0120_consent_definition_footer_label",
+      "breakpoints": true
     }
   ]
 }

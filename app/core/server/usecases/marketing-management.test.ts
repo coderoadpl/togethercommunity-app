@@ -133,12 +133,15 @@ describe('marketing management use-cases', () => {
 
     const unchanged = await updateMarketingConsentDefinition(ctx, {
       definitionId: definition.id, label: version.label, doubleOptIn: false,
+      footerLabel: 'Newsletter',
       documentRef: definition.documentRef, status: 'active',
     }, { definitions, documents, ids, clock });
     expect(unchanged.ok && unchanged.value.versions).toHaveLength(1);
+    expect(unchanged.ok && unchanged.value.definition.footerLabel).toBe('Newsletter');
 
     const changed = await updateMarketingConsentDefinition(ctx, {
       definitionId: definition.id, label: 'Send me product news', doubleOptIn: false,
+      footerLabel: null,
       documentRef: definition.documentRef, status: 'active',
     }, { definitions, documents, ids, clock });
     expect(changed.ok).toBe(true);

@@ -2671,6 +2671,8 @@ export const en: Messages = {
     keyFormatError: 'Consent keys can use only lowercase letters, digits, and single hyphens between words.',
     keyImmutableHint: 'This key is fixed after creation and is used by checkout and consent evidence.',
     createConsentAction: 'Create consent', saveConsentAction: 'Save consent', wordingLabel: 'Checkbox wording',
+    footerLabelLabel: 'Short label for the e-mail footer',
+    footerLabelHint: 'Used after "based on your consent:" in every e-mail footer; leave empty to print the full wording',
     purposeLabel: 'Purpose', purposeMarketing: 'Marketing', channelLabel: 'Channel', channelEmail: 'Email', optionalOnly: 'Marketing consent is always optional.',
     notPreticked: 'The consent checkbox is never preselected.', doubleOptInLabel: 'Require double opt-in', doubleOptInHint: 'Recommended: email confirmation provides stronger consent evidence.',
     doubleOptInChip: 'Double opt-in',

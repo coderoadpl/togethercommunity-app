@@ -406,6 +406,7 @@
               "url": "https://studio.example.test/privacy"
             },
             "doubleOptIn": true,
+            "footerLabel": null,
             "id": "consent-definition-studio-news",
             "key": "news",
             "kind": "optional_marketing",

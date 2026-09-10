@@ -2344,6 +2344,8 @@ export interface Messages {
     allSends: string;
     exportCsv: string;
     exporting: string;
+    showSendLogDetails: string;
+    hideSendLogDetails: string;
     runIdFilter: string;
     clearRunFilter: string;
     all: string;
@@ -2370,6 +2372,8 @@ export interface Messages {
     deliveryDelivered: string;
     deliveryBounced: string;
     deliveryComplained: string;
+    sendBouncedAlert: (params: { date: string }) => string;
+    sendComplainedAlert: (params: { date: string }) => string;
     statusQueued: string;
     statusPending: string;
     statusSending: string;
@@ -2383,9 +2387,14 @@ export interface Messages {
     rawMeta: string;
     sesMessageId: string;
     skipReason: string;
-    bounceClassification: string;
+    suppressionReason: string;
+    bounceTypeLabel: string;
+    bounceProviderType: string;
+    bounceSubType: string;
+    diagnosticCode: string;
     clickedLink: string;
     eventError: string;
+    unknownReason: string;
     eventTypes: Record<
       'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
       | 'skipped' | 'failed' | 'retried' | 'uncertain' | 'suppressed_written' | 'unsubscribed',
@@ -2444,6 +2453,11 @@ export interface Messages {
     totalClicks: string;
     compactOpens: (params: { unique: number; total: number }) => string;
     compactClicks: (params: { unique: number; total: number }) => string;
+    compactOpensUnavailable: string;
+    compactClicksUnavailable: string;
+    trackingDisabledCampaignMetrics: string;
+    createdTimeValue: (params: { date: string }) => string;
+    scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;
     campaignDetails: string;
     allCampaigns: string;
@@ -2482,6 +2496,8 @@ export interface Messages {
     finishedCampaignHint: string;
     counters: (params: { toSend: number; sent: number; failed: number }) => string;
     status: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    scheduleCardTitle: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    workerPickupHint: string;
     consentsTitle: string;
     consentsDescription: string;
     consentsEmpty: string;
@@ -2684,5 +2700,7 @@ export interface Messages {
     identityErrorThrottling: string;
     identityErrorUnknown: string;
     skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
+    suppressionReasons: Record<'hard_bounce' | 'complaint' | 'manual' | 'unsubscribe_global' | 'erasure', string>;
+    bounceClassifications: Record<'soft' | 'hard' | 'unresolved' | 'complaint', string>;
   };
 }

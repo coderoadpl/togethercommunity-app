@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { Alert, Button, Checkbox, FormControl, FormControlLabel, FormLabel, MenuItem, Select, Stack, Typography } from '@mui/material';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
@@ -13,7 +13,7 @@ const AudienceSelect = ({ label, values, options, disabled, onChange }: { label:
   return <FormControl fullWidth><FormLabel id={id}>{label}</FormLabel><Select multiple labelId={id} value={values} disabled={disabled} onChange={(event) => onChange(typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value)} renderValue={(ids) => ids.map((value) => options.find((option) => option.id === value)?.name ?? value).join(', ')}>{options.map((option) => <MenuItem key={option.id} value={option.id}>{option.name}</MenuItem>)}</Select></FormControl>;
 };
 
-export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen, disabled, onChange }: { audience: ContactCampaignAudience; consentDefinitionId: string; frozen: boolean; disabled: boolean; onChange: (audience: ContactCampaignAudience) => void }) => {
+export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen, disabled, progress, onChange }: { audience: ContactCampaignAudience; consentDefinitionId: string; frozen: boolean; disabled: boolean; progress?: ReactNode | undefined; onChange: (audience: ContactCampaignAudience) => void }) => {
   const t = useTranslations();
   const { tenant } = usePanelContext();
   const lists = useInfiniteQuery(actions.directory.listOptions(tenant.id));
@@ -25,6 +25,7 @@ export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen,
   const data = preview.data && 'sample' in preview.data ? preview.data : null;
   return <Stack useFlexGap spacing="1rem">
     <Typography variant="h6" component="h3">{t.marketing.contactAudience}</Typography>
+    {progress}
     {frozen ? <Alert severity="info">{t.marketing.frozenAudience}</Alert> : <Typography>{t.marketing.audienceEstimateHint}</Typography>}
     <AudienceSelect label={t.marketing.includeLists} values={audience.includeLists} options={options} disabled={disabled || lists.isPending} onChange={(includeLists) => onChange({ ...audience, includeLists })} />
     <AudienceSelect label={t.marketing.excludeLists} values={audience.excludeLists} options={options} disabled={disabled || lists.isPending} onChange={(excludeLists) => onChange({ ...audience, excludeLists })} />

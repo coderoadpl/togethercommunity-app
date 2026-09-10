@@ -20,6 +20,22 @@
         "windowStart": "2026-06-24T12:00:00.000Z"
       }
     },
+    "getMarketingSesSettings:[]": {
+      "ok": true,
+      "value": {
+        "credentialsConfigured": false,
+        "lastSnsDelivery": null,
+        "platformPool": {
+          "limit": 1000,
+          "used": 0
+        },
+        "resendConfigured": false,
+        "settings": null,
+        "smtpConfigured": false,
+        "webhookEndpointStale": false,
+        "webhookUrl": null
+      }
+    },
     "getTenantSettings:[]": {
       "ok": true,
       "value": {

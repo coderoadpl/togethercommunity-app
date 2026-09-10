@@ -24,7 +24,10 @@ database on a protected Neon branch. It is not a copy of production data.
    inspect the database for the seeded smoke users.
 7. Set or update the `STAGING_DATABASE_FINGERPRINT` repository variable from
    the verified staging health response.
-8. Delete the old data-copied staging branch after the new deployment and smoke
+8. Keep `STAGING_SMS_ALERTS` unset unless staging SMS are explicitly rearmed;
+   unset or anything but `true` = no SMS from staging; production alerts are
+   unaffected.
+9. Delete the old data-copied staging branch after the new deployment and smoke
    are green.
 
 ## Troubleshooting
@@ -35,6 +38,14 @@ running migration `0000`, the database has tables but no
 copy of `main`, so drizzle-orm's journal-based migrator sees no baseline and
 tries to run every migration again. Recreate staging as an empty database on the
 protected staging branch.
+
+## Promotion to Production
+
+Production promotions are pull requests from `staging` itself to `main` while
+`STAGING_FREEZE=true`. The `promotion-guard` workflow rejects retired
+`promote-*` branches, stale staging heads, unfrozen staging, and missing
+successful `ci.yml` or `staging-smoke.yml` runs for the exact staging SHA. See
+[Promotion](promotion.md) for the owner runbook.
 
 ## Deployed Seed Behavior
 

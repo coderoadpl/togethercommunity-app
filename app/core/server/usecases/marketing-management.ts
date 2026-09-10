@@ -76,7 +76,7 @@ export const getMarketingConsentDefinition = async (
 
 export const updateMarketingConsentDefinition = async (
   ctx: Ctx,
-  input: { definitionId: string; label: string; doubleOptIn: boolean; documentRef: ConsentDocumentRef; status: ConsentDefinition['status'] },
+  input: { definitionId: string; label: string; doubleOptIn: boolean; footerLabel?: string | null | undefined; documentRef: ConsentDocumentRef; status: ConsentDefinition['status'] },
   deps: { definitions: ConsentDefinitionRepository; documents: TenantDocumentRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ definition: ConsentDefinition; versions: Awaited<ReturnType<ConsentDefinitionRepository['listVersions']>> }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:consent-definition:write');
@@ -92,6 +92,7 @@ export const updateMarketingConsentDefinition = async (
   const updated = await deps.definitions.update(tenantId.value, {
     ...definition,
     doubleOptIn: input.doubleOptIn,
+    footerLabel: input.footerLabel ?? null,
     documentRef: input.documentRef,
     status: input.status,
     updatedAt: now,

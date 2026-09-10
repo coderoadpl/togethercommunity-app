@@ -1561,6 +1561,7 @@ export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   label: z.string().trim().min(1),
   doubleOptIn: z.boolean().default(true),
+  footerLabel: z.string().trim().max(200).nullable().default(null),
   documentRef: consentDocumentRefSchema,
 });
 
@@ -1574,6 +1575,7 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   definitionId: z.string().min(1),
   label: z.string().trim().min(1),
   doubleOptIn: z.boolean(),
+  footerLabel: z.string().trim().max(200).nullable().default(null),
   documentRef: consentDocumentRefSchema,
   status: z.enum(['active', 'archived']),
 });

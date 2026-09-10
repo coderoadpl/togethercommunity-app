@@ -1,6 +1,6 @@
 {
-  "hash": "74e3121f4b402bfacdf99fbdc62d2c2cac5d80ee65b4aa8eb84b9745083136e6",
-  "shortId": "74e3121f4b40",
+  "hash": "2ac66b6db853f63f07a4ee5864c9445f5c624beeeb5b863abf6a626337ff4581",
+  "shortId": "2ac66b6db853",
   "schema": {
     "constraints": [
       {
@@ -4134,6 +4134,14 @@
             "name": "document_ref",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "footer_label",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

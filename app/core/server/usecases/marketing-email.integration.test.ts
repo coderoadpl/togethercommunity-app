@@ -575,6 +575,32 @@ describe('marketing e-mail use-case integration', () => {
     expect(deps.ses.sent[0]?.html).toContain('</footer></body></html>');
   });
 
+  it('uses the consent footer label when present and falls back to consent wording otherwise', async () => {
+    const labelled = await setup();
+    await labelled.definitions.update('tenant-1', { ...definition, footerLabel: 'Newsletter updates' });
+    const labelledResult = await enqueueAndDispatchMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'api',
+      consentDefinitionId: definition.id, subject: 'Hello', bodyHtml: '<p>Hello</p>', data: {},
+    }], labelled);
+    expect(labelledResult).toMatchObject({ ok: true, value: [{ status: 'sent' }] });
+    expect((await testSendCampaignToSelf(ctx, { campaignId: 'campaign-1' }, labelled)).ok).toBe(true);
+    for (const sent of labelled.ses.sent) {
+      expect(sent.html).toContain('You receive this message based on your consent: “Newsletter updates”.');
+      expect(sent.text).toContain('You receive this message based on your consent: “Newsletter updates”.');
+      expect(sent.html).not.toContain(version.label);
+      expect(sent.text).not.toContain(version.label);
+    }
+
+    const fallback = await setup();
+    const fallbackResult = await enqueueAndDispatchMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'api',
+      consentDefinitionId: definition.id, subject: 'Hello', bodyHtml: '<p>Hello</p>', data: {},
+    }], fallback);
+    expect(fallbackResult).toMatchObject({ ok: true, value: [{ status: 'sent' }] });
+    expect(fallback.ses.sent[0]?.html).toContain(`You receive this message based on your consent: “${version.label}”.`);
+    expect(fallback.ses.sent[0]?.text).toContain(`You receive this message based on your consent: “${version.label}”.`);
+  });
+
   it('I2 and I3 re-check eligibility after fetch and again after claim', async () => {
     const deps = await setup(['first@example.test', 'later@example.test']);
     deps.audience.afterFetch = async (rows) => {

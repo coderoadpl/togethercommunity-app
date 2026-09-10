@@ -154,6 +154,7 @@ export const consentDefinitions = pgTable(
     kind: text('kind', { enum: ['required_terms', 'optional_marketing'] }).notNull(),
     channel: text('channel', { enum: ['email'] }).notNull(),
     doubleOptIn: boolean('double_opt_in').notNull().default(true),
+    footerLabel: text('footer_label'),
     documentRef: jsonb('document_ref').$type<ConsentDocumentRef>().notNull(),
     status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),

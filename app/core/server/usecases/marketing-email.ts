@@ -99,6 +99,7 @@ export const createMarketingConsentDefinition = async (
     key: string;
     label: string;
     doubleOptIn: boolean;
+    footerLabel?: string | null | undefined;
     documentUrl?: string;
     documentRef?: ConsentDocumentRef;
   },
@@ -124,7 +125,7 @@ export const createMarketingConsentDefinition = async (
   const definition = {
     id: deps.ids.nextId(), tenantId: tenantId.value, key: input.key,
     kind: 'optional_marketing' as const, channel: 'email' as const,
-    doubleOptIn: input.doubleOptIn, documentRef,
+    doubleOptIn: input.doubleOptIn, footerLabel: input.footerLabel ?? null, documentRef,
     status: 'active' as const, createdAt: now, updatedAt: now,
   };
   await deps.definitions.create(tenantId.value, definition, {
@@ -894,13 +895,18 @@ const recordValue = (value: unknown): Record<string, unknown> =>
     ? Object.fromEntries(Object.entries(value))
     : {};
 
+const consentFooterReference = (definition: { footerLabel?: string | null | undefined }, wording: string): string => {
+  const footerLabel = definition.footerLabel?.trim();
+  return footerLabel === undefined || footerLabel === '' ? wording : footerLabel;
+};
+
 const eligibilityFor = async (tenantId: string, input: MarketingMessageInput, deps: SendDeps) => {
   const definition = await deps.definitions.findById(tenantId, input.consentDefinitionId);
   if (definition === null) return null;
   const rows = await deps.consents.listByEmail(tenantId, input.to, definition.id);
   const consent = deriveConsentState(rows, definition);
   const suppressed = await deps.suppressions.isSuppressed(tenantId, deps.hmac.compute(tenantId, normalizeEmail(input.to)));
-  return { eligibility: deriveMarketingEligibility({ consent, suppressed }), latest: consent.row };
+  return { definition, eligibility: deriveMarketingEligibility({ consent, suppressed }), latest: consent.row };
 };
 
 /**
@@ -1056,7 +1062,7 @@ const enqueueMarketingMessagesExecution = async (
       unsubscribeLabel: footerCopy.unsubscribe,
       legalName: settings.footerLegalName,
       address: settings.footerAddress,
-      consentReference: dequeue.eligibility.consentRow.wordingSnapshot,
+      consentReference: consentFooterReference(dequeue.definition, dequeue.eligibility.consentRow.wordingSnapshot),
       consentBasisPrefix: footerCopy.basisPrefix,
       consentBasisSuffix: footerCopy.basisSuffix,
       layoutHtml: layout?.bodyHtml ?? null,
@@ -1377,9 +1383,12 @@ export const testSendCampaignToSelf = async (
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
+  const definition = await deps.definitions.findById(tenantId.value, campaign.consentDefinitionId);
+  if (definition === null) return err(notFound('Consent definition was not found'));
   const versions = await deps.definitions.listVersions(tenantId.value, campaign.consentDefinitionId);
-  const consentReference = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
-  if (consentReference === undefined) return err(validation('Consent definition has no wording version'));
+  const wording = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
+  if (wording === undefined) return err(validation('Consent definition has no wording version'));
+  const consentReference = consentFooterReference(definition, wording);
   const layout = campaign.layoutId === null ? null : await deps.layouts.findById(tenantId.value, campaign.layoutId);
   if (campaign.layoutId !== null && layout === null) return err(notFound('Marketing e-mail layout was not found'));
   const unsubscribeTokenId = deps.ids.nextId();

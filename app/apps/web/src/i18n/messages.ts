@@ -2512,6 +2512,8 @@ export interface Messages {
     createConsentAction: string;
     saveConsentAction: string;
     wordingLabel: string;
+    footerLabelLabel: string;
+    footerLabelHint: string;
     purposeLabel: string;
     purposeMarketing: string;
     channelLabel: string;

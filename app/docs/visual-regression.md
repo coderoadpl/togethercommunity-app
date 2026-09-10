@@ -170,7 +170,7 @@ workflow code and never executes pull-request code.
 The `preview` project publishes a Storybook preview permalink for non-draft pull requests
 targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
 available and changes affect `app/apps/web/**`, `app/.storybook/**`,
-`app/apps/server/src/**`, `app/package.json`, `app/pnpm-lock.yaml`,
+`app/apps/server/src/**`, `app/core/**`, `app/package.json`, `app/pnpm-lock.yaml`,
 `app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
 The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
 instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
@@ -187,11 +187,16 @@ checkout does not provide a usable changed-file range and makes Chromatic fall
 back to the full Storybook catalogue.
 
 Before the Chromatic command, the workflow diffs the pull-request base and head
-for `app/apps/web/**`, `app/apps/server/src/**`, `app/.storybook/**`,
+for `app/apps/web/**`, `app/apps/server/src/**`, `app/core/**`, `app/.storybook/**`,
 `app/package.json`, and `app/pnpm-lock.yaml`. Pull requests with no matching
 files run the Chromatic CLI with `--skip`, leaving the check green and refreshing
 the sticky PR comment with `Chromatic skipped: no UI changes`. Dependency file
-changes are included because installed package changes can alter rendering.
+changes are included because installed package changes can alter rendering, and
+`app/core/**` is included because `app/apps/web/src` imports it as
+`#core/domain` / `#core/contract` and its changes can alter rendered stories.
+The `pnpm install` and Chromatic steps run unconditionally so the skip decision
+comes only from the Chromatic CLI's own `--skip` flag, keeping every job on the
+lockfile-pinned dependency tree instead of an ad hoc install.
 
 The free plan budget is 5,000 snapshots per month in Chrome. The snapshot cost follows the current catalogue size. With
 TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot

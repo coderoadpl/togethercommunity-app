@@ -112,14 +112,14 @@ describe('Chromatic pull request link comments', () => {
     const loaded = getJob(file, job);
     const checkout = loaded.job.steps.find((step) => step.uses?.startsWith('actions/checkout@') === true);
     const detector = getStep(loaded.job, 'Detect UI changes');
-    const skip = getStep(loaded.job, 'Skip Chromatic');
+    const install = loaded.job.steps.find((step) => step.run === 'pnpm install --frozen-lockfile');
     const chromatic = getStep(loaded.job, cliStep);
     const comment = getStep(loaded.job, 'Upsert Chromatic preview comment');
     const detectorScript = detector.run ?? '';
-    const skipScript = skip.run ?? '';
     const chromaticScript = chromatic.run ?? '';
     const commentScript = comment.run ?? '';
     if (checkout === undefined) throw new Error(`${file} has no checkout step`);
+    if (install === undefined) throw new Error(`${file} has no pnpm install step`);
 
     expect(detector.id).toBe('ui-changes');
     expect(detector.env).toMatchObject({
@@ -131,17 +131,13 @@ describe('Chromatic pull request link comments', () => {
     expect(detectorScript).toContain('git -C "$GITHUB_WORKSPACE" diff --name-only "$BASE_SHA...$HEAD_SHA"');
     expect(detectorScript).toContain("'app/apps/web/**'");
     expect(detectorScript).toContain("'app/apps/server/src/**'");
+    expect(detectorScript).toContain("'app/core/**'");
     expect(detectorScript).toContain("'app/.storybook/**'");
     expect(detectorScript).not.toContain("'app/apps/web/src/**/*.stories.*'");
     expect(detectorScript).toContain("'app/package.json'");
     expect(detectorScript).toContain("'app/pnpm-lock.yaml'");
-    expect(skip.if).toBe("steps.ui-changes.outputs.changed == 'false'");
-    expect(skip.env).toMatchObject({
-      CHROMATIC_SKIP: "${{ steps.ui-changes.outputs.changed == 'false' }}",
-    });
-    expect(skipScript).toContain('npx --yes chromatic@18.7.2');
-    expect(skipScript).toContain('--skip');
-    expect(chromatic.if).toBe("steps.ui-changes.outputs.changed != 'false'");
+    expect(install.if).toBeUndefined();
+    expect(chromatic.if).toBeUndefined();
     expect(chromatic.env).toMatchObject({
       CHROMATIC_SKIP: "${{ steps.ui-changes.outputs.changed == 'false' }}",
     });

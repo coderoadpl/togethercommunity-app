@@ -80,6 +80,7 @@ jobs:
             git -C "$GITHUB_WORKSPACE" diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
               'app/apps/web/**' \
               'app/apps/server/src/**' \
+              'app/core/**' \
               'app/.storybook/**' \
               'app/package.json' \
               'app/pnpm-lock.yaml'
@@ -90,30 +91,16 @@ jobs:
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Skip Chromatic
-        if: steps.ui-changes.outputs.changed == 'false'
-        env:
-          CHROMATIC_PREVIEW_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PREVIEW_PROJECT_TOKEN }}
-          CHROMATIC_SKIP: ${{ steps.ui-changes.outputs.changed == 'false' }}
-        run: |
-          npx --yes chromatic@18.7.2 \
-            --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN" \
-            --diagnostics-file=chromatic-diagnostics.json \
-            --skip
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
-        if: steps.ui-changes.outputs.changed != 'false'
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        if: steps.ui-changes.outputs.changed != 'false'
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
-      - if: steps.ui-changes.outputs.changed != 'false'
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Publish Chromatic preview
-        if: steps.ui-changes.outputs.changed != 'false'
         env:
           CHROMATIC_PREVIEW_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PREVIEW_PROJECT_TOKEN }}
           CHROMATIC_SKIP: ${{ steps.ui-changes.outputs.changed == 'false' }}

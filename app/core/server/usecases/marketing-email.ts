@@ -18,6 +18,7 @@ import {
   emailEventSchema,
   err,
   forbidden,
+  internal,
   isSmokeTenant,
   liftSuppression,
   marketingFooterCopy,
@@ -1708,6 +1709,12 @@ export const SCHEDULER_RUN_PURGE_BATCH_SIZE = 500;
 const SCHEDULER_RUN_PURGE_TIME_BUDGET_MS = 5_000;
 const SCHEDULER_RUN_PURGE_MIN_BATCH_MS = 1_500;
 
+const purgeFailureLabel = (cause: unknown): string => {
+  if (!(cause instanceof Error)) return typeof cause;
+  const code = 'code' in cause && typeof cause.code === 'string' ? cause.code : null;
+  return code === null ? cause.name : `${cause.name}/${code}`;
+};
+
 export const runScheduledMarketingJobs = async (
   input: {
     now: string;
@@ -1764,6 +1771,7 @@ export const runScheduledMarketingJobs = async (
     idle: false,
   });
   let maintenanceIncomplete = false;
+  let schedulerRunsPurged = 0;
   if (maintenanceDue) {
     const purgeDeadlineMs = Date.now() + SCHEDULER_RUN_PURGE_TIME_BUDGET_MS;
     while (input.shouldContinue?.() !== false) {
@@ -1775,10 +1783,12 @@ export const runScheduledMarketingJobs = async (
           runsBefore: input.schedulerRunsOlderThan,
           idleRunsBefore: input.schedulerIdleRunsOlderThan,
         }, { batchSize: SCHEDULER_RUN_PURGE_BATCH_SIZE, timeoutMs: remainingMs });
-      } catch {
-        deps.logger.warn('[marketing] scheduler run purge stopped reason=purge_failed');
+      } catch (cause) {
+        deps.logger.warn(`[marketing] scheduler run purge stopped reason=purge_failed error=${purgeFailureLabel(cause)}`);
+        if (firstError === null) firstError = internal(cause instanceof Error ? cause.message : String(cause));
         break;
       }
+      schedulerRunsPurged += batch.purged;
       if (batch.cancelled) {
         deps.logger.warn('[marketing] scheduler run purge stopped reason=budget_exhausted');
         break;
@@ -1827,6 +1837,7 @@ export const runScheduledMarketingJobs = async (
       idle: retentionTenantIds.length === 0
         && identityTenantIds.length === 0
         && sesTenantIds.length === 0
+        && schedulerRunsPurged === 0
         && error === null,
     });
   }

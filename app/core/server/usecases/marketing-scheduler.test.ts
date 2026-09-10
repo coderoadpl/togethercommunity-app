@@ -138,14 +138,11 @@ describe('marketing maintenance scheduling', () => {
     runReputationAlerts: async () => ok({ sent: 0 }),
   });
 
-  it.each([
-    { name: 'a cancelled batch', purged: async () => ({ purged: 0, cancelled: true }), reason: 'budget_exhausted' },
-    { name: 'a rejected batch', purged: async () => { throw new Error('canceling statement due to statement timeout'); }, reason: 'purge_failed' },
-  ])('contains $name and still dispatches campaigns', async ({ purged, reason }) => {
+  it('contains a cancelled batch and still dispatches campaigns', async () => {
     const runs = new InMemorySchedulerRunRepository();
     const purge = vi.spyOn(runs, 'purge')
       .mockResolvedValueOnce({ purged: SCHEDULER_RUN_PURGE_BATCH_SIZE, cancelled: false })
-      .mockImplementationOnce(purged);
+      .mockResolvedValueOnce({ purged: 0, cancelled: true });
     const dispatchCampaign = vi.fn(async () => ok(undefined));
 
     const result = await runScheduledMarketingJobs({ now: NOW, ...retentionBoundaries,
@@ -153,9 +150,57 @@ describe('marketing maintenance scheduling', () => {
 
     expect(result.ok).toBe(true);
     expect(purge).toHaveBeenCalledTimes(2);
-    expect(warnings).toEqual([`[marketing] scheduler run purge stopped reason=${reason}`]);
+    expect(warnings).toEqual(['[marketing] scheduler run purge stopped reason=budget_exhausted']);
     expect(dispatchCampaign).toHaveBeenCalledTimes(1);
     expect((await runs.listPage({ kind: 'marketing_maintenance', status: 'completed', limit: 10 })).runs).toHaveLength(1);
+  });
+
+  it('fails the maintenance run on a rejected purge batch and still runs the remaining steps', async () => {
+    const runs = new InMemorySchedulerRunRepository();
+    const purge = vi.spyOn(runs, 'purge')
+      .mockResolvedValueOnce({ purged: SCHEDULER_RUN_PURGE_BATCH_SIZE, cancelled: false })
+      .mockRejectedValueOnce(Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }));
+    const dispatchCampaign = vi.fn(async () => ok(undefined));
+    const runRetention = vi.fn(async () => ok(undefined));
+    const refreshIdentity = vi.fn(async () => ok(undefined));
+    const runReputationAlerts = vi.fn(async () => ok({ sent: 0 }));
+
+    const result = await runScheduledMarketingJobs({ now: NOW, ...retentionBoundaries,
+      sesIdentityRefreshIntervalMs: 1000 }, {
+      ...purgeBudgetDeps(runs, dispatchCampaign),
+      jobs: { listRunnableCampaigns: async () => [{ tenantId: 'tenant-1', campaignId: 'campaign-1' }],
+        listRetentionTenantIds: async () => ['tenant-1'], listSesIdentityRefreshTenantIds: async () => ['tenant-1'],
+        listSesTenantIds: async () => ['tenant-1'] },
+      runRetention, refreshIdentity, runReputationAlerts,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('internal');
+    expect(result.error.message).toBe('canceling statement due to statement timeout');
+    expect(purge).toHaveBeenCalledTimes(2);
+    expect(warnings).toEqual(['[marketing] scheduler run purge stopped reason=purge_failed error=Error/57014']);
+    expect(runRetention).toHaveBeenCalledTimes(1);
+    expect(refreshIdentity).toHaveBeenCalledTimes(1);
+    expect(runReputationAlerts).toHaveBeenCalledTimes(1);
+    expect(dispatchCampaign).toHaveBeenCalledTimes(1);
+    const [failed] = (await runs.listPage({ kind: 'marketing_maintenance', status: 'failed', limit: 10 })).runs;
+    expect(failed?.error).toBe('canceling statement due to statement timeout');
+    expect(failed?.idle).toBe(false);
+  });
+
+  it.each([
+    { name: 'purged scheduler runs', purged: 3, idle: false },
+    { name: 'purged nothing', purged: 0, idle: true },
+  ])('finalizes a maintenance run that $name with idle=$idle', async ({ purged, idle }) => {
+    const runs = new InMemorySchedulerRunRepository();
+    vi.spyOn(runs, 'purge').mockResolvedValue({ purged, cancelled: false });
+
+    await runScheduledMarketingJobs({ now: NOW, ...retentionBoundaries,
+      sesIdentityRefreshIntervalMs: 1000 }, purgeBudgetDeps(runs, async () => ok(undefined)));
+
+    const [run] = (await runs.listPage({ kind: 'marketing_maintenance', status: 'completed', limit: 10 })).runs;
+    expect(run?.idle).toBe(idle);
   });
 
   it('does not start a purge batch that cannot fit in the remaining budget', async () => {

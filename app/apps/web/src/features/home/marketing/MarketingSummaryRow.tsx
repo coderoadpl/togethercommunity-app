@@ -44,7 +44,7 @@ export const MarketingSummaryRow = ({
           <Box sx={{ ml: { sm: 'auto' }, '& .MuiButtonBase-root': { minHeight: '44px' } }}>{actions}</Box>
         )}
       </Stack>
-      {summary === undefined ? null : <Typography variant="body2">{summary}</Typography>}
+      {summary === undefined ? null : <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{summary}</Typography>}
       {date === undefined ? null : <EntryDate component="div">{date}</EntryDate>}
       {children}
     </Stack>

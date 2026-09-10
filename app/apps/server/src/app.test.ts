@@ -159,6 +159,8 @@ const deps = (input: {
   rateLimitBuckets?: AppDeps['rateLimitBuckets'];
   logger?: AppDeps['logger'];
   passwordAccounts?: readonly string[];
+  accountSecurity?: { hasPassword: boolean; twoFactorEnabled: boolean };
+  passkeyAccounts?: readonly string[];
   members?: Member[];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
@@ -842,6 +844,11 @@ const deps = (input: {
     signInMethods: {
       hasCredentialAccount: async (_tenantId, email) =>
         (input.passwordAccounts ?? []).includes(email),
+      hasPasskey: async (_tenantId, email) =>
+        (input.passkeyAccounts ?? []).includes(email),
+    },
+    accountSecurity: {
+      read: async () => input.accountSecurity ?? { hasPassword: false, twoFactorEnabled: false },
     },
     health: {
       pingDatabase: async () => input.databaseUp ?? true,
@@ -3469,6 +3476,18 @@ describe('server edge security baseline', () => {
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
   });
+
+  it('projects account security fields through GET /api/me', async () => {
+    const read = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const app = scopedApp('member', { overrides: { accountSecurity: { read } } });
+    const response = await app.request(API_PATHS.me, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { userId: 'user-1', hasPassword: true, twoFactorEnabled: true },
+    });
+    expect(read).toHaveBeenCalledExactlyOnceWith('user-1');
+  });
 });
 
 describe('lesson attachment download route', () => {
@@ -5935,6 +5954,18 @@ describe('public auth-resolve route', () => {
     });
   });
 
+  it('offers passkey when the tenant account has one registered', async () => {
+    const app = buildApp(deps({ passkeyAccounts: ['creator@together.dev'] }));
+
+    const response = await resolve(app, 'creator@together.dev');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { methods: ['passkey', 'magic-link'] },
+    });
+  });
+
   it('answers a passwordless member and an unknown address identically', async () => {
     const app = buildApp(deps({ passwordAccounts: ['creator@together.dev'] }));
 
@@ -6921,6 +6952,27 @@ describe('tenant-host magic links on checkout', () => {
 });
 
 describe('tenant-host magic links on login', () => {
+  it('sets the platform origin from the configured platform host', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'start.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'new@together.dev', callbackURL: 'http://start.localhost:48730/' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://start.localhost:48730',
+    });
+    expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+
   it('sets the tenant name, language and host from the subdomain request', async () => {
     const { app, captured } = capturingApp();
 
@@ -7370,7 +7422,8 @@ describe('impersonation HTTP surface', () => {
     (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 
   it('opens a read-only member view and blocks every write and direct message', async () => {
-    const { app, audit } = impersonatingApp();
+    const accountSecurityRead = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
+    const { app, audit } = impersonatingApp({ accountSecurity: { read: accountSecurityRead } });
 
     const started = await app.request(API_PATHS.impersonationStart, {
       method: 'POST',
@@ -7389,8 +7442,14 @@ describe('impersonation HTTP surface', () => {
 
     const me = await app.request(API_PATHS.me, { headers: impersonated });
     expect(await me.json()).toMatchObject({
-      data: { tenant: { memberId: 'member-1', staffRole: null }, impersonation: { subjectMemberId: 'member-1' } },
+      data: {
+        hasPassword: false,
+        twoFactorEnabled: false,
+        tenant: { memberId: 'member-1', staffRole: null },
+        impersonation: { subjectMemberId: 'member-1' },
+      },
     });
+    expect(accountSecurityRead).not.toHaveBeenCalled();
 
     const write = await app.request(API_PATHS.postsCreate, {
       method: 'POST',

@@ -647,6 +647,7 @@ export default tseslint.config(
                 '@testing-library/react',
                 '@testing-library/user-event',
                 'dompurify',
+                'qrcode',
                 'react',
                 'vitest',
               ],

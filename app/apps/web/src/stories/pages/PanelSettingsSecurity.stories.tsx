@@ -7,3 +7,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'panel-settings-security--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };
 export const ShadcnMobile: Story = { parameters: { __id: 'panel-settings-security--shadcn--mobile', viewport: { defaultViewport: 'mobile' } }, globals: { viewport: { value: 'mobile' } } };
+
+export const DarkDesktop1440: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
+export const DarkMobile390: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };

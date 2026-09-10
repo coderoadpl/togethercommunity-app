@@ -3,6 +3,9 @@ type TenantLocation = Pick<Location, 'hostname' | 'port' | 'protocol'>;
 const configuredAppBaseDomain = (): string | undefined =>
   import.meta.env.VITE_APP_BASE_DOMAIN || undefined;
 
+/** Whether tenants are addressed by subdomain at all (false in single-tenant self-host). */
+export const hasConfiguredBaseDomain = (): boolean => configuredAppBaseDomain() !== undefined;
+
 export const isConfiguredBaseDomainHost = (hostname: string): boolean => {
   const baseDomain = configuredAppBaseDomain();
   if (baseDomain === undefined) return false;

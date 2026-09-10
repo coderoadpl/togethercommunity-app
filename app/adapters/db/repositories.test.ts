@@ -42,6 +42,7 @@ import type { Db } from './client.js';
 import {
   createAccountAvatarRepository,
   createAccountAvatarTenantReader,
+  createAccountSecurityReader,
   createAvatarSourceReader,
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -123,6 +124,7 @@ import {
   members,
   memberErasureRequestEvents,
   orders,
+  passkey,
   postReportEvents,
   postReports,
   posts,
@@ -131,6 +133,7 @@ import {
   productPriceHistory,
   productPrices,
   suppressions,
+  twoFactor,
   user,
 } from './schema.js';
 import { createNotificationFanoutJobRepository, insertFanoutJob } from './notification-fanout-jobs.js';
@@ -4072,6 +4075,16 @@ describe('createSignInMethodReader', () => {
       password: 'hashed-password',
       updatedAt: new Date(NOW),
     });
+    await db.insert(passkey).values({
+      id: 'passkey-signin-lookup',
+      publicKey: 'public-key',
+      userId: 'user-acme-member',
+      credentialID: 'credential-id',
+      counter: 0,
+      deviceType: 'singleDevice',
+      backedUp: false,
+      createdAt: new Date(NOW),
+    });
   });
 
   it('resolves a mixed-case identifier exactly like the stored address', async () => {
@@ -4081,6 +4094,15 @@ describe('createSignInMethodReader', () => {
     expect(await reader.hasCredentialAccount(ACME, '  Owner-Acme@Together.DEV ')).toBe(true);
     expect(await reader.hasCredentialAccount(ACME, 'buyer-acme@together.dev')).toBe(false);
     expect(await reader.hasCredentialAccount(GLOBEX, 'owner-acme@together.dev')).toBe(false);
+  });
+
+  it('resolves a tenant-scoped passkey for the stored address', async () => {
+    const reader = createSignInMethodReader(db);
+
+    expect(await reader.hasPasskey(ACME, 'buyer-acme@together.dev')).toBe(true);
+    expect(await reader.hasPasskey(ACME, '  Buyer-Acme@Together.DEV ')).toBe(true);
+    expect(await reader.hasPasskey(ACME, 'owner-acme@together.dev')).toBe(false);
+    expect(await reader.hasPasskey(GLOBEX, 'buyer-acme@together.dev')).toBe(false);
   });
 
   it('keeps the identifier predicate on the unique e-mail index', async () => {
@@ -4093,6 +4115,30 @@ describe('createSignInMethodReader', () => {
       expect(
         await explainPredicate(tx, sql`lower(btrim(${user.email})) = 'owner-acme@together.dev'`),
       ).not.toContain('Index Cond');
+    });
+  });
+});
+
+describe('createAccountSecurityReader', () => {
+  it('projects password and verified two-factor state from the auth tables', async () => {
+    await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, 'user-acme-owner'));
+    await db.insert(twoFactor).values({
+      id: 'two-factor-security-reader',
+      secret: 'encrypted-secret',
+      backupCodes: 'encrypted-codes',
+      userId: 'user-acme-owner',
+      verified: true,
+    });
+
+    const reader = createAccountSecurityReader(db);
+
+    await expect(reader.read('user-acme-owner')).resolves.toEqual({
+      hasPassword: true,
+      twoFactorEnabled: true,
+    });
+    await expect(reader.read('user-acme-buyer')).resolves.toEqual({
+      hasPassword: false,
+      twoFactorEnabled: false,
     });
   });
 });

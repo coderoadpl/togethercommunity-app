@@ -189,11 +189,12 @@ export const AuthMethodList = styled('ul')({
 });
 
 export const AuthMethodCard = styled('li', {
-  shouldForwardProp: (prop) => prop !== 'featured',
-})<{ featured?: boolean }>(({ theme, featured }) => ({
+  shouldForwardProp: (prop) => prop !== 'featured' && prop !== 'unavailable',
+})<{ featured?: boolean; unavailable?: boolean }>(({ theme, featured, unavailable }) => ({
   borderRadius: 14,
   backgroundColor: theme.palette.background.paper,
   border: `1px solid ${featured === true ? authRing(theme) : theme.borderInput ?? theme.palette.divider}`,
+  ...(unavailable === true ? { opacity: 0.58 } : {}),
 }));
 
 const methodHead: CSSObject = {
@@ -214,6 +215,10 @@ export const AuthMethodHead = styled(Box)(methodHead);
 export const AuthMethodButton = styled(ButtonBase)(({ theme }) => ({
   ...methodHead,
   '&:hover': { backgroundColor: theme.palette.action.hover },
+  '&[aria-disabled="true"]': {
+    cursor: 'not-allowed',
+    '&:hover': { backgroundColor: 'transparent' },
+  },
 }));
 
 export const AuthMethodIcon = styled('span')(({ theme }) => ({

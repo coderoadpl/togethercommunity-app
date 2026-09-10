@@ -1200,6 +1200,7 @@ const SecurityPanel = () => {
         </Box>
 
         <AuthenticationMethods
+          presentation="embedded"
           passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
           registerPasskey={{
             pending: registerPasskey.isPending,
@@ -1228,6 +1229,7 @@ const SecurityPanel = () => {
             run: enableTwoFactor.mutate,
           }}
           verifyTotp={{
+                  submittedAt: verifyTotp.submittedAt,
             pending: verifyTotp.isPending,
             success: verifyTotp.isSuccess,
             error: verifyTotp.error,
@@ -1250,6 +1252,7 @@ const SecurityPanel = () => {
           }}
         />
         <ActiveSessions
+          presentation="embedded"
           sessions={{
             data: accountSessions.data?.sessions,
             pending: accountSessions.isPending,

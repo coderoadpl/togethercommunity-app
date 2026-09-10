@@ -15,12 +15,13 @@ const idle = { pending: false, success: false, error: null };
 const propsWith = (
   overrides: Partial<AuthenticationMethodsProps> = {},
 ): AuthenticationMethodsProps => ({
+  presentation: 'embedded',
   passkeys: { data: [], pending: false, error: null, retry: vi.fn() },
   registerPasskey: { ...idle, run: vi.fn() },
   removePasskey: { ...idle, run: vi.fn() },
   requestPasswordSetup: { ...idle, run: vi.fn() },
   enableTwoFactor: { ...idle, data: undefined, submittedAt: 0, run: vi.fn() },
-  verifyTotp: { ...idle, run: vi.fn() },
+  verifyTotp: { ...idle, submittedAt: 0, run: vi.fn() },
   disableTwoFactor: { ...idle, submittedAt: 0, run: vi.fn() },
   regenerateBackupCodes: { ...idle, data: undefined, submittedAt: 0, run: vi.fn() },
   ...overrides,
@@ -37,6 +38,36 @@ const renderMethods = (props: AuthenticationMethodsProps) => render(
 const toastStack = () => screen.getByTestId('toast-stack');
 
 describe('AuthenticationMethods', () => {
+  it('keeps two-factor operations visible and reachable without a disclosure', async () => {
+    const run = vi.fn();
+    renderMethods(propsWith({ enableTwoFactor: { ...idle, data: undefined, submittedAt: 0, run } }));
+    const enable = screen.getByRole('button', { name: en.security.enableTwoFactor });
+    expect(enable.closest('details')).toBeNull();
+    expect(enable).toBeVisible();
+    await userEvent.type(screen.getByLabelText(en.security.accountPasswordLabel), 'fresh-password');
+    await userEvent.click(enable);
+    expect(run).toHaveBeenCalledExactlyOnceWith({ password: 'fresh-password' });
+  });
+
+  it('keeps panel authentication sections unboxed and their operations expanded', () => {
+    const view = renderMethods(propsWith({ presentation: 'embedded' }));
+    expect(view.container.querySelector('.MuiPaper-root')).toBeNull();
+    expect(screen.getByRole('heading', { name: en.security.passkeys })).toBeVisible();
+    expect(screen.getByRole('heading', { name: en.security.twoFactor })).toBeVisible();
+    expect(screen.getByTestId('passkey-set-password').closest('details')).toBeNull();
+    expect(screen.getByTestId('enable-2fa').closest('details')).toBeNull();
+  });
+
+  it('does not invent a persisted two-factor status from successful verification', () => {
+    renderMethods(propsWith({ verifyTotp: { ...idle, submittedAt: 0, success: true, run: vi.fn() } }));
+    expect(screen.getByText(en.security.twoFactorStatusUnknown)).toBeInTheDocument();
+  });
+
+  it('identifies incomplete enrollment without calling it enabled', () => {
+    renderMethods(propsWith({ enableTwoFactor: { ...idle, success: true, data: { totpURI: 'otpauth://totp/Together', backupCodes: ['demo-once-code'] }, submittedAt: 1, run: vi.fn() } }));
+    expect(screen.getByText(en.security.twoFactorStatusIncomplete)).toBeInTheDocument();
+  });
+
   it('keeps passkey add and removal confirmation disabled without a password', async () => {
     const props = propsWith({
       passkeys: {

@@ -56,3 +56,5 @@ export const FormWithActions: Story = {
     ),
   },
 };
+
+export const AccountMobilePadding: Story = { args: { title: 'Account task', description: 'Compact spacing for account settings.', mobilePadding: true, children: <Button variant="outlined">Manage</Button> }, globals: { viewport: { value: 'mobile' } } };

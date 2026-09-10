@@ -176,6 +176,7 @@
         "avatarUrl": null,
         "email": "student.active@together.dev",
         "emailVerified": true,
+        "hasPassword": false,
         "impersonation": null,
         "name": "Active Student",
         "tenant": {
@@ -190,6 +191,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-15a98ce40564caec"
       }
     },

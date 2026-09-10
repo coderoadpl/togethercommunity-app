@@ -378,6 +378,7 @@
         "avatarUrl": null,
         "email": "creator@together.dev",
         "emailVerified": true,
+        "hasPassword": true,
         "impersonation": null,
         "name": "Studio Creator",
         "tenant": {
@@ -392,6 +393,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
     },

@@ -271,6 +271,8 @@ export const meOutputSchema = z.object({
   email: z.string(),
   name: z.string(),
   emailVerified: z.boolean(),
+  hasPassword: z.boolean().default(false),
+  twoFactorEnabled: z.boolean().default(false),
   avatarUrl: z.string().nullable().default(null),
   tenant: z
     .object({

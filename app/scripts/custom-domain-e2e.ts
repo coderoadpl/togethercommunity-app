@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { en } from '../apps/web/src/i18n/en.js';
@@ -8,8 +8,10 @@ import pg from 'pg';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
 import { z } from 'zod';
 
+import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
-import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+import { API_PATHS } from '#core/contract/index.js';
+import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -20,7 +22,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
-import { signInWithPassword } from './login-flow.js';
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -29,6 +31,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const CUSTOM_HOST = 'course.acme.localhost';
 const TENANT_HOST = 'acme.localhost';
 const CREATOR_PASSWORD = 'demo-password-15';
+const PROTECTED_LESSON_PATH = '/my/courses/course-acme/lessons/lesson-acme-intro';
 
 const E2E_DB = uniqueTestDatabaseName('together_custom_domain_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
@@ -41,6 +44,44 @@ class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
 }
+
+interface HostResponse {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: string;
+}
+
+const devMagicLinkSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    magicLink: z.object({
+      email: z.string(),
+      url: z.string().url(),
+      token: z.string(),
+    }).nullable(),
+  }),
+});
+
+const authErrorSchema = z.object({ code: z.string() });
+
+const meSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    email: z.string(),
+    tenant: z.object({
+      name: z.string(),
+      memberId: z.string().nullable(),
+    }).nullable(),
+  }),
+});
+
+const parseJson = (body: string): unknown => {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+};
 
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
@@ -102,6 +143,116 @@ const launchBrowser = (): Promise<Browser> => chromium.launch(
 
 const sessionCookies = async (context: BrowserContext) =>
   (await context.cookies()).filter((cookie) => cookie.name.endsWith('session_token'));
+
+const requestWithHost = (
+  connectUrl: string,
+  path: string,
+  host: string,
+  init: {
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: string;
+  } = {},
+): Promise<HostResponse> =>
+  new Promise((resolve, reject) => {
+    const target = new URL(path, connectUrl);
+    const headers: Record<string, string> = { host, ...(init.headers ?? {}) };
+    if (init.body !== undefined) headers['content-length'] = String(Buffer.byteLength(init.body));
+    const request = httpRequest(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        method: init.method ?? 'GET',
+        path: `${target.pathname}${target.search}`,
+        headers,
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => {
+          body += chunk;
+        });
+        response.on('end', () => resolve({
+          status: response.statusCode ?? 0,
+          headers: response.headers,
+          body,
+        }));
+      },
+    );
+    request.on('error', reject);
+    if (init.body !== undefined) request.write(init.body);
+    request.end();
+  });
+
+const postMagicLink = async (
+  connectUrl: string,
+  input: { host: string; origin: string; email: string; callbackURL: string },
+): Promise<HostResponse> =>
+  requestWithHost(connectUrl, BETTER_AUTH_MAGIC_LINK_PATH, input.host, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: input.origin,
+    },
+    body: JSON.stringify({ email: input.email, callbackURL: input.callbackURL }),
+  });
+
+const readMagicLink = async (connectUrl: string, host: string, email: string): Promise<string> => {
+  const response = await requestWithHost(
+    connectUrl,
+    `${API_PATHS.devMagicLink}?email=${encodeURIComponent(email)}`,
+    host,
+  );
+  assert(response.status === 200, `dev magic-link read failed (HTTP ${response.status}): ${response.body}`);
+  const parsed = devMagicLinkSchema.parse(parseJson(response.body));
+  const magicLink = parsed.data.magicLink;
+  assert(magicLink !== null, `no dev magic link was stored for ${email}`);
+  return magicLink.url;
+};
+
+const setCookieValues = (headers: IncomingHttpHeaders): string[] => {
+  const value = headers['set-cookie'];
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
+const sessionCookiePair = (headers: IncomingHttpHeaders): string => {
+  const cookie = setCookieValues(headers).find((entry) =>
+    entry.includes('better-auth.session_token=') && !entry.includes('Max-Age=0'));
+  assert(cookie !== undefined, `magic-link callback did not set a session cookie: ${JSON.stringify(headers)}`);
+  const pair = cookie.split(';')[0] ?? '';
+  assert(pair.includes('='), `session cookie was malformed: ${cookie}`);
+  return pair;
+};
+
+const addSessionCookie = async (
+  context: BrowserContext,
+  customBaseUrl: string,
+  cookiePair: string,
+): Promise<void> => {
+  const separator = cookiePair.indexOf('=');
+  assert(separator > 0, `session cookie pair was malformed: ${cookiePair}`);
+  await context.addCookies([{
+    name: cookiePair.slice(0, separator),
+    value: cookiePair.slice(separator + 1),
+    url: customBaseUrl,
+    httpOnly: true,
+    secure: false,
+  }]);
+};
+
+const followMagicLinkWithHost = async (
+  connectUrl: string,
+  link: string,
+): Promise<HostResponse> => {
+  const url = new URL(link);
+  return requestWithHost(connectUrl, `${url.pathname}${url.search}`, CUSTOM_HOST);
+};
+
+const customHttpsOrigin = (connectUrl: string): string => {
+  const port = new URL(connectUrl).port;
+  return port === '' ? `https://${CUSTOM_HOST}` : `https://${CUSTOM_HOST}:${port}`;
+};
 
 const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
@@ -189,6 +340,117 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
       'passkey sign-in on the custom host did not open the Acme workspace',
     );
     console.log('custom-domain-e2e: passkey ceremony on the custom host OK');
+    await context.close();
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
+const runCustomDomainMagicLink = async (
+  connectUrl: string,
+  tenantBaseUrl: string,
+): Promise<void> => {
+  const customOrigin = customHttpsOrigin(connectUrl);
+  const callbackURL = `${customOrigin}/login?verification=verified`;
+  const request = await postMagicLink(connectUrl, {
+    host: CUSTOM_HOST,
+    origin: customOrigin,
+    email: SMOKE_TENANT_MEMBER_EMAIL,
+    callbackURL,
+  });
+  assert(request.status === 200, `custom-domain magic-link request failed (HTTP ${request.status}): ${request.body}`);
+
+  const link = await readMagicLink(connectUrl, CUSTOM_HOST, SMOKE_TENANT_MEMBER_EMAIL);
+  const linkUrl = new URL(link);
+  assert(linkUrl.origin === customOrigin, `magic-link origin was ${linkUrl.origin}, expected ${customOrigin}`);
+  assert(
+    linkUrl.origin !== new URL(tenantBaseUrl).origin,
+    `magic-link origin fell back to the tenant subdomain: ${link}`,
+  );
+
+  const verified = await followMagicLinkWithHost(connectUrl, link);
+  assert(verified.status === 302, `custom-domain magic-link callback returned HTTP ${verified.status}: ${verified.body}`);
+  const location = verified.headers.location;
+  assert(location !== undefined, 'custom-domain magic-link callback did not redirect');
+  assert(
+    new URL(location, customOrigin).origin === customOrigin,
+    `custom-domain magic-link callback redirected outside the custom origin: ${location}`,
+  );
+
+  const cookie = sessionCookiePair(verified.headers);
+  const me = await requestWithHost(connectUrl, API_PATHS.me, CUSTOM_HOST, {
+    headers: { cookie },
+  });
+  assert(me.status === 200, `custom-domain session did not authorize /api/me (HTTP ${me.status}): ${me.body}`);
+  const parsed = meSchema.parse(parseJson(me.body));
+  assert(parsed.data.email === SMOKE_TENANT_MEMBER_EMAIL, `custom-domain session resolved ${parsed.data.email}`);
+  assert(parsed.data.tenant?.name === 'Acme Courses', 'custom-domain session did not resolve the Acme tenant');
+  assert(parsed.data.tenant.memberId !== null, 'custom-domain session did not resolve a member identity');
+  console.log('custom-domain-e2e: custom-domain-magic-link OK');
+};
+
+const runCustomDomainMagicLinkCrossOriginRejected = async (
+  connectUrl: string,
+  tenantBaseUrl: string,
+): Promise<void> => {
+  const response = await postMagicLink(connectUrl, {
+    host: CUSTOM_HOST,
+    origin: customHttpsOrigin(connectUrl),
+    email: SMOKE_TENANT_MEMBER_EMAIL,
+    callbackURL: `${tenantBaseUrl}/login?verification=verified`,
+  });
+  assert(response.status === 400, `cross-origin magic-link request returned HTTP ${response.status}: ${response.body}`);
+  const parsed = authErrorSchema.parse(parseJson(response.body));
+  assert(
+    parsed.code === 'INVALID_MAGIC_LINK_CALLBACK_ORIGIN',
+    `cross-origin magic-link request returned ${parsed.code}`,
+  );
+  console.log('custom-domain-e2e: custom-domain-magic-link-cross-origin-rejected OK');
+};
+
+const runCustomDomainReturnTo = async (
+  connectUrl: string,
+  customBaseUrl: string,
+): Promise<void> => {
+  let browser: Browser | null = null;
+  try {
+    browser = await launchBrowser();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${customBaseUrl}${PROTECTED_LESSON_PATH}`, { waitUntil: 'networkidle' });
+    await page.waitForURL(
+      (url) =>
+        url.origin === new URL(customBaseUrl).origin &&
+        url.pathname === '/login' &&
+        url.searchParams.get('returnTo') === PROTECTED_LESSON_PATH,
+      { timeout: 20000 },
+    );
+    await requestMagicLink(page, SMOKE_TENANT_MEMBER_EMAIL);
+    const devLink = page.getByTestId('open-magic-link');
+    await devLink.waitFor({ state: 'visible', timeout: 20000 });
+    const href = await devLink.getAttribute('href');
+    assert(href !== null, 'returnTo dev magic link was missing');
+
+    const verified = await followMagicLinkWithHost(connectUrl, href);
+    assert(verified.status === 302, `returnTo magic-link callback returned HTTP ${verified.status}: ${verified.body}`);
+    const location = verified.headers.location;
+    assert(location !== undefined, 'returnTo magic-link callback did not redirect');
+    const callback = new URL(location, customBaseUrl);
+    assert(
+      callback.origin === new URL(customBaseUrl).origin,
+      `returnTo magic-link callback left the custom host: ${location}`,
+    );
+    await addSessionCookie(context, customBaseUrl, sessionCookiePair(verified.headers));
+    await page.goto(callback.toString(), { waitUntil: 'networkidle' });
+    await page.waitForURL(
+      (url) => url.origin === new URL(customBaseUrl).origin && url.pathname === PROTECTED_LESSON_PATH,
+      { timeout: 20000 },
+    );
+    assert(
+      page.url() === `${customBaseUrl}${PROTECTED_LESSON_PATH}`,
+      `custom-domain returnTo landed at ${page.url()}`,
+    );
+    console.log('custom-domain-e2e: custom-domain-return-to OK');
     await context.close();
   } finally {
     if (browser) await browser.close();
@@ -386,6 +648,9 @@ try {
   });
   await runCustomHostSignIn(customBaseUrl, tenantBaseUrl);
   await runCustomHostPasskey(customBaseUrl);
+  await runCustomDomainMagicLink(connectUrl, tenantBaseUrl);
+  await runCustomDomainMagicLinkCrossOriginRejected(connectUrl, tenantBaseUrl);
+  await runCustomDomainReturnTo(connectUrl, customBaseUrl);
   await runStudioDomainStatus(tenantBaseUrl);
   await runSelfServeAdd({ tenantBaseUrl, connectUrl, databaseUrl: e2eDatabaseUrl });
   console.log(`\ncustom-domain-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

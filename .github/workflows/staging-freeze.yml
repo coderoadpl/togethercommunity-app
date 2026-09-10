@@ -1,0 +1,27 @@
+name: staging-freeze
+
+on:
+  pull_request:
+    branches: [staging]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [staging-unfreeze]
+
+permissions:
+  contents: read
+
+jobs:
+  staging-freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check staging freeze
+        env:
+          STAGING_FREEZE: ${{ vars.STAGING_FREEZE }}
+        run: |
+          if [ "$STAGING_FREEZE" = "true" ]; then
+            echo "::error::staging is frozen for a promotion (STAGING_FREEZE=true); merges resume when the variable is cleared"
+            exit 1
+          fi
+          echo "staging open"

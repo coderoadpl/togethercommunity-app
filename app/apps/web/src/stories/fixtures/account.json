@@ -78,7 +78,7 @@
         "avatarUrl": null,
         "email": "student.active@together.dev",
         "emailVerified": true,
-        "hasPassword": true,
+        "hasPassword": false,
         "impersonation": null,
         "name": "Active Student",
         "tenant": {

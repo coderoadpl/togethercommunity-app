@@ -45,6 +45,7 @@
         "avatarUrl": null,
         "email": "student.module@together.dev",
         "emailVerified": true,
+        "hasPassword": false,
         "impersonation": null,
         "name": "Module Student",
         "tenant": {
@@ -59,6 +60,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-43ca0079893f3efc"
       }
     },

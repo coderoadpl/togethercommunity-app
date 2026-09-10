@@ -55,6 +55,7 @@
         "avatarUrl": null,
         "email": "kontakt+smoke-member@togethercommunity.app",
         "emailVerified": true,
+        "hasPassword": true,
         "impersonation": null,
         "name": "Smoke Member",
         "tenant": {
@@ -69,6 +70,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
+        "twoFactorEnabled": false,
         "userId": "fixture-user-f4c8ea3c4b395b33"
       }
     },

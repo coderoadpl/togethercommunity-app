@@ -1268,7 +1268,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
       quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
-      hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
+      hmac: deps.marketing.hmac, tenants: deps.tenants, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
       scheduler: deps.marketing.scheduler,
       runs: deps.marketing.runs,

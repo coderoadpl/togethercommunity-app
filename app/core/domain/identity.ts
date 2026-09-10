@@ -6,7 +6,7 @@ export const staffRoleSchema = z.enum(['owner', 'admin']);
 
 export type StaffRole = z.infer<typeof staffRoleSchema>;
 
-export const signInMethodSchema = z.enum(['password', 'magic-link']);
+export const signInMethodSchema = z.enum(['password', 'magic-link', 'passkey']);
 
 export type SignInMethod = z.infer<typeof signInMethodSchema>;
 

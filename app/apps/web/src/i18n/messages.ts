@@ -169,10 +169,11 @@ export interface Messages {
     methodMagicLinkTitle: string;
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
-    passwordNotNeeded: string;
     methodPasswordBody: string;
+    methodPasswordDisabledTooltip: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
+    methodPasskeyDisabledTooltip: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;

@@ -6,13 +6,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
+import type { Language } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { validateLoginSearch } from '../../lib/auth-return.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
-import { ThemeModeProvider } from '../../theme-mode.js';
+import { languagePreference, ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 import { LoginPage } from './LoginPage.js';
 
@@ -86,6 +90,7 @@ const renderLoginPage = async (
   publicCourseIds: readonly string[] = [],
   meHandler = anonymousMe(),
   googleClientId: string | null = null,
+  language?: Language,
 ) => {
   stubAuthConfig(exposeMagicLinks, googleClientId);
   stubPublicNavigation(publicCourseIds);
@@ -136,11 +141,15 @@ const renderLoginPage = async (
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
+  if (language !== undefined) languagePreference.save(language);
+  const page = (
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>
+  );
   return {
     ...renderWithProviders(
-      <ThemeModeProvider>
-        <RouterProvider router={router} />
-      </ThemeModeProvider>,
+      language === undefined ? page : <LanguageProvider>{page}</LanguageProvider>,
     ),
     router,
   };
@@ -150,6 +159,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
+  window.localStorage.clear();
   delete window.google;
 });
 
@@ -161,6 +171,13 @@ const continueWithEmail = async (email = 'creator@together.dev') => {
 const fillCredentials = async () => {
   await continueWithEmail();
   await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
+};
+
+const tabTo = async (target: HTMLElement) => {
+  for (let index = 0; index < 20 && document.activeElement !== target; index += 1) {
+    await userEvent.tab();
+  }
+  expect(target).toHaveFocus();
 };
 
 describe('LoginPage', () => {
@@ -554,19 +571,79 @@ describe('LoginPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('opens the magic-link step for a passwordless account', async () => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link']);
+  it.each([
+    {
+      label: 'both available',
+      methods: ['password', 'passkey', 'magic-link'],
+      passwordAvailable: true,
+      passkeyAvailable: true,
+    },
+    {
+      label: 'password only',
+      methods: ['password', 'magic-link'],
+      passwordAvailable: true,
+      passkeyAvailable: false,
+    },
+    {
+      label: 'passkey only',
+      methods: ['passkey', 'magic-link'],
+      passwordAvailable: false,
+      passkeyAvailable: true,
+    },
+    {
+      label: 'none',
+      methods: ['magic-link'],
+      passwordAvailable: false,
+      passkeyAvailable: false,
+    },
+  ])('renders all method cards with resolved availability: $label', async ({
+    methods,
+    passwordAvailable,
+    passkeyAvailable,
+  }) => {
+    await renderLoginPage(false, '/login', undefined, methods);
     await continueWithEmail('learner@together.dev');
 
-    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toBeInTheDocument();
-    expect(screen.getByText(en.auth.methodMagicLinkBody)).toBeInTheDocument();
+    const cards = await screen.findAllByRole('listitem');
+    expect(cards.map((card) => card.textContent)).toEqual([
+      expect.stringContaining(en.auth.methodMagicLinkTitle),
+      expect.stringContaining(en.auth.methodPasswordTitle),
+      expect.stringContaining(en.auth.methodPasskeyTitle),
+    ]);
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
     expect(screen.getByTestId('login-identity')).toHaveTextContent('learner@together.dev');
-    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
-    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('use-password')).not.toBeInTheDocument();
-    expect(screen.getByText(en.auth.passwordNotNeeded)).toBeInTheDocument();
-    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
+
+    const passwordCard = screen.getByTestId('use-password');
+    const passkeyCard = screen.getByTestId('signin-passkey');
+    if (passwordAvailable) {
+      expect(passwordCard).not.toHaveAttribute('aria-disabled');
+    } else {
+      expect(passwordCard).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(passwordCard);
+      expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    }
+    if (passkeyAvailable) {
+      expect(passkeyCard).not.toHaveAttribute('aria-disabled');
+    } else {
+      expect(passkeyCard).toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('shows disabled method tooltips in $language', async ({ language, t }) => {
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'learner@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
+
+    const passwordCard = await screen.findByTestId('use-password');
+    await tabTo(passwordCard);
+    expect(await screen.findByText(t.auth.methodPasswordDisabledTooltip)).toBeInTheDocument();
+
+    const passkeyCard = screen.getByTestId('signin-passkey');
+    await tabTo(passkeyCard);
+    expect(await screen.findByText(t.auth.methodPasskeyDisabledTooltip)).toBeInTheDocument();
   });
 
   it('answers an unknown address exactly like a passwordless account', async () => {
@@ -576,10 +653,12 @@ describe('LoginPage', () => {
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
     expect(screen.getByTestId('login-identity')).toHaveTextContent('nobody@example.com');
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('signin-passkey')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('offers password when reported, with the link card first', async () => {
-    await renderLoginPage(false, '/login', undefined, ['password']);
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link']);
     await continueWithEmail();
 
     const cards = await screen.findAllByRole('listitem');
@@ -589,7 +668,6 @@ describe('LoginPage', () => {
       expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
@@ -652,6 +730,7 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('choose-password')).toHaveTextContent(
       en.auth.signInMethodsChoosePassword,
     );
+    expect(screen.queryByTestId('choose-passkey')).not.toBeInTheDocument();
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
@@ -695,9 +774,8 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('choose-magic-link'));
 
     expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).toBeInTheDocument();
-    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
-    expect(screen.queryByText(en.auth.passwordNotNeeded)).not.toBeInTheDocument();
+    expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 

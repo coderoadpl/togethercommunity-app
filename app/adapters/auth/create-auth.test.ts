@@ -1075,10 +1075,30 @@ describe('createAuthPort.requestMagicLink', () => {
     expect(link).not.toBeNull();
     expect(new URL(link?.url ?? '').host).toBe('studio.localhost:48730');
     expect(link?.url).toContain('/api/auth/magic-link/verify');
+    expect(new URL(link?.url ?? '').searchParams.get('callbackURL'))
+      .toBe('http://studio.localhost:48730/my');
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Sign in to Studio');
     expect(message?.html).toContain('studio.localhost:48730');
+  });
+
+  it('rebases a platform request onto the platform host and returns to its picker', async () => {
+    const { authPort, magicLinks } = buildAuth();
+    const email = `magic-platform-${Date.now()}@together.dev`;
+
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://start.localhost:48730/',
+      language: 'en',
+      baseUrl: 'http://start.localhost:48730',
+    });
+
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const parsed = new URL(link?.url ?? '');
+    expect(parsed.host).toBe('start.localhost:48730');
+    expect(parsed.pathname).toBe('/api/auth/magic-link/verify');
+    expect(parsed.searchParams.get('callbackURL')).toBe('http://start.localhost:48730/');
   });
 
   it('sends an English email when the requested language is en', async () => {

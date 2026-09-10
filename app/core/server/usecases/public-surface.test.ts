@@ -153,6 +153,7 @@ const navigationDeps = (input: {
     findSettings: async () => ({
       name: tenant.name,
       socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,

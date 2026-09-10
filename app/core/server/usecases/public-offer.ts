@@ -32,6 +32,7 @@ export interface PublicOffer {
   tenant: {
     slug: string;
     name: string;
+    signInNotice: { enabled: boolean; text: string };
     branding: TenantBranding;
     socialLinks: TenantSocialLink[];
     legal: LegalUrls;
@@ -110,6 +111,7 @@ export const getPublicOffer = async (
     tenant: {
       slug: tenant.slug,
       name: tenant.name,
+      signInNotice: settings?.signInNotice ?? { enabled: false, text: '' },
       branding:
         settings === null
           ? EMPTY_TENANT_BRANDING

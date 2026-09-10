@@ -9,6 +9,7 @@ import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from
 const settings: TenantSettings = {
   name: 'Alpha',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,

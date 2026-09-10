@@ -59,6 +59,8 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
 export const BETTER_AUTH_SIGN_OUT_PATH = '/api/auth/sign-out';
 
+export const BETTER_AUTH_PASSWORD_SIGN_IN_PATH = '/api/auth/sign-in/email';
+
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
 export const BETTER_AUTH_SIGN_UP_PATH = '/api/auth/sign-up/email';
@@ -473,6 +475,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   const cookieDomain = sharedCookieDomain(settings);
 
   const auth = betterAuth({
+    logger: { level: 'error' },
     database: drizzleAdapter(db, { provider: 'pg' }),
     secret: settings.secret,
     baseURL: settings.baseUrl,

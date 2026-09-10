@@ -61,7 +61,7 @@ export interface AuthClientPort {
   registerPasskey(input: { name: string; password: string }): Promise<WriteResult<void>>;
   listPasskeys(): Promise<ReadResult<PasskeyInfo[]>>;
   removePasskey(input: { id: string; password: string }): Promise<WriteResult<void>>;
-  signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;
+  signInWithPasskey(options?: { autoFill?: boolean }): Promise<WriteResult<AuthSessionResult>>;
   enableTwoFactor(password: string): Promise<WriteResult<TwoFactorEnrollment>>;
   verifyTotp(code: string): Promise<WriteResult<AuthSessionResult>>;
   verifyBackupCode(code: string): Promise<WriteResult<AuthSessionResult>>;

@@ -5,6 +5,7 @@ import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
 
 import {
+  signInNoticeSchema,
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
@@ -374,6 +375,7 @@ export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
     name: z.string(),
+    signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
     branding: tenantBrandingSchema.default({}),
     socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),

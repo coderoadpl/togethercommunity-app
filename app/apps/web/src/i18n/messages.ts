@@ -2344,6 +2344,8 @@ export interface Messages {
     allSends: string;
     exportCsv: string;
     exporting: string;
+    showSendLogDetails: string;
+    hideSendLogDetails: string;
     runIdFilter: string;
     clearRunFilter: string;
     all: string;
@@ -2370,6 +2372,8 @@ export interface Messages {
     deliveryDelivered: string;
     deliveryBounced: string;
     deliveryComplained: string;
+    sendBouncedAlert: (params: { date: string }) => string;
+    sendComplainedAlert: (params: { date: string }) => string;
     statusQueued: string;
     statusPending: string;
     statusSending: string;
@@ -2383,9 +2387,14 @@ export interface Messages {
     rawMeta: string;
     sesMessageId: string;
     skipReason: string;
-    bounceClassification: string;
+    suppressionReason: string;
+    bounceTypeLabel: string;
+    bounceProviderType: string;
+    bounceSubType: string;
+    diagnosticCode: string;
     clickedLink: string;
     eventError: string;
+    unknownReason: string;
     eventTypes: Record<
       'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
       | 'skipped' | 'failed' | 'retried' | 'uncertain' | 'suppressed_written' | 'unsubscribed',
@@ -2691,5 +2700,7 @@ export interface Messages {
     identityErrorThrottling: string;
     identityErrorUnknown: string;
     skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
+    suppressionReasons: Record<'hard_bounce' | 'complaint' | 'manual' | 'unsubscribe_global' | 'erasure', string>;
+    bounceClassifications: Record<'soft' | 'hard' | 'unresolved' | 'complaint', string>;
   };
 }

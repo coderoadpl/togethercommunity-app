@@ -52,6 +52,9 @@ export const formatTime = (value: string, language: string): string =>
 export const formatDateTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 
+export const formatDateTimeWithSeconds = (value: string, language: string): string =>
+  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
+
 export const formatFileSize = (bytes: number, language: string): string => {
   const units = [
     { threshold: 1024 * 1024 * 1024, divisor: 1024 * 1024 * 1024, label: 'GB' },

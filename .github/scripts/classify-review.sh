@@ -29,6 +29,7 @@ if [ -n "${raw//[[:space:]]/}" ]; then
     select(type == "object")
     | select((.verdict == "PASS") or (.verdict == "FAIL"))
     | select((.summary | type) == "string" and (.summary | test("\\S")))
+    | select((.tldr == null) or ((.tldr | type) == "string"))
     | select((.blocking_issues | type) == "array")
     | select(all(.blocking_issues[]; type == "string" and test("\\S")))
     | select((.safe_to_merge | type) == "boolean")

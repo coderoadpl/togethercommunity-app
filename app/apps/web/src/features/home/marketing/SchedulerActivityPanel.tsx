@@ -17,12 +17,12 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Link, Navigate, useParams } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import type { SchedulerRunKind, SchedulerRunStatus } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerActivitySummary.js';
 
@@ -33,6 +33,32 @@ const isRunKind = (value: string): value is SchedulerRunKind =>
 
 const isRunStatus = (value: string): value is SchedulerRunStatus =>
   value === 'running' || value === 'completed' || value === 'failed';
+
+const SCHEDULER_LOCALES: Record<string, string> = { pl: 'pl-PL', en: 'en-GB' };
+
+const schedulerLocaleFor = (language: string): string => SCHEDULER_LOCALES[language] ?? language;
+
+const formatSchedulerDateTime = (value: string, language: string): string =>
+  new Intl.DateTimeFormat(schedulerLocaleFor(language), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
+
+const formatSchedulerDuration = (durationMs: number, language: string): string => {
+  const numberFormat = new Intl.NumberFormat(schedulerLocaleFor(language), { maximumFractionDigits: 1 });
+  if (durationMs < 1_000) return `${numberFormat.format(durationMs)} ms`;
+  const seconds = durationMs / 1_000;
+  if (seconds < 60) return `${numberFormat.format(seconds)} s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds - minutes * 60;
+  if (minutes < 60) return `${numberFormat.format(minutes)} min ${numberFormat.format(remainingSeconds)} s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes - hours * 60;
+  return `${numberFormat.format(hours)} h ${numberFormat.format(remainingMinutes)} min`;
+};
+
+const failedSendsPath = (runId: string): string =>
+  `/panel/marketing/sends?runId=${encodeURIComponent(runId)}&status=failed`;
+
+const isNotFoundError = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 export const SchedulerActivityPanel = () => {
   const t = useTranslations();
@@ -65,10 +91,15 @@ export const SchedulerActivityPanel = () => {
         <SchedulerActivitySummary
           runs={{ label: t.marketing.activity.runsLast24Hours, value: String(summary.runsLast24Hours) }}
           sent={{ label: t.marketing.activity.sentLast24Hours, value: String(summary.sentLast24Hours) }}
-          failed={{ label: t.marketing.activity.failedLast24Hours, value: String(summary.failedLast24Hours) }}
+          failed={{
+            label: t.marketing.activity.failedLast24Hours,
+            value: String(summary.failedLast24Hours),
+            count: summary.failedLast24Hours,
+            to: '/panel/marketing/sends?status=failed',
+          }}
           lastRun={{
             label: t.marketing.activity.lastRun,
-            value: lastRun === null ? t.marketing.activity.noLastRun : formatDateTime(lastRun.startedAt, language),
+            value: lastRun === null ? t.marketing.activity.noLastRun : formatSchedulerDateTime(lastRun.startedAt, language),
             ...(lastRun === null
               ? {}
               : { status: lastRun.status, statusLabel: t.marketing.activity.statuses[lastRun.status] }),
@@ -182,8 +213,8 @@ export const SchedulerActivityPanel = () => {
                   <TableRow key={run.id} data-testid="scheduler-activity-row">
                     <TableCell><Chip size="small" variant="outlined" label={t.marketing.activity.kinds[run.kind]} /></TableCell>
                     <TableCell>{t.marketing.activity.triggers[run.trigger]}</TableCell>
-                    <TableCell>{formatDateTime(run.startedAt, language)}</TableCell>
-                    <TableCell>{run.durationMs === null ? '—' : t.marketing.activity.milliseconds({ value: run.durationMs })}</TableCell>
+                    <TableCell>{formatSchedulerDateTime(run.startedAt, language)}</TableCell>
+                    <TableCell>{run.durationMs === null ? '—' : formatSchedulerDuration(run.durationMs, language)}</TableCell>
                     <TableCell>{run.kind === 'consent_evidence_purge'
                       ? t.marketing.activity.purgeCount({ purged: tenant.purged ?? 0 })
                       : t.marketing.activity.counts(tenant)}</TableCell>
@@ -214,11 +245,30 @@ export const SchedulerActivityDetailPage = () => {
   });
 
   if (runId === undefined) return <Navigate to="/panel/marketing/activity" />;
+  const detailTitle = t.marketing.activity.detailTitle({ runId });
   if (detail.isPending) {
-    return <PanelPage title={t.marketing.activity.details} state={{ kind: 'loading', label: t.marketing.activity.loading }} />;
+    return <PanelPage title={detailTitle} state={{ kind: 'loading', label: t.marketing.activity.loading }} />;
   }
   if (detail.isError) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
+    if (isNotFoundError(detail.error)) {
+      return (
+        <PanelPage title={detailTitle} backTo={<PanelBackLink to="/panel/marketing/activity">{t.marketing.activity.allRuns}</PanelBackLink>}>
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: t.marketing.activity.runNotFoundTitle,
+              body: t.marketing.activity.runNotFoundBody,
+              action: (
+                <Button component={Link} variant="outlined" to="/panel/marketing/activity">
+                  {t.marketing.activity.backToRuns}
+                </Button>
+              ),
+            }}
+          />
+        </PanelPage>
+      );
+    }
+    return <PanelPage title={detailTitle}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
   }
 
   const { run, tenant } = detail.data;
@@ -233,12 +283,12 @@ export const SchedulerActivityDetailPage = () => {
           {[
             [t.marketing.activity.runId, run.id],
             [t.marketing.activity.trigger, t.marketing.activity.triggers[run.trigger]],
-            [t.marketing.activity.started, formatDateTime(run.startedAt, language)],
+            [t.marketing.activity.started, formatSchedulerDateTime(run.startedAt, language)],
             [
               t.marketing.activity.finished,
-              run.finishedAt === null ? '—' : formatDateTime(run.finishedAt, language),
+              run.finishedAt === null ? '—' : formatSchedulerDateTime(run.finishedAt, language),
             ],
-            [t.marketing.activity.duration, run.durationMs === null ? '—' : t.marketing.activity.milliseconds({ value: run.durationMs })],
+            [t.marketing.activity.duration, run.durationMs === null ? '—' : formatSchedulerDuration(run.durationMs, language)],
             ...(run.error === null ? [] : [[t.marketing.activity.runError, run.error]]),
           ].map(([label, value]) => (
             <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.25rem">
@@ -265,13 +315,22 @@ export const SchedulerActivityDetailPage = () => {
           ))}
         </Stack>
         <Typography variant="h3" sx={{ mt: '1.25rem', mb: '0.5rem' }}>{t.marketing.activity.errors}</Typography>
-        {tenant.errors.length === 0
-          ? <Typography color="text.secondary">{t.marketing.activity.noErrors}</Typography>
-          : (
+        {tenant.errors.length > 0
+          ? (
             <Stack component="ul" useFlexGap spacing="0.35rem" sx={{ m: 0, pl: '1.25rem' }}>
               {tenant.errors.map((error, index) => <Typography component="li" key={`${String(index)}:${error}`}>{error}</Typography>)}
             </Stack>
-          )}
+          )
+          : tenant.failed > 0
+            ? (
+              <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+                <Typography color="text.secondary">{t.marketing.activity.failedWithoutRecordedErrors}</Typography>
+                <Button component={Link} variant="outlined" to={failedSendsPath(run.id)}>
+                  {t.marketing.activity.viewFailedSends}
+                </Button>
+              </Stack>
+            )
+            : <Typography color="text.secondary">{t.marketing.activity.noErrors}</Typography>}
       </SectionCard>
       {run.kind === 'consent_evidence_purge' ? null : (
         <Button component={Link} variant="outlined" to={`/panel/marketing/sends?runId=${encodeURIComponent(run.id)}`}>

@@ -116,6 +116,28 @@ describe('sends panel scheduler run filter', () => {
     });
     expect(router.state.location.search).toEqual({});
   });
+
+  it('loads a linked failed status filter', async () => {
+    const requests: string[] = [];
+    server.use(
+      http.get('/api/marketing/campaigns', () =>
+        HttpResponse.json({ ok: true, data: { campaigns: [] } })),
+      http.get('/api/marketing/sends', ({ request }) => {
+        requests.push(request.url);
+        return HttpResponse.json({ ok: true, data: { sends: [], nextCursor: null } });
+      }),
+    );
+
+    await renderSendsPanel('/panel/marketing/sends?runId=run-linked&status=failed');
+
+    expect(await screen.findByLabelText(en.marketing.runIdFilter)).toHaveValue('run-linked');
+    await waitFor(() => {
+      expect(requests.some((request) => {
+        const params = new URL(request).searchParams;
+        return params.get('runId') === 'run-linked' && params.get('status') === 'failed';
+      })).toBe(true);
+    });
+  });
 });
 
 describe('sends panel delivery rendering', () => {

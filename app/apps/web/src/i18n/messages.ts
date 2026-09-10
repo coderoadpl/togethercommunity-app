@@ -2146,6 +2146,10 @@ export interface Messages {
     result: string;
     fileHint: string;
     file: string;
+    chooseFile: string;
+    dropFile: string;
+    downloadSample: string;
+    encodingError: string;
     delimiter: string;
     auto: string;
     comma: string;
@@ -2154,6 +2158,24 @@ export interface Messages {
     parseError: string;
     ignoreColumn: string;
     unknownColumns: string;
+    previewHint: string;
+    importFields: {
+      email: string;
+      name: string;
+      firstName: string;
+      lastName: string;
+      tags: string;
+      source: string;
+      consentSource: string;
+      consentAt: string;
+      lists: string;
+      reason: string;
+      at: string;
+    };
+    importErrors: {
+      emailMissing: string;
+      emailInvalid: string;
+    };
     validate: string;
     previewStale: string;
     next: string;
@@ -2375,6 +2397,7 @@ export interface Messages {
       failedLast24Hours: string;
       lastRun: string;
       noLastRun: string;
+      detailTitle: (params: { runId: string }) => string;
       runId: string;
       runError: string;
       runKind: string;
@@ -2392,7 +2415,12 @@ export interface Messages {
       budget: string;
       errors: string;
       noErrors: string;
+      failedWithoutRecordedErrors: string;
       viewSends: string;
+      viewFailedSends: string;
+      runNotFoundTitle: string;
+      runNotFoundBody: string;
+      backToRuns: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2631,6 +2659,18 @@ export interface Messages {
     sandboxWarning: string;
     broadcastsEnabled: string;
     broadcastsDisabled: string;
+    readinessOptional: string;
+    readinessAttentionItems: (input: { items: string }) => string;
+    readinessComplete: string;
+    identityCheckFailedChip: string;
+    identityCheckRetry: string;
+    identityCheckDetails: string;
+    identityVerifiedSince: (input: { checkedAt: string }) => string;
+    identityErrorInvalidClientTokenId: string;
+    identityErrorAccessDenied: string;
+    identityErrorSignatureDoesNotMatch: string;
+    identityErrorThrottling: string;
+    identityErrorUnknown: string;
     skipReasons: Record<'suppressed' | 'unsubscribed' | 'not_consented' | 'pending_confirmation' | 'contact_archived' | 'contact_address_changed', string>;
     suppressionReasons: Record<'hard_bounce' | 'complaint' | 'manual' | 'unsubscribe_global' | 'erasure', string>;
     bounceClassifications: Record<'soft' | 'hard' | 'unresolved' | 'complaint', string>;

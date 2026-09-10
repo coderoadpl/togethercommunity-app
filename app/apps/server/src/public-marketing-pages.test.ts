@@ -33,7 +33,11 @@ describe('public marketing pages', () => {
       nonce: 'test-nonce',
       brand, language: 'en', token: 'token_1234567890123456789012', email: 'member@example.test',
       scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
-      definitions: [{ id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false }],
+      definitions: [
+        { id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false },
+        { id: 'events', label: 'Event announcements', active: false, pendingConfirmation: true },
+        { id: 'offers', label: 'Partner offers', active: false, pendingConfirmation: false },
+      ],
     });
     expect(html).toContain('lang="en"');
     expect(html).toContain('/brand.svg');
@@ -43,7 +47,21 @@ describe('public marketing pages', () => {
     );
     expect(html).toContain('Unsubscribe me from this scope');
     expect(html).toContain('Unsubscribe me from everything from Studio Demo');
+    expect(html).toContain('name="present-consent" value="newsletter"');
+    expect(html).toContain('name="present-consent" value="events"');
+    expect(html).toContain('name="present-consent" value="offers"');
     expect(html).toContain('name="consent" value="newsletter" checked');
+    expect(html).toContain('name="consent" value="events" checked');
+    expect(html).toContain('name="consent" value="offers"');
+    expect(html).not.toContain('name="consent" value="offers" checked');
+    expect(html).toContain('Waiting for confirmation from the email we sent.');
+    const plHtml = renderPreferencesPage({
+      nonce: 'test-nonce',
+      brand, language: 'pl', token: 'token_1234567890123456789012', email: 'member@example.test',
+      scope: 'consent:events', scopeLabel: 'Event announcements', globallySuppressed: false,
+      definitions: [{ id: 'events', label: 'Event announcements', active: false, pendingConfirmation: true }],
+    });
+    expect(plHtml).toContain(publicMarketingMessagesPl.pendingConfirmation);
     expect(html).toContain('.brand img{display:block;width:auto;height:auto;min-width:0;max-width:min(10rem,100%)');
     expect(html).toContain('.languages{display:inline-flex;flex:none;gap:.125rem;padding:.1875rem;border:1px solid var(--line);');
     expect(html).toContain('.languages a{display:inline-flex');

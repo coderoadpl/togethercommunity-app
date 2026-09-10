@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { marketingConsentConfirmationPl } from './marketing-email.pl.js';
+import { marketingConsentConfirmationPl, marketingFooterCopyPl } from './marketing-email.pl.js';
 import {
   bounceAction,
   buildEmailHeaders,
@@ -13,6 +13,7 @@ import {
   deriveMarketingEligibility,
   emailLayoutSchema,
   liftSuppression,
+  marketingFooterCopy,
   consentConfirmationTokenSchema,
   marketingConsentConfirmation,
   marketingConsentCreatorSchema,
@@ -307,6 +308,21 @@ describe('SES identity freshness', () => {
         now,
       ),
     ).toBe('stale');
+  });
+});
+
+describe('marketing footer copy', () => {
+  it('uses Polish unsubscribe and consent basis copy for Polish tenants', () => {
+    expect(marketingFooterCopy('pl')).toEqual(marketingFooterCopyPl);
+  });
+
+  it('falls back to English for unsupported or missing languages', () => {
+    expect(marketingFooterCopy('de')).toEqual({
+      unsubscribe: 'Unsubscribe',
+      basisPrefix: 'You receive this message based on your consent: “',
+      basisSuffix: '”.',
+    });
+    expect(marketingFooterCopy(undefined).unsubscribe).toBe('Unsubscribe');
   });
 });
 

@@ -1401,6 +1401,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
   };
   const addDomain = useMutation({ ...actions.addTenantDomain, onSuccess: invalidate });
   const checkDomain = useMutation({ ...actions.checkTenantDomain, onSettled: invalidate });
+  const checkStorageCors = useMutation({ ...actions.checkTenantDomainStorageCors, onSettled: invalidate });
   const removeDomain = useMutation({
     ...actions.removeTenantDomain,
     onSuccess: async (result) => {
@@ -1409,7 +1410,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
       await invalidate();
     },
   });
-  const pending = addDomain.isPending || checkDomain.isPending || removeDomain.isPending;
+  const pending = addDomain.isPending || checkDomain.isPending || checkStorageCors.isPending || removeDomain.isPending;
   const busyWith = (
     mutation: { isPending: boolean; variables?: { domain: string } | undefined },
     domain: string,
@@ -1420,6 +1421,7 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
     addDomain.error === null ? null : domainErrorMessage(addDomain.error, t),
   );
   useToastError(checkDomain.error === null ? null : domainErrorMessage(checkDomain.error, t));
+  useToastError(checkStorageCors.error === null ? null : domainErrorMessage(checkStorageCors.error, t));
   useToastError(removeDomain.error === null ? null : domainErrorMessage(removeDomain.error, t));
 
   if (routing.isError) {
@@ -1545,13 +1547,32 @@ const TenantDomainsPanel = ({ canEdit }: { canEdit: boolean }) => {
               {entry.lastError === null ? null : (
                 <Typography variant="caption" color="error">{entry.lastError}</Typography>
               )}
-              {entry.verified && entry.storageCorsStatus !== 'ok' ? (
+              {entry.verified && entry.storageCorsStatus === 'blocked' ? (
                 <Typography variant="caption" data-testid={`tenant-domain-cors-hint-${entry.domain}`}>
                   {t.tenantDomains.storageCorsHint}
                   {' '}
                   <MuiLink component={Link} to="/panel/integrations" hash="storage">
                     {t.tenantDomains.storageCorsLink}
                   </MuiLink>
+                </Typography>
+              ) : null}
+              {entry.verified && entry.storageCorsStatus === 'unknown' ? (
+                <Typography variant="caption" data-testid={`tenant-domain-cors-unknown-${entry.domain}`}>
+                  {t.tenantDomains.storageCorsUnknown}
+                  {' '}
+                  <QuietActionLink
+                    component="button"
+                    type="button"
+                    variant="caption"
+                    underline="hover"
+                    disabled={!canEdit || pending}
+                    onClick={() => checkStorageCors.mutate({ domain: entry.domain })}
+                    data-testid={`tenant-domain-cors-check-${entry.domain}`}
+                  >
+                    {busyWith(checkStorageCors, entry.domain)
+                      ? t.tenantDomains.checking
+                      : t.tenantDomains.storageCorsCheck}
+                  </QuietActionLink>
                 </Typography>
               ) : null}
               <DomainRecords entry={entry} />

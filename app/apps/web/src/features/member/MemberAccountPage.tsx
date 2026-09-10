@@ -37,6 +37,7 @@ import { AccountSupportForm } from './AccountSupportForm.js';
 import { AccountExportCard } from './AccountExportCard.js';
 import { AccountErasureCard } from './AccountErasureCard.js';
 import { AccountAvatar } from './AccountAvatar.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
 
@@ -83,6 +84,7 @@ export const MemberAccountPage = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const search = useSearch({ strict: false });
   const me = useQuery(actions.me);
   const impersonating = useImpersonation() !== null;
@@ -181,8 +183,8 @@ export const MemberAccountPage = () => {
   const unauthorized = isUnauthorized(me.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
   const requestPasskeyPasswordSetup = useMutation(actions.requestPasswordReset);

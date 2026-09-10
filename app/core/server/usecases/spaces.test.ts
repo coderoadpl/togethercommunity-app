@@ -1077,7 +1077,7 @@ describe('space feed', () => {
     });
   });
 
-  it('hides legacy space roots after their last live reply is deleted', async () => {
+  it('keeps legacy space root tombstones after their last live reply is deleted', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const input = { contextKind: 'space', contextId: 's-open' } as const;
     const root = await createPost(ctx(), { ...input, body: 'Legacy root' }, f.deps);
@@ -1091,10 +1091,13 @@ describe('space feed', () => {
     delete stored.deletedByUserId;
     expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [{ id: root.value.id }] } });
     await deletePost(ctx(), { id: reply.value.id }, f.deps);
-    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({ ok: true, value: { items: [] } });
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true,
+      value: { items: [{ id: root.value.id, body: '[deleted-post]', replyCount: 0 }] },
+    });
   });
 
-  it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
+  it('frees the pin slot and keeps a deleted pinned post in the feed as a tombstone', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const created = await createPost(
       ctx(),
@@ -1121,13 +1124,15 @@ describe('space feed', () => {
       ok: true,
       value: {
         pinned: [],
-        items: [],
+        items: [{ id: created.value.id, body: '[deleted-post]', pinnedAt: null, replyCount: 0 }],
       },
     });
   });
 
   it.each([
+    { moderator: false, reply: false, deletedBy: 'author' },
     { moderator: false, reply: true, deletedBy: 'author' },
+    { moderator: true, reply: false, deletedBy: 'moderator' },
     { moderator: true, reply: true, deletedBy: 'moderator' },
   ] as const)('keeps $deletedBy tombstones in the space feed with reply=$reply', async ({ moderator, reply, deletedBy }) => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });

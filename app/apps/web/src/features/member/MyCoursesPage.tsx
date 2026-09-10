@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
 import { Box, Link, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link as RouterLink, useNavigate } from '@tanstack/react-router';
+import { Link as RouterLink } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { CourseCard } from './CourseCards.js';
 import type { CourseLessonCounts } from './course-progress.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -23,12 +24,12 @@ export const MyCoursesPage = () => {
   const t = useTranslations();
   const courses = useQuery(actions.studentCourses);
   const navigation = useQuery(actions.memberNavigation);
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(courses.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (courses.isPending) {
     return (

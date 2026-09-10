@@ -39,15 +39,15 @@ const audit = (id: string): TenantAuditEventInput => ({
 });
 
 describe('post purge and visibility', () => {
-  it('filters legacy roots before pagination and counts only live replies', async () => {
+  it('lists deleted roots before pagination and counts only live replies', async () => {
     const repo = createPostRepository(db);
     await repo.createPost(TENANT, post('legacy', { contextId: 'visibility', deletedAt: NOW }));
     await repo.createPost(TENANT, post('deleted-reply', { contextId: 'visibility', rootPostId: 'legacy', parentPostId: 'legacy', deletedAt: NOW }));
     await repo.createPost('other', post('foreign-reply', { tenantId: 'other', rootPostId: 'legacy', parentPostId: 'legacy' }));
     await repo.createPost(TENANT, post('visible', { contextId: 'visibility' }));
     const query = { contextKind: 'space', contextId: 'visibility', limit: 1 } as const;
-    expect(await repo.listThreadsForContext(TENANT, query)).toMatchObject({ threads: [{ post: { id: 'visible' } }], nextCursor: null });
-    expect(await repo.listThreadsForSpaces(TENANT, { spaceIds: ['visibility'], limit: 1 })).toMatchObject({ threads: [{ post: { id: 'visible' } }], nextCursor: null });
+    expect(await repo.listThreadsForContext(TENANT, query)).toMatchObject({ threads: [{ post: { id: 'legacy' }, replyCount: 0 }], nextCursor: expect.any(String) });
+    expect(await repo.listThreadsForSpaces(TENANT, { spaceIds: ['visibility'], limit: 1 })).toMatchObject({ threads: [{ post: { id: 'visible' } }], nextCursor: expect.any(String) });
     await repo.createPost(TENANT, post('live-reply', { contextId: 'visibility', rootPostId: 'legacy', parentPostId: 'deleted-reply' }));
     expect(await repo.listThreadsForContext(TENANT, { ...query, limit: 10 })).toMatchObject({ threads: [
       { post: { id: 'legacy', deletedBy: null }, replyCount: 1 }, { post: { id: 'visible' } },

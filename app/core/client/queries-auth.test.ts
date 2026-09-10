@@ -4,7 +4,7 @@ import { QueryClient } from '@tanstack/query-core';
 import { ok } from '#core/domain/index.js';
 
 import type { AuthClientPort } from './auth-port.js';
-import { changePasswordMutation, requestPasswordResetMutation } from './queries.js';
+import { changePasswordMutation, requestPasswordResetMutation, signInWithGoogleMutation } from './queries.js';
 
 const authWith = (overrides: Partial<AuthClientPort>): AuthClientPort => ({
   signUp: vi.fn(),
@@ -67,5 +67,21 @@ describe('requestPasswordResetMutation', () => {
     })).resolves.toBeUndefined();
     expect(mutation.mutationKey).toEqual(['auth', 'request-password-reset']);
     expect(requestPasswordReset).toHaveBeenCalledExactlyOnceWith(input);
+  });
+});
+
+describe('signInWithGoogleMutation', () => {
+  it('forwards the callback URL', async () => {
+    const signInWithGoogle = vi.fn().mockResolvedValue(ok(undefined));
+    const mutation = signInWithGoogleMutation(authWith({ signInWithGoogle }));
+    const input = { callbackURL: 'https://studio.example/my/courses/c1/lessons/l1' };
+
+    await expect(mutation.mutationFn(input, {
+      client: new QueryClient(),
+      meta: undefined,
+      mutationKey: mutation.mutationKey,
+    })).resolves.toBeUndefined();
+    expect(mutation.mutationKey).toEqual(['auth', 'sign-in-google']);
+    expect(signInWithGoogle).toHaveBeenCalledExactlyOnceWith(input);
   });
 });

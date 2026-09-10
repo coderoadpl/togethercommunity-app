@@ -59,6 +59,8 @@ import {
   type ProductGrant,
   type Space,
   type SpaceEvent,
+  type StorageConfiguration,
+  type StorageCorsCacheEntry,
   type Tenant,
   type TenantApiKey,
   type TenantDomain,
@@ -2945,6 +2947,82 @@ describe('tenant domain check route', () => {
 
     expect(response.status).toBe(200);
     expect(checkTenantDomains).toHaveBeenCalledOnce();
+  });
+
+  it('checks storage CORS for one verified custom domain through the tenant route', async () => {
+    const storageConfiguration: StorageConfiguration = {
+      provider: 'minio',
+      endpoint: 'https://storage.example.test',
+      region: 'us-east-1',
+      bucket: 'tenant-assets',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+    };
+    const writes: Array<{ tenantId: string; entry: StorageCorsCacheEntry }> = [];
+    let cachedCors: StorageCorsCacheEntry | null = null;
+    const probeCors = vi.fn(async (_configuration: StorageConfiguration, origins: string[]) =>
+      origins.map((origin) => ({ origin, status: 'blocked' as const })),
+    );
+    const app = scopedApp('owner', {
+      overrides: {
+        tenantDomains: tenantDomainRepositoryStub({
+          listByTenant: async (tenantId) => [tenantDomainFixture({
+            id: 'domain-1',
+            tenantId,
+            domain: 'courses.acme.example',
+            verified: true,
+          })],
+        }),
+        secretResolver: {
+          resolve: async (_tenantId, key) =>
+            key === 's3.configuration'
+              ? ok(JSON.stringify(storageConfiguration))
+              : err(notFound(`No secret "${key}"`)),
+        },
+        storage: {
+          objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+          probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+          probeCors,
+          presignPut: (input) => ok(input.url),
+          presignGet: (input) => ok(input.url),
+          delete: async () => ok({ deleted: true }),
+          head: async () => ok({ sizeBytes: 1 }),
+          healthcheck: async () => ok({ healthy: true }),
+          test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+        },
+        storageCorsCache: {
+          read: async () => cachedCors,
+          write: async (tenantId, entry) => {
+            cachedCors = entry;
+            writes.push({ tenantId, entry });
+          },
+        },
+      },
+    });
+
+    const response = await app.request(API_PATHS.tenantDomainStorageCorsCheck, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ domain: 'courses.acme.example' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        routing: {
+          customDomains: [{ domain: 'courses.acme.example', storageCorsStatus: 'blocked' }],
+        },
+      },
+    });
+    expect(probeCors).toHaveBeenCalledExactlyOnceWith(storageConfiguration, ['https://courses.acme.example']);
+    expect(writes).toEqual([{
+      tenantId: acme.id,
+      entry: {
+        checkedAt: '1998-07-12T00:00:00.000Z',
+        results: [{ origin: 'https://courses.acme.example', status: 'blocked' }],
+      },
+    }]);
   });
 });
 

@@ -261,6 +261,7 @@ import {
   getTenantDocument,
   addTenantDomain,
   checkTenantDomain,
+  checkTenantDomainStorageCors,
   getTenantRouting,
   removeTenantDomain,
   resubscribeSesWebhookAfterDomainRemoval,
@@ -1268,7 +1269,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
       quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
-      hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
+      hmac: deps.marketing.hmac, tenants: deps.tenants, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: async (tenantId: string) => `${await resolveOrigin(tenantId)}/u`,
       scheduler: deps.marketing.scheduler,
       runs: deps.marketing.runs,
@@ -2135,6 +2136,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     realtimeBus: deps.realtimeBus,
     ids: deps.ids,
     clock: deps.clock,
+    storage: deps.storage,
+    secretResolver: deps.secretResolver,
     logger: deps.logger,
     ...(marketing === undefined || sesOnboarding === undefined ? {} : {
       resubscribeSesWebhookAfterDomainRemoval: (tenantId: string, domain: string) =>
@@ -2207,6 +2210,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = await parseTenantDomainInput(c);
     if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
     const result = await checkTenantDomain(ctxOf(c), parsed.data, tenantDomainDeps);
+    return respond(result.ok ? ok({ routing: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantDomainStorageCorsCheck, async (c) => {
+    const parsed = await parseTenantDomainInput(c);
+    if (!parsed.success) return respond(err(validation('Invalid domain payload', parsed.error.flatten())));
+    const result = await checkTenantDomainStorageCors(ctxOf(c), parsed.data, tenantDomainDeps);
     return respond(result.ok ? ok({ routing: result.value }) : result);
   });
 

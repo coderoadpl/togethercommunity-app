@@ -1786,7 +1786,7 @@ export const en: Messages = {
     delete: 'Delete',
     deleteConfirmTitle: 'Delete this post?',
     deleteConfirmBody:
-      'The post content will be removed and a deletion notice will remain in the thread. This cannot be undone.',
+      'The post content will be hidden and a deletion notice will remain in the thread. A moderator can permanently delete the post later.',
     deleteConfirm: 'Delete post',
     deleting: 'Deleting…',
     purge: 'Delete permanently',
@@ -2246,6 +2246,8 @@ export const en: Messages = {
     docsLink: 'How custom domains work',
     storageCorsHint: 'Add this address to bucket CORS.',
     storageCorsLink: 'Open the storage wizard',
+    storageCorsUnknown: 'Bucket CORS has not been checked for this address yet.',
+    storageCorsCheck: 'Check',
     redirectsCount: ({ count }) => format('{count} {noun}', {
       count,
       noun: plural(count, 'redirect', 'redirects'),

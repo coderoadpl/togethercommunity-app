@@ -1696,6 +1696,12 @@ export const checkTenantDomainMutation = (api: ApiClient) =>
     call: (input: TenantDomainInput) => api.checkTenantDomain(input),
   });
 
+export const checkTenantDomainStorageCorsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRoutingScopes.all(), 'storage-cors-check'],
+    call: (input: TenantDomainInput) => api.checkTenantDomainStorageCors(input),
+  });
+
 export const removeTenantDomainMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantRoutingScopes.all(), 'remove'],
@@ -1925,10 +1931,12 @@ export const regenerateBackupCodesMutation = (auth: AuthClientPort) =>
     call: (input: { password: string }) => auth.regenerateBackupCodes(input.password),
   });
 
-export const signInWithGoogleMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>
+export const signInWithGoogleMutation = (
+  auth: AuthClientPort,
+): MutationDescriptor<void, { callbackURL: string }> =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-in-google'],
-    call: () => auth.signInWithGoogle(),
+    call: (input) => auth.signInWithGoogle(input),
   });
 
 export const promptGoogleOneTapMutation = (

@@ -1,6 +1,5 @@
 import {
   err,
-  isVisiblePostThread,
   memberHomeFeedInputSchema,
   ok,
   validation,
@@ -62,7 +61,7 @@ export const getMemberHomeFeed = async (
   );
 
   return ok({
-    items: listed.threads.filter((thread) => isVisiblePostThread(thread.post, thread.replyCount)).map((thread) => ({
+    items: listed.threads.map((thread) => ({
       ...toRenderedPublicPost(
         thread.post,
         actor.value.userId,

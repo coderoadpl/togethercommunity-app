@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { communityPostPath, lessonPath } from '#core/contract/index.js';
@@ -12,6 +12,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { useRedirectToLogin } from './use-login-redirect.js';
 import { DiscussionHitSnippet, TreeChapterTitle } from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -239,7 +240,7 @@ const SearchResults = ({
 
 export const SearchPage = () => {
   const t = useTranslations();
-  const navigate = useNavigate();
+  const redirectToLogin = useRedirectToLogin();
   const [term, setTerm] = useState('');
   const debounced = useDebouncedValue(term).trim();
   const enabled = debounced.length >= MIN_SEARCH_LENGTH;
@@ -248,8 +249,8 @@ export const SearchPage = () => {
   const unauthorized = isUnauthorized(navigation.error) || isUnauthorized(search.error);
 
   useEffect(() => {
-    if (unauthorized) void navigate({ to: '/login' });
-  }, [navigate, unauthorized]);
+    if (unauthorized) void redirectToLogin();
+  }, [redirectToLogin, unauthorized]);
 
   if (unauthorized) return null;
 

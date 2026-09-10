@@ -1805,7 +1805,7 @@ export const pl: Messages = {
     delete: 'Usuń',
     deleteConfirmTitle: 'Usunąć wpis?',
     deleteConfirmBody:
-      'Treść wpisu zostanie usunięta, a w wątku pozostanie informacja o usunięciu. Tej operacji nie można cofnąć.',
+      'Treść wpisu zostanie ukryta, a w wątku pozostanie informacja o usunięciu. Moderator może później usunąć wpis trwale.',
     deleteConfirm: 'Usuń wpis',
     deleting: 'Usuwanie…',
     purge: 'Usuń trwale',
@@ -2267,6 +2267,8 @@ export const pl: Messages = {
     docsLink: 'Jak działają własne domeny',
     storageCorsHint: 'Dodaj ten adres do CORS bucketu',
     storageCorsLink: 'Otwórz kreator magazynu',
+    storageCorsUnknown: 'CORS bucketu nie został jeszcze sprawdzony dla tego adresu.',
+    storageCorsCheck: 'Sprawdź',
     redirectsCount: ({ count }) => format('{count} {noun}', {
       count,
       noun: plural(count, 'przekierowanie', 'przekierowania', 'przekierowań'),

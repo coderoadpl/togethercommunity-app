@@ -19,6 +19,7 @@ import {
   forbidden,
   isSmokeTenant,
   liftSuppression,
+  marketingFooterCopy,
   normalizeEmail,
   notFound,
   ok,
@@ -820,6 +821,7 @@ export const cancelCampaign = async (
 
 export interface SendDeps extends EligibilityDeps {
   contacts?: MarketingContactRepository | undefined;
+  tenants: Pick<TenantRepository, 'findSettings'>;
   htmlToText: HtmlToText;
   delivery: MarketingDeliveryTransaction;
   marketingOutbox: MarketingOutboxRepository;
@@ -927,6 +929,7 @@ const enqueueMarketingMessagesExecution = async (
   if (!credentials.ok) return credentials;
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const unsubscribeBaseUrl = await deps.unsubscribeBaseUrl(tenantId.value);
+  const footerCopy = marketingFooterCopy((await deps.tenants.findSettings(tenantId.value))?.defaultLanguage);
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
@@ -1047,9 +1050,12 @@ const enqueueMarketingMessagesExecution = async (
         unsubscribeUrl,
       },
       unsubscribeUrl,
+      unsubscribeLabel: footerCopy.unsubscribe,
       legalName: settings.footerLegalName,
       address: settings.footerAddress,
       consentReference: dequeue.eligibility.consentRow.wordingSnapshot,
+      consentBasisPrefix: footerCopy.basisPrefix,
+      consentBasisSuffix: footerCopy.basisSuffix,
       layoutHtml: layout?.bodyHtml ?? null,
     }, deps);
     if (!rendered.ok) {
@@ -1363,6 +1369,8 @@ export const testSendCampaignToSelf = async (
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (campaign === null) return err(notFound('Campaign was not found'));
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  const tenantSettings = await deps.tenants.findSettings(tenantId.value);
+  const footerCopy = marketingFooterCopy(tenantSettings?.defaultLanguage);
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
@@ -1400,9 +1408,12 @@ export const testSendCampaignToSelf = async (
       unsubscribeUrl,
     },
     unsubscribeUrl,
+    unsubscribeLabel: footerCopy.unsubscribe,
     legalName: settings.footerLegalName,
     address: settings.footerAddress,
     consentReference,
+    consentBasisPrefix: footerCopy.basisPrefix,
+    consentBasisSuffix: footerCopy.basisSuffix,
     layoutHtml: layout?.bodyHtml ?? null,
   }, deps);
   if (!rendered.ok) return rendered;

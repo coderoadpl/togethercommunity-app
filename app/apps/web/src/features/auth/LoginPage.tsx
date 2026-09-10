@@ -12,7 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
 import type { SignInMethod } from '#core/domain/index.js';
 
@@ -22,6 +22,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { errorCodeOf, localizeError, retryAfterSecondsOf, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
+import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
@@ -132,7 +133,12 @@ const MethodCard = ({
 export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
-  const me = useRedirectSignedInWithTenant();
+  const search = useSearch({ strict: false });
+  const returnTo = safeReturnTo(typeof search.returnTo === 'string' ? search.returnTo : null);
+  const postVerification = search.verification === 'verified';
+  const postLoginTarget = returnTo ?? (postVerification ? START_PATH : '/');
+  const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
+  const me = useRedirectSignedInWithTenant(postLoginTarget);
   const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
@@ -189,7 +195,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         return;
       }
       await queryClient.invalidateQueries();
-      await navigate({ to: '/' });
+      await navigate({ href: postLoginTarget });
     },
   });
 
@@ -201,7 +207,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         return;
       }
       queryClient.clear();
-      await navigate({ to: '/' });
+      await navigate({ href: postLoginTarget });
     },
   });
 
@@ -211,13 +217,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   useEffect(() => {
     const clientId = authConfig.data?.googleClientId;
     if (clientId === null || clientId === undefined || me.isPending || me.data !== undefined) return;
-    promptGoogleOneTap({ clientId, callbackURL: window.location.origin });
-  }, [authConfig.data?.googleClientId, me.data, me.isPending, promptGoogleOneTap]);
+    promptGoogleOneTap({ clientId, callbackURL: postLoginUrl });
+  }, [authConfig.data?.googleClientId, me.data, me.isPending, postLoginUrl, promptGoogleOneTap]);
 
   const completeTwoFactor = async () => {
     setTwoFactorRequired(false);
     queryClient.clear();
-    await navigate({ to: '/' });
+    await navigate({ href: postLoginTarget });
   };
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
@@ -284,7 +290,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     setMagicLinkResent(false);
     requestMagicLink.mutate({
       email,
-      callbackURL: `${window.location.origin}/my`,
+      callbackURL: loginCallbackUrl(returnTo),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };
@@ -295,7 +301,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     requestMagicLink.mutate(
       {
         email: requestedMagicEmail,
-        callbackURL: `${window.location.origin}/my`,
+        callbackURL: loginCallbackUrl(returnTo),
         ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
       },
       { onSuccess: () => setMagicLinkResent(true) },
@@ -368,7 +374,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const accessPrompt = platformSurface ? (
     <FinePrint key="access" variant="caption" component="p" data-testid="login-register-prompt">
-      {t.auth.registerPrompt} <MuiLink component={Link} to="/register">{t.auth.registerLink}</MuiLink>
+      {t.auth.registerPrompt} <MuiLink component={Link} to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registerLink}</MuiLink>
     </FinePrint>
   ) : null;
 
@@ -470,6 +476,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             href={devMagicLink.data.magicLink.url}
             variant="outlined"
             size="small"
+            data-testid="open-magic-link"
             sx={{ alignSelf: 'flex-start' }}
           >
             {t.auth.openMagicLink}
@@ -665,7 +672,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               variant="outlined"
               fullWidth
               disabled={signInWithGoogle.isPending}
-              onClick={() => signInWithGoogle.mutate()}
+              onClick={() => signInWithGoogle.mutate({ callbackURL: postLoginUrl })}
             >
               {t.auth.continueWithGoogle}
             </Button>
@@ -773,7 +780,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                         </Button>
                       </Stack>
                       <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
-                        <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}`} data-testid="forgot-password">
+                        <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`} data-testid="forgot-password">
                           {t.auth.forgotPassword}
                         </MuiLink>
                       </FinePrint>
@@ -798,7 +805,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
               variant="text"
               fullWidth
               disabled={signInWithGoogle.isPending}
-              onClick={() => signInWithGoogle.mutate()}
+              onClick={() => signInWithGoogle.mutate({ callbackURL: postLoginUrl })}
               sx={{ minHeight: 64 }}
             >
               {t.auth.continueWithGoogle}

@@ -9,7 +9,6 @@ import {
   forbidden,
   heuristicSignalsFor,
   internal,
-  isVisiblePostThread,
   listDiscussionInputSchema,
   muteThreadInputSchema,
   notificationListInputSchema,
@@ -277,7 +276,7 @@ export const createPost = async (
       return err(validation('Parent post does not belong to this discussion'));
     }
     const root = parentPost.parentPostId === null ? parentPost : await deps.posts.findById(actor.value.tenantId, parentPost.rootPostId);
-    if (root === null || (root.deletedAt !== null && !isVisiblePostThread(root, (await deps.posts.listReplies(actor.value.tenantId, root.id)).filter((reply) => reply.deletedAt === null).length))) {
+    if (root === null) {
       return err(validation('Thread not found'));
     }
     rootPostId = parentPost.rootPostId;
@@ -374,18 +373,17 @@ export const listDiscussion = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
-  const visibleThreads = listed.threads.filter((thread) => isVisiblePostThread(thread.post, thread.replyCount));
   const repliesByThread = await Promise.all(
-    visibleThreads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
+    listed.threads.map((thread) => deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
   );
   const avatarUrls = await avatarUrlsFor(
     scope.value.tenantId,
-    [...visibleThreads.map((thread) => thread.post), ...repliesByThread.flat()].map(
+    [...listed.threads.map((thread) => thread.post), ...repliesByThread.flat()].map(
       (post) => post.authorUserId,
     ),
     deps,
   );
-  const threads = visibleThreads.map((thread, index) => ({
+  const threads = listed.threads.map((thread, index) => ({
     ...toRenderedPublicPost(
       thread.post,
       scope.value.userId,

@@ -2611,5 +2611,17 @@ export interface Messages {
     sandboxWarning: string;
     broadcastsEnabled: string;
     broadcastsDisabled: string;
+    readinessOptional: string;
+    readinessAttentionItems: (input: { items: string }) => string;
+    readinessComplete: string;
+    identityCheckFailedChip: string;
+    identityCheckRetry: string;
+    identityCheckDetails: string;
+    identityVerifiedSince: (input: { checkedAt: string }) => string;
+    identityErrorInvalidClientTokenId: string;
+    identityErrorAccessDenied: string;
+    identityErrorSignatureDoesNotMatch: string;
+    identityErrorThrottling: string;
+    identityErrorUnknown: string;
   };
 }

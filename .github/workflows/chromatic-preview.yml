@@ -46,6 +46,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: app
@@ -70,7 +73,67 @@ jobs:
           pnpm exec chromatic
           --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN"
           --build-script-name=storybook:build
+          --diagnostics-file=chromatic-diagnostics.json
           --only-changed
           --exit-zero-on-changes
           --exit-once-uploaded
           --zip
+      - name: Upsert Chromatic preview comment
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker='<!-- chromatic-preview -->'
+          diagnostics='chromatic-diagnostics.json'
+
+          read_json() {
+            if [ -f "$diagnostics" ]; then
+              jq -r "$1 // empty" "$diagnostics" | head -n 1
+            fi
+          }
+
+          build_url="$(read_json '[.buildUrl, .url, .build.webUrl, .rebuildForBuild.webUrl] | map(select(type == "string" and length > 0)) | .[0]')"
+          storybook_url="$(read_json '[.storybookUrl, .build.storybookUrl, .rebuildForBuild.storybookUrl] | map(select(type == "string" and length > 0)) | .[0]')"
+          change_count="$(read_json '[.changeCount, .build.changeCount, .rebuildForBuild.changeCount] | map(select(type == "number")) | .[0] | tostring')"
+          component_count="$(read_json '[.componentCount, .build.componentCount, .rebuildForBuild.componentCount] | map(select(type == "number")) | .[0] | tostring')"
+
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          owner="${GITHUB_REPOSITORY%%/*}"
+          pages_url="https://${owner}.github.io/${repo_name}/"
+          if [ "$BASE_REF" = "staging" ]; then
+            pages_url="${pages_url}staging/"
+          fi
+
+          body_file="$(mktemp)"
+          {
+            echo "$marker"
+            echo "### Chromatic preview"
+            echo
+            echo "- Chromatic build: ${build_url:-Unavailable}"
+            echo "- Chromatic Storybook: ${storybook_url:-Unavailable}"
+            echo "- Changed stories: ${change_count:-Unavailable}"
+            echo "- Components: ${component_count:-Unavailable}"
+            echo "- Commit: \`${COMMIT_SHA}\`"
+            echo "- Base branch Storybook: ${pages_url}"
+          } > "$body_file"
+
+          comment_id="$(
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$marker\")) | .id" \
+              | head -n 1
+          )"
+
+          payload_file="$(mktemp)"
+          jq -n --rawfile body "$body_file" '{ body: $body }' > "$payload_file"
+
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+              --input "$payload_file"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --input "$payload_file"
+          fi

@@ -33,6 +33,7 @@ import type {
   PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
+import { safeErrorMessage } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
@@ -826,7 +827,7 @@ export const fulfillStripeWebhook = async (
     });
   } catch (cause) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    const error = internal(`Payment fulfillment failed: ${String(cause)}`);
+    const error = internal(`Payment fulfillment failed: ${safeErrorMessage(cause)}`);
     logPaymentFailure(tenant, event, deps, error);
     return err(error);
   }

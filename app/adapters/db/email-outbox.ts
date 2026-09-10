@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
 import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '#core/server/index.js';
+import { safeErrorMessage } from '#core/server/log-safety.js';
 
 import type { Db } from './client.js';
 import { appendEmailSentMemberEvents } from './member-events.js';
@@ -88,7 +89,7 @@ export const createEmailOutboxRepository = (
       });
       return ok({ id: input.id });
     } catch (cause) {
-      return { ok: false, error: internal(`Could not enqueue email: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not enqueue email: ${safeErrorMessage(cause)}`) };
     }
   },
   claimBatch: async (input) => {
@@ -174,7 +175,7 @@ export const createEmailOutboxRepository = (
       }));
       return ok(items);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not claim email outbox batch: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not claim email outbox batch: ${safeErrorMessage(cause)}`) };
     }
   },
   markSent: async (input) => {
@@ -220,7 +221,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not mark email sent: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not mark email sent: ${safeErrorMessage(cause)}`) };
     }
   },
   markFailed: async (input) => {
@@ -255,7 +256,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not mark email failed: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not mark email failed: ${safeErrorMessage(cause)}`) };
     }
   },
   correlateBySesMessageId: async (tenantId, sesMessageId) => {
@@ -293,7 +294,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not record email delivery: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not record email delivery: ${safeErrorMessage(cause)}`) };
     }
   },
   hasPendingForTenant: async (tenantId) => {
@@ -331,7 +332,7 @@ export const createEnrollmentTransactionPort = (db: Db): EnrollmentTransactionPo
       });
     } catch (cause) {
       if (rejected !== null) return rejected;
-      return { ok: false, error: internal(`Could not complete enrollment transaction: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not complete enrollment transaction: ${safeErrorMessage(cause)}`) };
     }
   },
 });

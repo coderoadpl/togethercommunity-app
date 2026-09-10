@@ -21,6 +21,7 @@ import {
   type Result,
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
+import { safeLogMessage } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
 import { devMagicLinks, user } from '#adapters/db/schema.js';
 
@@ -477,6 +478,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
+    logger: {
+      log: (level, message) => {
+        process.stderr.write(`[Better Auth] ${level}: ${safeLogMessage(message)}\n`);
+      },
+    },
     session: {
       expiresIn: AUTH_POLICY.sessionExpiresInSeconds,
       updateAge: AUTH_POLICY.sessionUpdateAgeSeconds,

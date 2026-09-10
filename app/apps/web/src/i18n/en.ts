@@ -204,7 +204,6 @@ export const en: Messages = {
     publicNavCommunity: 'Community',
     cannotSignInPrompt: 'Cannot sign in?',
     cannotSignInLink: 'Write to us',
-    previewLessons: 'Free preview lessons',
     creatingAccount: 'Creating account…',
     createAccount: 'Create account',
     createAccountLead: 'Enter the details you will sign in with.',

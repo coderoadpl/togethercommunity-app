@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { AUTH_IP_ADDRESS_HEADERS, AUTH_POLICY, createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
@@ -41,6 +41,24 @@ const infrastructureSchema = z.object({
 });
 
 describe('composed auth policy', () => {
+  it('sanitizes non-string Better Auth log messages', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const log = auth.options.logger && auth.options.logger.log;
+      if (typeof log !== 'function') throw new Error('Better Auth logger is not configured');
+
+      expect(() => Reflect.apply(log, undefined, [
+        'error',
+        new Error('Failed query: insert into "session" values ($1)\nparams: session-secret'),
+      ])).not.toThrow();
+      expect(stderr).toHaveBeenCalledWith(
+        '[Better Auth] error: Failed query: insert into "session" values ($1)\n',
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it('pins the 7-day session expiry and 1-day activity refresh', () => {
     expect(AUTH_POLICY.sessionExpiresInSeconds).toBe(60 * 60 * 24 * 7);
     expect(AUTH_POLICY.sessionUpdateAgeSeconds).toBe(60 * 60 * 24);

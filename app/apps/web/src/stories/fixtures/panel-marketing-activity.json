@@ -107,31 +107,32 @@
               "error": null,
               "finishedAt": "2026-07-01T09:36:00.000Z",
               "id": "scheduler-run-studio-marketing",
+              "idle": true,
               "kind": "marketing_tick",
               "startedAt": "2026-07-01T09:36:00.000Z",
               "status": "completed",
               "totals": {
-                "campaignsTouched": 1,
+                "campaignsTouched": 0,
                 "failed": 0,
                 "reEnqueued": false,
-                "sendsAttempted": 1,
-                "sent": 1,
+                "sendsAttempted": 0,
+                "sent": 0,
                 "skipped": 0
               },
               "trigger": "cron"
             },
             "tenant": {
-              "batchSize": 1,
+              "batchSize": 0,
               "budgetComputed": 25,
-              "budgetUsed": 1,
-              "campaignsTouched": 1,
+              "budgetUsed": 0,
+              "campaignsTouched": 0,
               "createdAt": "2026-07-01T09:36:00.000Z",
               "errors": [],
               "failed": 0,
               "id": "scheduler-run-tenant-studio-marketing",
               "purged": null,
               "runId": "scheduler-run-studio-marketing",
-              "sent": 1,
+              "sent": 0,
               "skipped": 0,
               "tenantId": "tenant-studio"
             }
@@ -143,6 +144,7 @@
               "error": "SES rejected one message",
               "finishedAt": "2026-07-01T07:12:00.000Z",
               "id": "scheduler-run-studio-outbox",
+              "idle": false,
               "kind": "outbox_dispatch",
               "startedAt": "2026-07-01T07:12:00.000Z",
               "status": "failed",
@@ -184,21 +186,22 @@
             "error": null,
             "finishedAt": "2026-07-01T09:36:00.000Z",
             "id": "scheduler-run-studio-marketing",
+            "idle": true,
             "kind": "marketing_tick",
             "startedAt": "2026-07-01T09:36:00.000Z",
             "status": "completed",
             "totals": {
-              "campaignsTouched": 1,
+              "campaignsTouched": 0,
               "failed": 0,
               "reEnqueued": false,
-              "sendsAttempted": 1,
-              "sent": 1,
+              "sendsAttempted": 0,
+              "sent": 0,
               "skipped": 0
             },
             "trigger": "cron"
           },
           "runsLast24Hours": 2,
-          "sentLast24Hours": 2
+          "sentLast24Hours": 1
         }
       }
     },

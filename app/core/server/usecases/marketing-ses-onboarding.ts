@@ -52,6 +52,7 @@ export interface SesOnboardingDeps {
   controlPlane: SesOnboardingControlPlane;
   clock: Clock;
   webhookBaseUrl: SesWebhookBaseUrlResolver;
+  logger: { warn(message: string): void };
 }
 
 const onboardingContext = async (ctx: Ctx, deps: SesOnboardingDeps) => {
@@ -73,7 +74,7 @@ const resourceName = (tenantId: string): string =>
   `together-${tenantId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`.slice(0, 64);
 
 const store = async (
-  deps: SesOnboardingDeps,
+  deps: Pick<SesOnboardingDeps, 'settings'>,
   tenantId: string,
   settings: TenantSesSettings,
   patch: Partial<TenantSesSettings>,
@@ -94,6 +95,42 @@ export const staleSesWebhookEndpoint = (
     : subscribed;
 };
 
+const supersededTenantWebhook = (endpoint: string, currentEndpoint: string): boolean => {
+  try {
+    const candidate = new URL(normalizeSesWebhookEndpoint(endpoint));
+    const current = new URL(normalizeSesWebhookEndpoint(currentEndpoint));
+    return candidate.protocol === 'https:'
+      && candidate.host !== current.host
+      && candidate.pathname === current.pathname;
+  } catch {
+    return false;
+  }
+};
+
+const removeSupersededSubscriptions = async (
+  deps: SesOnboardingDeps,
+  credentials: SesMarketingCredentials,
+  topicArn: string,
+  currentEndpoint: string,
+  tenantId: string,
+): Promise<void> => {
+  const subscriptions = await deps.controlPlane.listSubscriptions(credentials, topicArn);
+  if (!subscriptions.ok) {
+    deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} error=${subscriptions.error.message}`);
+    return;
+  }
+  for (const subscription of subscriptions.value) {
+    if (
+      subscription.arn === null
+      || !supersededTenantWebhook(subscription.endpoint, currentEndpoint)
+    ) continue;
+    const removed = await deps.controlPlane.unsubscribe(credentials, subscription.arn);
+    if (!removed.ok) {
+      deps.logger.warn(`[marketing-ses] subscription cleanup failed tenant=${tenantId} subscription=${subscription.arn} error=${removed.error.message}`);
+    }
+  }
+};
+
 const migrateStaleSubscription = async (
   deps: SesOnboardingDeps,
   input: {
@@ -111,14 +148,22 @@ const migrateStaleSubscription = async (
     endpoint: input.webhookUrl,
   });
   if (!subscription.ok) return subscription;
-  await deps.controlPlane.removeSubscription(input.credentials, {
-    topicArn: input.topicArn,
-    endpoint: stale,
-  });
-  return ok(await store(deps, input.tenantId, input.settings, {
+  if (!subscription.value.confirmed) {
+    deps.logger.warn(`[marketing-ses] subscription migration pending tenant=${input.tenantId}`);
+    return ok(input.settings);
+  }
+  const current = await store(deps, input.tenantId, input.settings, {
     snsSubscriptionEndpoint: subscription.value.endpoint,
-    snsSubscriptionConfirmedAt: null,
-  }));
+    snsSubscriptionConfirmedAt: deps.clock.nowIso(),
+  });
+  await removeSupersededSubscriptions(
+    deps,
+    input.credentials,
+    input.topicArn,
+    subscription.value.endpoint,
+    input.tenantId,
+  );
+  return ok(current);
 };
 
 export const resubscribeSesWebhookAfterDomainRemoval = async (
@@ -137,17 +182,18 @@ export const resubscribeSesWebhookAfterDomainRemoval = async (
   }
   const credentials = await deps.credentials.resolve(tenantId);
   if (!credentials.ok) return credentials;
+  const webhookUrl = `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`;
   const migrated = await migrateStaleSubscription(deps, {
     credentials: credentials.value,
     tenantId,
     settings,
     topicArn: settings.snsTopicArn,
-    webhookUrl: `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`,
+    webhookUrl,
   });
   if (!migrated.ok) return migrated;
   return migrated.value.snsSubscriptionEndpoint === null
     ? ok(null)
-    : ok({ endpoint: migrated.value.snsSubscriptionEndpoint });
+    : ok({ endpoint: webhookUrl });
 };
 
 export const deriveSesOnboardingChecklist = (input: {
@@ -229,12 +275,14 @@ export const provisionSesInfrastructure = async (
     endpoint: context.value.webhookUrl,
   });
   if (!subscription.ok) return subscription;
-  current = await store(deps, context.value.tenantId, current, {
-    snsSubscriptionEndpoint: subscription.value.endpoint,
-    snsSubscriptionConfirmedAt: subscription.value.confirmed
-      ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
-      : null,
-  });
+  if (subscription.value.confirmed || staleSesWebhookEndpoint(current, context.value.webhookUrl) === null) {
+    current = await store(deps, context.value.tenantId, current, {
+      snsSubscriptionEndpoint: subscription.value.endpoint,
+      snsSubscriptionConfirmedAt: subscription.value.confirmed
+        ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
+        : null,
+    });
+  }
   const destination = await deps.controlPlane.ensureEventDestination(context.value.credentials, {
     configurationSet: configurationSet.value.name,
     topicArn: topic.value.arn,
@@ -294,7 +342,10 @@ export const pollSesOnboarding = async (
       ? context.value.settings.identityVerifiedAt ?? deps.clock.nowIso()
       : null,
   });
+  let subscriptionMigrationPending = false;
+  let subscriptionWasStale = false;
   if (current.snsTopicArn !== null) {
+    subscriptionWasStale = staleSesWebhookEndpoint(current, context.value.webhookUrl) !== null;
     const migrated = await migrateStaleSubscription(deps, {
       credentials: context.value.credentials,
       tenantId: context.value.tenantId,
@@ -304,6 +355,7 @@ export const pollSesOnboarding = async (
     });
     if (!migrated.ok) return migrated;
     current = migrated.value;
+    subscriptionMigrationPending = staleSesWebhookEndpoint(current, context.value.webhookUrl) !== null;
   }
   let configurationSetReady = false;
   let eventDestinationReady = false;
@@ -323,8 +375,9 @@ export const pollSesOnboarding = async (
     eventDestinationReady = infrastructure.value.eventDestinationReady;
     observedSubscription = infrastructure.value.subscriptionConfirmed;
   }
-  const subscriptionConfirmed = observedSubscription
-    ?? current.snsSubscriptionConfirmedAt !== null;
+  const subscriptionConfirmed = subscriptionMigrationPending
+    ? current.snsSubscriptionConfirmedAt !== null
+    : observedSubscription ?? current.snsSubscriptionConfirmedAt !== null;
   let feedbackForwardingDisabled = false;
   if (observedSubscription === true) {
     const feedback = await deps.controlPlane.disableFeedbackForwarding(context.value.credentials, current.identity);
@@ -334,10 +387,12 @@ export const pollSesOnboarding = async (
   const quota = await deps.controlPlane.readQuota(context.value.credentials);
   if (!quota.ok) return quota;
   current = await store(deps, context.value.tenantId, current, {
-    webhookVerifiedAt: configurationSetReady && eventDestinationReady && subscriptionConfirmed
+    webhookVerifiedAt: subscriptionMigrationPending
+      ? current.webhookVerifiedAt
+      : configurationSetReady && eventDestinationReady && subscriptionConfirmed
       ? current.webhookVerifiedAt
       : null,
-    ...(observedSubscription === null ? {} : {
+    ...(observedSubscription === null || subscriptionMigrationPending ? {} : {
       snsSubscriptionConfirmedAt: observedSubscription
         ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
         : null,
@@ -350,6 +405,24 @@ export const pollSesOnboarding = async (
     quotaRefreshedAt: deps.clock.nowIso(),
     inSandbox: quota.value.inSandbox,
   });
+  if (
+    !subscriptionMigrationPending
+    && !subscriptionWasStale
+    && observedSubscription === true
+    && current.webhookVerifiedAt !== null
+    && current.snsTopicArn !== null
+    && current.snsSubscriptionEndpoint !== null
+    && normalizeSesWebhookEndpoint(current.snsSubscriptionEndpoint)
+      === normalizeSesWebhookEndpoint(context.value.webhookUrl)
+  ) {
+    await removeSupersededSubscriptions(
+      deps,
+      context.value.credentials,
+      current.snsTopicArn,
+      current.snsSubscriptionEndpoint,
+      context.value.tenantId,
+    );
+  }
   return ok({
     identityVerified: identityReady,
     dkimVerified: identity.value.dkimVerified,
@@ -375,7 +448,7 @@ export const pollSesOnboarding = async (
 const readIdentityStatus = async (
   tenantId: string,
   settings: TenantSesSettings,
-  deps: SesOnboardingDeps,
+  deps: Pick<SesOnboardingDeps, 'clock' | 'controlPlane' | 'credentials'>,
 ): Promise<{ patch: Partial<TenantSesSettings>; checkedWith: SesMarketingCredentials | null }> => {
   const identityCheckedAt = deps.clock.nowIso();
   const credentials = await deps.credentials.resolve(tenantId);
@@ -401,7 +474,7 @@ const readIdentityStatus = async (
 export const refreshTenantSesIdentityStatus = async (
   tenantId: string,
   settings: TenantSesSettings,
-  deps: SesOnboardingDeps,
+  deps: Pick<SesOnboardingDeps, 'clock' | 'controlPlane' | 'credentials' | 'settings' | 'webhookBaseUrl'>,
 ): Promise<TenantSesSettings> =>
   store(deps, tenantId, settings, (await readIdentityStatus(tenantId, settings, deps)).patch);
 
@@ -414,33 +487,55 @@ const checkTenantSesIdentity = async (
   if (checkedWith === null || settings.configurationSet === null || settings.snsTopicArn === null) {
     return store(deps, tenantId, settings, patch);
   }
+  const webhookUrl = `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`;
+  const migrated = await migrateStaleSubscription(deps, {
+    credentials: checkedWith,
+    tenantId,
+    settings,
+    topicArn: settings.snsTopicArn,
+    webhookUrl,
+  });
+  if (!migrated.ok) {
+    return store(deps, tenantId, settings, {
+      ...patch,
+      identityCheckError: migrated.error.message,
+    });
+  }
+  const current = migrated.value;
+  const subscriptionMigrationPending = staleSesWebhookEndpoint(current, webhookUrl) !== null;
   const infrastructure = await deps.controlPlane.readInfrastructure(
     checkedWith,
     {
-      configurationSet: settings.configurationSet,
+      configurationSet: current.configurationSet ?? settings.configurationSet,
       transactionalConfigurationSet: transactionalSesConfigurationSetName(
-        settings.configurationSet,
+        current.configurationSet ?? settings.configurationSet,
       ),
-      topicArn: settings.snsTopicArn,
-      endpoint: `${await deps.webhookBaseUrl(tenantId)}/${settings.webhookToken}`,
-      subscribedEndpoint: settings.snsSubscriptionEndpoint,
+      topicArn: current.snsTopicArn ?? settings.snsTopicArn,
+      endpoint: webhookUrl,
+      subscribedEndpoint: current.snsSubscriptionEndpoint,
     },
   );
   if (!infrastructure.ok) {
-    return store(deps, tenantId, settings, {
+    return store(deps, tenantId, current, {
       ...patch,
       identityCheckError: infrastructure.error.message,
     });
   }
   const confirmed = {
     ...patch,
-    snsSubscriptionConfirmedAt: infrastructure.value.subscriptionConfirmed
-      ? settings.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
-      : null,
+    snsSubscriptionConfirmedAt: subscriptionMigrationPending
+      ? current.snsSubscriptionConfirmedAt
+      : infrastructure.value.subscriptionConfirmed
+        ? current.snsSubscriptionConfirmedAt ?? deps.clock.nowIso()
+        : null,
   };
-  return store(deps, tenantId, settings, infrastructure.value.configurationSetReady
+  return store(deps, tenantId, current, infrastructure.value.configurationSetReady
     ? confirmed
-    : { ...confirmed, configurationSet: null, webhookVerifiedAt: null });
+    : {
+      ...confirmed,
+      configurationSet: null,
+      webhookVerifiedAt: subscriptionMigrationPending ? current.webhookVerifiedAt : null,
+    });
 };
 
 export const listSesIdentities = async (

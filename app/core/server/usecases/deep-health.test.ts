@@ -105,6 +105,7 @@ const schedulerRun: SchedulerRun = {
   finishedAt: '2026-09-05T11:30:01.000Z',
   durationMs: 1000,
   status: 'completed',
+  idle: false,
   error: null,
   totals: {
     campaignsTouched: 0,

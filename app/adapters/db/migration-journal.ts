@@ -1,5 +1,7 @@
 import pg from 'pg';
 
+import { normalizeDatabaseConnectionString } from './client.js';
+
 export interface MigrationJournalState {
   tables: number;
   journalRows: number;
@@ -18,7 +20,7 @@ const readCount = (rows: readonly CountRow[]): number => rows[0]?.count ?? 0;
 export const migrationJournalState = async (
   connectionString: string,
 ): Promise<MigrationJournalState> => {
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({ connectionString: normalizeDatabaseConnectionString(connectionString) });
   try {
     const tables = await pool.query<CountRow>(
       `

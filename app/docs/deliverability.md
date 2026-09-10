@@ -100,6 +100,12 @@ cannot run every minute need an external scheduler or a standalone worker. The e
 | `MARKETING_SEND_SECONDS` | 50 | Campaign enumeration and sending window, maximum 50 seconds |
 | `MARKETING_BATCH_CAP` | 1000 | Maximum recipients allocated to a batch |
 | `MARKETING_WORKER_INTERVAL_MS` | 60000 | Standalone worker interval; hosted cadence is set in `vercel.json` |
+| `MARKETING_RETENTION_RAW_SNS_INBOX_DAYS` | 7 | Raw SNS payload retention after processing or ignoring |
+| `MARKETING_RETENTION_RENDERED_BODIES_DAYS` | 14 | Rendered campaign body and marketing outbox payload retention |
+| `MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS` | 30 | Open and click event metadata retention |
+| `MARKETING_RETENTION_PENDING_CONSENTS_DAYS` | 30 | Unconfirmed double opt-in consent retention |
+| `MARKETING_RETENTION_SCHEDULER_RUNS_DAYS` | 14 | Non-idle scheduler run retention |
+| `MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS` | 2 | Idle scheduler run retention |
 
 SNS processing gets at most the first five seconds; bulk work shares the remaining global deadline
 across campaigns and tenants. Retention and identity/reputation maintenance use the last completed

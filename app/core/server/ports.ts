@@ -2078,11 +2078,14 @@ export interface SesOnboardingControlPlane {
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
   ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
-  /** SNS rejects Unsubscribe for pending subscriptions; those are reported as not removed. */
-  removeSubscription(
+  listSubscriptions(
     credentials: SesMarketingCredentials,
-    input: { topicArn: string; endpoint: string },
-  ): Promise<Result<{ removed: boolean }, AppError>>;
+    topicArn: string,
+  ): Promise<Result<Array<{ arn: string | null; endpoint: string }>, AppError>>;
+  unsubscribe(
+    credentials: SesMarketingCredentials,
+    subscriptionArn: string,
+  ): Promise<Result<void, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {
@@ -2164,6 +2167,7 @@ export interface SchedulerRunRepository {
     finishedAt: string;
     durationMs: number;
     status: 'completed' | 'failed';
+    idle: boolean;
     error: string | null;
     totals: SchedulerRunTotals;
     tenants: SchedulerRunTenant[];
@@ -2180,6 +2184,10 @@ export interface SchedulerRunRepository {
   }>;
   summarizeForTenant(tenantId: string, since: string): Promise<SchedulerRunTenantSummary>;
   failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
+  purge(
+    input: { runsBefore: string; idleRunsBefore: string },
+    options: { batchSize: number; timeoutMs: number },
+  ): Promise<number>;
 }
 
 export interface EmailHmac {

@@ -1,6 +1,6 @@
 {
-  "hash": "2ac66b6db853f63f07a4ee5864c9445f5c624beeeb5b863abf6a626337ff4581",
-  "shortId": "2ac66b6db853",
+  "hash": "078a1e5a82bfee2dcaa40305e0c36a1fe0f70bdb9e3b42a0a07de1eef03b3743",
+  "shortId": "078a1e5a82bf",
   "schema": {
     "constraints": [
       {
@@ -319,7 +319,7 @@
         "table": "scheduler_run_tenants"
       },
       {
-        "definition": "FOREIGN KEY (run_id) REFERENCES scheduler_runs(id) ON DELETE SET NULL",
+        "definition": "FOREIGN KEY (run_id) REFERENCES scheduler_runs(id) ON DELETE RESTRICT",
         "name": "campaign_sends_run_id_scheduler_runs_id_fk",
         "table": "campaign_sends"
       },
@@ -1633,6 +1633,11 @@
         "table": "campaign_sends"
       },
       {
+        "definition": "CREATE INDEX campaign_sends_run_id_idx ON campaign_sends USING btree (run_id)",
+        "name": "campaign_sends_run_id_idx",
+        "table": "campaign_sends"
+      },
+      {
         "definition": "CREATE INDEX campaign_sends_tenant_campaign_status_idx ON campaign_sends USING btree (tenant_id, campaign_id, status)",
         "name": "campaign_sends_tenant_campaign_status_idx",
         "table": "campaign_sends"
@@ -2031,6 +2036,11 @@
         "definition": "CREATE INDEX scheduler_run_tenants_tenant_run_idx ON scheduler_run_tenants USING btree (tenant_id, run_id)",
         "name": "scheduler_run_tenants_tenant_run_idx",
         "table": "scheduler_run_tenants"
+      },
+      {
+        "definition": "CREATE INDEX scheduler_runs_kind_started_id_idx ON scheduler_runs USING btree (kind, started_at DESC NULLS LAST, id DESC NULLS LAST)",
+        "name": "scheduler_runs_kind_started_id_idx",
+        "table": "scheduler_runs"
       },
       {
         "definition": "CREATE INDEX scheduler_runs_started_id_idx ON scheduler_runs USING btree (started_at, id)",
@@ -6245,6 +6255,99 @@
           }
         ],
         "name": "user"
+      },
+      {
+        "columns": [
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "idle",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "duration_ms",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "finished_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "totals",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "trigger",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "scheduler_runs"
       },
       {
         "columns": [
@@ -10857,91 +10960,6 @@
           }
         ],
         "name": "consent_definition_versions"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "duration_ms",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "error",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "finished_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "started_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "totals",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "trigger",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "scheduler_runs"
       },
       {
         "columns": [

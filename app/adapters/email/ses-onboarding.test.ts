@@ -248,6 +248,25 @@ describe('SES onboarding AWS adapter', () => {
     });
   });
 
+  it('lists HTTPS subscriptions and unsubscribes by ARN', async () => {
+    const unsubscribe = vi.fn(async () => undefined);
+    const controlPlane = createSesOnboardingControlPlane(factory, {
+      list: async () => [
+        { Protocol: 'https', Endpoint: endpoint, SubscriptionArn: 'arn:https' },
+        { Protocol: 'email', Endpoint: 'owner@example.test', SubscriptionArn: 'arn:email' },
+      ],
+      subscribe: async () => ({ SubscriptionArn: 'pending confirmation', $metadata: {} }),
+      unsubscribe,
+    });
+
+    expect(await controlPlane.listSubscriptions(credentials, topicArn)).toEqual({
+      ok: true,
+      value: [{ arn: 'arn:https', endpoint }],
+    });
+    expect(await controlPlane.unsubscribe(credentials, 'arn:https')).toEqual({ ok: true, value: undefined });
+    expect(unsubscribe).toHaveBeenCalledWith(expect.any(SNSClient), 'arn:https');
+  });
+
   it('pages through every SES identity and reports its verification and DKIM state', async () => {
     const ses = new SESClient(credentials);
     // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.

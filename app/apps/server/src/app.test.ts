@@ -7412,6 +7412,7 @@ describe('scheduler operator routes', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
@@ -7422,6 +7423,7 @@ describe('scheduler operator routes', () => {
       finishedAt: '1998-07-26T10:00:01.000Z',
       durationMs: 1000,
       status: 'completed',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,

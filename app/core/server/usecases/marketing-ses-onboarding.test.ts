@@ -94,8 +94,11 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   accountIdentities: SesAccountIdentity[] = [];
   accessDeniedAction: string | null = null;
   subscribedEndpoints: string[] = [];
-  removedEndpoints: string[] = [];
-  removable = true;
+  subscriptions: Array<{ arn: string | null; endpoint: string }> = [];
+  unsubscribedArns: string[] = [];
+  unsubscribeAttempts: string[] = [];
+  unsubscribeFailureArns = new Set<string>();
+  listSubscriptionsFailure = false;
   readSubscribedEndpoints: (string | null)[] = [];
 
   async listIdentities() {
@@ -140,9 +143,21 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     });
   }
 
-  async removeSubscription(_credentials: unknown, input: { endpoint: string }) {
-    this.removedEndpoints.push(input.endpoint);
-    return ok({ removed: this.removable });
+  async listSubscriptions() {
+    if (this.listSubscriptionsFailure) {
+      return err(integrationUnavailable('SNS subscriptions could not be listed'));
+    }
+    return ok(this.subscriptions);
+  }
+
+  async unsubscribe(_credentials: unknown, subscriptionArn: string) {
+    this.unsubscribeAttempts.push(subscriptionArn);
+    if (this.unsubscribeFailureArns.has(subscriptionArn)) {
+      return err(integrationUnavailable('SNS subscription could not be removed'));
+    }
+    this.unsubscribedArns.push(subscriptionArn);
+    this.subscriptions = this.subscriptions.filter((subscription) => subscription.arn !== subscriptionArn);
+    return ok(undefined);
   }
 
   async readInfrastructure(_credentials: unknown, input: { subscribedEndpoint: string | null }) {
@@ -187,6 +202,7 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
 const deps = (
   repository: InMemoryTenantSesSettingsRepository,
   controlPlane: FakeSesOnboardingControlPlane,
+  warnings: string[] = [],
 ) => ({
   settings: repository,
   credentials: {
@@ -199,6 +215,7 @@ const deps = (
   controlPlane,
   clock: { nowIso: () => NOW },
   webhookBaseUrl: async () => 'https://app.together.test/api/webhooks/ses',
+  logger: { warn: (message: string) => { warnings.push(message); } },
 });
 
 const sesSecretKeys: TenantSecretKey[] = ['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region'];
@@ -456,13 +473,15 @@ describe('SES onboarding wizard', () => {
     });
   });
 
-  it('resubscribes and drops the confirmation when provisioning finds a stale endpoint', async () => {
+  it('keeps the verified subscription active while a replacement is pending', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
       replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
       snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      webhookVerifiedAt: '2026-07-20T10:00:00.000Z',
+      broadcastsEnabled: true,
     })]);
     const controlPlane = new FakeSesOnboardingControlPlane();
     controlPlane.subscriptionConfirmed = false;
@@ -471,11 +490,13 @@ describe('SES onboarding wizard', () => {
 
     expect(result).toMatchObject({ ok: true, value: { subscriptionEndpoint: WEBHOOK_URL } });
     expect(await repository.findByTenant('tenant-1')).toMatchObject({
-      snsSubscriptionEndpoint: WEBHOOK_URL,
-      snsSubscriptionConfirmedAt: null,
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      webhookVerifiedAt: '2026-07-20T10:00:00.000Z',
+      broadcastsEnabled: true,
     });
     expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL, WEBHOOK_URL]);
-    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+    expect(controlPlane.unsubscribedArns).toEqual([]);
   });
 
   it('resubscribes a webhook carried by a detached domain on the new canonical origin', async () => {
@@ -485,6 +506,11 @@ describe('SES onboarding wizard', () => {
       snsSubscriptionConfirmedAt: NOW,
     })]);
     const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.subscriptions = [
+      { arn: 'arn:new', endpoint: WEBHOOK_URL },
+      { arn: 'arn:old', endpoint: LEGACY_WEBHOOK_URL },
+      { arn: 'arn:foreign', endpoint: 'https://other.test/api/webhooks/ses/another_webhook_token' },
+    ];
 
     const result = await resubscribeSesWebhookAfterDomainRemoval(
       'tenant-1',
@@ -494,10 +520,10 @@ describe('SES onboarding wizard', () => {
 
     expect(result).toEqual({ ok: true, value: { endpoint: WEBHOOK_URL } });
     expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL]);
-    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+    expect(controlPlane.unsubscribedArns).toEqual(['arn:old']);
     expect(await repository.findByTenant('tenant-1')).toMatchObject({
       snsSubscriptionEndpoint: WEBHOOK_URL,
-      snsSubscriptionConfirmedAt: null,
+      snsSubscriptionConfirmedAt: NOW,
     });
   });
 
@@ -514,47 +540,170 @@ describe('SES onboarding wizard', () => {
       deps(repository, controlPlane),
     )).toEqual({ ok: true, value: null });
     expect(controlPlane.subscribedEndpoints).toEqual([]);
-    expect(controlPlane.removedEndpoints).toEqual([]);
+    expect(controlPlane.unsubscribedArns).toEqual([]);
   });
 
-  it('keeps the stale subscription when SNS cannot unsubscribe it', async () => {
+  it('finishes a pending domain-removal migration during the scheduler refresh', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
-      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      snsSubscriptionConfirmedAt: NOW,
+      webhookVerifiedAt: NOW,
+      quotaRefreshedAt: NOW,
+      inSandbox: false,
+      broadcastsEnabled: true,
     })]);
     const controlPlane = new FakeSesOnboardingControlPlane();
-    controlPlane.removable = false;
+    controlPlane.identityVerified = true;
+    controlPlane.subscriptionConfirmed = false;
+    const warnings: string[] = [];
 
-    const result = await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+    await resubscribeSesWebhookAfterDomainRemoval(
+      'tenant-1',
+      'together.test',
+      deps(repository, controlPlane, warnings),
+    );
+    controlPlane.subscriptionConfirmed = true;
+    controlPlane.subscriptions = [
+      { arn: 'arn:new', endpoint: WEBHOOK_URL },
+      { arn: 'arn:old', endpoint: LEGACY_WEBHOOK_URL },
+    ];
 
-    expect(result).toMatchObject({ ok: true, value: { subscriptionEndpoint: WEBHOOK_URL } });
-    expect(await repository.findByTenant('tenant-1')).toMatchObject({
-      snsSubscriptionEndpoint: WEBHOOK_URL,
+    const result = await refreshSesIdentity(ctx, deps(repository, controlPlane, warnings));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        snsSubscriptionEndpoint: WEBHOOK_URL,
+        snsSubscriptionConfirmedAt: NOW,
+        webhookVerifiedAt: NOW,
+        broadcastsEnabled: true,
+      },
     });
+    expect(controlPlane.unsubscribedArns).toEqual(['arn:old']);
+    expect(warnings).toContain('[marketing-ses] subscription migration pending tenant=tenant-1');
   });
 
-  it('migrates a stale endpoint on poll and reports the subscription as pending again', async () => {
+  it('removes only superseded webhook subscriptions after the replacement is confirmed', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      replyTo: null,
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      webhookVerifiedAt: NOW,
+      broadcastsEnabled: true,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.subscriptions = [
+      { arn: 'arn:new', endpoint: WEBHOOK_URL },
+      { arn: 'arn:old', endpoint: `${LEGACY_WEBHOOK_URL}/` },
+      { arn: 'arn:foreign', endpoint: 'https://other.test/api/webhooks/ses/another_webhook_token' },
+    ];
+
+    await pollSesOnboarding(ctx, deps(repository, controlPlane));
+    await pollSesOnboarding(ctx, deps(repository, controlPlane));
+
+    expect(await repository.findByTenant('tenant-1')).toMatchObject({
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: NOW,
+      webhookVerifiedAt: NOW,
+    });
+    expect(controlPlane.unsubscribedArns).toEqual(['arn:old']);
+    expect(controlPlane.subscriptions).toEqual([
+      { arn: 'arn:new', endpoint: WEBHOOK_URL },
+      { arn: 'arn:foreign', endpoint: 'https://other.test/api/webhooks/ses/another_webhook_token' },
+    ]);
+  });
+
+  it('keeps poll readiness while the replacement subscription is pending', async () => {
     const repository = new InMemoryTenantSesSettingsRepository([settings({
       replyTo: null, identityVerifiedAt: NOW,
       configurationSet: 'together-tenant-1',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
       snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
       snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      webhookVerifiedAt: '2026-07-20T10:00:00.000Z',
+      broadcastsEnabled: true,
     })]);
     const controlPlane = new FakeSesOnboardingControlPlane();
     controlPlane.identityVerified = true;
     controlPlane.subscriptionConfirmed = false;
+    const warnings: string[] = [];
 
-    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane));
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane, warnings));
 
-    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: false } } });
+    expect(result).toMatchObject({ ok: true, value: { checklist: { snsSubscription: true, webhook: true } } });
     expect(controlPlane.subscribedEndpoints).toEqual([WEBHOOK_URL]);
-    expect(controlPlane.removedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
-    expect(controlPlane.readSubscribedEndpoints).toEqual([WEBHOOK_URL]);
+    expect(controlPlane.unsubscribedArns).toEqual([]);
+    expect(controlPlane.readSubscribedEndpoints).toEqual([LEGACY_WEBHOOK_URL]);
+    expect(warnings).toEqual([
+      '[marketing-ses] subscription migration pending tenant=tenant-1',
+    ]);
     expect(await repository.findByTenant('tenant-1')).toMatchObject({
-      snsSubscriptionEndpoint: WEBHOOK_URL,
-      snsSubscriptionConfirmedAt: null,
+      snsSubscriptionEndpoint: LEGACY_WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: '2026-07-20T10:00:00.000Z',
+      webhookVerifiedAt: '2026-07-20T10:00:00.000Z',
+      broadcastsEnabled: true,
     });
+  });
+
+  it('logs subscription cleanup failures without failing the poll or skipping later subscriptions', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      replyTo: null,
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: NOW,
+      webhookVerifiedAt: NOW,
+      broadcastsEnabled: true,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.subscriptions = [
+      { arn: 'arn:old-one', endpoint: LEGACY_WEBHOOK_URL },
+      { arn: 'arn:old-two', endpoint: 'https://legacy.example.test/api/webhooks/ses/webhook_token_123456789012345' },
+    ];
+    controlPlane.unsubscribeFailureArns.add('arn:old-one');
+    const warnings: string[] = [];
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane, warnings));
+
+    expect(result.ok).toBe(true);
+    expect(controlPlane.unsubscribeAttempts).toEqual(['arn:old-one', 'arn:old-two']);
+    expect(controlPlane.unsubscribedArns).toEqual(['arn:old-two']);
+    expect(warnings).toEqual([
+      expect.stringContaining('subscription=arn:old-one'),
+    ]);
+  });
+
+  it('logs a subscription listing failure without failing the poll', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      replyTo: null,
+      identityVerifiedAt: NOW,
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      snsSubscriptionEndpoint: WEBHOOK_URL,
+      snsSubscriptionConfirmedAt: NOW,
+      webhookVerifiedAt: NOW,
+      broadcastsEnabled: true,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.listSubscriptionsFailure = true;
+    const warnings: string[] = [];
+
+    const result = await pollSesOnboarding(ctx, deps(repository, controlPlane, warnings));
+
+    expect(result.ok).toBe(true);
+    expect(warnings).toEqual([
+      expect.stringContaining('SNS subscriptions could not be listed'),
+    ]);
   });
 
   it('leaves a subscription that only differs by trailing slash alone', async () => {
@@ -571,7 +720,7 @@ describe('SES onboarding wizard', () => {
     await pollSesOnboarding(ctx, deps(repository, controlPlane));
 
     expect(controlPlane.subscribedEndpoints).toEqual([]);
-    expect(controlPlane.removedEndpoints).toEqual([]);
+    expect(controlPlane.unsubscribedArns).toEqual([]);
   });
 
   it('clears the persisted confirmation when a poll no longer observes a confirmed subscription', async () => {

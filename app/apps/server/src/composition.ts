@@ -301,7 +301,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import {
   DEMO_SEED_PASSWORD,
   isProductionEnvironment,
@@ -1100,9 +1100,12 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     }
     const marketing = await runScheduledMarketingJobs({
       now,
-      pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      pendingOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_PENDING_CONSENTS_DAYS),
+      renderedBodiesOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RENDERED_BODIES_DAYS),
+      engagementOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS),
+      rawSnsInboxOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RAW_SNS_INBOX_DAYS),
+      schedulerRunsOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_SCHEDULER_RUNS_DAYS),
+      schedulerIdleRunsOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS),
       sesIdentityRefreshIntervalMs: SES_IDENTITY_REFRESH_INTERVAL_MS,
       shouldContinue: () => Date.parse(clock.nowIso()) + 1000 < Date.parse(deadlineAt),
       maintenanceIntervalMs: 30 * 60 * 1000,
@@ -1128,6 +1131,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
             controlPlane: sesOnboardingControlPlane,
             clock,
             webhookBaseUrl: sesWebhookBaseUrl,
+            logger,
           },
         ),
       runReputationAlerts: (tenantId) =>

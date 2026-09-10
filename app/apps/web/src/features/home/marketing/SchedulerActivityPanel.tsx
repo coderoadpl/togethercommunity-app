@@ -218,7 +218,12 @@ export const SchedulerActivityPanel = () => {
                     <TableCell>{run.kind === 'consent_evidence_purge'
                       ? t.marketing.activity.purgeCount({ purged: tenant.purged ?? 0 })
                       : t.marketing.activity.counts(tenant)}</TableCell>
-                    <TableCell><SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} /></TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} />
+                        {run.idle ? <Chip size="small" variant="outlined" label={t.marketing.activity.idle} /> : null}
+                      </Stack>
+                    </TableCell>
                     <TableCell align="right">
                       <Button component={Link} size="small" to={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}>
                         {t.marketing.activity.details}

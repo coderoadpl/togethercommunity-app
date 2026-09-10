@@ -188,15 +188,19 @@ back to the full Storybook catalogue.
 
 Before the Chromatic command, the workflow diffs the pull-request base and head
 for `app/apps/web/**`, `app/apps/server/src/**`, `app/core/**`, `app/.storybook/**`,
-`app/package.json`, and `app/pnpm-lock.yaml`. Pull requests with no matching
-files run the Chromatic CLI with `--skip`, leaving the check green and refreshing
-the sticky PR comment with `Chromatic skipped: no UI changes`. Dependency file
-changes are included because installed package changes can alter rendering, and
-`app/core/**` is included because `app/apps/web/src` imports it as
-`#core/domain` / `#core/contract` and its changes can alter rendered stories.
-The `pnpm install` and Chromatic steps run unconditionally so the skip decision
-comes only from the Chromatic CLI's own `--skip` flag, keeping every job on the
-lockfile-pinned dependency tree instead of an ad hoc install.
+`app/package.json`, `app/pnpm-lock.yaml`, `app/tasks/visual-goldens/**`, and the
+workflow's own file — the same set that triggers each workflow's `paths:` filter
+(where one is declared), so a pull request that only trips a trigger path never
+falls through to a false "no UI changes" skip. Pull requests with no matching
+files run the Chromatic CLI with `--skip`, leaving the check green and
+refreshing the sticky PR comment with `Chromatic skipped: no UI changes`.
+Dependency file changes are included because installed package changes can
+alter rendering, and `app/core/**` is included because `app/apps/web/src`
+imports it as `#core/domain` / `#core/contract` and its changes can alter
+rendered stories. The `pnpm install` and Chromatic steps run unconditionally
+so the skip decision comes only from the Chromatic CLI's own `--skip` flag,
+keeping every job on the lockfile-pinned dependency tree instead of an ad hoc
+install.
 
 The free plan budget is 5,000 snapshots per month in Chrome. The snapshot cost follows the current catalogue size. With
 TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot

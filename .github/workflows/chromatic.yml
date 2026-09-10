@@ -65,7 +65,9 @@ jobs:
               'app/core/**' \
               'app/.storybook/**' \
               'app/package.json' \
-              'app/pnpm-lock.yaml'
+              'app/pnpm-lock.yaml' \
+              'app/tasks/visual-goldens/**' \
+              '.github/workflows/chromatic.yml'
           )"
 
           if [ -n "$changed_files" ]; then

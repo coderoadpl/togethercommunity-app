@@ -6,6 +6,7 @@ on:
     paths:
       - 'app/apps/web/**'
       - 'app/apps/server/src/**'
+      - 'app/core/**'
       - 'app/.storybook/**'
       - 'app/package.json'
       - 'app/pnpm-lock.yaml'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'app/apps/web/**'
       - 'app/apps/server/src/**'
+      - 'app/core/**'
       - 'app/.storybook/**'
       - 'app/package.json'
       - 'app/pnpm-lock.yaml'
@@ -83,7 +85,9 @@ jobs:
               'app/core/**' \
               'app/.storybook/**' \
               'app/package.json' \
-              'app/pnpm-lock.yaml'
+              'app/pnpm-lock.yaml' \
+              'app/tasks/visual-goldens/**' \
+              '.github/workflows/chromatic-preview.yml'
           )"
 
           if [ -n "$changed_files" ]; then

@@ -136,6 +136,8 @@ describe('Chromatic pull request link comments', () => {
     expect(detectorScript).not.toContain("'app/apps/web/src/**/*.stories.*'");
     expect(detectorScript).toContain("'app/package.json'");
     expect(detectorScript).toContain("'app/pnpm-lock.yaml'");
+    expect(detectorScript).toContain("'app/tasks/visual-goldens/**'");
+    expect(detectorScript).toContain(`'.github/workflows/${file}'`);
     expect(install.if).toBeUndefined();
     expect(chromatic.if).toBeUndefined();
     expect(chromatic.env).toMatchObject({

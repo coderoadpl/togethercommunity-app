@@ -14,8 +14,8 @@ const run = {
   kind: 'marketing_tick',
   trigger: 'cron',
   startedAt: '2026-07-26T09:00:00.000Z',
-  finishedAt: '2026-07-26T09:00:00.250Z',
-  durationMs: 250,
+  finishedAt: '2026-07-26T09:00:01.250Z',
+  durationMs: 1250,
   status: 'failed',
   error: 'quota service unavailable',
   totals: {
@@ -42,6 +42,12 @@ const tenant = {
   budgetUsed: 4,
   errors: ['SES rejected recipient'],
   createdAt: '2026-07-26T09:00:00.250Z',
+};
+
+const tenantWithoutRecordedErrors = {
+  ...tenant,
+  id: 'run-tenant-without-recorded-errors',
+  errors: [],
 };
 
 const purgeRun = {
@@ -113,6 +119,11 @@ describe('scheduler activity panel', () => {
 
     expect(await screen.findByText('18')).toBeInTheDocument();
     expect(screen.getByText(en.marketing.activity.counts(tenant))).toBeInTheDocument();
+    expect(screen.getAllByText(new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(run.startedAt))).length).toBeGreaterThan(0);
+    expect(screen.getByText('1.3 s')).toBeInTheDocument();
+    const failedTile = screen.getByText(en.marketing.activity.failedLast24Hours).closest('a');
+    if (failedTile === null) throw new Error('failed summary tile link was not rendered');
+    expect(failedTile).toHaveAttribute('href', '/panel/marketing/sends?status=failed');
     expect(screen.getByRole('link', { name: en.marketing.activity.details })).toHaveAttribute(
       'href',
       '/panel/marketing/activity/run-marketing-1',
@@ -134,10 +145,41 @@ describe('scheduler activity panel', () => {
     expect(await screen.findByText('run-marketing-1')).toBeInTheDocument();
     expect(screen.getByText('quota service unavailable')).toBeInTheDocument();
     expect(screen.getByText('SES rejected recipient')).toBeInTheDocument();
+    expect(screen.getByText(new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(run.finishedAt)))).toBeInTheDocument();
+    expect(screen.getByText('1.3 s')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.marketing.activity.viewSends })).toHaveAttribute(
       'href',
       '/panel/marketing/sends?runId=run-marketing-1',
     );
+  });
+
+  it('links failed sends when a failed run has no recorded scheduler errors', async () => {
+    server.use(http.get('/api/marketing/scheduler-runs/:id', () =>
+      HttpResponse.json({ ok: true, data: { run, tenant: tenantWithoutRecordedErrors } })));
+
+    await renderRoute('/panel/marketing/activity/run-marketing-1');
+
+    expect(await screen.findByText(en.marketing.activity.failedWithoutRecordedErrors)).toBeInTheDocument();
+    expect(screen.queryByText(en.marketing.activity.noErrors)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.marketing.activity.viewFailedSends })).toHaveAttribute(
+      'href',
+      '/panel/marketing/sends?runId=run-marketing-1&status=failed',
+    );
+  });
+
+  it('shows a not-found empty state for missing run details without retry', async () => {
+    server.use(http.get('/api/marketing/scheduler-runs/:id', () =>
+      HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Scheduler run was not found' } }, { status: 404 })));
+
+    await renderRoute('/panel/marketing/activity/missing-run');
+
+    expect(await screen.findByText(en.marketing.activity.detailTitle({ runId: 'missing-run' }))).toBeInTheDocument();
+    expect(await screen.findByText(en.marketing.activity.runNotFoundTitle)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.marketing.activity.backToRuns })).toHaveAttribute(
+      'href',
+      '/panel/marketing/activity',
+    );
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
   it('labels deleted evidence instead of send metrics for purge runs', async () => {

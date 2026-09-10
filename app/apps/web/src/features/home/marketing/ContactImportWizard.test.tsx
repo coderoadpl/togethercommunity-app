@@ -152,6 +152,7 @@ describe('contact import wizard', () => {
     const input = screen.getByLabelText(en.directory.file);
     fireEvent.change(input, { target: { files: [csvFile([0xc3, 0x28])] } });
     expect(await screen.findByText(en.directory.encodingError)).toBeInTheDocument();
+    expect(screen.queryByText('contacts.csv')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.directory.next })).toBeDisabled();
   });
 
@@ -165,6 +166,9 @@ describe('contact import wizard', () => {
     fireEvent.drop(screen.getByRole('group', { name: en.directory.dropFile }), { dataTransfer: { files: [file] } });
     expect(await screen.findByText('dropped.csv')).toHaveClass('MuiChip-label');
     expect(screen.getByRole('button', { name: en.directory.next })).toBeEnabled();
+    fireEvent.drop(screen.getByRole('group', { name: en.directory.dropFile }), { dataTransfer: { files: [] } });
+    expect(screen.getByText('dropped.csv')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.directory.next })).toBeEnabled();
   });
 
   it('localizes field names and coded email validation errors and explains the preview', async () => {
@@ -173,7 +177,7 @@ describe('contact import wizard', () => {
       preview: preview.preview.map((row, index) => index === 0 ? { ...row, status: 'invalid', normalizedPayload: null, errors: [`Invalid row: email: ${MARKETING_IMPORT_EMAIL_MISSING}`] } : row),
       errors: [
         { rowNumber: 1, message: `Invalid row: email: ${MARKETING_IMPORT_EMAIL_MISSING}` },
-        { rowNumber: 2, message: `Invalid row: email: ${MARKETING_IMPORT_EMAIL_INVALID}` },
+        { rowNumber: 2, message: `Invalid row: email: ${MARKETING_IMPORT_EMAIL_INVALID}; consentAt: Invalid datetime` },
       ],
     };
     installDirectoryFixture(previewFixture);
@@ -182,6 +186,7 @@ describe('contact import wizard', () => {
     expect(await screen.findByText(en.directory.previewHint)).toBeInTheDocument();
     expect(screen.getAllByText(en.directory.importErrors.emailMissing).length).toBeGreaterThan(0);
     expect(screen.getByText(new RegExp(en.directory.importErrors.emailInvalid))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`${en.directory.importErrors.emailInvalid}; consentAt: Invalid datetime`))).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'email' })).toHaveTextContent(en.directory.importFields.email);
     const missing = marketingImportRowSchema.safeParse({});
     const invalid = marketingImportRowSchema.safeParse({ email: 'not-an-address' });

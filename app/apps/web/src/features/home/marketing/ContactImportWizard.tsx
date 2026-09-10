@@ -28,9 +28,11 @@ const nextUploadId = () =>
     ? crypto.randomUUID()
     : `import-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
 const localizeImportIssue = (message: string, t: Messages): string => {
-  if (message.includes(MARKETING_IMPORT_EMAIL_MISSING)) return t.directory.importErrors.emailMissing;
-  if (message.includes(MARKETING_IMPORT_EMAIL_INVALID)) return t.directory.importErrors.emailInvalid;
-  return message;
+  return message.split('; ').map((issue) => {
+    if (issue === `email: ${MARKETING_IMPORT_EMAIL_MISSING}` || issue === `Invalid row: email: ${MARKETING_IMPORT_EMAIL_MISSING}`) return t.directory.importErrors.emailMissing;
+    if (issue === `email: ${MARKETING_IMPORT_EMAIL_INVALID}` || issue === `Invalid row: email: ${MARKETING_IMPORT_EMAIL_INVALID}`) return t.directory.importErrors.emailInvalid;
+    return issue;
+  }).join('; ');
 };
 
 const ImportPreview = ({ preview }: { preview: MarketingImportValidation }) => {
@@ -96,7 +98,6 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
   const readFile = (file: File | undefined) => {
     setCsv(''); setFileName(''); setFileError(''); setPreview(undefined); setMapping({}); setBatchId(undefined); dirty();
     if (!file) return;
-    setFileName(file.name);
     if (file.size > 3 * 1024 * 1024) { setFileError(t.directory.fileError); return; }
     setReading(true);
     void (async () => {
@@ -105,6 +106,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
         let text: string;
         try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
         catch { setFileError(t.directory.encodingError); return; }
+        setFileName(file.name);
         setCsv(text);
         const result = parseMarketingImportCsv(text, delimiter || undefined);
         if (result.ok) { const mapped = mapMarketingImportCsv(result.value, { kind }); if (mapped.ok) setMapping(mapped.value.mapping); }
@@ -132,7 +134,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
     <div ref={heading} tabIndex={-1}><SectionCard title={step === 0 ? t.directory.upload : step === 1 ? t.directory.mapping : t.directory.attestation}>
       {step === 0 ? <>
         <Alert severity="info">{t.directory.fileHint}</Alert>
-        <Paper variant="outlined" role="group" aria-label={t.directory.dropFile} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!pending) readFile(event.dataTransfer.files[0]); }} sx={{ p: 2 }}>
+        <Paper variant="outlined" role="group" aria-label={t.directory.dropFile} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!pending && event.dataTransfer.files.length > 0) readFile(event.dataTransfer.files[0]); }} sx={{ p: 2 }}>
           <Typography>{t.directory.dropFile}</Typography>
           <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}>
             <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label={t.directory.file} hidden disabled={pending} onChange={(event) => readFile(event.target.files?.[0])} />

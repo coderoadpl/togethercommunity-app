@@ -5,14 +5,22 @@ on:
     branches: [staging]
     paths:
       - 'app/apps/web/**'
+      - 'app/apps/server/src/**'
+      - 'app/core/**'
       - 'app/.storybook/**'
+      - 'app/package.json'
+      - 'app/pnpm-lock.yaml'
       - 'app/tasks/visual-goldens/**'
       - '.github/workflows/chromatic-preview.yml'
   push:
     branches: [staging]
     paths:
       - 'app/apps/web/**'
+      - 'app/apps/server/src/**'
+      - 'app/core/**'
       - 'app/.storybook/**'
+      - 'app/package.json'
+      - 'app/pnpm-lock.yaml'
       - 'app/tasks/visual-goldens/**'
       - '.github/workflows/chromatic-preview.yml'
 
@@ -55,8 +63,38 @@ jobs:
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Detect UI changes
+        id: ui-changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(
+            git -C "$GITHUB_WORKSPACE" diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
+              'app/apps/web/**' \
+              'app/apps/server/src/**' \
+              'app/core/**' \
+              'app/.storybook/**' \
+              'app/package.json' \
+              'app/pnpm-lock.yaml' \
+              'app/tasks/visual-goldens/**' \
+              '.github/workflows/chromatic-preview.yml'
+          )"
+
+          if [ -n "$changed_files" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
         with:
           package_json_file: app/package.json
@@ -69,15 +107,20 @@ jobs:
       - name: Publish Chromatic preview
         env:
           CHROMATIC_PREVIEW_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PREVIEW_PROJECT_TOKEN }}
-        run: >
-          pnpm exec chromatic
-          --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN"
-          --build-script-name=storybook:build
-          --diagnostics-file=chromatic-diagnostics.json
-          --only-changed
-          --exit-zero-on-changes
-          --exit-once-uploaded
-          --zip
+          CHROMATIC_SKIP: ${{ steps.ui-changes.outputs.changed == 'false' }}
+        run: |
+          set -- \
+            --project-token="$CHROMATIC_PREVIEW_PROJECT_TOKEN" \
+            --build-script-name=storybook:build \
+            --diagnostics-file=chromatic-diagnostics.json \
+            --only-changed \
+            --exit-zero-on-changes \
+            --exit-once-uploaded \
+            --zip
+          if [ "$CHROMATIC_SKIP" = "true" ]; then
+            set -- "$@" --skip
+          fi
+          pnpm exec chromatic "$@"
       - name: Upsert Chromatic preview comment
         if: github.event_name == 'pull_request'
         continue-on-error: true
@@ -86,6 +129,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          CHROMATIC_SKIPPED: ${{ steps.ui-changes.outputs.changed == 'false' }}
         run: |
           marker='<!-- chromatic-preview -->'
           diagnostics='chromatic-diagnostics.json'
@@ -113,10 +157,14 @@ jobs:
             echo "$marker"
             echo "### Chromatic preview"
             echo
-            echo "- Chromatic build: ${build_url:-Unavailable}"
-            echo "- Chromatic Storybook: ${storybook_url:-Unavailable}"
-            echo "- Changed stories: ${change_count:-Unavailable}"
-            echo "- Components: ${component_count:-Unavailable}"
+            if [ "$CHROMATIC_SKIPPED" = "true" ]; then
+              echo "Chromatic skipped: no UI changes"
+            else
+              echo "- Chromatic build: ${build_url:-Unavailable}"
+              echo "- Chromatic Storybook: ${storybook_url:-Unavailable}"
+              echo "- Changed stories: ${change_count:-Unavailable}"
+              echo "- Components: ${component_count:-Unavailable}"
+            fi
             echo "- Commit: \`${COMMIT_SHA}\`"
             echo "- Base branch Storybook: ${pages_url}"
           } > "$body_file"

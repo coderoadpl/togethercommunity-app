@@ -177,6 +177,10 @@ They also retain queued and unresolved provider-acceptance counters; uncertain
 acceptance is excluded from waiting and is never retried automatically. Completion
 waits for all snapshot candidates to be enumerated and for pending sends to resolve.
 
+The campaign detail page shows the editor for drafts and for version 1 campaigns
+in the `scheduled` status, which stay editable until sending starts. Every other
+non-draft status shows the read-only campaign report instead.
+
 Existing requests without `audience` still create version 1 member campaigns.
 Their inclusive product filter and member cursor retain their meaning. An old
 client's content update cannot clear a version 2 audience. Studio offers an

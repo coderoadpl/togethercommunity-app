@@ -3,6 +3,7 @@
     "getTenantSchedulerRun:[\"scheduler-run-studio-outbox\"]": {
       "ok": true,
       "value": {
+        "campaignCounts": null,
         "run": {
           "createdAt": "2026-07-01T07:12:00.000Z",
           "durationMs": 312,

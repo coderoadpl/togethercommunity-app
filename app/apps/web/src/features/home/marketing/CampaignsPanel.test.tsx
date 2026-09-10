@@ -394,4 +394,36 @@ describe('campaign reputation warning', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.marketing.testSend })).not.toBeInTheDocument();
   });
+
+  it('keeps the editor for scheduled version 1 campaigns and reports scheduled version 2 campaigns', async () => {
+    let detail = campaignRow({ id: 'campaign-scheduled-routing', name: 'Scheduled routing', status: 'scheduled', audienceVersion: 1, sendAt: '2026-07-28T09:30:00.000Z' });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(true),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({ ok: true, data: { items: [], summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null }, nextCursor: null } })),
+    );
+    const root = createRootRoute();
+    const route = createRoute({ getParentRoute: () => root, path: '/panel/marketing/campaigns/$campaignId', component: CampaignDetailPage });
+    const mount = async () => {
+      const router = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/panel/marketing/campaigns/campaign-scheduled-routing'] }) });
+      await router.load();
+      return renderWithProviders(<RouterProvider router={router} />);
+    };
+    const view = await mount();
+
+    expect(await screen.findByLabelText(en.marketing.nameLabel)).toBeEnabled();
+    expect(screen.queryByText(en.marketing.lockedHint)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('campaign-result-stats')).not.toBeInTheDocument();
+    view.unmount();
+
+    detail = campaignRow({ id: 'campaign-scheduled-routing', name: 'Scheduled routing', status: 'scheduled', audienceVersion: 2, sendAt: '2026-07-28T09:30:00.000Z' });
+    await mount();
+
+    expect(await screen.findByTestId('campaign-result-stats')).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.marketing.nameLabel)).not.toBeInTheDocument();
+  });
 });

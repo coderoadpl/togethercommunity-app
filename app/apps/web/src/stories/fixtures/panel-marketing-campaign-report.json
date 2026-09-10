@@ -1,29 +1,29 @@
 {
   "calls": {
-    "getMarketingCampaign:[\"campaign-list-audience\"]": {
+    "getMarketingCampaign:[\"campaign-studio-summer-recap\"]": {
       "ok": true,
       "value": {
         "campaign": {
           "audience": {
             "excludeLists": [],
-            "excludeProductIds": [],
-            "includeLists": [
-              "list-launch"
+            "excludeProductIds": [
+              "product-studio-workshop"
             ],
-            "includeMembersWithConsent": false,
+            "includeLists": [],
+            "includeMembersWithConsent": true,
             "version": 2
           },
           "audienceFilter": null,
-          "audienceNameSnapshot": null,
+          "audienceNameSnapshot": "Members with consent",
           "audienceSnapshotId": null,
           "audienceVersion": 2,
-          "bodyHtml": "<p>Latest updates for our contacts.</p>",
-          "bodySource": "Latest updates for our contacts.",
+          "bodyHtml": "<p>Six lessons, one workshop and a new space.</p>",
+          "bodySource": "Six lessons, one workshop and a new space.",
           "bodyText": null,
-          "candidateCount": 0,
-          "consentDefinitionId": "definition-directory-news",
-          "consentLabelSnapshot": null,
-          "createdAt": "2026-07-01T12:00:00.000Z",
+          "candidateCount": 7,
+          "consentDefinitionId": "consent-definition-studio-news",
+          "consentLabelSnapshot": "I would like to receive news by email",
+          "createdAt": "2026-06-18T12:00:00.000Z",
           "cursorContactId": null,
           "cursorMemberId": null,
           "engagement": {
@@ -32,40 +32,56 @@
             "uniqueClicks": 0,
             "uniqueOpens": 0
           },
-          "errorCount": 0,
-          "failed": 0,
-          "finishedAt": null,
-          "id": "campaign-list-audience",
+          "errorCount": 1,
+          "failed": 1,
+          "finishedAt": "2026-06-19T12:00:00.000Z",
+          "id": "campaign-studio-summer-recap",
           "layoutId": null,
           "lockedBy": null,
           "lockedUntil": null,
-          "name": "Newsletter launch",
+          "name": "Summer recap",
           "pausedReason": null,
           "queued": 0,
           "replyTo": null,
           "results": {
-            "bounced": 0,
-            "candidates": 0,
-            "complained": 0,
-            "delivered": 0,
-            "failed": 0,
-            "sent": 0,
-            "skipped": 0,
+            "bounced": 1,
+            "candidates": 7,
+            "complained": 1,
+            "delivered": 3,
+            "failed": 1,
+            "sent": 5,
+            "skipped": 1,
             "unresolved": 0,
             "waiting": 0
           },
-          "sendAt": null,
-          "sent": 0,
-          "skipped": 0,
+          "sendAt": "2026-06-19T12:00:00.000Z",
+          "sent": 5,
+          "skipped": 1,
           "snapshotMaxContactId": null,
           "snapshotMaxMemberId": null,
-          "startedAt": null,
-          "status": "draft",
-          "subject": "Updates for newsletter contacts",
+          "startedAt": "2026-06-19T12:00:00.000Z",
+          "status": "finished",
+          "subject": "Everything you missed in June",
           "tenantId": "tenant-studio",
-          "toSend": 0,
+          "toSend": 7,
           "unresolved": 0
         }
+      }
+    },
+    "getMarketingSesSettings:[]": {
+      "ok": true,
+      "value": {
+        "credentialsConfigured": false,
+        "lastSnsDelivery": null,
+        "platformPool": {
+          "limit": 1000,
+          "used": 0
+        },
+        "resendConfigured": false,
+        "settings": null,
+        "smtpConfigured": false,
+        "webhookEndpointStale": false,
+        "webhookUrl": null
       }
     },
     "getTenantSettings:[]": {
@@ -121,22 +137,6 @@
         "definitions": [
           {
             "channel": "email",
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "documentRef": {
-              "mode": "url",
-              "url": "https://courses.example.org/privacy"
-            },
-            "doubleOptIn": false,
-            "footerLabel": null,
-            "id": "definition-directory-news",
-            "key": "directory-news",
-            "kind": "optional_marketing",
-            "status": "active",
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "channel": "email",
             "createdAt": "2026-06-06T12:00:00.000Z",
             "documentRef": {
               "mode": "url",
@@ -163,72 +163,7 @@
     "listMarketingLists:[{\"limit\":100}]": {
       "ok": true,
       "value": {
-        "lists": [
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-consent_definition",
-            "key": "consent_definition",
-            "kind": "dynamic",
-            "name": "Active permission",
-            "revision": 1,
-            "rule": {
-              "definitionId": "definition-directory-news",
-              "kind": "consent_definition",
-              "state": "active"
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-launch",
-            "key": "launch",
-            "kind": "dynamic",
-            "name": "Launch contacts",
-            "revision": 1,
-            "rule": {
-              "kind": "tag",
-              "match": "any",
-              "tags": [
-                "launch"
-              ]
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-newsletter",
-            "key": "newsletter",
-            "kind": "static",
-            "name": "Newsletter",
-            "revision": 1,
-            "rule": null,
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          },
-          {
-            "archivedAt": null,
-            "createdAt": "2026-07-01T12:00:00.000Z",
-            "id": "list-product_grant",
-            "key": "product_grant",
-            "kind": "dynamic",
-            "name": "Product access",
-            "revision": 1,
-            "rule": {
-              "kind": "product_grant",
-              "productIds": [
-                "product-studio-course-101"
-              ],
-              "state": "ever"
-            },
-            "tenantId": "tenant-studio",
-            "updatedAt": "2026-07-01T12:00:00.000Z"
-          }
-        ],
+        "lists": [],
         "nextCursor": null
       }
     },
@@ -470,6 +405,81 @@
         "openCount": 1
       }
     },
+    "listTenantSchedulerRuns:[{\"campaignId\":\"campaign-studio-summer-recap\",\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "campaignCounts": {
+              "failed": 1,
+              "sent": 5,
+              "skipped": 1
+            },
+            "run": {
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "durationMs": 2140,
+              "error": null,
+              "finishedAt": "2026-06-19T12:00:00.000Z",
+              "id": "scheduler-run-studio-recap",
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-19T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 1,
+                "reEnqueued": false,
+                "sendsAttempted": 7,
+                "sent": 5,
+                "skipped": 1
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 7,
+              "budgetComputed": 25,
+              "budgetUsed": 7,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "errors": [
+                "Recipient mailbox is full"
+              ],
+              "failed": 1,
+              "id": "scheduler-run-tenant-studio-recap",
+              "purged": null,
+              "runId": "scheduler-run-studio-recap",
+              "sent": 5,
+              "skipped": 1,
+              "tenantId": "tenant-studio"
+            }
+          }
+        ],
+        "nextCursor": null,
+        "summary": {
+          "failedLast24Hours": 1,
+          "lastRun": {
+            "createdAt": "2026-07-01T09:36:00.000Z",
+            "durationMs": 684,
+            "error": null,
+            "finishedAt": "2026-07-01T09:36:00.000Z",
+            "id": "scheduler-run-studio-marketing",
+            "kind": "marketing_tick",
+            "startedAt": "2026-07-01T09:36:00.000Z",
+            "status": "completed",
+            "totals": {
+              "campaignsTouched": 1,
+              "failed": 0,
+              "reEnqueued": false,
+              "sendsAttempted": 1,
+              "sent": 1,
+              "skipped": 0
+            },
+            "trigger": "cron"
+          },
+          "runsLast24Hours": 3,
+          "sentLast24Hours": 2
+        }
+      }
+    },
     "me:[]": {
       "ok": true,
       "value": {
@@ -493,30 +503,6 @@
         },
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
-      }
-    },
-    "previewMarketingAudience:[{\"audience\":{\"excludeLists\":[],\"excludeProductIds\":[],\"includeLists\":[\"list-launch\"],\"includeMembersWithConsent\":false,\"version\":2},\"consentDefinitionId\":\"definition-directory-news\"}]": {
-      "ok": true,
-      "value": {
-        "audienceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "candidateCount": 2,
-        "computedAt": "2026-07-01T12:00:00.000Z",
-        "count": 1,
-        "excludedCount": 0,
-        "sample": [
-          {
-            "contactId": "contact-a3bf86238a1c",
-            "displayName": "Anna Example",
-            "email": "anna@example.org",
-            "memberId": null
-          }
-        ],
-        "skipped": {
-          "noConsent": 0,
-          "pendingConfirmation": 0,
-          "suppressed": 1,
-          "withdrawn": 0
-        }
       }
     },
     "publicOffer:[]": {
@@ -703,7 +689,7 @@
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/marketing/campaigns/campaign-list-audience",
-  "scenario": "panel-marketing-campaign-audience",
+  "route": "/panel/marketing/campaigns/campaign-studio-summer-recap",
+  "scenario": "panel-marketing-campaign-report",
   "tenant": "studio"
 }

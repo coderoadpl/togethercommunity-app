@@ -55,6 +55,9 @@ const formatDateTimeWithTimeZone = (value: string, language: string): string =>
 const campaignCandidateCount = (campaign: Pick<CampaignDetailRow, 'candidateCount' | 'results'>): number =>
   campaign.candidateCount === 0 ? campaign.results.candidates : campaign.candidateCount;
 
+const campaignEditable = (campaign: Pick<CampaignDetailRow, 'audienceVersion' | 'status'>): boolean =>
+  campaign.status === 'draft' || (campaign.audienceVersion === 1 && campaign.status === 'scheduled');
+
 const campaignAudienceProgress = (campaign: CampaignProgress, t: Messages): string =>
   t.marketing.campaignProgress({ ...campaign.results, candidates: campaignCandidateCount(campaign) });
 
@@ -183,7 +186,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
     definition.status === 'active' && definition.kind === 'optional_marketing'
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
-  const editable = campaign === undefined || campaign.status === 'draft' || (campaign.audienceVersion === 1 && campaign.status === 'scheduled');
+  const editable = campaign === undefined || campaignEditable(campaign);
   const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId, audience]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
@@ -669,7 +672,7 @@ export const CampaignDetailPage = () => {
       documentTitle={campaign.data.campaign.name}
       backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}
     >
-      {campaign.data.campaign.status === 'draft' ? (
+      {campaignEditable(campaign.data.campaign) ? (
         <>
           {shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled) ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
           <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} masked={shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled)} />

@@ -2391,6 +2391,11 @@ export interface Messages {
     totalClicks: string;
     compactOpens: (params: { unique: number; total: number }) => string;
     compactClicks: (params: { unique: number; total: number }) => string;
+    compactOpensUnavailable: string;
+    compactClicksUnavailable: string;
+    trackingDisabledCampaignMetrics: string;
+    createdTimeValue: (params: { date: string }) => string;
+    scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;
     campaignDetails: string;
     allCampaigns: string;
@@ -2429,6 +2434,8 @@ export interface Messages {
     finishedCampaignHint: string;
     counters: (params: { toSend: number; sent: number; failed: number }) => string;
     status: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    scheduleCardTitle: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
+    workerPickupHint: string;
     consentsTitle: string;
     consentsDescription: string;
     consentsEmpty: string;

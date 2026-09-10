@@ -1,7 +1,8 @@
 import { CampaignAudienceSection } from './CampaignAudienceSection.js';
 import type { ContactCampaignAudience } from '#core/domain/index.js';
+import type { marketingCampaignDetailOutputSchema } from '#core/contract/index.js';
 import { CampaignTextSection } from './CampaignTextSection.js';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -23,10 +24,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
 import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
+import type { z } from 'zod';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
@@ -37,17 +39,55 @@ import {
   renderCampaignPreview,
 } from './marketing-markdown.js';
 
+type CampaignDetailRow = z.infer<typeof marketingCampaignDetailOutputSchema>['campaign'];
+type CampaignProgress = Pick<CampaignDetailRow, 'audienceVersion' | 'candidateCount' | 'skipped' | 'toSend' | 'sent' | 'failed' | 'queued' | 'unresolved'>;
+
+const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+const formatDateTimeWithTimeZone = (value: string, language: string): string =>
+  `${formatDateTime(value, language)} (${localTimeZone()})`;
+
+const campaignAudienceProgress = (campaign: CampaignProgress, t: Messages): string =>
+  campaign.audienceVersion === 2
+    ? t.marketing.contactProgress({
+      candidates: campaign.candidateCount,
+      skipped: campaign.skipped,
+      queued: campaign.queued,
+      unresolved: campaign.unresolved,
+    })
+    : t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed });
+
+const campaignListDate = (campaign: Pick<Campaign, 'sendAt' | 'createdAt'>, language: string, t: Messages): string =>
+  campaign.sendAt === null
+    ? t.marketing.createdTimeValue({ date: formatDateTime(campaign.createdAt, language) })
+    : t.marketing.scheduledTimeValue({ date: formatDateTime(campaign.sendAt, language) });
+
+const engagementHasCounts = (engagement: CampaignEngagementStats): boolean =>
+  engagement.uniqueOpens > 0 || engagement.totalOpens > 0 || engagement.uniqueClicks > 0 || engagement.totalClicks > 0;
+
+const shouldMaskEngagement = (engagement: CampaignEngagementStats, trackingDisabled: boolean): boolean =>
+  trackingDisabled && !engagementHasCounts(engagement);
+
+const compactEngagement = (engagement: CampaignEngagementStats, masked: boolean, t: Messages): ReactNode => (
+  <>
+    <span>{masked ? t.marketing.compactOpensUnavailable : t.marketing.compactOpens({ unique: engagement.uniqueOpens, total: engagement.totalOpens })}</span>
+    <span>{masked ? t.marketing.compactClicksUnavailable : t.marketing.compactClicks({ unique: engagement.uniqueClicks, total: engagement.totalClicks })}</span>
+  </>
+);
+
 const CampaignEngagementTiles = ({
   engagement,
+  masked,
 }: {
   engagement: CampaignEngagementStats;
+  masked: boolean;
 }) => {
   const t = useTranslations();
   const items = [
-    { label: t.marketing.uniqueOpens, value: engagement.uniqueOpens },
-    { label: t.marketing.totalOpens, value: engagement.totalOpens },
-    { label: t.marketing.uniqueClicks, value: engagement.uniqueClicks },
-    { label: t.marketing.totalClicks, value: engagement.totalClicks },
+    { label: t.marketing.uniqueOpens, value: masked ? '—' : String(engagement.uniqueOpens) },
+    { label: t.marketing.totalOpens, value: masked ? '—' : String(engagement.totalOpens) },
+    { label: t.marketing.uniqueClicks, value: masked ? '—' : String(engagement.uniqueClicks) },
+    { label: t.marketing.totalClicks, value: masked ? '—' : String(engagement.totalClicks) },
   ];
   return (
     <Box
@@ -70,7 +110,7 @@ const CampaignEngagementTiles = ({
   );
 };
 
-const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
+const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -248,7 +288,16 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
           {activeDefinitions.map((definition) => <MenuItem key={definition.id} value={definition.id}>{definition.key}</MenuItem>)}
         </Select>
       </FormControl>
-      {audience !== null ? <CampaignAudienceSection audience={audience} consentDefinitionId={effectiveConsentId} disabled={!editable} frozen={campaign?.audienceSnapshotId != null} onChange={setAudience} /> : <>
+      {audience !== null ? <>
+      <CampaignAudienceSection
+        audience={audience}
+        consentDefinitionId={effectiveConsentId}
+        disabled={!editable}
+        frozen={campaign?.audienceSnapshotId != null}
+        progress={campaign?.audienceVersion === 2 ? <Typography variant="body2">{campaignAudienceProgress(campaign, t)}</Typography> : undefined}
+        onChange={setAudience}
+      />
+      </> : <>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-products-label">{t.marketing.productFilterLabel}</FormLabel>
         <Select
@@ -288,7 +337,16 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
       </>}
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-layout-label">{t.marketing.layoutLabel}</FormLabel>
-        <Select labelId="marketing-campaign-layout-label" value={layoutId} disabled={!editable || layouts.isPending} onChange={(event) => setLayoutId(event.target.value)}>
+        <Select<string>
+          labelId="marketing-campaign-layout-label"
+          value={layoutId}
+          disabled={!editable || layouts.isPending}
+          displayEmpty
+          onChange={(event) => setLayoutId(event.target.value)}
+          renderValue={(selected) => selected === ''
+            ? t.marketing.noLayout
+            : layouts.data?.layouts.find((layout) => layout.id === selected)?.name ?? selected}
+        >
           <MenuItem value="">{t.marketing.noLayout}</MenuItem>
           {(layouts.data?.layouts ?? []).map((layout) => <MenuItem key={layout.id} value={layout.id}>{layout.name}</MenuItem>)}
         </Select>
@@ -319,6 +377,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
 
 export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [sendAt, setSendAt] = useState('');
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -333,9 +392,20 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   });
   const testSend = useMutation(actions.testMarketingCampaign);
   const terminal = campaign.status === 'cancelled' || campaign.status === 'finished';
+  const cancellable = ['draft', 'scheduled', 'running', 'paused'].includes(campaign.status);
 
   return (
-    <SectionCard title={t.marketing.schedule}>
+    <SectionCard
+      title={t.marketing.scheduleCardTitle[campaign.status]}
+      headerActions={cancellable ? <Button color="error" onClick={() => setConfirmingCancel(true)}>{t.marketing.cancelCampaign}</Button> : undefined}
+    >
+      <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: { sm: 'center' } }}>
+        <CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} />
+        {campaign.sendAt === null ? null : (
+          <Typography variant="body2">{t.marketing.scheduledTimeValue({ date: formatDateTimeWithTimeZone(campaign.sendAt, language) })}</Typography>
+        )}
+      </Stack>
+      {campaign.status === 'scheduled' ? <Alert severity="info">{t.marketing.workerPickupHint}</Alert> : null}
       {terminal ? (
         <Alert severity="info">
           {campaign.status === 'cancelled' ? t.marketing.cancelledCampaignHint : t.marketing.finishedCampaignHint}
@@ -360,9 +430,6 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         {campaign.status === 'scheduled' ? <Button disabled={action.isPending} onClick={() => action.mutate({ campaignId: campaign.id, action: 'draft' })}>{t.marketing.returnToDraft}</Button> : null}
         {campaign.status === 'running' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'pause' })}>{t.marketing.pause}</Button> : null}
         {campaign.status === 'paused' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'resume' })}>{t.marketing.resume}</Button> : null}
-        {['draft', 'scheduled', 'running', 'paused'].includes(campaign.status) ? (
-          <Button color="error" onClick={() => setConfirmingCancel(true)}>{t.marketing.cancelCampaign}</Button>
-        ) : null}
         {terminal ? null : (
           <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
             {testSend.isPending ? t.marketing.testing : t.marketing.testSend}
@@ -397,7 +464,10 @@ export const CampaignsPanel = () => {
   const campaigns = useQuery(actions.marketingCampaigns);
   const consents = useQuery(actions.marketingConsents);
   const reputation = useQuery(actions.marketingReputation);
+  const settings = useQuery(actions.marketingSesSettings);
   const navigate = useNavigate();
+  const trackingDisabled = settings.isSuccess && settings.data.settings?.trackingEnabled !== true;
+  const showTrackingDisabledAlert = trackingDisabled && campaigns.isSuccess && campaigns.data.campaigns.some((campaign) => shouldMaskEngagement(campaign.engagement, true));
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
@@ -409,6 +479,7 @@ export const CampaignsPanel = () => {
       {reputation.data?.overallStatus === 'critical' ? (
         <Alert severity="error">{t.marketing.campaignReputationCriticalBanner}</Alert>
       ) : null}
+      {showTrackingDisabledAlert ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
       <ListSection
         isEmpty={campaigns.isSuccess && campaigns.data.campaigns.length === 0}
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.campaignsEmpty, action: <Button component={Link} to="/panel/marketing/campaigns/new">+ {t.common.add}</Button> }} />}
@@ -423,20 +494,12 @@ export const CampaignsPanel = () => {
                 title={campaign.name}
                 chips={<><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Chip size="small" variant="outlined" label={consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId} /></>}
                 summary={(
-                  <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing={{ xs: '0.25rem', sm: '1rem' }}>
-                    <span>{t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}</span>
-                    {campaign.audienceVersion === 2 ? <span>{t.marketing.contactProgress({ candidates: campaign.candidateCount, skipped: campaign.skipped, queued: campaign.queued, unresolved: campaign.unresolved })}</span> : null}
-                    <span>{t.marketing.compactOpens({
-                      unique: campaign.engagement.uniqueOpens,
-                      total: campaign.engagement.totalOpens,
-                    })}</span>
-                    <span>{t.marketing.compactClicks({
-                      unique: campaign.engagement.uniqueClicks,
-                      total: campaign.engagement.totalClicks,
-                    })}</span>
-                  </Stack>
+                  <Box component="span" sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: '0.25rem', sm: '1rem' }, flexWrap: 'wrap' }}>
+                    <span>{campaignAudienceProgress(campaign, t)}</span>
+                    {compactEngagement(campaign.engagement, shouldMaskEngagement(campaign.engagement, trackingDisabled), t)}
+                  </Box>
                 )}
-                date={formatDateTime(campaign.sendAt ?? campaign.createdAt, language)}
+                date={campaignListDate(campaign, language, t)}
                 actions={<Button onClick={() => void navigate({ to: '/panel/marketing/campaigns/$campaignId', params: { campaignId: campaign.id } })}>{t.common.open}</Button>}
                 testId="marketing-campaign-row"
               />
@@ -457,13 +520,19 @@ export const CampaignDetailPage = () => {
   const t = useTranslations();
   const params = useParams({ strict: false });
   const campaign = useQuery(actions.marketingCampaign(params.campaignId ?? ''));
+  const settings = useQuery(actions.marketingSesSettings);
+  const trackingDisabled = settings.isSuccess && settings.data.settings?.trackingEnabled !== true;
   if (campaign.isPending) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} />;
   if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizePanelError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
-    <PanelPage title={campaign.data.campaign.name} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}>
-      <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} />
-      {campaign.data.campaign.audienceVersion === 2 ? <Typography>{t.marketing.contactProgress({ candidates: campaign.data.campaign.candidateCount, skipped: campaign.data.campaign.skipped, queued: campaign.data.campaign.queued, unresolved: campaign.data.campaign.unresolved })}</Typography> : null}
+    <PanelPage
+      title={<Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>{campaign.data.campaign.name}<CampaignStatusChip status={campaign.data.campaign.status} label={t.marketing.status[campaign.data.campaign.status]} /></Box>}
+      documentTitle={campaign.data.campaign.name}
+      backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}
+    >
+      {shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled) ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
+      <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} masked={shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled)} />
       <CampaignForm key={`${campaign.data.campaign.id}:${campaign.data.campaign.status}`} campaign={campaign.data.campaign} />
       <CampaignActions campaign={campaign.data.campaign} />
     </PanelPage>

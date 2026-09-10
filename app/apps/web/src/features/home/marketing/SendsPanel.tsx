@@ -33,24 +33,23 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EmailEventTimeline } from '../email/index.js';
-import { deliveryStatusLabel, sendKindLabel, sendStatusLabel } from './EmailSendSummary.js';
+import { deliveryStatusColor, deliveryStatusLabel, sendKindLabel, sendStatusColor, sendStatusLabel } from './EmailSendSummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
-export const validateSendsSearch = (search: Record<string, unknown>): { runId?: string; contactId?: string } => {
-  const runId = search['runId'];
-  const contactId = search['contactId'];
-  return { ...(typeof runId === 'string' && runId.trim() ? { runId: runId.trim() } : {}), ...(typeof contactId === 'string' && contactId.trim() ? { contactId: contactId.trim() } : {}) };
-};
-
-const statusColor = (status: EmailSendStatus): 'success' | 'warning' | 'error' | 'default' =>
-  status === 'sent' ? 'success' : status === 'failed' ? 'error' : status === 'sending' ? 'warning' : 'default';
-
-const deliveryColor = (status: EmailDeliveryStatus | null): 'success' | 'warning' | 'error' | 'default' =>
-  status === 'delivered' ? 'success' : status === 'bounced' || status === 'complained' ? 'error' : 'default';
-
 const isSendStatus = (value: string): value is EmailSendStatus =>
   ['queued', 'pending', 'sending', 'sent', 'failed', 'skipped'].includes(value);
+
+export const validateSendsSearch = (search: Record<string, unknown>): { runId?: string; contactId?: string; status?: EmailSendStatus } => {
+  const runId = search['runId'];
+  const contactId = search['contactId'];
+  const status = search['status'];
+  return {
+    ...(typeof runId === 'string' && runId.trim() ? { runId: runId.trim() } : {}),
+    ...(typeof contactId === 'string' && contactId.trim() ? { contactId: contactId.trim() } : {}),
+    ...(typeof status === 'string' && isSendStatus(status) ? { status } : {}),
+  };
+};
 
 const isDeliveryStatus = (value: string): value is EmailDeliveryStatus =>
   value === 'delivered' || value === 'bounced' || value === 'complained';
@@ -82,11 +81,11 @@ export const SendsPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: '/panel/marketing/sends' });
-  const { runId = '', contactId = '' } = useSearch({ from: '/panel/marketing/sends' });
+  const { runId = '', contactId = '', status: linkedStatus } = useSearch({ from: '/panel/marketing/sends' });
   const campaigns = useQuery(actions.marketingCampaigns);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | EmailSendProjection['kind']>('all');
-  const [status, setStatus] = useState<'all' | EmailSendStatus>('all');
+  const [status, setStatus] = useState<'all' | EmailSendStatus>(linkedStatus ?? 'all');
   const [deliveryStatus, setDeliveryStatus] = useState<'all' | EmailDeliveryStatus>('all');
   const [transport, setTransport] = useState<'all' | TransactionalEmailTransport>('all');
   const [sourceApp, setSourceApp] = useState('');
@@ -191,7 +190,16 @@ export const SendsPanel = () => {
                   label={t.marketing.statusLabel}
                   value={status}
                   onChange={(event) => {
-                    setStatus(isSendStatus(event.target.value) ? event.target.value : 'all');
+                    const nextStatus = isSendStatus(event.target.value) ? event.target.value : 'all';
+                    setStatus(nextStatus);
+                    void navigate({
+                      search: {
+                        ...(contactId.length === 0 ? {} : { contactId }),
+                        ...(runId.length === 0 ? {} : { runId }),
+                        ...(nextStatus === 'all' ? {} : { status: nextStatus }),
+                      },
+                      replace: true,
+                    });
                     resetPagination();
                   }}
                 >
@@ -269,7 +277,11 @@ export const SendsPanel = () => {
                 onChange={(event) => {
                   const value = event.target.value.trim();
                   void navigate({
-                    search: value.length === 0 ? {} : { runId: value },
+                    search: {
+                      ...(contactId.length === 0 ? {} : { contactId }),
+                      ...(status === 'all' ? {} : { status }),
+                      ...(value.length === 0 ? {} : { runId: value }),
+                    },
                     replace: true,
                   });
                   resetPagination();
@@ -283,7 +295,13 @@ export const SendsPanel = () => {
                             size="small"
                             aria-label={t.marketing.clearRunFilter}
                             onClick={() => {
-                              void navigate({ search: {}, replace: true });
+                              void navigate({
+                                search: {
+                                  ...(contactId.length === 0 ? {} : { contactId }),
+                                  ...(status === 'all' ? {} : { status }),
+                                },
+                                replace: true,
+                              });
                               resetPagination();
                             }}
                           >
@@ -369,7 +387,7 @@ export const SendsPanel = () => {
                     <TableCell>{send.subject}</TableCell>
                     <TableCell>
                       <Stack useFlexGap spacing="0.25rem">
-                        <Chip size="small" color={statusColor(send.status)} label={sendStatusLabel(send.status, t)} />
+                        <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
                         {send.failureCode === null ? null : (
                           <Typography variant="caption" color="error.main">
                             {send.failureCode}: {send.failureMessage}
@@ -377,7 +395,7 @@ export const SendsPanel = () => {
                         )}
                       </Stack>
                     </TableCell>
-                    <TableCell><Chip size="small" variant="outlined" color={deliveryColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
+                    <TableCell><Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
                     <TableCell>
                       <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
                         <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />

@@ -240,12 +240,17 @@ describe('U8 campaign state machine', () => {
 
 describe('U9 bounce classification', () => {
   it('classifies bounce and complaint events with fixed threshold actions', () => {
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', status: '5.1.1' })).toBe('hard');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', status: '4.2.2' })).toBe('soft');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', status: '5.4.4' })).toBe('hard');
-    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Unknown', status: null })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', bounceSubType: 'General', status: '5.1.1' })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Permanent', bounceSubType: 'Suppressed', status: null })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'General', status: '4.2.2' })).toBe('soft');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'MailboxFull', status: null })).toBe('soft');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Transient', bounceSubType: 'General', status: '5.4.4' })).toBe('hard');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Undetermined', bounceSubType: 'Undetermined', status: null })).toBe('unresolved');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Unknown', bounceSubType: null, status: null })).toBe('unresolved');
+    expect(classifySesEvent({ kind: 'bounce', bounceType: 'Sidetracked', bounceSubType: 'Whatever', status: null })).toBe('unresolved');
     expect(classifySesEvent({ kind: 'complaint' })).toBe('complaint');
     expect(bounceAction('soft')).toEqual({ threshold: 2, suppress: false, permanent: false });
+    expect(bounceAction('unresolved')).toEqual({ threshold: 1, suppress: false, permanent: false });
     expect(bounceAction('hard')).toEqual({ threshold: 1, suppress: true, permanent: false });
     expect(bounceAction('complaint')).toEqual({ threshold: 1, suppress: true, permanent: true });
   });

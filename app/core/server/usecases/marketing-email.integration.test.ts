@@ -765,7 +765,18 @@ describe('marketing e-mail use-case integration', () => {
       liftedAt: null,
       liftedBy: null,
     });
-    const hard = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Permanent', status: null, occurredAt: NOW, raw: { event: 1 } }, deps);
+    const hard = await applyVerifiedSesEvent(ctx, {
+      topicArn,
+      messageId: 'fake-ses-message',
+      kind: 'bounce',
+      bounceType: 'Permanent',
+      bounceSubType: 'General',
+      status: null,
+      diagnosticCode: null,
+      action: null,
+      occurredAt: NOW,
+      raw: { event: 1 },
+    }, deps);
     expect(hard).toEqual(ok({ kind: 'applied' }));
     const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
     expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).map((item) => item.type))
@@ -777,13 +788,52 @@ describe('marketing e-mail use-case integration', () => {
     expect(mismatch).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
-  it('I9 records soft bounces without suppression and complaints permanently suppress', async () => {
-    const deps = await setup(['soft@example.test', 'complaint@example.test']);
+  it('I9 records soft and unresolved bounces without suppression and complaints permanently suppress', async () => {
+    const deps = await setup(['soft@example.test', 'unresolved@example.test', 'complaint@example.test']);
     await enqueueAndDispatchMessages(ctx, [{ to: 'soft@example.test', memberId: 'member-1', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
+    await enqueueAndDispatchMessages(ctx, [{ to: 'unresolved@example.test', memberId: 'member-2', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
     await enqueueAndDispatchMessages(ctx, [{ to: 'complaint@example.test', memberId: 'member-2', campaignId: null, source: 'api', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
-    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Transient', status: '4.2.2', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message',
+      kind: 'bounce',
+      bounceType: 'Transient',
+      bounceSubType: 'MailboxFull',
+      status: '4.2.2',
+      diagnosticCode: null,
+      action: 'failed',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'soft@example.test'))).toBe(false);
-    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message-2', kind: 'complaint', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message-2',
+      kind: 'bounce',
+      bounceType: 'Undetermined',
+      bounceSubType: 'Undetermined',
+      status: '5.0.0',
+      diagnosticCode: 'smtp; 250 automated response',
+      action: 'failed',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'unresolved@example.test'))).toBe(false);
+    expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2'))
+      .toMatchObject({ deliveryStatus: null, deliveryOccurredAt: null });
+    const unresolvedSend = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', unresolvedSend?.id ?? '')).at(-1))
+      .toMatchObject({ type: 'bounced', meta: { classification: 'unresolved' } });
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'fake-ses-message-2',
+      kind: 'delivery',
+      occurredAt: NOW,
+      raw: {},
+    }, deps)).toEqual(ok({ kind: 'applied' }));
+    expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message-2'))
+      .toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
+    expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message-3', kind: 'complaint', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ kind: 'applied' }));
     const complaint = await deps.suppressions.findActive('tenant-1', deps.hmac.compute('tenant-1', 'complaint@example.test'));
     expect(complaint).toMatchObject({ reason: 'complaint' });
     expect(await liftMarketingSuppression(ctx, { suppressionId: complaint?.id ?? '', actorId: 'staff-1' }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -860,6 +910,7 @@ describe('marketing e-mail use-case integration', () => {
       kind: 'bounce',
       bounceType: 'Permanent',
       status: '5.1.1',
+      eventType: 'bounced',
       deliveryStatus: 'bounced',
       suppressionReason: 'hard_bounce',
     },
@@ -868,12 +919,23 @@ describe('marketing e-mail use-case integration', () => {
       kind: 'bounce',
       bounceType: 'Transient',
       status: '4.2.2',
+      eventType: 'bounced',
       deliveryStatus: 'bounced',
+      suppressionReason: null,
+    },
+    {
+      name: 'unresolved bounce',
+      kind: 'bounce',
+      bounceType: 'Undetermined',
+      status: '5.0.0',
+      eventType: 'bounced',
+      deliveryStatus: null,
       suppressionReason: null,
     },
     {
       name: 'complaint',
       kind: 'complaint',
+      eventType: 'complained',
       deliveryStatus: 'complained',
       suppressionReason: 'complaint',
     },
@@ -922,7 +984,10 @@ describe('marketing e-mail use-case integration', () => {
                 ...common,
                 kind: 'bounce',
                 bounceType: input.bounceType,
+                bounceSubType: null,
                 status: input.status,
+                diagnosticCode: null,
+                action: null,
               },
               deps,
             )
@@ -946,7 +1011,7 @@ describe('marketing e-mail use-case integration', () => {
       'claimed',
       'rendered',
       'accepted',
-        input.deliveryStatus,
+        input.eventType,
         ...(input.suppressionReason === null ? [] : ['suppressed_written']),
       ]);
       if (input.suppressionReason !== null) {
@@ -959,8 +1024,16 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
         .toMatchObject({
           deliveryStatus: input.deliveryStatus,
-          deliveryOccurredAt: NOW,
+          deliveryOccurredAt: input.deliveryStatus === null ? null : NOW,
         });
+      if (input.deliveryStatus === null) {
+        expect(await applyVerifiedSesEvent(ctx, {
+          ...common,
+          kind: 'delivery',
+        }, deps)).toEqual(ok({ kind: 'applied' }));
+        expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
+          .toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
+      }
     },
   );
 
@@ -1422,7 +1495,7 @@ describe('marketing e-mail use-case integration', () => {
     ]);
   });
 
-  it('saves optional preferences, queues DOI when re-subscribing, and supports global withdrawal', async () => {
+  it('distinguishes absent preferences and withdraws explicitly unchecked active or pending consent', async () => {
     const deps = await setup();
     const token = 'preferences_token_123456789012345';
     await deps.unsubscribes.create('tenant-1', {
@@ -1431,17 +1504,86 @@ describe('marketing e-mail use-case integration', () => {
       scope: `consent:${definition.id}`, createdAt: NOW, usedAt: null,
     });
     expect(await saveMarketingConsentPreferences(anonymousCtx, {
-      token, selectedDefinitionIds: [], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      token, selectedDefinitionIds: [], presentDefinitionIds: [],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({
+      ok: true, value: { definitions: [{ active: true, pendingConfirmation: false }] },
+    });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [], presentDefinitionIds: ['retired-definition'],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
       confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
     }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
     expect(await saveMarketingConsentPreferences(anonymousCtx, {
-      token, selectedDefinitionIds: [definition.id], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      token, selectedDefinitionIds: [], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [definition.id], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
       confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
     }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 1 } });
     expect(deps.outbox.items).toHaveLength(1);
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [], presentDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({
+      ok: true, value: { definitions: [{ active: false, pendingConfirmation: false }] },
+    });
+    expect((await deps.consents.listByEmail('tenant-1', 'member@example.test', definition.id))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn', 'granted', 'withdrawn']);
     expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
     expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+  });
+
+  it('withdraws only the unchecked active scope from a mixed preference form', async () => {
+    const deps = await setup();
+    const uncheckedDefinition = { ...definition, id: 'definition-2', key: 'events' };
+    const pendingDefinition = { ...definition, id: 'definition-3', key: 'updates' };
+    await deps.definitions.create('tenant-1', uncheckedDefinition, {
+      ...version, id: 'version-2', definitionId: uncheckedDefinition.id, label: 'I want event announcements',
+    });
+    await deps.definitions.create('tenant-1', pendingDefinition, {
+      ...version, id: 'version-3', definitionId: pendingDefinition.id, label: 'I want product updates',
+    });
+    await deps.consents.record('tenant-1', {
+      ...consent('member@example.test'), id: 'consent-active-unchecked', definitionId: uncheckedDefinition.id,
+      wordingSnapshot: 'I want event announcements',
+    });
+    await deps.consents.record('tenant-1', {
+      ...consent('member@example.test', 'granted'), id: 'consent-pending-kept', definitionId: pendingDefinition.id,
+      wordingSnapshot: 'I want product updates',
+    });
+    const token = 'mixed_preferences_token_123456789';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'unsubscribe-mixed-preferences', tenantId: 'tenant-1', token,
+      email: 'member@example.test', memberId: 'member-1', campaignSendId: null,
+      scope: 'all_marketing', createdAt: NOW, usedAt: null,
+    });
+
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token,
+      selectedDefinitionIds: [definition.id, pendingDefinition.id],
+      presentDefinitionIds: [definition.id, uncheckedDefinition.id, pendingDefinition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 1 } });
+    expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).map((row) => ({
+      definitionId: row.definitionId,
+      status: row.status,
+    }))).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: uncheckedDefinition.id, status: 'confirmed' },
+      { definitionId: pendingDefinition.id, status: 'granted' },
+      { definitionId: uncheckedDefinition.id, status: 'withdrawn' },
+    ]);
+    expect(deps.outbox.items).toHaveLength(0);
   });
 
   it('supports suppression lifting, campaign CRUD gates, and retention orchestration', async () => {

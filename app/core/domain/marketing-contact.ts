@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { normalizeEmail } from './email.js';
 
-export const marketingAddressSchema = z.string().transform(normalizeEmail).pipe(z.string().email());
+const marketingAddressSchema = z.string().transform(normalizeEmail).pipe(z.string().email());
 export const marketingNameSchema = z.string().trim().max(200);
 export const marketingTagsSchema = z.array(z.string().trim().min(1).max(64).refine((value) => !value.includes('|'), 'Pipe characters are not supported in tokens')).max(50).transform((tags) => [...new Set(tags)]);
 export const marketingContactFieldsSchema = z.object({

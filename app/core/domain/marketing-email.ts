@@ -505,15 +505,22 @@ export const campaignEngagementStatsSchema = z.object({
 
 export type CampaignEngagementStats = z.output<typeof campaignEngagementStatsSchema>;
 
-export type BounceClassification = 'soft' | 'hard' | 'complaint';
+export type BounceClassification = 'soft' | 'hard' | 'unresolved' | 'complaint';
 
 export const classifySesEvent = (event:
   | { kind: 'complaint' }
-  | { kind: 'bounce'; bounceType: string; status: string | null }
+  | {
+    kind: 'bounce';
+    bounceType: string;
+    bounceSubType: string | null;
+    status: string | null;
+  }
 ): BounceClassification => {
   if (event.kind === 'complaint') return 'complaint';
   if (event.status === '5.4.4') return 'hard';
-  return event.bounceType === 'Transient' ? 'soft' : 'hard';
+  if (event.bounceType === 'Permanent') return 'hard';
+  if (event.bounceType === 'Transient') return 'soft';
+  return 'unresolved';
 };
 
 export const bounceAction = (classification: BounceClassification): {
@@ -522,6 +529,7 @@ export const bounceAction = (classification: BounceClassification): {
   permanent: boolean;
 } => {
   if (classification === 'soft') return { threshold: 2, suppress: false, permanent: false };
+  if (classification === 'unresolved') return { threshold: 1, suppress: false, permanent: false };
   if (classification === 'hard') return { threshold: 1, suppress: true, permanent: false };
   return { threshold: 1, suppress: true, permanent: true };
 };

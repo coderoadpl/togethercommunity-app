@@ -3,6 +3,7 @@ import {
   Alert,
   AlertTitle,
   Autocomplete,
+  Box,
   Button,
   Chip,
   FormControl,
@@ -27,6 +28,7 @@ import {
   errorCodeOf,
   localizePanelError,
   serverMessageOf,
+  type Messages,
   useLanguage,
   useTranslations,
 } from '../../../i18n/index.js';
@@ -44,6 +46,21 @@ interface LiveSesChecklist {
   footer: boolean;
   productionAccess: boolean;
 }
+
+const IDENTITY_ERROR_MESSAGES = {
+  InvalidClientTokenId: (t: Messages) => t.marketing.identityErrorInvalidClientTokenId,
+  AccessDenied: (t: Messages) => t.marketing.identityErrorAccessDenied,
+  AccessDeniedException: (t: Messages) => t.marketing.identityErrorAccessDenied,
+  SignatureDoesNotMatch: (t: Messages) => t.marketing.identityErrorSignatureDoesNotMatch,
+  Throttling: (t: Messages) => t.marketing.identityErrorThrottling,
+  ThrottlingException: (t: Messages) => t.marketing.identityErrorThrottling,
+} as const;
+
+const localizeIdentityError = (error: string, t: Messages): string => {
+  const message = Object.entries(IDENTITY_ERROR_MESSAGES)
+    .find(([code]) => error.includes(`${code}:`))?.[1];
+  return message?.(t) ?? t.marketing.identityErrorUnknown;
+};
 
 const WizardError = ({ error }: { error: unknown }) => {
   const t = useTranslations();
@@ -262,6 +279,7 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
     <SectionCard
       title={t.marketing.credentials}
       description={t.marketing.credentialsHint}
+      headerActions={<Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />}
       onSubmit={(event) => void submit(event)}
       actions={(
         <>
@@ -272,7 +290,6 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
         </>
       )}
     >
-      <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
       <Typography variant="body2">{t.marketing.writeOnlyHint}</Typography>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-ses-access-key">{t.marketing.accessKeyLabel}</FormLabel>
@@ -324,6 +341,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
     <SectionCard
       title={t.marketing.smtpTitle}
       description={t.marketing.smtpHint}
+      headerActions={<Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />}
       onSubmit={(event) => void submit(event)}
       actions={(
         <>
@@ -334,7 +352,6 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
         </>
       )}
     >
-      <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
       <Alert severity="info">{t.marketing.smtpNoFeedback}</Alert>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-smtp-host">{t.marketing.smtpHostLabel}</FormLabel>
@@ -378,6 +395,7 @@ const ResendForm = ({ configured }: { configured: boolean }) => {
     <SectionCard
       title={t.marketing.resendTitle}
       description={t.marketing.resendHint}
+      headerActions={<Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />}
       onSubmit={(event) => void submit(event)}
       actions={(
         <>
@@ -390,7 +408,6 @@ const ResendForm = ({ configured }: { configured: boolean }) => {
         </>
       )}
     >
-      <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
       <Typography variant="body2">{t.marketing.writeOnlyHint}</Typography>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-resend-api-key">{t.marketing.resendApiKeyLabel}</FormLabel>
@@ -424,6 +441,13 @@ export const EmailTab = () => {
   const [footerLegalName, setFooterLegalName] = useState<string | null>(null);
   const [footerAddress, setFooterAddress] = useState<string | null>(null);
   const [liveChecklist, setLiveChecklist] = useState<LiveSesChecklist | null>(null);
+  const identityRecheck = useMutation({
+    ...actions.pollMarketingSesOnboarding,
+    onSuccess: async (status) => {
+      setLiveChecklist(status.checklist);
+      await queryClient.invalidateQueries(actions.marketingInvalidates());
+    },
+  });
 
   const detectedIdentities = detected.data?.identities ?? [];
   const accessDeniedAction = detected.data?.accessDeniedAction ?? null;
@@ -514,14 +538,19 @@ export const EmailTab = () => {
   const webhookVerified = settings?.webhookVerifiedAt !== null && settings?.webhookVerifiedAt !== undefined;
   const subscriptionConfirmed = settings?.snsSubscriptionConfirmedAt !== null
     && settings?.snsSubscriptionConfirmedAt !== undefined;
-  const enabled = settings?.broadcastsEnabled ?? false;
   const pool = result.data.platformPool;
+  const identityCheckError = settings?.identityCheckError ?? null;
   const identityFreshness =
     settings === null
       ? 'never-checked'
       : sesIdentityFreshness(settings, new Date().toISOString());
-  const identityCaption =
-    settings === null || settings.identity.trim() === ''
+  const identityCaption = identityCheckError !== null
+    ? settings?.identityVerifiedAt === null || settings?.identityVerifiedAt === undefined
+      ? t.marketing.identityNeverChecked
+      : t.marketing.identityVerifiedSince({
+          checkedAt: formatDateTime(settings.identityVerifiedAt, language),
+        })
+    : settings === null || settings.identity.trim() === ''
       ? t.marketing.identityCheckedAfterSave
       : settings.identityCheckedAt === null
         ? t.marketing.identityNeverChecked
@@ -544,27 +573,56 @@ export const EmailTab = () => {
         title={t.marketing.onboarding}
         readyLabel={t.marketing.ready}
         blockedLabel={t.marketing.blocked}
-        enabled={enabled}
-        enabledMessage={t.marketing.broadcastsEnabled}
-        disabledMessage={t.marketing.broadcastsDisabled}
+        optionalLabel={t.marketing.readinessOptional}
+        attentionItemsMessage={t.marketing.readinessAttentionItems}
+        readyMessage={t.marketing.readinessComplete}
         items={[
-          { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
-          { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified, caption: identityCaption },
+          { label: t.marketing.credentialsConfigured, ready: credentialsConfigured, required: false },
+          {
+            label: t.marketing.identityVerified,
+            ready: settings !== null && settings.identityCheckError === null && (liveChecklist?.identity ?? verified),
+            caption: identityCaption,
+            ...(identityCheckError === null ? {} : { blockedLabel: t.marketing.identityCheckFailedChip }),
+          },
           { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? (settings?.configurationSet !== null && settings?.configurationSet !== undefined) },
-          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? subscriptionConfirmed },
+          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? subscriptionConfirmed, required: false },
           { label: t.marketing.webhookVerified, ready: liveChecklist?.webhook ?? webhookVerified },
           { label: t.marketing.footerConfigured, ready: liveChecklist?.footer ?? footerConfigured },
           { label: t.marketing.wizardProductionAccess, ready: liveChecklist?.productionAccess ?? (settings?.quotaRefreshedAt !== null && settings?.quotaRefreshedAt !== undefined && settings?.inSandbox === false) },
           {
             label: `${t.marketing.platformPoolChecklist}: ${pool.used}/${pool.limit}`,
             ready: pool.used < pool.limit || credentialsConfigured || result.data.smtpConfigured || result.data.resendConfigured,
+            required: false,
           },
         ]}
       />
-      {settings?.identityCheckError === null || settings?.identityCheckError === undefined ? null : (
-        <Alert severity="warning">
-          {t.marketing.identityCheckFailed({ message: settings.identityCheckError })}
-        </Alert>
+      {identityCheckError === null ? null : (
+        <Stack spacing="0.75rem">
+          <Alert
+            severity="warning"
+            action={(
+              <Button
+                color="inherit"
+                size="small"
+                disabled={identityRecheck.isPending}
+                onClick={() => identityRecheck.mutate(undefined)}
+              >
+                {t.marketing.identityCheckRetry}
+              </Button>
+            )}
+          >
+            <Typography variant="body2">{localizeIdentityError(identityCheckError, t)}</Typography>
+            <Box component="details" sx={{ mt: '0.5rem' }}>
+              <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>
+                {t.marketing.identityCheckDetails}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: '0.35rem', overflowWrap: 'anywhere' }}>
+                {identityCheckError}
+              </Typography>
+            </Box>
+          </Alert>
+          {identityRecheck.error === null ? null : <WizardError error={identityRecheck.error} />}
+        </Stack>
       )}
       <SectionCard title={t.marketing.platformPool({ used: pool.used, limit: pool.limit })}>
         <Typography variant="caption" component="p" color="text.secondary">

@@ -1895,10 +1895,10 @@ export const removePasskeyMutation = (auth: AuthClientPort) =>
     call: (input: { id: string; password: string }) => auth.removePasskey(input),
   });
 
-export const signInWithPasskeyMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, void> =>
+export const signInWithPasskeyMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, { autoFill?: boolean } | undefined> =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-in-passkey'],
-    call: () => auth.signInWithPasskey(),
+    call: (input: { autoFill?: boolean } | undefined) => auth.signInWithPasskey(input ?? undefined),
   });
 
 export const enableTwoFactorMutation = (auth: AuthClientPort) =>

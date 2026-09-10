@@ -46,6 +46,7 @@ const harness = (supportEmail: string | null, defaultLanguage?: Language) => {
         name: 'Acme',
         ...(defaultLanguage === undefined ? {} : { defaultLanguage }),
         socialLinks: [],
+        signInNotice: { enabled: false, text: '' },
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,

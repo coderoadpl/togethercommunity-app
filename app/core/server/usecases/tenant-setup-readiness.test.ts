@@ -42,6 +42,7 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
 const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   name: 'Acme',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
@@ -212,6 +213,7 @@ describe('getTenantSetupReadiness', () => {
       settings: settings({
         bunnyStreamLibraryId: '4242',
         termsUrl: 'https://acme.test/terms',
+        signInNotice: { enabled: false, text: '' },
         billingPortalUrl: 'https://billing.acme.test',
         logoUrl: '/assets/logo.png',
         logoDarkUrl: null,

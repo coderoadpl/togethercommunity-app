@@ -138,7 +138,18 @@ export interface Messages {
     validationField: (params: { field: string }) => string;
     validationForm: string;
   };
+  signInNoticeSettings: {
+    save: string;
+    heading: string;
+    enabled: string;
+    label: string;
+    helper: string;
+    counter: (params: { count: number }) => string;
+  };
   auth: {
+    signInNoticeLabel: string;
+    invalidCredentials: string;
+    signInRateLimited: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -159,8 +170,6 @@ export interface Messages {
     changeIdentifier: string;
     changeIdentifierShort: string;
     signInMethodsUnavailable: string;
-    signInMethodsRateLimited: string;
-    signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
     signInMethodsChoosePrompt: string;
     signInMethodsChooseMagicLink: string;
     signInMethodsChoosePassword: string;
@@ -170,10 +179,8 @@ export interface Messages {
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
     methodPasswordBody: string;
-    methodPasswordDisabledTooltip: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
-    methodPasskeyDisabledTooltip: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;

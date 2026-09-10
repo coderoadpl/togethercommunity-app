@@ -51,6 +51,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
       return found === undefined ? null : {
         name: found.name,
         socialLinks: [],
+        signInNotice: { enabled: false, text: '' },
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,

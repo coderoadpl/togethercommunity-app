@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { marketingAddressSchema, marketingNameSchema, marketingTagsSchema } from './marketing-contact.js';
+import { normalizeEmail } from './email.js';
+import { marketingNameSchema, marketingTagsSchema } from './marketing-contact.js';
 import { importActorSchema } from './marketing-directory-event.js';
 import { marketingListKeySchema } from './marketing-list.js';
 
@@ -8,10 +9,16 @@ export const MARKETING_IMPORT_LIMITS = { csvBytes: 3 * 1024 * 1024, multipartByt
 export const MARKETING_IMPORT_ATTESTATION_VERSION = 'marketing-import-attestation/v1';
 export const MARKETING_IMPORT_ATTESTATION_TEXT = 'I confirm that I am authorized to import these contacts and that each contact for whom consent is being recorded gave valid permission for email marketing covered by the selected consent definition. I have included known unsubscribes, complaints, and permanent bounces in the suppression import. This import must not restore withdrawn consent or remove a suppression.';
 export const MARKETING_DIRECTORY_ATTESTATION_TEXT = 'I confirm that I am authorized to import this directory data. This import does not assert marketing consent or remove a suppression.';
+export const MARKETING_IMPORT_EMAIL_MISSING = 'marketing_import.email_missing';
+export const MARKETING_IMPORT_EMAIL_INVALID = 'marketing_import.email_invalid';
 const marketingImportDateSchema = z.string().trim().datetime({ offset: true }).transform((value) => new Date(value).toISOString());
 const marketingSuppressionReasonSchema = z.enum(['unsubscribe', 'bounce', 'complaint', 'manual']);
+const marketingImportAddressSchema = z.preprocess(
+  (value) => value ?? '',
+  z.string().trim().min(1, MARKETING_IMPORT_EMAIL_MISSING).transform(normalizeEmail).pipe(z.string().email(MARKETING_IMPORT_EMAIL_INVALID)),
+);
 export const marketingImportRowSchema = z.object({
-  email: marketingAddressSchema, name: marketingNameSchema.optional(), firstName: marketingNameSchema.optional(), lastName: marketingNameSchema.optional(),
+  email: marketingImportAddressSchema, name: marketingNameSchema.optional(), firstName: marketingNameSchema.optional(), lastName: marketingNameSchema.optional(),
   tags: marketingTagsSchema.optional(), source: z.string().trim().max(120).optional(),
   consentSource: z.string().trim().max(200).optional(), consentAt: marketingImportDateSchema.optional(),
   lists: z.array(marketingListKeySchema).max(50).transform((keys) => [...new Set(keys)]).optional(),

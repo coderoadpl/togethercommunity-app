@@ -2146,6 +2146,10 @@ export interface Messages {
     result: string;
     fileHint: string;
     file: string;
+    chooseFile: string;
+    dropFile: string;
+    downloadSample: string;
+    encodingError: string;
     delimiter: string;
     auto: string;
     comma: string;
@@ -2154,6 +2158,24 @@ export interface Messages {
     parseError: string;
     ignoreColumn: string;
     unknownColumns: string;
+    previewHint: string;
+    importFields: {
+      email: string;
+      name: string;
+      firstName: string;
+      lastName: string;
+      tags: string;
+      source: string;
+      consentSource: string;
+      consentAt: string;
+      lists: string;
+      reason: string;
+      at: string;
+    };
+    importErrors: {
+      emailMissing: string;
+      emailInvalid: string;
+    };
     validate: string;
     previewStale: string;
     next: string;

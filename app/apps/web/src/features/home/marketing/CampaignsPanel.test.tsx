@@ -426,4 +426,25 @@ describe('campaign reputation warning', () => {
     expect(await screen.findByTestId('campaign-result-stats')).toBeInTheDocument();
     expect(screen.queryByLabelText(en.marketing.nameLabel)).not.toBeInTheDocument();
   });
+  it('reports the version 1 product filter as a filter, not as an exclusion', async () => {
+    const detail = campaignRow({ id: 'campaign-legacy-filter', name: 'Legacy filter', status: 'finished', audienceVersion: 1, audience: null, audienceFilter: { productIds: ['product-legacy'] }, sendAt: '2026-07-28T09:30:00.000Z' });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(true),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({ ok: true, data: { items: [], summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null }, nextCursor: null } })),
+    );
+    const root = createRootRoute();
+    const route = createRoute({ getParentRoute: () => root, path: '/panel/marketing/campaigns/$campaignId', component: CampaignDetailPage });
+    const router = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/panel/marketing/campaigns/campaign-legacy-filter'] }) });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByText(en.marketing.productFilterLabel)).toBeInTheDocument();
+    expect(screen.getByText('product-legacy')).toBeInTheDocument();
+    expect(screen.getByText(en.marketing.noExcludedProducts)).toBeInTheDocument();
+  });
 });

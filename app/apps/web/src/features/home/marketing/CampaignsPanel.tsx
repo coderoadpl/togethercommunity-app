@@ -578,8 +578,9 @@ const CampaignReport = ({ campaign, trackingDisabled }: { campaign: CampaignDeta
   const runs = useQuery(actions.schedulerRuns({ campaignId: campaign.id, limit: 100 }));
   const audience = campaign.audience;
   const consentKey = consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId;
-  const excludedProductIds = audience?.excludeProductIds ?? campaign.audienceFilter?.productIds ?? [];
-  const excludedProducts = excludedProductIds.map((id) => products.data?.products.find((product) => product.id === id)?.title ?? id);
+  const productTitles = (ids: string[]): string[] => ids.map((id) => products.data?.products.find((product) => product.id === id)?.title ?? id);
+  const excludedProducts = productTitles(audience?.excludeProductIds ?? []);
+  const filteredProducts = productTitles(audience === null ? campaign.audienceFilter?.productIds ?? [] : []);
   const listOptions = lists.data?.pages.flatMap((page) => page.lists) ?? [];
   const listLabels = (ids: string[]): string[] => ids.map((id) => {
     const list = listOptions.find((option) => option.id === id);
@@ -604,6 +605,7 @@ const CampaignReport = ({ campaign, trackingDisabled }: { campaign: CampaignDeta
           <ReadOnlyChipGroup label={t.marketing.includeLists} values={listLabels(audience?.includeLists ?? [])} empty={t.marketing.noIncludedLists} />
           <ReadOnlyChipGroup label={t.marketing.excludeLists} values={listLabels(audience?.excludeLists ?? [])} empty={t.marketing.noExcludedLists} />
           <ReadOnlyChipGroup label={t.marketing.excludeProductGrants} values={excludedProducts} empty={t.marketing.noExcludedProducts} />
+          {audience === null ? <ReadOnlyChipGroup label={t.marketing.productFilterLabel} values={filteredProducts} empty={t.marketing.allProducts} /> : null}
         </Box>
         {audience?.includeMembersWithConsent === true ? <Chip size="small" color="primary" label={t.marketing.consentedMembersChip} sx={{ alignSelf: 'flex-start' }} /> : null}
       </SectionCard>

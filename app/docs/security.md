@@ -61,14 +61,15 @@ previews so external creator sites can use the public checkout contract.
 Sign-in method resolution (`/api/public/auth-resolve`) is excluded: it answers
 CORS only to the platform host, the tenant subdomains of `APP_BASE_DOMAIN` and
 the verified custom domains held in `tenant_domains`, never with a wildcard, and
-a preflight from any other origin is refused. Every address receives password,
-passkey and magic-link options without consulting account credentials. Passkeys
-use discoverable credentials, including conditional browser autofill. Password authentication
-failures use one generic error, and magic-link acknowledgements are uniform.
-These three POST endpoints have a 300 ms response floor. The authentication
-provider performs one password hash verification for stored credentials or one
-dummy hash when the user, credential account or stored password is missing.
-The floor does not bound database or delivery latency above 300 ms.
+a preflight from any other origin is refused. It answers every address on every
+tenant with the same constant list — password, passkey and magic link — without
+reading account records, so the answer carries no signal about an account.
+Passkeys use discoverable credentials, including conditional browser autofill.
+Password sign-in answers an unknown address and a stored credential given the
+wrong password with the same status and the same body, and a magic-link request
+answers a known and an unknown address the same way. These three POST endpoints
+have a 300 ms response floor on accepted and rejected outcomes alike. The floor
+does not bound database or delivery latency above 300 ms.
 
 Each endpoint has separate IP and normalized email-hash buckets: production
 defaults are 60 requests per minute per IP and 10 per 10 minutes per email,

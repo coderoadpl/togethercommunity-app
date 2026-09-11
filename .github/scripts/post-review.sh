@@ -7,7 +7,6 @@ fi
 
 repository="${GITHUB_REPOSITORY:-coderoadpl/togethercommunity-app}"
 pr="${PR:?PR is required}"
-review_mode="${REVIEW_MODE:-staging}"
 
 producer=""
 producer_raw=""
@@ -61,6 +60,28 @@ if [ -n "$producer_log" ] && [ -s "$producer_log" ]; then
   IFS=$'\x1f' read -r observed_model turns tokens_in tokens_out cost <<< "$log_meta" || true
 fi
 
+first_paragraph() {
+  awk '
+    /^[[:space:]]*$/ { if (started) exit; next }
+    /^#/ { if (started) exit; next }
+    { started = 1; print }
+  '
+}
+
+summary_sections() {
+  awk '
+    function emit() {
+      if (title == "" && body !~ /[^ \t\n]/) return
+      sub(/^\n+/, "", body)
+      sub(/\n+$/, "", body)
+      printf "<details>\n<summary>%s</summary>\n\n%s\n\n</details>\n\n", (title == "" ? "Full report" : title), body
+    }
+    /^### / { emit(); title = substr($0, 5); body = ""; next }
+    { body = body $0 "\n" }
+    END { emit() }
+  '
+}
+
 body_file="$(mktemp)"
 trap 'rm -f "$body_file"' EXIT
 {
@@ -84,18 +105,22 @@ trap 'rm -f "$body_file"' EXIT
     scope="$(printf '%s' "$producer_raw" | jq -r .blast_radius.scope)"
     note="$(printf '%s' "$producer_raw" | jq -r '.blast_radius.note | gsub("[\\r\\n]+"; " ")')"
     summary="$(printf '%s' "$producer_raw" | jq -r .summary)"
+    tldr="$(printf '%s' "$producer_raw" | jq -r 'if (.tldr | type) == "string" then (.tldr | gsub("^\\s+|\\s+$"; "")) else "" end')"
+    if [ -z "$tldr" ]; then
+      tldr="$(printf '%s\n' "$summary" | first_paragraph)"
+    fi
     printf '## AI review: %s\n\n' "$verdict"
     printf '**Safe to merge:** %s · **Blast radius:** %s — %s\n\n' "$safe" "$scope" "$note"
-    if [ "$review_mode" = main ]; then
-      printf '%s\n' "$summary"
-    else
-      printf '### Summary\n\n%s\n' "$summary"
+    if [ -n "${tldr//[[:space:]]/}" ]; then
+      printf '**TL;DR:** %s\n\n' "$tldr"
     fi
     issues="$(printf '%s' "$producer_raw" | jq -r '.blocking_issues[]? | "- " + .')"
     if [ -n "$issues" ]; then
-      printf '\n### Blocking issues\n\n%s\n' "$issues"
+      printf '### Blocking issues\n\n%s\n\n' "$issues"
     fi
-    printf '\n---\n\n'
+    printf '%s\n' "$summary" | summary_sections
+    printf -- '---\n\n'
+    printf '<details>\n<summary>Run details</summary>\n\n'
     if [ -n "$observed_model" ]; then
       printf "Verdict produced by: \`%s\` · token slot %s · attempt \`%s\`" "$observed_model" "$producer_slot" "$producer_attempt"
       if [ "$observed_model" != "$producer_model" ]; then
@@ -106,13 +131,14 @@ trap 'rm -f "$body_file"' EXIT
       printf "Verdict produced by: \`%s\` (requested; runtime model unreported) · token slot %s · attempt \`%s\`\n" "$producer_model" "$producer_slot" "$producer_attempt"
     fi
     if [ -n "$turns$tokens_in$tokens_out$cost" ]; then
-      printf '<sub>'
+      printf '\n<sub>'
       [ -n "$turns" ] && printf 'Turns %s' "$turns"
       [ -n "$tokens_in" ] && printf '%sinput tokens %s' "$([ -n "$turns" ] && printf ' · ')" "$tokens_in"
       [ -n "$tokens_out" ] && printf '%soutput tokens %s' "$([ -n "$turns$tokens_in" ] && printf ' · ')" "$tokens_out"
       [ -n "$cost" ] && printf '%sAPI-equivalent cost $%.2f' "$([ -n "$turns$tokens_in$tokens_out" ] && printf ' · ')" "$cost"
       printf '</sub>\n'
     fi
+    printf '\n</details>\n'
   fi
 } > "$body_file"
 

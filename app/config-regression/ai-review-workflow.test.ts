@@ -55,7 +55,7 @@ const stepByName = (name: string) => {
   return found;
 };
 
-const actionPin = 'anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2';
+const actionPin = 'anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3';
 const checkoutPin = 'actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955';
 const attemptIds = [
   'try1p', 'try1pr', 'try1f', 'try1fr',
@@ -69,6 +69,7 @@ const schemaLiteral = {
   properties: {
     verdict: { type: 'string', enum: ['PASS', 'FAIL'] },
     summary: { type: 'string' },
+    tldr: { type: 'string' },
     blocking_issues: { type: 'array', items: { type: 'string' } },
     safe_to_merge: { type: 'boolean' },
     blast_radius: {
@@ -194,7 +195,7 @@ describe('AI review workflow', () => {
     }
   });
 
-  it('uses one exact five-field schema and the read-only hook contract on every action', () => {
+  it('uses one exact six-field schema and the read-only hook contract on every action', () => {
     for (const id of attemptIds) {
       const args = String(stepById(id).with?.claude_args);
       const match = args.match(/--json-schema '(\{.*\})'$/s);

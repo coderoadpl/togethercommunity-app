@@ -84,6 +84,14 @@ describe('AI review classifiers', () => {
     expect(result.outputs).toContain('reason=invalid_output');
   });
 
+  it('treats tldr as optional but typed', () => {
+    expect(classify(JSON.stringify({ ...JSON.parse(validPass), tldr: 'Short recap.' })).outputs)
+      .toContain('outcome=pass');
+    expect(classify(validPass).outputs).toContain('outcome=pass');
+    expect(classify(JSON.stringify({ ...JSON.parse(validPass), tldr: 7 })).outputs)
+      .toContain('reason=invalid_output');
+  });
+
   it('distinguishes skipped and cancelled attempts', () => {
     expect(classify('', 'skipped').outputs).toContain('reason=not_attempted');
     expect(classify('', 'cancelled').outputs).toContain('reason=cancelled');
@@ -477,7 +485,6 @@ const runPost = (environment: NodeJS.ProcessEnv, comments: string) => {
     EVENT_NAME: 'pull_request',
     CURRENT: 'true',
     PR: '42',
-    REVIEW_MODE: 'staging',
     BASE_SHA: 'a'.repeat(40),
     HEAD_SHA: 'b'.repeat(40),
     RUN_URL: 'https://github.com/coderoadpl/togethercommunity-app/actions/runs/1',
@@ -489,6 +496,21 @@ const runPost = (environment: NodeJS.ProcessEnv, comments: string) => {
     body: existsSync(body) ? readFileSync(body, 'utf8') : '',
   };
 };
+
+const expectOrder = (body: string, markers: string[]) => {
+  const positions = markers.map((marker) => {
+    const index = body.indexOf(marker);
+    expect(index, `missing rendered section: ${marker}`).toBeGreaterThan(-1);
+    return index;
+  });
+  expect(positions).toEqual([...positions].sort((left, right) => left - right));
+};
+
+const headedSummary = [
+  '### Blast radius', 'Shared auth surface.', '',
+  '### Coverage', 'Covered by tests.', '',
+  '### Confidence', 'Confidence: HIGH',
+].join('\n');
 
 describe('AI review comment publication', () => {
   it('selects the latest paginated marker comment from github-actions[bot]', () => {
@@ -549,6 +571,60 @@ describe('AI review comment publication', () => {
       PREPARED: 'true', CURRENT: 'true', DRAFT: 'false', O_1P: 'pass',
     });
     expect(gate.status).toBe(0);
+  });
+
+  it('renders a headed PASS as verdict, TL;DR, then one collapsed block per heading', () => {
+    const raw = JSON.stringify({
+      ...JSON.parse(validPass),
+      summary: headedSummary,
+      tldr: 'Safe to merge. Auth paths were re-checked. Nothing irreversible.',
+    });
+    const result = runPost({ O_1P: 'pass', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expectOrder(result.body, [
+      '<!-- ai-review-gate -->',
+      '<sub>Base `',
+      '## AI review: PASS',
+      '**Safe to merge:** yes · **Blast radius:** isolated',
+      '**TL;DR:** Safe to merge. Auth paths were re-checked. Nothing irreversible.',
+      '<summary>Blast radius</summary>',
+      '<summary>Coverage</summary>',
+      '<summary>Confidence</summary>',
+      '<summary>Run details</summary>',
+    ]);
+    expect(result.body).not.toContain('### Blast radius');
+    expect(result.body).not.toContain('### Blocking issues');
+    expect(result.body).not.toContain('<summary>Full report</summary>');
+  });
+
+  it('keeps blocking issues expanded above an unheaded report and the run footer', () => {
+    const raw = JSON.stringify({ ...JSON.parse(validFail), tldr: 'One blocker remains.' });
+    const result = runPost({ O_1P: 'fail', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expectOrder(result.body, [
+      '## AI review: FAIL',
+      '**Safe to merge:** no',
+      '**TL;DR:** One blocker remains.',
+      '### Blocking issues',
+      '- app/x.ts:1 violates the rule.',
+      '<summary>Full report</summary>',
+      'Blocked.',
+      '<summary>Run details</summary>',
+      'Verdict produced by:',
+    ]);
+    expect(result.body).not.toContain('<summary>Blocking issues</summary>');
+  });
+
+  it('falls back to the first summary paragraph when a producer omits tldr', () => {
+    const raw = JSON.stringify({ ...JSON.parse(validPass), summary: headedSummary });
+    const result = runPost({ O_1P: 'pass', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expect(result.body).toContain('**TL;DR:** Shared auth surface.');
+    expectOrder(result.body, [
+      '**TL;DR:** Shared auth surface.',
+      '<summary>Blast radius</summary>',
+      '<summary>Run details</summary>',
+    ]);
   });
 
   it('surfaces comment-list API failures and renders all no-verdict reasons', () => {

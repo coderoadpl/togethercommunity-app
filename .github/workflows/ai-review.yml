@@ -132,7 +132,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -153,7 +153,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 primary
         id: classify1p
@@ -197,7 +197,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -218,7 +218,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 primary cold-start retry
         id: classify1pr
@@ -262,7 +262,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -283,7 +283,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 fallback
         id: classify1f
@@ -327,7 +327,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -348,7 +348,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 fallback cold-start retry
         id: classify1fr
@@ -392,7 +392,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -413,7 +413,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 primary
         id: classify2p
@@ -457,7 +457,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -478,7 +478,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 primary cold-start retry
         id: classify2pr
@@ -522,7 +522,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -543,7 +543,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 fallback
         id: classify2f
@@ -587,7 +587,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -608,7 +608,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 fallback cold-start retry
         id: classify2fr
@@ -652,7 +652,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -673,7 +673,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 primary
         id: classify3p
@@ -717,7 +717,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -738,7 +738,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 primary cold-start retry
         id: classify3pr
@@ -782,7 +782,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -803,7 +803,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 fallback
         id: classify3f
@@ -847,7 +847,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -868,7 +868,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 fallback cold-start retry
         id: classify3fr
@@ -929,7 +929,6 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR: ${{ steps.target.outputs.pr }}
           CURRENT: ${{ steps.current.outputs.current }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
           BASE_SHA: ${{ steps.prepare.outputs.base_sha }}
           HEAD_SHA: ${{ steps.prepare.outputs.head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

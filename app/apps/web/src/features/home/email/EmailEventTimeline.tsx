@@ -143,24 +143,26 @@ export const EmailEventTimeline = ({ events }: { events: EmailEvent[] }) => {
                   {item.value}
                 </Typography>
               ))}
-              <Accordion disableGutters elevation={0} slotProps={{ transition: { unmountOnExit: true } }}>
-                <AccordionSummary sx={{ minHeight: 0, px: 0, '& .MuiAccordionSummary-content': { my: 0 } }}>
-                  <Typography variant="body2" color="primary">{t.marketing.rawMeta}</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ px: 0, pb: 0 }}>
-                  <Box
-                    component="pre"
-                    sx={{
-                      m: 0,
-                      p: '0.75rem',
-                      overflowX: 'auto',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {JSON.stringify(event.meta, null, 2)}
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
+              {event.meta !== null && Object.keys(event.meta).length > 0 ? (
+                <Accordion disableGutters elevation={0} slotProps={{ transition: { unmountOnExit: true } }}>
+                  <AccordionSummary sx={{ minHeight: 0, px: 0, '& .MuiAccordionSummary-content': { my: 0 } }}>
+                    <Typography variant="body2" color="primary">{t.marketing.rawMeta}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pb: 0 }}>
+                    <Box
+                      component="pre"
+                      sx={{
+                        m: 0,
+                        p: '0.75rem',
+                        overflowX: 'auto',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
+                      {JSON.stringify(event.meta, null, 2)}
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
+              ) : null}
             </Stack>
           </Box>
         );

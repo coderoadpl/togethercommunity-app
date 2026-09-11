@@ -30,6 +30,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -59,6 +63,7 @@
               "url": "https://studio.example.test/privacy"
             },
             "doubleOptIn": true,
+            "footerLabel": null,
             "id": "consent-definition-studio-news",
             "key": "news",
             "kind": "optional_marketing",
@@ -311,6 +316,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

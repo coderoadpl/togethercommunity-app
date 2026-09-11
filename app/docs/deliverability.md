@@ -82,8 +82,10 @@ WHERE s.tenant_id = $1
 ```
 
 Legacy rows without payloads require operator investigation; the worker does not reconstruct or
-resend them. Completed outbox bodies and processed/ignored SNS raw envelopes are purged after
-30 days by the existing retention pass. Pending and uncertain payloads remain available for recovery.
+resend them. The retention pass purges completed outbox bodies after
+`MARKETING_RETENTION_RENDERED_BODIES_DAYS` and processed or ignored SNS raw envelopes after
+`MARKETING_RETENTION_RAW_SNS_INBOX_DAYS`; both windows are configurable and default below.
+Pending and uncertain payloads remain available for recovery.
 Member erasure removes matching payloads immediately, fences active claims and preserves receipt
 identities and audit events; unprocessed SNS envelopes containing that recipient become ignored.
 
@@ -100,6 +102,12 @@ cannot run every minute need an external scheduler or a standalone worker. The e
 | `MARKETING_SEND_SECONDS` | 50 | Campaign enumeration and sending window, maximum 50 seconds |
 | `MARKETING_BATCH_CAP` | 1000 | Maximum recipients allocated to a batch |
 | `MARKETING_WORKER_INTERVAL_MS` | 60000 | Standalone worker interval; hosted cadence is set in `vercel.json` |
+| `MARKETING_RETENTION_RAW_SNS_INBOX_DAYS` | 7 | Raw SNS payload retention after processing or ignoring |
+| `MARKETING_RETENTION_RENDERED_BODIES_DAYS` | 14 | Rendered campaign body and marketing outbox payload retention |
+| `MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS` | 30 | Open and click event metadata retention |
+| `MARKETING_RETENTION_PENDING_CONSENTS_DAYS` | 30 | Unconfirmed double opt-in consent retention |
+| `MARKETING_RETENTION_SCHEDULER_RUNS_DAYS` | 14 | Non-idle scheduler run retention |
+| `MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS` | 2 | Idle scheduler run retention |
 
 SNS processing gets at most the first five seconds; bulk work shares the remaining global deadline
 across campaigns and tenants. Retention and identity/reputation maintenance use the last completed
@@ -139,9 +147,12 @@ campaigns. Version 2 dispatch additionally checks contact archival, erasure and
 address consistency; later consent or suppression changes can remove eligibility
 but cannot add a recipient to a frozen snapshot.
 
-Campaign counters distinguish eligible-at-snapshot, candidates, skipped, sent,
-failed, queued and unresolved provider acceptance. Queued and unresolved counts
-come from indexed send/outbox aggregates. Contact send history uses the same
-journal and events as member campaigns. The synthetic end-to-end regression is
+Campaign reports use the frozen snapshot count as the audience total and group
+the send projection into waiting, sent, failed, skipped, delivered, bounced,
+complained and unresolved-delivery counts. Waiting excludes sends whose provider
+acceptance is uncertain.
+The separate queued and unresolved acceptance counters come from indexed
+send/outbox aggregates. Contact send history uses the same journal and events as
+member campaigns. The synthetic end-to-end regression is
 `scripts/marketing-contacts.e2e.test.ts`; it runs the real HTTP app, typed client,
 CLI and PostgreSQL repositories with fake SES/clock boundaries and signed feedback.

@@ -1,0 +1,705 @@
+{
+  "calls": {
+    "getMarketingCampaign:[\"campaign-studio-summer-recap\"]": {
+      "ok": true,
+      "value": {
+        "campaign": {
+          "audience": {
+            "excludeLists": [],
+            "excludeProductIds": [
+              "product-studio-workshop"
+            ],
+            "includeLists": [],
+            "includeMembersWithConsent": true,
+            "version": 2
+          },
+          "audienceFilter": null,
+          "audienceNameSnapshot": "Members with consent",
+          "audienceSnapshotId": null,
+          "audienceVersion": 2,
+          "bodyHtml": "<p>Six lessons, one workshop and a new space.</p>",
+          "bodySource": "Six lessons, one workshop and a new space.",
+          "bodyText": null,
+          "candidateCount": 7,
+          "consentDefinitionId": "consent-definition-studio-news",
+          "consentLabelSnapshot": "I would like to receive news by email",
+          "createdAt": "2026-06-18T12:00:00.000Z",
+          "cursorContactId": null,
+          "cursorMemberId": null,
+          "engagement": {
+            "totalClicks": 0,
+            "totalOpens": 0,
+            "uniqueClicks": 0,
+            "uniqueOpens": 0
+          },
+          "errorCount": 1,
+          "failed": 1,
+          "finishedAt": "2026-06-19T12:00:00.000Z",
+          "id": "campaign-studio-summer-recap",
+          "layoutId": null,
+          "lockedBy": null,
+          "lockedUntil": null,
+          "name": "Summer recap",
+          "pausedReason": null,
+          "queued": 0,
+          "replyTo": null,
+          "results": {
+            "bounced": 1,
+            "candidates": 7,
+            "complained": 1,
+            "delivered": 3,
+            "failed": 1,
+            "sent": 5,
+            "skipped": 1,
+            "unresolved": 0,
+            "waiting": 0
+          },
+          "sendAt": "2026-06-19T12:00:00.000Z",
+          "sent": 5,
+          "skipped": 1,
+          "snapshotMaxContactId": null,
+          "snapshotMaxMemberId": null,
+          "startedAt": "2026-06-19T12:00:00.000Z",
+          "status": "finished",
+          "subject": "Everything you missed in June",
+          "tenantId": "tenant-studio",
+          "toSend": 7,
+          "unresolved": 0
+        }
+      }
+    },
+    "getMarketingSesSettings:[]": {
+      "ok": true,
+      "value": {
+        "credentialsConfigured": false,
+        "lastSnsDelivery": null,
+        "platformPool": {
+          "limit": 1000,
+          "used": 0
+        },
+        "resendConfigured": false,
+        "settings": null,
+        "smtpConfigured": false,
+        "webhookEndpointStale": false,
+        "webhookUrl": null
+      }
+    },
+    "getTenantSettings:[]": {
+      "ok": true,
+      "value": {
+        "settings": {
+          "accentColor": null,
+          "accentLight": null,
+          "autoIssueInvoices": false,
+          "autoIssueInvoiceScope": "b2b_only",
+          "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
+          "bunnyStreamCdnHostname": null,
+          "bunnyStreamLibraryId": null,
+          "defaultHomeSpaceId": "space-studio-community",
+          "defaultLanguage": "en",
+          "directMessagesEnabled": true,
+          "faviconUrl": null,
+          "invoiceExemptionBasis": null,
+          "invoiceExemptionBasisKind": null,
+          "invoiceSellerAddress": null,
+          "invoiceSellerName": null,
+          "invoiceVatMode": "rate",
+          "invoiceVatRatePercent": null,
+          "invoicingProvider": null,
+          "logoDarkUrl": null,
+          "logoUrl": null,
+          "memberVideoAutoplayOverride": false,
+          "name": "Studio Demo",
+          "ogDescription": null,
+          "ogImageUrl": null,
+          "ogTitle": null,
+          "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
+          "socialLinks": [],
+          "supportConfigured": false,
+          "supportEmail": null,
+          "supportUrl": null,
+          "termsUrl": null,
+          "videoAutoplayDefault": false
+        }
+      }
+    },
+    "listDmReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "nextCursor": null,
+        "openCount": 0,
+        "reports": []
+      }
+    },
+    "listMarketingConsentDefinitions:[]": {
+      "ok": true,
+      "value": {
+        "definitions": [
+          {
+            "channel": "email",
+            "createdAt": "2026-06-06T12:00:00.000Z",
+            "documentRef": {
+              "mode": "url",
+              "url": "https://studio.example.test/privacy"
+            },
+            "doubleOptIn": true,
+            "footerLabel": null,
+            "id": "consent-definition-studio-news",
+            "key": "news",
+            "kind": "optional_marketing",
+            "status": "active",
+            "tenantId": "tenant-studio",
+            "updatedAt": "2026-06-06T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "listMarketingLayouts:[]": {
+      "ok": true,
+      "value": {
+        "layouts": []
+      }
+    },
+    "listMarketingLists:[{\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "lists": [],
+        "nextCursor": null
+      }
+    },
+    "listProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:31.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "legacyId": null,
+            "priceCents": 19900,
+            "published": true,
+            "slug": "course-together-101",
+            "tenantId": "tenant-studio",
+            "title": "Together 101 Course",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:32.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-workshop",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": false,
+            "slug": "workshop-scenario",
+            "tenantId": "tenant-studio",
+            "title": "Scenario Workshop",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:33.000Z",
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "id": "product-js-full",
+            "legacyId": null,
+            "priceCents": 39900,
+            "published": true,
+            "slug": "js-full",
+            "tenantId": "tenant-studio",
+            "title": "JavaScript Course - full access",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:34.000Z",
+            "currency": "PLN",
+            "description": "Full access to React in Practice.",
+            "id": "product-react-full",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": true,
+            "slug": "react-full",
+            "tenantId": "tenant-studio",
+            "title": "React in Practice - full access",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "modules",
+                "moduleIds": [
+                  "module-js-dom"
+                ]
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:35.000Z",
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "id": "product-js-dom-module",
+            "legacyId": null,
+            "priceCents": 9900,
+            "published": true,
+            "slug": "js-dom-module",
+            "tenantId": "tenant-studio",
+            "title": "DOM Module Pack",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "lessonIds": [
+                  "lesson-js-demo-video",
+                  "lesson-js-variables-1",
+                  "lesson-js-dom-1",
+                  "lesson-js-project-1"
+                ],
+                "level": "lessons"
+              },
+              {
+                "courseId": "course-react",
+                "lessonIds": [
+                  "lesson-react-jsx-1",
+                  "lesson-react-hooks-1"
+                ],
+                "level": "lessons"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:36.000Z",
+            "currency": "PLN",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
+            "id": "product-free-preview",
+            "legacyId": null,
+            "priceCents": 0,
+            "published": true,
+            "slug": "free-preview",
+            "tenantId": "tenant-studio",
+            "title": "Free preview",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              },
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:38.000Z",
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "id": "product-club",
+            "legacyId": null,
+            "priceCents": 4900,
+            "published": true,
+            "slug": "club",
+            "tenantId": "tenant-studio",
+            "title": "Studio Club - subscription",
+            "type": "membership",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:39.000Z",
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "id": "product-download-workbook",
+            "legacyId": null,
+            "priceCents": 7900,
+            "published": true,
+            "slug": "download-workbook",
+            "tenantId": "tenant-studio",
+            "title": "Creator Workbook",
+            "type": "digital_download",
+            "visibility": "listed"
+          }
+        ]
+      }
+    },
+    "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "openReportsForPost": 1,
+            "post": {
+              "authorAvatarUrl": null,
+              "authorDisplay": "Free Account",
+              "authorIsStaff": false,
+              "body": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyFormat": "plain",
+              "bodyHtml": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "bodyPlainText": "A resource recommendation: javascript.info complements the course lessons really well. What other learning resources do you enjoy?",
+              "contextId": "space-studio-community",
+              "contextKind": "space",
+              "createdAt": "2026-06-25T12:00:00.000Z",
+              "deletedAt": null,
+              "deletedBy": null,
+              "editedAt": null,
+              "id": "post-community-resources",
+              "isOwn": false,
+              "parentPostId": null,
+              "pinnedAt": null,
+              "rootPostId": "post-community-resources",
+              "tenantId": "tenant-studio"
+            },
+            "report": {
+              "createdAt": "2026-06-26T12:00:00.000Z",
+              "id": "report-studio-resources",
+              "note": "This post looks like an advertisement for an external service.",
+              "postId": "post-community-resources",
+              "reason": "off-topic",
+              "reporterDisplay": "Active Student",
+              "reporterUserId": "user-student-active",
+              "resolvedAt": null,
+              "resolvedByUserId": null,
+              "signals": null,
+              "source": "member",
+              "status": "open",
+              "tenantId": "tenant-studio"
+            },
+            "spaceName": "Community"
+          }
+        ],
+        "nextCursor": null,
+        "openCount": 1
+      }
+    },
+    "listTenantSchedulerRuns:[{\"campaignId\":\"campaign-studio-summer-recap\",\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "campaignCounts": {
+              "failed": 1,
+              "sent": 5,
+              "skipped": 1
+            },
+            "run": {
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "durationMs": 2140,
+              "error": null,
+              "finishedAt": "2026-06-19T12:00:00.000Z",
+              "id": "scheduler-run-studio-recap",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-19T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 1,
+                "reEnqueued": false,
+                "sendsAttempted": 7,
+                "sent": 5,
+                "skipped": 1
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 7,
+              "budgetComputed": 25,
+              "budgetUsed": 7,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "errors": [
+                "Recipient mailbox is full"
+              ],
+              "failed": 1,
+              "id": "scheduler-run-tenant-studio-recap",
+              "purged": null,
+              "runId": "scheduler-run-studio-recap",
+              "sent": 5,
+              "skipped": 1,
+              "tenantId": "tenant-studio"
+            }
+          }
+        ],
+        "nextCursor": null,
+        "summary": {
+          "failedLast24Hours": 1,
+          "lastRun": {
+            "createdAt": "2026-07-01T09:36:00.000Z",
+            "durationMs": 684,
+            "error": null,
+            "finishedAt": "2026-07-01T09:36:00.000Z",
+            "id": "scheduler-run-studio-marketing",
+            "idle": false,
+            "kind": "marketing_tick",
+            "startedAt": "2026-07-01T09:36:00.000Z",
+            "status": "completed",
+            "totals": {
+              "campaignsTouched": 1,
+              "failed": 0,
+              "reEnqueued": false,
+              "sendsAttempted": 1,
+              "sent": 1,
+              "skipped": 0
+            },
+            "trigger": "cron"
+          },
+          "runsLast24Hours": 3,
+          "sentLast24Hours": 2
+        }
+      }
+    },
+    "me:[]": {
+      "ok": true,
+      "value": {
+        "avatarUrl": null,
+        "email": "creator@together.dev",
+        "emailVerified": true,
+        "hasPassword": true,
+        "impersonation": null,
+        "name": "Studio Creator",
+        "tenant": {
+          "banned": false,
+          "displayName": null,
+          "dmOptOut": false,
+          "id": "tenant-studio",
+          "language": null,
+          "memberId": "fixture-member-9b6fd3a284cc9b9c",
+          "name": "Studio Demo",
+          "slug": "studio",
+          "staffRole": "owner",
+          "videoAutoplay": null
+        },
+        "twoFactorEnabled": false,
+        "userId": "fixture-user-f9e5468247b51d08"
+      }
+    },
+    "publicOffer:[]": {
+      "ok": true,
+      "value": {
+        "contentVersion": 1,
+        "previewLessons": [],
+        "products": [
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "marketingConsents": [],
+            "priceCents": 19900,
+            "prices": [
+              {
+                "amountCents": 19900,
+                "currency": "PLN",
+                "id": "price-product-studio-course-101",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "course-together-101",
+            "title": "Together 101 Course",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "id": "product-js-full",
+            "marketingConsents": [],
+            "priceCents": 39900,
+            "prices": [
+              {
+                "amountCents": 39900,
+                "currency": "PLN",
+                "id": "price-product-js-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-full",
+            "title": "JavaScript Course - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Full access to React in Practice.",
+            "id": "product-react-full",
+            "marketingConsents": [],
+            "priceCents": 49900,
+            "prices": [
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-product-react-full",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "react-full",
+            "title": "React in Practice - full access",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "id": "product-js-dom-module",
+            "marketingConsents": [],
+            "priceCents": 9900,
+            "prices": [
+              {
+                "amountCents": 9900,
+                "currency": "PLN",
+                "id": "price-product-js-dom-module",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "js-dom-module",
+            "title": "DOM Module Pack",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
+            "id": "product-free-preview",
+            "marketingConsents": [],
+            "priceCents": 0,
+            "prices": [
+              {
+                "amountCents": 0,
+                "currency": "PLN",
+                "id": "price-product-free-preview",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "free-preview",
+            "title": "Free preview",
+            "type": "course"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "id": "product-club",
+            "marketingConsents": [],
+            "priceCents": 4900,
+            "prices": [
+              {
+                "amountCents": 4900,
+                "currency": "PLN",
+                "id": "price-club-monthly",
+                "interval": "month",
+                "kind": "recurring"
+              },
+              {
+                "amountCents": 49900,
+                "currency": "PLN",
+                "id": "price-club-yearly",
+                "interval": "year",
+                "kind": "recurring"
+              }
+            ],
+            "slug": "club",
+            "title": "Studio Club - subscription",
+            "type": "membership"
+          },
+          {
+            "coverUrl": null,
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "id": "product-download-workbook",
+            "marketingConsents": [],
+            "priceCents": 7900,
+            "prices": [
+              {
+                "amountCents": 7900,
+                "currency": "PLN",
+                "id": "price-product-download-workbook",
+                "interval": null,
+                "kind": "one_time"
+              }
+            ],
+            "slug": "download-workbook",
+            "title": "Creator Workbook",
+            "type": "digital_download"
+          }
+        ],
+        "tenant": {
+          "branding": {
+            "accentColor": null,
+            "accentLight": null,
+            "faviconUrl": null,
+            "logoDarkUrl": null,
+            "logoUrl": null
+          },
+          "defaultLanguage": "en",
+          "legal": {
+            "privacyUrl": null,
+            "termsUrl": null
+          },
+          "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
+          "slug": "studio",
+          "socialLinks": [],
+          "support": {
+            "url": null
+          }
+        }
+      }
+    },
+    "unreadNotificationCount:[]": {
+      "ok": true,
+      "value": {
+        "unread": 0
+      }
+    }
+  },
+  "principal": "creator@together.dev",
+  "route": "/panel/marketing/campaigns/campaign-studio-summer-recap",
+  "scenario": "panel-marketing-campaign-report",
+  "tenant": "studio"
+}

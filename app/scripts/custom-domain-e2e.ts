@@ -294,6 +294,9 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
+    await page.addInitScript(
+      "Object.defineProperty(PublicKeyCredential, 'isConditionalMediationAvailable', { configurable: true, value: () => Promise.resolve(false) })",
+    );
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', {

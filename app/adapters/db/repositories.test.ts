@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -7,7 +7,6 @@ import {
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
-  normalizeEmail,
   ok,
   validation,
   tenantSettingsSchema,
@@ -68,7 +67,6 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
-  createSignInMethodReader,
   createSpaceEventRepository,
   createSpaceEventRsvpRepository,
   createSpaceRepository,
@@ -124,7 +122,6 @@ import {
   members,
   memberErasureRequestEvents,
   orders,
-  passkey,
   postReportEvents,
   postReports,
   posts,
@@ -1232,6 +1229,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const updated = await repo.updateSettings(ACME, {
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
@@ -1258,6 +1256,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(updated).toMatchObject({
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
@@ -1265,6 +1264,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       memberVideoAutoplayOverride: true,
     });
     expect(await repo.findSettings(ACME)).toMatchObject({
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
@@ -4047,80 +4047,16 @@ describe('member erasure repository', () => {
   });
 });
 
-describe('createSignInMethodReader', () => {
-  const explainPredicate = async (
-    executor: Pick<Db, 'execute'>,
-    predicate: SQL,
-  ): Promise<string> => {
-    const result: unknown = await executor.execute(
-      sql`explain select 1 from ${user} where ${predicate}`,
-    );
-    if (
-      typeof result !== 'object'
-      || result === null
-      || !('rows' in result)
-      || !Array.isArray(result.rows)
-    ) {
-      throw new Error('explain did not return rows');
-    }
-    return JSON.stringify(result.rows);
-  };
-
-  beforeAll(async () => {
+describe('createAccountSecurityReader', () => {
+  it('projects password and verified two-factor state from the auth tables', async () => {
     await db.insert(account).values({
-      id: 'account-signin-lookup',
+      id: 'account-security-reader',
       accountId: 'owner-acme@together.dev',
       providerId: 'credential',
       userId: 'user-acme-owner',
       password: 'hashed-password',
       updatedAt: new Date(NOW),
     });
-    await db.insert(passkey).values({
-      id: 'passkey-signin-lookup',
-      publicKey: 'public-key',
-      userId: 'user-acme-member',
-      credentialID: 'credential-id',
-      counter: 0,
-      deviceType: 'singleDevice',
-      backedUp: false,
-      createdAt: new Date(NOW),
-    });
-  });
-
-  it('resolves a mixed-case identifier exactly like the stored address', async () => {
-    const reader = createSignInMethodReader(db);
-
-    expect(await reader.hasCredentialAccount(ACME, 'owner-acme@together.dev')).toBe(true);
-    expect(await reader.hasCredentialAccount(ACME, '  Owner-Acme@Together.DEV ')).toBe(true);
-    expect(await reader.hasCredentialAccount(ACME, 'buyer-acme@together.dev')).toBe(false);
-    expect(await reader.hasCredentialAccount(GLOBEX, 'owner-acme@together.dev')).toBe(false);
-  });
-
-  it('resolves a tenant-scoped passkey for the stored address', async () => {
-    const reader = createSignInMethodReader(db);
-
-    expect(await reader.hasPasskey(ACME, 'buyer-acme@together.dev')).toBe(true);
-    expect(await reader.hasPasskey(ACME, '  Buyer-Acme@Together.DEV ')).toBe(true);
-    expect(await reader.hasPasskey(ACME, 'owner-acme@together.dev')).toBe(false);
-    expect(await reader.hasPasskey(GLOBEX, 'buyer-acme@together.dev')).toBe(false);
-  });
-
-  it('keeps the identifier predicate on the unique e-mail index', async () => {
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`set local enable_seqscan = off`);
-
-      expect(
-        await explainPredicate(tx, eq(user.email, normalizeEmail('  Owner-Acme@Together.DEV '))),
-      ).toContain('Index Cond');
-      expect(
-        await explainPredicate(tx, sql`lower(btrim(${user.email})) = 'owner-acme@together.dev'`),
-      ).not.toContain('Index Cond');
-    });
-  });
-});
-
-describe('createAccountSecurityReader', () => {
-  it('projects password and verified two-factor state from the auth tables', async () => {
     await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, 'user-acme-owner'));
     await db.insert(twoFactor).values({
       id: 'two-factor-security-reader',

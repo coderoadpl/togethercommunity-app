@@ -207,6 +207,7 @@ const productsRepo: ProductRepository = {
 const tenantSettings: TenantSettings = {
   name: 'Acme',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: 'lib-77',
   bunnyStreamCdnHostname: null,

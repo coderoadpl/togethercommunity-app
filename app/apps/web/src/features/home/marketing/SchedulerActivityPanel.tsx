@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import {
+  Box,
   Button,
   Chip,
   FormControl,
+  FormControlLabel,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -25,6 +29,7 @@ import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerActivitySummary.js';
+import { CampaignStatusChip } from './MarketingSummaryRow.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -38,10 +43,10 @@ const SCHEDULER_LOCALES: Record<string, string> = { pl: 'pl-PL', en: 'en-GB' };
 
 const schedulerLocaleFor = (language: string): string => SCHEDULER_LOCALES[language] ?? language;
 
-const formatSchedulerDateTime = (value: string, language: string): string =>
+export const formatSchedulerDateTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(schedulerLocaleFor(language), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
 
-const formatSchedulerDuration = (durationMs: number, language: string): string => {
+export const formatSchedulerDuration = (durationMs: number, language: string): string => {
   const numberFormat = new Intl.NumberFormat(schedulerLocaleFor(language), { maximumFractionDigits: 1 });
   if (durationMs < 1_000) return `${numberFormat.format(durationMs)} ms`;
   const seconds = durationMs / 1_000;
@@ -60,11 +65,15 @@ const failedSendsPath = (runId: string): string =>
 const isNotFoundError = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'not_found';
 
+const isIdleCampaignRun = ({ run, tenant }: { run: { kind: SchedulerRunKind; status: SchedulerRunStatus }; tenant: { batchSize: number; sent: number; failed: number; skipped: number; errors: string[] } }): boolean =>
+  run.kind === 'marketing_tick' && run.status === 'completed' && tenant.errors.length === 0 && tenant.batchSize === 0 && tenant.sent === 0 && tenant.failed === 0 && tenant.skipped === 0;
+
 export const SchedulerActivityPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const [kind, setKind] = useState<'all' | SchedulerRunKind>('all');
   const [status, setStatus] = useState<'all' | SchedulerRunStatus>('all');
+  const [showIdleRuns, setShowIdleRuns] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [cursor, setCursor] = useState<string | undefined>();
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
@@ -74,14 +83,18 @@ export const SchedulerActivityPanel = () => {
   };
   const activity = useQuery(actions.schedulerRuns({
     ...filters,
+    ...(showIdleRuns ? { includeIdle: true } : {}),
     ...(cursor === undefined ? {} : { cursor }),
     limit: pageSize,
   }));
+  const campaigns = useQuery(actions.marketingCampaigns);
   const resetPagination = () => {
     setCursor(undefined);
     setPreviousCursors([]);
   };
-  const items = activity.data?.items ?? [];
+  const allItems = activity.data?.items ?? [];
+  const items = showIdleRuns ? allItems : allItems.filter((item) => !isIdleCampaignRun(item));
+  const activeCampaigns = campaigns.data?.campaigns.filter((campaign) => ['running', 'scheduled', 'paused'].includes(campaign.status)) ?? [];
   const summary = activity.data?.summary;
   const lastRun = summary?.lastRun ?? null;
 
@@ -106,9 +119,36 @@ export const SchedulerActivityPanel = () => {
           }}
         />
       )}
+      <SectionCard title={t.marketing.activity.campaignsInProgress}>
+        {campaigns.isPending ? <StatusView surface={false} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} /> : campaigns.isError ? (
+          <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} />
+        ) : activeCampaigns.length === 0 ? <Typography color="text.secondary">{t.marketing.activity.noCampaignsInProgress}</Typography> : (
+          <Stack useFlexGap spacing="1rem">
+            {activeCampaigns.map((campaign) => {
+              const candidates = campaign.candidateCount === 0 ? campaign.results.candidates : campaign.candidateCount;
+              const progress = candidates === 0 ? 0 : Math.min(100, campaign.results.sent / candidates * 100);
+              return (
+                <Stack key={campaign.id} useFlexGap spacing="0.5rem">
+                  <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
+                    <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Typography component="p" variant="h3">{campaign.name}</Typography>
+                      <CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} />
+                    </Stack>
+                    <Button component={Link} size="small" to={`/panel/marketing/campaigns/${encodeURIComponent(campaign.id)}`}>{t.marketing.activity.openCampaignReport}</Button>
+                  </Stack>
+                  <Box>
+                    <LinearProgress variant="determinate" value={progress} aria-label={t.marketing.activity.campaignProgressLabel({ name: campaign.name })} />
+                    <Typography variant="caption" color="text.secondary">{t.marketing.activity.campaignProgress({ sent: campaign.results.sent, candidates })}</Typography>
+                  </Box>
+                </Stack>
+              );
+            })}
+          </Stack>
+        )}
+      </SectionCard>
       <ListSection
         data-testid="scheduler-activity-list"
-        isEmpty={activity.isSuccess && items.length === 0 && kind === 'all' && status === 'all' && cursor === undefined}
+        isEmpty={activity.isSuccess && allItems.length === 0 && kind === 'all' && status === 'all' && cursor === undefined}
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.activity.empty }} />}
         noMatches={activity.isSuccess && items.length === 0
           ? <StatusView state={{ kind: 'empty', title: t.marketing.activity.noMatches }} />
@@ -150,6 +190,10 @@ export const SchedulerActivityPanel = () => {
                   ))}
                 </Select>
               </FormControl>
+              <FormControlLabel
+                control={<Switch checked={showIdleRuns} onChange={(_event, checked) => setShowIdleRuns(checked)} />}
+                label={t.marketing.activity.showIdleRuns}
+              />
             </Stack>
           ),
         }}
@@ -218,7 +262,12 @@ export const SchedulerActivityPanel = () => {
                     <TableCell>{run.kind === 'consent_evidence_purge'
                       ? t.marketing.activity.purgeCount({ purged: tenant.purged ?? 0 })
                       : t.marketing.activity.counts(tenant)}</TableCell>
-                    <TableCell><SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} /></TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} />
+                        {run.idle ? <Chip size="small" variant="outlined" label={t.marketing.activity.idle} /> : null}
+                      </Stack>
+                    </TableCell>
                     <TableCell align="right">
                       <Button component={Link} size="small" to={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}>
                         {t.marketing.activity.details}

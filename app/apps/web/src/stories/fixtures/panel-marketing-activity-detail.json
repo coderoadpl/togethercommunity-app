@@ -3,12 +3,14 @@
     "getTenantSchedulerRun:[\"scheduler-run-studio-outbox\"]": {
       "ok": true,
       "value": {
+        "campaignCounts": null,
         "run": {
           "createdAt": "2026-07-01T07:12:00.000Z",
           "durationMs": 312,
           "error": "SES rejected one message",
           "finishedAt": "2026-07-01T07:12:00.000Z",
           "id": "scheduler-run-studio-outbox",
+          "idle": false,
           "kind": "outbox_dispatch",
           "startedAt": "2026-07-01T07:12:00.000Z",
           "status": "failed",
@@ -71,6 +73,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -330,6 +336,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

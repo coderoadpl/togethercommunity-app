@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'd
 import {
   automationIdempotencyKeySchema,
   campaignSchema,
+  campaignResultsSchema,
   campaignSendSchema,
   consentConfirmationTokenSchema,
   consentDefinitionSchema,
@@ -20,6 +21,7 @@ import {
   unsubscribeTokenSchema,
   type Campaign,
   type CampaignEngagementStats,
+  type CampaignResults,
   type CampaignSend,
 } from '#core/domain/index.js';
 import type {
@@ -422,13 +424,46 @@ export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepo
 const sendValues = (tenantId: string, send: CampaignSend): CampaignSend => campaignSendSchema.parse({ ...send, tenantId });
 
 export const createCampaignSendRepository = (db: Db): CampaignSendRepository => ({
+  results: async (tenantId, campaignIds) => {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      candidates: sql<number>`count(*)::int`,
+      waiting: sql<number>`count(*) filter (where ${campaignSends.status} in ('pending', 'sending') and ${marketingOutbox.status} is distinct from 'uncertain')::int`,
+      sent: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent')::int`,
+      failed: sql<number>`count(*) filter (where ${campaignSends.status} = 'failed')::int`,
+      skipped: sql<number>`count(*) filter (where ${campaignSends.status} = 'skipped')::int`,
+      delivered: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'delivered')::int`,
+      bounced: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'bounced')::int`,
+      complained: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'complained')::int`,
+      unresolved: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} is null)::int`,
+    }).from(campaignSends).leftJoin(marketingOutbox, and(
+      eq(marketingOutbox.tenantId, campaignSends.tenantId),
+      eq(marketingOutbox.campaignSendId, campaignSends.id),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, CampaignResults]> =>
+      row.campaignId === null ? [] : [[row.campaignId, campaignResultsSchema.parse(row)]]
+    ));
+  },
   progressStats: async (tenantId, campaignIds) => {
     if (campaignIds.length === 0) return new Map();
-    const rows = await db.select({ campaignId: campaignSends.campaignId,
-      queued: sql<number>`count(*) FILTER (WHERE ${campaignSends.status} IN ('pending', 'sending') AND ${marketingOutbox.status} IS DISTINCT FROM 'uncertain')::int`,
-      unresolved: sql<number>`count(*) FILTER (WHERE ${marketingOutbox.status} = 'uncertain')::int`,
-    }).from(campaignSends).leftJoin(marketingOutbox, and(eq(marketingOutbox.tenantId, campaignSends.tenantId), eq(marketingOutbox.campaignSendId, campaignSends.id))).where(and(eq(campaignSends.tenantId, tenantId), inArray(campaignSends.campaignId, campaignIds))).groupBy(campaignSends.campaignId);
-    return new Map(rows.flatMap((row): Array<[string, { queued: number; unresolved: number }]> => row.campaignId === null ? [] : [[row.campaignId, { queued: row.queued, unresolved: row.unresolved }]]));
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      queued: sql<number>`count(*) filter (where ${campaignSends.status} in ('pending', 'sending') and ${marketingOutbox.status} is distinct from 'uncertain')::int`,
+      unresolved: sql<number>`count(*) filter (where ${marketingOutbox.status} = 'uncertain')::int`,
+    }).from(campaignSends).leftJoin(marketingOutbox, and(
+      eq(marketingOutbox.tenantId, campaignSends.tenantId),
+      eq(marketingOutbox.campaignSendId, campaignSends.id),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, { queued: number; unresolved: number }]> =>
+      row.campaignId === null ? [] : [[row.campaignId, { queued: row.queued, unresolved: row.unresolved }]]
+    ));
   },
   claimRecipient: async (tenantId, send, events = []) => {
     try {

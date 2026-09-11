@@ -88,7 +88,19 @@ const plan: Scenario[] = [
   { name: 'panel-storage-wizard', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-storage-wizard', route: '/panel/integrations#storage', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSecrets(); await api.getTenantRouting(); } },
   { name: 'panel-integrations-email', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-integrations-email', route: '/panel/integrations#email', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getMarketingSesSettings(); await api.getMarketingReputation(); } },
   { name: 'panel-marketing-campaigns', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-campaigns', route: '/panel/marketing/campaigns', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingCampaigns(); await api.listMarketingConsentDefinitions(); await api.getMarketingReputation(); await api.getMarketingSesSettings(); } },
-  { name: 'panel-marketing-activity', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity', route: '/panel/marketing/activity', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSchedulerRuns({ limit: 25 }); } },
+  { name: 'panel-marketing-activity', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity', route: '/panel/marketing/activity', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listTenantSchedulerRuns({ limit: 25 }); await api.listTenantSchedulerRuns({ includeIdle: true, limit: 25 }); await api.listMarketingCampaigns(); } },
+  ...([['panel-marketing-campaign-report', 'campaign-studio-summer-recap'], ['panel-marketing-campaign-running', 'campaign-studio-launch-wave']] as const).map(([name, campaignId]) => ({
+    name, principal: 'creator@together.dev', tenant: 'studio', page: name, route: `/panel/marketing/campaigns/${campaignId}`, courseId: '', lessonId: '', spaceId: '',
+    extra: async (api: ApiClient) => {
+      await api.getMarketingCampaign(campaignId);
+      await api.listMarketingConsentDefinitions();
+      await api.listMarketingLists({ limit: 100 });
+      await api.listProducts();
+      await api.listMarketingLayouts();
+      await api.listTenantSchedulerRuns({ campaignId, limit: 100 });
+      await api.getMarketingSesSettings();
+    },
+  })),
   { name: 'panel-marketing-activity-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-activity-detail', route: '/panel/marketing/activity/scheduler-run-studio-outbox', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getTenantSchedulerRun('scheduler-run-studio-outbox'); } },
   { name: 'panel-marketing-sends', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-sends', route: '/panel/marketing/sends', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.listMarketingCampaigns(); await api.listEmailSends({ limit: 25 }); } },
   { name: 'panel-marketing-send-detail', principal: 'creator@together.dev', tenant: 'studio', page: 'panel-marketing-send-detail', route: '/panel/marketing/sends/marketing/send-studio-marketing', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.getEmailSend('marketing', 'send-studio-marketing'); } },

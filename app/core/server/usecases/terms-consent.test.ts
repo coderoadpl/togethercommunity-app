@@ -8,6 +8,7 @@ import { enforceTermsConsent, tenantLegalUrls, validateTermsConsent } from './te
 const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   name: 'Acme',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,

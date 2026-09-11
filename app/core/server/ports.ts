@@ -86,6 +86,7 @@ import type {
   AutomationIdempotencyKey,
   Campaign,
   CampaignEngagementStats,
+  CampaignResults,
   CampaignSend,
   CheckoutConsentCapture,
   Coupon,
@@ -1947,6 +1948,7 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
+  results(tenantId: string, campaignIds: string[]): Promise<Map<string, CampaignResults>>;
   progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>>;
   claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
@@ -2078,11 +2080,14 @@ export interface SesOnboardingControlPlane {
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
   ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
-  /** SNS rejects Unsubscribe for pending subscriptions; those are reported as not removed. */
-  removeSubscription(
+  listSubscriptions(
     credentials: SesMarketingCredentials,
-    input: { topicArn: string; endpoint: string },
-  ): Promise<Result<{ removed: boolean }, AppError>>;
+    topicArn: string,
+  ): Promise<Result<Array<{ arn: string | null; endpoint: string }>, AppError>>;
+  unsubscribe(
+    credentials: SesMarketingCredentials,
+    subscriptionArn: string,
+  ): Promise<Result<void, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {
@@ -2164,6 +2169,7 @@ export interface SchedulerRunRepository {
     finishedAt: string;
     durationMs: number;
     status: 'completed' | 'failed';
+    idle: boolean;
     error: string | null;
     totals: SchedulerRunTotals;
     tenants: SchedulerRunTenant[];
@@ -2180,6 +2186,10 @@ export interface SchedulerRunRepository {
   }>;
   summarizeForTenant(tenantId: string, since: string): Promise<SchedulerRunTenantSummary>;
   failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
+  purge(
+    input: { runsBefore: string; idleRunsBefore: string },
+    options: { batchSize: number; timeoutMs: number },
+  ): Promise<{ purged: number; cancelled: boolean }>;
 }
 
 export interface EmailHmac {
@@ -2208,15 +2218,6 @@ export interface TenantAccessReader {
   ): Promise<Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
-}
-
-/**
- * `email` arrives exactly as the caller typed it: the adapter owns the single
- * normalisation step, so callers must not pre-normalise and split the contract.
- */
-export interface SignInMethodReader {
-  hasCredentialAccount(tenantId: string, email: string): Promise<boolean>;
-  hasPasskey(tenantId: string, email: string): Promise<boolean>;
 }
 
 export interface AccountSecurityReader {

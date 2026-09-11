@@ -1,5 +1,6 @@
 import {
   consumeUnsubscribeToken,
+  deriveCampaignResults,
   emailEventSchema,
   normalizeEmail,
   ok,
@@ -7,6 +8,7 @@ import {
   type AutomationIdempotencyKey,
   type Campaign,
   type CampaignEngagementStats,
+  type CampaignResults,
   type CampaignSend,
   type ConsentConfirmationToken,
   type ConsentDefinition,
@@ -19,6 +21,7 @@ import {
   schedulerRunSchema,
   schedulerRunTenantSchema,
   type SchedulerRun,
+  type SchedulerRunCampaignCounts,
   type SchedulerRunListQuery,
   type SchedulerRunTenant,
   snsWebhookDeliverySchema,
@@ -69,6 +72,13 @@ const schedulerRunCursor = (run: SchedulerRun): string =>
 export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
   private readonly runs: SchedulerRun[] = [];
   private readonly tenants: SchedulerRunTenant[] = [];
+  private readonly campaignsByRun = new Map<string, Map<string, SchedulerRunCampaignCounts>>();
+
+  associateCampaign(runId: string, campaignId: string, counts: SchedulerRunCampaignCounts = { sent: 0, failed: 0, skipped: 0 }): void {
+    const campaigns = this.campaignsByRun.get(runId) ?? new Map<string, SchedulerRunCampaignCounts>();
+    campaigns.set(campaignId, structuredClone(counts));
+    this.campaignsByRun.set(runId, campaigns);
+  }
 
   async start(run: SchedulerRun): Promise<void> {
     if (this.runs.some((item) => item.id === run.id)) throw new Error('Scheduler run already exists');
@@ -103,18 +113,29 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     const tenant = this.tenants.find((item) => item.runId === runId && item.tenantId === tenantId);
     return run === undefined || tenant === undefined
       ? null
-      : { run: structuredClone(run), tenant: structuredClone(tenant) };
+      : { run: structuredClone(run), tenant: structuredClone(tenant), campaignCounts: null };
   }
 
   async listForTenant(tenantId: string, input: SchedulerRunListQuery) {
     const tenantByRun = new Map(this.tenants
       .filter((tenant) => tenant.tenantId === tenantId)
       .map((tenant) => [tenant.runId, tenant]));
-    const page = this.page(this.runs.filter((run) => tenantByRun.has(run.id)), input);
-    const items: Array<{ run: SchedulerRun; tenant: SchedulerRunTenant }> = [];
+    const eligibleRuns = this.runs.filter((run) => {
+      const tenant = tenantByRun.get(run.id);
+      return tenant !== undefined && (input.includeIdle === true || run.kind !== 'marketing_tick' || run.status !== 'completed'
+        || tenant.errors.length > 0 || tenant.batchSize > 0 || tenant.sent > 0 || tenant.failed > 0 || tenant.skipped > 0);
+    });
+    const page = this.page(eligibleRuns, input);
+    const items: Array<{ run: SchedulerRun; tenant: SchedulerRunTenant; campaignCounts: SchedulerRunCampaignCounts | null }> = [];
     for (const run of page.runs) {
       const tenant = tenantByRun.get(run.id);
-      if (tenant !== undefined) items.push({ run, tenant: structuredClone(tenant) });
+      if (tenant !== undefined) items.push({
+        run,
+        tenant: structuredClone(tenant),
+        campaignCounts: input.campaignId === undefined
+          ? null
+          : structuredClone(this.campaignsByRun.get(run.id)?.get(input.campaignId) ?? { sent: 0, failed: 0, skipped: 0 }),
+      });
     }
     return {
       items,
@@ -157,10 +178,41 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     return failed;
   }
 
+  async purge(
+    input: { runsBefore: string; idleRunsBefore: string },
+    options: { batchSize: number; timeoutMs: number },
+  ): Promise<{ purged: number; cancelled: boolean }> {
+    const newestIds = new Set<string>();
+    for (const run of this.runs) {
+      const newest = this.runs
+        .filter((candidate) => candidate.kind === run.kind)
+        .sort((left, right) =>
+          right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
+        )[0];
+      if (newest !== undefined) newestIds.add(newest.id);
+    }
+    const removedIds = new Set(this.runs.filter((run) =>
+      !newestIds.has(run.id)
+      && run.startedAt < (run.idle ? input.idleRunsBefore : input.runsBefore)
+    ).sort((left, right) =>
+      left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)
+    ).slice(0, options.batchSize).map((run) => run.id));
+    for (let index = this.runs.length - 1; index >= 0; index -= 1) {
+      const run = this.runs[index];
+      if (run !== undefined && removedIds.has(run.id)) this.runs.splice(index, 1);
+    }
+    for (let index = this.tenants.length - 1; index >= 0; index -= 1) {
+      const tenant = this.tenants[index];
+      if (tenant !== undefined && removedIds.has(tenant.runId)) this.tenants.splice(index, 1);
+    }
+    return { purged: removedIds.size, cancelled: false };
+  }
+
   private page(rows: SchedulerRun[], input: SchedulerRunListQuery): { runs: SchedulerRun[]; nextCursor: string | null } {
     const sorted = rows.filter((run) =>
       (input.kind === undefined || run.kind === input.kind)
       && (input.status === undefined || run.status === input.status)
+      && (input.campaignId === undefined || this.campaignsByRun.get(run.id)?.has(input.campaignId) === true)
       && (input.since === undefined || run.startedAt >= input.since)
     ).sort((left, right) =>
       right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
@@ -601,8 +653,17 @@ export class InMemoryEmailLayoutRepository implements EmailLayoutRepository {
 }
 
 export class InMemoryCampaignSendRepository implements CampaignSendRepository {
+  async results(tenantId: string, campaignIds: string[]): Promise<Map<string, CampaignResults>> {
+    return new Map(campaignIds.map((id) => [id, deriveCampaignResults(
+      this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === id),
+    )]));
+  }
+
   async progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>> {
-    return new Map(campaignIds.map((id) => [id, { queued: this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === id && ['pending', 'sending'].includes(row.status)).length, unresolved: 0 }]));
+    return new Map(campaignIds.map((id) => [id, {
+      queued: this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === id && (row.status === 'pending' || row.status === 'sending')).length,
+      unresolved: 0,
+    }]));
   }
 
   private readonly rows: CampaignSend[] = [];

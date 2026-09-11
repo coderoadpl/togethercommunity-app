@@ -138,7 +138,18 @@ export interface Messages {
     validationField: (params: { field: string }) => string;
     validationForm: string;
   };
+  signInNoticeSettings: {
+    save: string;
+    heading: string;
+    enabled: string;
+    label: string;
+    helper: string;
+    counter: (params: { count: number }) => string;
+  };
   auth: {
+    signInNoticeLabel: string;
+    invalidCredentials: string;
+    signInRateLimited: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -159,8 +170,6 @@ export interface Messages {
     changeIdentifier: string;
     changeIdentifierShort: string;
     signInMethodsUnavailable: string;
-    signInMethodsRateLimited: string;
-    signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
     signInMethodsChoosePrompt: string;
     signInMethodsChooseMagicLink: string;
     signInMethodsChoosePassword: string;
@@ -170,10 +179,8 @@ export interface Messages {
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
     methodPasswordBody: string;
-    methodPasswordDisabledTooltip: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
-    methodPasskeyDisabledTooltip: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;
@@ -207,7 +214,6 @@ export interface Messages {
     publicNavCommunity: string;
     cannotSignInPrompt: string;
     cannotSignInLink: string;
-    previewLessons: string;
     creatingAccount: string;
     createAccount: string;
     createAccountLead: string;
@@ -2321,6 +2327,7 @@ export interface Messages {
   };
   marketing: {
     contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
+    campaignProgress: (input: { candidates: number; sent: number; waiting: number; skipped: number; failed: number }) => string;
     contactAudience: string;
     frozenAudience: string;
     audienceEstimateHint: string;
@@ -2421,6 +2428,8 @@ export interface Messages {
       duration: string;
       tenantCounts: string;
       details: string;
+      runDetails: (params: { startedAt: string }) => string;
+      idle: string;
       allRuns: string;
       breakdown: string;
       campaignsTouched: string;
@@ -2435,6 +2444,12 @@ export interface Messages {
       runNotFoundTitle: string;
       runNotFoundBody: string;
       backToRuns: string;
+      campaignsInProgress: string;
+      noCampaignsInProgress: string;
+      openCampaignReport: string;
+      showIdleRuns: string;
+      campaignProgress: (params: { sent: number; candidates: number }) => string;
+      campaignProgressLabel: (params: { name: string }) => string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2455,6 +2470,15 @@ export interface Messages {
     compactClicks: (params: { unique: number; total: number }) => string;
     compactOpensUnavailable: string;
     compactClicksUnavailable: string;
+    listSent: (params: { sent: number; candidates: number }) => string;
+    compactResults: (params: { delivered: number; bounced: number; complained: number }) => string;
+    resultsDelivered: string;
+    resultsBounced: string;
+    resultsComplained: string;
+    resultsFailed: string;
+    resultsWaiting: string;
+    percentageOfSent: (params: { percentage: string }) => string;
+    unresolvedAcceptance: (params: { count: number }) => string;
     trackingDisabledCampaignMetrics: string;
     createdTimeValue: (params: { date: string }) => string;
     scheduledTimeValue: (params: { date: string }) => string;
@@ -2472,6 +2496,16 @@ export interface Messages {
     rawHtmlMode: string;
     rawHtmlHint: string;
     livePreview: string;
+    reportAudienceTitle: string;
+    reportMessageTitle: string;
+    expandMessage: string;
+    noIncludedLists: string;
+    noConsentDefinition: string;
+    noExcludedLists: string;
+    noExcludedProducts: string;
+    consentedMembersChip: string;
+    campaignRunsTitle: string;
+    campaignRunsEmpty: string;
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;
@@ -2512,6 +2546,8 @@ export interface Messages {
     createConsentAction: string;
     saveConsentAction: string;
     wordingLabel: string;
+    footerLabelLabel: string;
+    footerLabelHint: string;
     purposeLabel: string;
     purposeMarketing: string;
     channelLabel: string;

@@ -33,6 +33,7 @@ import { SettingsPanel } from './SettingsPanel.js';
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 interface StoredSettings {
+  signInNotice?: { enabled: boolean; text: string };
   name: string;
   socialLinks: Array<{ label: string; url: string }>;
   billingPortalUrl: string | null;
@@ -1395,4 +1396,23 @@ describe('SettingsPanel branding', () => {
       ogImageUrl: 'https://cdn.example.com/share.png',
     }));
   }, BRANDING_TEST_TIMEOUT);
+});
+
+
+describe('SettingsPanel sign-in notice', () => {
+  it('edits and saves the switch and multiline notice through tenant settings', async () => {
+    const { updates } = renderPanel();
+    const text = await screen.findByRole('textbox', { name: en.signInNoticeSettings.label });
+    expect(text).toHaveAccessibleDescription(`${en.signInNoticeSettings.helper} ${en.signInNoticeSettings.counter({ count: 0 })}`);
+    await waitFor(() => expect(text).toBeEnabled());
+    await userEvent.click(screen.getByRole('switch', { name: en.signInNoticeSettings.enabled }));
+    await userEvent.type(text, 'Welcome back.\nUse your existing email.');
+    expect(text).toHaveAttribute('maxlength', '600');
+    expect(screen.getByText(en.signInNoticeSettings.counter({ count: 'Welcome back.\nUse your existing email.'.length }))).toBeInTheDocument();
+    const card = text.closest('form');
+    expect(card).not.toBeNull();
+    if (card === null) throw new Error('Missing notice form');
+    await userEvent.click(within(card).getByRole('button', { name: en.signInNoticeSettings.save }));
+    await waitFor(() => expect(updates).toContainEqual({ signInNotice: { enabled: true, text: 'Welcome back.\nUse your existing email.' } }));
+  });
 });

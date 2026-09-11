@@ -61,11 +61,28 @@ previews so external creator sites can use the public checkout contract.
 Sign-in method resolution (`/api/public/auth-resolve`) is excluded: it answers
 CORS only to the platform host, the tenant subdomains of `APP_BASE_DOMAIN` and
 the verified custom domains held in `tenant_domains`, never with a wildcard, and
-a preflight from any other origin is refused. The lookup reveals only whether a
-tenant member or admin holds a password credential — unknown addresses and
-passwordless accounts are indistinguishable — and enumeration of that signal is
-bounded by the auth-resolve per-address and per-tenant limits recorded in the
-[go-live checklist](go-live-checklist.md).
+a preflight from any other origin is refused. It answers every address on every
+tenant with the same constant list — password, passkey and magic link — without
+reading account records, so the answer carries no signal about an account.
+Passkeys use discoverable credentials, including conditional browser autofill.
+Password sign-in answers an unknown address and a stored credential given the
+wrong password with the same status and the same body, and a magic-link request
+answers a known and an unknown address the same way. These three POST endpoints
+have a 300 ms response floor on accepted and rejected outcomes alike. The floor
+does not bound database or delivery latency above 300 ms.
+
+Each endpoint has separate IP and normalized email-hash buckets: production
+defaults are 60 requests per minute per IP and 10 per 10 minutes per email,
+with magic links limited to 5 per 10 minutes per email. Existing public auth
+limits still apply. `PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES` and
+`PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES` override these budgets.
+Development and staging retain higher defaults for automated suites. Rejections
+return `429` with `Retry-After`. Sign-in telemetry records only the normalized
+email's HMAC-SHA-256 digest keyed with `BETTER_AUTH_SECRET`, outcome and reason
+codes. Provider logging retains errors while suppressing warnings and lower
+levels. Magic links use the existing `auth-link:email` bucket without a second
+sign-in email counter.
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls
 back to anonymous public capabilities, which reach lessons flagged as free

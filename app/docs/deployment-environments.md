@@ -16,8 +16,9 @@ require interactive transactions, so every environment uses
 
 `main` is the default and production branch. Feature pull requests merge into
 `staging`; production promotion is an owner-approved pull request from `staging`
-to `main`. Preserve merge commits and their GitHub-generated subjects: the
-[version derivation](versioning.md) counts those events.
+to `main`. Follow the [production promotion runbook](promotion.md). Preserve
+merge commits and their GitHub-generated subjects: the [version
+derivation](versioning.md) counts those events.
 
 Set Vercel Production Branch Tracking to `main`. Merges to `staging` create
 Preview deployments only, using the integration-managed Neon staging branch.
@@ -108,6 +109,11 @@ and the applicable payment, e-mail, and KSeF configuration. Production
 additionally sets `APP_ENV=production`, `NODE_ENV=production`, secure cookies,
 real payments, production KSeF, and cron secrets. Preview and staging values
 must never reuse production credentials.
+
+The database client rewrites `sslmode=require`, `sslmode=prefer` and
+`sslmode=verify-ca` in `DATABASE_URL` to `sslmode=verify-full`, so a connection
+string copied from a provider console still validates the server hostname. An
+explicit `sslmode=disable` is left untouched for local development.
 
 Vercel sets `NODE_ENV=production` on Preview deployments as well, so `NODE_ENV`
 cannot decide the boot posture on its own. `APP_ENV` names the environment:

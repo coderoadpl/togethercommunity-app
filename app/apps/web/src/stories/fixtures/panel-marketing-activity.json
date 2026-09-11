@@ -30,6 +30,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -45,6 +49,186 @@
         "nextCursor": null,
         "openCount": 0,
         "reports": []
+      }
+    },
+    "listMarketingCampaigns:[]": {
+      "ok": true,
+      "value": {
+        "campaigns": [
+          {
+            "audience": null,
+            "audienceFilter": null,
+            "audienceNameSnapshot": "All eligible members",
+            "audienceSnapshotId": null,
+            "audienceVersion": 1,
+            "bodyHtml": "<p>Learning plan</p>",
+            "bodySource": "<p>Learning plan</p>",
+            "bodyText": null,
+            "candidateCount": 0,
+            "consentDefinitionId": "consent-definition-studio-news",
+            "consentLabelSnapshot": "I would like to receive news by email",
+            "createdAt": "2026-06-26T12:00:00.000Z",
+            "cursorContactId": null,
+            "cursorMemberId": "member-studio-active",
+            "engagement": {
+              "totalClicks": 0,
+              "totalOpens": 0,
+              "uniqueClicks": 0,
+              "uniqueOpens": 0
+            },
+            "errorCount": 0,
+            "failed": 0,
+            "finishedAt": "2026-06-27T12:00:00.000Z",
+            "id": "campaign-studio-observability",
+            "layoutId": null,
+            "lockedBy": null,
+            "lockedUntil": null,
+            "name": "Course launch",
+            "pausedReason": null,
+            "queued": 0,
+            "replyTo": null,
+            "results": {
+              "bounced": 0,
+              "candidates": 1,
+              "complained": 0,
+              "delivered": 1,
+              "failed": 0,
+              "sent": 1,
+              "skipped": 0,
+              "unresolved": 0,
+              "waiting": 0
+            },
+            "sendAt": "2026-06-27T12:00:00.000Z",
+            "sent": 1,
+            "skipped": 0,
+            "snapshotMaxContactId": null,
+            "snapshotMaxMemberId": "member-studio-active",
+            "startedAt": "2026-06-27T12:00:00.000Z",
+            "status": "finished",
+            "subject": "Your learning plan for July",
+            "tenantId": "tenant-studio",
+            "toSend": 1,
+            "unresolved": 0
+          },
+          {
+            "audience": null,
+            "audienceFilter": null,
+            "audienceNameSnapshot": "All eligible members",
+            "audienceSnapshotId": null,
+            "audienceVersion": 1,
+            "bodyHtml": "<p>The autumn cohort opens on Monday.</p>",
+            "bodySource": "The autumn cohort opens on Monday.",
+            "bodyText": null,
+            "candidateCount": 0,
+            "consentDefinitionId": "consent-definition-studio-news",
+            "consentLabelSnapshot": "I would like to receive news by email",
+            "createdAt": "2026-06-21T12:00:00.000Z",
+            "cursorContactId": null,
+            "cursorMemberId": "member-studio-active",
+            "engagement": {
+              "totalClicks": 0,
+              "totalOpens": 0,
+              "uniqueClicks": 0,
+              "uniqueOpens": 0
+            },
+            "errorCount": 0,
+            "failed": 0,
+            "finishedAt": null,
+            "id": "campaign-studio-launch-wave",
+            "layoutId": null,
+            "lockedBy": null,
+            "lockedUntil": null,
+            "name": "Autumn launch wave",
+            "pausedReason": null,
+            "queued": 3,
+            "replyTo": null,
+            "results": {
+              "bounced": 0,
+              "candidates": 5,
+              "complained": 0,
+              "delivered": 1,
+              "failed": 0,
+              "sent": 2,
+              "skipped": 0,
+              "unresolved": 1,
+              "waiting": 3
+            },
+            "sendAt": "2026-06-22T12:00:00.000Z",
+            "sent": 2,
+            "skipped": 0,
+            "snapshotMaxContactId": null,
+            "snapshotMaxMemberId": "member-studio-subscriber",
+            "startedAt": "2026-06-22T12:00:00.000Z",
+            "status": "running",
+            "subject": "Doors open on Monday",
+            "tenantId": "tenant-studio",
+            "toSend": 5,
+            "unresolved": 0
+          },
+          {
+            "audience": {
+              "excludeLists": [],
+              "excludeProductIds": [
+                "product-studio-workshop"
+              ],
+              "includeLists": [],
+              "includeMembersWithConsent": true,
+              "version": 2
+            },
+            "audienceFilter": null,
+            "audienceNameSnapshot": "Members with consent",
+            "audienceSnapshotId": null,
+            "audienceVersion": 2,
+            "bodyHtml": "<p>Six lessons, one workshop and a new space.</p>",
+            "bodySource": "Six lessons, one workshop and a new space.",
+            "bodyText": null,
+            "candidateCount": 7,
+            "consentDefinitionId": "consent-definition-studio-news",
+            "consentLabelSnapshot": "I would like to receive news by email",
+            "createdAt": "2026-06-18T12:00:00.000Z",
+            "cursorContactId": null,
+            "cursorMemberId": null,
+            "engagement": {
+              "totalClicks": 0,
+              "totalOpens": 0,
+              "uniqueClicks": 0,
+              "uniqueOpens": 0
+            },
+            "errorCount": 1,
+            "failed": 1,
+            "finishedAt": "2026-06-19T12:00:00.000Z",
+            "id": "campaign-studio-summer-recap",
+            "layoutId": null,
+            "lockedBy": null,
+            "lockedUntil": null,
+            "name": "Summer recap",
+            "pausedReason": null,
+            "queued": 0,
+            "replyTo": null,
+            "results": {
+              "bounced": 1,
+              "candidates": 7,
+              "complained": 1,
+              "delivered": 3,
+              "failed": 1,
+              "sent": 5,
+              "skipped": 1,
+              "unresolved": 0,
+              "waiting": 0
+            },
+            "sendAt": "2026-06-19T12:00:00.000Z",
+            "sent": 5,
+            "skipped": 1,
+            "snapshotMaxContactId": null,
+            "snapshotMaxMemberId": null,
+            "startedAt": "2026-06-19T12:00:00.000Z",
+            "status": "finished",
+            "subject": "Everything you missed in June",
+            "tenantId": "tenant-studio",
+            "toSend": 7,
+            "unresolved": 0
+          }
+        ]
       }
     },
     "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
@@ -96,17 +280,19 @@
         "openCount": 1
       }
     },
-    "listTenantSchedulerRuns:[{\"limit\":25}]": {
+    "listTenantSchedulerRuns:[{\"includeIdle\":true,\"limit\":25}]": {
       "ok": true,
       "value": {
         "items": [
           {
+            "campaignCounts": null,
             "run": {
               "createdAt": "2026-07-01T09:36:00.000Z",
               "durationMs": 684,
               "error": null,
               "finishedAt": "2026-07-01T09:36:00.000Z",
               "id": "scheduler-run-studio-marketing",
+              "idle": false,
               "kind": "marketing_tick",
               "startedAt": "2026-07-01T09:36:00.000Z",
               "status": "completed",
@@ -137,12 +323,52 @@
             }
           },
           {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-07-01T08:24:00.000Z",
+              "durationMs": 96,
+              "error": null,
+              "finishedAt": "2026-07-01T08:24:00.000Z",
+              "id": "scheduler-run-studio-idle",
+              "idle": true,
+              "kind": "marketing_tick",
+              "startedAt": "2026-07-01T08:24:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 0,
+                "failed": 0,
+                "reEnqueued": false,
+                "sendsAttempted": 0,
+                "sent": 0,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 0,
+              "budgetComputed": 25,
+              "budgetUsed": 0,
+              "campaignsTouched": 0,
+              "createdAt": "2026-07-01T08:24:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-idle",
+              "purged": null,
+              "runId": "scheduler-run-studio-idle",
+              "sent": 0,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          },
+          {
+            "campaignCounts": null,
             "run": {
               "createdAt": "2026-07-01T07:12:00.000Z",
               "durationMs": 312,
               "error": "SES rejected one message",
               "finishedAt": "2026-07-01T07:12:00.000Z",
               "id": "scheduler-run-studio-outbox",
+              "idle": false,
               "kind": "outbox_dispatch",
               "startedAt": "2026-07-01T07:12:00.000Z",
               "status": "failed",
@@ -173,6 +399,84 @@
               "skipped": 0,
               "tenantId": "tenant-studio"
             }
+          },
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "durationMs": 1180,
+              "error": null,
+              "finishedAt": "2026-06-22T12:00:00.000Z",
+              "id": "scheduler-run-studio-launch",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-22T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 0,
+                "reEnqueued": true,
+                "sendsAttempted": 2,
+                "sent": 2,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 2,
+              "budgetComputed": 25,
+              "budgetUsed": 2,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-launch",
+              "purged": null,
+              "runId": "scheduler-run-studio-launch",
+              "sent": 2,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          },
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "durationMs": 2140,
+              "error": null,
+              "finishedAt": "2026-06-19T12:00:00.000Z",
+              "id": "scheduler-run-studio-recap",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-19T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 1,
+                "reEnqueued": false,
+                "sendsAttempted": 7,
+                "sent": 5,
+                "skipped": 1
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 7,
+              "budgetComputed": 25,
+              "budgetUsed": 7,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "errors": [
+                "Recipient mailbox is full"
+              ],
+              "failed": 1,
+              "id": "scheduler-run-tenant-studio-recap",
+              "purged": null,
+              "runId": "scheduler-run-studio-recap",
+              "sent": 5,
+              "skipped": 1,
+              "tenantId": "tenant-studio"
+            }
           }
         ],
         "nextCursor": null,
@@ -184,6 +488,7 @@
             "error": null,
             "finishedAt": "2026-07-01T09:36:00.000Z",
             "id": "scheduler-run-studio-marketing",
+            "idle": false,
             "kind": "marketing_tick",
             "startedAt": "2026-07-01T09:36:00.000Z",
             "status": "completed",
@@ -197,7 +502,196 @@
             },
             "trigger": "cron"
           },
-          "runsLast24Hours": 2,
+          "runsLast24Hours": 3,
+          "sentLast24Hours": 2
+        }
+      }
+    },
+    "listTenantSchedulerRuns:[{\"limit\":25}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-07-01T09:36:00.000Z",
+              "durationMs": 684,
+              "error": null,
+              "finishedAt": "2026-07-01T09:36:00.000Z",
+              "id": "scheduler-run-studio-marketing",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-07-01T09:36:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 0,
+                "reEnqueued": false,
+                "sendsAttempted": 1,
+                "sent": 1,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 1,
+              "budgetComputed": 25,
+              "budgetUsed": 1,
+              "campaignsTouched": 1,
+              "createdAt": "2026-07-01T09:36:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-marketing",
+              "purged": null,
+              "runId": "scheduler-run-studio-marketing",
+              "sent": 1,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          },
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-07-01T07:12:00.000Z",
+              "durationMs": 312,
+              "error": "SES rejected one message",
+              "finishedAt": "2026-07-01T07:12:00.000Z",
+              "id": "scheduler-run-studio-outbox",
+              "idle": false,
+              "kind": "outbox_dispatch",
+              "startedAt": "2026-07-01T07:12:00.000Z",
+              "status": "failed",
+              "totals": {
+                "campaignsTouched": 0,
+                "failed": 1,
+                "reEnqueued": false,
+                "sendsAttempted": 2,
+                "sent": 1,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 2,
+              "budgetComputed": 25,
+              "budgetUsed": 2,
+              "campaignsTouched": 0,
+              "createdAt": "2026-07-01T07:12:00.000Z",
+              "errors": [
+                "SES rejected one message"
+              ],
+              "failed": 1,
+              "id": "scheduler-run-tenant-studio-outbox",
+              "purged": null,
+              "runId": "scheduler-run-studio-outbox",
+              "sent": 1,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          },
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "durationMs": 1180,
+              "error": null,
+              "finishedAt": "2026-06-22T12:00:00.000Z",
+              "id": "scheduler-run-studio-launch",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-22T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 0,
+                "reEnqueued": true,
+                "sendsAttempted": 2,
+                "sent": 2,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 2,
+              "budgetComputed": 25,
+              "budgetUsed": 2,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-launch",
+              "purged": null,
+              "runId": "scheduler-run-studio-launch",
+              "sent": 2,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          },
+          {
+            "campaignCounts": null,
+            "run": {
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "durationMs": 2140,
+              "error": null,
+              "finishedAt": "2026-06-19T12:00:00.000Z",
+              "id": "scheduler-run-studio-recap",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-19T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 1,
+                "reEnqueued": false,
+                "sendsAttempted": 7,
+                "sent": 5,
+                "skipped": 1
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 7,
+              "budgetComputed": 25,
+              "budgetUsed": 7,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-19T12:00:00.000Z",
+              "errors": [
+                "Recipient mailbox is full"
+              ],
+              "failed": 1,
+              "id": "scheduler-run-tenant-studio-recap",
+              "purged": null,
+              "runId": "scheduler-run-studio-recap",
+              "sent": 5,
+              "skipped": 1,
+              "tenantId": "tenant-studio"
+            }
+          }
+        ],
+        "nextCursor": null,
+        "summary": {
+          "failedLast24Hours": 1,
+          "lastRun": {
+            "createdAt": "2026-07-01T09:36:00.000Z",
+            "durationMs": 684,
+            "error": null,
+            "finishedAt": "2026-07-01T09:36:00.000Z",
+            "id": "scheduler-run-studio-marketing",
+            "idle": false,
+            "kind": "marketing_tick",
+            "startedAt": "2026-07-01T09:36:00.000Z",
+            "status": "completed",
+            "totals": {
+              "campaignsTouched": 1,
+              "failed": 0,
+              "reEnqueued": false,
+              "sendsAttempted": 1,
+              "sent": 1,
+              "skipped": 0
+            },
+            "trigger": "cron"
+          },
+          "runsLast24Hours": 3,
           "sentLast24Hours": 2
         }
       }
@@ -395,6 +889,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

@@ -752,6 +752,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('includeIdle') === undefined ? {} : { includeIdle: c.req.query('includeIdle') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
@@ -1122,7 +1124,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
-      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('includeIdle') === undefined ? {} : { includeIdle: c.req.query('includeIdle') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
@@ -1414,6 +1417,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1427,6 +1431,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1443,6 +1448,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1456,6 +1462,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1469,6 +1476,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -2147,6 +2155,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           controlPlane: sesOnboarding.controlPlane,
           clock: deps.clock,
           webhookBaseUrl: sesWebhookBaseUrl,
+          logger: deps.logger,
         }),
     }),
   };

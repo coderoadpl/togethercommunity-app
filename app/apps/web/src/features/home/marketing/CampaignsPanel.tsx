@@ -4,6 +4,9 @@ import type { marketingCampaignDetailOutputSchema } from '#core/contract/index.j
 import { CampaignTextSection } from './CampaignTextSection.js';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -20,7 +23,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
 import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
@@ -28,34 +31,43 @@ import type { z } from 'zod';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ChevronDownIcon } from '../../../components/ui/account-icons.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
+import { formatSchedulerDateTime, formatSchedulerDuration } from './SchedulerActivityPanel.js';
 import {
   prepareCampaignHtml,
   renderCampaignPreview,
 } from './marketing-markdown.js';
 
 type CampaignDetailRow = z.infer<typeof marketingCampaignDetailOutputSchema>['campaign'];
-type CampaignProgress = Pick<CampaignDetailRow, 'audienceVersion' | 'candidateCount' | 'skipped' | 'toSend' | 'sent' | 'failed' | 'queued' | 'unresolved'>;
+type CampaignProgress = Pick<CampaignDetailRow, 'candidateCount' | 'queued' | 'skipped' | 'unresolved' | 'results'>;
 
 const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const formatDateTimeWithTimeZone = (value: string, language: string): string =>
   `${formatDateTime(value, language)} (${localTimeZone()})`;
 
+const campaignCandidateCount = (campaign: Pick<CampaignDetailRow, 'candidateCount' | 'results'>): number =>
+  campaign.candidateCount === 0 ? campaign.results.candidates : campaign.candidateCount;
+
+const campaignEditable = (campaign: Pick<CampaignDetailRow, 'audienceVersion' | 'status'>): boolean =>
+  campaign.status === 'draft' || (campaign.audienceVersion === 1 && campaign.status === 'scheduled');
+
 const campaignAudienceProgress = (campaign: CampaignProgress, t: Messages): string =>
-  campaign.audienceVersion === 2
-    ? t.marketing.contactProgress({
-      candidates: campaign.candidateCount,
-      skipped: campaign.skipped,
-      queued: campaign.queued,
-      unresolved: campaign.unresolved,
-    })
-    : t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed });
+  t.marketing.campaignProgress({ ...campaign.results, candidates: campaignCandidateCount(campaign) });
+
+const campaignEditorProgress = (campaign: CampaignProgress, t: Messages): string =>
+  t.marketing.contactProgress({
+    candidates: campaign.candidateCount,
+    skipped: campaign.skipped,
+    queued: campaign.queued,
+    unresolved: campaign.unresolved,
+  });
 
 const campaignListDate = (campaign: Pick<Campaign, 'sendAt' | 'createdAt'>, language: string, t: Messages): string =>
   campaign.sendAt === null
@@ -110,6 +122,34 @@ const CampaignEngagementTiles = ({
   );
 };
 
+const CampaignResultTiles = ({ campaign }: { campaign: CampaignDetailRow }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const percentage = (count: number): string => campaign.results.sent === 0
+    ? '0%'
+    : `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(count / campaign.results.sent * 100)}%`;
+  const items = [
+    { label: t.marketing.resultsDelivered, value: campaign.results.delivered, percentage: percentage(campaign.results.delivered) },
+    { label: t.marketing.resultsBounced, value: campaign.results.bounced, percentage: percentage(campaign.results.bounced) },
+    { label: t.marketing.resultsComplained, value: campaign.results.complained, percentage: percentage(campaign.results.complained) },
+    { label: t.marketing.resultsFailed, value: campaign.results.failed },
+    { label: t.marketing.resultsWaiting, value: campaign.results.waiting },
+  ];
+  return (
+    <Box data-testid="campaign-result-stats" sx={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' } }}>
+      {items.map((item) => (
+        <StatTile key={item.label}>
+          <Box sx={{ minWidth: 0 }}>
+            <StatTileValue component="p">{item.value}</StatTileValue>
+            <StatTileLabel component="p">{item.label}</StatTileLabel>
+            {'percentage' in item ? <Typography variant="caption" color="text.secondary">{t.marketing.percentageOfSent({ percentage: item.percentage })}</Typography> : null}
+          </Box>
+        </StatTile>
+      ))}
+    </Box>
+  );
+};
+
 const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }) => {
   const t = useTranslations();
   const navigate = useNavigate();
@@ -146,7 +186,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
     definition.status === 'active' && definition.kind === 'optional_marketing'
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
-  const editable = campaign === undefined || campaign.status === 'draft' || (campaign.audienceVersion === 1 && campaign.status === 'scheduled');
+  const editable = campaign === undefined || campaignEditable(campaign);
   const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId, audience]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
@@ -294,7 +334,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
         consentDefinitionId={effectiveConsentId}
         disabled={!editable}
         frozen={campaign?.audienceSnapshotId != null}
-        progress={campaign?.audienceVersion === 2 ? <Typography variant="body2">{campaignAudienceProgress(campaign, t)}</Typography> : undefined}
+        progress={campaign?.audienceVersion === 2 ? <Typography variant="body2">{campaignEditorProgress(campaign, t)}</Typography> : undefined}
         onChange={setAudience}
       />
       </> : <>
@@ -495,7 +535,8 @@ export const CampaignsPanel = () => {
                 chips={<><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Chip size="small" variant="outlined" label={consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId} /></>}
                 summary={(
                   <Box component="span" sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: '0.25rem', sm: '1rem' }, flexWrap: 'wrap' }}>
-                    <span>{campaignAudienceProgress(campaign, t)}</span>
+                    <span>{t.marketing.listSent({ sent: campaign.results.sent, candidates: campaignCandidateCount(campaign) })}</span>
+                    <span>{t.marketing.compactResults(campaign.results)}</span>
                     {compactEngagement(campaign.engagement, shouldMaskEngagement(campaign.engagement, trackingDisabled), t)}
                   </Box>
                 )}
@@ -516,6 +557,108 @@ export const CampaignCreatePage = () => {
   return <PanelPage title={t.marketing.newCampaign} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}><CampaignForm /></PanelPage>;
 };
 
+const ReadOnlyChipGroup = ({ label, values, empty }: { label: string; values: string[]; empty: string }) => (
+  <Stack useFlexGap spacing="0.4rem">
+    <Typography variant="body2" color="text.secondary">{label}</Typography>
+    <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+      {values.length === 0
+        ? <Typography variant="body2">{empty}</Typography>
+        : values.map((value) => <Chip key={value} size="small" variant="outlined" label={value} />)}
+    </Stack>
+  </Stack>
+);
+
+const CampaignReport = ({ campaign, trackingDisabled }: { campaign: CampaignDetailRow; trackingDisabled: boolean }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const consents = useQuery(actions.marketingConsents);
+  const products = useQuery(actions.products);
+  const layouts = useQuery(actions.marketingLayouts);
+  const lists = useInfiniteQuery(actions.directory.listOptions(campaign.tenantId));
+  const runs = useQuery(actions.schedulerRuns({ campaignId: campaign.id, limit: 100 }));
+  const audience = campaign.audience;
+  const consentKey = consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId;
+  const productTitles = (ids: string[]): string[] => ids.map((id) => products.data?.products.find((product) => product.id === id)?.title ?? id);
+  const excludedProducts = productTitles(audience?.excludeProductIds ?? []);
+  const filteredProducts = productTitles(audience === null ? campaign.audienceFilter?.productIds ?? [] : []);
+  const listOptions = lists.data?.pages.flatMap((page) => page.lists) ?? [];
+  const listLabels = (ids: string[]): string[] => ids.map((id) => {
+    const list = listOptions.find((option) => option.id === id);
+    return list === undefined ? id : `${list.name} (${list.key})`;
+  });
+  const layoutName = campaign.layoutId === null
+    ? t.marketing.noLayout
+    : layouts.data?.layouts.find((layout) => layout.id === campaign.layoutId)?.name ?? campaign.layoutId;
+  const masked = shouldMaskEngagement(campaign.engagement, trackingDisabled);
+
+  return (
+    <>
+      <Typography variant="body2" color="text.secondary">{campaignListDate(campaign, language, t)}</Typography>
+      {masked ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
+      <CampaignResultTiles campaign={campaign} />
+      {campaign.unresolved > 0 ? <Alert severity="warning">{t.marketing.unresolvedAcceptance({ count: campaign.unresolved })}</Alert> : null}
+      <CampaignEngagementTiles engagement={campaign.engagement} masked={masked} />
+      <SectionCard title={t.marketing.reportAudienceTitle}>
+        <Typography>{campaignAudienceProgress(campaign, t)}</Typography>
+        <Box sx={{ display: 'grid', gap: '1rem', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' } }}>
+          <ReadOnlyChipGroup label={t.marketing.consentScopeLabel} values={[consentKey]} empty={t.marketing.noConsentDefinition} />
+          <ReadOnlyChipGroup label={t.marketing.includeLists} values={listLabels(audience?.includeLists ?? [])} empty={t.marketing.noIncludedLists} />
+          <ReadOnlyChipGroup label={t.marketing.excludeLists} values={listLabels(audience?.excludeLists ?? [])} empty={t.marketing.noExcludedLists} />
+          <ReadOnlyChipGroup label={t.marketing.excludeProductGrants} values={excludedProducts} empty={t.marketing.noExcludedProducts} />
+          {audience === null ? <ReadOnlyChipGroup label={t.marketing.productFilterLabel} values={filteredProducts} empty={t.marketing.allProducts} /> : null}
+        </Box>
+        {audience?.includeMembersWithConsent === true ? <Chip size="small" color="primary" label={t.marketing.consentedMembersChip} sx={{ alignSelf: 'flex-start' }} /> : null}
+      </SectionCard>
+      <SectionCard title={t.marketing.reportMessageTitle}>
+        <Accordion disableGutters elevation={0} slotProps={{ transition: { unmountOnExit: true } }}>
+          <AccordionSummary expandIcon={<ChevronDownIcon />} sx={{ px: 0 }}>
+            <Stack useFlexGap spacing="0.25rem" sx={{ minWidth: 0 }}>
+              <Typography component="p" variant="h3">{campaign.subject}</Typography>
+              <Typography variant="body2" color="text.secondary">{t.marketing.expandMessage}</Typography>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ px: 0 }}>
+            <Stack useFlexGap spacing="1rem">
+              <Typography variant="body2"><Box component="span" color="text.secondary">{t.marketing.replyToLabel}: </Box>{campaign.replyTo ?? '—'}</Typography>
+              <Typography variant="body2"><Box component="span" color="text.secondary">{t.marketing.layoutLabel}: </Box>{layoutName}</Typography>
+              <Paper variant="outlined" sx={{ p: '1rem', overflowWrap: 'anywhere' }}>
+                <Box data-testid="campaign-report-body-preview" dangerouslySetInnerHTML={{ __html: renderCampaignPreview(campaign.bodyHtml, 'html') }} />
+              </Paper>
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+      </SectionCard>
+      <CampaignActions campaign={campaign} />
+      <SectionCard title={t.marketing.campaignRunsTitle}>
+        {runs.isPending ? <StatusView surface={false} state={{ kind: 'loading', label: t.marketing.activity.loading }} /> : runs.isError ? (
+          <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(runs.error, t), retry: { label: t.common.retry, onRetry: () => void runs.refetch() } }} />
+        ) : runs.data.items.length === 0 ? <Typography color="text.secondary">{t.marketing.campaignRunsEmpty}</Typography> : (
+          <Stack useFlexGap spacing="0.75rem">
+            {runs.data.items.map(({ run, campaignCounts }) => (
+              <Stack key={run.id} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2">{formatSchedulerDateTime(run.startedAt, language)}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {run.durationMs === null ? '—' : formatSchedulerDuration(run.durationMs, language)} · {t.marketing.activity.counts(campaignCounts ?? { sent: 0, failed: 0, skipped: 0 })}
+                  </Typography>
+                </Box>
+                <Button
+                  component={Link}
+                  size="small"
+                  to={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}
+                  aria-label={t.marketing.activity.runDetails({ startedAt: formatSchedulerDateTime(run.startedAt, language) })}
+                >
+                  {t.marketing.activity.details}
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </SectionCard>
+    </>
+  );
+};
+
 export const CampaignDetailPage = () => {
   const t = useTranslations();
   const params = useParams({ strict: false });
@@ -531,10 +674,14 @@ export const CampaignDetailPage = () => {
       documentTitle={campaign.data.campaign.name}
       backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}
     >
-      {shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled) ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
-      <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} masked={shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled)} />
-      <CampaignForm key={`${campaign.data.campaign.id}:${campaign.data.campaign.status}`} campaign={campaign.data.campaign} />
-      <CampaignActions campaign={campaign.data.campaign} />
+      {campaignEditable(campaign.data.campaign) ? (
+        <>
+          {shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled) ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
+          <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} masked={shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled)} />
+          <CampaignForm key={`${campaign.data.campaign.id}:${campaign.data.campaign.status}`} campaign={campaign.data.campaign} />
+          <CampaignActions campaign={campaign.data.campaign} />
+        </>
+      ) : <CampaignReport campaign={campaign.data.campaign} trackingDisabled={trackingDisabled} />}
     </PanelPage>
   );
 };

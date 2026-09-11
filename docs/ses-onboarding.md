@@ -119,11 +119,12 @@ domain when the workspace has one, otherwise `<slug>.<platform domain>`. Adding,
 verifying, or removing a custom domain therefore changes the webhook address.
 Together shows a warning in the wizard while the subscribed endpoint differs
 from the current one; select **Create SES + SNS infrastructure** again to
-subscribe the new address. Together then subscribes the new endpoint, drops the
-stored confirmation until SNS confirms it again, and unsubscribes the previous
-endpoint when SNS still exposes it as a confirmed subscription — subscriptions
-that never left `PendingConfirmation` cannot be unsubscribed and AWS discards
-them after three days.
+subscribe the new address. Together creates the replacement subscription and
+leaves the previously confirmed one in place, so signed events keep arriving
+while the new endpoint is still pending. Once SNS confirms the replacement,
+Together stores it and removes the subscriptions it supersedes on this tenant's
+topic — subscriptions that never left `PendingConfirmation` cannot be
+unsubscribed and AWS discards them after three days.
 
 References: [SES mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html),
 [configuration sets](https://docs.aws.amazon.com/ses/latest/dg/creating-configuration-sets.html).

@@ -59,6 +59,10 @@
             "termsUrl": null
           },
           "name": "Akademia Samouka",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "akademia",
           "socialLinks": [],
           "support": {

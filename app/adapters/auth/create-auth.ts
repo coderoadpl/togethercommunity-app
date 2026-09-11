@@ -60,6 +60,8 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
 export const BETTER_AUTH_SIGN_OUT_PATH = '/api/auth/sign-out';
 
+export const BETTER_AUTH_PASSWORD_SIGN_IN_PATH = '/api/auth/sign-in/email';
+
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
 export const BETTER_AUTH_SIGN_UP_PATH = '/api/auth/sign-up/email';
@@ -479,6 +481,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
     logger: {
+      level: 'error',
       log: (level, message) => {
         const safeMessage = typeof message === 'string'
           ? safeLogMessage(message)

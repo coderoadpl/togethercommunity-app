@@ -49,6 +49,7 @@ export const consentDefinitionSchema = z.object({
   kind: z.enum(['required_terms', 'optional_marketing']),
   channel: z.literal('email'),
   doubleOptIn: z.boolean(),
+  footerLabel: z.string().trim().max(200).nullable().optional(),
   documentRef: consentDocumentRefSchema,
   status: z.enum(['active', 'archived']),
   createdAt: isoDateTimeSchema,
@@ -495,6 +496,34 @@ export const campaignSendSchema = z.object({
 });
 
 export type CampaignSend = z.output<typeof campaignSendSchema>;
+
+export const campaignResultsSchema = z.object({
+  candidates: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+  sent: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  delivered: z.number().int().nonnegative(),
+  bounced: z.number().int().nonnegative(),
+  complained: z.number().int().nonnegative(),
+  unresolved: z.number().int().nonnegative(),
+});
+
+export type CampaignResults = z.output<typeof campaignResultsSchema>;
+
+export const deriveCampaignResults = (
+  sends: ReadonlyArray<Pick<CampaignSend, 'status' | 'deliveryStatus'> & { acceptanceUncertain?: boolean }>,
+): CampaignResults => campaignResultsSchema.parse({
+  candidates: sends.length,
+  waiting: sends.filter((send) => (send.status === 'pending' || send.status === 'sending') && send.acceptanceUncertain !== true).length,
+  sent: sends.filter((send) => send.status === 'sent').length,
+  failed: sends.filter((send) => send.status === 'failed').length,
+  skipped: sends.filter((send) => send.status === 'skipped').length,
+  delivered: sends.filter((send) => send.status === 'sent' && send.deliveryStatus === 'delivered').length,
+  bounced: sends.filter((send) => send.status === 'sent' && send.deliveryStatus === 'bounced').length,
+  complained: sends.filter((send) => send.status === 'sent' && send.deliveryStatus === 'complained').length,
+  unresolved: sends.filter((send) => send.status === 'sent' && send.deliveryStatus === null).length,
+});
 
 export const campaignEngagementStatsSchema = z.object({
   uniqueOpens: z.number().int().nonnegative(),

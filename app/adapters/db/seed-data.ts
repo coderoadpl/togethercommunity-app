@@ -1263,16 +1263,43 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   await db
     .insert(campaigns)
-    .values({
-      id: 'campaign-studio-observability', tenantId: 'tenant-studio', name: 'Course launch',
-      subject: 'Your learning plan for July', bodyHtml: '<p>Learning plan</p>', bodySource: '<p>Learning plan</p>',
-      layoutId: null, consentDefinitionId: 'consent-definition-studio-news', audienceFilter: null,
-      status: 'finished', sendAt: relativeIso(-4), snapshotMaxMemberId: 'member-studio-active',
-      cursorMemberId: 'member-studio-active', toSend: 1, sent: 1, failed: 0,
-      lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
-      audienceNameSnapshot: 'All eligible members', consentLabelSnapshot: 'I would like to receive news by email',
-      startedAt: relativeIso(-4), finishedAt: relativeIso(-4), createdAt: relativeIso(-5),
-    })
+    .values([
+      {
+        id: 'campaign-studio-observability', tenantId: 'tenant-studio', name: 'Course launch',
+        subject: 'Your learning plan for July', bodyHtml: '<p>Learning plan</p>', bodySource: '<p>Learning plan</p>',
+        layoutId: null, consentDefinitionId: 'consent-definition-studio-news', audienceFilter: null,
+        status: 'finished', sendAt: relativeIso(-4), snapshotMaxMemberId: 'member-studio-active',
+        cursorMemberId: 'member-studio-active', toSend: 1, sent: 1, failed: 0,
+        lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
+        audienceNameSnapshot: 'All eligible members', consentLabelSnapshot: 'I would like to receive news by email',
+        startedAt: relativeIso(-4), finishedAt: relativeIso(-4), createdAt: relativeIso(-5),
+      },
+      {
+        id: 'campaign-studio-summer-recap', tenantId: 'tenant-studio', name: 'Summer recap',
+        subject: 'Everything you missed in June', bodyHtml: '<p>Six lessons, one workshop and a new space.</p>',
+        bodySource: 'Six lessons, one workshop and a new space.',
+        layoutId: null, consentDefinitionId: 'consent-definition-studio-news',
+        audienceVersion: 2,
+        audience: { version: 2, includeLists: [], excludeLists: [], excludeProductIds: ['product-studio-workshop'], includeMembersWithConsent: true },
+        audienceFilter: null, candidateCount: 7, skipped: 1,
+        status: 'finished', sendAt: relativeIso(-12), snapshotMaxMemberId: null,
+        cursorMemberId: null, toSend: 7, sent: 5, failed: 1,
+        lockedUntil: null, lockedBy: null, errorCount: 1, pausedReason: null,
+        audienceNameSnapshot: 'Members with consent', consentLabelSnapshot: 'I would like to receive news by email',
+        startedAt: relativeIso(-12), finishedAt: relativeIso(-12), createdAt: relativeIso(-13),
+      },
+      {
+        id: 'campaign-studio-launch-wave', tenantId: 'tenant-studio', name: 'Autumn launch wave',
+        subject: 'Doors open on Monday', bodyHtml: '<p>The autumn cohort opens on Monday.</p>',
+        bodySource: 'The autumn cohort opens on Monday.',
+        layoutId: null, consentDefinitionId: 'consent-definition-studio-news', audienceFilter: null,
+        status: 'running', sendAt: relativeIso(-9), snapshotMaxMemberId: 'member-studio-subscriber',
+        cursorMemberId: 'member-studio-active', toSend: 5, sent: 2, failed: 0,
+        lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
+        audienceNameSnapshot: 'All eligible members', consentLabelSnapshot: 'I would like to receive news by email',
+        startedAt: relativeIso(-9), finishedAt: null, createdAt: relativeIso(-10),
+      },
+    ])
     .onConflictDoNothing();
 
   await db
@@ -1296,6 +1323,33 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         },
         createdAt: relativeIso(-0.2),
       },
+      {
+        id: 'scheduler-run-studio-idle', kind: 'marketing_tick', trigger: 'cron',
+        startedAt: relativeIso(-0.15), finishedAt: relativeIso(-0.15), durationMs: 96,
+        status: 'completed', idle: true, error: null,
+        totals: {
+          campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
+        },
+        createdAt: relativeIso(-0.15),
+      },
+      {
+        id: 'scheduler-run-studio-recap', kind: 'marketing_tick', trigger: 'cron',
+        startedAt: relativeIso(-12), finishedAt: relativeIso(-12), durationMs: 2_140,
+        status: 'completed', error: null,
+        totals: {
+          campaignsTouched: 1, sendsAttempted: 7, sent: 5, failed: 1, skipped: 1, reEnqueued: false,
+        },
+        createdAt: relativeIso(-12),
+      },
+      {
+        id: 'scheduler-run-studio-launch', kind: 'marketing_tick', trigger: 'cron',
+        startedAt: relativeIso(-9), finishedAt: relativeIso(-9), durationMs: 1_180,
+        status: 'completed', error: null,
+        totals: {
+          campaignsTouched: 1, sendsAttempted: 2, sent: 2, failed: 0, skipped: 0, reEnqueued: true,
+        },
+        createdAt: relativeIso(-9),
+      },
     ])
     .onConflictDoNothing();
 
@@ -1312,20 +1366,84 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         tenantId: 'tenant-studio', campaignsTouched: 0, batchSize: 2, sent: 1, failed: 1, skipped: 0,
         budgetComputed: 25, budgetUsed: 2, errors: ['SES rejected one message'], createdAt: relativeIso(-0.2),
       },
+      {
+        id: 'scheduler-run-tenant-studio-idle', runId: 'scheduler-run-studio-idle',
+        tenantId: 'tenant-studio', campaignsTouched: 0, batchSize: 0, sent: 0, failed: 0, skipped: 0,
+        budgetComputed: 25, budgetUsed: 0, errors: [], createdAt: relativeIso(-0.15),
+      },
+      {
+        id: 'scheduler-run-tenant-studio-recap', runId: 'scheduler-run-studio-recap',
+        tenantId: 'tenant-studio', campaignsTouched: 1, batchSize: 7, sent: 5, failed: 1, skipped: 1,
+        budgetComputed: 25, budgetUsed: 7, errors: ['Recipient mailbox is full'], createdAt: relativeIso(-12),
+      },
+      {
+        id: 'scheduler-run-tenant-studio-launch', runId: 'scheduler-run-studio-launch',
+        tenantId: 'tenant-studio', campaignsTouched: 1, batchSize: 2, sent: 2, failed: 0, skipped: 0,
+        budgetComputed: 25, budgetUsed: 2, errors: [], createdAt: relativeIso(-9),
+      },
     ])
     .onConflictDoNothing();
 
+  interface BroadcastSendSpec {
+    id: string;
+    campaignId: string;
+    runId: string | null;
+    subject: string;
+    email: string;
+    days: number;
+    status: 'pending' | 'sent' | 'failed' | 'skipped';
+    deliveryStatus: 'delivered' | 'bounced' | 'complained' | null;
+    skipReason: 'unsubscribed' | null;
+  }
+
+  const recapSend = (id: string, email: string, status: BroadcastSendSpec['status'], deliveryStatus: BroadcastSendSpec['deliveryStatus'], skipReason: BroadcastSendSpec['skipReason'] = null): BroadcastSendSpec => ({
+    id, campaignId: 'campaign-studio-summer-recap', runId: 'scheduler-run-studio-recap',
+    subject: 'Everything you missed in June', email, days: -12, status, deliveryStatus, skipReason,
+  });
+  const launchSend = (id: string, email: string, status: BroadcastSendSpec['status'], deliveryStatus: BroadcastSendSpec['deliveryStatus']): BroadcastSendSpec => ({
+    id, campaignId: 'campaign-studio-launch-wave', runId: status === 'pending' ? null : 'scheduler-run-studio-launch',
+    subject: 'Doors open on Monday', email, days: -9, status, deliveryStatus, skipReason: null,
+  });
+  const broadcastSends: BroadcastSendSpec[] = [
+    recapSend('send-studio-recap-1', 'recap.reader1@together.dev', 'sent', 'delivered'),
+    recapSend('send-studio-recap-2', 'recap.reader2@together.dev', 'sent', 'delivered'),
+    recapSend('send-studio-recap-3', 'recap.reader3@together.dev', 'sent', 'delivered'),
+    recapSend('send-studio-recap-4', 'recap.reader4@together.dev', 'sent', 'bounced'),
+    recapSend('send-studio-recap-5', 'recap.reader5@together.dev', 'sent', 'complained'),
+    recapSend('send-studio-recap-6', 'recap.reader6@together.dev', 'failed', null),
+    recapSend('send-studio-recap-7', 'recap.reader7@together.dev', 'skipped', null, 'unsubscribed'),
+    launchSend('send-studio-launch-1', 'launch.reader1@together.dev', 'sent', 'delivered'),
+    launchSend('send-studio-launch-2', 'launch.reader2@together.dev', 'sent', null),
+    launchSend('send-studio-launch-3', 'launch.reader3@together.dev', 'pending', null),
+    launchSend('send-studio-launch-4', 'launch.reader4@together.dev', 'pending', null),
+    launchSend('send-studio-launch-5', 'launch.reader5@together.dev', 'pending', null),
+  ];
+
   await db
     .insert(campaignSends)
-    .values({
-      id: 'send-studio-marketing', tenantId: 'tenant-studio', campaignId: 'campaign-studio-observability',
-      runId: 'scheduler-run-studio-marketing',
-      source: 'broadcast', memberId: 'member-studio-active', email: 'student.active@together.dev',
-      subject: 'Your learning plan for July', consentRowId: 'marketing-consent-studio-confirmed',
-      unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-studio-marketing',
-      deliveryStatus: 'delivered', deliveryOccurredAt: relativeIso(-4), idempotencySource: null,
-      renderedBodyPurgedAt: null, createdAt: relativeIso(-4), sentAt: relativeIso(-4),
-    })
+    .values([
+      {
+        id: 'send-studio-marketing', tenantId: 'tenant-studio', campaignId: 'campaign-studio-observability',
+        runId: 'scheduler-run-studio-marketing',
+        source: 'broadcast', memberId: 'member-studio-active', email: 'student.active@together.dev',
+        subject: 'Your learning plan for July', consentRowId: 'marketing-consent-studio-confirmed',
+        unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-studio-marketing',
+        deliveryStatus: 'delivered', deliveryOccurredAt: relativeIso(-4), idempotencySource: null,
+        renderedBodyPurgedAt: null, createdAt: relativeIso(-4), sentAt: relativeIso(-4),
+      },
+      ...broadcastSends.map((send) => ({
+        id: send.id, tenantId: 'tenant-studio', campaignId: send.campaignId, runId: send.runId,
+        source: 'broadcast' as const, memberId: null, email: send.email,
+        subject: send.subject, consentRowId: null,
+        unsubscribeTokenId: null, status: send.status, skipReason: send.skipReason,
+        sesMessageId: send.status === 'sent' ? `ses-${send.id}` : null,
+        deliveryStatus: send.deliveryStatus,
+        deliveryOccurredAt: send.deliveryStatus === null ? null : relativeIso(send.days),
+        idempotencySource: null, renderedBodyPurgedAt: null,
+        createdAt: relativeIso(send.days),
+        sentAt: send.status === 'sent' ? relativeIso(send.days) : null,
+      })),
+    ])
     .onConflictDoNothing();
 
   await db

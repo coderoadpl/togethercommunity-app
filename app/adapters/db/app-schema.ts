@@ -54,6 +54,7 @@ export const tenants = pgTable(
     onboardingDismissedAt: text('onboarding_dismissed_at'),
     logoUrl: text('logo_url'),
     logoDarkUrl: text('logo_dark_url'),
+    signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),
     accentColor: text('accent_color'),
     accentLight: text('accent_light'),
     faviconUrl: text('favicon_url'),
@@ -154,6 +155,7 @@ export const consentDefinitions = pgTable(
     kind: text('kind', { enum: ['required_terms', 'optional_marketing'] }).notNull(),
     channel: text('channel', { enum: ['email'] }).notNull(),
     doubleOptIn: boolean('double_opt_in').notNull().default(true),
+    footerLabel: text('footer_label'),
     documentRef: jsonb('document_ref').$type<ConsentDocumentRef>().notNull(),
     status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -1895,12 +1897,14 @@ export const schedulerRuns = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
     durationMs: integer('duration_ms'),
     status: text('status').$type<SchedulerRunStatus>().notNull(),
+    idle: boolean('idle').notNull().default(false),
     error: text('error'),
     totals: jsonb('totals').$type<SchedulerRunTotals>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
     index('scheduler_runs_started_id_idx').on(table.startedAt, table.id),
+    index('scheduler_runs_kind_started_id_idx').on(table.kind, table.startedAt.desc(), table.id.desc()),
     index('scheduler_runs_status_started_idx').on(table.status, table.startedAt),
   ],
 );
@@ -2013,6 +2017,7 @@ export const campaignSends = pgTable(
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),
     index('campaign_sends_tenant_run_created_id_idx').on(table.tenantId, table.runId, table.createdAt, table.id),
+    index('campaign_sends_run_id_idx').on(table.runId),
     index('campaign_sends_tenant_sent_at_idx').on(table.tenantId, table.sentAt),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)

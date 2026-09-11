@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import type { Context, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 
 import {
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_PASSWORD_SIGN_IN_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
@@ -27,6 +29,8 @@ export interface PublicRateLimitPolicies {
   writesPerIp: RateLimitWindow;
   writesPerTenant: RateLimitWindow;
   authLinksPerEmail: RateLimitWindow;
+  signInPerIp: RateLimitWindow;
+  signInPerEmail: RateLimitWindow;
   authResolvesPerIp: RateLimitWindow;
   authResolvesPerTenant: RateLimitWindow;
   deepHealthPerIp: RateLimitWindow;
@@ -46,6 +50,8 @@ const PRODUCTION_LIMITS = {
   writesPerIp: 30,
   writesPerTenant: 300,
   authLinksPerEmail: 5,
+  signInPerIp: 60,
+  signInPerEmail: 10,
   authResolvesPerIp: 60,
   authResolvesPerTenant: 1_000,
   deepHealthPerIp: 12,
@@ -54,6 +60,8 @@ const DEVELOPMENT_LIMITS = {
   writesPerIp: 3_000,
   writesPerTenant: 30_000,
   authLinksPerEmail: 500,
+  signInPerIp: 1_000,
+  signInPerEmail: 1_000,
   authResolvesPerIp: 6_000,
   authResolvesPerTenant: 100_000,
   deepHealthPerIp: 1_200,
@@ -61,6 +69,8 @@ const DEVELOPMENT_LIMITS = {
 
 export type PublicRateLimitEnv = Pick<
   Env,
+  | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES'
   | 'NODE_ENV'
   | 'APP_ENV'
   | 'PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE'
@@ -74,6 +84,14 @@ export type PublicRateLimitEnv = Pick<
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
   return {
+    signInPerIp: {
+      limit: env.PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE ?? fallback.signInPerIp,
+      windowMs: MINUTE_MS,
+    },
+    signInPerEmail: {
+      limit: env.PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES ?? fallback.signInPerEmail,
+      windowMs: TEN_MINUTES_MS,
+    },
     writesPerIp: {
       limit: env.PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE ?? fallback.writesPerIp,
       windowMs: MINUTE_MS,
@@ -110,16 +128,17 @@ const AUTH_LINK_PATHS = new Set<string>([
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
 
-const emailBodySchema = z.object({ email: z.string().email().max(254) });
+const emailBodySchema = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
 
 const isPublicWritePath = (path: string): boolean =>
   path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
   || isPublicFormPath(path);
 
-type PublicRateLimitKind = 'auth-link' | 'auth-resolve' | 'write';
+type PublicRateLimitKind = 'auth-password' | 'auth-link' | 'auth-resolve' | 'write';
 
 const publicRateLimitKind = (path: string): PublicRateLimitKind | null => {
+  if (path === BETTER_AUTH_PASSWORD_SIGN_IN_PATH) return 'auth-password';
   if (AUTH_LINK_PATHS.has(path)) return 'auth-link';
   if (path === API_PATHS.authResolve) return 'auth-resolve';
   return isPublicWritePath(path) ? 'write' : null;
@@ -144,7 +163,7 @@ const requestEmail = async (c: Context): Promise<string | null> => {
     return null;
   }
   const parsed = emailBodySchema.safeParse(payload);
-  return parsed.success ? parsed.data.email.trim().toLowerCase() : null;
+  return parsed.success ? parsed.data.email : null;
 };
 
 const rateLimitedResponse = (error: AppError): Response => {
@@ -171,13 +190,26 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;
   const buckets = bucketsFor(kind, policies);
+  const signInPath = c.req.path === API_PATHS.authResolve || c.req.path === BETTER_AUTH_MAGIC_LINK_PATH || c.req.path === BETTER_AUTH_PASSWORD_SIGN_IN_PATH;
+  if (signInPath) {
+    const scope = c.req.path === API_PATHS.authResolve ? 'methods' : c.req.path === BETTER_AUTH_MAGIC_LINK_PATH ? 'magic-link' : 'password';
+    const ipClaim = await claimRateLimitWindow({ scope: `sign-in:${scope}:ip`, key: clientIp(), window: policies.signInPerIp }, limiter);
+    if (!ipClaim.ok) return rateLimitedResponse(ipClaim.error);
+    const email = await requestEmail(c);
+    if (email !== null && kind !== 'auth-link') {
+      const key = createHash('sha256').update(email).digest('hex');
+      const emailClaim = await claimRateLimitWindow({ scope: `sign-in:${scope}:email`, key, window: policies.signInPerEmail }, limiter);
+      if (!emailClaim.ok) return rateLimitedResponse(emailClaim.error);
+    }
+  }
+  if (kind === 'auth-password') return null;
   const perIp = await claimRateLimitWindow({ ...buckets.ip, key: clientIp() }, limiter);
   if (!perIp.ok) return rateLimitedResponse(perIp.error);
   if (kind === 'auth-link') {
     const email = await requestEmail(c);
     if (email === null) return null;
     const claimed = await claimRateLimitWindow(
-      { scope: 'auth-link:email', key: email, window: policies.authLinksPerEmail },
+      { scope: 'auth-link:email', key: createHash('sha256').update(email).digest('hex'), window: policies.authLinksPerEmail },
       limiter,
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);

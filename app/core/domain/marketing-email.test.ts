@@ -10,10 +10,12 @@ import {
   confirmationTokenIsValid,
   consumeUnsubscribeToken,
   deriveConsentState,
+  deriveCampaignResults,
   deriveMarketingEligibility,
   emailLayoutSchema,
   liftSuppression,
   marketingFooterCopy,
+  consentDefinitionSchema,
   consentConfirmationTokenSchema,
   marketingConsentConfirmation,
   marketingConsentCreatorSchema,
@@ -35,6 +37,31 @@ import {
   type Suppression,
   type UnsubscribeToken,
 } from './marketing-email.js';
+
+describe('campaign results', () => {
+  it('derives send and delivery outcomes without double-counting waiting sends', () => {
+    expect(deriveCampaignResults([
+      { status: 'pending', deliveryStatus: null },
+      { status: 'sending', deliveryStatus: null, acceptanceUncertain: true },
+      { status: 'sent', deliveryStatus: 'delivered' },
+      { status: 'sent', deliveryStatus: 'bounced' },
+      { status: 'sent', deliveryStatus: 'complained' },
+      { status: 'sent', deliveryStatus: null },
+      { status: 'failed', deliveryStatus: null },
+      { status: 'skipped', deliveryStatus: null },
+    ])).toEqual({
+      candidates: 8,
+      waiting: 1,
+      sent: 4,
+      failed: 1,
+      skipped: 1,
+      delivered: 1,
+      bounced: 1,
+      complained: 1,
+      unresolved: 1,
+    });
+  });
+});
 
 const definition = (doubleOptIn: boolean): ConsentDefinition => ({
   id: 'definition-1',
@@ -96,6 +123,16 @@ describe('U1 consent state derivation', () => {
 });
 
 describe('U2 consent creator validation', () => {
+  it('accepts a trimmed nullable footer label on consent definitions', () => {
+    const parsed = consentDefinitionSchema.parse({
+      ...definition(true),
+      footerLabel: '  Product news  ',
+    });
+    expect(parsed.footerLabel).toBe('Product news');
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: null }).success).toBe(true);
+    expect(consentDefinitionSchema.safeParse({ ...definition(true), footerLabel: 'x'.repeat(201) }).success).toBe(false);
+  });
+
   it('rejects required or pre-ticked marketing and channels other than the single email channel', () => {
     const valid = { kind: 'optional_marketing', channel: 'email', required: false, preTicked: false };
     expect(marketingConsentCreatorSchema.safeParse(valid).success).toBe(true);

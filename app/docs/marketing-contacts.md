@@ -170,9 +170,16 @@ Member erasure pseudonymizes snapshot personalization as well as the directory.
 
 Scheduled version 2 campaigns must return to draft before content or audience
 changes. Rescheduling creates a fresh snapshot and retains the prior snapshot.
-Campaign details expose candidates, eligible-at-snapshot (`toSend`), sent, failed,
-skipped, currently queued and unresolved acceptance counts. Completion waits for
-all snapshot candidates to be enumerated and for pending sends to resolve.
+Campaign details expose the frozen audience total and a grouped send projection
+for waiting, sent, failed, skipped, delivered, bounced, complained and unresolved
+delivery outcomes.
+They also retain queued and unresolved provider-acceptance counters; uncertain
+acceptance is excluded from waiting and is never retried automatically. Completion
+waits for all snapshot candidates to be enumerated and for pending sends to resolve.
+
+The campaign detail page shows the editor for drafts and for version 1 campaigns
+in the `scheduled` status, which stay editable until sending starts. Every other
+non-draft status shows the read-only campaign report instead.
 
 Existing requests without `audience` still create version 1 member campaigns.
 Their inclusive product filter and member cursor retain their meaning. An old

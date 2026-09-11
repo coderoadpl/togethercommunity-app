@@ -27,3 +27,5 @@ export const uniqueViolationIn = (
     && typeof constraint === 'string'
     && constraints.includes(constraint);
 };
+
+export const queryCanceled = (cause: unknown): boolean => pgError(cause)?.['code'] === '57014';

@@ -1326,7 +1326,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       {
         id: 'scheduler-run-studio-idle', kind: 'marketing_tick', trigger: 'cron',
         startedAt: relativeIso(-0.15), finishedAt: relativeIso(-0.15), durationMs: 96,
-        status: 'completed', error: null,
+        status: 'completed', idle: true, error: null,
         totals: {
           campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
         },

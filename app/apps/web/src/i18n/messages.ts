@@ -2429,6 +2429,7 @@ export interface Messages {
       tenantCounts: string;
       details: string;
       runDetails: (params: { startedAt: string }) => string;
+      idle: string;
       allRuns: string;
       breakdown: string;
       campaignsTouched: string;

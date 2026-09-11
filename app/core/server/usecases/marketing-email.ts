@@ -18,6 +18,7 @@ import {
   emailEventSchema,
   err,
   forbidden,
+  internal,
   isSmokeTenant,
   liftSuppression,
   marketingFooterCopy,
@@ -1332,6 +1333,7 @@ export const campaignTick = async (
     finishedAt: null,
     durationMs: null,
     status: 'running',
+    idle: false,
     error: null,
     totals: emptyTotals,
     createdAt: startedAt,
@@ -1370,6 +1372,12 @@ export const campaignTick = async (
       finishedAt,
       durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
       status: error === null ? 'completed' : 'failed',
+      idle: metrics.batchSize === 0
+        && metrics.sent === 0
+        && metrics.failed === 0
+        && metrics.skipped === 0
+        && metrics.errors.length === 0
+        && error === null,
       error,
       totals,
       tenants: [{
@@ -1684,6 +1692,7 @@ export const runMarketingRetentionJobs = async (
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     engagementOlderThan: string;
+    rawSnsInboxOlderThan: string;
     idempotencyNow: string;
   },
   deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
@@ -1706,7 +1715,7 @@ export const runMarketingRetentionJobs = async (
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.marketingOutbox?.purge(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
-  await deps.snsInbox?.purge(tenantId.value, input.renderedBodiesOlderThan);
+  await deps.snsInbox?.purge(tenantId.value, input.rawSnsInboxOlderThan);
   const engagementEventsPurged = await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
   return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementEventsPurged, idempotencyKeysPurged });
@@ -1722,6 +1731,15 @@ export const scheduleMarketingRetentionJobs = async (
 };
 
 export const SES_IDENTITY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const SCHEDULER_RUN_PURGE_BATCH_SIZE = 500;
+const SCHEDULER_RUN_PURGE_TIME_BUDGET_MS = 5_000;
+const SCHEDULER_RUN_PURGE_MIN_BATCH_MS = 1_500;
+
+const purgeFailureLabel = (cause: unknown): string => {
+  if (!(cause instanceof Error)) return typeof cause;
+  const code = 'code' in cause && typeof cause.code === 'string' ? cause.code : null;
+  return code === null ? cause.name : `${cause.name}/${code}`;
+};
 
 export const runScheduledMarketingJobs = async (
   input: {
@@ -1729,6 +1747,9 @@ export const runScheduledMarketingJobs = async (
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     engagementOlderThan: string;
+    rawSnsInboxOlderThan: string;
+    schedulerRunsOlderThan: string;
+    schedulerIdleRunsOlderThan: string;
     sesIdentityRefreshIntervalMs: number;
     shouldContinue?: () => boolean;
     maintenanceIntervalMs?: number;
@@ -1744,12 +1765,14 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: string;
       renderedBodiesOlderThan: string;
       engagementOlderThan: string;
+      rawSnsInboxOlderThan: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
     refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
     runReputationAlerts(
       tenantId: string,
     ): Promise<Result<{ sent: number }, AppError>>;
+    logger: { warn(message: string): void };
   },
 ): Promise<Result<{
   campaignsDispatched: number;
@@ -1771,8 +1794,35 @@ export const runScheduledMarketingJobs = async (
   if (maintenanceRunId !== null) await deps.runs.start({
     id: maintenanceRunId, kind: 'marketing_maintenance', trigger: input.trigger ?? 'manual',
     startedAt: input.now, createdAt: input.now, finishedAt: null, durationMs: null, status: 'running', error: null, totals,
+    idle: false,
   });
   let maintenanceIncomplete = false;
+  let schedulerRunsPurged = 0;
+  if (maintenanceDue) {
+    const purgeDeadlineMs = Date.now() + SCHEDULER_RUN_PURGE_TIME_BUDGET_MS;
+    while (input.shouldContinue?.() !== false) {
+      const remainingMs = purgeDeadlineMs - Date.now();
+      if (remainingMs < SCHEDULER_RUN_PURGE_MIN_BATCH_MS) break;
+      let batch: { purged: number; cancelled: boolean };
+      try {
+        batch = await deps.runs.purge({
+          runsBefore: input.schedulerRunsOlderThan,
+          idleRunsBefore: input.schedulerIdleRunsOlderThan,
+        }, { batchSize: SCHEDULER_RUN_PURGE_BATCH_SIZE, timeoutMs: remainingMs });
+      } catch (cause) {
+        deps.logger.warn(`[marketing] scheduler run purge stopped reason=purge_failed error=${purgeFailureLabel(cause)}`);
+        if (firstError === null) firstError = internal(cause instanceof Error ? cause.message : String(cause));
+        break;
+      }
+      schedulerRunsPurged += batch.purged;
+      if (batch.cancelled) {
+        deps.logger.warn('[marketing] scheduler run purge stopped reason=budget_exhausted');
+        break;
+      }
+      if (batch.purged < SCHEDULER_RUN_PURGE_BATCH_SIZE) break;
+    }
+    if (input.shouldContinue?.() === false) maintenanceIncomplete = true;
+  }
   const retentionTenantIds = !maintenanceDue ? [] : await deps.jobs.listRetentionTenantIds();
   for (const tenantId of retentionTenantIds) {
     if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
@@ -1780,6 +1830,7 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
       engagementOlderThan: input.engagementOlderThan,
+      rawSnsInboxOlderThan: input.rawSnsInboxOlderThan,
       idempotencyNow: input.now,
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
@@ -1809,6 +1860,11 @@ export const runScheduledMarketingJobs = async (
     await deps.runs.finalize(maintenanceRunId, {
       finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(input.now)),
       status: error === null ? 'completed' : 'failed', error, totals, tenants: [],
+      idle: retentionTenantIds.length === 0
+        && identityTenantIds.length === 0
+        && sesTenantIds.length === 0
+        && schedulerRunsPurged === 0
+        && error === null,
     });
   }
   const runnable = await deps.jobs.listRunnableCampaigns(input.now);

@@ -2628,6 +2628,7 @@ export const en: Messages = {
       runKind: 'Kind', trigger: 'Trigger', started: 'Started', finished: 'Finished',
       duration: 'Duration', tenantCounts: 'This workspace', details: 'Details',
       runDetails: ({ startedAt }) => `Details for run started ${startedAt}`,
+      idle: 'Idle',
       allRuns: '← All send activity', breakdown: 'This workspace breakdown',
       campaignsTouched: 'Campaigns touched', batchSize: 'Batch size', evidencePurged: 'Consent evidence deleted', budget: 'Budget',
       errors: 'Errors', noErrors: 'No errors recorded.', failedWithoutRecordedErrors: 'This run has failed sends without stored scheduler errors.',

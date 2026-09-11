@@ -17,6 +17,7 @@ const run = {
   finishedAt: '2026-07-26T09:00:01.250Z',
   durationMs: 1250,
   status: 'failed',
+  idle: false,
   error: 'quota service unavailable',
   totals: {
     campaignsTouched: 2,
@@ -137,6 +138,22 @@ describe('scheduler activity panel', () => {
 
     expect(await screen.findByText('18')).toBeInTheDocument();
     expect(requests.some((request) => new URL(request).searchParams.get('status') === 'failed')).toBe(true);
+  });
+
+  it('marks an idle run in the status cell', async () => {
+    const idleRun = { ...run, status: 'completed' as const, idle: true, error: null };
+    server.use(http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({
+      ok: true,
+      data: {
+        items: [{ run: idleRun, tenant: { ...tenant, sent: 0, failed: 0, skipped: 0, batchSize: 0 } }],
+        summary: { runsLast24Hours: 1, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: idleRun },
+        nextCursor: null,
+      },
+    })));
+
+    await renderRoute('/panel/marketing/activity');
+
+    expect(await screen.findByText(en.marketing.activity.idle)).toBeInTheDocument();
   });
 
   it('shows the tenant breakdown, run failure, and a pre-filtered sends link', async () => {

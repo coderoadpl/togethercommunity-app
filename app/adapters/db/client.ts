@@ -10,11 +10,15 @@ export type DbDriver = 'node-postgres' | 'neon-http';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
+export const normalizeDatabaseConnectionString = (connectionString: string): string =>
+  connectionString.replace(/([?&]sslmode=)(?:require|prefer|verify-ca)(?=&|#|$)/gi, '$1verify-full');
+
 export const createDb = (driver: DbDriver, connectionString: string): Db => {
+  const normalizedConnectionString = normalizeDatabaseConnectionString(connectionString);
   switch (driver) {
     case 'neon-http':
-      return drizzleNeonHttp(neon(connectionString), { schema });
+      return drizzleNeonHttp(neon(normalizedConnectionString), { schema });
     case 'node-postgres':
-      return drizzleNodePg(new pg.Pool({ connectionString }), { schema });
+      return drizzleNodePg(new pg.Pool({ connectionString: normalizedConnectionString }), { schema });
   }
 };

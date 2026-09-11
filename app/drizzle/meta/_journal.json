@@ -855,6 +855,13 @@
       "when": 1789010400001,
       "tag": "0121_sign_in_notice",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1789066927000,
+      "tag": "0122_scheduler_run_idle",
+      "breakpoints": true
     }
   ]
 }

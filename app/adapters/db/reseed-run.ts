@@ -41,14 +41,6 @@ export const runReseed = async (
         notInArray(schedulerRunTenants.tenantId, DEMO_TENANT_IDS),
       ));
 
-    record(
-      'scheduler_runs',
-      await tx
-        .delete(schedulerRuns)
-        .where(notExists(nonDemoRunTenant))
-        .returning({ id: schedulerRuns.id }),
-    );
-
     const wipeTenantTable = async (table: DemoTenantWipeTable): Promise<void> => {
       const rows = await tx
         .delete(table)
@@ -60,6 +52,14 @@ export const runReseed = async (
     for (const table of DEMO_TENANT_WIPE_TABLES) {
       await wipeTenantTable(table);
     }
+
+    record(
+      'scheduler_runs',
+      await tx
+        .delete(schedulerRuns)
+        .where(notExists(nonDemoRunTenant))
+        .returning({ id: schedulerRuns.id }),
+    );
 
     record(
       'tenants',

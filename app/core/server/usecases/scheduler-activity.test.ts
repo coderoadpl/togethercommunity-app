@@ -45,6 +45,7 @@ const seedRun = async (
     finishedAt: null,
     durationMs: null,
     status: 'running',
+    idle: false,
     error: null,
     totals: {
       campaignsTouched: 0,
@@ -60,6 +61,7 @@ const seedRun = async (
     finishedAt: new Date(Date.parse(input.startedAt) + 250).toISOString(),
     durationMs: 250,
     status: input.status,
+    idle: false,
     error: input.status === 'failed' ? 'scheduler failed' : null,
     totals: {
       campaignsTouched: input.kind === 'marketing_tick' ? input.tenants.length : 0,

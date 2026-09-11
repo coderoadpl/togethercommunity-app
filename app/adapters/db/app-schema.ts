@@ -1897,12 +1897,14 @@ export const schedulerRuns = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
     durationMs: integer('duration_ms'),
     status: text('status').$type<SchedulerRunStatus>().notNull(),
+    idle: boolean('idle').notNull().default(false),
     error: text('error'),
     totals: jsonb('totals').$type<SchedulerRunTotals>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
     index('scheduler_runs_started_id_idx').on(table.startedAt, table.id),
+    index('scheduler_runs_kind_started_id_idx').on(table.kind, table.startedAt.desc(), table.id.desc()),
     index('scheduler_runs_status_started_idx').on(table.status, table.startedAt),
   ],
 );
@@ -2015,6 +2017,7 @@ export const campaignSends = pgTable(
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),
     index('campaign_sends_tenant_run_created_id_idx').on(table.tenantId, table.runId, table.createdAt, table.id),
+    index('campaign_sends_run_id_idx').on(table.runId),
     index('campaign_sends_tenant_sent_at_idx').on(table.tenantId, table.sentAt),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)

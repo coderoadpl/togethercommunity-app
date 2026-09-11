@@ -16,6 +16,7 @@ describe('scheduler run domain', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0,
@@ -76,6 +77,7 @@ describe('scheduler run domain', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0,
@@ -102,6 +104,7 @@ describe('scheduler run domain', () => {
       finishedAt: '2026-07-26T10:00:01.000Z',
       durationMs: 1000,
     })).toThrow();
+    expect(() => schedulerRunSchema.parse({ ...running, idle: true })).toThrow();
   });
 
   it('accepts only bounded filters and well-formed keyset cursors', () => {

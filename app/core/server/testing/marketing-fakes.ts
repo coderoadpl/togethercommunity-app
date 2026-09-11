@@ -178,6 +178,36 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     return failed;
   }
 
+  async purge(
+    input: { runsBefore: string; idleRunsBefore: string },
+    options: { batchSize: number; timeoutMs: number },
+  ): Promise<{ purged: number; cancelled: boolean }> {
+    const newestIds = new Set<string>();
+    for (const run of this.runs) {
+      const newest = this.runs
+        .filter((candidate) => candidate.kind === run.kind)
+        .sort((left, right) =>
+          right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
+        )[0];
+      if (newest !== undefined) newestIds.add(newest.id);
+    }
+    const removedIds = new Set(this.runs.filter((run) =>
+      !newestIds.has(run.id)
+      && run.startedAt < (run.idle ? input.idleRunsBefore : input.runsBefore)
+    ).sort((left, right) =>
+      left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)
+    ).slice(0, options.batchSize).map((run) => run.id));
+    for (let index = this.runs.length - 1; index >= 0; index -= 1) {
+      const run = this.runs[index];
+      if (run !== undefined && removedIds.has(run.id)) this.runs.splice(index, 1);
+    }
+    for (let index = this.tenants.length - 1; index >= 0; index -= 1) {
+      const tenant = this.tenants[index];
+      if (tenant !== undefined && removedIds.has(tenant.runId)) this.tenants.splice(index, 1);
+    }
+    return { purged: removedIds.size, cancelled: false };
+  }
+
   private page(rows: SchedulerRun[], input: SchedulerRunListQuery): { runs: SchedulerRun[]; nextCursor: string | null } {
     const sorted = rows.filter((run) =>
       (input.kind === undefined || run.kind === input.kind)

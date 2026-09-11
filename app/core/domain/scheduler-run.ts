@@ -24,6 +24,7 @@ export const schedulerRunSchema = z.object({
   finishedAt: isoDateTime.nullable(),
   durationMs: nonNegativeInteger.nullable(),
   status: schedulerRunStatusSchema,
+  idle: z.boolean(),
   error: z.string().min(1).nullable(),
   totals: schedulerRunTotalsSchema,
   createdAt: isoDateTime,
@@ -37,6 +38,9 @@ export const schedulerRunSchema = z.object({
   }
   if (run.status === 'failed' && (!finalized || run.error === null)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Failed scheduler runs require completion fields and an error' });
+  }
+  if (run.idle && run.status !== 'completed') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Only completed scheduler runs can be idle' });
   }
 });
 

@@ -833,6 +833,35 @@ describe('visual clock policy', () => {
   });
 });
 
+describe('marketing retention windows', () => {
+  const keys = [
+    'MARKETING_RETENTION_RAW_SNS_INBOX_DAYS',
+    'MARKETING_RETENTION_RENDERED_BODIES_DAYS',
+    'MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS',
+    'MARKETING_RETENTION_PENDING_CONSENTS_DAYS',
+    'MARKETING_RETENTION_SCHEDULER_RUNS_DAYS',
+    'MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS',
+  ] as const;
+
+  it('uses the bounded defaults', () => {
+    expect(envSchema.parse({})).toMatchObject({
+      MARKETING_RETENTION_RAW_SNS_INBOX_DAYS: 7,
+      MARKETING_RETENTION_RENDERED_BODIES_DAYS: 14,
+      MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: 30,
+      MARKETING_RETENTION_PENDING_CONSENTS_DAYS: 30,
+      MARKETING_RETENTION_SCHEDULER_RUNS_DAYS: 14,
+      MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS: 2,
+    });
+  });
+
+  it.each(keys)('accepts a positive integer override for %s', (key) => {
+    expect(envSchema.parse({ [key]: '9' })[key]).toBe(9);
+    for (const value of ['0', '-1', '1.5', '', 'invalid', 'Infinity']) {
+      expect(envSchema.safeParse({ [key]: value }).success).toBe(false);
+    }
+  });
+});
+
 describe('import daily record limits', () => {
   it('defaults to 10,000 member records and 20,000 other records', () => {
     expect(envSchema.parse({})).toMatchObject({

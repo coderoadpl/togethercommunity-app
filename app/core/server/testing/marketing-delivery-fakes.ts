@@ -65,9 +65,9 @@ class InMemoryMarketingSnsInboxRepository implements MarketingSnsInboxRepository
   }
   async listTenantIds() { return [...new Set(this.rows.map((row) => row.tenantId))]; }
   async purge(tenantId: string, before: string) {
-    let count = 0;
-    for (const row of this.rows) if (row.tenantId === tenantId && ['processed', 'ignored'].includes(row.status) && row.processedAt !== null && row.processedAt < before) { row.rawBody = null; count += 1; }
-    return count;
+    let purged = 0;
+    for (const row of this.rows) if (row.tenantId === tenantId && ['processed', 'ignored'].includes(row.status) && row.processedAt !== null && row.processedAt < before && row.rawBody !== null) { row.rawBody = null; purged += 1; }
+    return purged;
   }
 }
 

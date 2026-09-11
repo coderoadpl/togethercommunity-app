@@ -6104,22 +6104,28 @@ describe('public auth-config route', () => {
 });
 
 describe('public auth-resolve route', () => {
-  const resolve = (app: ReturnType<typeof buildApp>, email: string) =>
+  const resolve = (
+    app: ReturnType<typeof buildApp>,
+    email: string,
+    host = 'acme.localhost:48730',
+  ) =>
     app.request(API_PATHS.authResolve, {
       method: 'POST',
-      headers: { host: 'acme.localhost:48730', 'content-type': 'application/json' },
+      headers: { host, 'content-type': 'application/json' },
       body: JSON.stringify({ email }),
     });
 
-  it('answers member and unknown addresses with identical methods and status', async () => {
+  it('answers every address on every tenant with the same methods and status', async () => {
     const app = buildApp(deps());
-    for (const email of ['creator@together.dev', 'student@together.dev', 'nobody@example.com']) {
-      const response = await resolve(app, email);
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        ok: true,
-        data: { methods: ['password', 'passkey', 'magic-link'] },
-      });
+    for (const host of ['acme.localhost:48730', 'globex.localhost:48730', 'start.localhost:48730']) {
+      for (const email of ['creator@together.dev', 'student@together.dev', 'nobody@example.com']) {
+        const response = await resolve(app, email, host);
+        expect([host, email, response.status]).toEqual([host, email, 200]);
+        expect(await response.json()).toEqual({
+          ok: true,
+          data: { methods: ['password', 'passkey', 'magic-link'] },
+        });
+      }
     }
   });
 

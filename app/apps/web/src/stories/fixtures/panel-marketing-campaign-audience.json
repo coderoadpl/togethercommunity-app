@@ -43,6 +43,17 @@
           "pausedReason": null,
           "queued": 0,
           "replyTo": null,
+          "results": {
+            "bounced": 0,
+            "candidates": 0,
+            "complained": 0,
+            "delivered": 0,
+            "failed": 0,
+            "sent": 0,
+            "skipped": 0,
+            "unresolved": 0,
+            "waiting": 0
+          },
           "sendAt": null,
           "sent": 0,
           "skipped": 0,

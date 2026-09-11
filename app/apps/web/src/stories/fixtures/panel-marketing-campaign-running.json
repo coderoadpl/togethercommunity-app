@@ -1,23 +1,63 @@
 {
   "calls": {
-    "getMarketingReputation:[]": {
+    "getMarketingCampaign:[\"campaign-studio-launch-wave\"]": {
       "ok": true,
       "value": {
-        "complaint": {
-          "count": 0,
-          "rate": null,
-          "sends": 1,
-          "status": "insufficient_data"
-        },
-        "hardBounce": {
-          "count": 0,
-          "rate": null,
-          "sends": 1,
-          "status": "insufficient_data"
-        },
-        "overallStatus": "insufficient_data",
-        "windowEnd": "2026-07-01T12:00:00.000Z",
-        "windowStart": "2026-06-24T12:00:00.000Z"
+        "campaign": {
+          "audience": null,
+          "audienceFilter": null,
+          "audienceNameSnapshot": "All eligible members",
+          "audienceSnapshotId": null,
+          "audienceVersion": 1,
+          "bodyHtml": "<p>The autumn cohort opens on Monday.</p>",
+          "bodySource": "The autumn cohort opens on Monday.",
+          "bodyText": null,
+          "candidateCount": 0,
+          "consentDefinitionId": "consent-definition-studio-news",
+          "consentLabelSnapshot": "I would like to receive news by email",
+          "createdAt": "2026-06-21T12:00:00.000Z",
+          "cursorContactId": null,
+          "cursorMemberId": "member-studio-active",
+          "engagement": {
+            "totalClicks": 0,
+            "totalOpens": 0,
+            "uniqueClicks": 0,
+            "uniqueOpens": 0
+          },
+          "errorCount": 0,
+          "failed": 0,
+          "finishedAt": null,
+          "id": "campaign-studio-launch-wave",
+          "layoutId": null,
+          "lockedBy": null,
+          "lockedUntil": null,
+          "name": "Autumn launch wave",
+          "pausedReason": null,
+          "queued": 3,
+          "replyTo": null,
+          "results": {
+            "bounced": 0,
+            "candidates": 5,
+            "complained": 0,
+            "delivered": 1,
+            "failed": 0,
+            "sent": 2,
+            "skipped": 0,
+            "unresolved": 1,
+            "waiting": 3
+          },
+          "sendAt": "2026-06-22T12:00:00.000Z",
+          "sent": 2,
+          "skipped": 0,
+          "snapshotMaxContactId": null,
+          "snapshotMaxMemberId": "member-studio-subscriber",
+          "startedAt": "2026-06-22T12:00:00.000Z",
+          "status": "running",
+          "subject": "Doors open on Monday",
+          "tenantId": "tenant-studio",
+          "toSend": 5,
+          "unresolved": 0
+        }
       }
     },
     "getMarketingSesSettings:[]": {
@@ -87,186 +127,6 @@
         "reports": []
       }
     },
-    "listMarketingCampaigns:[]": {
-      "ok": true,
-      "value": {
-        "campaigns": [
-          {
-            "audience": null,
-            "audienceFilter": null,
-            "audienceNameSnapshot": "All eligible members",
-            "audienceSnapshotId": null,
-            "audienceVersion": 1,
-            "bodyHtml": "<p>Learning plan</p>",
-            "bodySource": "<p>Learning plan</p>",
-            "bodyText": null,
-            "candidateCount": 0,
-            "consentDefinitionId": "consent-definition-studio-news",
-            "consentLabelSnapshot": "I would like to receive news by email",
-            "createdAt": "2026-06-26T12:00:00.000Z",
-            "cursorContactId": null,
-            "cursorMemberId": "member-studio-active",
-            "engagement": {
-              "totalClicks": 0,
-              "totalOpens": 0,
-              "uniqueClicks": 0,
-              "uniqueOpens": 0
-            },
-            "errorCount": 0,
-            "failed": 0,
-            "finishedAt": "2026-06-27T12:00:00.000Z",
-            "id": "campaign-studio-observability",
-            "layoutId": null,
-            "lockedBy": null,
-            "lockedUntil": null,
-            "name": "Course launch",
-            "pausedReason": null,
-            "queued": 0,
-            "replyTo": null,
-            "results": {
-              "bounced": 0,
-              "candidates": 1,
-              "complained": 0,
-              "delivered": 1,
-              "failed": 0,
-              "sent": 1,
-              "skipped": 0,
-              "unresolved": 0,
-              "waiting": 0
-            },
-            "sendAt": "2026-06-27T12:00:00.000Z",
-            "sent": 1,
-            "skipped": 0,
-            "snapshotMaxContactId": null,
-            "snapshotMaxMemberId": "member-studio-active",
-            "startedAt": "2026-06-27T12:00:00.000Z",
-            "status": "finished",
-            "subject": "Your learning plan for July",
-            "tenantId": "tenant-studio",
-            "toSend": 1,
-            "unresolved": 0
-          },
-          {
-            "audience": null,
-            "audienceFilter": null,
-            "audienceNameSnapshot": "All eligible members",
-            "audienceSnapshotId": null,
-            "audienceVersion": 1,
-            "bodyHtml": "<p>The autumn cohort opens on Monday.</p>",
-            "bodySource": "The autumn cohort opens on Monday.",
-            "bodyText": null,
-            "candidateCount": 0,
-            "consentDefinitionId": "consent-definition-studio-news",
-            "consentLabelSnapshot": "I would like to receive news by email",
-            "createdAt": "2026-06-21T12:00:00.000Z",
-            "cursorContactId": null,
-            "cursorMemberId": "member-studio-active",
-            "engagement": {
-              "totalClicks": 0,
-              "totalOpens": 0,
-              "uniqueClicks": 0,
-              "uniqueOpens": 0
-            },
-            "errorCount": 0,
-            "failed": 0,
-            "finishedAt": null,
-            "id": "campaign-studio-launch-wave",
-            "layoutId": null,
-            "lockedBy": null,
-            "lockedUntil": null,
-            "name": "Autumn launch wave",
-            "pausedReason": null,
-            "queued": 3,
-            "replyTo": null,
-            "results": {
-              "bounced": 0,
-              "candidates": 5,
-              "complained": 0,
-              "delivered": 1,
-              "failed": 0,
-              "sent": 2,
-              "skipped": 0,
-              "unresolved": 1,
-              "waiting": 3
-            },
-            "sendAt": "2026-06-22T12:00:00.000Z",
-            "sent": 2,
-            "skipped": 0,
-            "snapshotMaxContactId": null,
-            "snapshotMaxMemberId": "member-studio-subscriber",
-            "startedAt": "2026-06-22T12:00:00.000Z",
-            "status": "running",
-            "subject": "Doors open on Monday",
-            "tenantId": "tenant-studio",
-            "toSend": 5,
-            "unresolved": 0
-          },
-          {
-            "audience": {
-              "excludeLists": [],
-              "excludeProductIds": [
-                "product-studio-workshop"
-              ],
-              "includeLists": [],
-              "includeMembersWithConsent": true,
-              "version": 2
-            },
-            "audienceFilter": null,
-            "audienceNameSnapshot": "Members with consent",
-            "audienceSnapshotId": null,
-            "audienceVersion": 2,
-            "bodyHtml": "<p>Six lessons, one workshop and a new space.</p>",
-            "bodySource": "Six lessons, one workshop and a new space.",
-            "bodyText": null,
-            "candidateCount": 7,
-            "consentDefinitionId": "consent-definition-studio-news",
-            "consentLabelSnapshot": "I would like to receive news by email",
-            "createdAt": "2026-06-18T12:00:00.000Z",
-            "cursorContactId": null,
-            "cursorMemberId": null,
-            "engagement": {
-              "totalClicks": 0,
-              "totalOpens": 0,
-              "uniqueClicks": 0,
-              "uniqueOpens": 0
-            },
-            "errorCount": 1,
-            "failed": 1,
-            "finishedAt": "2026-06-19T12:00:00.000Z",
-            "id": "campaign-studio-summer-recap",
-            "layoutId": null,
-            "lockedBy": null,
-            "lockedUntil": null,
-            "name": "Summer recap",
-            "pausedReason": null,
-            "queued": 0,
-            "replyTo": null,
-            "results": {
-              "bounced": 1,
-              "candidates": 7,
-              "complained": 1,
-              "delivered": 3,
-              "failed": 1,
-              "sent": 5,
-              "skipped": 1,
-              "unresolved": 0,
-              "waiting": 0
-            },
-            "sendAt": "2026-06-19T12:00:00.000Z",
-            "sent": 5,
-            "skipped": 1,
-            "snapshotMaxContactId": null,
-            "snapshotMaxMemberId": null,
-            "startedAt": "2026-06-19T12:00:00.000Z",
-            "status": "finished",
-            "subject": "Everything you missed in June",
-            "tenantId": "tenant-studio",
-            "toSend": 7,
-            "unresolved": 0
-          }
-        ]
-      }
-    },
     "listMarketingConsentDefinitions:[]": {
       "ok": true,
       "value": {
@@ -286,6 +146,208 @@
             "status": "active",
             "tenantId": "tenant-studio",
             "updatedAt": "2026-06-06T12:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "listMarketingLayouts:[]": {
+      "ok": true,
+      "value": {
+        "layouts": []
+      }
+    },
+    "listMarketingLists:[{\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "lists": [],
+        "nextCursor": null
+      }
+    },
+    "listProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:31.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-course-101",
+            "legacyId": null,
+            "priceCents": 19900,
+            "published": true,
+            "slug": "course-together-101",
+            "tenantId": "tenant-studio",
+            "title": "Together 101 Course",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:32.000Z",
+            "currency": "PLN",
+            "description": "",
+            "id": "product-studio-workshop",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": false,
+            "slug": "workshop-scenario",
+            "tenantId": "tenant-studio",
+            "title": "Scenario Workshop",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:33.000Z",
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "id": "product-js-full",
+            "legacyId": null,
+            "priceCents": 39900,
+            "published": true,
+            "slug": "js-full",
+            "tenantId": "tenant-studio",
+            "title": "JavaScript Course - full access",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:34.000Z",
+            "currency": "PLN",
+            "description": "Full access to React in Practice.",
+            "id": "product-react-full",
+            "legacyId": null,
+            "priceCents": 49900,
+            "published": true,
+            "slug": "react-full",
+            "tenantId": "tenant-studio",
+            "title": "React in Practice - full access",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "modules",
+                "moduleIds": [
+                  "module-js-dom"
+                ]
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:35.000Z",
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "id": "product-js-dom-module",
+            "legacyId": null,
+            "priceCents": 9900,
+            "published": true,
+            "slug": "js-dom-module",
+            "tenantId": "tenant-studio",
+            "title": "DOM Module Pack",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "lessonIds": [
+                  "lesson-js-demo-video",
+                  "lesson-js-variables-1",
+                  "lesson-js-dom-1",
+                  "lesson-js-project-1"
+                ],
+                "level": "lessons"
+              },
+              {
+                "courseId": "course-react",
+                "lessonIds": [
+                  "lesson-react-jsx-1",
+                  "lesson-react-hooks-1"
+                ],
+                "level": "lessons"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:36.000Z",
+            "currency": "PLN",
+            "description": "Free sample lessons from every module in both courses, plus the video demo.",
+            "id": "product-free-preview",
+            "legacyId": null,
+            "priceCents": 0,
+            "published": true,
+            "slug": "free-preview",
+            "tenantId": "tenant-studio",
+            "title": "Free preview",
+            "type": "course",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              },
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:38.000Z",
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "id": "product-club",
+            "legacyId": null,
+            "priceCents": 4900,
+            "published": true,
+            "slug": "club",
+            "tenantId": "tenant-studio",
+            "title": "Studio Club - subscription",
+            "type": "membership",
+            "visibility": "listed"
+          },
+          {
+            "accessItems": [],
+            "checkoutConsentDefinitionIds": [],
+            "coverUrl": null,
+            "createdAt": "2026-07-01T12:00:39.000Z",
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "id": "product-download-workbook",
+            "legacyId": null,
+            "priceCents": 7900,
+            "published": true,
+            "slug": "download-workbook",
+            "tenantId": "tenant-studio",
+            "title": "Creator Workbook",
+            "type": "digital_download",
+            "visibility": "listed"
           }
         ]
       }
@@ -337,6 +399,81 @@
         ],
         "nextCursor": null,
         "openCount": 1
+      }
+    },
+    "listTenantSchedulerRuns:[{\"campaignId\":\"campaign-studio-launch-wave\",\"limit\":100}]": {
+      "ok": true,
+      "value": {
+        "items": [
+          {
+            "campaignCounts": {
+              "failed": 0,
+              "sent": 2,
+              "skipped": 0
+            },
+            "run": {
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "durationMs": 1180,
+              "error": null,
+              "finishedAt": "2026-06-22T12:00:00.000Z",
+              "id": "scheduler-run-studio-launch",
+              "idle": false,
+              "kind": "marketing_tick",
+              "startedAt": "2026-06-22T12:00:00.000Z",
+              "status": "completed",
+              "totals": {
+                "campaignsTouched": 1,
+                "failed": 0,
+                "reEnqueued": true,
+                "sendsAttempted": 2,
+                "sent": 2,
+                "skipped": 0
+              },
+              "trigger": "cron"
+            },
+            "tenant": {
+              "batchSize": 2,
+              "budgetComputed": 25,
+              "budgetUsed": 2,
+              "campaignsTouched": 1,
+              "createdAt": "2026-06-22T12:00:00.000Z",
+              "errors": [],
+              "failed": 0,
+              "id": "scheduler-run-tenant-studio-launch",
+              "purged": null,
+              "runId": "scheduler-run-studio-launch",
+              "sent": 2,
+              "skipped": 0,
+              "tenantId": "tenant-studio"
+            }
+          }
+        ],
+        "nextCursor": null,
+        "summary": {
+          "failedLast24Hours": 1,
+          "lastRun": {
+            "createdAt": "2026-07-01T09:36:00.000Z",
+            "durationMs": 684,
+            "error": null,
+            "finishedAt": "2026-07-01T09:36:00.000Z",
+            "id": "scheduler-run-studio-marketing",
+            "idle": false,
+            "kind": "marketing_tick",
+            "startedAt": "2026-07-01T09:36:00.000Z",
+            "status": "completed",
+            "totals": {
+              "campaignsTouched": 1,
+              "failed": 0,
+              "reEnqueued": false,
+              "sendsAttempted": 1,
+              "sent": 1,
+              "skipped": 0
+            },
+            "trigger": "cron"
+          },
+          "runsLast24Hours": 3,
+          "sentLast24Hours": 2
+        }
       }
     },
     "me:[]": {
@@ -552,7 +689,7 @@
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/marketing/campaigns",
-  "scenario": "panel-marketing-campaigns",
+  "route": "/panel/marketing/campaigns/campaign-studio-launch-wave",
+  "scenario": "panel-marketing-campaign-running",
   "tenant": "studio"
 }

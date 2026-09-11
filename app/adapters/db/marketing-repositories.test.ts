@@ -23,7 +23,7 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { campaignSends, consents, emailOutbox, marketingConsents, members, schedulerRuns, schedulerRunTenants, tenantSesSettings, tenants } from './schema.js';
+import { campaignSends, consents, emailOutbox, marketingConsents, marketingOutbox, members, schedulerRuns, schedulerRunTenants, tenantSesSettings, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -642,6 +642,97 @@ describe('marketing database repositories', () => {
       `campaign-${tenantId}`,
       { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
     ]]));
+  });
+
+  it('projects campaign results in one tenant-scoped batch', async () => {
+    const tenantId = 'tenant-results';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Results', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, status: CampaignSend['status'], deliveryStatus: CampaignSend['deliveryStatus']): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast', memberId: null,
+      email: `${id}@example.test`, subject: 'Campaign results', consentRowId: null,
+      unsubscribeTokenId: null, status, skipReason: status === 'skipped' ? 'suppressed' : null,
+      sesMessageId: status === 'sent' ? `ses-${id}` : null, deliveryStatus,
+      deliveryOccurredAt: deliveryStatus === null ? null : NOW, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: NOW, sentAt: status === 'sent' ? NOW : null,
+    });
+    for (const row of [
+      send('results-pending', 'pending', null),
+      send('results-sending', 'sending', null),
+      send('results-delivered', 'sent', 'delivered'),
+      send('results-bounced', 'sent', 'bounced'),
+      send('results-complained', 'sent', 'complained'),
+      send('results-unresolved', 'sent', null),
+      send('results-failed', 'failed', null),
+      send('results-skipped', 'skipped', null),
+    ]) await sends.claimRecipient(tenantId, row);
+    await db.insert(marketingOutbox).values({
+      id: 'outbox-results-sending', tenantId, campaignSendId: 'results-sending', payload: null,
+      payloadPurgedAt: null, status: 'uncertain', attempts: 1, nextAttemptAt: NOW,
+      lockedBy: null, lockedUntil: null, claimVersion: 1, sesMessageId: null,
+      lastError: 'Provider response was not received', createdAt: NOW, updatedAt: NOW,
+    });
+
+    await expect(sends.results(tenantId, [`campaign-${tenantId}`, 'missing-campaign'])).resolves.toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { candidates: 8, waiting: 1, sent: 4, failed: 1, skipped: 1, delivered: 1, bounced: 1, complained: 1, unresolved: 1 },
+    ]]));
+    await expect(sends.progressStats(tenantId, [`campaign-${tenantId}`])).resolves.toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { queued: 1, unresolved: 1 },
+    ]]));
+    await expect(sends.results('tenant-a', [`campaign-${tenantId}`])).resolves.toEqual(new Map());
+
+    const runs = createSchedulerRunRepository(db);
+    await runs.start({
+      id: 'run-results', kind: 'marketing_tick', trigger: 'cron', startedAt: NOW,
+      finishedAt: null, durationMs: null, status: 'running', idle: false, error: null,
+      totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+      createdAt: NOW,
+    });
+    await runs.finalize('run-results', {
+      finishedAt: '1998-07-22T00:00:01.000Z', durationMs: 1000, status: 'completed', idle: false, error: null,
+      totals: { campaignsTouched: 1, sendsAttempted: 1, sent: 1, failed: 0, skipped: 0, reEnqueued: false },
+      tenants: [{
+        id: 'run-results-tenant', runId: 'run-results', tenantId, campaignsTouched: 1, batchSize: 1,
+        sent: 7, failed: 2, skipped: 3, budgetComputed: 10, budgetUsed: 1, errors: [], createdAt: NOW,
+      }],
+    });
+    await db.update(campaignSends).set({ runId: 'run-results' }).where(eq(campaignSends.id, 'results-delivered'));
+
+    await expect(runs.listForTenant(tenantId, { campaignId: `campaign-${tenantId}`, limit: 25 }))
+      .resolves.toMatchObject({ items: [{ run: { id: 'run-results' }, campaignCounts: { sent: 1, failed: 0, skipped: 0 } }] });
+    await expect(runs.listForTenant(tenantId, { campaignId: 'missing-campaign', limit: 25 }))
+      .resolves.toMatchObject({ items: [] });
+
+    for (const [id, status, errors] of [
+      ['run-results-idle', 'completed', []],
+      ['run-results-failed-empty', 'failed', ['SES credentials unavailable']],
+    ] as const) {
+      await runs.start({
+        id, kind: 'marketing_tick', trigger: 'cron', startedAt: NOW, finishedAt: null, durationMs: null,
+        status: 'running', idle: false, error: null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        createdAt: NOW,
+      });
+      await runs.finalize(id, {
+        finishedAt: '1998-07-22T00:00:01.000Z', durationMs: 1000, status,
+        idle: status === 'completed',
+        error: status === 'failed' ? 'SES credentials unavailable' : null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        tenants: [{
+          id: `${id}-tenant`, runId: id, tenantId, campaignsTouched: 0, batchSize: 0,
+          sent: 0, failed: 0, skipped: 0, budgetComputed: 0, budgetUsed: 0, errors: [...errors], createdAt: NOW,
+        }],
+      });
+    }
+    const visibleRunIds = (await runs.listForTenant(tenantId, { limit: 25 })).items.map(({ run }) => run.id);
+    expect(visibleRunIds).toContain('run-results-failed-empty');
+    expect(visibleRunIds).not.toContain('run-results-idle');
+    expect((await runs.listForTenant(tenantId, { includeIdle: true, limit: 25 })).items.map(({ run }) => run.id))
+      .toContain('run-results-idle');
   });
 
   it('counts reputation from the sent cohort instead of accepted-event fixtures', async () => {

@@ -2327,6 +2327,7 @@ export interface Messages {
   };
   marketing: {
     contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
+    campaignProgress: (input: { candidates: number; sent: number; waiting: number; skipped: number; failed: number }) => string;
     contactAudience: string;
     frozenAudience: string;
     audienceEstimateHint: string;
@@ -2427,6 +2428,7 @@ export interface Messages {
       duration: string;
       tenantCounts: string;
       details: string;
+      runDetails: (params: { startedAt: string }) => string;
       idle: string;
       allRuns: string;
       breakdown: string;
@@ -2442,6 +2444,12 @@ export interface Messages {
       runNotFoundTitle: string;
       runNotFoundBody: string;
       backToRuns: string;
+      campaignsInProgress: string;
+      noCampaignsInProgress: string;
+      openCampaignReport: string;
+      showIdleRuns: string;
+      campaignProgress: (params: { sent: number; candidates: number }) => string;
+      campaignProgressLabel: (params: { name: string }) => string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2462,6 +2470,15 @@ export interface Messages {
     compactClicks: (params: { unique: number; total: number }) => string;
     compactOpensUnavailable: string;
     compactClicksUnavailable: string;
+    listSent: (params: { sent: number; candidates: number }) => string;
+    compactResults: (params: { delivered: number; bounced: number; complained: number }) => string;
+    resultsDelivered: string;
+    resultsBounced: string;
+    resultsComplained: string;
+    resultsFailed: string;
+    resultsWaiting: string;
+    percentageOfSent: (params: { percentage: string }) => string;
+    unresolvedAcceptance: (params: { count: number }) => string;
     trackingDisabledCampaignMetrics: string;
     createdTimeValue: (params: { date: string }) => string;
     scheduledTimeValue: (params: { date: string }) => string;
@@ -2479,6 +2496,16 @@ export interface Messages {
     rawHtmlMode: string;
     rawHtmlHint: string;
     livePreview: string;
+    reportAudienceTitle: string;
+    reportMessageTitle: string;
+    expandMessage: string;
+    noIncludedLists: string;
+    noConsentDefinition: string;
+    noExcludedLists: string;
+    noExcludedProducts: string;
+    consentedMembersChip: string;
+    campaignRunsTitle: string;
+    campaignRunsEmpty: string;
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;

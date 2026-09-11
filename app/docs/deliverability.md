@@ -147,9 +147,12 @@ campaigns. Version 2 dispatch additionally checks contact archival, erasure and
 address consistency; later consent or suppression changes can remove eligibility
 but cannot add a recipient to a frozen snapshot.
 
-Campaign counters distinguish eligible-at-snapshot, candidates, skipped, sent,
-failed, queued and unresolved provider acceptance. Queued and unresolved counts
-come from indexed send/outbox aggregates. Contact send history uses the same
-journal and events as member campaigns. The synthetic end-to-end regression is
+Campaign reports use the frozen snapshot count as the audience total and group
+the send projection into waiting, sent, failed, skipped, delivered, bounced,
+complained and unresolved-delivery counts. Waiting excludes sends whose provider
+acceptance is uncertain.
+The separate queued and unresolved acceptance counters come from indexed
+send/outbox aggregates. Contact send history uses the same journal and events as
+member campaigns. The synthetic end-to-end regression is
 `scripts/marketing-contacts.e2e.test.ts`; it runs the real HTTP app, typed client,
 CLI and PostgreSQL repositories with fake SES/clock boundaries and signed feedback.

@@ -111,10 +111,12 @@ describe('scheduler run domain', () => {
     expect(schedulerRunListQuerySchema.parse({
       kind: 'marketing_tick',
       status: 'completed',
+      campaignId: 'campaign-1',
+      includeIdle: 'false',
       since: '2026-07-25T10:00:00.000Z',
       cursor: '2026-07-26T10%3A00%3A00.000Z~run-1',
       limit: '25',
-    })).toMatchObject({ kind: 'marketing_tick', status: 'completed', limit: 25 });
+    })).toMatchObject({ kind: 'marketing_tick', status: 'completed', campaignId: 'campaign-1', includeIdle: false, limit: 25 });
     expect(schedulerRunListQuerySchema.safeParse({ cursor: 'not-a-cursor' }).success).toBe(false);
     expect(schedulerRunListQuerySchema.safeParse({ cursor: '%broken~run-1' }).success).toBe(false);
     expect(schedulerRunListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);

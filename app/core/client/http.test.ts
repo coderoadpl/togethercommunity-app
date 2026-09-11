@@ -156,6 +156,26 @@ describe('createApiClient', () => {
     });
   });
 
+  it('serializes campaign filters for tenant scheduler runs', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      expect(input).toBe('https://api.example.test/api/marketing/scheduler-runs?campaignId=campaign-1&includeIdle=true&limit=10');
+      return jsonResponse({
+        ok: true,
+        data: {
+          items: [],
+          summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null },
+          nextCursor: null,
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.listTenantSchedulerRuns({ campaignId: 'campaign-1', includeIdle: true, limit: 10 })).resolves.toMatchObject({
+      ok: true,
+      value: { items: [], nextCursor: null },
+    });
+  });
+
   it('preserves source-app and transport filters in send-log exports', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe(

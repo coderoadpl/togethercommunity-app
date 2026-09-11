@@ -63,6 +63,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'SchedulerRunRepository.finalize': 'A scheduler run is a platform aggregate containing per-tenant results.',
   'SchedulerRunRepository.getWithTenants': 'Operator diagnostics read a platform run and all of its tenant results.',
   'SchedulerRunRepository.listPage': 'Operator diagnostics list platform scheduler runs.',
+  'SchedulerRunRepository.purge': 'A platform worker applies retention to scheduler aggregates across all tenants.',
   'SchedulerRunRepository.start': 'A scheduler run is a platform aggregate spanning tenants.',
   'TenantDomainRepository.findByDomain': 'Tenant resolution must look up a tenant before a tenant ID exists.',
   'TenantDomainRepository.findAnyByDomain': 'Domain uniqueness spans the platform, so the check runs before the owning tenant is known.',

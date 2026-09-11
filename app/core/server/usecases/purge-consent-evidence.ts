@@ -65,6 +65,7 @@ export const purgeExpiredConsentEvidence = async (
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: emptyTotals,
       createdAt: startedAt,
@@ -108,6 +109,8 @@ export const purgeExpiredConsentEvidence = async (
       finishedAt,
       durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
       status: error === null ? 'completed' : 'failed',
+      idle: tenantMetrics.every((metrics) => metrics.purged === 0 && metrics.errors.length === 0)
+        && error === null,
       error,
       totals: emptyTotals,
       tenants: tenantMetrics.map((metrics) => ({

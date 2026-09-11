@@ -2650,6 +2650,7 @@ export const pl: Messages = {
       runError: 'Błąd uruchomienia', runKind: 'Rodzaj', trigger: 'Wyzwalacz',
       started: 'Rozpoczęto', finished: 'Zakończono', duration: 'Czas trwania',
       tenantCounts: 'Ta platforma', details: 'Szczegóły',
+      idle: 'Bez zadań',
       allRuns: '← Cała aktywność wysyłek', breakdown: 'Podsumowanie tej platformy',
       campaignsTouched: 'Objęte kampanie', batchSize: 'Rozmiar partii', evidencePurged: 'Usunięte dowody zgody', budget: 'Budżet',
       errors: 'Błędy', noErrors: 'Nie zapisano błędów.', failedWithoutRecordedErrors: 'To uruchomienie ma nieudane wysyłki bez zapisanych błędów harmonogramu.',

@@ -84,6 +84,19 @@ const transportSetup = (configured: 'ses' | 'smtp' | 'resend' | null, smokeTenan
 };
 
 describe('auth outbox transport isolation', () => {
+  it('marks an empty dispatch run as idle', async () => {
+    const deps = await setup();
+    deps.emailOutbox.items.length = 0;
+    const sending = transportSetup(null);
+
+    expect(await dispatchEmailBatch({ ...deps, email: sending.email }))
+      .toEqual(ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    expect((await deps.runs.listPage({ limit: 1 })).runs[0]).toMatchObject({
+      status: 'completed',
+      idle: true,
+    });
+  });
+
   it.each(authPayloads.flatMap((payload) =>
     (['ses', 'smtp', 'resend', null] as const).flatMap((transport) =>
       [false, true].map((tenantTransportRequired) => ({

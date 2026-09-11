@@ -9,6 +9,7 @@
           "error": "SES rejected one message",
           "finishedAt": "2026-07-01T07:12:00.000Z",
           "id": "scheduler-run-studio-outbox",
+          "idle": false,
           "kind": "outbox_dispatch",
           "startedAt": "2026-07-01T07:12:00.000Z",
           "status": "failed",

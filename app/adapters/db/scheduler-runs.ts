@@ -11,7 +11,18 @@ import {
 import type { SchedulerRunRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { schedulerRuns, schedulerRunTenants } from './schema.js';
+import { queryCanceled } from './pg-errors.js';
+import { campaignSends, schedulerRuns, schedulerRunTenants } from './schema.js';
+
+const rowCount = (result: unknown): number => {
+  if (typeof result !== 'object' || result === null || !('rowCount' in result)) {
+    throw new Error('Scheduler run purge query did not return a row count');
+  }
+  if (result.rowCount !== null && typeof result.rowCount !== 'number') {
+    throw new Error('Scheduler run purge query returned an invalid row count');
+  }
+  return result.rowCount ?? 0;
+};
 
 const parseRun = (row: typeof schedulerRuns.$inferSelect): SchedulerRun => schedulerRunSchema.parse({
   ...row,
@@ -88,6 +99,7 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
         finishedAt: input.finishedAt,
         durationMs: input.durationMs,
         status: input.status,
+        idle: input.idle,
         error: input.error,
         totals: input.totals,
       }).where(and(eq(schedulerRuns.id, runId), eq(schedulerRuns.status, 'running'))).returning();
@@ -153,6 +165,42 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
         lt(schedulerRuns.startedAt, input.startedBefore),
       )).returning({ id: schedulerRuns.id });
       return rows.length;
+    },
+    purge: async (input, options) => {
+      try {
+        const purged = await db.transaction(async (tx) => {
+          await tx.execute(sql`select set_config('statement_timeout', ${String(options.timeoutMs)}, true)`);
+          const result = await tx.execute(sql`
+            WITH batch AS MATERIALIZED (
+              SELECT candidate.id
+              FROM ${schedulerRuns} candidate
+              WHERE (
+                (candidate.idle = true AND candidate.started_at < ${input.idleRunsBefore})
+                OR (candidate.idle = false AND candidate.started_at < ${input.runsBefore})
+              )
+                AND candidate.id NOT IN (
+                  SELECT DISTINCT ON (newest.kind) newest.id
+                  FROM ${schedulerRuns} newest
+                  ORDER BY newest.kind, newest.started_at DESC, newest.id DESC
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM ${campaignSends}
+                  WHERE ${campaignSends.runId} = candidate.id
+                )
+              ORDER BY candidate.started_at, candidate.id
+              LIMIT ${options.batchSize}
+            )
+            DELETE FROM ${schedulerRuns}
+            WHERE ${schedulerRuns.id} IN (SELECT id FROM batch)
+          `);
+          return rowCount(result);
+        });
+        return { purged, cancelled: false };
+      } catch (cause) {
+        if (!queryCanceled(cause)) throw cause;
+        return { purged: 0, cancelled: true };
+      }
     },
   };
 };

@@ -2427,6 +2427,7 @@ export interface Messages {
       duration: string;
       tenantCounts: string;
       details: string;
+      idle: string;
       allRuns: string;
       breakdown: string;
       campaignsTouched: string;

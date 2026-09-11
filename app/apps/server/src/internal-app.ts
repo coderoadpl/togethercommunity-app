@@ -1414,6 +1414,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1427,6 +1428,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1443,6 +1445,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1456,6 +1459,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1469,6 +1473,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -2147,6 +2152,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           controlPlane: sesOnboarding.controlPlane,
           clock: deps.clock,
           webhookBaseUrl: sesWebhookBaseUrl,
+          logger: deps.logger,
         }),
     }),
   };

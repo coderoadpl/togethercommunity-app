@@ -106,6 +106,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/terms-consent') return 'terms:accept';
   if (path === '/api/tenants' && method === 'POST') return 'tenant:create';
   if (path.startsWith('/api/dev/')) return method === 'GET' ? 'development:inspect' : 'development:mutate';
+  if (path.startsWith('/api/m2m/subscriptions/')) return 'enrollment:create';
+  if (path === '/api/subscriptions/adopt') return 'member:grant:write';
+  if (path === '/api/subscriptions/stripe') return 'member:commerce:read';
   if (path === '/api/m2m/enroll') return 'enrollment:create';
   if (path.startsWith('/api/m2m/transactional/messages')) return method === 'GET' ? 'transactional:message:read' : 'transactional:message:send';
   if (

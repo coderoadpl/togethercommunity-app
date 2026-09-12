@@ -79,6 +79,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/dev/subscriptions/simulate-cycle` | local-development-only | mutating | dev subscription simulate cycle |
 | `POST /api/dev/subscriptions/simulate-failure` | local-development-only | mutating | dev subscription simulate failure |
 | `POST /api/m2m/enroll` | self-authenticating | mutating | m2m enroll |
+| `POST /api/m2m/subscriptions/adopt` | self-authenticating | mutating | m2m adopt stripe subscription |
+| `GET /api/m2m/subscriptions/stripe` | self-authenticating | read | m2m list stripe subscriptions |
 | `POST /api/m2m/transactional/messages` | self-authenticating | mutating | m2m transactional messages create |
 | `GET /api/m2m/transactional/messages/:id` | self-authenticating | read | m2m transactional message |
 | `POST /api/m2m/marketing/messages` | self-authenticating | mutating | marketing messages create |
@@ -239,6 +241,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
 | `DELETE /api/members/:memberId` | authenticated | mutating | member remove |
+| `POST /api/subscriptions/adopt` | authenticated | mutating | adopt stripe subscription |
+| `GET /api/subscriptions/stripe` | authenticated | read | list stripe subscriptions |
 | `POST /api/grants` | authenticated | mutating | grants create |
 | `DELETE /api/grants/:grantId` | authenticated | mutating | grant revoke |
 | `GET /api/api-keys` | authenticated | read | api keys |

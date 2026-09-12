@@ -35,6 +35,12 @@ export const memberEventRegistry = defineMemberEventRegistry({
     productId: z.string().min(1),
     expiresAt: z.string().datetime(),
   }).strict(),
+  'subscription-adopted': z.object({
+    subscriptionId: z.string().min(1),
+    providerSubscriptionId: z.string().min(1),
+    productId: z.string().min(1),
+    priceId: z.string().min(1),
+  }).strict(),
   'subscription-change': z.object({
     subscriptionId: z.string().min(1),
     productId: z.string().min(1),
@@ -66,6 +72,9 @@ const memberTimelineEventRegistry = defineMemberEventRegistry({
     productTitle: z.string().nullable(),
   }),
   revoke: memberEventRegistry.revoke.extend({
+    productTitle: z.string().nullable(),
+  }),
+  'subscription-adopted': memberEventRegistry['subscription-adopted'].extend({
     productTitle: z.string().nullable(),
   }),
   'subscription-change': memberEventRegistry['subscription-change'].extend({

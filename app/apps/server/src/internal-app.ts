@@ -1,3 +1,6 @@
+import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
+import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
+import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions, claimRateLimitWindow } from '#core/server/index.js';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
 import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
 import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
@@ -1085,6 +1088,41 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result);
   });
 
+
+  app.post(API_PATHS.m2mAdoptStripeSubscription, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (!tenant.value) return respond(err(tenantNotFound()));
+    const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
+    if (!authed.ok) return respond(authed);
+    if (!apiKeyHasCapability(authed.value, 'enrollment:create')) return respond(err(forbidden('enrollment:create is not permitted')));
+    const limited = await claimRateLimitWindow({
+      scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
+      window: { limit: 60, windowMs: 60_000 },
+    }, { buckets: deps.rateLimitBuckets, clock: deps.clock });
+    if (!limited.ok) return respond(limited);
+    const parsed = adoptStripeSubscriptionRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid subscription request')));
+    return respond(await m2mAdoptStripeSubscription(tenant.value.tenant.id, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.m2mListStripeSubscriptions, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (!tenant.value) return respond(err(tenantNotFound()));
+    const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
+    if (!authed.ok) return respond(authed);
+    if (!apiKeyHasCapability(authed.value, 'enrollment:create')) return respond(err(forbidden('enrollment:create is not permitted')));
+    const limited = await claimRateLimitWindow({
+      scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
+      window: { limit: 60, windowMs: 60_000 },
+    }, { buckets: deps.rateLimitBuckets, clock: deps.clock });
+    if (!limited.ok) return respond(limited);
+    const parsed = listStripeSubscriptionsInputSchema.safeParse({ ...c.req.query(), ...(c.req.query('unadopted') === undefined ? {} : { unadopted: c.req.query('unadopted') === 'true' ? true : c.req.query('unadopted') === 'false' ? false : c.req.query('unadopted') }) });
+    if (!parsed.success) return respond(err(validation('Invalid subscription request')));
+    return respond(await m2mListStripeSubscriptions(tenant.value.tenant.id, parsed.data, deps));
+  });
+
   registerAuthenticatedMarketingRoutes(app, deps);
   registerM2mMarketingContactRoutes(app, deps);
   registerMarketingImportWorkerRoute(app, deps);
@@ -2032,6 +2070,18 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = memberRemoveInputSchema.safeParse({ memberId: c.req.param('memberId') });
     if (!parsed.success) return respond(err(validation('Invalid member id', parsed.error.flatten())));
     return respond(await removeMember(ctxOf(c), parsed.data, deps));
+  });
+
+  app.post(API_PATHS.adoptStripeSubscription, async (c) => {
+    const parsed = adoptStripeSubscriptionRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid subscription adoption payload')));
+    return respond(await adoptStripeSubscription(ctxOf(c), parsed.data, deps));
+  });
+
+  app.get(API_PATHS.listStripeSubscriptions, async (c) => {
+    const parsed = listStripeSubscriptionsInputSchema.safeParse({ ...c.req.query(), ...(c.req.query('unadopted') === undefined ? {} : { unadopted: c.req.query('unadopted') === 'true' ? true : c.req.query('unadopted') === 'false' ? false : c.req.query('unadopted') }) });
+    if (!parsed.success) return respond(err(validation('Invalid Stripe subscription query')));
+    return respond(await listStripeSubscriptions(ctxOf(c), parsed.data, deps));
   });
 
   app.post(API_PATHS.grantsCreate, async (c) => {

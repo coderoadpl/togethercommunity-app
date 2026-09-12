@@ -1,3 +1,4 @@
+import { validation } from '#core/domain/index.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -273,6 +274,7 @@ const deps = (input: {
     subscriptions: {
       findById: async () => null,
       findByProviderSubscriptionId: async () => null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async () => [],
       create: async () => undefined,
       update: async () => null,
@@ -503,6 +505,7 @@ const deps = (input: {
         },
       }),
     },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(appDeps) },
     paymentTransaction: {
       run: async (operation) =>
         operation({
@@ -8114,5 +8117,47 @@ describe('post purge route', () => {
     });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('Stripe subscription adoption authorization', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json', 'x-api-key': 'adoption-key' };
+  const payload = { subscriptionId: 'sub_existing', memberId: 'member-1', productId: 'product-1' };
+
+  it.each(['enrollment', 'marketing', 'transactional'] as const)('requires the enrollment scope: %s', async (scope) => {
+    const base = deps();
+    base.tenantApiKeys.findActiveByHash = async (tenantId, hash) => tenantId === acme.id && hash === 'hash:adoption-key' ? {
+      id: 'key-1', tenantId, name: 'Migration', keyHash: hash, scopes: [scope],
+      createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
+    } : null;
+    const retrieve = vi.fn(async () => err(validation('Reached tenant Stripe account')));
+    base.payment.retrieveStripeSubscription = retrieve;
+    const app = buildApp(base);
+    const response = await app.request(API_PATHS.m2mAdoptStripeSubscription, { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(response.status).toBe(scope === 'enrollment' ? 400 : 403);
+    expect(retrieve).toHaveBeenCalledTimes(scope === 'enrollment' ? 1 : 0);
+    if (scope === 'enrollment') expect(retrieve).toHaveBeenCalledWith(acme.id, payload.subscriptionId);
+  });
+
+  it('rejects absent and cross-tenant API keys and enforces the rate limit', async () => {
+    const base = deps();
+    const retrieve = vi.fn(async () => err(validation('Reached Stripe')));
+    base.payment.retrieveStripeSubscription = retrieve;
+    const request = { method: 'POST', headers, body: JSON.stringify(payload) };
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(401);
+    base.tenantApiKeys.findActiveByHash = async (tenantId) => tenantId === acme.id ? {
+      id: 'key-1', tenantId, name: 'Migration', keyHash: 'hash:adoption-key', scopes: ['enrollment'],
+      createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
+    } : null;
+    base.rateLimitBuckets.claim = async () => false;
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(429);
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, { ...request, headers: { ...headers, host: 'globex.localhost:48730' } })).status).toBe(401);
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it('denies ordinary members on Studio adoption and Stripe listing', async () => {
+    const app = scopedApp('member');
+    expect((await app.request(API_PATHS.adoptStripeSubscription, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(403);
+    expect((await app.request(API_PATHS.listStripeSubscriptions, { headers })).status).toBe(403);
   });
 });

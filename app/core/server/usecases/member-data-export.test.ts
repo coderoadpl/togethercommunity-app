@@ -104,6 +104,7 @@ const deps = (
   subscriptions: {
     findById: async () => null,
     findByProviderSubscriptionId: async () => null,
+    listKnownProviderSubscriptionIds: async () => [],
     listForMember: async () => [],
     create: async () => undefined,
     update: async () => null,

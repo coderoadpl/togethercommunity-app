@@ -6,7 +6,7 @@ export const priceKindSchema = z.enum(['one_time', 'recurring']);
 
 export type PriceKind = z.infer<typeof priceKindSchema>;
 
-export const priceIntervalSchema = z.enum(['month', 'year']);
+export const priceIntervalSchema = z.enum(['day', 'week', 'month', 'year']);
 
 export type PriceInterval = z.infer<typeof priceIntervalSchema>;
 
@@ -40,6 +40,9 @@ export const productPriceSchema = z
     amountCents: z.number().int().nonnegative(),
     currency: currencySchema,
     active: z.boolean(),
+    providerPriceId: z.string().nullable().optional(),
+    imported: z.boolean().optional(),
+    intervalCount: z.number().int().positive().optional(),
     createdAt: z.string().datetime(),
   })
   .superRefine(requireIntervalMatchesKind);
@@ -50,7 +53,7 @@ export const newProductPriceSchema = z
   .object({
     productId: z.string().min(1),
     kind: priceKindSchema,
-    interval: priceIntervalSchema.optional(),
+    interval: z.enum(['month', 'year']).optional(),
     amountCents: z
       .number()
       .int('Amount must be a whole number of cents')
@@ -234,9 +237,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const graceExpiresAt = (currentPeriodEnd: string): string =>
   new Date(Date.parse(currentPeriodEnd) + SUBSCRIPTION_GRACE_DAYS * DAY_MS).toISOString();
 
-export const nextPeriodEnd = (from: string, interval: PriceInterval): string => {
+export const nextPeriodEnd = (from: string, interval: PriceInterval, count = 1): string => {
   const date = new Date(from);
-  if (interval === 'month') date.setUTCMonth(date.getUTCMonth() + 1);
-  else date.setUTCFullYear(date.getUTCFullYear() + 1);
+  if (interval === 'day' || interval === 'week') date.setUTCDate(date.getUTCDate() + count * (interval === 'week' ? 7 : 1));
+  else if (interval === 'month') date.setUTCMonth(date.getUTCMonth() + count);
+  else date.setUTCFullYear(date.getUTCFullYear() + count);
   return date.toISOString();
 };

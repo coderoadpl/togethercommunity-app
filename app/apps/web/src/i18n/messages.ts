@@ -4,6 +4,7 @@ import type {
   LessonBlockType,
   MemberEventType,
   SnsWebhookDeliveryOutcome,
+  StripeAdoptionRefusal,
   TenantAuditEventKind,
   VersionPreviewFieldName,
 } from '#core/domain/index.js';
@@ -978,6 +979,8 @@ export interface Messages {
     oneTime: string;
     recurring: string;
     intervalLabel: string;
+    importedPrice: string;
+    importedPeriod: (params: { interval: 'day' | 'week' | 'month' | 'year'; count: number }) => string;
     month: string;
     year: string;
     active: string;
@@ -1299,6 +1302,12 @@ export interface Messages {
     subscriptionWillCancel: string;
     subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
     providerLabels: Record<'stripe' | 'simulated', string>;
+    adoptSubscription: string;
+    adoptionHint: string;
+    subscriptionIdLabel: string;
+    adoptingSubscription: string;
+    adoptionRefusals: Record<StripeAdoptionRefusal, string>;
+    timelineAdoption: (params: { product: string }) => string;
     timelineHeading: string;
     timelineLoading: string;
     timelineEmpty: string;

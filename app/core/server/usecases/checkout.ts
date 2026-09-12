@@ -69,7 +69,7 @@ export const validateCheckoutSelection = async (
   let price: ProductPrice | null = null;
   if (input.priceId !== undefined) {
     price = await deps.prices.findById(tenantId, input.priceId);
-    if (!price || price.productId !== product.id || !price.active) {
+    if (!price || price.productId !== product.id || !price.active || price.imported === true || (price.interval !== null && price.interval !== 'month' && price.interval !== 'year')) {
       return err(notFound(`No active price "${input.priceId}" for this product`));
     }
   }
@@ -200,7 +200,7 @@ export const startCheckoutSession = async (
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
-    ...(price !== null && price.kind === 'recurring' && price.interval !== null
+    ...(price !== null && price.kind === 'recurring' && (price.interval === 'month' || price.interval === 'year')
       ? { recurringInterval: price.interval }
       : {}),
     ...(checkoutConsentCaptureId === undefined ? {} : { checkoutConsentCaptureId }),

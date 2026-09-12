@@ -1,3 +1,5 @@
+import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
+import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
 import { type z } from 'zod';
@@ -2365,6 +2367,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  adoptStripeSubscription: (input: AdoptStripeSubscriptionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.adoptStripeSubscription.method, API_ROUTES.adoptStripeSubscription.path, adoptStripeSubscriptionOutputSchema, input, signal),
+  m2mAdoptStripeSubscription: (input: AdoptStripeSubscriptionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.m2mAdoptStripeSubscription.method, API_ROUTES.m2mAdoptStripeSubscription.path, adoptStripeSubscriptionOutputSchema, input, signal),
+  listStripeSubscriptions: (input: ListStripeSubscriptionsInput = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (input.status !== undefined) query.set('status', input.status);
+    if (input.unadopted !== undefined) query.set('unadopted', String(input.unadopted));
+    if (input.startingAfter !== undefined) query.set('startingAfter', input.startingAfter);
+    return request(options, API_ROUTES.listStripeSubscriptions.method, `${API_ROUTES.listStripeSubscriptions.path}?${query}`, listStripeSubscriptionsOutputSchema, undefined, signal);
+  },
+  m2mListStripeSubscriptions: (input: ListStripeSubscriptionsInput = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (input.status !== undefined) query.set('status', input.status);
+    if (input.unadopted !== undefined) query.set('unadopted', String(input.unadopted));
+    if (input.startingAfter !== undefined) query.set('startingAfter', input.startingAfter);
+    return request(options, API_ROUTES.m2mListStripeSubscriptions.method, `${API_ROUTES.m2mListStripeSubscriptions.path}?${query}`, listStripeSubscriptionsOutputSchema, undefined, signal);
+  },
   m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>
     request(options, API_ROUTES.m2mEnroll.method, API_ROUTES.m2mEnroll.path, m2mEnrollOutputSchema, input, signal),
   sendM2mTransactionalMessage: (input: M2mTransactionalMessageRequest, signal?: AbortSignal) =>

@@ -160,6 +160,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
     subscriptions: {
       findById: async (_tenantId, id) => subscriptions.get(id) ?? null,
       findByProviderSubscriptionId: async () => null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async (_tenantId, memberId) =>
         Array.from(subscriptions.values()).filter((s) => s.memberId === memberId),
       create: async (_tenantId, subscription) => {

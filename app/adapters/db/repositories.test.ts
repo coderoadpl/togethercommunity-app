@@ -1129,6 +1129,9 @@ describe('member subscription repository', () => {
     const repo = createMemberSubscriptionRepository(db);
     expect(await repo.findByProviderSubscriptionId(ACME, 'psub-acme')).toMatchObject({ id: 'sub-acme' });
     expect(await repo.findByProviderSubscriptionId(GLOBEX, 'psub-acme')).toBeNull();
+    expect(await repo.listKnownProviderSubscriptionIds(ACME, ['psub-acme', 'psub-unknown'])).toEqual(['psub-acme']);
+    expect(await repo.listKnownProviderSubscriptionIds(GLOBEX, ['psub-acme'])).toEqual([]);
+    expect(await repo.listKnownProviderSubscriptionIds(ACME, [])).toEqual([]);
     expect((await repo.listForMember(ACME, 'mem-acme')).map((s) => s.id)).toEqual(['sub-acme']);
     expect(await repo.countActive(ACME, NOW)).toBe(1);
     expect(await repo.countActive(GLOBEX, NOW)).toBe(0);

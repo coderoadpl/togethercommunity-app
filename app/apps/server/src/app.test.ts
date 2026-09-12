@@ -42,6 +42,7 @@ import {
   MAGIC_LINK_LANGUAGE_HEADER,
   notFound,
   ok,
+  validation,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -6979,7 +6980,82 @@ describe('checkout consent ordering', () => {
     );
   });
 
-  it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
+  it('rejects a stripe webhook for an unknown tenant without verifying or fulfilling it', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const verifyWebhookEvent = vi.fn();
+    const base = deps({ tenants: [acme] });
+    const app = buildApp({
+      ...base,
+      logger,
+      payment: { ...base.payment, verifyWebhookEvent },
+    } satisfies AppDeps);
+
+    const response = await app.request('/api/webhooks/stripe/t-missing', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(verifyWebhookEvent).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] ignored tenant=t-missing status=unknown',
+    );
+  });
+
+  it.each<[string, string | undefined]>([
+    ['missing', undefined],
+    ['invalid', 'bad-signature'],
+  ])('rejects a stripe webhook with a %s signature', async (_label, signatureHeader) => {
+    const verifyWebhookEvent = vi.fn(async () =>
+      err(validation('Stripe webhook signature verification failed')));
+    const base = deps({ tenants: [acme] });
+    const app = buildApp({
+      ...base,
+      payment: { ...base.payment, verifyWebhookEvent },
+    } satisfies AppDeps);
+    const headers = signatureHeader === undefined ? {} : { 'stripe-signature': signatureHeader };
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(verifyWebhookEvent).toHaveBeenCalledWith({
+      payloadRaw: '{}',
+      signatureHeader: signatureHeader ?? '',
+      webhookSecret: 'plaintext',
+    });
+  });
+
+  it('acknowledges a verified stripe webhook for an ignored event type', async () => {
+    const base = deps({ tenants: [acme] });
+    const app = buildApp(base);
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { received: true, processed: false },
+    });
+  });
+
+  it('rejects a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
     const verifyWebhookEvent = vi.fn();
     const base = deps({ tenants: [{ ...acme, status: 'suspended' }] });
@@ -6995,10 +7071,10 @@ describe('checkout consent ordering', () => {
       body: '{}',
     });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      data: { received: true, processed: false },
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
     });
     expect(verifyWebhookEvent).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(

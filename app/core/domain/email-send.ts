@@ -4,6 +4,31 @@ import { emailEventMailKindSchema } from './email-event.js';
 import { ERROR_CODES } from './errors.js';
 import { normalizeEmail } from './email.js';
 
+const emailSendSourceKindSchema = z.enum([
+  'auth-magic-link',
+  'auth-password-reset',
+  'auth-email-verification',
+  'welcome-sign-in',
+  'reset-password',
+  'verify-email',
+  'magic-link',
+  'thread-reply',
+  'lesson-question',
+  'space-post',
+  'direct-message',
+  'space-event',
+  'subscription-payment-failed',
+  'subscription-ended',
+  'support-message',
+  'member-erasure-request',
+  'reputation-alert',
+  'marketing-consent-confirmation',
+  'm2m-transactional',
+  'marketing-campaign',
+]);
+
+export const EMAIL_SEND_SOURCE_KINDS = emailSendSourceKindSchema.options;
+
 const emailSendStatusSchema = z.enum([
   'queued',
   'pending',
@@ -38,6 +63,7 @@ export const emailSendProjectionSchema = z.object({
   kind: emailEventMailKindSchema,
   recipient: z.string().transform(normalizeEmail),
   subject: z.string().min(1),
+  sourceKind: emailSendSourceKindSchema,
   source: z.string().min(1),
   sourceApp: z.string().min(1).nullable(),
   status: emailSendStatusSchema,
@@ -65,6 +91,7 @@ export const emailSendListQuerySchema = z.object({
   contactId: z.string().min(1).optional(),
   runId: z.string().min(1).optional(),
   sourceApp: z.string().trim().min(1).max(120).optional(),
+  recipient: z.string().trim().min(1).max(320).transform(normalizeEmail).optional(),
   search: z.string().trim().min(1).max(200).optional(),
   cursor: emailSendCursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -83,6 +110,7 @@ export const emailSendExportFileSchema = z.object({
 export type EmailSendStatus = z.output<typeof emailSendStatusSchema>;
 export type EmailDeliveryStatus = z.output<typeof emailDeliveryStatusSchema>;
 export type TransactionalEmailTransport = z.output<typeof transactionalEmailTransportSchema>;
+export type EmailSendSourceKind = z.output<typeof emailSendSourceKindSchema>;
 export type EmailSendProjection = z.output<typeof emailSendProjectionSchema>;
 export type EmailSendListQuery = z.output<typeof emailSendListQuerySchema>;
 export type EmailSendExportFile = z.output<typeof emailSendExportFileSchema>;

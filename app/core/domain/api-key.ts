@@ -4,6 +4,7 @@ import { capabilitiesForPrincipal, type Capability } from './authorization.js';
 import { transactionalLanguageSchema } from './transactional-email.js';
 
 const tenantApiKeyScopeSchema = z.enum([
+  'report:read',
   'enrollment',
   'marketing',
   'transactional',
@@ -59,8 +60,11 @@ export const createApiKeyInputSchema = z.object({
     ctx.addIssue({
       code: 'custom',
       path: ['scopes'],
-      message: 'Import scopes cannot be combined with enrollment, marketing, or transactional scopes',
+      message: 'Import scopes cannot be combined with other scopes',
     });
+  }
+  if (scopes.includes('report:read') && scopes.some((scope) => scope !== 'report:read')) {
+    ctx.addIssue({ code: 'custom', path: ['scopes'], message: 'Report scope cannot be combined with write scopes' });
   }
   if (hasImportScope && input.expiresAt == null) {
     ctx.addIssue({
@@ -74,6 +78,7 @@ export const createApiKeyInputSchema = z.object({
 export type CreateApiKeyInput = z.input<typeof createApiKeyInputSchema>;
 
 const capabilitiesByScope: Record<TenantApiKeyScope, readonly Capability[]> = {
+  'report:read': capabilitiesForPrincipal('report-api-key'),
   enrollment: ['enrollment:create'],
   marketing: capabilitiesForPrincipal('api-key').filter((capability) => capability !== 'enrollment:create'),
   transactional: capabilitiesForPrincipal('transactional-api-key'),

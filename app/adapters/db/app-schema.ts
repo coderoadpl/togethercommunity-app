@@ -953,7 +953,7 @@ export const tenantApiKeys = pgTable(
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
     scopes: jsonb('scopes').$type<Array<
-      'enrollment' | 'marketing' | 'transactional' | 'import:content' | 'import:users'
+      'enrollment' | 'marketing' | 'transactional' | 'import:content' | 'import:users' | 'report:read'
     >>(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at'),

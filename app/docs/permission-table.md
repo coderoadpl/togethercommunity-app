@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 369. Exported `Ctx` use-case rows: 288.
+Closed capability count: 116. Route rows: 371. Exported `Ctx` use-case rows: 290.
 
 ## Human-readable diff
 
@@ -30,6 +30,8 @@ no changes
 
 | Route | Required capability | BEFORE | AFTER | Machine-equivalent | Evidence |
 |---|---|---|---|---|---|
+| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | public route manifest |
+| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | public route manifest |
 | `GET /manifest.webmanifest` | offer:read | public | public | yes | public route manifest |
 | `GET /robots.txt` | offer:read | public | public | yes | public route manifest |
 | `GET /sitemap.xml` | offer:read | public | public | yes | public route manifest |
@@ -407,6 +409,8 @@ no changes
 | `account-sessions.ts#listMyAccountSessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyAccountSession` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyOtherAccountSessions` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
+| `activity-reports.ts#getActivitySummary` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
+| `activity-reports.ts#getMemberActivity` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
 | `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |

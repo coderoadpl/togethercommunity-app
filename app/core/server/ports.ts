@@ -1,3 +1,4 @@
+import type { ActivitySummary, ActivitySummaryQuery, MemberActivity, MemberActivityQuery } from '#core/domain/index.js';
 import type {
   AppError,
   Course,
@@ -2351,4 +2352,9 @@ export interface IdGenerator {
 
 export interface Clock {
   nowIso(): string;
+}
+
+export interface ActivityReportRepository {
+  activitySummary(tenantId: string, query: ActivitySummaryQuery): Promise<ActivitySummary>;
+  memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }

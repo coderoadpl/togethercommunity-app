@@ -56,6 +56,7 @@ export const ImportApiKeys = () => {
   const queryClient = useQueryClient();
   const keys = useQuery(actions.apiKeys);
   const [name, setName] = useState('');
+  const [reportScope, setReportScope] = useState(false);
   const [contentScope, setContentScope] = useState(false);
   const [usersScope, setUsersScope] = useState(false);
   const [expiryDate, setExpiryDate] = useState(() => relativeDateInputValue(IMPORT_API_KEY_DEFAULT_EXPIRY_DAYS));
@@ -70,6 +71,7 @@ export const ImportApiKeys = () => {
     ...actions.createApiKey,
     onSuccess: async () => {
       setName('');
+      setReportScope(false);
       setContentScope(false);
       setUsersScope(false);
       setExpiryDate(relativeDateInputValue(IMPORT_API_KEY_DEFAULT_EXPIRY_DAYS));
@@ -84,19 +86,20 @@ export const ImportApiKeys = () => {
     },
   });
 
-  const hasScope = contentScope || usersScope;
+  const hasScope = reportScope || contentScope || usersScope;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const scopes = [
+      ...(reportScope ? ['report:read'] as const : []),
       ...(contentScope ? ['import:content'] as const : []),
       ...(usersScope ? ['import:users'] as const : []),
     ];
-    if (scopes.length === 0 || expiryDate === '') return;
-    create.mutate({ name, scopes, expiresAt: expiryIsoForDate(expiryDate) });
+    if (scopes.length === 0 || (!reportScope && expiryDate === '')) return;
+    create.mutate({ name, scopes, expiresAt: reportScope ? null : expiryIsoForDate(expiryDate) });
   };
 
   const importKeys = keys.data?.apiKeys.filter((key) =>
-    key.scopes?.some(isImportApiKeyScope) === true) ?? [];
+    key.scopes?.some((scope) => isImportApiKeyScope(scope) || scope === 'report:read') === true) ?? [];
   const locale = language === 'pl' ? 'pl-PL' : 'en-US';
   const formatDate = (value: string): string =>
     new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value));
@@ -119,6 +122,7 @@ export const ImportApiKeys = () => {
           <FormControlLabel
             control={(
               <Checkbox
+                disabled={reportScope}
                 checked={contentScope}
                 onChange={(event) => setContentScope(event.target.checked)}
                 data-testid="import-api-key-content-scope"
@@ -129,6 +133,7 @@ export const ImportApiKeys = () => {
           <FormControlLabel
             control={(
               <Checkbox
+                disabled={reportScope}
                 checked={usersScope}
                 onChange={(event) => setUsersScope(event.target.checked)}
                 data-testid="import-api-key-users-scope"
@@ -136,8 +141,17 @@ export const ImportApiKeys = () => {
             )}
             label={t.integrations.importKeysUsersScope}
           />
+          <FormControlLabel
+            control={<Checkbox checked={reportScope} onChange={(event) => {
+              setReportScope(event.target.checked);
+              setContentScope(false);
+              setUsersScope(false);
+            }} />}
+            label={t.integrations.reportKeysScope}
+          />
+          {reportScope ? <Typography variant="caption">{t.integrations.reportKeysHint}</Typography> : null}
         </FormControl>
-        {hasScope ? (
+        {hasScope && !reportScope ? (
           <FormControl fullWidth>
             <FormLabel htmlFor="import-api-key-expiry">{t.integrations.importKeysExpiryLabel}</FormLabel>
             <OutlinedInput
@@ -161,7 +175,7 @@ export const ImportApiKeys = () => {
             type="submit"
             variant="contained"
             data-testid="import-api-key-create"
-            disabled={create.isPending || name.trim() === '' || !hasScope || expiryDate === ''}
+            disabled={create.isPending || name.trim() === '' || !hasScope || (!reportScope && expiryDate === '')}
           >
             {create.isPending ? t.integrations.importKeysCreating : t.integrations.importKeysCreate}
           </Button>
@@ -212,12 +226,12 @@ export const ImportApiKeys = () => {
                           ? t.integrations.importKeysExpired
                           : t.integrations.importKeysRevoked}
                     />
-                    {key.scopes?.filter(isImportApiKeyScope).map((scope) => (
+                    {key.scopes?.filter((scope) => isImportApiKeyScope(scope) || scope === 'report:read').map((scope) => (
                       <Chip
                         key={scope}
                         size="small"
                         variant="outlined"
-                        label={scope === 'import:content'
+                        label={scope === 'report:read' ? t.integrations.reportKeysScope : scope === 'import:content'
                           ? t.integrations.importKeysContentScopeShort
                           : t.integrations.importKeysUsersScopeShort}
                       />
@@ -239,6 +253,7 @@ export const ImportApiKeys = () => {
                       >
                         {t.integrations.importKeysRevoke}
                       </Button>
+                      {key.scopes?.some(isImportApiKeyScope) === true ? (
                       <Button
                         type="button"
                         size="small"
@@ -247,8 +262,9 @@ export const ImportApiKeys = () => {
                       >
                         {t.integrations.importKeysAudit}
                       </Button>
+                      ) : null}
                     </Box>
-                  ) : (
+                  ) : key.scopes?.some(isImportApiKeyScope) === true ? (
                     <Button
                       type="button"
                       size="small"
@@ -257,7 +273,7 @@ export const ImportApiKeys = () => {
                     >
                       {t.integrations.importKeysAudit}
                     </Button>
-                  )}
+                  ) : null}
                   {auditKeyId === key.id ? (
                     audit.isPending ? (
                       <StatusView surface={false} state={{ kind: 'loading', label: t.integrations.importKeysAuditLoading }} />

@@ -1,3 +1,4 @@
+import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
 import { type z } from 'zod';
@@ -467,6 +468,10 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
     const form = new FormData();
     form.append('file', new Blob([input.csv], { type: 'text/csv' }), input.metadata.fileName);

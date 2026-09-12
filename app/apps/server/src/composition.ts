@@ -1,3 +1,5 @@
+import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
+import type { ActivityReportRepository } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
 import { createMarketingContactCampaignTransaction } from '#adapters/db/marketing-contact-campaign-transactions.js';
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
@@ -441,6 +443,7 @@ export interface AppDeps {
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
   contentHash: ContentHash;
+  activityReports: ActivityReportRepository;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   importDailyMemberRecordLimit: number;
   importDailyRecordLimit: number;
@@ -1343,6 +1346,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     importUsersReader,
     importUsers,
     contentHash,
+    activityReports: createActivityReportRepository(db),
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     importDailyMemberRecordLimit: env.IMPORT_DAILY_MEMBER_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,

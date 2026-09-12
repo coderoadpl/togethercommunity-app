@@ -491,3 +491,27 @@ it('encodes a post purge id and parses its receipt', async () => {
   });
   expect(await client.purgePost({ id: 'post/1' })).toEqual({ ok: true, value: { id: 'post/1' } });
 });
+
+
+describe('activity report client', () => {
+  it('encodes report filters and uses the explicit API key transport', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://api.example.test',
+      headers: () => ({ 'x-tenant': 'studio' }),
+      fetchImpl: async (input, init) => {
+        const url = new URL(String(input));
+        expect(url.pathname).toBe('/api/reports/member-activity');
+        expect(url.searchParams.get('excludeEmailPatterns')).toBe('%@example.test,test_%,a+b%');
+        expect(url.searchParams.get('cursor')).toBe('member&2');
+        expect(new Headers(init?.headers).get('x-api-key')).toBe('secret');
+        expect(new Headers(init?.headers).get('x-tenant')).toBe('studio');
+        return jsonResponse({ ok: true, data: { members: [], nextCursor: null } });
+      },
+    });
+    expect(await client.memberActivity({ from: '1998-08-01T00:00:00Z', to: '1998-09-01T00:00:00Z', pivot: '1998-08-15T00:00:00Z', excludeEmailPatterns: '%@example.test,test_%,a+b%', cursor: 'member&2' }, { apiKey: 'secret' })).toEqual(ok({ members: [], nextCursor: null }));
+  });
+  it('validates summary response counts', async () => {
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => jsonResponse({ ok: true, data: { days: [], totals: { membersTotal: -1, membersActive: 0 } } }) });
+    expect((await client.activitySummary({ from: '1998-08-01T00:00:00Z', to: '1998-09-01T00:00:00Z' })).ok).toBe(false);
+  });
+});

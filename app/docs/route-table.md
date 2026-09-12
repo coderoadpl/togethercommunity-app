@@ -7,6 +7,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
+| `GET /api/reports/activity-summary` | public | read | Tenant activity aggregates require an active API key with report:read; session authentication is not accepted |
+| `GET /api/reports/member-activity` | public | read | Tenant member activity requires an active API key with report:read; session authentication is not accepted |
 | `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
 | `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
 | `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |

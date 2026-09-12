@@ -9,6 +9,8 @@ import { z } from 'zod';
 
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, dropDatabase, migrateAndSeed } from './smoke-database.js';
 import {
+  activitySummarySchema,
+  memberActivitySchema,
   API_PATHS,
   deepHealthOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
@@ -1219,6 +1221,25 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
     courses.courses.some((item) => item.id === course.course.id),
     'the enrolled member should see the granted course in their course list',
   );
+
+  const reportKey = apiKeyCreateSchema.parse(expectOk(
+    await acme(['api-keys', 'create', 'CI report key', '--scopes', 'report:read'], creatorHome),
+    'reports: create read-only key',
+  ));
+  const reportRange = ['--from', '1990-01-01T00:00:00Z', '--to', '2100-01-01T00:00:00Z'];
+  const report = (args: string[], secret = reportKey.secret, tenant = 'acme') => run(
+    tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, '--tenant', tenant, 'reports', ...args, ...reportRange],
+    { HOME: studentHome, TOGETHER_API_KEY: secret },
+  );
+  const summary = activitySummarySchema.parse(expectOk(await report(['activity-summary']), 'reports: activity summary'));
+  assert(summary.totals.membersActive > 0, 'reports: logged-in members should be active');
+  const activity = memberActivitySchema.parse(expectOk(await report(['member-activity', '--pivot', '1990-01-01T00:00:00Z']), 'reports: member activity'));
+  assert(activity.members.some((row) => row.memberId === enrolled.memberId && row.sessionsAfter > 0), 'reports: session join should include the enrolled member');
+  expectError(await report(['activity-summary'], key.secret), 'reports: write key forbidden', EXIT_CODE_BY_ERROR_CODE.forbidden, 'forbidden');
+  expectError(await report(['activity-summary'], reportKey.secret, 'studio'), 'reports: tenant isolation', EXIT_CODE_BY_ERROR_CODE.unauthorized, 'unauthorized');
+  expectOk(await acme(['api-keys', 'revoke', reportKey.apiKey.id], creatorHome), 'reports: revoke key');
+  expectError(await report(['activity-summary']), 'reports: revoked key', EXIT_CODE_BY_ERROR_CODE.unauthorized, 'unauthorized');
+
 };
 
 const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> => {

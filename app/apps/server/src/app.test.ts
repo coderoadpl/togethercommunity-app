@@ -314,6 +314,10 @@ const deps = (input: {
     contentHash: {
       sha256: () => 'a'.repeat(64),
     },
+    activityReports: {
+      activitySummary: async () => ({ days: [], totals: { membersTotal: 0, membersActive: 0 } }),
+      memberActivity: async () => ({ members: [], nextCursor: null }),
+    },
     apiKeyRateLimits: {
       claim: async () => true,
       release: async () => undefined,
@@ -8088,4 +8092,61 @@ describe('post purge route', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
+});
+
+describe('API-key activity reports', () => {
+  const query = '?from=1998-08-01T00:00:00Z&to=1998-09-01T00:00:00Z&pivot=1998-08-15T00:00:00Z';
+  const setup = (options: { scopes?: TenantApiKey['scopes']; expired?: boolean; revoked?: boolean; limited?: boolean } = {}) => {
+    const configured = deps();
+    const summary = vi.fn(configured.activityReports.activitySummary);
+    const member = vi.fn(configured.activityReports.memberActivity);
+    configured.activityReports = { activitySummary: summary, memberActivity: member };
+    configured.tenantApiKeys.findActiveByHash = async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:report-key' && !options.revoked ? {
+      id: 'report-key', tenantId, name: 'Reporting', keyHash: hash, scopes: options.scopes === undefined ? ['report:read'] : options.scopes,
+      createdAt: '1998-07-01T00:00:00.000Z', expiresAt: options.expired ? '1998-07-02T00:00:00.000Z' : null, revokedAt: null,
+    } : null;
+    const claim = vi.fn(async () => !options.limited);
+    configured.apiKeyRateLimits.claim = claim;
+    return { app: buildApp(configured), summary, member, claim };
+  };
+  it('cannot enroll members with a read-only report key', async () => {
+    const response = await setup().app.request(API_PATHS.m2mEnroll, {
+      method: 'POST', headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'member@example.test', productId: 'product' }),
+    });
+    expect(response.status).toBe(403);
+  });
+  for (const path of [API_PATHS.activitySummary, API_PATHS.memberActivity]) {
+    it(`${path} accepts only report-scoped keys and passes the authenticated tenant`, async () => {
+      const { app, summary, member, claim } = setup();
+      const response = await app.request(path + query, { headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key' } });
+      expect(response.status).toBe(200);
+      expect(path === API_PATHS.activitySummary ? summary : member).toHaveBeenCalledWith('t-acme', expect.objectContaining({ from: '1998-08-01T00:00:00.000Z' }));
+      expect(claim).toHaveBeenCalledWith('t-acme', expect.objectContaining({ apiKeyId: 'report-key', period: 'minute', limit: 60 }));
+    });
+    it.each([null, ['enrollment'], ['marketing'], ['transactional'], ['import:content']] as const)(`${path} refuses a key without report scope: %j`, async (scopes) => {
+      const { app, summary, member } = setup({ scopes: scopes === null ? null : [...scopes] });
+      expect((await app.request(path + query, { headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key' } })).status).toBe(403);
+      expect(summary).not.toHaveBeenCalled();
+      expect(member).not.toHaveBeenCalled();
+    });
+    it(`${path} rejects absent, expired, revoked and foreign-tenant keys`, async () => {
+      for (const options of [{ expired: true }, { revoked: true }]) {
+        expect((await setup(options).app.request(path + query, { headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key' } })).status).toBe(401);
+      }
+      expect((await setup().app.request(path + query, { headers: { [TENANT_HEADER]: 'acme', authorization: 'Bearer session-token' } })).status).toBe(401);
+      expect((await setup().app.request(path + query, { headers: { [TENANT_HEADER]: 'globex', 'x-api-key': 'report-key' } })).status).toBe(401);
+    });
+    it(`${path} enforces the existing key rate policy before querying`, async () => {
+      const { app, summary, member } = setup({ limited: true });
+      const response = await app.request(path + query, { headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key' } });
+      expect(response.status).toBe(429);
+      expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+      expect(summary).not.toHaveBeenCalled();
+      expect(member).not.toHaveBeenCalled();
+    });
+    it(`${path} rejects invalid ranges`, async () => {
+      expect((await setup().app.request(path + '?from=invalid&to=invalid', { headers: { [TENANT_HEADER]: 'acme', 'x-api-key': 'report-key' } })).status).toBe(400);
+    });
+  }
 });

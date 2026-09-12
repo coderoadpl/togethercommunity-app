@@ -49,6 +49,7 @@ const buildProbeApp = () => {
     c.set('identity', identity);
     return c.json({ ok: true, data: { products: [] } });
   });
+  app.get('/api/reports/member-activity', (c) => c.json({ members: [{ email: 'report-member@example.test' }] }));
   app.get('/api/boom', () => {
     throw new Error('kaboom');
   });
@@ -83,6 +84,16 @@ afterAll(async () => {
 });
 
 describe('telemetryMiddleware', () => {
+  it('keeps report response emails, exclusion filters and API keys out of telemetry', async () => {
+    const response = await buildProbeApp().request('/api/reports/member-activity?excludeEmailPatterns=private@example.test', { headers: { 'x-api-key': 'report-secret' } });
+    expect(response.status).toBe(200);
+    const span = await soleSpan();
+    const logged = JSON.stringify({ attributes: span.attributes, events: span.events, status: span.status, name: span.name });
+    expect(logged).not.toContain('example.test');
+    expect(logged).not.toContain('report-secret');
+    expect(logged).not.toContain('excludeEmailPatterns');
+  });
+
   it('emits exactly one wide event per request with the expected attributes', async () => {
     const response = await buildProbeApp().request('/api/products');
     expect(response.status).toBe(200);

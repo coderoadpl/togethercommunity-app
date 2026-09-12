@@ -67,9 +67,12 @@
             "createdAt": "2026-07-01T12:00:57.000Z",
             "currency": "PLN",
             "id": "price-product-studio-workshop",
+            "imported": false,
             "interval": null,
+            "intervalCount": 1,
             "kind": "one_time",
             "productId": "product-studio-workshop",
+            "providerPriceId": null,
             "tenantId": "tenant-studio"
           }
         ]

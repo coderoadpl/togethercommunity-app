@@ -50,10 +50,10 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ActiveSessions } from '../../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../../components/ui/AuthenticationMethods.js';
-import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
+import { ChangePasswordForm, localizeChangePasswordError } from '../../../components/ui/ChangePasswordForm.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
 import { EmailVerificationStatus } from '../../../components/ui/EmailVerificationStatus.js';
-import { useToastError, useToastOutcome } from '../../../components/ui/Toast.js';
+import { useToast, useToastError, useToastOutcome } from '../../../components/ui/Toast.js';
 import { errorCodeOf, localizePanelError, serverMessageOf, useLanguage, useTranslations } from '../../../i18n/index.js';
 import type { Messages } from '../../../i18n/index.js';
 import {
@@ -1174,6 +1174,10 @@ const SecurityPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const { email } = usePanelContext();
+  const toast = useToast();
+  const reportFailure = (error: Error) => {
+    toast.error(localizePanelError(error, t));
+  };
   const queryClient = useQueryClient();
   const passkeys = useQuery(actions.passkeys);
   const accountSessions = useQuery(actions.accountSessions);
@@ -1192,33 +1196,72 @@ const SecurityPanel = () => {
   const registerPasskey = useMutation({
     ...actions.registerPasskey,
     onSuccess: async () => {
+      toast.success(t.security.passkeyAdded);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
+    onError: reportFailure,
   });
   const removePasskey = useMutation({
     ...actions.removePasskey,
     onSuccess: async () => {
+      toast.success(t.security.passkeyRemoved);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
+    onError: reportFailure,
   });
-  const enableTwoFactor = useMutation(actions.enableTwoFactor);
-  const verifyTotp = useMutation(actions.verifyTotp);
-  const disableTwoFactor = useMutation(actions.disableTwoFactor);
-  const regenerateBackupCodes = useMutation(actions.regenerateBackupCodes);
-  const changePassword = useMutation(actions.changePassword);
-  const requestPasswordReset = useMutation(actions.requestPasswordReset);
-  const requestPasskeyPasswordSetup = useMutation(actions.requestPasswordReset);
+  const enableTwoFactor = useMutation({
+    ...actions.enableTwoFactor,
+    onError: reportFailure,
+  });
+  const verifyTotp = useMutation({
+    ...actions.verifyTotp,
+    onSuccess: () => {
+      toast.success(t.security.twoFactorOn);
+    },
+    onError: reportFailure,
+  });
+  const disableTwoFactor = useMutation({
+    ...actions.disableTwoFactor,
+    onSuccess: () => {
+      toast.success(t.security.twoFactorOff);
+    },
+    onError: reportFailure,
+  });
+  const regenerateBackupCodes = useMutation({
+    ...actions.regenerateBackupCodes,
+    onSuccess: () => {
+      toast.success(t.security.backupCodesRegenerated);
+    },
+    onError: reportFailure,
+  });
+  const changePassword = useMutation({
+    ...actions.changePassword,
+    onSuccess: () => {
+      toast.success(t.changePassword.success);
+    },
+    onError: (error) => {
+      toast.error(localizeChangePasswordError(error, t));
+    },
+  });
+  const requestPasswordReset = useMutation({
+    ...actions.requestPasswordReset,
+    onSuccess: () => {
+      toast.success(t.security.resetSent);
+    },
+    onError: reportFailure,
+  });
+  const requestPasskeyPasswordSetup = useMutation({
+    ...actions.requestPasswordReset,
+    onSuccess: () => {
+      toast.success(t.security.resetSent);
+    },
+    onError: reportFailure,
+  });
   const passwordSetupInput = {
     email,
     redirectTo: new URL('/reset-password', window.location.origin).toString(),
     language,
   };
-  useToastOutcome(
-    requestPasswordReset.isSuccess,
-    t.security.resetSent,
-    requestPasswordReset.error === null ? null : localizePanelError(requestPasswordReset.error, t),
-  );
-
   return (
     <SectionCard title={t.security.heading} data-testid="security-settings">
       <Stack useFlexGap spacing="1.75rem">
@@ -1720,15 +1763,22 @@ const EmailVerificationPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const { email, emailVerified } = usePanelContext();
-  const resendVerification = useMutation(actions.sendVerificationEmail);
+  const toast = useToast();
+  const resendVerification = useMutation({
+    ...actions.sendVerificationEmail,
+    onSuccess: () => {
+      toast.success(t.emailVerification.sent);
+    },
+    onError: () => {
+      toast.error(t.emailVerification.providerError);
+    },
+  });
   return (
     <SectionCard title={t.emailVerification.heading}>
       <EmailVerificationStatus
         email={email}
         emailVerified={emailVerified}
         resendPending={resendVerification.isPending}
-        resendSent={resendVerification.isSuccess}
-        resendError={resendVerification.isError}
         onResend={() => resendVerification.mutate({
           email,
           callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),

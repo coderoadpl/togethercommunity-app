@@ -14,6 +14,7 @@ import {
   type TenantSecretMasked,
 } from '#core/domain/index.js';
 
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
@@ -119,12 +120,15 @@ const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): Strip
   return stripeModeFromKey(decrypted.value);
 };
 
-export const stripeWebhookUrl = (appBaseUrl: string, tenantId: string): string =>
-  `${appBaseUrl.replace(/\/$/, '')}/api/webhooks/stripe/${encodeURIComponent(tenantId)}`;
+export const stripeWebhookUrl = (
+  tenantSlug: string | null,
+  tenantId: string,
+  deps: TenantUrlDeps,
+): string => tenantUrl(tenantSlug, `/api/webhooks/stripe/${encodeURIComponent(tenantId)}`, deps);
 
 export const getTenantSecretsMasked = async (
   ctx: Ctx,
-  deps: TenantSecretDeps & { appBaseUrl: string },
+  deps: TenantSecretDeps & TenantUrlDeps,
 ): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
@@ -132,7 +136,7 @@ export const getTenantSecretsMasked = async (
   return ok({
     secrets: rows.map(masked),
     stripeMode: readStripeMode(rows, deps.secretCrypto),
-    stripeWebhookUrl: stripeWebhookUrl(deps.appBaseUrl, tenant.value),
+    stripeWebhookUrl: stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps),
   });
 };
 

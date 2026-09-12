@@ -14,13 +14,19 @@ import { z } from 'zod';
 
 import {
   DEFAULT_LANGUAGE,
+  magicLink as renderMagicLink,
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
+  resetPassword as renderResetPassword,
+  verifyEmail as renderVerifyEmail,
   type AppError,
   type EmailBranding,
+  type EmailMessage,
+  type EmailOutboxPayload,
+  type RedactedAuthEmailKind,
   type Result,
 } from '#core/domain/index.js';
-import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
+import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator, PlatformAuthSendLog, TransactionalEmailSender } from '#core/server/index.js';
 import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
 import { devMagicLinks, user } from '#adapters/db/schema.js';
@@ -37,6 +43,8 @@ export interface AuthSettings {
   /** Dev-only: persist issued magic links into dev_magic_links (no mailer in the PoC). */
   exposeMagicLinks: boolean;
   emailOutbox: EmailOutboxRepository;
+  emailSender: TransactionalEmailSender;
+  authSendLog: PlatformAuthSendLog;
   ids: IdGenerator;
   clock: Clock;
   dispatchEmail(): void;
@@ -415,6 +423,7 @@ const throwConsentError = (error: AppError): never => {
 };
 
 export interface MagicLinkDeliveryContext {
+  tenantId?: string;
   tenantName?: string;
   language: string;
   /** 'email' sends a magic-link email; 'capture' returns the URL without sending. */
@@ -436,11 +445,13 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
 };
 
 export interface ResetPasswordDeliveryContext {
+  tenantId?: string;
   language: string;
   baseUrl?: string;
 }
 
 export interface EmailVerificationDeliveryContext {
+  tenantId?: string;
   language: string;
   baseUrl: string;
 }
@@ -462,6 +473,98 @@ const boundedContextMap = <T>(maxEntries: number) => {
   };
 };
 
+const AUTH_SEND_ATTEMPTS = 3;
+const AUTH_SEND_RETRY_DELAY_MS = 250;
+
+const afterDelay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => { setTimeout(resolve, milliseconds); });
+
+/**
+ * Redaction forbids storing the rendered body, so the outbox worker can never re-render these
+ * messages: this bounded retry is the only durability the platform transport gets for them.
+ */
+const deliverAuthEmail = async (
+  settings: AuthSettings,
+  input: { id: string; tenantId: string; to: string; message: EmailMessage },
+): Promise<void> => {
+  const message = {
+    tenantId: input.tenantId,
+    to: input.to,
+    ...input.message,
+    forcePlatformTransport: true,
+    unmeteredPlatformSend: true,
+  };
+  let sent = await settings.emailSender.send(message);
+  for (let attempt = 1; attempt < AUTH_SEND_ATTEMPTS && !sent.ok; attempt += 1) {
+    await afterDelay(AUTH_SEND_RETRY_DELAY_MS * attempt);
+    sent = await settings.emailSender.send(message);
+  }
+  const settled = await settings.authSendLog.settle({
+    id: input.id,
+    tenantId: input.tenantId,
+    at: settings.clock.nowIso(),
+    outcome: sent,
+  });
+  if (!settled.ok) {
+    process.stderr.write(`[auth] ${safeLogMessage(`Could not settle the auth send log: ${settled.error.message}`)}\n`);
+  }
+};
+
+const createAuthEmailSender = (settings: AuthSettings) => {
+  const pending = new Set<Promise<void>>();
+  const track = (task: Promise<void>): void => {
+    const tracked = task.catch((cause: unknown) => {
+      process.stderr.write(`[auth] Auth e-mail delivery failed: ${safeErrorMessage(cause)}\n`);
+    });
+    pending.add(tracked);
+    void tracked.finally(() => { pending.delete(tracked); });
+  };
+  return {
+    /**
+     * The log row is queued before the message leaves so a failed transport still leaves a
+     * 'failed' row behind instead of a silently dropped auth mail. Delivery then runs off the
+     * request, so neither the response time nor its status can tell a member of the requesting
+     * space apart from an address that is not one.
+     */
+    send: async (input: {
+      tenantId: string | undefined;
+      to: string;
+      kind: RedactedAuthEmailKind;
+      message: EmailMessage;
+      outboxPayload: EmailOutboxPayload;
+    }): Promise<void> => {
+      const tenantId = input.tenantId;
+      const id = settings.ids.nextId();
+      if (tenantId === undefined) {
+        const queued = await settings.emailOutbox.enqueue({
+          id,
+          tenantId: null,
+          to: input.to,
+          payload: input.outboxPayload,
+          now: settings.clock.nowIso(),
+        });
+        if (!queued.ok) throw new Error(queued.error.message);
+        settings.dispatchEmail();
+        return;
+      }
+      const queued = await settings.authSendLog.queue({
+        id,
+        tenantId,
+        to: input.to,
+        kind: input.kind,
+        now: settings.clock.nowIso(),
+      });
+      if (!queued.ok) {
+        process.stderr.write(`[auth] ${safeLogMessage(`Could not queue the auth send log: ${queued.error.message}`)}\n`);
+      }
+      track(deliverAuthEmail(settings, { id, tenantId, to: input.to, message: input.message }));
+    },
+    drain: async (): Promise<void> => {
+      while (pending.size > 0) await Promise.all([...pending]);
+    },
+  };
+};
+
 export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = boundedContextMap<MagicLinkDeliveryContext>(
     MAGIC_LINK_CONTEXT_MAX_ENTRIES,
@@ -473,6 +576,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES,
   );
   const capturedLinks = new Map<string, { url: string; token: string }>();
+  const authEmails = createAuthEmailSender(settings);
   const cookieDomain = sharedCookieDomain(settings);
 
   const auth = betterAuth({
@@ -598,15 +702,13 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         const context = resetPasswordContexts.get(normalizedEmail) ?? { language: DEFAULT_LANGUAGE };
         resetPasswordContexts.delete(normalizedEmail);
         const actionUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
-        const queued = await settings.emailOutbox.enqueue({
-          id: settings.ids.nextId(),
-          tenantId: null,
+        await authEmails.send({
+          tenantId: context.tenantId,
           to: normalizedEmail,
-          payload: { kind: 'reset-password', language: context.language, actionUrl },
-          now: settings.clock.nowIso(),
+          kind: 'auth-password-reset',
+          message: renderResetPassword(context.language, { actionUrl }),
+          outboxPayload: { kind: 'reset-password', language: context.language, actionUrl },
         });
-        if (!queued.ok) throw new Error(queued.error.message);
-        settings.dispatchEmail();
       },
       // Completing a reset proves control of the mailbox the link was delivered
       // to. Leaving the row unverified would let the next email-primary sign-in
@@ -625,19 +727,17 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           baseUrl: settings.baseUrl,
         };
         emailVerificationContexts.delete(normalizedEmail);
-        const queued = await settings.emailOutbox.enqueue({
-          id: settings.ids.nextId(),
-          tenantId: null,
+        await authEmails.send({
+          tenantId: context.tenantId,
           to: normalizedEmail,
-          payload: {
+          kind: 'auth-email-verification',
+          message: renderVerifyEmail(context.language, { actionUrl: rebaseUrl(url, context.baseUrl) }),
+          outboxPayload: {
             kind: 'verify-email',
             language: context.language,
             actionUrl: rebaseUrl(url, context.baseUrl),
           },
-          now: settings.clock.nowIso(),
         });
-        if (!queued.ok) throw new Error(queued.error.message);
-        settings.dispatchEmail();
       },
     },
     ...(settings.google
@@ -663,21 +763,23 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           if (context.mode === 'capture') {
             capturedLinks.set(normalizedEmail, { url: deliveredUrl, token });
           } else {
-            const queued = await settings.emailOutbox.enqueue({
-              id: settings.ids.nextId(),
-              tenantId: null,
+            await authEmails.send({
+              tenantId: context.tenantId,
               to: normalizedEmail,
-              payload: {
+              kind: 'auth-magic-link',
+              message: renderMagicLink(context.language, {
+                tenantName,
+                url: deliveredUrl,
+                ...(context.branding === undefined ? {} : { branding: context.branding }),
+              }),
+              outboxPayload: {
                 kind: 'magic-link',
                 language: context.language,
                 tenantName,
                 url: deliveredUrl,
                 ...(context.branding === undefined ? {} : { branding: context.branding }),
               },
-              now: settings.clock.nowIso(),
             });
-            if (!queued.ok) throw new Error(queued.error.message);
-            settings.dispatchEmail();
           }
           if (settings.exposeMagicLinks) {
             const createdAt = settings.clock.nowIso();
@@ -730,6 +832,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       capturedLinks.delete(normalizedEmail);
       return captured;
     },
+    flushAuthEmails: () => authEmails.drain(),
   };
 };
 
@@ -798,9 +901,10 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       return { userId: afterConflict.user.id, created: false };
     }
   },
-  requestMagicLink: async ({ email, callbackURL, tenantName, language, baseUrl, branding }) => {
+  requestMagicLink: async ({ email, callbackURL, tenantId, tenantName, language, baseUrl, branding }) => {
     const normalizedEmail = normalizeEmail(email);
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
+      ...(tenantId === undefined ? {} : { tenantId }),
       tenantName: tenantName ?? 'Together',
       language: language ?? DEFAULT_LANGUAGE,
       mode: 'email',

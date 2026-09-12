@@ -121,7 +121,7 @@
       "value": {
         "secrets": [],
         "stripeMode": null,
-        "stripeWebhookUrl": "http://localhost:48730/api/webhooks/stripe/tenant-studio"
+        "stripeWebhookUrl": "http://studio.localhost:63871/api/webhooks/stripe/tenant-studio"
       }
     },
     "me:[]": {

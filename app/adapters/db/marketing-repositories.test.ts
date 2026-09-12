@@ -20,6 +20,7 @@ import {
   createMarketingJobRepository,
   createMarketingConsentRepository,
   createMarketingThrottleRepository,
+  createSesMaintenanceBackoffRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
@@ -93,16 +94,35 @@ describe('marketing database repositories', () => {
     await expect(
       createMarketingJobRepository(db).listSesIdentityRefreshTenantIds(
         '1998-07-21T23:59:59.999Z',
+        NOW,
       ),
     ).resolves.toEqual(['tenant-a']);
     await expect(
-      createMarketingJobRepository(db).listSesTenantIds(NOW),
+      createMarketingJobRepository(db).listSesTenantIds(NOW, NOW),
     ).resolves.toEqual(['tenant-a', 'tenant-b']);
     await expect(
       createMarketingJobRepository(db).listSesTenantIds(
         '1998-07-21T23:59:59.999Z',
+        NOW,
       ),
     ).resolves.toEqual(['tenant-a']);
+  });
+
+  it('holds a deferred SES maintenance tenant back until its retry time', async () => {
+    const jobs = createMarketingJobRepository(db);
+    const backoff = createSesMaintenanceBackoffRepository(db);
+    const retryAt = '1998-07-22T01:00:00.000Z';
+
+    await backoff.defer('tenant-a', { attempts: 1, retryAt });
+
+    await expect(jobs.listSesTenantIds(NOW, NOW)).resolves.toEqual(['tenant-b']);
+    await expect(jobs.listSesIdentityRefreshTenantIds(NOW, retryAt)).resolves.toEqual(['tenant-a', 'tenant-b']);
+    await expect(backoff.countAttempts('tenant-a')).resolves.toBe(1);
+
+    await backoff.clear('tenant-a');
+
+    await expect(backoff.countAttempts('tenant-a')).resolves.toBe(0);
+    await expect(jobs.listSesTenantIds(NOW, NOW)).resolves.toEqual(['tenant-a', 'tenant-b']);
   });
 
   it('lists and summarizes scheduler runs with global and tenant scopes', async () => {

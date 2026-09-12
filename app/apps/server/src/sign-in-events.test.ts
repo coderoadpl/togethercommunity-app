@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SESSION_PATH, BETTER_AUTH_SIGN_OUT_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
@@ -49,8 +49,11 @@ describe('tenant sign-in emission', () => {
     const response = await post(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, { email, password }, 'acme');
     expect(response.status).toBe(200);
     const { token } = z.object({ token: z.string() }).parse(await response.json());
-    const before = await events();
-    expect(before).toMatchObject([{ tenantId: 'acme', memberId: 'shared', type: 'sign-in', payload: {} }]);
+    let before = await events();
+    await vi.waitFor(async () => {
+      before = await events();
+      expect(before).toMatchObject([{ tenantId: 'acme', memberId: 'shared', type: 'sign-in', payload: {} }]);
+    });
     for (const tenant of ['acme', 'studio']) {
       const session = await app.request(new URL(BETTER_AUTH_SESSION_PATH, baseUrl).toString(), { headers: { authorization: `Bearer ${token}`, 'x-tenant': tenant } });
       expect(session.status).toBe(200);
@@ -75,8 +78,11 @@ describe('tenant sign-in emission', () => {
     const link = await deps.authPort.createEnrollmentMagicLink({ email, callbackURL: `${baseUrl}/my`, baseUrl, tenantName: 'Workspace', language: 'en' });
     const response = await app.request(link.url, { headers: { 'x-tenant': 'studio' } });
     expect(response.status).toBe(302);
-    const recorded = await events();
-    expect(recorded).toHaveLength(before.length + 1);
+    let recorded = before;
+    await vi.waitFor(async () => {
+      recorded = await events();
+      expect(recorded).toHaveLength(before.length + 1);
+    });
     expect(recorded.at(-1)).toMatchObject({ tenantId: 'studio', memberId: 'shared', type: 'sign-in' });
     const cookie = response.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const signedOut = await app.request(new URL(BETTER_AUTH_SIGN_OUT_PATH, baseUrl).toString(), { method: 'POST', headers: { origin: baseUrl, cookie, 'x-tenant': 'studio' } });

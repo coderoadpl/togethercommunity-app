@@ -1240,6 +1240,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     dispatchEmail,
     defaultTenantName: 'Together',
     google,
+    logger,
     recordSignIn: async ({ request, userId, sessionId, occurredAt }) => {
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,

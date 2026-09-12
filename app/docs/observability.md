@@ -184,7 +184,7 @@ Checks, in order:
 6. `member-identity` — `/api/me` reports a membership on the tenant.
 7. `student-courses` — the member's course list; on the smoke tenant the seeded `Acme Course` must appear, and its structure must expose an accessible lesson.
 8. `lesson-playback` — the accessible lesson loads with HTTP 200 and a valid student lesson envelope, and resolves a playback URL that is not `unavailable`; on the smoke tenant the seeded lesson carries a Bunny Stream video, so a `bunny` playback URL must resolve.
-9. `studio-tenant-settings` — **skipped**. Tenant API key scopes cover marketing, transactional, enrollment and import capabilities only; none of them grants `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow. No `SMOKE_STUDIO_API_KEY` secret is needed today. Re-enable this check by adding a read scope to `capabilitiesByScope` in `core/domain/api-key.ts` first.
+9. `studio-tenant-settings` — **skipped**. Tenant API key scopes include workflow and report capabilities, but `capabilitiesByScope` does not grant `tenant:settings:read`, so a Studio settings read cannot be authenticated by a key from a workflow. No `SMOKE_STUDIO_API_KEY` secret is needed today. Re-enable this check by adding an explicit tenant-settings read capability to `capabilitiesByScope` in `core/domain/api-key.ts` first.
 
 ### Member checks without credentials
 

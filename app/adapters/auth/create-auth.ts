@@ -45,6 +45,7 @@ export interface AuthSettings {
   google: { clientId: string; clientSecret: string } | null;
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
+  logger?: { warn(message: string): void };
   /** Resolves whether a request host is a tenant's verified custom domain. */
   isVerifiedCustomHost?(host: string): Promise<boolean>;
   validateSignUpConsent?(input: {
@@ -710,12 +711,17 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
               // Two-factor hooks must finish before a new session counts as a sign-in.
               const signedIn = ctx.context.newSession;
               if (signedIn === null || ctx.request === undefined) return;
-              await settings.recordSignIn?.({
-                request: ctx.request,
-                userId: signedIn.user.id,
-                sessionId: signedIn.session.id,
-                occurredAt: signedIn.session.createdAt.toISOString(),
-              });
+              const request = ctx.request;
+              void Promise.resolve()
+                .then(() => settings.recordSignIn?.({
+                  request,
+                  userId: signedIn.user.id,
+                  sessionId: signedIn.session.id,
+                  occurredAt: signedIn.session.createdAt.toISOString(),
+                }))
+                .catch(() => {
+                  settings.logger?.warn('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+                });
             }),
           }],
         },

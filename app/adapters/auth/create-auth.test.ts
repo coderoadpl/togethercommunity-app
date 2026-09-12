@@ -139,6 +139,43 @@ describe('ASVS authentication policy', () => {
 });
 
 describe('real-provider sign-in and passkey proofs', () => {
+  it('contains sign-in event recorder failures after creating a session', async () => {
+    const warning = vi.fn();
+    const recordSignIn = vi.fn(async () => {
+      throw new Error('member-events unavailable for ada@example.test');
+    });
+    const { auth } = buildAuth({ logger: { warn: warning }, recordSignIn });
+    const email = `contained-recorder-${Date.now()}@together.dev`;
+    const password = passwordFixture('password-1234');
+    const signedUp = await signUp(auth, email, { password });
+    expect(signedUp.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+    warning.mockClear();
+    recordSignIn.mockClear();
+
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'studio.localhost:48730',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+        },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.headers.get('set-auth-token')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(recordSignIn).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+  });
+
   it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
     const recordSignIn = vi.fn(async () => undefined);
     const { auth } = buildAuth({ recordSignIn });
@@ -442,6 +479,7 @@ const buildAuth = (options: {
   trustedOrigins?: string[];
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
+  logger?: { warn(message: string): void };
 } = {}) => {
   const db = database.db;
   const emailOutbox = createEmailOutboxRepository(db);
@@ -487,6 +525,7 @@ const buildAuth = (options: {
     google: null,
     ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
     validateSignUpConsent: async ({ accepted }) =>
       consentRequired && accepted !== true
         ? err(validation('Accepting the terms and privacy policy is required'))

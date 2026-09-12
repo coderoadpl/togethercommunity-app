@@ -114,6 +114,14 @@ across campaigns and tenants. Retention and identity/reputation maintenance use 
 `marketing_maintenance` scheduler run to keep their 30-minute schedule. Overdue maintenance runs
 before campaigns so bulk sending cannot consume its entire budget. The batch budget is `min(floor(0.9 × SES rate × send seconds), daily remaining, batch cap)`.
 Delayed cron invocations still run overdue maintenance; failed or incomplete passes retry on the next tick.
+The internal marketing tick runs SES identity refreshes, reputation alerts, outbox dispatch, retention
+and campaign dispatch through one scheduler worker context: the tenant worker identity plus the
+`operator-secret` capability set, which is the narrowest principal holding `scheduler:dispatch`. A failed
+identity refresh or reputation check is recorded on the maintenance run, logged, and the tenant's next
+attempt is pushed out with exponential backoff starting at one minute and capped at one hour. That
+next-attempt time lives on the tenant's SES settings row, so it survives restarts, deploys and serverless
+cold starts, and both maintenance list queries skip the tenant until it passes. A successful pass clears
+it. Campaign dispatch and retention keep running while a tenant is backing off.
 Every transport attempt consumes the shared tenant limiter; transactional traffic reserves half the
 marketing allocation when pending. Cached provider daily usage and local reservations constrain it
 further. Database work and provider latency consume the window, so these are capacity estimates.

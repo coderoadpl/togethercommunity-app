@@ -728,7 +728,7 @@ describe('dispatchAutoInvoiceJobs', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(rescheduled).toEqual([{
       nextAttemptAt: '2026-07-27T10:01:00.000Z',
-      error: 'Error: database unavailable',
+      error: 'database unavailable',
     }]);
   });
 });

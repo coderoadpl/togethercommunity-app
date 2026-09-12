@@ -300,6 +300,7 @@ import type {
   VideoLibraryPort,
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { safeLogMessage } from '#core/server/log-safety.js';
 import {
   DEMO_SEED_PASSWORD,
   isProductionEnvironment,
@@ -917,7 +918,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
   const writeLog = (message: string): void => {
-    process.stderr.write(`${message}\n`);
+    process.stderr.write(`${safeLogMessage(message)}\n`);
   };
   const logger = { error: writeLog, warn: writeLog };
   const devEndpoints = selectDevEndpoints(env);
@@ -1024,7 +1025,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const dispatchEmails = (trigger: 'cron' | 'dev' | 'manual') => dispatchEmailBatch({ ...dispatchDeps, trigger });
   const dispatchEmail = createCoalescedRunner(async () => {
     const result = await dispatchEmails('dev');
-    if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
+    if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   });
   const refreshMarketingQuota = async (tenantId: string) => {
     const settings = await sesSettings.findByTenant(tenantId);
@@ -1071,7 +1072,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   };
   devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
     const result = await dispatchCampaign(tenantId, campaignId, 'dev');
-    if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
+    if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${safeLogMessage(result.error.message)}\n`);
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',

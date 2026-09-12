@@ -1,4 +1,5 @@
 import type { AppError, Result } from '#core/domain/index.js';
+import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
 
 interface KsefDispatcher {
   dispatch(): Promise<Result<unknown, AppError>>;
@@ -16,9 +17,9 @@ export const dispatchKsefInBackground = (
   if (ksef === undefined) return;
   void ksef.dispatch()
     .then((result) => {
-      if (!result.ok) logger.error(`[ksef] ${source} dispatch failed: ${result.error.message}`);
+      if (!result.ok) logger.error(`[ksef] ${source} dispatch failed: ${safeLogMessage(result.error.message)}`);
     })
     .catch((cause: unknown) => {
-      logger.error(`[ksef] ${source} dispatch rejected: ${String(cause)}`);
+      logger.error(`[ksef] ${source} dispatch rejected: ${safeErrorMessage(cause)}`);
     });
 };

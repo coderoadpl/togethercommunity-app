@@ -21,6 +21,7 @@ import {
   type Result,
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
+import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
 import { devMagicLinks, user } from '#adapters/db/schema.js';
 
@@ -475,11 +476,19 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   const cookieDomain = sharedCookieDomain(settings);
 
   const auth = betterAuth({
-    logger: { level: 'error' },
     database: drizzleAdapter(db, { provider: 'pg' }),
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
+    logger: {
+      level: 'error',
+      log: (level, message) => {
+        const safeMessage = typeof message === 'string'
+          ? safeLogMessage(message)
+          : safeErrorMessage(message);
+        process.stderr.write(`[Better Auth] ${level}: ${safeMessage}\n`);
+      },
+    },
     session: {
       expiresIn: AUTH_POLICY.sessionExpiresInSeconds,
       updateAge: AUTH_POLICY.sessionUpdateAgeSeconds,

@@ -64,7 +64,7 @@ export interface SeedSummary {
 }
 
 export const printSeedSummary = (summary: SeedSummary): void => {
-  console.log('Seed applied (creator password: the shared demo password from app/CLAUDE.md):');
+  console.log('Seed applied:');
   for (const creator of summary.creators) {
     console.log(`  creator  ${creator.email}  ->  ${creator.tenantSlug}`);
   }

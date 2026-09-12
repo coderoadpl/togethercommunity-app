@@ -6,6 +6,7 @@ import { resolve, extname, join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { z } from 'zod';
 import { createVisualCapture, settlePage, waitForPaint } from './visual-browser-setup.js';
+import { captureDiagnosticFields } from './storybook-capture-diagnostics.js';
 import { componentScreenNames, componentScreens, componentStoryId } from './storybook-component-screens.js';
 import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
@@ -123,17 +124,18 @@ try {
         const comparison = comparePng({ onCompared: (pixels) => { countedPixels = pixels; }, file, baselinePath: baseline, currentPath: join(shots, `${file}.png`), diffPath: diff, missingBaselineReason: 'Missing golden' });
         const hasBaseline = await stat(baseline).then(() => true, () => false);
         const diagnostics = await page.evaluate(() => ({ calls: document.documentElement.dataset['fixtureCalls'], missing: document.documentElement.dataset['fixtureErrors'], pending: document.documentElement.dataset['fixturePending'], fetching: document.documentElement.dataset['fixtureFetching'], text: document.body.innerText.slice(0, 2000) }));
+        const diagnosticFields = captureDiagnosticFields({ fixtureErrors: diagnostics.missing, text: diagnostics.text, pageErrors: errors });
         if (failure && diagnostics.fetching !== undefined) failure += `; fetching queries: ${diagnostics.fetching}; held calls: ${diagnostics.pending ?? '[]'}`;
-        if ((!updateMode && comparison !== null) || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
+        if ((!updateMode && comparison !== null) || failure || diagnosticFields.failsGate) process.exitCode = 1;
         const byteIdentical = hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`)));
         if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
         const fixturePath = componentScreenNames.has(screen) ? null : resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
         const fixtureSha256 = fixturePath === null ? null : createHash('sha256').update(await readFile(fixturePath)).digest('hex');
-        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
+        const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, missingFixtureCalls: diagnosticFields.missingFixtureCalls, fixtureExpectationIssues: diagnosticFields.fixtureExpectationIssues, unreadableFixtureDiagnostics: diagnosticFields.unreadableFixtureDiagnostics, errorBoundaryRendered: diagnosticFields.errorBoundaryRendered, pageErrors: diagnosticFields.pageErrors, diagnostics };
         if (spec.isolateCapture) await capture.context.close();
         measurements.push(result);
         writeFileSync(join(output, 'measurements.json'), JSON.stringify({ browserVersion, milliseconds: Date.now() - startedAt, measurements }, null, 2));
-        console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${errors.length > 0 ? `; ${errors.join('; ')}` : ''}`);
+        console.log(`${file}: ${result.comparison}; byte-identical=${byteIdentical}${failure ? `; ${failure}` : ''}${diagnosticFields.logSuffix}`);
       }
       await sharedCapture.context.close();
     }

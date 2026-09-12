@@ -1,70 +1,54 @@
 {
   "calls": {
-    "getEmailSend:[\"marketing\",\"send-studio-marketing\"]": {
+    "getEmailSend:[\"transactional\",\"send-studio-auth-magic-link\"]": {
       "ok": true,
       "value": {
         "events": [
           {
-            "createdAt": "2026-06-27T12:00:00.000Z",
-            "id": "event-studio-marketing-queued",
-            "mailKind": "marketing",
-            "meta": {
-              "runId": "scheduler-run-studio-marketing",
-              "source": "broadcast"
-            },
-            "occurredAt": "2026-06-27T12:00:00.000Z",
-            "refId": "send-studio-marketing",
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "id": "event-studio-auth-magic-link-queued",
+            "mailKind": "transactional",
+            "meta": null,
+            "occurredAt": "2026-06-29T12:00:00.000Z",
+            "refId": "send-studio-auth-magic-link",
             "tenantId": "tenant-studio",
             "type": "queued"
           },
           {
-            "createdAt": "2026-06-27T12:00:00.000Z",
-            "id": "event-studio-marketing-accepted",
-            "mailKind": "marketing",
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "id": "event-studio-auth-magic-link-accepted",
+            "mailKind": "transactional",
             "meta": {
-              "sesMessageId": "ses-studio-marketing"
+              "sesMessageId": "ses-studio-auth-magic-link",
+              "transport": "platform"
             },
-            "occurredAt": "2026-06-27T12:00:00.000Z",
-            "refId": "send-studio-marketing",
+            "occurredAt": "2026-06-29T12:00:00.000Z",
+            "refId": "send-studio-auth-magic-link",
             "tenantId": "tenant-studio",
             "type": "accepted"
-          },
-          {
-            "createdAt": "2026-06-27T12:00:00.000Z",
-            "id": "event-studio-marketing-delivered",
-            "mailKind": "marketing",
-            "meta": {
-              "processingTimeMillis": 842
-            },
-            "occurredAt": "2026-06-27T12:00:00.000Z",
-            "refId": "send-studio-marketing",
-            "tenantId": "tenant-studio",
-            "type": "delivered"
           }
         ],
         "send": {
-          "audienceSnapshotId": null,
-          "campaignId": "campaign-studio-observability",
-          "campaignName": "Course launch",
-          "contactId": null,
-          "createdAt": "2026-06-27T12:00:00.000Z",
-          "deliveryOccurredAt": "2026-06-27T12:00:00.000Z",
-          "deliveryStatus": "delivered",
+          "campaignId": null,
+          "campaignName": null,
+          "createdAt": "2026-06-29T12:00:00.000Z",
+          "deliveryOccurredAt": null,
+          "deliveryStatus": null,
           "failureCode": null,
           "failureMessage": null,
-          "id": "send-studio-marketing",
-          "kind": "marketing",
+          "id": "send-studio-auth-magic-link",
+          "kind": "transactional",
           "recipient": "student.active@together.dev",
-          "sentAt": "2026-06-27T12:00:00.000Z",
-          "sesMessageId": "ses-studio-marketing",
+          "sentAt": "2026-06-29T12:00:00.000Z",
+          "sesMessageId": "ses-studio-auth-magic-link",
           "skipReason": null,
-          "source": "broadcast",
+          "source": "auth-magic-link",
           "sourceApp": null,
-          "sourceKind": "marketing-campaign",
+          "sourceKind": "auth-magic-link",
           "status": "sent",
-          "subject": "Your learning plan for July",
+          "subject": "auth-magic-link",
           "tenantId": "tenant-studio",
-          "transport": "tenant-ses"
+          "transport": "platform"
         }
       }
     },
@@ -381,7 +365,7 @@
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/marketing/sends/marketing/send-studio-marketing",
-  "scenario": "panel-marketing-send-detail",
+  "route": "/panel/marketing/sends/transactional/send-studio-auth-magic-link",
+  "scenario": "panel-marketing-send-detail-auth",
   "tenant": "studio"
 }

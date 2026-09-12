@@ -330,6 +330,8 @@ const main = async (): Promise<number> => {
     secureCookies: false,
     exposeMagicLinks: false,
     emailOutbox: createEmailOutboxRepository(db),
+    emailSender: { send: async () => ({ ok: true, value: { messageId: 'import-auth-email', transport: 'platform' as const } }) },
+    authSendLog: { queue: async () => ({ ok: true, value: undefined }), settle: async () => ({ ok: true, value: undefined }) },
     ids: { nextId: () => crypto.randomUUID() },
     clock: { nowIso: () => new Date().toISOString() },
     dispatchEmail: () => undefined,

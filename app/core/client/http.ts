@@ -694,6 +694,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
+    if (input.recipient !== undefined) params.set('recipient', input.recipient);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -785,6 +786,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
+    if (input.recipient !== undefined) params.set('recipient', input.recipient);
     if (input.search !== undefined) params.set('search', input.search);
     return request(
       options,

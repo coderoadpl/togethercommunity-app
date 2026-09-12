@@ -1,4 +1,11 @@
 export interface PublicMarketingMessages {
+  signupEyebrow: string;
+  signupEmail: string;
+  signupName: string;
+  signupSubmit: string;
+  signupThanks: string;
+  signupPending: string;
+
   language: string;
   polish: string;
   english: string;

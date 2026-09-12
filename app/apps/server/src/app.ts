@@ -9,7 +9,7 @@ import { err, internal, notFound, validation } from '#core/domain/index.js';
 
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
-import { requestBodyLimit } from './body-limits.js';
+import { isMarketingSignupSubmissionPath, requestBodyLimit } from './body-limits.js';
 import { trustedAuthRequest } from './auth-network.js';
 import { impersonationGuard } from './impersonation-guard.js';
 import { registerInternalRoutes } from './internal-app.js';
@@ -17,6 +17,7 @@ import {
   assertPublicRouteManifest,
   PUBLIC_ROUTE_MANIFEST,
 } from './public-route-manifest.js';
+import { marketingSignupCorsMiddleware } from './marketing-signup-routes.js';
 import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
@@ -60,8 +61,8 @@ const apiNotFoundMessage = (routes: RouterRoute[], method: string, requestPath: 
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<AppVars>();
 
-  app.use('*', async (c, next) =>
-    secureHeaders({
+  app.use('*', async (c, next) => {
+    await secureHeaders({
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
@@ -78,7 +79,12 @@ export const buildApp = (deps: AppDeps) => {
         frameAncestors: ["'none'"],
       },
       referrerPolicy: 'strict-origin-when-cross-origin',
-    })(c, next));
+    })(c, next);
+    const redirectOrigin = c.get('signupRedirectOrigin');
+    const policy = c.res.headers.get('content-security-policy');
+    if (redirectOrigin !== undefined && policy !== null) c.res.headers.set('content-security-policy', policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`));
+  });
+  app.use('*', marketingSignupCorsMiddleware(deps));
   app.use('*', async (c, next) => {
     const maxSize = requestBodyLimit(c.req.method, c.req.path);
     if (maxSize === undefined) {
@@ -87,7 +93,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     return bodyLimit({
       maxSize,
-      onError: () => respond(err(validation(`Request body exceeds the ${maxSize} byte limit`))),
+      onError: () => isMarketingSignupSubmissionPath(c.req.path) ? new Response(null, { status: 413 }) : respond(err(validation(`Request body exceeds the ${maxSize} byte limit`))),
     })(c, next);
   });
   app.use('*', telemetryMiddleware);

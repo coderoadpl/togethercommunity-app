@@ -21,7 +21,7 @@ import {
 } from '#core/server/index.js';
 
 import { trustedClientIp } from './auth-network.js';
-import { isPublicFormPath } from './body-limits.js';
+import { isPublicFormPath, isMarketingSignupSubmissionPath } from './body-limits.js';
 import { type Env } from './env.js';
 import { respond } from './respond.js';
 
@@ -34,6 +34,8 @@ export interface PublicRateLimitPolicies {
   authResolvesPerIp: RateLimitWindow;
   authResolvesPerTenant: RateLimitWindow;
   deepHealthPerIp: RateLimitWindow;
+  signupsPerIp: RateLimitWindow;
+  signupsPerEmail: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -55,6 +57,8 @@ const PRODUCTION_LIMITS = {
   authResolvesPerIp: 60,
   authResolvesPerTenant: 1_000,
   deepHealthPerIp: 12,
+  signupsPerIp: 10,
+  signupsPerEmail: 3,
 };
 const DEVELOPMENT_LIMITS = {
   writesPerIp: 3_000,
@@ -65,6 +69,8 @@ const DEVELOPMENT_LIMITS = {
   authResolvesPerIp: 6_000,
   authResolvesPerTenant: 100_000,
   deepHealthPerIp: 1_200,
+  signupsPerIp: 1_000,
+  signupsPerEmail: 100,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -79,11 +85,15 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES'
 >;
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
   return {
+    signupsPerIp: { limit: env.PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE ?? fallback.signupsPerIp, windowMs: MINUTE_MS },
+    signupsPerEmail: { limit: env.PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES ?? fallback.signupsPerEmail, windowMs: TEN_MINUTES_MS },
     signInPerIp: {
       limit: env.PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE ?? fallback.signInPerIp,
       windowMs: MINUTE_MS,
@@ -158,7 +168,8 @@ const bucketsFor = (kind: PublicRateLimitKind, policies: PublicRateLimitPolicies
 const requestEmail = async (c: Context): Promise<string | null> => {
   let payload: unknown = null;
   try {
-    payload = JSON.parse(await c.req.raw.clone().text());
+    const body = await c.req.raw.clone().text();
+    payload = c.req.header('content-type')?.toLowerCase().trim().startsWith('application/x-www-form-urlencoded') === true ? Object.fromEntries(new URLSearchParams(body)) : JSON.parse(body);
   } catch {
     return null;
   }
@@ -187,6 +198,16 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
   }
   if (c.req.method !== 'POST') return null;
+  if (isMarketingSignupSubmissionPath(c.req.path)) {
+    const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp(), window: policies.signupsPerIp }, limiter);
+    if (!ip.ok) return rateLimitedResponse(ip.error);
+    const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
+    const email = await requestEmail(c);
+    if (!tenant.ok || tenant.value === null || email === null) return null;
+    const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
+    const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: policies.signupsPerEmail }, limiter);
+    return claimed.ok ? null : rateLimitedResponse(claimed.error);
+  }
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;
   const buckets = bucketsFor(kind, policies);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { EMAIL_SEND_SOURCE_KINDS } from '#core/domain/index.js';
+
 import { en } from './en.js';
 import { format, type Messages } from './messages.js';
 import { pl } from './pl.js';
@@ -56,6 +58,16 @@ describe('i18n dictionaries', () => {
 
     for (const text of stepCopy) {
       expect([text, enumerating.filter((pattern) => pattern.test(text))]).toEqual([text, []]);
+    }
+  });
+
+  it('labels exactly the e-mail send source kinds in every language', () => {
+    const expected = EMAIL_SEND_SOURCE_KINDS
+      .map((kind) => kind.replaceAll(/-(?<letter>.)/gu, (_match, letter: string) => letter.toUpperCase()))
+      .sort();
+
+    for (const messages of Object.values(dictionaries)) {
+      expect(Object.keys(messages.marketing.sourceKindLabels).sort()).toEqual(expected);
     }
   });
 

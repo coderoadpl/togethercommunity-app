@@ -8,7 +8,7 @@ import { FakeEmailHmac, InMemoryCampaignRepository, InMemoryCampaignSendReposito
 import { dispatchMarketingOutbox, marketingSendBudget } from './marketing-dispatch.js';
 
 const nowIso = '2026-09-09T10:00:00.000Z';
-const ctx: Ctx = { identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null, tenantId: 'tenant', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false }, capabilities: capabilitiesForPrincipal('operator-secret') };
+const ctx: Ctx = { identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null, tenantAccess: 'member', tenantId: 'tenant', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false }, capabilities: capabilitiesForPrincipal('operator-secret') };
 const settings: TenantSesSettings = {
   tenantId: 'tenant', fromAddress: 'sender@example.test', fromName: 'Example', replyTo: 'reply@example.test', identity: 'example.test', identityVerifiedAt: nowIso, identityCheckedAt: nowIso, identityCheckError: null,
   configurationSet: 'marketing', snsTopicArn: 'topic', snsSubscriptionEndpoint: null, snsSubscriptionConfirmedAt: null, trackingEnabled: false, autoPauseOnCritical: false,

@@ -7,13 +7,17 @@ import { TenantLogo } from '../../../branding.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { ForeignTenantNotice } from './ForeignTenantNotice.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
 import { BrandLink, PublicSignInButton, SidebarColumn } from './shell-chrome.js';
 
 const COMPACT_PUBLIC_HEADER_QUERY = '(max-width:399px)';
 
-export const AnonShell = ({ children }: { children: ReactNode }) => {
+export const AnonShell = ({
+  children,
+  hostname = window.location.hostname,
+}: { children: ReactNode; hostname?: string }) => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
@@ -64,6 +68,7 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
             pb: '2rem',
           }}
         >
+          <ForeignTenantNotice hostname={hostname} />
           {children}
         </Box>
       </Box>

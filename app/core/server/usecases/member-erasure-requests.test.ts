@@ -48,6 +48,7 @@ const context = (kind: 'member' | 'staff'): Ctx => ({
     email: kind === 'member' ? member.email : 'staff@example.com',
     name: kind,
     emailVerified: true,
+    tenantAccess: kind,
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

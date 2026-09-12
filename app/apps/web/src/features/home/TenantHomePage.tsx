@@ -46,7 +46,8 @@ export const TenantHomePage = ({
   const staff = tenant !== null && tenant.staffRole !== null;
   const memberOnly = tenant !== null && tenant.staffRole === null;
   const anonymousTenantHome =
-    unauthorized && anonymousHome !== undefined && isTenantHost(hostname);
+    (unauthorized || me.data?.tenantAccess === 'none')
+    && tenant === null && anonymousHome !== undefined && isTenantHost(hostname);
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
@@ -128,12 +129,12 @@ const PickTenant = ({
         ) : null}
         {tenants.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(tenants.error, t), retry: { label: t.common.retry, onRetry: () => void tenants.refetch() } }} /> : null}
         <List sx={{ mt: '1.2rem' }} disablePadding>
-          {tenants.data?.tenants.map((m) => (
-            <ListItem key={m.tenant.id} disablePadding>
-              <ListItemButton component="a" href={tenantUrl(m.tenant.slug)} sx={{ px: '0.3rem' }}>
+          {[...(tenants.data?.tenants.map(({ tenant }) => tenant) ?? []), ...(tenants.data?.memberTenants ?? [])].map((community) => (
+            <ListItem key={community.id} disablePadding>
+              <ListItemButton component="a" href={tenantUrl(community.slug)} sx={{ px: '0.3rem' }}>
                 <TenantListItemText
-                  primary={m.tenant.name}
-                  secondary={tenantUrl(m.tenant.slug)}
+                  primary={community.name}
+                  secondary={tenantUrl(community.slug)}
                   slotProps={{ secondary: { variant: 'caption' } }}
                 />
               </ListItemButton>

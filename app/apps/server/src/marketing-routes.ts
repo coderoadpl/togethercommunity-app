@@ -88,6 +88,7 @@ const requireMarketing = (deps: AppDeps): Result<MarketingAppDeps, AppError> => 
 const apiIdentity = (tenant: Tenant): Identity => ({
   userId: 'api-key', email: 'api-key@together.invalid', name: 'Automation API', emailVerified: true,
   image: null,
+  tenantAccess: 'member',
   tenantId: tenant.id, tenantSlug: tenant.slug, tenantName: tenant.name,
   staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,

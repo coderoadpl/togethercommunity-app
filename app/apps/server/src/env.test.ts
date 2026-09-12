@@ -290,6 +290,16 @@ describe('tenant routing mode', () => {
     ]);
   });
 
+  it('allows HTTP on loopback platform subdomains while keeping deployed hosts HTTPS-only', () => {
+    const routing = { port: 48730, singleTenantMode: false, customDomains: [] };
+    expect(selectTrustedAuthOrigins({
+      ...routing, appBaseUrl: 'http://acme.platform.localhost:48730', baseDomain: 'platform.localhost',
+    })).toContain('http://*.platform.localhost:48730');
+    expect(selectTrustedAuthOrigins({
+      ...routing, appBaseUrl: 'https://app.example.test', baseDomain: 'example.test',
+    }).every((origin) => origin.startsWith('https://'))).toBe(true);
+  });
+
   it('trusts tenant subdomains when subdomain routing is configured', () => {
     expect(selectTrustedAuthOrigins({
       appBaseUrl: 'https://example.com',

@@ -71,7 +71,8 @@ export const authorizeTenant = (
   options: AuthorizeOptions = {},
 ): Result<string, AppError> => {
   if (ctx.identity.tenantId === null) {
-    return err(tenantNotFound('Select a tenant'));
+    const visitorDenial = ctx.identity.tenantAccess === 'none' ? authorize(ctx, capability, options) : null;
+    return err(visitorDenial ?? tenantNotFound('Select a tenant'));
   }
   const denial = authorize(ctx, capability, options);
   if (denial !== null) return err(denial);

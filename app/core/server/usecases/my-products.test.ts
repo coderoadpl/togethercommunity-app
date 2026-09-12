@@ -11,6 +11,7 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
   email: 'buyer@together.dev',
   name: 'Buyer',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'member',
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme' : null,
@@ -208,6 +209,6 @@ describe('listMyProducts', () => {
       downloadAssets,
       prices,
     });
-    expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

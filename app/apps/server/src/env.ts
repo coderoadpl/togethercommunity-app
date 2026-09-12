@@ -25,7 +25,7 @@ const optionalCount = z.preprocess(
   z.coerce.number().int().min(0).optional(),
 );
 
-const isLocalHostname = (hostname: string): boolean =>
+export const isLocalHostname = (hostname: string): boolean =>
   hostname === 'localhost'
   || hostname.endsWith('.localhost')
   || /^127(?:\.\d{1,3}){3}$/.test(hostname)

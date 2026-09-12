@@ -16,6 +16,7 @@ const identity = (staffRole: Identity['staffRole']): Identity => ({
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',

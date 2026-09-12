@@ -252,6 +252,9 @@ export const en: Messages = {
     and: 'and',
   },
   tenant: {
+    visitorNotice: ({ email }: { email: string }) => `You are signed in as ${email}, but you are not a member of this community`,
+    visitorOwnCommunity: 'Go to your community',
+    visitorSwitchAccount: 'Sign out and use another account',
     choose: 'Choose a workspace',
     eachOwnDomain: 'Every workspace lives on its own domain',
     welcome: 'Welcome to Together. Open an existing workspace or create a new one.',

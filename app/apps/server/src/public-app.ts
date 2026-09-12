@@ -237,6 +237,7 @@ const anonymousIdentity = (
   email: `${actor.toLowerCase()}@invalid.test`,
   name: actor,
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -492,7 +493,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         if (identity.error.code === 'internal' || identity.error.code === 'unavailable') {
           return respondPublic(identity);
         }
-      } else {
+      } else if (identity.value.tenantAccess !== 'none') {
         authenticated = true;
         ctx = impersonation === undefined || impersonationIdentity === undefined
           ? { identity: identity.value }
@@ -501,7 +502,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     }
     const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
     if (!result.ok) {
-      return respondPublic(user === null && result.error.code === 'forbidden'
+      return respondPublic(!authenticated && result.error.code === 'forbidden'
         ? err(unauthorized())
         : result);
     }

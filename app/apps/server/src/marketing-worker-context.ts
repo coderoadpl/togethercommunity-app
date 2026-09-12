@@ -4,7 +4,7 @@ import type { Ctx } from '#core/server/index.js';
 const workerIdentity = (tenantId: string) => ({
   userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
   emailVerified: true, image: null,
-  tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
+  tenantAccess: 'member' as const, tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,
   memberLanguage: null,
   memberVideoAutoplay: false,

@@ -10,6 +10,7 @@ const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null =
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
   tenantId,
   tenantSlug: tenantId ? 'alpha' : null,
   tenantName: tenantId ? 'Alpha' : null,

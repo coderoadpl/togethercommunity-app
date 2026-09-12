@@ -43,9 +43,9 @@ export const MemberShell = ({
 }: { hostname?: string } = {}) =>
   isConfiguredBaseDomainHost(hostname)
     ? <Navigate to="/" replace />
-    : <TenantMemberShell />;
+    : <TenantMemberShell hostname={hostname} />;
 
-const TenantMemberShell = () => {
+const TenantMemberShell = ({ hostname }: { hostname: string }) => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
@@ -221,7 +221,7 @@ const TenantMemberShell = () => {
 
   if (viewer === 'anonymous') {
     return (
-      <AnonShell>
+      <AnonShell hostname={hostname}>
         {notices}
         {outlet}
       </AnonShell>

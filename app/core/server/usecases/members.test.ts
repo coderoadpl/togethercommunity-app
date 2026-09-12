@@ -41,6 +41,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'staff',
   tenantId,
   tenantSlug,
   tenantName: tenantSlug ? 'Acme' : null,
@@ -59,6 +60,7 @@ const plainMember = (tenantId: string): Identity => ({
   email: 'buyer@together.dev',
   name: 'Buyer',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId,
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -256,7 +258,7 @@ describe('listMembers', () => {
 
   it('requires a resolved tenant', async () => {
     const result = await listMembers({ identity: staff(null, null) }, depsFor({}));
-    expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('scopes members to the staff identity tenant', async () => {

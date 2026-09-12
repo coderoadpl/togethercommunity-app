@@ -9,6 +9,7 @@ const identity: Identity = {
   email: 'creator@example.test',
   name: 'Creator',
   emailVerified: true,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -41,11 +42,25 @@ const deps = (hasAny: boolean, tenantCreationMode: TenantCreationMode) => ({
     findStaffGrant: async () => null,
     findMember: async () => null,
   },
-  tenants: { hasAny: async () => hasAny },
+  accountAvatarTenants: { listTenantIdsForUser: async () => [] },
+  tenants: { hasAny: async () => hasAny, findById: async () => null },
   tenantCreationMode,
 });
 
 describe('listMyTenants', () => {
+  it('includes member communities without duplicating staff workspaces', async () => {
+    const community = { ...membership.tenant, id: 'tenant-member', slug: 'acme' };
+    const result = await listMyTenants({ identity }, {
+      ...deps(true, 'closed'),
+      accountAvatarTenants: { listTenantIdsForUser: async () => [membership.tenant.id, community.id, 'deleted'] },
+      tenants: {
+        hasAny: async () => true,
+        findById: async (id) => id === community.id ? community : null,
+      },
+    });
+    expect(result).toMatchObject({ ok: true, value: { tenants: [membership], memberTenants: [community] } });
+  });
+
   it.each([
     ['open', false, true],
     ['open', true, true],
@@ -56,7 +71,7 @@ describe('listMyTenants', () => {
     const result = await listMyTenants({ identity }, deps(hasAny, mode));
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: allowed, dataResetEnvironment: null },
+      value: { memberTenants: [], tenants: [membership], canCreateTenant: allowed, dataResetEnvironment: null },
     });
   });
 
@@ -67,7 +82,7 @@ describe('listMyTenants', () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: true, dataResetEnvironment: null },
+      value: { memberTenants: [], tenants: [membership], canCreateTenant: true, dataResetEnvironment: null },
     });
   });
 
@@ -78,7 +93,7 @@ describe('listMyTenants', () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [membership], canCreateTenant: false, dataResetEnvironment: null },
+      value: { memberTenants: [], tenants: [membership], canCreateTenant: false, dataResetEnvironment: null },
     });
   });
 
@@ -87,14 +102,15 @@ describe('listMyTenants', () => {
       { identity, capabilities: ['tenant:list-own'] },
       {
         tenantAccess: { listTenantsForStaff: async () => [] },
-        tenants: { hasAny: async () => false },
+        tenants: { hasAny: async () => false, findById: async () => null },
+        accountAvatarTenants: { listTenantIdsForUser: async () => [] },
         tenantCreationMode: 'open',
       },
     );
 
     expect(result).toEqual({
       ok: true,
-      value: { tenants: [], canCreateTenant: false, dataResetEnvironment: null },
+      value: { memberTenants: [], tenants: [], canCreateTenant: false, dataResetEnvironment: null },
     });
   });
 

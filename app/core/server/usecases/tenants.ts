@@ -5,17 +5,19 @@ import {
   ok,
   type AppError,
   type Membership,
+  type Tenant,
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { TenantAccessReader, TenantRepository } from '../ports.js';
+import type { AccountAvatarTenantReader, TenantAccessReader, TenantRepository } from '../ports.js';
 import { authorize } from '../authorize.js';
 import { tenantCreationPolicy } from './create-tenant.js';
 
 export interface MyTenantsResult {
   tenants: Membership[];
+  memberTenants: Tenant[];
   canCreateTenant: boolean;
   dataResetEnvironment: string | null;
 }
@@ -55,7 +57,8 @@ export const listMyTenants = async (
   ctx: Ctx,
   deps: {
     tenantAccess: Pick<TenantAccessReader, 'listTenantsForStaff'>;
-    tenants: Pick<TenantRepository, 'hasAny'>;
+    accountAvatarTenants: AccountAvatarTenantReader;
+    tenants: Pick<TenantRepository, 'hasAny' | 'findById'>;
     tenantCreationMode: TenantCreationMode;
     platformReset?: { environment: string; ownerEmails: readonly string[] };
   },
@@ -63,8 +66,14 @@ export const listMyTenants = async (
   const denial = authorize(ctx, 'tenant:list-own');
   if (denial !== null) return err(denial);
   const tenants = await deps.tenantAccess.listTenantsForStaff(ctx.identity.userId);
+  const memberTenantIds = await deps.accountAvatarTenants.listTenantIdsForUser(ctx.identity.userId);
+  const staffTenantIds = new Set(tenants.map(({ tenant }) => tenant.id));
+  const memberTenants = await Promise.all(memberTenantIds
+    .filter((id) => !staffTenantIds.has(id))
+    .map((id) => deps.tenants.findById(id)));
   return ok({
     tenants,
+    memberTenants: memberTenants.filter((tenant): tenant is Tenant => tenant !== null),
     canCreateTenant: await canCreateTenant(ctx, deps),
     dataResetEnvironment: dataResetEnvironment(ctx, deps.platformReset),
   });

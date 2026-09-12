@@ -269,6 +269,7 @@ export const authResolveOutputSchema = z.object({
 });
 
 export const meOutputSchema = z.object({
+  tenantAccess: z.enum(['none', 'member', 'staff']).default('none'),
   userId: z.string(),
   email: z.string(),
   name: z.string(),
@@ -345,6 +346,7 @@ export const memberBillingOrdersOutputSchema = z.object({
 
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
+  memberTenants: z.array(tenantSchema).default([]),
   canCreateTenant: z.boolean(),
   /** Non-null only for a platform owner on a disposable deployment. */
   dataResetEnvironment: z.string().min(1).nullable().default(null),

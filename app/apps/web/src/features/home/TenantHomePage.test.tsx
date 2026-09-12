@@ -77,6 +77,17 @@ const renderHome = async (component: () => ReactNode = TenantHomePage) => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('TenantHomePage dispatcher', () => {
+  it('renders the visitor home for a signed-in non-member on a tenant host', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    server.use(http.get('/api/me', () => HttpResponse.json({
+      ok: true, data: { ...meWithoutTenant, tenantAccess: 'none' },
+    })));
+    await renderHome(() => <TenantHomePage hostname="studio.localhost" anonymousHome={<div>Visitor home</div>} />);
+    expect(await screen.findByText('Visitor home')).toBeInTheDocument();
+    expect(screen.queryByText(en.tenant.choose)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
+  });
+
   it('redirects a staff member to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })));
     await renderHome();
@@ -117,6 +128,18 @@ describe('TenantHomePage dispatcher', () => {
     expect(await screen.findByText(en.tenant.choose)).toBeInTheDocument();
     expect(screen.getByText(en.tenant.welcome)).toBeInTheDocument();
     expect(await screen.findByLabelText(en.tenant.slugLabel)).toBeInTheDocument();
+  });
+
+  it('links member-only communities from the workspace picker', async () => {
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
+      http.get('/api/tenants', () => HttpResponse.json({
+        ok: true,
+        data: { tenants: [], memberTenants: [tenantsBody.tenants[0]?.tenant], canCreateTenant: false },
+      })),
+    );
+    await renderHome();
+    expect(await screen.findByRole('link', { name: /Acme/u })).toHaveAttribute('href', 'http://acme.localhost:3000');
   });
 
   it('hides tenant creation when the instance policy is closed', async () => {

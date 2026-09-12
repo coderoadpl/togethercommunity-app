@@ -4,6 +4,7 @@ import type {
   LessonBlockType,
   MemberEventType,
   SnsWebhookDeliveryOutcome,
+  StripeAdoptionRefusal,
   TenantAuditEventKind,
   VersionPreviewFieldName,
 } from '#core/domain/index.js';
@@ -1048,6 +1049,8 @@ export interface Messages {
     oneTime: string;
     recurring: string;
     intervalLabel: string;
+    importedPrice: string;
+    importedPeriod: (params: { interval: 'day' | 'week' | 'month' | 'year'; count: number }) => string;
     month: string;
     year: string;
     active: string;
@@ -1369,6 +1372,12 @@ export interface Messages {
     subscriptionWillCancel: string;
     subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
     providerLabels: Record<'stripe' | 'simulated', string>;
+    adoptSubscription: string;
+    adoptionHint: string;
+    subscriptionIdLabel: string;
+    adoptingSubscription: string;
+    adoptionRefusals: Record<StripeAdoptionRefusal, string>;
+    timelineAdoption: (params: { product: string }) => string;
     timelineHeading: string;
     timelineLoading: string;
     timelineEmpty: string;
@@ -2403,6 +2412,9 @@ export interface Messages {
     audienceEstimateHint: string;
     includeLists: string;
     excludeLists: string;
+    listAlreadyExcluded: string;
+    listAlreadyIncluded: string;
+    listAudienceOverlap: string;
     includeConsentedMembers: string;
     excludeProductGrants: string;
     excludeProductGrantsHint: string;
@@ -2574,6 +2586,8 @@ export interface Messages {
     percentageOfSent: (params: { percentage: string }) => string;
     unresolvedAcceptance: (params: { count: number }) => string;
     trackingDisabledCampaignMetrics: string;
+    trackingDisabledCampaignForm: string;
+    trackingSettingsLink: string;
     createdTimeValue: (params: { date: string }) => string;
     scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;
@@ -2605,12 +2619,14 @@ export interface Messages {
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;
+    audiencePreviewFailed: string;
     audienceCount: (params: { count: number }) => string;
     create: string;
     creating: string;
     save: string;
     saving: string;
     schedule: string;
+    campaignScheduleFailed: string;
     scheduling: string;
     sendAtLabel: string;
     pause: string;

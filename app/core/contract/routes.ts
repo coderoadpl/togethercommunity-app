@@ -1,5 +1,10 @@
+import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
+
+export { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema };
+export const adoptStripeSubscriptionRequestSchema = adoptStripeSubscriptionInputSchema;
+
 import { MARKETING_SIGNUP_ROUTES } from './marketing-signup-forms.js';
-import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
+import { contactCampaignAudienceInputSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
 import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
@@ -1584,7 +1589,7 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   status: z.enum(['active', 'archived']),
 });
 export const marketingCampaignCreateInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
   bodyText: marketingBodyTextSchema.nullable().optional(),
   replyTo: marketingReplyToSchema.nullable().optional(),
@@ -1600,12 +1605,12 @@ export const marketingCampaignActionInputSchema = z.object({
   action: z.enum(['pause', 'resume', 'cancel', 'draft']),
 });
 export const marketingAudiencePreviewInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
 });
 export const marketingAudiencePreviewOutputSchema = z.union([contactAudiencePreviewSchema, z.object({ count: z.number().int().nonnegative() })]);
-export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceSchema });
+export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceInputSchema });
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
@@ -1968,6 +1973,10 @@ export const API_ROUTES = {
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
+  adoptStripeSubscription: { method: 'POST', path: '/api/subscriptions/adopt' },
+  listStripeSubscriptions: { method: 'GET', path: '/api/subscriptions/stripe' },
+  m2mAdoptStripeSubscription: { method: 'POST', path: '/api/m2m/subscriptions/adopt' },
+  m2mListStripeSubscriptions: { method: 'GET', path: '/api/m2m/subscriptions/stripe' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   m2mTransactionalMessagesCreate: { method: 'POST', path: '/api/m2m/transactional/messages' },
   m2mTransactionalMessage: { method: 'GET', path: '/api/m2m/transactional/messages/:id' },
@@ -2300,6 +2309,10 @@ export const API_PATHS = {
   bunnyVideos: API_ROUTES.bunnyVideos.path,
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
+  adoptStripeSubscription: API_ROUTES.adoptStripeSubscription.path,
+  listStripeSubscriptions: API_ROUTES.listStripeSubscriptions.path,
+  m2mAdoptStripeSubscription: API_ROUTES.m2mAdoptStripeSubscription.path,
+  m2mListStripeSubscriptions: API_ROUTES.m2mListStripeSubscriptions.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   m2mTransactionalMessagesCreate: API_ROUTES.m2mTransactionalMessagesCreate.path,
   m2mTransactionalMessage: API_ROUTES.m2mTransactionalMessage.path,

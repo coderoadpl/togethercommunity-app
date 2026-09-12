@@ -1,3 +1,5 @@
+import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
+import { memberSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -330,6 +332,7 @@ const harness = (
             subscription.tenantId === tenantId &&
             subscription.providerSubscriptionId === providerSubscriptionId,
         ) ?? null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async (tenantId, memberId) =>
         Array.from(subscriptions.values()).filter(
           (subscription) => subscription.tenantId === tenantId && subscription.memberId === memberId,
@@ -2187,4 +2190,34 @@ describe('simulated subscription lifecycle', () => {
       h.subscription.currentPeriodEnd,
     );
   });
+});
+
+
+it('renews and cancels an adopted subscription without Together checkout metadata', async () => {
+  const price = { ...monthlyPrice(tenantA.id), providerPriceId: 'price_existing', imported: true, active: false };
+  const h = harness({ prices: [price] });
+  const member = memberSchema.parse({ id: 'member-adopted', tenantId: tenantA.id, userId: 'user-adopted',
+    email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: now, deletedAt: null });
+  h.members.set(member.id, member);
+  const adopted = await m2mAdoptStripeSubscription(tenantA.id, { subscriptionId: 'sub_existing', email: member.email, productId: price.productId }, {
+    clock: h.deps.clock, ids: h.deps.ids,
+    payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
+      customerEmail: member.email, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
+      price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation({ ...h.deps, memberEvents: { append: async () => undefined } }) },
+  });
+  expect(adopted.ok).toBe(true);
+  if (!adopted.ok) throw new Error('Adoption failed');
+  expect(h.orders).toHaveLength(0);
+  const paid = invoiceEvent({ id: 'evt-adopted-paid', type: 'invoice.paid', invoiceId: 'in-existing', subscriptionId: 'sub_existing', periodEnd: '1998-09-14T10:00:00.000Z' });
+  expect(await fulfillStripeWebhook(tenantA, paid, h.deps)).toEqual(ok({ processed: true }));
+  expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
+  expect(h.orders).toHaveLength(1);
+  expect(await fulfillStripeWebhook(tenantA, invoiceEvent({ id: 'evt-adopted-failed', type: 'invoice.payment_failed', invoiceId: 'in-failed', subscriptionId: 'sub_existing' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('past_due');
+  expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-updated', type: 'customer.subscription.updated', subscriptionId: 'sub_existing', cancelAtPeriodEnd: true, currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.cancelAtPeriodEnd).toBe(true);
+  expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-deleted', type: 'customer.subscription.deleted', subscriptionId: 'sub_existing', status: 'canceled', currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('canceled');
+  expect(h.errors).toEqual([]);
 });

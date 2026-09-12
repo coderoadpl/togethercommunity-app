@@ -1,10 +1,13 @@
 import Stripe from 'stripe';
 
 import {
+  adoptionRefusal,
   err,
   ok,
   refundCoverage,
   stripeCancelErrorSchema,
+  stripeAdoptionObjectSchema,
+  stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
@@ -243,6 +246,51 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
   };
 
   return {
+    retrieveStripeSubscription: async (tenantId, subscriptionId) => {
+      const client = await clientFor(tenantId);
+      if (!client.ok) return client;
+      let raw: unknown;
+      try {
+        raw = await client.value.subscriptions.retrieve(subscriptionId, { expand: ['customer'] });
+      } catch (cause) {
+        const failure = stripeCancelErrorSchema.safeParse(cause);
+        if (failure.success && failure.data.code === 'resource_missing') {
+          return err(adoptionRefusal('validation', 'not-found', 'Stripe subscription was not found in this account'));
+        }
+        return err(asDiagnostic('Stripe rejected the subscription lookup', cause));
+      }
+      const parsed = stripeAdoptionObjectSchema.safeParse(raw);
+      if (!parsed.success) return err(adoptionRefusal('validation', 'unsupported', 'Stripe subscription requires one fixed recurring price and an accessible customer'));
+      const item = parsed.data.items.data[0];
+      const periodEnd = parsed.data.current_period_end ?? item?.current_period_end;
+      if (item === undefined || periodEnd === undefined || parsed.data.customer.deleted === true) {
+        return err(adoptionRefusal('validation', 'unsupported', 'Stripe subscription has no current period or customer'));
+      }
+      return ok(stripeSubscriptionSnapshotSchema.parse({
+        id: parsed.data.id, status: parsed.data.status,
+        currentPeriodEnd: epochToIso(periodEnd), cancelAtPeriodEnd: parsed.data.cancel_at_period_end,
+        customerEmail: parsed.data.customer.email ?? null,
+        price: { id: item.price.id, amountCents: item.price.unit_amount,
+          currency: item.price.currency.toUpperCase(), interval: item.price.recurring.interval,
+          intervalCount: item.price.recurring.interval_count },
+      }));
+    },
+    listStripeSubscriptions: async (tenantId, input) => {
+      const client = await clientFor(tenantId);
+      if (!client.ok) return client;
+      try {
+        const page = await client.value.subscriptions.list({
+          status: input.status ?? 'all', limit: 100,
+          ...(input.startingAfter === undefined ? {} : { starting_after: input.startingAfter }),
+        });
+        return ok({ subscriptions: page.data.map((subscription) => ({
+          id: subscription.id, status: subscription.status,
+          providerPriceId: subscription.items.data[0]?.price.id ?? null,
+        })), nextCursor: page.has_more ? page.data.at(-1)?.id ?? null : null });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected the subscription listing', cause));
+      }
+    },
     configureWebhook: async (input) => {
       try {
         const webhookEndpoints = createClient(input.restrictedKey).webhookEndpoints;

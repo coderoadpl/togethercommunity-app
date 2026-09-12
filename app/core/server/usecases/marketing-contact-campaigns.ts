@@ -1,15 +1,15 @@
-import { contactCampaignAudienceSchema, err, notFound, ok, validation, type AppError, type Campaign, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
+import { contactCampaignAudienceInputSchema, normalizeStoredContactCampaignAudience, err, notFound, ok, validation, type AppError, type Campaign, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { MarketingContactAudienceDeps } from '../marketing-audience-ports.js';
 import type { CampaignRepository } from '../ports.js';
-import { prepareMarketingContactAudience } from './marketing-contact-audience.js';
+import { prepareMarketingContactAudience, prepareValidatedMarketingContactAudience } from './marketing-contact-audience.js';
 
 export const setMarketingCampaignAudience = async (ctx: Ctx, input: { campaignId: string; audience: ContactCampaignAudience }, deps: MarketingContactAudienceDeps & { campaigns: CampaignRepository }): Promise<Result<{ campaign: Campaign }, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:campaign:write');
   if (!tenant.ok) return tenant;
-  const audience = contactCampaignAudienceSchema.safeParse(input.audience);
+  const audience = contactCampaignAudienceInputSchema.safeParse(input.audience);
   if (!audience.success) return err(validation('Invalid contact audience', audience.error.flatten()));
   const campaign = await deps.campaigns.findById(tenant.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
@@ -20,13 +20,16 @@ export const setMarketingCampaignAudience = async (ctx: Ctx, input: { campaignId
   return updated === null ? err(notFound('Campaign was not found')) : ok({ campaign: updated });
 };
 
-export const scheduleMarketingContactCampaign = async (ctx: Ctx, input: { campaignId: string; sendAt: string }, deps: MarketingContactAudienceDeps & { campaigns: CampaignRepository }): Promise<Result<Campaign, AppError>> => {
+export const scheduleMarketingContactCampaign = async (ctx: Ctx, input: { campaignId: string; sendAt: string }, deps: MarketingContactAudienceDeps & { campaigns: CampaignRepository; logger: { warn(message: string): void } }): Promise<Result<Campaign, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:campaign:send');
   if (!tenant.ok) return tenant;
   const campaign = await deps.campaigns.findById(tenant.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
   if (campaign.status !== 'draft' || campaign.audience === null) return err(validation('A contact campaign must be a draft before scheduling'));
-  const prepared = await prepareMarketingContactAudience(tenant.value, campaign.audience, deps);
+  const audience = normalizeStoredContactCampaignAudience(campaign.audience);
+  if (!audience.ok) return audience;
+  if (audience.value.changed) deps.logger.warn(`[marketing] normalized overlapping contact audience campaign=${campaign.id}`);
+  const prepared = await prepareValidatedMarketingContactAudience(tenant.value, audience.value.audience, deps);
   if (!prepared.ok) return prepared;
   return deps.contactCampaigns.schedule(tenant.value, { ...input, asOf: deps.clock.nowIso() });
 };

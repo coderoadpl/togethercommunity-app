@@ -63,6 +63,7 @@ import {
   ContactImportWizard,
   validateContactImportSearch,
   ListsPanel,
+  SignupFormsPanel,
   ListCreatePanel,
   ListDetailPanel,
   CampaignCreatePage,
@@ -429,6 +430,7 @@ const panelRedirectsRoute = createRoute({
 const panelMarketingContactsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts', component: ContactsPanel });
 const panelMarketingContactImportRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/import', component: ContactImportWizard, validateSearch: validateContactImportSearch });
 const panelMarketingContactDetailRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/$contactId', component: ContactDetailPanel });
+const panelMarketingFormsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/forms', component: SignupFormsPanel });
 const panelMarketingListsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists', component: ListsPanel });
 const panelMarketingListCreateRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists/new', component: ListCreatePanel });
 const panelMarketingListDetailRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists/$listId', component: ListDetailPanel });
@@ -582,6 +584,7 @@ const router = createRouter({
       panelMarketingContactImportRoute,
       panelMarketingContactDetailRoute,
       panelMarketingListsRoute,
+      panelMarketingFormsRoute,
       panelMarketingListCreateRoute,
       panelMarketingListDetailRoute,
       panelMarketingCampaignsRoute,

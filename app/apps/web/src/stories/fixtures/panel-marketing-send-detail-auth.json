@@ -1,18 +1,54 @@
 {
   "calls": {
-    "getTenantRouting:[]": {
+    "getEmailSend:[\"transactional\",\"send-studio-auth-magic-link\"]": {
       "ok": true,
       "value": {
-        "routing": {
-          "apexDomainsSupported": false,
-          "canAddCustomDomain": true,
-          "canonicalOrigin": "http://studio.localhost:63871",
-          "customDomains": [],
-          "customDomainTarget": "start.localhost",
-          "storageCorsOrigins": [
-            "http://studio.localhost:63871"
-          ],
-          "tenantHost": "studio.localhost:63871"
+        "events": [
+          {
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "id": "event-studio-auth-magic-link-queued",
+            "mailKind": "transactional",
+            "meta": null,
+            "occurredAt": "2026-06-29T12:00:00.000Z",
+            "refId": "send-studio-auth-magic-link",
+            "tenantId": "tenant-studio",
+            "type": "queued"
+          },
+          {
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "id": "event-studio-auth-magic-link-accepted",
+            "mailKind": "transactional",
+            "meta": {
+              "sesMessageId": "ses-studio-auth-magic-link",
+              "transport": "platform"
+            },
+            "occurredAt": "2026-06-29T12:00:00.000Z",
+            "refId": "send-studio-auth-magic-link",
+            "tenantId": "tenant-studio",
+            "type": "accepted"
+          }
+        ],
+        "send": {
+          "campaignId": null,
+          "campaignName": null,
+          "createdAt": "2026-06-29T12:00:00.000Z",
+          "deliveryOccurredAt": null,
+          "deliveryStatus": null,
+          "failureCode": null,
+          "failureMessage": null,
+          "id": "send-studio-auth-magic-link",
+          "kind": "transactional",
+          "recipient": "student.active@together.dev",
+          "sentAt": "2026-06-29T12:00:00.000Z",
+          "sesMessageId": "ses-studio-auth-magic-link",
+          "skipReason": null,
+          "source": "auth-magic-link",
+          "sourceApp": null,
+          "sourceKind": "auth-magic-link",
+          "status": "sent",
+          "subject": "auth-magic-link",
+          "tenantId": "tenant-studio",
+          "transport": "platform"
         }
       }
     },
@@ -114,14 +150,6 @@
         ],
         "nextCursor": null,
         "openCount": 1
-      }
-    },
-    "listTenantSecrets:[]": {
-      "ok": true,
-      "value": {
-        "secrets": [],
-        "stripeMode": null,
-        "stripeWebhookUrl": "http://studio.localhost:63871/api/webhooks/stripe/tenant-studio"
       }
     },
     "me:[]": {
@@ -337,7 +365,7 @@
     }
   },
   "principal": "creator@together.dev",
-  "route": "/panel/integrations#storage",
-  "scenario": "panel-storage-wizard",
+  "route": "/panel/marketing/sends/transactional/send-studio-auth-magic-link",
+  "scenario": "panel-marketing-send-detail-auth",
   "tenant": "studio"
 }

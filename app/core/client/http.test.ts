@@ -179,7 +179,7 @@ describe('createApiClient', () => {
   it('preserves source-app and transport filters in send-log exports', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe(
-        'https://api.example.test/api/marketing/sends/export?format=csv&kind=transactional&transport=smtp&sourceApp=orders-app',
+        'https://api.example.test/api/marketing/sends/export?format=csv&kind=transactional&transport=smtp&sourceApp=orders-app&recipient=member%40example.test',
       );
       expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
       return jsonResponse({
@@ -198,6 +198,7 @@ describe('createApiClient', () => {
       kind: 'transactional',
       transport: 'smtp',
       sourceApp: 'orders-app',
+      recipient: 'member@example.test',
     })).resolves.toMatchObject({ ok: true, value: { filename: 'email-sends-alpha.csv' } });
   });
 

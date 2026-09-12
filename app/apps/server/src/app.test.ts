@@ -42,6 +42,7 @@ import {
   MAGIC_LINK_LANGUAGE_HEADER,
   notFound,
   ok,
+  validation,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -1600,6 +1601,61 @@ describe('migration import HTTP surfaces', () => {
 });
 
 describe('marketing HTTP surfaces', () => {
+  it('returns redacted auth sends and forwards the normalized recipient filter', async () => {
+    const marketing = marketingDeps();
+    let receivedQuery: unknown;
+    marketing.emailSends.listPage = async (_tenantId, query) => {
+      receivedQuery = query;
+      return {
+        sends: [{
+          id: 'auth-send-1',
+          tenantId: 't-acme',
+          kind: 'transactional',
+          recipient: 'member@example.test',
+          sourceKind: 'auth-email-verification',
+          subject: 'auth-email-verification',
+          source: 'auth-email-verification',
+          sourceApp: null,
+          status: 'sent',
+          skipReason: null,
+          failureCode: null,
+          failureMessage: null,
+          deliveryStatus: null,
+          deliveryOccurredAt: null,
+          campaignId: null,
+          campaignName: null,
+          sesMessageId: 'provider-auth-1',
+          transport: 'platform',
+          createdAt: '1998-07-22T10:00:00.000Z',
+          sentAt: '1998-07-22T10:00:03.000Z',
+        }],
+        nextCursor: null,
+      };
+    };
+
+    const response = await scopedApp('staff', { marketing }).request(
+      `${API_PATHS.emailSends}?recipient=%20MEMBER%40example.test%20&transport=platform`,
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedQuery).toEqual({
+      recipient: 'member@example.test',
+      transport: 'platform',
+      limit: 25,
+    });
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        sends: [{
+          sourceKind: 'auth-email-verification',
+          subject: 'auth-email-verification',
+          transport: 'platform',
+        }],
+      },
+    });
+  });
+
   it.each<TenantApiKeyScope>(['enrollment', 'transactional', 'import:content', 'import:users'])(
     'denies %s keys before marketing repository access or side effects',
     async (scope) => {
@@ -1840,6 +1896,7 @@ describe('marketing HTTP surfaces', () => {
       kind: 'transactional',
       recipient: 'buyer@example.test',
       subject: 'Receipt',
+      sourceKind: 'm2m-transactional',
       source: 'm2m-transactional',
       sourceApp: 'orders-app',
       status: 'queued',
@@ -6926,7 +6983,82 @@ describe('checkout consent ordering', () => {
     );
   });
 
-  it('acknowledges a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
+  it('rejects a stripe webhook for an unknown tenant without verifying or fulfilling it', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const verifyWebhookEvent = vi.fn();
+    const base = deps({ tenants: [acme] });
+    const app = buildApp({
+      ...base,
+      logger,
+      payment: { ...base.payment, verifyWebhookEvent },
+    } satisfies AppDeps);
+
+    const response = await app.request('/api/webhooks/stripe/t-missing', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(verifyWebhookEvent).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      '[stripe-webhook] ignored tenant=t-missing status=unknown',
+    );
+  });
+
+  it.each<[string, string | undefined]>([
+    ['missing', undefined],
+    ['invalid', 'bad-signature'],
+  ])('rejects a stripe webhook with a %s signature', async (_label, signatureHeader) => {
+    const verifyWebhookEvent = vi.fn(async () =>
+      err(validation('Stripe webhook signature verification failed')));
+    const base = deps({ tenants: [acme] });
+    const app = buildApp({
+      ...base,
+      payment: { ...base.payment, verifyWebhookEvent },
+    } satisfies AppDeps);
+    const headers = signatureHeader === undefined ? {} : { 'stripe-signature': signatureHeader };
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(verifyWebhookEvent).toHaveBeenCalledWith({
+      payloadRaw: '{}',
+      signatureHeader: signatureHeader ?? '',
+      webhookSecret: 'plaintext',
+    });
+  });
+
+  it('acknowledges a verified stripe webhook for an ignored event type', async () => {
+    const base = deps({ tenants: [acme] });
+    const app = buildApp(base);
+
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'test-signature' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { received: true, processed: false },
+    });
+  });
+
+  it('rejects a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
     const verifyWebhookEvent = vi.fn();
     const base = deps({ tenants: [{ ...acme, status: 'suspended' }] });
@@ -6942,10 +7074,10 @@ describe('checkout consent ordering', () => {
       body: '{}',
     });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      data: { received: true, processed: false },
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
     });
     expect(verifyWebhookEvent).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
@@ -7116,6 +7248,7 @@ describe('tenant-host magic links on checkout', () => {
     expect(response.status).toBe(200);
     expect(captured.request?.baseUrl).toBe('http://acme.localhost:48730');
     expect(captured.request?.callbackURL).toBe('http://acme.localhost:48730');
+    expect(captured.request?.tenantId).toBe(acme.id);
     expect(captured.request?.language).toBe('en');
     const parsed = z.object({ data: z.object({ magicLink: z.object({ url: z.string() }) }) }).parse(body);
     expect(parsed.data.magicLink.url).toBe('http://acme.localhost:48730/magic/verify?token=tok');
@@ -7133,6 +7266,7 @@ describe('tenant-host magic links on checkout', () => {
 
     expect(response.status).toBe(200);
     expect(captured.request?.baseUrl).toBe('http://globex.localhost:48730');
+    expect(captured.request?.tenantId).toBe(globex.id);
     expect(captured.request?.language).toBe('en');
   });
 });
@@ -7156,6 +7290,7 @@ describe('tenant-host magic links on login', () => {
       mode: 'email',
       baseUrl: 'http://start.localhost:48730',
     });
+    expect(captured.context?.context.tenantId).toBeUndefined();
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
 
@@ -7201,7 +7336,7 @@ describe('tenant-host magic links on login', () => {
       body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://acme.localhost:48730/my' }),
     });
 
-    expect(captured.context?.context).toMatchObject({ language: 'pl' });
+    expect(captured.context?.context).toMatchObject({ tenantId: acme.id, language: 'pl' });
   });
 
   it('falls back to English and the base host on the bare domain', async () => {
@@ -7217,11 +7352,35 @@ describe('tenant-host magic links on login', () => {
       language: 'en',
       baseUrl: 'http://localhost:48730',
     });
+    expect(captured.context?.context.tenantId).toBeUndefined();
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
 });
 
 describe('tenant-host email verification', () => {
+  it('attaches tenant context to reset and verification mail for an existing member', async () => {
+    const email = 'auth-context@together.dev';
+    const { app, captured } = capturingApp({
+      members: [{
+        id: 'member-auth-context', tenantId: acme.id, userId: 'user-auth-context', email,
+        displayName: 'Auth context', language: 'en', tags: [], marketingConsents: {}, externalCustomerIds: {},
+        createdAt: '1998-07-12T00:00:00.000Z', deletedAt: null, bannedAt: null, bannedReason: null,
+        bannedByUserId: null, dmOptOutAt: null,
+      }],
+    });
+    const request = (path: string) => app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+      body: JSON.stringify({ email }),
+    });
+
+    await request(BETTER_AUTH_PASSWORD_RESET_PATH);
+    await request(BETTER_AUTH_EMAIL_VERIFICATION_PATH);
+
+    expect(captured.resetContext?.context.tenantId).toBe(acme.id);
+    expect(captured.verificationContext?.context.tenantId).toBe(acme.id);
+  });
+
   it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
     'rebases %s delivery to the requesting host',
     async (path) => {
@@ -7316,6 +7475,7 @@ describe('auth link host trust', () => {
     });
 
     expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.context?.context.tenantId).toBeUndefined();
   });
 
   it('keeps the reset base on APP_BASE_URL for an unknown host', async () => {
@@ -7328,6 +7488,7 @@ describe('auth link host trust', () => {
     });
 
     expect(captured.resetContext?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.resetContext?.context.tenantId).toBeUndefined();
   });
 
   it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
@@ -7342,6 +7503,7 @@ describe('auth link host trust', () => {
       });
 
       expect(captured.verificationContext?.context.baseUrl).toBe('http://localhost:48730');
+      expect(captured.verificationContext?.context.tenantId).toBeUndefined();
     },
   );
 
@@ -7355,6 +7517,7 @@ describe('auth link host trust', () => {
     });
 
     expect(captured.context?.context.baseUrl).toBe('http://localhost:48730');
+    expect(captured.context?.context.tenantId).toBeUndefined();
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
 

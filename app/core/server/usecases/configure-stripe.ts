@@ -14,10 +14,10 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';
+import type { TenantUrlDeps } from '../tenant-url.js';
 import { setTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './tenant-secrets.js';
 
-export interface ConfigureStripeDeps extends TenantSecretDeps {
-  appBaseUrl: string;
+export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
   payment: PaymentProvider;
 }
 
@@ -46,7 +46,8 @@ export const configureStripe = async (
     return err(integrationUnavailable('The payment provider cannot configure Stripe webhooks'));
   }
   const deleteWebhookEndpoint = deps.payment.deleteWebhookEndpoint;
-  const webhookUrl = stripeWebhookUrl(deps.appBaseUrl, tenant.value) + (mode === 'test' ? '?mode=test' : '');
+  const webhookUrl =
+    stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps) + (mode === 'test' ? '?mode=test' : '');
   const configured = await deps.payment.configureWebhook({
     tenantId: tenant.value,
     restrictedKey: parsed.data.restrictedKey,

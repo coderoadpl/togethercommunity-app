@@ -86,6 +86,7 @@ const emailSends: EmailSendProjection[] = [
     tenantId: 't1',
     kind: 'marketing',
     recipient: member.email,
+    sourceKind: 'marketing-campaign',
     subject: 'July news',
     source: 'broadcast',
     sourceApp: null,
@@ -107,6 +108,7 @@ const emailSends: EmailSendProjection[] = [
     tenantId: 't1',
     kind: 'transactional',
     recipient: member.email,
+    sourceKind: 'welcome-sign-in',
     subject: 'Welcome',
     source: 'welcome-sign-in',
     sourceApp: null,
@@ -258,6 +260,36 @@ const renderMemberDetail = (value: MemberWithProductIds = member) => {
 };
 
 describe('MemberDetail', () => {
+  it('localizes a redacted auth send in the timeline and leaves look-alike subjects alone', async () => {
+    setup();
+    const emailEvent = (id: string, source: string, subject: string) => ({
+      id,
+      tenantId: 't1',
+      memberId: member.id,
+      type: 'email-sent',
+      payload: { sendId: id, mailKind: 'transactional', subject, source, transport: 'platform' },
+      occurredAt: '1998-07-08T10:00:00.000Z',
+    });
+    server.use(
+      http.get('/api/members/:memberId/timeline', () => HttpResponse.json({
+        ok: true,
+        data: {
+          events: [
+            emailEvent('redacted', 'auth-magic-link', 'auth-magic-link'),
+            emailEvent('campaign', 'broadcast', 'auth-magic-link'),
+          ],
+        },
+      })),
+    );
+    renderMemberDetail();
+
+    const rows = await screen.findAllByTestId('member-timeline-row');
+    expect(rows[0]).toHaveTextContent(
+      en.members.timelineEmail({ subject: en.marketing.sourceKindLabels.authMagicLink }),
+    );
+    expect(rows[1]).toHaveTextContent(en.members.timelineEmail({ subject: 'auth-magic-link' }));
+  });
+
   it('shows the complete 360 overview from account through commerce and domain events', async () => {
     setup();
     renderMemberDetail();
@@ -437,7 +469,7 @@ describe('MemberDetail', () => {
     const transactionalRow = rows[1];
     if (marketingRow === undefined || transactionalRow === undefined) return;
     expect(within(marketingRow).getByText('July news')).toBeInTheDocument();
-    expect(within(transactionalRow).getByText('Welcome')).toBeInTheDocument();
+    expect(within(transactionalRow).getAllByText(en.marketing.sourceKindLabels.welcomeSignIn).length).toBeGreaterThan(0);
     expect(within(marketingRow).getByRole('link', { name: en.marketing.sendDetails }))
       .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });

@@ -60,6 +60,7 @@
           "skipReason": null,
           "source": "broadcast",
           "sourceApp": null,
+          "sourceKind": "marketing-campaign",
           "status": "sent",
           "subject": "Your learning plan for July",
           "tenantId": "tenant-studio",

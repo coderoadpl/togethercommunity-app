@@ -5,8 +5,9 @@ import { err, internal, ok, type Member, type ProductGrant } from '#core/domain/
 import { dispatchEmailBatch } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
+import { createEmailSendRepository } from './email-sends.js';
 import { appendEmailSentMemberEvents, createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
 import { emailOutbox, memberEvents, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
@@ -88,6 +89,102 @@ describe('email outbox database adapter', () => {
         transport: 'platform',
       }),
     }));
+  });
+
+  it('records platform auth mail as redacted sent metadata', async () => {
+    const token = 'auth-token-never-store';
+    await db.insert(members).values({
+      id: 'member-auth-log',
+      tenantId: 'tenant-outbox',
+      userId: 'user-auth-log',
+      email: 'auth-log@example.test',
+      createdAt: NOW,
+    });
+
+    const authSendLog = createPlatformAuthSendLog(db);
+    expect(await authSendLog.queue({
+      id: 'auth-log-send',
+      tenantId: 'tenant-outbox',
+      to: 'auth-log@example.test',
+      kind: 'auth-magic-link',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.settle({
+      id: 'auth-log-send',
+      tenantId: 'tenant-outbox',
+      at: NOW,
+      outcome: ok({ messageId: 'ses-auth-log', transport: 'platform' }),
+    })).toEqual(ok(undefined));
+
+    const [stored] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, 'auth-log-send'));
+    expect(stored).toMatchObject({
+      kind: 'auth-magic-link',
+      status: 'sent',
+      sesMessageId: 'ses-auth-log',
+      transport: 'platform',
+    });
+    const serializedRow = JSON.stringify(stored);
+    expect(serializedRow).not.toContain('http');
+    expect(serializedRow).not.toContain(token);
+
+    const page = await createEmailSendRepository(db).listPage('tenant-outbox', { limit: 10 });
+    expect(page.sends).toContainEqual(expect.objectContaining({
+      id: 'auth-log-send',
+      source: 'auth-magic-link',
+      sourceKind: 'auth-magic-link',
+      subject: 'auth-magic-link',
+      recipient: 'auth-log@example.test',
+      status: 'sent',
+      transport: 'platform',
+    }));
+
+    const events = await createEmailEventRepository(db).listByRef('tenant-outbox', 'transactional', 'auth-log-send');
+    expect(events.map((event) => event.type)).toEqual(['queued', 'accepted']);
+    for (const event of events) {
+      const serializedPayload = JSON.stringify(event.meta);
+      expect(serializedPayload).not.toContain('http');
+      expect(serializedPayload).not.toContain(token);
+    }
+
+    const memberHistory = await createMemberEventRepository(db).listForMember('tenant-outbox', 'member-auth-log');
+    expect(memberHistory).toContainEqual(expect.objectContaining({
+      type: 'email-sent',
+      payload: expect.objectContaining({
+        sendId: 'auth-log-send',
+        source: 'auth-magic-link',
+        subject: 'auth-magic-link',
+        transport: 'platform',
+      }),
+    }));
+    expect(JSON.stringify(memberHistory)).not.toContain('http');
+    expect(JSON.stringify(memberHistory)).not.toContain(token);
+
+    expect(await authSendLog.queue({
+      id: 'auth-log-failed',
+      tenantId: 'tenant-outbox',
+      to: 'auth-log@example.test',
+      kind: 'auth-password-reset',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.settle({
+      id: 'auth-log-failed',
+      tenantId: 'tenant-outbox',
+      at: NOW,
+      outcome: err(internal(`https://example.test/reset?token=${token}&code=123456`)),
+    })).toEqual(ok(undefined));
+    const [failed] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, 'auth-log-failed'));
+    const failedEvents = await createEmailEventRepository(db).listByRef('tenant-outbox', 'transactional', 'auth-log-failed');
+    expect(failed).toMatchObject({
+      kind: 'auth-password-reset',
+      status: 'failed',
+      transport: 'platform',
+      lastError: null,
+      lastErrorCode: 'internal',
+    });
+    expect(failedEvents.map((event) => event.type)).toEqual(['queued', 'failed']);
+    expect(JSON.stringify({ failed, failedEvents })).not.toContain('http');
+    expect(JSON.stringify({ failed, failedEvents })).not.toContain(token);
+    expect(JSON.stringify({ failed, failedEvents })).not.toContain('123456');
   });
 
   it('finalizes a reclaimed send when its member event already has an earlier sent time', async () => {
@@ -265,6 +362,75 @@ describe('email outbox database adapter', () => {
     await expect(
       createEmailOutboxRepository(db, 3).hasPendingForTenant?.('tenant-outbox'),
     ).resolves.toBe(false);
+  });
+
+  it('excludes redacted auth rows from marketing dispatcher claims and tenant pending checks', async () => {
+    const authSendLog = createPlatformAuthSendLog(db);
+    expect(await authSendLog.queue({
+      id: 'auth-queued',
+      tenantId: 'tenant-outbox',
+      to: 'auth-queued@example.test',
+      kind: 'auth-magic-link',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.queue({
+      id: 'auth-failed',
+      tenantId: 'tenant-outbox',
+      to: 'auth-failed@example.test',
+      kind: 'auth-password-reset',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.settle({
+      id: 'auth-failed',
+      tenantId: 'tenant-outbox',
+      at: NOW,
+      outcome: err(internal('platform transport failed')),
+    })).toEqual(ok(undefined));
+
+    const repository = createEmailOutboxRepository(db);
+    await expect(repository.hasPendingForTenant?.('tenant-outbox')).resolves.toBe(false);
+
+    await enqueue('regular-pending', NOW, 'tenant-outbox');
+    await expect(repository.hasPendingForTenant?.('tenant-outbox')).resolves.toBe(true);
+
+    const sent: string[] = [];
+    const result = await dispatchEmailBatch({
+      emailOutbox: repository,
+      events: createEmailEventRepository(db),
+      email: {
+        send: async (message) => {
+          sent.push(message.to);
+          return ok({ messageId: message.to, transport: 'platform' as const });
+        },
+      },
+      clock: { nowIso: () => NOW },
+      logger: console,
+      batchSize: 10,
+      attemptsCap: 3,
+      backoffBaseMs: 1000,
+      backoffCapMs: 10000,
+      ...instrumentation(),
+    });
+
+    expect(result).toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sent).toEqual(['regular-pending@example.test']);
+    expect(await repository.hasPendingForTenant?.('tenant-outbox')).toBe(false);
+
+    const rows = await db.select().from(emailOutbox);
+    expect(rows.find((row) => row.id === 'auth-queued')).toMatchObject({
+      status: 'queued',
+      attempts: 1,
+      transport: 'platform',
+    });
+    expect(rows.find((row) => row.id === 'auth-failed')).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      transport: 'platform',
+    });
+    expect(rows.find((row) => row.id === 'regular-pending')).toMatchObject({
+      status: 'sent',
+      attempts: 0,
+    });
   });
 
   it('never sends a row twice when dispatchers race', async () => {

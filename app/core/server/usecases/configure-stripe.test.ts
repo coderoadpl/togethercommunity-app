@@ -62,6 +62,8 @@ const harness = (provider: PaymentProvider): { deps: ConfigureStripeDeps; rows: 
     rows,
     deps: {
       appBaseUrl: 'https://app.example.test/base',
+      baseDomain: 'example.test',
+      singleTenantMode: false,
       payment: provider,
       tenantSecrets,
       secretCrypto: {
@@ -92,18 +94,41 @@ describe('configureStripe', () => {
       ok: true,
       value: {
         mode: 'live',
-        webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+        webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1',
       },
     });
     expect(calls).toEqual([{
       tenantId: 'tenant-1',
       restrictedKey: 'rk_live_private',
-      webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+      webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1',
     }]);
     expect(h.rows.map(({ key, ciphertext, maskedPreview }) => ({ key, ciphertext, maskedPreview }))).toEqual([
       { key: 'stripe.webhookSecret', ciphertext: 'encrypted:whsec_created', maskedPreview: '••••ated' },
       { key: 'stripe.restrictedKey', ciphertext: 'encrypted:rk_live_private', maskedPreview: '••••vate' },
     ]);
+  });
+
+  it('registers the webhook on APP_BASE_URL in single-tenant mode', async () => {
+    const calls: Parameters<NonNullable<PaymentProvider['configureWebhook']>>[0][] = [];
+    const h = harness(payment(async (input) => {
+      calls.push(input);
+      return ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' });
+    }));
+    h.deps.appBaseUrl = 'https://learn.example.test/base';
+    h.deps.singleTenantMode = true;
+
+    await expect(configureStripe(
+      { identity: identity('owner') },
+      { restrictedKey: 'rk_test_private' },
+      h.deps,
+    )).resolves.toMatchObject({
+      ok: true,
+      value: { webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1' },
+    });
+    expect(calls).toMatchObject([{
+      tenantId: 'tenant-1',
+      webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1',
+    }]);
   });
 
   it('does not persist partial configuration when Stripe rejects webhook registration', async () => {

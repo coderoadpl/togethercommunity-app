@@ -23,6 +23,7 @@ import type {
   EmailSendProjection,
   TransactionalEmailTransport,
   EmailOutboxPayload,
+  RedactedAuthEmailKind,
   Member,
   MemberBanEvent,
   MemberBlock,
@@ -1577,6 +1578,8 @@ export interface TransactionalEmailSender {
     messageId?: string;
     tenantTransportRequired?: boolean;
     forcePlatformTransport?: boolean;
+    /** Sign-in mail must keep working after the lifetime starter pool is spent, so it is never charged to it. */
+    unmeteredPlatformSend?: boolean;
   } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
 }
 
@@ -1647,6 +1650,16 @@ export interface EmailOutboxRepository {
     event: EmailEvent;
   }): Promise<Result<void, AppError>>;
   hasPendingForTenant?(tenantId: string): Promise<boolean>;
+}
+
+export interface PlatformAuthSendLog {
+  queue(input: { id: string; tenantId: string; to: string; kind: RedactedAuthEmailKind; now: string }): Promise<Result<void, AppError>>;
+  settle(input: {
+    id: string;
+    tenantId: string;
+    at: string;
+    outcome: Result<{ messageId: string }, AppError>;
+  }): Promise<Result<void, AppError>>;
 }
 
 export interface EnrollmentTransactionPort {
@@ -2273,6 +2286,7 @@ export interface AuthPort {
   requestMagicLink(input: {
     email: string;
     callbackURL: string;
+    tenantId?: string;
     tenantName?: string;
     language?: string;
     /** Host-derived base URL so the verify link lands on the requesting tenant domain. */

@@ -377,7 +377,6 @@
       "value": {
         "canCommit": true,
         "canCommitWithSkippedRows": true,
-        "previewIssuesLimited": false,
         "counts": {
           "duplicateRows": 0,
           "listsToCreate": [],
@@ -490,6 +489,7 @@
             "warnings": []
           }
         ],
+        "previewIssuesLimited": false,
         "validationHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "warnings": []
       }

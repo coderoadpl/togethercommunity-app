@@ -54,6 +54,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: pnpm install --frozen-lockfile
+      - name: Check branch ruleset drift after workflow changes
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git -C .. fetch --no-tags --depth=1 origin "$BASE_SHA"
+          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"
+          if [ -n "$changed" ]; then
+            pnpm run rulesets-drift
+          else
+            echo "No workflow changes; ruleset drift check skipped"
+          fi
       - run: pnpm run db:migrate
       - run: TOGETHER_TEST_SERIAL=1 pnpm run check
       - name: pnpm audit --prod --audit-level=moderate

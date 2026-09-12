@@ -67,3 +67,44 @@ and links to the staging runs it evaluated.
 itself so the production candidate is the same commit that passed staging.
 
 The owner adds `promotion-guard` to the `main` ruleset as a required check.
+
+## Required checks
+
+The required branch checks for `staging` and `main` are derived from the GitHub
+Actions workflow files by `app/scripts/rulesets-required-checks.ts` and pinned
+in `app/config-regression/rulesets-required-checks.snapshot.json`. Changing a CI
+job name or an e2e matrix suite changes the derived list, so the snapshot test
+forces the ruleset update to be reviewed with the workflow change.
+
+The derivation scans every workflow file. A workflow is left out of the derived
+list when it cannot report on every push to a pull request: no `pull_request`
+trigger for that branch, a `paths` filter, a `types` list without `synchronize`,
+or a job-level `continue-on-error: true` (an advisory job concludes green even
+when it fails, so requiring it only adds waiting time). `chromatic.yml` is an
+explicit exception in `IGNORED_WORKFLOW_FILES` because every one of its jobs is
+gated on an optional project token. A matrix or a job `name:` expression the
+derivation cannot resolve is a hard error rather than a guess.
+
+`pnpm run rulesets-drift` compares that derived list with the live `staging` and
+`main` branch rulesets. Missing expected checks fail with the exact status-check
+names to add. Extra required checks are reported as warnings so obsolete or
+external checks are visible without weakening protection.
+
+Three surfaces run that comparison:
+
+- `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
+  diff touches `.github/workflows/**`, so a workflow change and its ruleset
+  update land together.
+- `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on
+  demand, with `contents: read` + `issues: write`. It opens one issue titled
+  `Ruleset drift`, labelled `ruleset-drift`, updates its body while the drift
+  lasts, closes it once the rulesets match, and closes any older duplicate
+  carrying the same label. Do not edit that issue by hand; it is overwritten.
+- `pnpm run rulesets-drift` locally, with `GITHUB_TOKEN` and `GITHUB_REPOSITORY`
+  (or `REPO`) in the environment.
+
+Rollout order matters in both directions. Add a context to a ruleset only after
+a run of the branch has already reported it, otherwise every open pull request
+waits on a check that never arrives. So: merge the workflow change first, wait
+for one run on the target branch, then add the context. When removing a check,
+drop it from the ruleset first and delete the job afterwards.

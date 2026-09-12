@@ -363,6 +363,75 @@ describe('email outbox database adapter', () => {
     ).resolves.toBe(false);
   });
 
+  it('excludes redacted auth rows from marketing dispatcher claims and tenant pending checks', async () => {
+    const authSendLog = createPlatformAuthSendLog(db);
+    expect(await authSendLog.queue({
+      id: 'auth-queued',
+      tenantId: 'tenant-outbox',
+      to: 'auth-queued@example.test',
+      kind: 'auth-magic-link',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.queue({
+      id: 'auth-failed',
+      tenantId: 'tenant-outbox',
+      to: 'auth-failed@example.test',
+      kind: 'auth-password-reset',
+      now: NOW,
+    })).toEqual(ok(undefined));
+    expect(await authSendLog.settle({
+      id: 'auth-failed',
+      tenantId: 'tenant-outbox',
+      at: NOW,
+      outcome: err(internal('platform transport failed')),
+    })).toEqual(ok(undefined));
+
+    const repository = createEmailOutboxRepository(db);
+    await expect(repository.hasPendingForTenant?.('tenant-outbox')).resolves.toBe(false);
+
+    await enqueue('regular-pending', NOW, 'tenant-outbox');
+    await expect(repository.hasPendingForTenant?.('tenant-outbox')).resolves.toBe(true);
+
+    const sent: string[] = [];
+    const result = await dispatchEmailBatch({
+      emailOutbox: repository,
+      events: createEmailEventRepository(db),
+      email: {
+        send: async (message) => {
+          sent.push(message.to);
+          return ok({ messageId: message.to, transport: 'platform' as const });
+        },
+      },
+      clock: { nowIso: () => NOW },
+      logger: console,
+      batchSize: 10,
+      attemptsCap: 3,
+      backoffBaseMs: 1000,
+      backoffCapMs: 10000,
+      ...instrumentation(),
+    });
+
+    expect(result).toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sent).toEqual(['regular-pending@example.test']);
+    expect(await repository.hasPendingForTenant?.('tenant-outbox')).toBe(false);
+
+    const rows = await db.select().from(emailOutbox);
+    expect(rows.find((row) => row.id === 'auth-queued')).toMatchObject({
+      status: 'queued',
+      attempts: 1,
+      transport: 'platform',
+    });
+    expect(rows.find((row) => row.id === 'auth-failed')).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      transport: 'platform',
+    });
+    expect(rows.find((row) => row.id === 'regular-pending')).toMatchObject({
+      status: 'sent',
+      attempts: 0,
+    });
+  });
+
   it('never sends a row twice when dispatchers race', async () => {
     await enqueue('race-one');
     const sent: string[] = [];

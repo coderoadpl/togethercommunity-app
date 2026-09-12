@@ -23,6 +23,7 @@ import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
+import { useToast } from '../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { hasConfiguredBaseDomain, isTenantHost, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
@@ -88,6 +89,7 @@ const PickTenant = ({
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const toast = useToast();
   const tenants = useQuery(actions.tenants);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -104,7 +106,15 @@ const PickTenant = ({
       }
     },
   });
-  const resendVerification = useMutation(actions.sendVerificationEmail);
+  const resendVerification = useMutation({
+    ...actions.sendVerificationEmail,
+    onSuccess: () => {
+      toast.success(t.emailVerification.sent);
+    },
+    onError: () => {
+      toast.error(t.emailVerification.providerError);
+    },
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -150,8 +160,6 @@ const PickTenant = ({
               email={account.email}
               emailVerified={false}
               resendPending={resendVerification.isPending}
-              resendSent={resendVerification.isSuccess}
-              resendError={resendVerification.isError}
               onResend={() => resendVerification.mutate({
                 email: account.email,
                 callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),

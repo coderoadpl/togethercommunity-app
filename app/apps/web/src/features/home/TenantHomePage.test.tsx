@@ -82,7 +82,7 @@ describe('TenantHomePage dispatcher', () => {
     server.use(http.get('/api/me', () => HttpResponse.json({
       ok: true, data: { ...meWithoutTenant, tenantAccess: 'none' },
     })));
-    await renderHome(() => <TenantHomePage hostname="studio.localhost" anonymousHome={<div>Visitor home</div>} />);
+    await renderHome(() => <TenantHomePage hostname="studio.localhost" renderAnonymousHome={() => <div>Visitor home</div>} />);
     expect(await screen.findByText('Visitor home')).toBeInTheDocument();
     expect(screen.queryByText(en.tenant.choose)).not.toBeInTheDocument();
     expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
@@ -257,7 +257,7 @@ describe('TenantHomePage dispatcher', () => {
     );
 
     const { router } = await renderHome(() => (
-      <TenantHomePage hostname={hostname} anonymousHome={<div>ANON</div>} />
+      <TenantHomePage hostname={hostname} renderAnonymousHome={() => <div>ANON</div>} />
     ));
 
     expect(await screen.findByText('ANON')).toBeInTheDocument();
@@ -284,7 +284,7 @@ describe('TenantHomePage dispatcher', () => {
     );
 
     const { router } = await renderHome(() => (
-      <TenantHomePage hostname="localhost" anonymousHome={<div>ANON</div>} />
+      <TenantHomePage hostname="localhost" renderAnonymousHome={() => <div>ANON</div>} />
     ));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'));

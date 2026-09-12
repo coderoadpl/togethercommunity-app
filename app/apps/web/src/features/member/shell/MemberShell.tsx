@@ -22,6 +22,7 @@ import { CourseLoading } from '../CourseLoading.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseBreadcrumbs } from './CourseBreadcrumbs.js';
 import { CourseSidebar } from './CourseSidebar.js';
+import { ForeignTenantNotice } from './ForeignTenantNotice.js';
 import { ImpersonationBanner } from './ImpersonationBanner.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
@@ -221,7 +222,10 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
 
   if (viewer === 'anonymous') {
     return (
-      <AnonShell hostname={hostname}>
+      <AnonShell>
+        {me.data?.tenantAccess === 'none' ? (
+          <ForeignTenantNotice email={me.data.email} hostname={hostname} />
+        ) : null}
         {notices}
         {outlet}
       </AnonShell>

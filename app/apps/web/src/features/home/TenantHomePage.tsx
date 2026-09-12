@@ -29,14 +29,14 @@ import { CardTitle, TenantListItemText } from '../../theme.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
 
 /**
- * `anonymousHome` is injected by the route: the anonymous surface lives in the
+ * `renderAnonymousHome` is injected by the route: the anonymous surface lives in the
  * member feature, which this feature may not import directly.
  */
 export const TenantHomePage = ({
-  anonymousHome,
+  renderAnonymousHome,
   hostname = window.location.hostname,
   openTenant = (url) => { window.location.assign(url); },
-}: { anonymousHome?: ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
+}: { renderAnonymousHome?: (visitorEmail: string | null) => ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
   const me = useQuery(actions.me);
@@ -45,9 +45,10 @@ export const TenantHomePage = ({
   const tenant = me.data?.tenant ?? null;
   const staff = tenant !== null && tenant.staffRole !== null;
   const memberOnly = tenant !== null && tenant.staffRole === null;
+  const visitorEmail = me.data?.tenantAccess === 'none' ? me.data.email : null;
   const anonymousTenantHome =
-    (unauthorized || me.data?.tenantAccess === 'none')
-    && tenant === null && anonymousHome !== undefined && isTenantHost(hostname);
+    (unauthorized || visitorEmail !== null)
+    && tenant === null && renderAnonymousHome !== undefined && isTenantHost(hostname);
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
@@ -57,7 +58,9 @@ export const TenantHomePage = ({
   if (me.isPending) {
     return <BrandLoader caption={t.tenant.openingWorkspace} />;
   }
-  if (anonymousTenantHome) return <>{anonymousHome}</>;
+  if (anonymousTenantHome && renderAnonymousHome !== undefined) {
+    return <>{renderAnonymousHome(visitorEmail)}</>;
+  }
   if (unauthorized || staff || memberOnly) return null;
   if (me.isError) {
     return (

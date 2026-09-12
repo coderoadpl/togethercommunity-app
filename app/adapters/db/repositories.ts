@@ -2898,7 +2898,9 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         legacyId: grant.legacyId,
         createdAt: grant.createdAt,
       })
-      .onConflictDoNothing()
+      .onConflictDoNothing({
+        target: [productGrants.tenantId, productGrants.memberId, productGrants.productId, productGrants.mode],
+      })
       .returning();
     const row = rows[0];
     if (row === undefined) return false;
@@ -3894,7 +3896,9 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
           legacyId: null,
           createdAt: input.createdAt,
         })
-        .onConflictDoNothing()
+        .onConflictDoNothing({
+          target: [productGrants.tenantId, productGrants.memberId, productGrants.productId, productGrants.mode],
+        })
         .returning();
 
       const grant = grantRows[0];

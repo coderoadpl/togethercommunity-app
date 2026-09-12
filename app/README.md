@@ -342,10 +342,13 @@ pnpm --silent run cli --tenant studio stripe test-connection
 The restricted key needs write access to Checkout Sessions, Coupons, Promotion
 Codes, Subscriptions, and Webhook Endpoints. Together enables the event set it
 handles when creating the endpoint. For localhost without a public callback,
-the Stripe CLI can still forward events:
+the Stripe CLI can still forward events, but by default it forwards sandbox
+(test-mode) events; point them at the [test slot](docs/payments.md#test-mode-for-staff)'s
+`?mode=test` endpoint with its own signing secret, or pass `--live` to forward
+against the live card instead:
 
 ```bash
-stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
+stripe listen --events checkout.session.completed --forward-to "http://localhost:48730/api/webhooks/stripe/<tenant-id>?mode=test"
 ```
 
 Open a published product's `/checkout/<product-slug-or-id>` page and pay. The

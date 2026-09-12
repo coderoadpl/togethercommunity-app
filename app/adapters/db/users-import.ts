@@ -247,6 +247,7 @@ const intraTenantConflictConstraints = [
   'members_tenant_user_uidx',
   'members_tenant_legacy_uidx',
   'product_grants_tenant_member_product_uidx',
+  'product_grants_tenant_member_product_mode_uidx',
   'product_grants_tenant_legacy_uidx',
   'member_course_progress_tenant_member_course_uidx',
   'user_email_unique',

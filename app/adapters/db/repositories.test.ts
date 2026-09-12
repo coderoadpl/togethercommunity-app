@@ -4115,3 +4115,10 @@ it('isolates test commerce in the database and keeps test grants out of member a
   expect(testOrders.orders.every((row) => row.mode === 'test')).toBe(true);
   expect((await ordersRepo.list(ACME, { mode: 'live', page: 1, pageSize: 100 })).orders.some((row) => row.id === pending.id)).toBe(false);
 });
+
+it('rejects a grant for the other mode on a member+product that already has one, instead of silently no-oping', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-mode-collision', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test',
+  }))).rejects.toThrow();
+});

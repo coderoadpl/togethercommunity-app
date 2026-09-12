@@ -95,6 +95,10 @@ if [ -n "$exec_log" ] && [ -s "$exec_log" ]; then
 
   if [ -n "$evidence" ]; then
     if printf '%s' "$evidence" | jq -e '
+      .text | test("successful result after [0-9]+ turns?, exceeding the configured maximum of [0-9]+|exceeding the configured maximum of [0-9]+|max(?:imum)? turns?"; "i")
+    ' >/dev/null; then
+      reason=turn_limit
+    elif printf '%s' "$evidence" | jq -e '
       any(.provider_types[]; . == "authentication_error")
       or any(.status[]; . == 401)
       or (.text | test("authenticat|invalid bearer|unauthorized|\\b401\\b"; "i"))

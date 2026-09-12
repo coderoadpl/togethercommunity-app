@@ -13,6 +13,13 @@ emit() {
   printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
 }
 
+fail_base_moved() {
+  emit prepared false
+  emit reason base_moved
+  echo "$1" >&2
+  exit 1
+}
+
 if ! [[ "$pr" =~ ^[1-9][0-9]*$ ]]; then
   echo "Invalid PR number" >&2
   exit 1
@@ -105,12 +112,10 @@ if [ "$review_mode" = main ]; then
   fi
 fi
 if [ -n "${EXPECTED_BASE_SHA:-}" ] && [ "$base_sha" != "$EXPECTED_BASE_SHA" ]; then
-  echo "PR base SHA changed before preparation" >&2
-  exit 1
+  fail_base_moved "PR base SHA changed before preparation"
 fi
 if [ -n "${EXPECTED_HEAD_SHA:-}" ] && [ "$head_sha" != "$EXPECTED_HEAD_SHA" ]; then
-  echo "PR head SHA changed before preparation" >&2
-  exit 1
+  fail_base_moved "PR head SHA changed before preparation"
 fi
 
 prompt_file="$trusted_root/.github/ai-review/PROMPT-$review_mode.md"
@@ -137,8 +142,7 @@ git_safe=(git -c core.hooksPath=/dev/null -c protocol.file.allow=never -c diff.e
 
 if [ "$("${git_safe[@]}" rev-parse refs/ai-review/fetched-head)" != "$head_sha" ] || \
    [ "$("${git_safe[@]}" rev-parse refs/ai-review/fetched-base)" != "$base_sha" ]; then
-  echo "Fetched refs do not match pinned PR metadata" >&2
-  exit 1
+  fail_base_moved "Fetched refs do not match pinned PR metadata"
 fi
 "${git_safe[@]}" update-ref refs/ai-review/base "$base_sha"
 "${git_safe[@]}" update-ref refs/ai-review/head "$head_sha"
@@ -503,6 +507,7 @@ done
 primary="$primary_staging"
 [ "$review_mode" = main ] && primary="$primary_main"
 emit prepared true
+emit reason prepared
 emit review_mode "$review_mode"
 emit draft "$draft"
 emit base_ref "$base_ref"

@@ -113,7 +113,7 @@ describe('ChangePasswordForm', () => {
     });
     renderForm(vi.fn(), providerError);
 
-    expect(screen.getByTestId(/^toast-error-/)).toHaveTextContent(
+    expect(screen.getByTestId('change-password-remote-error')).toHaveTextContent(
       en.changePassword.invalidCurrentPassword,
     );
   });

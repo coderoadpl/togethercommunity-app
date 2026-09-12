@@ -159,6 +159,17 @@ that campaign's consent definition and must pass suppression checks. Product
 exclusions use any current grant projection, including expired, free, manual and
 imported grants; they are not a paid-purchase filter.
 
+New audience writes cannot put the same list in both `includeLists` and
+`excludeLists`. The HTTP contracts reject overlaps on
+`POST /api/marketing/campaigns`, `POST /api/marketing/campaigns/update`,
+`POST /api/marketing/campaigns/audience`, and
+`POST /api/marketing/audience-preview`. The CLI applies the same validation for
+`campaign create --audience <json>` and `campaign audience set --audience <json>`.
+Legacy campaigns that were already stored with an overlap remain readable and
+schedulable: when scheduling reads the saved audience, exclusion wins and any
+overlapping list is dropped from `includeLists`; the server logs the campaign ID
+for follow-up.
+
 ```json
 {
   "version": 2,

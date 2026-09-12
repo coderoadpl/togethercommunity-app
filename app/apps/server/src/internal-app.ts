@@ -652,7 +652,6 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   const selfAuthenticatingRouteStart = app.routes.length;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
-    tenantDomains: deps.tenantDomains,
     routing: deps,
   });
   app.post(API_PATHS.emailDispatch, async (c) => {

@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  collectRequiredRulesetChecks,
   extractRequiredStatusChecks,
   formatCliReport,
+  hasBlockingRulesetDrift,
+  isPullRequestRulesetReadWarning,
   parseRepoSlug,
+  parseRulesetDriftMode,
   syncRulesetDriftIssue,
+  type GitHubRulesClient,
   type GitHubIssueClient,
   type RepoSlug,
   type RulesetDriftReport,
@@ -82,6 +87,12 @@ class FakeIssueClient implements GitHubIssueClient {
   }
 }
 
+class UnreachableRulesClient implements GitHubRulesClient {
+  async getBranchRules(): Promise<unknown> {
+    throw new TypeError('fetch failed');
+  }
+}
+
 describe('rulesets drift', () => {
   it('extracts required status check contexts from GitHub branch rules', () => {
     expect(extractRequiredStatusChecks([
@@ -99,12 +110,15 @@ describe('rulesets drift', () => {
     ])).toEqual(['check', 'smoke']);
   });
 
-  it('prints exact missing names and warning-only unknown names', () => {
-    expect(formatCliReport(report(['smoke']))).toContain(
+  it('prints exact missing names and unknown names by mode', () => {
+    expect(formatCliReport(report(['smoke'], []), 'scheduled')).toContain(
       'staging: add missing required status checks: smoke',
     );
-    expect(formatCliReport(report([]))).toContain(
-      'staging: unknown required status checks: legacy',
+    expect(formatCliReport(report(['smoke'], []), 'pull-request')).toContain(
+      'staging: workflow-produced status checks not required yet: smoke',
+    );
+    expect(formatCliReport(report([]), 'pull-request')).toContain(
+      'staging: ruleset requires status checks no pull-request workflow produces: legacy',
     );
   });
 
@@ -112,8 +126,22 @@ describe('rulesets drift', () => {
     expect(formatCliReport(report([], []))).toContain('rulesets-drift: clean');
     expect(formatCliReport(report([]))).not.toContain('rulesets-drift: clean');
     expect(formatCliReport(report([]))).toContain(
-      'no missing required status checks; unknown ones reported as warnings',
+      'drift found; scheduled mode fails until the live rulesets match',
     );
+  });
+
+  it('blocks by mode and drift direction', () => {
+    expect(hasBlockingRulesetDrift(report(['smoke'], []).comparison, 'pull-request')).toBe(false);
+    expect(hasBlockingRulesetDrift(report(['smoke'], []).comparison, 'scheduled')).toBe(true);
+    expect(hasBlockingRulesetDrift(report([], ['legacy']).comparison, 'pull-request')).toBe(true);
+    expect(hasBlockingRulesetDrift(report([], ['legacy']).comparison, 'scheduled')).toBe(true);
+  });
+
+  it('parses the mode flag and environment fallback', () => {
+    expect(parseRulesetDriftMode({}, ['--mode=pull-request'])).toBe('pull-request');
+    expect(parseRulesetDriftMode({ RULESETS_DRIFT_MODE: 'pull-request' }, [])).toBe('pull-request');
+    expect(parseRulesetDriftMode({}, [])).toBe('scheduled');
+    expect(() => parseRulesetDriftMode({}, ['--mode=preview'])).toThrow('pull-request or scheduled');
   });
 
   it('parses repository slugs from the GitHub environment', () => {
@@ -140,7 +168,7 @@ describe('rulesets drift', () => {
     const client = new FakeIssueClient();
     await syncRulesetDriftIssue(client, repo, report(['smoke']));
 
-    expect(await syncRulesetDriftIssue(client, repo, report([])))
+    expect(await syncRulesetDriftIssue(client, repo, report([], [])))
       .toEqual({ action: 'closed', number: 1, duplicatesClosed: [] });
 
     expect(client.creates).toBe(1);
@@ -163,6 +191,17 @@ describe('rulesets drift', () => {
     expect(client.issues.find((issue) => issue.number === 9)?.state).toBe('open');
   });
 
+  it('opens the drift issue for unknown required checks in scheduled mode', async () => {
+    const client = new FakeIssueClient();
+
+    expect(await syncRulesetDriftIssue(client, repo, report([], ['legacy'])))
+      .toEqual({ action: 'created', number: 1, duplicatesClosed: [] });
+
+    expect(client.issues[0]?.body).toContain(
+      'No required check is missing; the unknown required checks below still need a decision.',
+    );
+  });
+
   it('ignores pull requests that carry the drift label', async () => {
     const client = new FakeIssueClient();
     client.issues = [
@@ -179,5 +218,17 @@ describe('rulesets drift', () => {
 
     expect(await syncRulesetDriftIssue(client, repo, report(['smoke'])))
       .toEqual({ action: 'updated', number: 2, duplicatesClosed: [] });
+  });
+
+  it('wraps transient ruleset reads for pull-request warning mode', async () => {
+    await expect(collectRequiredRulesetChecks(new UnreachableRulesClient(), repo))
+      .rejects.toThrow('could not read rulesets from api.github.com');
+
+    try {
+      await collectRequiredRulesetChecks(new UnreachableRulesClient(), repo);
+      throw new Error('expected ruleset read to fail');
+    } catch (cause) {
+      expect(isPullRequestRulesetReadWarning(cause)).toBe(true);
+    }
   });
 });

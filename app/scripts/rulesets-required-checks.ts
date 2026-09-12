@@ -22,7 +22,7 @@ export type RulesetComparisonByBranch = Record<RulesetBranch, RulesetComparison>
 
 export const IGNORED_WORKFLOW_FILES: Readonly<Record<string, string>> = {
   'chromatic.yml':
-    'every job is gated on an optional project token, so the run is skipped whenever the secret is absent',
+    'the token-detection job is not a product gate, and the Chromatic job is gated on an optional project token',
 };
 
 const scalarSchema = z.union([z.string(), z.number(), z.boolean()]);

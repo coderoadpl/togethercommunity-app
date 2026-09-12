@@ -78,33 +78,43 @@ forces the ruleset update to be reviewed with the workflow change.
 
 The derivation scans every workflow file. A workflow is left out of the derived
 list when it cannot report on every push to a pull request: no `pull_request`
-trigger for that branch, a `paths` filter, a `types` list without `synchronize`,
-or a job-level `continue-on-error: true` (an advisory job concludes green even
-when it fails, so requiring it only adds waiting time). `chromatic.yml` is an
-explicit exception in `IGNORED_WORKFLOW_FILES` because every one of its jobs is
-gated on an optional project token. A matrix or a job `name:` expression the
-derivation cannot resolve is a hard error rather than a guess.
+trigger for that branch, a `paths` or `paths-ignore` filter, a `types` list
+without `synchronize`, or `pull_request_target`. A job-level
+`continue-on-error: true` also leaves that job out because an advisory job
+concludes green even when it fails, so requiring it only adds waiting time.
+`chromatic.yml` is an explicit exception in `IGNORED_WORKFLOW_FILES`: its token
+detection job is not a product gate, and its Chromatic job is gated on an
+optional project token. A matrix or a job `name:` expression the derivation
+cannot resolve is a hard error rather than a guess.
 
 `pnpm run rulesets-drift` compares that derived list with the live `staging` and
-`main` branch rulesets. Missing expected checks fail with the exact status-check
-names to add. Extra required checks are reported as warnings so obsolete or
-external checks are visible without weakening protection.
+`main` branch rulesets. In scheduled mode, any mismatch fails with the exact
+status-check names to add or remove. In pull-request mode, a workflow-produced
+context that the ruleset does not yet require is a warning, while a
+ruleset-required context that no pull-request workflow produces is a failure.
 
 Three surfaces run that comparison:
 
 - `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
-  diff touches `.github/workflows/**`, so a workflow change and its ruleset
-  update land together.
+  diff touches `.github/workflows/**`. It warns for newly introduced contexts
+  that the live rulesets do not require yet, and fails only when a workflow
+  change removes or renames a context still required by the live rulesets.
 - `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on
-  demand, with `contents: read` + `issues: write`. It opens one issue titled
-  `Ruleset drift`, labelled `ruleset-drift`, updates its body while the drift
-  lasts, closes it once the rulesets match, and closes any older duplicate
-  carrying the same label. Do not edit that issue by hand; it is overwritten.
+  demand, with `contents: read` + `issues: write`. It fails on both directions,
+  opens one issue titled `Ruleset drift`, labelled `ruleset-drift`, updates its
+  body while the drift lasts, closes it once the rulesets match, and closes any
+  older duplicate carrying the same label. Do not edit that issue by hand; it is
+  overwritten.
 - `pnpm run rulesets-drift` locally, with `GITHUB_TOKEN` and `GITHUB_REPOSITORY`
-  (or `REPO`) in the environment.
+  (or `REPO`) in the environment. It defaults to scheduled mode; pass
+  `-- --mode=pull-request` to check the pull-request policy.
 
 Rollout order matters in both directions. Add a context to a ruleset only after
 a run of the branch has already reported it, otherwise every open pull request
 waits on a check that never arrives. So: merge the workflow change first, wait
-for one run on the target branch, then add the context. When removing a check,
-drop it from the ruleset first and delete the job afterwards.
+for one run on the target branch, then add the context. The pull-request gate
+allows that order by warning on the new context, and the scheduled drift monitor
+keeps the follow-up visible until the ruleset is updated. When removing a check,
+drop it from the ruleset first and delete the job afterwards; if a pull request
+deletes or renames a still-required context, the pull-request gate fails because
+the live ruleset would otherwise block every pull request.

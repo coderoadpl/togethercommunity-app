@@ -71,7 +71,7 @@ describe('rulesets-drift workflow', () => {
   it('reconciles the drift issue with the repository token', () => {
     const step = job.steps.at(-1);
 
-    expect(step?.run).toBe('pnpm run rulesets-drift -- --update-issue');
+    expect(step?.run).toBe('pnpm run rulesets-drift -- --mode=scheduled --update-issue');
     expect(step?.env).toEqual({ GITHUB_TOKEN: '${{ github.token }}' });
     expect(job.defaults.run['working-directory']).toBe('app');
     expect(packageJson.scripts['rulesets-drift']).toBe('tsx scripts/rulesets-drift.ts');
@@ -94,6 +94,6 @@ describe('rulesets-drift workflow', () => {
       'changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"',
     );
     expect(ciDriftStep?.run).not.toContain('grep -q .');
-    expect(ciDriftStep?.run).toContain('pnpm run rulesets-drift');
+    expect(ciDriftStep?.run).toContain('pnpm run rulesets-drift -- --mode=pull-request');
   });
 });

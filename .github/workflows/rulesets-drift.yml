@@ -36,4 +36,4 @@ jobs:
       - name: Compare live branch rulesets
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: pnpm run rulesets-drift -- --update-issue
+        run: pnpm run rulesets-drift -- --mode=scheduled --update-issue

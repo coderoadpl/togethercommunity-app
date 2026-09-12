@@ -64,7 +64,7 @@ jobs:
           git -C .. fetch --no-tags --depth=1 origin "$BASE_SHA"
           changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"
           if [ -n "$changed" ]; then
-            pnpm run rulesets-drift
+            pnpm run rulesets-drift -- --mode=pull-request
           else
             echo "No workflow changes; ruleset drift check skipped"
           fi

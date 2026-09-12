@@ -20,6 +20,7 @@ const issueTitle = 'Ruleset drift';
 const issueLabel = 'ruleset-drift';
 const issueMarker = '<!-- rulesets-drift -->';
 const requestAttempts = 3;
+const rulesetDriftModes = ['pull-request', 'scheduled'] as const;
 
 const branchRulesSchema = z.array(z.object({
   type: z.string(),
@@ -42,6 +43,7 @@ const issuesSchema = z.array(issueSchema);
 
 type GitHubIssue = z.output<typeof issueSchema>;
 type IssueState = GitHubIssue['state'];
+export type RulesetDriftMode = typeof rulesetDriftModes[number];
 
 export interface RepoSlug {
   owner: string;
@@ -78,6 +80,26 @@ export interface IssueSyncResult {
 }
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
+
+class GitHubApiRequestError extends Error {
+  constructor(
+    method: string,
+    path: string,
+    readonly status: number,
+  ) {
+    super(`GitHub API ${method} ${path} returned HTTP ${String(status)}`);
+  }
+}
+
+export class RulesetReadError extends Error {
+  constructor(readonly originalCause: unknown) {
+    super(
+      `could not read rulesets from api.github.com: ${
+        originalCause instanceof Error ? originalCause.message : String(originalCause)
+      }`,
+    );
+  }
+}
 
 class GitHubApi implements GitHubRulesClient, GitHubIssueClient {
   constructor(private readonly token: string) {}
@@ -137,7 +159,7 @@ class GitHubApi implements GitHubRulesClient, GitHubIssueClient {
             await delay(attempt * 2000);
             continue;
           }
-          throw new Error(`GitHub API ${init.method} ${path} returned HTTP ${String(response.status)}`);
+          throw new GitHubApiRequestError(init.method, path, response.status);
         }
         if (response.status === 204) return null;
         return await response.json();
@@ -175,10 +197,16 @@ export const extractRequiredStatusChecks = (payload: unknown): string[] => {
 export const collectRequiredRulesetChecks = async (
   client: GitHubRulesClient,
   repo: RepoSlug,
-): Promise<RequiredChecksByBranch> => ({
-  staging: extractRequiredStatusChecks(await client.getBranchRules(repo, 'staging')),
-  main: extractRequiredStatusChecks(await client.getBranchRules(repo, 'main')),
-});
+): Promise<RequiredChecksByBranch> => {
+  try {
+    return {
+      staging: extractRequiredStatusChecks(await client.getBranchRules(repo, 'staging')),
+      main: extractRequiredStatusChecks(await client.getBranchRules(repo, 'main')),
+    };
+  } catch (cause) {
+    throw new RulesetReadError(cause);
+  }
+};
 
 export const createRulesetDriftReport = async (
   client: GitHubRulesClient,
@@ -226,20 +254,39 @@ export const formatIssueBody = (report: RulesetDriftReport): string => [
   '',
 ].join('\n');
 
-export const formatCliReport = (report: RulesetDriftReport): string => {
-  const lines = ['rulesets-drift: compared live branch rulesets with workflow-derived required checks'];
+const hasUnknownRequiredChecks = (comparison: RulesetComparisonByBranch): boolean =>
+  RULESET_BRANCHES.some((branch) => comparison[branch].requiredUnknown.length > 0);
+
+export const hasBlockingRulesetDrift = (
+  comparison: RulesetComparisonByBranch,
+  mode: RulesetDriftMode,
+): boolean => mode === 'scheduled'
+  ? hasRulesetDrift(comparison)
+  : hasUnknownRequiredChecks(comparison);
+
+export const formatCliReport = (
+  report: RulesetDriftReport,
+  mode: RulesetDriftMode = 'scheduled',
+): string => {
+  const lines = [
+    `rulesets-drift: compared live branch rulesets with workflow-derived required checks in ${mode} mode`,
+  ];
   for (const branch of RULESET_BRANCHES) {
     const comparison = report.comparison[branch];
     if (comparison.expectedMissing.length > 0) {
-      lines.push(`${branch}: add missing required status checks: ${comparison.expectedMissing.join(', ')}`);
+      lines.push(mode === 'pull-request'
+        ? `${branch}: workflow-produced status checks not required yet: ${comparison.expectedMissing.join(', ')}`
+        : `${branch}: add missing required status checks: ${comparison.expectedMissing.join(', ')}`);
     }
     if (comparison.requiredUnknown.length > 0) {
-      lines.push(`${branch}: unknown required status checks: ${comparison.requiredUnknown.join(', ')}`);
+      lines.push(`${branch}: ruleset requires status checks no pull-request workflow produces: ${comparison.requiredUnknown.join(', ')}`);
     }
   }
   if (!hasRulesetDrift(report.comparison)) lines.push('rulesets-drift: clean');
-  else if (!hasMissingRequiredChecks(report.comparison)) {
-    lines.push('rulesets-drift: no missing required status checks; unknown ones reported as warnings');
+  else if (!hasBlockingRulesetDrift(report.comparison, mode)) {
+    lines.push('rulesets-drift: drift found, but pull-request mode reports it as warnings');
+  } else if (mode === 'scheduled') {
+    lines.push('rulesets-drift: drift found; scheduled mode fails until the live rulesets match');
   }
   return `${lines.join('\n')}\n`;
 };
@@ -260,7 +307,7 @@ export const syncRulesetDriftIssue = async (
   }
   const duplicatesClosed = duplicates.map((duplicate) => duplicate.number);
   const body = formatIssueBody(report);
-  if (hasMissingRequiredChecks(report.comparison)) {
+  if (hasRulesetDrift(report.comparison)) {
     if (current === undefined) {
       const created = await client.createIssue(repo, {
         title: issueTitle,
@@ -285,26 +332,77 @@ export const syncRulesetDriftIssue = async (
 const annotationValue = (value: string): string =>
   value.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
 
-const emitWarnings = (comparison: RulesetComparisonByBranch): void => {
+const emitAnnotation = (level: 'error' | 'warning', title: string, message: string): void => {
+  process.stderr.write(`::${level} title=${annotationValue(title)}::${annotationValue(message)}\n`);
+};
+
+const emitDriftAnnotations = (
+  comparison: RulesetComparisonByBranch,
+  mode: RulesetDriftMode,
+): void => {
   for (const branch of RULESET_BRANCHES) {
+    const missing = comparison[branch].expectedMissing;
+    if (missing.length > 0) {
+      emitAnnotation(
+        mode === 'pull-request' ? 'warning' : 'error',
+        `Ruleset drift ${branch}`,
+        mode === 'pull-request'
+          ? `Workflow-produced status checks are not required yet: ${missing.join(', ')}`
+          : `Missing required status checks: ${missing.join(', ')}`,
+      );
+    }
     const unknown = comparison[branch].requiredUnknown;
     if (unknown.length > 0) {
-      process.stderr.write(`::warning title=Ruleset drift ${branch}::${annotationValue(`Unknown required status checks: ${unknown.join(', ')}`)}\n`);
+      emitAnnotation(
+        'error',
+        `Ruleset drift ${branch}`,
+        `Ruleset requires status checks no pull-request workflow produces: ${unknown.join(', ')}`,
+      );
     }
   }
+};
+
+export const parseRulesetDriftMode = (
+  env: NodeJS.ProcessEnv,
+  argv: readonly string[],
+): RulesetDriftMode => {
+  const arg = argv.find((value) => value.startsWith('--mode='));
+  const raw = arg?.slice('--mode='.length) ?? env['RULESETS_DRIFT_MODE'] ?? 'scheduled';
+  const parsed = z.enum(rulesetDriftModes).safeParse(raw);
+  if (!parsed.success) throw new Error('rulesets-drift mode must be pull-request or scheduled');
+  return parsed.data;
+};
+
+export const isPullRequestRulesetReadWarning = (cause: unknown): boolean => {
+  if (!(cause instanceof RulesetReadError)) return false;
+  if (cause.originalCause instanceof TypeError) return true;
+  return cause.originalCause instanceof GitHubApiRequestError
+    && isRetryableStatus(cause.originalCause.status);
 };
 
 const run = async (env: NodeJS.ProcessEnv, argv: readonly string[]): Promise<void> => {
   const token = env['GITHUB_TOKEN'];
   if (token === undefined || token === '') throw new Error('GITHUB_TOKEN is required');
+  const mode = parseRulesetDriftMode(env, argv);
   const repo = parseRepoSlug(env['GITHUB_REPOSITORY'] ?? env['REPO']);
   const appRoot = join(import.meta.dirname, '..');
   const repoRoot = join(appRoot, '..');
   const client = new GitHubApi(token);
-  const report = await createRulesetDriftReport(client, repo, repoRoot);
-  const output = formatCliReport(report);
+  let report: RulesetDriftReport;
+  try {
+    report = await createRulesetDriftReport(client, repo, repoRoot);
+  } catch (cause) {
+    if (mode === 'pull-request' && isPullRequestRulesetReadWarning(cause)) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      process.stdout.write(`rulesets-drift: ${message}; skipping pull-request drift gate\n`);
+      emitAnnotation('warning', 'Ruleset drift', `${message}; skipping pull-request drift gate`);
+      return;
+    }
+    throw cause;
+  }
+  const output = formatCliReport(report, mode);
   process.stdout.write(output);
-  emitWarnings(report.comparison);
+  emitDriftAnnotations(report.comparison, mode);
 
   const summaryPath = env['GITHUB_STEP_SUMMARY'];
   if (summaryPath !== undefined && summaryPath !== '') {
@@ -319,7 +417,7 @@ const run = async (env: NodeJS.ProcessEnv, argv: readonly string[]): Promise<voi
     }
   }
 
-  if (hasMissingRequiredChecks(report.comparison)) process.exit(1);
+  if (hasBlockingRulesetDrift(report.comparison, mode)) process.exitCode = 1;
 };
 
 const invokedDirectly =
@@ -328,6 +426,6 @@ const invokedDirectly =
 if (invokedDirectly) {
   run(process.env, process.argv.slice(2)).catch((cause: unknown) => {
     process.stderr.write(`rulesets-drift failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }

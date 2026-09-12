@@ -19,11 +19,12 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
-import type {
-  EmailDeliveryStatus,
-  EmailSendProjection,
-  EmailSendStatus,
-  TransactionalEmailTransport,
+import {
+  isRedactedAuthEmailKind,
+  type EmailDeliveryStatus,
+  type EmailSendProjection,
+  type EmailSendStatus,
+  type TransactionalEmailTransport,
 } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -34,7 +35,7 @@ import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EllipsisTableCell, ResponsiveTableContainer } from '../../../theme.js';
 import { EmailEventTimeline } from '../email/index.js';
-import { deliveryStatusColor, deliveryStatusLabel, reasonLabel, sendKindLabel, sendStatusColor, sendStatusLabel } from './EmailSendSummary.js';
+import { deliveryStatusColor, deliveryStatusLabel, reasonLabel, sendKindLabel, sendStatusColor, sendStatusLabel, sendSubjectLabel, sourceKindLabel } from './EmailSendSummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -69,7 +70,9 @@ const transportLabel = (transport: TransactionalEmailTransport, t: ReturnType<ty
 
 const SendCampaign = ({ send }: { send: EmailSendProjection }) => {
   const t = useTranslations();
-  if (send.campaignId === null) return <>{send.source}</>;
+  if (send.campaignId === null) {
+    return <>{isRedactedAuthEmailKind(send.sourceKind) ? sourceKindLabel(send.sourceKind, t) : send.source}</>;
+  }
   return (
     <Link to="/panel/marketing/campaigns/$campaignId" params={{ campaignId: send.campaignId }}>
       {send.campaignName ?? t.marketing.campaignLabel}
@@ -384,6 +387,7 @@ export const SendsPanel = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>{t.marketing.recipient}</TableCell>
+                  <TableCell>{t.marketing.messageKind}</TableCell>
                   <TableCell>{t.marketing.subject}</TableCell>
                   <TableCell>{t.marketing.deliveryStatusLabel}</TableCell>
                   <TableCell>{t.marketing.campaignLabel}</TableCell>
@@ -403,7 +407,8 @@ export const SendsPanel = () => {
                 {rows.map((send) => (
                   <TableRow key={`${send.kind}:${send.id}`} data-testid="email-send-row">
                     <TableCell><SendRecipient send={send} /></TableCell>
-                    <EllipsisTableCell title={send.subject}>{send.subject}</EllipsisTableCell>
+                    <TableCell><Chip size="small" variant="outlined" label={sourceKindLabel(send.sourceKind, t)} /></TableCell>
+                    <EllipsisTableCell title={sendSubjectLabel(send, t)}>{sendSubjectLabel(send, t)}</EllipsisTableCell>
                     <TableCell><Chip size="small" variant="outlined" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
                     <TableCell><SendCampaign send={send} /></TableCell>
                     <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
@@ -466,6 +471,8 @@ export const SendDetailPage = () => {
   if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizePanelError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
 
   const send = detail.data.send;
+  const redacted = isRedactedAuthEmailKind(send.sourceKind);
+  const subject = sendSubjectLabel(send, t);
   const skipReason = send.skipReason === null ? { label: t.marketing.skipReason, value: '—' } : reasonLabel(send.skipReason, t);
   const recipientValue = <SendRecipient send={send} />;
   const outcomeDate = formatDateTime(send.deliveryOccurredAt ?? send.sentAt ?? send.createdAt, language);
@@ -490,8 +497,9 @@ export const SendDetailPage = () => {
       : null;
   const detailRows: Array<[string, ReactNode]> = [
     [t.marketing.kind, <Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} />],
+    [t.marketing.messageKind, <Chip size="small" variant="outlined" label={sourceKindLabel(send.sourceKind, t)} />],
     [t.marketing.recipient, recipientValue],
-    [t.marketing.subject, send.subject],
+    [t.marketing.subject, subject],
     [t.marketing.statusLabel, (
       <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip size="small" color={sendStatusColor(send.status)} label={sendStatusLabel(send.status, t)} />
@@ -519,8 +527,9 @@ export const SendDetailPage = () => {
   ];
 
   return (
-    <PanelPage title={send.subject} backTo={<PanelBackLink to="/panel/marketing/sends">{t.marketing.allSends}</PanelBackLink>}>
+    <PanelPage title={subject} backTo={<PanelBackLink to="/panel/marketing/sends">{t.marketing.allSends}</PanelBackLink>}>
       {outcomeAlert}
+      {redacted ? <Alert severity="info">{t.marketing.authContentRedacted}</Alert> : null}
       <SectionCard title={t.marketing.projection}>
         <Stack component="dl" useFlexGap spacing="0.75rem" sx={{ m: 0 }}>
           {detailRows.map(([label, value]) => (

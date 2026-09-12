@@ -24,12 +24,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type {
-  GrantSource,
-  MemberCourseLearningSummary,
-  MemberTimelineEvent,
-  MemberGrant,
-  MemberWithProductIds,
+import {
+  isRedactedAuthEmailKind,
+  type GrantSource,
+  type MemberCourseLearningSummary,
+  type MemberTimelineEvent,
+  type MemberGrant,
+  type MemberWithProductIds,
 } from '#core/domain/index.js';
 
 import { AdoptStripeSubscriptionDialog } from './AdoptStripeSubscriptionDialog.js';
@@ -40,7 +41,7 @@ import { localizePanelError, useLanguage, useTranslations, type Messages } from 
 import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
-import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
+import { EmailSendSummary, sourceKindLabel } from '../marketing/EmailSendSummary.js';
 import { MessageMemberButton } from './MessageMemberButton.js';
 import { ViewAsMemberButton } from './ViewAsMemberButton.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -289,7 +290,11 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
       });
     case 'email-sent':
-      return t.members.timelineEmail({ subject: event.payload.subject });
+      return t.members.timelineEmail({
+        subject: isRedactedAuthEmailKind(event.payload.source)
+          ? sourceKindLabel(event.payload.source, t)
+          : event.payload.subject,
+      });
     case 'banned':
       return t.members.timelineBan({ reason: event.payload.reason ?? '—' });
     case 'unbanned':

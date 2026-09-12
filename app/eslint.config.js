@@ -644,7 +644,6 @@ export default tseslint.config(
               from: ['web-ui'],
               allow: [
                 '@mui/material',
-                '@tiptap/core',
                 '@tiptap/extension-code-block',
                 '@tiptap/extension-image',
                 '@tiptap/extension-italic',

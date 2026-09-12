@@ -55,6 +55,10 @@ SHA-256 hash, and only then returns 200. Receipt identity is `(tenant, topic ARN
 Duplicates retain the original receipt; conflicting bodies return 409. Storage failures return 5xx,
 allowing SNS redelivery. Unsupported verified payloads are durably ignored with a reason.
 
+The SNS subscription always points at the platform host for the tenant webhook path. Custom domains
+never change the subscription endpoint; user-facing unsubscribe and preference links may use the
+tenant origin separately.
+
 Workers process receipts before bulk sends. Feedback projection changes, suppression creation and
 receipt completion commit together. Callback-before-send correlation retries with exponential
 backoff capped at 15 minutes; unresolved receipts become dead letters after 24 hours. Replayed
@@ -114,6 +118,14 @@ across campaigns and tenants. Retention and identity/reputation maintenance use 
 `marketing_maintenance` scheduler run to keep their 30-minute schedule. Overdue maintenance runs
 before campaigns so bulk sending cannot consume its entire budget. The batch budget is `min(floor(0.9 × SES rate × send seconds), daily remaining, batch cap)`.
 Delayed cron invocations still run overdue maintenance; failed or incomplete passes retry on the next tick.
+The internal marketing tick runs SES identity refreshes, reputation alerts, outbox dispatch, retention
+and campaign dispatch through one scheduler worker context: the tenant worker identity plus the
+`operator-secret` capability set, which is the narrowest principal holding `scheduler:dispatch`. A failed
+identity refresh or reputation check is recorded on the maintenance run, logged, and the tenant's next
+attempt is pushed out with exponential backoff starting at one minute and capped at one hour. That
+next-attempt time lives on the tenant's SES settings row, so it survives restarts, deploys and serverless
+cold starts, and both maintenance list queries skip the tenant until it passes. A successful pass clears
+it. Campaign dispatch and retention keep running while a tenant is backing off.
 Every transport attempt consumes the shared tenant limiter; transactional traffic reserves half the
 marketing allocation when pending. Cached provider daily usage and local reservations constrain it
 further. Database work and provider latency consume the window, so these are capacity estimates.

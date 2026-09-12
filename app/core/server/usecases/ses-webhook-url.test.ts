@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tenant } from '#core/domain/index.js';
 
 import type { TenantRepository } from '../ports.js';
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 import { createSesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 const acme: Tenant = {
@@ -33,6 +34,25 @@ const routing = {
 describe('SES webhook base URL', () => {
   it('uses the platform host for the tenant instead of the platform apex', async () => {
     const resolve = createSesWebhookBaseUrlResolver({ tenants: fakeTenants, routing });
+
+    expect(await resolve('t-acme')).toBe('https://acme.togethercommunity.app/api/webhooks/ses');
+  });
+
+  it('ignores verified custom domains when resolving the webhook base URL', async () => {
+    const depsWithCustomDomain = {
+      tenants: fakeTenants,
+      routing,
+      tenantDomains: createInMemoryTenantDomainRepository([
+        tenantDomainFixture({
+          id: 'domain-1',
+          tenantId: 't-acme',
+          domain: 'community.example.test',
+          verified: true,
+          verifiedAt: '2026-09-01T00:00:00.000Z',
+        }),
+      ]),
+    };
+    const resolve = createSesWebhookBaseUrlResolver(depsWithCustomDomain);
 
     expect(await resolve('t-acme')).toBe('https://acme.togethercommunity.app/api/webhooks/ses');
   });

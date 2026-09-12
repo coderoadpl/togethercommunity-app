@@ -27,6 +27,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   email: 'demo@example.com',
   name: 'Demo',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme' : null,
@@ -132,7 +133,7 @@ describe('listProductAccessIssues', () => {
     const deps = repos([], [], [], []);
     expect(await listProductAccessIssues(ctx(null, null), deps)).toMatchObject({
       ok: false,
-      error: { code: 'tenant_not_found' },
+      error: { code: 'forbidden' },
     });
     expect(await listProductAccessIssues(ctx('t1', null), deps)).toMatchObject({
       ok: false,

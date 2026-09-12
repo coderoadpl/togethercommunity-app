@@ -300,6 +300,7 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   AccountAvatarRepository,
+  AccountAvatarTenantReader,
   AvatarImageProcessor,
   AvatarSourceReader,
   VideoLibraryPort,
@@ -327,7 +328,7 @@ import { communityEventPath, communityPostPath, communitySpacePath, conversation
 import { createCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
-import { type Env, isLocalDevelopmentEnvironment } from './env.js';
+import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
@@ -403,6 +404,7 @@ export interface AppDeps {
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
   accountAvatars: AccountAvatarRepository;
+  accountAvatarTenants: AccountAvatarTenantReader;
   avatarImages: AvatarImageProcessor;
   members: MemberRepository;
   memberEvents: MemberEventRepository;
@@ -738,7 +740,7 @@ export const selectTrustedAuthOrigins = (input: {
   singleTenantMode: boolean;
   customDomains: readonly string[];
 }): string[] => {
-  const local = input.baseDomain === 'localhost';
+  const local = isLocalHostname(input.baseDomain);
   const subdomainSchemes = local ? ['http', 'https'] as const : ['https'] as const;
   return [
     input.appBaseUrl,
@@ -1227,8 +1229,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     google,
     importGoogleAvatar: async ({ userId, sourceUrl }) => {
       const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
-      await Promise.all(tenantIds.map((tenantId) => importGoogleAvatar(
-        { tenantId, userId, sourceUrl },
+      await Promise.all(tenantIds.map((tenant) => importGoogleAvatar(
+        { tenantId: tenant.id, userId, sourceUrl },
         { avatars: accountAvatars, avatarImages, ids, secretResolver, storage },
       )));
     },
@@ -1286,6 +1288,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),
     accountAvatars,
+    accountAvatarTenants,
     avatarImages,
     members: createMemberRepository(db),
     memberEvents: createMemberEventRepository(db),

@@ -187,8 +187,21 @@ export interface AccountAvatarRepository {
   removeAvatar(tenantId: string, userId: string): Promise<void>;
 }
 
+export interface MemberTenantListing {
+  id: string;
+  slug: string;
+  name: string;
+  staffRole: null;
+  memberId: string;
+  displayName: string | null;
+  banned: boolean;
+  dmOptOut: boolean;
+  language: Language | null;
+  videoAutoplay: boolean | null;
+}
+
 export interface AccountAvatarTenantReader {
-  listTenantIdsForUser(userId: string): Promise<string[]>;
+  listTenantIdsForUser(userId: string): Promise<MemberTenantListing[]>;
 }
 
 export interface AvatarImageProcessor {

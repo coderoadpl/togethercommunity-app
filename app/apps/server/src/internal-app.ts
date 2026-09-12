@@ -572,6 +572,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   name: user.name,
   emailVerified: user.emailVerified,
   image: null,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -590,6 +591,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   name: 'Checkout',
   emailVerified: false,
   image: null,
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -800,7 +802,6 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
   });
 
-  // A freshly registered user has no member or staff grant, so tenant identity resolution would reject this session-authenticated route.
   app.post(API_PATHS.termsConsent, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
@@ -1634,6 +1635,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       : { hasPassword: false, twoFactorEnabled: false };
     return respond(
       ok({
+        tenantAccess: identity.tenantAccess,
         userId: identity.userId,
         email: identity.email,
         name: identity.name,

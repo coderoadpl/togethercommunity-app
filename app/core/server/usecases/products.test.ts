@@ -17,6 +17,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   email: 'demo@example.com',
   name: 'Demo',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme Inc' : null,
@@ -170,7 +171,7 @@ describe('products use-cases', () => {
   it('refuses to operate without a tenant', async () => {
     const { repo } = fakeRepo();
     const listed = await listProducts({ identity: identity(null, null) }, deps(repo));
-    expect(listed).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+    expect(listed).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('forbids non-staff members from listing or creating', async () => {

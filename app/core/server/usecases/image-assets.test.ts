@@ -36,6 +36,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   email: 'person@example.test',
   name: 'Person',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: TENANT_ID,
   tenantSlug: 'acme',
   tenantName: 'Acme',

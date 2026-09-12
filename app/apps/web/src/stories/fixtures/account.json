@@ -97,6 +97,7 @@
           "staffRole": null,
           "videoAutoplay": null
         },
+        "tenantAccess": "member",
         "twoFactorEnabled": false,
         "userId": "fixture-user-15a98ce40564caec"
       }

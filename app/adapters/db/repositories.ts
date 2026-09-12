@@ -972,10 +972,33 @@ export const createAccountAvatarRepository = (db: Db): AccountAvatarRepository =
 export const createAccountAvatarTenantReader = (db: Db): AccountAvatarTenantReader => ({
   listTenantIdsForUser: async (userId) => {
     const rows = await db
-      .select({ tenantId: members.tenantId })
+      .select({
+        id: tenants.id,
+        slug: tenants.slug,
+        name: tenants.name,
+        memberId: members.id,
+        displayName: members.displayName,
+        bannedAt: members.bannedAt,
+        dmOptOutAt: members.dmOptOutAt,
+        language: members.language,
+        videoAutoplay: members.videoAutoplay,
+      })
       .from(members)
-      .where(and(eq(members.userId, userId), isNull(members.deletedAt)));
-    return rows.map((row) => row.tenantId);
+      .innerJoin(tenants, eq(members.tenantId, tenants.id))
+      .where(and(eq(members.userId, userId), isNull(members.deletedAt)))
+      .orderBy(asc(tenants.slug));
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      staffRole: null,
+      memberId: row.memberId,
+      displayName: row.displayName,
+      banned: row.bannedAt !== null,
+      dmOptOut: row.dmOptOutAt !== null,
+      language: row.language,
+      videoAutoplay: row.videoAutoplay,
+    }));
   },
 });
 

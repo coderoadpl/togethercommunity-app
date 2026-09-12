@@ -2,7 +2,7 @@ import type { MarketingContactDeps } from '../marketing-contact-ports.js';
 import type { Ctx } from '../context.js';
 
 const unexpected = (): never => { throw new Error('Unexpected directory dependency call'); };
-export const marketingContactCtx = (): Ctx => ({ identity: { userId: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantId: 'tenant-a', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner', memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false } });
+export const marketingContactCtx = (): Ctx => ({ identity: { userId: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantAccess: 'staff', tenantId: 'tenant-a', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner', memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false } });
 export const marketingContactDeps = (overrides: Partial<MarketingContactDeps> = {}): MarketingContactDeps => ({
   contacts: { lockAddress: unexpected, findById: unexpected, findByEmail: unexpected, listPage: unexpected, upsertByEmail: unexpected, update: unexpected, archive: unexpected },
   lists: { findById: unexpected, findByKey: unexpected, listPage: unexpected, save: unexpected, addMembers: unexpected, removeMembers: unexpected, validateRule: unexpected, counts: unexpected },

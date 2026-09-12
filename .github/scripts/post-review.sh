@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "${EVENT_NAME:-pull_request}" = workflow_dispatch ] || [ "${CURRENT:-false}" != true ]; then
+if [ "${EVENT_NAME:-pull_request}" = workflow_dispatch ]; then
+  exit 0
+fi
+if [ "${CURRENT:-false}" != true ] && [ "${PREPARE_REASON:-}" != base_moved ]; then
   exit 0
 fi
 
 repository="${GITHUB_REPOSITORY:-coderoadpl/togethercommunity-app}"
 pr="${PR:?PR is required}"
+base_moved_message="Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run"
+turn_limit_message="Reviewer exceeded AI_REVIEW_MAX_TURNS=${MAX_TURNS:-unknown}; raise the variable or split the pull request"
 
 producer=""
 producer_raw=""
@@ -89,7 +94,13 @@ trap 'rm -f "$body_file"' EXIT
   printf "<sub>Base \`%s\` · head \`%s\` · [run](%s)</sub>\n\n" "${BASE_SHA:-unknown}" "${HEAD_SHA:-unknown}" "${RUN_URL:-#}"
   if [ -z "$producer" ]; then
     printf '## AI review: NO VERDICT — infrastructure failure\n\n'
-    printf 'The gate did not obtain a valid verdict. Merge remains blocked.\n\n'
+    if [ "${PREPARE_REASON:-}" = base_moved ]; then
+      printf '%s\n\n' "$base_moved_message"
+    elif printf '%s\n' "${R_1P:-}" "${R_1PR:-}" "${R_1F:-}" "${R_1FR:-}" "${R_2P:-}" "${R_2PR:-}" "${R_2F:-}" "${R_2FR:-}" "${R_3P:-}" "${R_3PR:-}" "${R_3F:-}" "${R_3FR:-}" | grep -qx turn_limit; then
+      printf '%s\n\n' "$turn_limit_message"
+    else
+      printf 'The gate did not obtain a valid verdict. Merge remains blocked.\n\n'
+    fi
     printf '### Attempts\n\n'
     printf '%s\n' \
       "- try1p: ${R_1P:-not_attempted}" "- try1pr: ${R_1PR:-not_attempted}" \

@@ -661,6 +661,7 @@ const dmMessage = (id: string, senderUserId: string, createdAt: string): DmMessa
   conversationId: 'conversation-1',
   senderUserId,
   body: `Content ${id}`,
+  bodyFormat: 'plain',
   createdAt,
 });
 

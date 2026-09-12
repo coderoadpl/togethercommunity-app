@@ -3121,6 +3121,7 @@ describe('direct message repositories', () => {
     conversationId: 'dm-conversation-1',
     senderUserId: 'user-acme-member',
     body: `Body ${id}`,
+    bodyFormat: 'plain',
     createdAt: NOW,
     ...over,
   });

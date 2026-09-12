@@ -99,6 +99,8 @@ export const en: Messages = {
     linkApply: 'Apply link',
     linkRemove: 'Remove link',
     sourceOnlyHint: 'This content uses a table, a task list, or raw HTML, which the visual editor cannot show. Editing stays on the Markdown tab so nothing is lost.',
+    characterCount: ({ used, limit }) => format('Characters used: {used} of {limit}', { used, limit }),
+    overLimit: 'This text is longer than the limit. Shorten it to save your changes.',
   },
   pagination: {
     rowsPerPage: 'Rows per page:',

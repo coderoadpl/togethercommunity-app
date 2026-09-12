@@ -770,6 +770,30 @@ describe('startDmConversation', () => {
 });
 
 describe('sendDmMessage', () => {
+  it('stores Markdown and returns only sanitized rendered HTML', async () => {
+    const fx = fixture();
+    const conversation = await startWith(fx);
+    const result = await sendDmMessage(ctx(), {
+      conversationId: conversation.id,
+      body: '**Bold** [guide](https://example.com) <script>alert(1)</script>',
+      bodyFormat: 'markdown',
+    }, fx.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        bodyFormat: 'markdown',
+        bodyHtml: expect.stringContaining('<strong>Bold</strong>'),
+      },
+    });
+    if (!result.ok) throw new Error('Expected a rendered message');
+    expect(result.value.bodyHtml).toContain('rel="noopener noreferrer nofollow ugc"');
+    expect(result.value.bodyHtml).not.toContain('<script>');
+    expect(fx.messages.rows[0]?.bodyFormat).toBe('markdown');
+    expect(fx.conversations.rows[0]?.lastMessageSnippet).toBe('Bold guide <script>alert(1)</script>');
+    expect(fx.notifications.rows[0]?.payload.snippet).toBe('Bold guide <script>alert(1)</script>');
+  });
+
   it('appends the message, advances the projection and notifies the recipient once per burst', async () => {
     const fx = fixture();
     const conversation = await startWith(fx);

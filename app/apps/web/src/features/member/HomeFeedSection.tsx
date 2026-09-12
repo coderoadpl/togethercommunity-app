@@ -87,10 +87,11 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
               submitLabel={t.common.save}
               pendingLabel={t.discussion.saving}
               initialValue={item.body}
+              initialFormat={item.bodyFormat}
               focusOnMount
               busy={update.isPending}
               disabled={writeDisabled}
-              onSubmit={(body) => update.mutate({ id: item.id, body }, { onSuccess: () => setEditing(false) })}
+              onSubmit={(body) => update.mutate({ id: item.id, body, bodyFormat: 'markdown' }, { onSuccess: () => setEditing(false) })}
               onCancel={() => setEditing(false)}
               testId={`edit-composer-${item.id}`}
             />

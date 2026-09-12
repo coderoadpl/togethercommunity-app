@@ -1,6 +1,6 @@
 {
-  "hash": "39e9a8022ad8165101d80392cfec10be864b6075bee73d991cf65553ad822253",
-  "shortId": "39e9a8022ad8",
+  "hash": "0e4d15bd49318f8b0746b83be71b8c8678e74337c7cacd5e80bbe0cd526ac3d8",
+  "shortId": "0e4d15bd4931",
   "schema": {
     "constraints": [
       {
@@ -47,6 +47,11 @@
         "definition": "CHECK (((value >= 0) AND ((kind <> 'percent'::text) OR (value <= 100))))",
         "name": "coupons_value_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
+        "name": "dm_messages_body_format_check",
+        "table": "dm_messages"
       },
       {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
@@ -4611,6 +4616,67 @@
       {
         "columns": [
           {
+            "default": "'plain'::text",
+            "generated": "",
+            "identity": "",
+            "name": "body_format",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "conversation_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sender_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "dm_messages"
+      },
+      {
+        "columns": [
+          {
             "default": "'processed'::text",
             "generated": "",
             "identity": "",
@@ -8874,59 +8940,6 @@
           }
         ],
         "name": "member_blocks"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "body",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "conversation_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sender_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "dm_messages"
       },
       {
         "columns": [

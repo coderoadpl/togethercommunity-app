@@ -7,9 +7,23 @@ const storyByScreen: ReadonlyMap<string, string> = new Map([
   ['markdown-editor-links', 'forms-markdowneditor--links'],
   ['markdown-editor-disabled', 'forms-markdowneditor--disabled'],
   ['markdown-editor-source', 'forms-markdowneditor--markdown-tab'],
+  ['markdown-editor-compact-empty-light', 'forms-markdowneditor--compact-empty-light-mobile-390'],
+  ['markdown-editor-compact-content-light', 'forms-markdowneditor--compact-content-light-mobile-390'],
+  ['markdown-editor-compact-empty-dark', 'forms-markdowneditor--compact-empty-dark-mobile-390'],
+  ['markdown-editor-compact-content-dark', 'forms-markdowneditor--compact-content-dark-mobile-390'],
 ]);
 
-type ComponentScreenName = 'markdown-editor-empty' | 'markdown-editor-long-content' | 'markdown-editor-code' | 'markdown-editor-links' | 'markdown-editor-disabled' | 'markdown-editor-source';
+type ComponentScreenName =
+  | 'markdown-editor-empty'
+  | 'markdown-editor-long-content'
+  | 'markdown-editor-code'
+  | 'markdown-editor-links'
+  | 'markdown-editor-disabled'
+  | 'markdown-editor-source'
+  | 'markdown-editor-compact-empty-light'
+  | 'markdown-editor-compact-content-light'
+  | 'markdown-editor-compact-empty-dark'
+  | 'markdown-editor-compact-content-dark';
 
 const screen = (
   name: ComponentScreenName,
@@ -33,6 +47,10 @@ export const componentScreens: readonly ScreenSpec[] = [
   screen('markdown-editor-links', 'mobile'),
   screen('markdown-editor-disabled', 'desktop'),
   screen('markdown-editor-source', 'mobile', true),
+  screen('markdown-editor-compact-empty-light', 'mobile'),
+  screen('markdown-editor-compact-content-light', 'mobile'),
+  screen('markdown-editor-compact-empty-dark', 'mobile'),
+  screen('markdown-editor-compact-content-dark', 'mobile'),
 ];
 
 export const componentScreenNames = new Set(componentScreens.map((entry) => entry.name));

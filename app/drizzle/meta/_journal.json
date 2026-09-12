@@ -880,8 +880,15 @@
     {
       "idx": 125,
       "version": "7",
+      "when": 1789200000001,
+      "tag": "0125_stripe_subscription_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
       "when": 1789200001000,
-      "tag": "0125_stripe_test_mode",
+      "tag": "0126_stripe_test_mode",
       "breakpoints": true
     }
   ]

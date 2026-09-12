@@ -51,8 +51,8 @@ export interface RemoteSmokeResult {
 }
 
 /**
- * Every tenant API key scope maps to marketing, transactional, enrollment or
- * import capabilities; none of them grants `tenant:settings:read`, so the
+ * Every tenant API key scope maps to marketing, transactional, enrollment,
+ * subscription or import capabilities; none of them grants `tenant:settings:read`, so the
  * Studio settings read cannot be driven by a key from a workflow.
  */
 const STUDIO_SETTINGS_SKIP_REASON =

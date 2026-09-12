@@ -127,7 +127,8 @@ all directory tables through their tenant references.
 
 Owners and administrators have directory read/write, list read/write and import
 write capabilities. Marketing-scoped API keys receive the same directory
-capabilities. Enrollment, transactional and content/users import scopes do not.
+capabilities. Enrollment, transactional, subscription read/adopt and content/users
+import scopes do not.
 Import operations additionally authorize contact/list/consent/suppression writes as
 applicable; previews require the corresponding reads. List previews require both
 list and contact read. See [permission table](permission-table.md).
@@ -141,6 +142,17 @@ linked members with active campaign consent. Every selected contact still needs
 that campaign's consent definition and must pass suppression checks. Product
 exclusions use any current grant projection, including expired, free, manual and
 imported grants; they are not a paid-purchase filter.
+
+New audience writes cannot put the same list in both `includeLists` and
+`excludeLists`. The HTTP contracts reject overlaps on
+`POST /api/marketing/campaigns`, `POST /api/marketing/campaigns/update`,
+`POST /api/marketing/campaigns/audience`, and
+`POST /api/marketing/audience-preview`. The CLI applies the same validation for
+`campaign create --audience <json>` and `campaign audience set --audience <json>`.
+Legacy campaigns that were already stored with an overlap remain readable and
+schedulable: when scheduling reads the saved audience, exclusion wins and any
+overlapping list is dropped from `includeLists`; the server logs the campaign ID
+for follow-up.
 
 ```json
 {

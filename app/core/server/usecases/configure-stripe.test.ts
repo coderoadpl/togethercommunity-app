@@ -119,15 +119,15 @@ describe('configureStripe', () => {
 
     await expect(configureStripe(
       { identity: identity('owner') },
-      { restrictedKey: 'rk_test_private' },
+      { restrictedKey: 'rk_test_private', mode: 'test' },
       h.deps,
     )).resolves.toMatchObject({
       ok: true,
-      value: { webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1' },
+      value: { webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1?mode=test' },
     });
     expect(calls).toMatchObject([{
       tenantId: 'tenant-1',
-      webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1',
+      webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1?mode=test',
     }]);
   });
 
@@ -254,8 +254,8 @@ it('configures and removes a second endpoint without changing live credentials',
   expect(await configureStripe({ identity: identity('owner') }, { mode: 'test', restrictedKey: 'rk_test_private' }, h.deps))
     .toMatchObject({ ok: true });
   expect(urls).toEqual([
-    'https://app.example.test/base/api/webhooks/stripe/tenant-1',
-    'https://app.example.test/base/api/webhooks/stripe/tenant-1?mode=test',
+    'https://acme.example.test/api/webhooks/stripe/tenant-1',
+    'https://acme.example.test/api/webhooks/stripe/tenant-1?mode=test',
   ]);
   const { removeStripeTestMode } = await import('./configure-stripe.js');
   expect(await removeStripeTestMode({ identity: identity('owner') }, h.deps)).toEqual(ok({ removed: true }));

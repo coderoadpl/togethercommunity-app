@@ -23,9 +23,10 @@ the platform address.
 Enrollment, subscription, support, erasure, notification and marketing emails,
 including campaign unsubscribe and double opt-in fallbacks, use this origin.
 Campaign unsubscribe addresses are resolved per tenant when sending, including
-scheduled sends and test sends. SES webhook subscriptions use the same resolver.
-Auth and consent links that already carry a resolved request origin retain it;
-tenant-header and single-tenant auth fallbacks use the canonical origin.
+scheduled sends and test sends. SES webhook subscriptions ignore this resolver
+and always point at the platform host. Auth and consent links that already
+carry a resolved request origin retain it; tenant-header and single-tenant auth
+fallbacks use the canonical origin.
 Existing queued messages and registered SES subscriptions are not rewritten.
 
 ## How it works

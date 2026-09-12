@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 
 import {
   automationIdempotencyKeySchema,
@@ -35,6 +35,7 @@ import type {
   MarketingConsentRepository,
   MarketingJobRepository,
   MarketingThrottleRepository,
+  SesMaintenanceBackoffRepository,
   SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantDocumentRepository,
@@ -351,6 +352,26 @@ export const createCampaignRepository = (db: Db): CampaignRepository => ({
   },
 });
 
+const listSesMaintenanceTenantIds = async (db: Db, checkedBefore: string, retryableAt: string) =>
+  (
+    await db
+      .select({ tenantId: tenantSesSettings.tenantId })
+      .from(tenantSesSettings)
+      .where(
+        and(
+          or(
+            isNull(tenantSesSettings.identityCheckedAt),
+            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
+          ),
+          or(
+            isNull(tenantSesSettings.maintenanceRetryAt),
+            lte(tenantSesSettings.maintenanceRetryAt, retryableAt),
+          ),
+        ),
+      )
+      .orderBy(asc(tenantSesSettings.tenantId))
+  ).map((row) => row.tenantId);
+
 export const createMarketingJobRepository = (db: Db): MarketingJobRepository => ({
   listRunnableCampaigns: async (now) => (await db.select({
     tenantId: campaigns.tenantId,
@@ -367,32 +388,34 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
     ]);
     return [...new Set([...consentTenants, ...sendTenants, ...idempotencyTenants].map((row) => row.tenantId))].sort();
   },
-  listSesIdentityRefreshTenantIds: async (checkedBefore) =>
-    (
-      await db
-        .select({ tenantId: tenantSesSettings.tenantId })
-        .from(tenantSesSettings)
-        .where(
-          or(
-            isNull(tenantSesSettings.identityCheckedAt),
-            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
-          ),
-        )
-        .orderBy(asc(tenantSesSettings.tenantId))
-    ).map((row) => row.tenantId),
-  listSesTenantIds: async (checkedBefore) =>
-    (
-      await db
-        .select({ tenantId: tenantSesSettings.tenantId })
-        .from(tenantSesSettings)
-        .where(
-          or(
-            isNull(tenantSesSettings.identityCheckedAt),
-            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
-          ),
-        )
-        .orderBy(asc(tenantSesSettings.tenantId))
-    ).map((row) => row.tenantId),
+  listSesIdentityRefreshTenantIds: async (checkedBefore, retryableAt) =>
+    listSesMaintenanceTenantIds(db, checkedBefore, retryableAt),
+  listSesTenantIds: async (checkedBefore, retryableAt) =>
+    listSesMaintenanceTenantIds(db, checkedBefore, retryableAt),
+});
+
+export const createSesMaintenanceBackoffRepository = (db: Db): SesMaintenanceBackoffRepository => ({
+  countAttempts: async (tenantId) => {
+    const [row] = await db
+      .select({ attempts: tenantSesSettings.maintenanceAttempts })
+      .from(tenantSesSettings)
+      .where(eq(tenantSesSettings.tenantId, tenantId))
+      .limit(1);
+    return row?.attempts ?? 0;
+  },
+  defer: async (tenantId, input) => {
+    await db.update(tenantSesSettings)
+      .set({ maintenanceAttempts: input.attempts, maintenanceRetryAt: input.retryAt })
+      .where(eq(tenantSesSettings.tenantId, tenantId));
+  },
+  clear: async (tenantId) => {
+    await db.update(tenantSesSettings)
+      .set({ maintenanceAttempts: 0, maintenanceRetryAt: null })
+      .where(and(
+        eq(tenantSesSettings.tenantId, tenantId),
+        or(ne(tenantSesSettings.maintenanceAttempts, 0), isNotNull(tenantSesSettings.maintenanceRetryAt)),
+      ));
+  },
 });
 
 export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepository => ({

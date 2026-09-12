@@ -90,7 +90,7 @@ without waiting for the six-hourly refresh.
 4. Select **Create SES + SNS infrastructure**. This repeat-safe step creates
    separate marketing and transactional SES configuration sets, an SNS topic
    and SES publish policy, the HTTPS subscription to
-   `/api/webhooks/ses/:token` on the tenant domain, and event destinations for
+   `/api/webhooks/ses/:token` on the platform host, and event destinations for
    both sets. The
    marketing set publishes Send, Delivery, Bounce, Complaint, Open, and Click.
    The transactional set publishes only Send, Delivery, Bounce, and Complaint,
@@ -112,19 +112,26 @@ without waiting for the six-hourly refresh.
 Every step can be retried. Completed resource identifiers are saved after each
 successful step, so a later AWS error does not force the wizard to restart.
 
-## The webhook lives on the tenant domain
+## The webhook lives on the platform host
 
-The SNS subscription endpoint is built on the tenant origin: the verified custom
-domain when the workspace has one, otherwise `<slug>.<platform domain>`. Adding,
-verifying, or removing a custom domain therefore changes the webhook address.
-Together shows a warning in the wizard while the subscribed endpoint differs
-from the current one; select **Create SES + SNS infrastructure** again to
-subscribe the new address. Together creates the replacement subscription and
-leaves the previously confirmed one in place, so signed events keep arriving
-while the new endpoint is still pending. Once SNS confirms the replacement,
-Together stores it and removes the subscriptions it supersedes on this tenant's
-topic — subscriptions that never left `PendingConfirmation` cannot be
-unsubscribed and AWS discards them after three days.
+The SNS subscription always points at the platform host for the tenant:
+`<slug>.<platform domain>`, or the configured application origin in
+single-tenant mode. Custom domains never change the subscription endpoint, so
+adding, verifying, or removing one leaves the feedback loop untouched.
+Unsubscribe and preference links keep using the tenant origin, a verified
+custom domain included; only the SES and SNS infrastructure is bound to the
+platform host.
+
+The webhook route itself accepts a verified notification on any host, so a
+subscription registered at an older address keeps delivering until it is
+replaced. Together shows a warning in the wizard while the subscribed endpoint
+differs from the current one; select **Create SES + SNS infrastructure** again
+to subscribe the platform host. Together creates the replacement subscription
+and leaves the previously confirmed one in place, so signed events keep
+arriving while the new endpoint is still pending. Once SNS confirms the
+replacement, Together stores it and removes the subscriptions it supersedes on
+this tenant's topic — subscriptions that never left `PendingConfirmation`
+cannot be unsubscribed and AWS discards them after three days.
 
 References: [SES mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html),
 [configuration sets](https://docs.aws.amazon.com/ses/latest/dg/creating-configuration-sets.html).

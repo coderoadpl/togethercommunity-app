@@ -190,6 +190,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1p
           REASON: ${{ steps.classify1p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 primary cold-start retry
@@ -255,6 +256,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1pr
           REASON: ${{ steps.classify1pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 fallback
@@ -320,6 +322,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1f
           REASON: ${{ steps.classify1f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 fallback cold-start retry
@@ -385,6 +388,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1fr
           REASON: ${{ steps.classify1fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 primary
@@ -450,6 +454,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2p
           REASON: ${{ steps.classify2p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 primary cold-start retry
@@ -515,6 +520,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2pr
           REASON: ${{ steps.classify2pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 fallback
@@ -580,6 +586,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2f
           REASON: ${{ steps.classify2f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 fallback cold-start retry
@@ -645,6 +652,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2fr
           REASON: ${{ steps.classify2fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 primary
@@ -710,6 +718,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3p
           REASON: ${{ steps.classify3p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 primary cold-start retry
@@ -775,6 +784,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3pr
           REASON: ${{ steps.classify3pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 fallback
@@ -840,6 +850,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3f
           REASON: ${{ steps.classify3f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 fallback cold-start retry
@@ -905,6 +916,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3fr
           REASON: ${{ steps.classify3fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: Revalidate the pinned target
@@ -921,7 +933,7 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/.github/scripts/prepare-review.sh"
 
       - name: Post the review verdict
-        if: ${{ always() && github.event_name == 'pull_request' && steps.current.outputs.current == 'true' && !cancelled() }}
+        if: ${{ always() && github.event_name == 'pull_request' && (steps.current.outputs.current == 'true' || steps.prepare.outputs.reason == 'base_moved') && !cancelled() }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -929,9 +941,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR: ${{ steps.target.outputs.pr }}
           CURRENT: ${{ steps.current.outputs.current }}
-          BASE_SHA: ${{ steps.prepare.outputs.base_sha }}
-          HEAD_SHA: ${{ steps.prepare.outputs.head_sha }}
+          PREPARE_REASON: ${{ steps.prepare.outputs.reason }}
+          BASE_SHA: ${{ steps.prepare.outputs.base_sha || steps.target.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.prepare.outputs.head_sha || steps.target.outputs.head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
           O_1P: ${{ steps.classify1p.outputs.outcome }}
           R_1P: ${{ steps.classify1p.outputs.reason }}
           RAW_1P: ${{ steps.try1p.outputs.structured_output }}
@@ -1003,6 +1017,7 @@ jobs:
         env:
           TRUSTED_INSTALLED: ${{ steps.trusted.outputs.installed }}
           PREPARED: ${{ steps.prepare.outputs.prepared }}
+          PREPARE_REASON: ${{ steps.prepare.outputs.reason }}
           CURRENT: ${{ steps.current.outputs.current }}
           DRAFT: ${{ steps.target.outputs.draft }}
           O_1P: ${{ steps.classify1p.outputs.outcome }}
@@ -1018,6 +1033,9 @@ jobs:
           O_3F: ${{ steps.classify3f.outputs.outcome }}
           O_3FR: ${{ steps.classify3fr.outputs.outcome }}
         run: |
+          if [ "$PREPARE_REASON" = base_moved ]; then
+            exec bash "$GITHUB_WORKSPACE/.github/scripts/gate-review.sh"
+          fi
           if [ "$TRUSTED_INSTALLED" != true ]; then
             echo "bootstrap-not-installed: trusted AI review gate is unavailable"
             exit 1

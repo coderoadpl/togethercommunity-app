@@ -841,6 +841,40 @@ describe('SettingsPanel security', () => {
     expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
   });
 
+  it('confirms regenerated backup codes on the creator surface', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ backupCodes: ['fresh-code'] })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.backupCodesRegenerated);
+  });
+
+  it('confirms a two-factor disable on the creator surface', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('disable-2fa'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.twoFactorOff);
+  });
+
+  it('reports a refused two-factor disable on the creator surface', async () => {
+    server.use(http.post('*', () =>
+      HttpResponse.json({ message: 'Invalid password' }, { status: 401 })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'wrong-password');
+    await userEvent.click(screen.getByTestId('disable-2fa'));
+
+    expect(await findToast('error')).toBeInTheDocument();
+  });
+
   it('requests password setup from creator passkey management', async () => {
     let body: unknown;
     server.use(

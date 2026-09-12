@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -4023,6 +4023,43 @@ export const AccountQrCanvas = styled('canvas')({
   height: 'auto',
   backgroundColor: '#fff',
   borderRadius: 8,
+});
+
+export const MarkdownEditorToolbar = styled(Stack)(({ theme }) => ({
+  backgroundColor: theme.palette.action.hover,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const MarkdownEditorContent = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'rows',
+})<{ rows: number }>(({ theme, rows }) => ({
+  '& .tiptap': {
+    minHeight: `calc(${Math.max(2, rows)} * 1.5em + 1.75rem)`,
+    outline: 0,
+    overflowWrap: 'anywhere',
+    padding: '0.875rem 1rem',
+  },
+  '& .tiptap:focus-visible': {
+    outline: `3px solid ${theme.focusRing ?? theme.palette.primary.main}`,
+    outlineOffset: -3,
+  },
+  '& .tiptap > *:first-of-type': { marginTop: 0 },
+  '& .tiptap > *:last-child': { marginBottom: 0 },
+  '& .tiptap p': { marginBottom: '0.65em', marginTop: '0.65em' },
+  '& .tiptap h2': { fontSize: '1.5rem', lineHeight: 1.25, marginBottom: '0.55em', marginTop: '1em' },
+  '& .tiptap h3': { fontSize: '1.2rem', lineHeight: 1.3, marginBottom: '0.5em', marginTop: '0.9em' },
+  '& .tiptap ul, & .tiptap ol': { marginBottom: '0.65em', marginTop: '0.65em', paddingLeft: '1.6rem' },
+  '& .tiptap blockquote': { borderLeft: `3px solid ${theme.palette.divider}`, color: theme.palette.text.secondary, margin: '0.75em 0', paddingLeft: '0.9rem' },
+  '& .tiptap code': { backgroundColor: theme.palette.action.hover, borderRadius: '0.25rem', fontFamily: FONT_MONO, padding: '0 0.25em' },
+  '& .tiptap pre': { backgroundColor: theme.palette.action.hover, borderRadius: '0.5rem', margin: '0.75em 0', overflowX: 'auto', padding: '0.8rem' },
+  '& .tiptap pre code': { backgroundColor: 'transparent', padding: 0 },
+  '& .tiptap a': { color: linkInk(theme), textDecoration: 'underline', textUnderlineOffset: '0.16em' },
+  '& .tiptap p.is-editor-empty:first-of-type::before': { color: theme.palette.text.disabled, content: 'attr(data-placeholder)', float: 'left', height: 0, pointerEvents: 'none' },
+  '&[data-disabled=true]': { backgroundColor: theme.palette.action.disabledBackground, color: theme.palette.text.disabled },
+}));
+
+export const MarkdownSourceInput = styled(OutlinedInput)({
+  '& textarea': { fontFamily: FONT_MONO, lineHeight: 1.5 },
 });
 
 export const OutlineEmptyStateIcon = styled(EmptyStateIcon)({ fill: 'none' });

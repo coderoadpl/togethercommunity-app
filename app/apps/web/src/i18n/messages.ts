@@ -87,6 +87,32 @@ export interface Messages {
     placeholderList: string;
     placeholderCode: string;
   };
+  markdownEditor: {
+    tabsAria: string;
+    editorTab: string;
+    markdownTab: string;
+    toolbarAria: string;
+    bold: string;
+    boldShort: string;
+    italic: string;
+    italicShort: string;
+    heading2: string;
+    heading3: string;
+    bulletList: string;
+    orderedList: string;
+    blockquote: string;
+    inlineCode: string;
+    codeBlock: string;
+    link: string;
+    undo: string;
+    redo: string;
+    linkDialogTitle: string;
+    linkUrlLabel: string;
+    linkInvalid: string;
+    linkApply: string;
+    linkRemove: string;
+    sourceOnlyHint: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;
@@ -2521,6 +2547,8 @@ export interface Messages {
     nameLabel: string;
     subjectLabel: string;
     bodyLabel: string;
+    bodyPlaceholder: string;
+    bodyRequired: string;
     consentScopeLabel: string;
     productFilterLabel: string;
     allProducts: string;
@@ -2617,6 +2645,8 @@ export interface Messages {
     slugLabel: string;
     titleLabel: string;
     markdownLabel: string;
+    documentMarkdownPlaceholder: string;
+    documentMarkdownRequired: string;
     createDocumentAction: string;
     saveDocumentAction: string;
     publish: string;

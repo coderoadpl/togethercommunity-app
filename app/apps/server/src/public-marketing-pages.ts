@@ -32,103 +32,168 @@ const safeHref = (value: string): string | null => {
   return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' ? value : null;
 };
 
+const decodedEntities: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>' };
+
+const escapeMarkdownText = (value: string): string =>
+  escapeHtml(value.replace(/&(?:amp|lt|gt);/g, (entity) => decodedEntities[entity] ?? entity));
+
 const renderMarkdownText = (source: string): string => {
   let output = '';
   let cursor = 0;
-  for (const match of source.matchAll(/`([^`\n]+)`|\*\*([^*\n]+)\*\*|(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu)) {
+  for (const match of source.matchAll(/`([^`\n]+)`|\\([\\`*_[\]~])|\*\*([^*\n]+)\*\*|~~([^~\n]+)~~|(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu)) {
     const index = match.index;
     if (index === undefined) continue;
-    output += escapeHtml(source.slice(cursor, index));
-    const [token, code, strong, emphasis] = match;
+    output += escapeMarkdownText(source.slice(cursor, index));
+    const [token, code, escaped, strong, struck, emphasis] = match;
     if (code !== undefined) output += `<code>${escapeHtml(code)}</code>`;
-    else if (strong !== undefined) output += `<strong>${escapeHtml(strong)}</strong>`;
-    else output += `<em>${escapeHtml(emphasis ?? '')}</em>`;
+    else if (escaped !== undefined) output += escapeHtml(escaped);
+    else if (strong !== undefined) output += `<strong>${escapeMarkdownText(strong)}</strong>`;
+    else if (struck !== undefined) output += `<del>${escapeMarkdownText(struck)}</del>`;
+    else output += `<em>${escapeMarkdownText(emphasis ?? '')}</em>`;
     cursor = index + token.length;
   }
-  return output + escapeHtml(source.slice(cursor));
+  return output + escapeMarkdownText(source.slice(cursor));
 };
 
 const renderInlineMarkdown = (source: string): string => {
   let output = '';
   let cursor = 0;
-  for (const match of source.matchAll(/\[([^\]]+)]\(([^)\s]+)\)/g)) {
+  for (const match of source.matchAll(/(!?)\[([^\]]+)]\(([^)\s]+)\)/g)) {
     const index = match.index;
-    const label = match[1];
-    const href = match[2];
-    if (index === undefined || label === undefined || href === undefined) continue;
+    const label = match[2];
+    const target = match[3];
+    if (index === undefined || label === undefined || target === undefined) continue;
     output += renderMarkdownText(source.slice(cursor, index));
-    const safe = safeHref(href);
-    output += safe === null
-      ? renderMarkdownText(match[0])
-      : `<a href="${escapeHtml(safe)}">${renderMarkdownText(label)}</a>`;
+    if (match[1] === '!') {
+      output += target.startsWith('https://') ? `<img src="${escapeHtml(target)}" alt="${escapeMarkdownText(label)}">` : '';
+    } else {
+      const safe = safeHref(target);
+      output += safe === null
+        ? renderMarkdownText(match[0])
+        : `<a href="${escapeHtml(safe)}">${renderMarkdownText(label)}</a>`;
+    }
     cursor = index + match[0].length;
   }
   return output + renderMarkdownText(source.slice(cursor));
 };
 
-export const renderHostedMarkdown = (source: string): string => {
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+const thematicBreakPattern = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+const listItemPattern = /^(\s*)(?:[-*+]|(\d{1,9})[.)])\s+(.*)$/;
+const quotePattern = /^ {0,3}>/;
+
+interface ListItemStart {
+  indent: number;
+  ordered: boolean;
+  content: string;
+}
+
+const listItemStart = (line: string): ListItemStart | null => {
+  if (thematicBreakPattern.test(line)) return null;
+  const match = listItemPattern.exec(line);
+  return match === null
+    ? null
+    : { indent: (match[1] ?? '').length, ordered: match[2] !== undefined, content: match[3] ?? '' };
+};
+
+const withoutLeadingParagraph = (blocks: readonly string[]): string => {
+  const [first, ...rest] = blocks;
+  return first !== undefined && first.startsWith('<p>') && first.endsWith('</p>')
+    ? first.slice(3, -4) + rest.join('')
+    : blocks.join('');
+};
+
+const renderListBlock = (lines: readonly string[], start: number): { html: string; next: number } => {
+  const first = listItemStart(lines[start] ?? '');
+  const items: string[][] = [];
+  let index = start;
+  while (first !== null && index < lines.length) {
+    const line = lines[index] ?? '';
+    if (line.trim() === '') break;
+    const item = listItemStart(line);
+    if (item !== null && item.indent <= first.indent) {
+      if (item.ordered !== first.ordered) break;
+      items.push([item.content]);
+      index += 1;
+      continue;
+    }
+    const current = items.at(-1);
+    if (current === undefined || (item === null && !line.startsWith(' '))) break;
+    current.push(item === null ? line.trim() : line);
+    index += 1;
+  }
+  const tag = first?.ordered === true ? 'ol' : 'ul';
+  const body = items.map((item) => `<li>${withoutLeadingParagraph(renderMarkdownBlocks(item))}</li>`).join('');
+  return { html: `<${tag}>${body}</${tag}>`, next: Math.max(index, start + 1) };
+};
+
+const renderMarkdownBlocks = (lines: readonly string[]): string[] => {
   const blocks: string[] = [];
   let paragraph: string[] = [];
-  let list: string[] = [];
-  let code: string[] | null = null;
   const flushParagraph = (): void => {
     if (paragraph.length > 0) blocks.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
     paragraph = [];
   };
-  const flushList = (): void => {
-    if (list.length > 0) blocks.push(`<ul>${list.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
-    list = [];
-  };
-  for (const line of lines) {
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? '';
     if (line.trim().startsWith('```')) {
       flushParagraph();
-      flushList();
-      if (code === null) code = [];
-      else {
-        blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
-        code = null;
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !(lines[index] ?? '').trim().startsWith('```')) {
+        code.push(lines[index] ?? '');
+        index += 1;
       }
-      continue;
-    }
-    if (code !== null) {
-      code.push(line);
+      index += 1;
+      blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading !== null) {
       flushParagraph();
-      flushList();
       const level = heading[1]?.length ?? 1;
       blocks.push(`<h${String(level)}>${renderInlineMarkdown(heading[2] ?? '')}</h${String(level)}>`);
+      index += 1;
       continue;
     }
-    const item = /^[-*]\s+(.+)$/.exec(line);
-    if (item !== null) {
+    if (thematicBreakPattern.test(line)) {
       flushParagraph();
-      list.push(item[1] ?? '');
+      blocks.push('<hr>');
+      index += 1;
       continue;
     }
-    const quote = /^>\s?(.+)$/.exec(line);
-    if (quote !== null) {
+    if (listItemStart(line) !== null) {
       flushParagraph();
-      flushList();
-      blocks.push(`<blockquote>${renderInlineMarkdown(quote[1] ?? '')}</blockquote>`);
+      const list = renderListBlock(lines, index);
+      blocks.push(list.html);
+      index = list.next;
+      continue;
+    }
+    if (quotePattern.test(line)) {
+      flushParagraph();
+      const quoted: string[] = [];
+      while (index < lines.length && quotePattern.test(lines[index] ?? '')) {
+        quoted.push((lines[index] ?? '').replace(/^ {0,3}> ?/, ''));
+        index += 1;
+      }
+      const inner = renderMarkdownBlocks(quoted);
+      blocks.push(`<blockquote>${inner.length === 1 ? withoutLeadingParagraph(inner) : inner.join('')}</blockquote>`);
       continue;
     }
     if (line.trim() === '') {
       flushParagraph();
-      flushList();
+      index += 1;
       continue;
     }
-    flushList();
     paragraph.push(line.trim());
+    index += 1;
   }
   flushParagraph();
-  flushList();
-  if (code !== null) blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
-  return blocks.join('\n');
+  return blocks;
 };
+
+export const renderHostedMarkdown = (source: string): string =>
+  renderMarkdownBlocks(source.replace(/\r\n?/g, '\n').split('\n')).join('\n');
 
 export const languageFromRequest = (request: Request, defaultLanguage: Language = DEFAULT_LANGUAGE): Language => {
   const queryLanguage = languageSchema.safeParse(new URL(request.url).searchParams.get('lang'));
@@ -209,9 +274,11 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .prose h1{font-size:1.5rem}
 .prose h2{font-size:1.25rem}
 .prose h3{font-size:1.0625rem}
-.prose p,.prose ul,.prose blockquote{margin:0 0 1rem}
-.prose ul{padding-left:1.25rem}
+.prose p,.prose ul,.prose ol,.prose blockquote{margin:0 0 1rem}
+.prose ul,.prose ol{padding-left:1.25rem}
 .prose blockquote{border-left:3px solid var(--line);padding-left:1rem;color:var(--muted)}
+.prose hr{border:0;border-top:1px solid var(--line);margin:0 0 1rem}
+.prose img{display:block;max-width:100%;height:auto;border-radius:var(--radius);margin:0 0 1rem}
 .prose pre{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--muted-surface);padding:1rem}
 .prose code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}
 .social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.875rem}

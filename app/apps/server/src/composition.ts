@@ -51,6 +51,7 @@ import {
   createMarketingConsentRepository,
   createMarketingJobRepository,
   createMarketingThrottleRepository,
+  createSesMaintenanceBackoffRepository,
   createSnsWebhookDeliveryRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
@@ -301,7 +302,7 @@ import type {
   AvatarSourceReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, createScheduledMaintenanceBackoff, createSesWebhookBaseUrlResolver, createTenantOriginResolver, createSmokeTenantSilencedCredentials, dispatchAutoInvoiceJobs, dispatchEmailBatch, dispatchKsefJob, drainNotificationFanoutJobs, enforceTermsConsent, importGoogleAvatar, marketingRetentionCutoff, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, runTenantDomainChecks, type SmokeTenantReseedDeps, type SanitizeStagingSecretsDeps, SES_IDENTITY_REFRESH_INTERVAL_MS, sweepLapsedImpersonations, resolveTenantOrigin, validateTermsConsent, type DispatchAutoInvoiceJobsResult, type DispatchEmailBatchResult, type NotificationFanoutDrainResult, type TenantDomainCheckResult } from '#core/server/index.js';
 import { safeLogMessage } from '#core/server/log-safety.js';
 import {
   DEMO_SEED_PASSWORD,
@@ -319,9 +320,10 @@ import {
   type Result,
   type TenantCreationMode,
 } from '#core/domain/index.js';
-import { capabilitiesForPrincipal, communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
+import { communityEventPath, communityPostPath, communitySpacePath, conversationPath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import { createCoalescedRunner } from './coalesced-runner.js';
+import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
@@ -912,7 +914,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
-    tenantDomains,
     routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
   });
   const delivery = createMarketingDeliveryTransaction(db);
@@ -1052,17 +1053,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   };
   const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual', deadlineAt = new Date(Date.parse(clock.nowIso()) + env.MARKETING_SEND_SECONDS * 1000).toISOString()) => {
     await refreshMarketingQuota(tenantId);
-    return campaignTick({
-      identity: {
-        userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        emailVerified: true, image: null,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
-        memberDmOptOutAt: null,
-        memberLanguage: null,
-        memberVideoAutoplay: false,
-      },
-      capabilities: capabilitiesForPrincipal('operator-secret'),
-    }, { campaignId, workerId: randomUUID(), tickSeconds: Math.max(0, Math.min(env.MARKETING_SEND_SECONDS, (Date.parse(deadlineAt) - Date.parse(clock.nowIso())) / 1000)), trigger }, {
+    return campaignTick(schedulerContext(tenantId), { campaignId, workerId: randomUUID(), tickSeconds: Math.max(0, Math.min(env.MARKETING_SEND_SECONDS, (Date.parse(deadlineAt) - Date.parse(clock.nowIso())) / 1000)), trigger }, {
       contactAudience: contactAudienceDeps.contactAudience, contacts: marketingContacts.contacts,
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
@@ -1077,14 +1068,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     const result = await dispatchCampaign(tenantId, campaignId, 'dev');
     if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${safeLogMessage(result.error.message)}\n`);
   });
-  const workerIdentity = (tenantId: string) => ({
-    userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    emailVerified: true, image: null,
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
-    memberDmOptOutAt: null,
-    memberLanguage: null,
-    memberVideoAutoplay: false,
-  });
+  const maintenanceBackoff = createScheduledMaintenanceBackoff(createSesMaintenanceBackoffRepository(db));
   const reputationDashboardUrl = async (tenantId: string): Promise<string> =>
     `${await resolveOrigin(tenantId)}/panel/marketing`;
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
@@ -1094,7 +1078,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     const inboxDeadline = new Date(Math.min(Date.parse(deadlineAt), Date.parse(now) + 5000)).toISOString();
     for (const tenantId of await deliveryRepos.snsInbox.listTenantIds()) {
       if (clock.nowIso() >= inboxDeadline) break;
-      const inbox = await processMarketingSnsInbox({ identity: workerIdentity(tenantId), capabilities: capabilitiesForPrincipal('webhook') },
+      const inbox = await processMarketingSnsInbox(snsWebhookContext(tenantId),
         { workerId: randomUUID(), deadlineAt: inboxDeadline, maxEvents: 100 },
         { ...deliveryRepos, delivery, clock, ids, hmac: emailHmac, sns, credentials: marketingCredentials });
       if (!inbox.ok) firstError ??= inbox.error;
@@ -1118,15 +1102,12 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
       clock,
       logger,
       dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger, deadlineAt),
-      runRetention: (tenantId, input) => runMarketingRetentionJobs({
-        identity: workerIdentity(tenantId),
-        capabilities: capabilitiesForPrincipal('operator-secret'),
-      }, input, {
+      runRetention: (tenantId, input) => runMarketingRetentionJobs(schedulerContext(tenantId), input, {
         definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock, marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox,
       }),
       refreshIdentity: (tenantId) =>
         refreshSesIdentity(
-          { identity: workerIdentity(tenantId) },
+          schedulerContext(tenantId),
           {
             settings: sesSettings,
             credentials: tenantMarketingCredentials,
@@ -1138,7 +1119,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
         ),
       runReputationAlerts: (tenantId) =>
         runReputationAlerts(
-          { identity: workerIdentity(tenantId) },
+          schedulerContext(tenantId),
           {
             events: emailEvents,
             settings: sesSettings,
@@ -1151,12 +1132,13 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
             dispatchEmail,
           },
         ),
+      maintenanceBackoff,
     });
     if (!marketing.ok) firstError ??= marketing.error;
     for (const tenantId of await deliveryRepos.marketingOutbox.listTenantIds()) {
       if (Date.parse(clock.nowIso()) + 1000 >= Date.parse(deadlineAt)) break;
       await refreshMarketingQuota(tenantId);
-      const dispatched = await dispatchMarketingOutbox({ identity: workerIdentity(tenantId), capabilities: capabilitiesForPrincipal('operator-secret') },
+      const dispatched = await dispatchMarketingOutbox(schedulerContext(tenantId),
         { workerId: randomUUID(), deadlineAt, maxSends: env.MARKETING_BATCH_CAP }, {
           ...deliveryRepos, contacts: marketingContacts.contacts, delivery, clock, ids, waiter, definitions, consents: marketingConsents, hmac: emailHmac, credentials: marketingCredentials, throttle: marketingThrottle, ses: marketingSes,
         });

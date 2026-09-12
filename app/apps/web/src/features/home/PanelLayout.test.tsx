@@ -306,7 +306,10 @@ describe('Creator panel routing', () => {
 
     await userEvent.click(screen.getByTestId('group-sales'));
 
-    expect(screen.queryByTestId('section-sales')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('group-sales')).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('section-sales')).not.toBeInTheDocument();
+    });
     const navigation = screen.getByRole('navigation', { name: en.sections.aria });
     const entries = [...navigation.querySelectorAll('[data-testid^="section-"]')].map((entry) =>
       entry.getAttribute('data-testid'));

@@ -12,7 +12,7 @@ const memberOptionsSchema = z.object({
 }).merge(transportSchema);
 
 export const renderMemberActivityCsv = (members: MemberActivity['members']): string => {
-  const fields = ['memberId', 'displayName', 'email', 'sessionsBefore', 'sessionsAfter', 'firstSession', 'lastSession', 'progressBefore', 'progressAfter', 'coursesTouched', 'lessonsCompletedTotal', 'lastProgress', 'completionsBefore', 'completionsAfter'] as const;
+  const fields = ['memberId', 'displayName', 'email', 'signInsBefore', 'signInsAfter', 'firstSignIn', 'lastSignIn', 'progressBefore', 'progressAfter', 'coursesTouched', 'lessonsCompletedTotal', 'lastProgress', 'completionsBefore', 'completionsAfter'] as const;
   const escape = (value: string | number | null): string => `"${String(value ?? '').replaceAll('"', '""')}"`;
   return [fields.map(escape).join(','), ...members.map((member) => fields.map((field) => escape(member[field])).join(','))].join('\r\n') + '\r\n';
 };

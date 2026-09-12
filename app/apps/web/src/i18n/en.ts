@@ -1483,6 +1483,7 @@ export const en: Messages = {
       grant: 'Access granted',
       revoke: 'Access revoked',
       'subscription-change': 'Subscription updated',
+      'sign-in': 'Signed in',
       'lesson-completion': 'Lesson completed',
       'email-sent': 'Email sent',
     },

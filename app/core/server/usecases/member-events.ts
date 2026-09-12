@@ -35,6 +35,7 @@ const productIdFor = (event: MemberEvent): string | null => {
     case 'revoke':
       return event.payload.productId;
     case 'lesson-completion':
+    case 'sign-in':
     case 'email-sent':
     case 'banned':
     case 'unbanned':
@@ -116,6 +117,7 @@ export const listMemberTimeline = async (
             lessonTitle: lessonTitles.get(event.payload.lessonId) ?? null,
           },
         };
+      case 'sign-in':
       case 'email-sent':
       case 'banned':
       case 'unbanned':

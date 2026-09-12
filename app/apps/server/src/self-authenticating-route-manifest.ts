@@ -1,14 +1,18 @@
 import type { RouterRoute } from 'hono/types';
 
 import { API_PATHS } from '#core/contract/index.js';
+import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
   path: string;
   methods: readonly string[];
   mechanism: string;
+  capability?: Capability;
 };
 
 export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRouteManifestEntry[] = [
+  { path: API_PATHS.activitySummary, methods: ['GET'], mechanism: 'Tenant API key', capability: 'report:read' },
+  { path: API_PATHS.memberActivity, methods: ['GET'], mechanism: 'Tenant API key', capability: 'report:read' },
   { path: API_PATHS.m2mListMarketingContacts, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mExportMarketingContacts, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mUpsertMarketingContact, methods: ['POST'], mechanism: 'Tenant API key' },

@@ -43,6 +43,7 @@ export interface AuthSettings {
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
+  recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
   /** Resolves whether a request host is a tenant's verified custom domain. */
   isVerifiedCustomHost?(host: string): Promise<boolean>;
@@ -57,6 +58,8 @@ export interface AuthSettings {
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
+
+export const BETTER_AUTH_SESSION_PATH = '/api/auth/get-session';
 
 export const BETTER_AUTH_SIGN_OUT_PATH = '/api/auth/sign-out';
 
@@ -695,6 +698,28 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       sensitivePasskeyManagement(),
       redirectTwoFactorNavigation(settings.baseUrl),
       passkeyWithSensitiveManagement(),
+      {
+        id: 'tenant-sign-in-events',
+        hooks: {
+          after: [{
+            matcher: (ctx) => ctx.path?.startsWith('/sign-in/') === true
+              || ctx.path?.startsWith('/callback/') === true
+              || ctx.path?.startsWith('/two-factor/verify-') === true
+              || ['/sign-up/email', '/magic-link/verify', '/passkey/verify-authentication', '/one-tap/callback'].includes(ctx.path ?? ''),
+            handler: createAuthMiddleware(async (ctx) => {
+              // Two-factor hooks must finish before a new session counts as a sign-in.
+              const signedIn = ctx.context.newSession;
+              if (signedIn === null || ctx.request === undefined) return;
+              await settings.recordSignIn?.({
+                request: ctx.request,
+                userId: signedIn.user.id,
+                sessionId: signedIn.session.id,
+                occurredAt: signedIn.session.createdAt.toISOString(),
+              });
+            }),
+          }],
+        },
+      },
     ],
     advanced: {
       useSecureCookies: settings.secureCookies,

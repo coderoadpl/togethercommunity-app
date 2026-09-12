@@ -11,17 +11,17 @@ is needed. See [CLI usage](cli.md#activity-reports) and [security](security.md#t
 `GET /api/reports/activity-summary?from=<ISO>&to=<ISO>`
 
 `data.days` contains ascending UTC dates with recorded activity. Dates without
-activity are omitted. Each row has `day`, `sessions`, `distinctUsers`,
+activity are omitted. Each row has `day`, `signIns`, `distinctSignInMembers`,
 `progressUpdates`, `distinctProgressMembers`, and `lessonCompletions`.
 `data.totals.membersTotal` counts current, non-deleted tenant members;
-`membersActive` counts distinct members with a session or progress update in the
+`membersActive` counts distinct members with a sign-in or progress update in the
 half-open interval `[from,to)`. Completion events alone do not make a member active.
 
 ## Member activity
 
 `GET /api/reports/member-activity?from=<ISO>&to=<ISO>&pivot=<ISO>&excludeEmailPatterns=<patterns>&cursor=<memberId>&limit=100`
 
-`data.members` includes current, non-deleted members with any session or progress
+`data.members` includes current, non-deleted members with any sign-in or progress
 update in `[from,to)`, ordered by member ID. `nextCursor` is the last returned ID
 when another page exists, otherwise `null`. Pass it unchanged as `cursor`; keep
 all other filters unchanged. The default limit is 100 and the maximum is 500.
@@ -32,8 +32,8 @@ Every row contains:
 | Fields | Meaning |
 |---|---|
 | `memberId`, `displayName`, `email` | Tenant member identity; display name can be null |
-| `sessionsBefore`, `sessionsAfter` | Sessions created before the pivot / at or after it, within the range |
-| `firstSession`, `lastSession` | Earliest / latest session creation within the range; null without sessions |
+| `signInsBefore`, `signInsAfter` | Sign-ins recorded before the pivot / at or after it, within the range |
+| `firstSignIn`, `lastSignIn` | Earliest / latest sign-in within the range; null without sign-ins |
 | `progressBefore`, `progressAfter` | Retained course progress rows updated before / at or after the pivot, within the range |
 | `coursesTouched` | Distinct courses with progress updated within the range |
 | `lessonsCompletedTotal` | Total lesson-completion events within the range |
@@ -45,15 +45,18 @@ Every row contains:
 one side. `excludeEmailPatterns` is a comma-separated list of PostgreSQL `ILIKE`
 patterns: `%` matches any sequence and `_` one character. Matching is case
 insensitive. Empty patterns are ignored; the encoded parameter is limited to
-4096 decoded characters. URL-encode patterns. Filters use bound parameters.
+4096 decoded characters. URL-encode patterns. Filters use bound parameters. `excludeEmailPatterns` applies only to the member-activity endpoint; the summary does not accept this filter.
 
 ## Data interpretation
 
-Sessions come from the auth session table joined to current tenant members by
-user ID. Auth sessions are global: a shared user's session is attributed to each
-tenant where that user is a current member, irrespective of the login host.
-Revoked or purged sessions disappear from these reports. Sessions measure retained
-session creation, not page views, visits, or a complete login history.
+Sign-ins come exclusively from tenant-scoped `member_events` with type `sign-in`.
+Successful authentication records an event for the current member of the tenant
+resolved from the request host or `X-Tenant`; tenantless logins and logins without
+a current membership record no event. A shared user's sign-in on another tenant
+never contributes. Pending two-factor challenges and session reads or refreshes
+do not count. Revoking or purging auth sessions does not erase sign-in history.
+No historical sessions are backfilled: counts begin when event recording is
+deployed. Sign-ins are authentication events, not page views or visits.
 
 Progress comes from `member_course_progress`, one current projection per member
 and course. A later update replaces the earlier timestamp; `progressUpdates`

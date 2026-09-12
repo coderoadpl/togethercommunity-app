@@ -22,6 +22,15 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
   });
 
+  it('classifies report routes through the tenant API-key manifest', () => {
+    const routes = collectPermissionInventory().routes;
+    for (const path of ['activity-summary', 'member-activity']) {
+      expect(routes.find((row) => row.subject === `GET /api/reports/${path}`)).toMatchObject({
+        capability: 'report:read', before: ['report-api-key'], after: ['report-api-key'], evidence: 'Tenant API key',
+      });
+    }
+  });
+
   it('machine-checks every derivable before and after principal set', () => {
     const inventory = collectPermissionInventory();
     const changes = [...inventory.routes, ...inventory.useCases]

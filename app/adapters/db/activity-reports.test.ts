@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { memberActivityQuerySchema } from '#core/domain/index.js';
 import type { Db } from './client.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -25,7 +25,7 @@ beforeAll(async () => {
       await db.insert(members).values({ id, tenantId, userId, email: `${userId}@example.test`, displayName: id, createdAt: from });
       if (id === 'inactive') continue;
       for (const at of [from, pivot, to]) {
-        await db.insert(session).values({ id: `${userId}-${at}`, token: `${userId}-${at}`, userId, createdAt: new Date(at), expiresAt: new Date(to) });
+        await db.insert(memberEvents).values({ id: `sign-in-${id}-${at}`, tenantId, memberId: id, type: 'sign-in', payload: {}, occurredAt: at });
       }
     }
     for (const [index, at] of [from, pivot, to].entries()) {
@@ -41,13 +41,13 @@ afterAll(async () => { await close?.(); });
 describe('activity report repository', () => {
   it('aggregates by UTC day without multiplying joined records', async () => {
     expect(await createActivityReportRepository(db).activitySummary('a', query)).toEqual({
-      days: ['1998-08-01', '1998-08-02'].map((day) => ({ day, sessions: 2, distinctUsers: 2, progressUpdates: 1, distinctProgressMembers: 1, lessonCompletions: 1 })),
+      days: ['1998-08-01', '1998-08-02'].map((day) => ({ day, signIns: 2, distinctSignInMembers: 2, progressUpdates: 1, distinctProgressMembers: 1, lessonCompletions: 1 })),
       totals: { membersTotal: 3, membersActive: 2 },
     });
   });
   it('splits at the pivot, excludes the upper boundary and isolates colliding tenant IDs', async () => {
     const report = await createActivityReportRepository(db).memberActivity('a', query);
-    expect(report.members[0]).toEqual({ memberId: 'one', displayName: 'one', email: 'a-one@example.test', sessionsBefore: 1, sessionsAfter: 1, firstSession: from, lastSession: pivot, progressBefore: 1, progressAfter: 1, coursesTouched: 2, lessonsCompletedTotal: 2, lastProgress: pivot, completionsBefore: 1, completionsAfter: 1 });
+    expect(report.members[0]).toEqual({ memberId: 'one', displayName: 'one', email: 'a-one@example.test', signInsBefore: 1, signInsAfter: 1, firstSignIn: from, lastSignIn: pivot, progressBefore: 1, progressAfter: 1, coursesTouched: 2, lessonsCompletedTotal: 2, lastProgress: pivot, completionsBefore: 1, completionsAfter: 1 });
     expect(report.members.map((row) => row.email)).toEqual(['a-one@example.test', 'a-two@example.test']);
     expect((await createActivityReportRepository(db).memberActivity('b', query)).members[0]?.email).toBe('b-one@example.test');
   });
@@ -62,35 +62,48 @@ describe('activity report repository', () => {
     expect((await repository.memberActivity('a', { ...query, excludeEmailPatterns: "' OR true --" })).members).toHaveLength(2);
     expect(await repository.activitySummary('missing', query)).toEqual({ days: [], totals: { membersTotal: 0, membersActive: 0 } });
   });
-  it('includes progress-only activity, excludes completion-only members and attributes shared sessions by membership', async () => {
+  it('excludes another tenant sign-in for a shared user with colliding member IDs', async () => {
+    await db.insert(tenants).values({ id: 'shared', slug: 'shared', name: 'Workspace', createdAt: from });
+    await db.insert(members).values({ id: 'one', tenantId: 'shared', userId: 'a-one', email: 'shared@example.test', createdAt: from });
+    const repository = createActivityReportRepository(db);
+    expect(await repository.memberActivity('shared', query)).toEqual({ members: [], nextCursor: null });
+    expect(await repository.activitySummary('shared', query)).toEqual({ days: [], totals: { membersTotal: 1, membersActive: 0 } });
+    await db.insert(memberEvents).values({ id: 'local-sign-in', tenantId: 'shared', memberId: 'one', type: 'sign-in', payload: {}, occurredAt: pivot });
+    expect((await repository.memberActivity('shared', query)).members[0]).toMatchObject({ signInsBefore: 0, signInsAfter: 1, firstSignIn: pivot, lastSignIn: pivot });
+    expect((await repository.activitySummary('shared', query)).days).toEqual([{ day: '1998-08-02', signIns: 1, distinctSignInMembers: 1, progressUpdates: 0, distinctProgressMembers: 0, lessonCompletions: 0 }]);
+  });
+  it('retains sign-in counts after session deletion and ignores global sessions', async () => {
+    const repository = createActivityReportRepository(db);
+    const before = await repository.memberActivity('a', query);
+    await db.insert(session).values({ id: 'global-session', token: 'global-session', userId: 'a-inactive', createdAt: new Date(pivot), expiresAt: new Date(to) });
+    expect(await repository.memberActivity('a', query)).toEqual(before);
+    await db.delete(session).where(eq(session.id, 'global-session'));
+    expect(await repository.memberActivity('a', query)).toEqual(before);
+  });
+  it('includes progress-only activity and excludes completion-only members', async () => {
     await db.insert(tenants).values({ id: 'edge', slug: 'edge', name: 'Workspace', createdAt: from });
-    for (const id of ['shared', 'progress', 'completion']) {
-      await db.insert(members).values({ id, tenantId: 'edge', userId: id === 'shared' ? 'a-one' : id, email: `${id}@example.test`, createdAt: from });
+    for (const id of ['progress', 'completion']) {
+      await db.insert(members).values({ id, tenantId: 'edge', userId: id, email: `${id}@example.test`, createdAt: from });
     }
     await db.insert(courses).values({ id: 'course', tenantId: 'edge', name: 'Course', description: '', createdAt: from });
     await db.insert(memberCourseProgress).values({ id: 'progress', tenantId: 'edge', memberId: 'progress', courseId: 'course', updatedAt: pivot });
     await db.insert(memberEvents).values({ id: 'completion', tenantId: 'edge', memberId: 'completion', type: 'lesson-completion', payload: { lessonId: 'lesson' }, occurredAt: from });
     const repository = createActivityReportRepository(db);
     const report = await repository.memberActivity('edge', query);
-    expect(report.members.map((row) => row.memberId)).toEqual(['progress', 'shared']);
-    expect(report.members[0]).toMatchObject({ firstSession: null, lastSession: null, sessionsBefore: 0, sessionsAfter: 0, progressBefore: 0, progressAfter: 1 });
-    expect((await repository.activitySummary('edge', query)).totals).toEqual({ membersTotal: 3, membersActive: 2 });
+    expect(report.members.map((row) => row.memberId)).toEqual(['progress']);
+    expect(report.members[0]).toMatchObject({ firstSignIn: null, lastSignIn: null, signInsBefore: 0, signInsAfter: 0, progressBefore: 0, progressAfter: 1 });
+    expect((await repository.activitySummary('edge', query)).totals).toEqual({ membersTotal: 2, membersActive: 1 });
   });
   it('sanitizes infrastructure errors before exception telemetry can see email filters', async () => {
-    const execute = vi.spyOn(db, 'execute').mockRejectedValueOnce(new Error('Bound params: private@example.test'));
+    const original = new Error('Bound params: private@example.test', { cause: { code: '57014', message: 'private@example.test' } });
+    const execute = vi.spyOn(db, 'execute').mockRejectedValueOnce(original);
     try {
-      await expect(createActivityReportRepository(db).memberActivity('a', { ...query, excludeEmailPatterns: 'private@example.test' })).rejects.toThrow('Activity report database query failed');
+      await expect(createActivityReportRepository(db).memberActivity('a', { ...query, excludeEmailPatterns: 'private@example.test' })).rejects.toMatchObject({
+        message: 'Activity report database query failed',
+        cause: new Error('PostgreSQL SQLSTATE 57014'),
+      });
     } finally {
       execute.mockRestore();
     }
-  });
-  it('checks the session join plan against the existing user index', async () => {
-    await db.execute(sql`insert into "user" (id, name, email) select 'plan-' || n, 'Plan', 'plan-' || n || '@example.test' from generate_series(1, 10000) n`);
-    await db.execute(sql`insert into session (id, token, user_id, created_at, updated_at, expires_at) select id, id, id, now(), now(), now() from "user" where id like 'plan-%'`);
-    await db.execute(sql`analyze session`);
-    await db.execute(sql`analyze members`);
-    const result = await db.execute(sql`explain (analyze, buffers, format text) select s.id from members m join session s on s.user_id = m.user_id where m.tenant_id = 'a' and s.created_at >= ${from}::timestamp and s.created_at < ${to}::timestamp`);
-    const plan = JSON.stringify(result);
-    expect(plan).toContain('session_userId_idx');
   });
 });

@@ -1007,9 +1007,9 @@ describe('activity report CLI parsing', () => {
     expect(h.memberActivity).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
-  it('accepts api-keys create --scopes report:read without expiry', async () => {
+  it('accepts api-keys create --scope report:read without expiry', async () => {
     h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Reporting' }, secret: 'secret' }));
-    await run('api-keys', 'create', 'Reporting', '--scopes', 'report:read', '--json');
+    await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
   });
 });

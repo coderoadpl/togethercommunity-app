@@ -72,7 +72,8 @@ const effectiveAfter = (
 };
 
 const capabilityForRoute = (method: string, path: string): Capability | null => {
-  if (path === '/api/reports/activity-summary' || path === '/api/reports/member-activity') return 'report:read';
+  const declared = selfAuthenticatingRouteManifestEntry({ method, path })?.capability;
+  if (declared !== undefined) return declared;
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -248,7 +249,6 @@ const beforeForRoute = (
   path: string,
 ): readonly Principal[] => {
   if (/^\/api\/(?:m2m\/)?marketing\//.test(path) && (path.endsWith('/process') || path.endsWith('/contacts/sync'))) return path.startsWith('/api/m2m/') ? [] : staff;
-  if (path === '/api/reports/activity-summary' || path === '/api/reports/member-activity') return reportApiKey;
   const route = { method, path };
   const publicEntry = publicRouteManifestEntry(route);
   if (publicEntry !== undefined) {
@@ -259,6 +259,7 @@ const beforeForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) {
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
+      if (selfAuthenticatingEntry.capability !== undefined) return principalsForCapability(selfAuthenticatingEntry.capability);
       if (path === '/api/m2m/import/validate') return importApiKeys;
       if (
         path === '/api/m2m/import/members'

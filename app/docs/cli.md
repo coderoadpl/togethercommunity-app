@@ -85,7 +85,7 @@ inventory scope in [Architecture](architecture.md#cli-first-verification).
 Create a read-only key with your owner session:
 
 ```bash
-pnpm --silent run cli --tenant studio api-keys create Reporting --scopes report:read
+pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:read
 ```
 
 `api-key` / `--scope` remain supported aliases. Report keys cannot include write

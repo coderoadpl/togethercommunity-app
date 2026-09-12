@@ -1,5 +1,3 @@
-import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
-import type { ActivityReportRepository } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
 import { createMarketingContactCampaignTransaction } from '#adapters/db/marketing-contact-campaign-transactions.js';
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
@@ -21,6 +19,7 @@ import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPla
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
+import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
 import {
@@ -167,6 +166,7 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  ActivityReportRepository,
   AccountSecurityReader,
   AppErrorTelemetry,
   ApiKeyCrypto,
@@ -1225,6 +1225,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const accountAvatarTenants = createAccountAvatarTenantReader(db);
   const avatarImages = createAvatarImageProcessor(storage);
 
+  const members = createMemberRepository(db);
+  const memberEvents = createMemberEventRepository(db);
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
@@ -1238,6 +1240,24 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     dispatchEmail,
     defaultTenantName: 'Together',
     google,
+    recordSignIn: async ({ request, userId, sessionId, occurredAt }) => {
+      const resolved = await resolveTenant(
+        request.headers.get('host') ?? new URL(request.url).host,
+        request.headers.get(TENANT_HEADER),
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
+      );
+      if (!resolved.ok || resolved.value === null) return;
+      const tenantId = resolved.value.tenant.id;
+      const member = await tenantAccess.findMember(tenantId, userId);
+      if (member === null || member.deletedAt !== null) return;
+      await memberEvents.append(tenantId, {
+        id: `sign-in:${sessionId}`,
+        memberId: member.id,
+        type: 'sign-in',
+        payload: {},
+        occurredAt,
+      });
+    },
     importGoogleAvatar: async ({ userId, sourceUrl }) => {
       const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
       await Promise.all(tenantIds.map((tenantId) => importGoogleAvatar(
@@ -1300,8 +1320,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     avatarSources: createAvatarSourceReader(db),
     accountAvatars,
     avatarImages,
-    members: createMemberRepository(db),
-    memberEvents: createMemberEventRepository(db),
+    members,
+    memberEvents,
     memberErasure: createMemberErasureRepository(db, emailHmac),
     erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,

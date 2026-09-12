@@ -1,4 +1,3 @@
-import { registerReportCommands } from './report-commands.js';
 import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -56,6 +55,7 @@ import {
   type CliOriginSource,
   type CliProfile,
 } from './config.js';
+import { registerReportCommands } from './report-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -369,7 +369,6 @@ const devGrantOptionsSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 const apiKeyCreateOptionsSchema = z.object({
-  scopes: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'import:content', 'import:users', 'report:read'])).min(1).optional(),
   scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'import:content', 'import:users', 'report:read'])).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
 });
@@ -3231,14 +3230,13 @@ apiKey
   .command('create <name...>')
   .description('Create an API key; the secret is shown once')
   .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, import:content, import:users, report:read')
-  .option('--scopes <scope...>', 'Key scopes (alias for --scope)')
   .option('--expires-at <iso>', 'ISO datetime when the key expires')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), apiKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
         await ctx.api.createApiKey({
           name: nameWords.join(' '),
-          ...((options.scope ?? options.scopes) === undefined ? {} : { scopes: [...(options.scope ?? []), ...(options.scopes ?? [])] }),
+          ...(options.scope === undefined ? {} : { scopes: options.scope }),
           ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
         }),
         ctx.json,

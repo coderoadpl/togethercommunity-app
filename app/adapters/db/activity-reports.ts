@@ -5,17 +5,18 @@ import type { Db } from './client.js';
 
 const activity = (tenantId: string, query: ActivitySummaryQuery, patterns = '') => sql`
   with tenant_members as (
-    select id, user_id, display_name, email from members
+    select id, display_name, email from members
     where tenant_id = ${tenantId} and deleted_at is null
       and not exists (
         select 1 from unnest(string_to_array(${patterns}, ',')) pattern
         where pattern <> '' and email ilike pattern
       )
   ), activity as (
-    select m.id member_id, s.created_at at, 'session' kind, null::text course_id
-    from tenant_members m join session s on s.user_id = m.user_id
-    where s.created_at >= ${query.from}::timestamptz at time zone 'UTC'
-      and s.created_at < ${query.to}::timestamptz at time zone 'UTC'
+    select e.member_id, e.occurred_at::timestamptz at time zone 'UTC' at, 'sign-in' kind, null::text course_id
+    from member_events e join tenant_members m on m.id = e.member_id
+    where e.tenant_id = ${tenantId} and e.type = 'sign-in'
+      and e.occurred_at::timestamptz >= ${query.from}::timestamptz
+      and e.occurred_at::timestamptz < ${query.to}::timestamptz
     union all
     select p.member_id, p.updated_at::timestamptz at time zone 'UTC', 'progress', p.course_id
     from member_course_progress p join tenant_members m on m.id = p.member_id
@@ -29,12 +30,21 @@ const activity = (tenantId: string, query: ActivitySummaryQuery, patterns = '') 
       and e.occurred_at::timestamptz < ${query.to}::timestamptz
   )`;
 
+const databaseErrorCode = (error: unknown): string | undefined => {
+  const cause: unknown = error instanceof Error ? error.cause : error;
+  const code: unknown = typeof cause === 'object' && cause !== null ? Reflect.get(cause, 'code') : undefined;
+  return typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code) ? code : undefined;
+};
+
 const readReport = async (db: Db, query: SQL): Promise<unknown> => {
   try {
     return await db.execute(query);
-  } catch {
-    // Drizzle errors include bound email filters; omit them from server exception telemetry.
-    throw new Error('Activity report database query failed');
+  } catch (error) {
+    // Keep SQLSTATE for diagnosis without exposing driver messages or bound email filters.
+    const code = databaseErrorCode(error);
+    throw new Error('Activity report database query failed', code !== undefined
+      ? { cause: new Error(`PostgreSQL SQLSTATE ${code}`) }
+      : undefined);
   }
 };
 
@@ -42,8 +52,8 @@ export const createActivityReportRepository = (db: Db): ActivityReportRepository
   activitySummary: async (tenantId, query) => {
     const result = await readReport(db, sql`${activity(tenantId, query)}, days as (
       select to_char(at, 'YYYY-MM-DD') as day,
-        count(*) filter (where kind = 'session')::int sessions,
-        count(distinct member_id) filter (where kind = 'session')::int "distinctUsers",
+        count(*) filter (where kind = 'sign-in')::int "signIns",
+        count(distinct member_id) filter (where kind = 'sign-in')::int "distinctSignInMembers",
         count(*) filter (where kind = 'progress')::int "progressUpdates",
         count(distinct member_id) filter (where kind = 'progress')::int "distinctProgressMembers",
         count(*) filter (where kind = 'completion')::int "lessonCompletions"
@@ -65,10 +75,10 @@ export const createActivityReportRepository = (db: Db): ActivityReportRepository
       select member_id from activity where kind <> 'completion' and member_id > ${query.cursor}
       group by member_id order by member_id limit ${query.limit + 1}
     ) select m.id "memberId", m.display_name "displayName", m.email,
-      count(*) filter (where kind = 'session' and at < ${pivot})::int "sessionsBefore",
-      count(*) filter (where kind = 'session' and at >= ${pivot})::int "sessionsAfter",
-      to_char(min(at) filter (where kind = 'session'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') "firstSession",
-      to_char(max(at) filter (where kind = 'session'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') "lastSession",
+      count(*) filter (where kind = 'sign-in' and at < ${pivot})::int "signInsBefore",
+      count(*) filter (where kind = 'sign-in' and at >= ${pivot})::int "signInsAfter",
+      to_char(min(at) filter (where kind = 'sign-in'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') "firstSignIn",
+      to_char(max(at) filter (where kind = 'sign-in'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') "lastSignIn",
       count(*) filter (where kind = 'progress' and at < ${pivot})::int "progressBefore",
       count(*) filter (where kind = 'progress' and at >= ${pivot})::int "progressAfter",
       count(distinct course_id) filter (where kind = 'progress')::int "coursesTouched",

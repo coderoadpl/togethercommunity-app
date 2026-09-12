@@ -1501,6 +1501,7 @@ export const pl: Messages = {
       grant: 'Dostęp przyznany',
       revoke: 'Dostęp cofnięty',
       'subscription-change': 'Subskrypcja zaktualizowana',
+      'sign-in': 'Zalogowano',
       'lesson-completion': 'Lekcja ukończona',
       'email-sent': 'E-mail wysłany',
     },

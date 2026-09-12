@@ -1,4 +1,3 @@
-import { registerReportRoutes } from './report-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
@@ -248,7 +247,6 @@ const anonymousIdentity = (
 });
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
-  registerReportRoutes(app, deps);
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);

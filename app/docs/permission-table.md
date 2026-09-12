@@ -30,8 +30,6 @@ no changes
 
 | Route | Required capability | BEFORE | AFTER | Machine-equivalent | Evidence |
 |---|---|---|---|---|---|
-| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | public route manifest |
-| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | public route manifest |
 | `GET /manifest.webmanifest` | offer:read | public | public | yes | public route manifest |
 | `GET /robots.txt` | offer:read | public | public | yes | public route manifest |
 | `GET /sitemap.xml` | offer:read | public | public | yes | public route manifest |
@@ -154,6 +152,8 @@ no changes
 | `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -705,10 +705,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1070` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1072` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1586` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1586` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1071` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1073` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

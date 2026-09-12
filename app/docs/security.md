@@ -120,8 +120,9 @@ lifetime is imposed. Owners can revoke them through the existing key controls.
 Studio supports exclusive report keys and both English and Polish copy.
 
 The [activity reports API](reports-api.md) accepts API-key authentication only.
-Every lookup uses the resolved tenant, including the auth-session join through
-that tenant's current members. Session credentials alone cannot access reports.
+Every lookup uses the resolved tenant. Sign-in activity comes only from that
+tenant's `member_events`, joined to its current members. Global auth sessions
+are never a report data source. Session credentials alone cannot access reports.
 An API key issued for one tenant cannot be used for another. Both endpoints use
 the existing API-key minute/day policy and atomic PostgreSQL rate buckets before
 reading reports. Revocation and expiry are checked on each request.

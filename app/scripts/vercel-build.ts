@@ -150,6 +150,9 @@ try {
   });
   if (decision.action === 'reuse') {
     process.stdout.write(`vercel-build: reused first run for deployment ${decision.marker.deploymentId}\n`);
+  } else if (decision.action === 'fail') {
+    process.stderr.write(`${decision.message}\n`);
+    throw new VercelBuildExit(1);
   } else if (decision.action === 'run-local') {
     await runFullBuild();
   } else {

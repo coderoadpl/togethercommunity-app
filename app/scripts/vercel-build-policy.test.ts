@@ -132,12 +132,13 @@ describe('vercel build once policy', () => {
     expect(decision.action).toBe('run');
     if (decision.action !== 'run') throw new Error('expected the first deployment invocation to run');
     expect(decision.lockAcquired).toBe(true);
-    fixturePaths.push(decision.paths.lockDirectory);
+    fixturePaths.push(decision.paths.stateDirectory);
 
     await completeVercelBuildOnce(decision);
     await releaseVercelBuildOnce(decision);
 
-    const marker = JSON.parse(await readFile(join(outputDirectory, '.vercel-build.json'), 'utf8'));
+    expect(decision.paths.markerPath).not.toBe(join(outputDirectory, '.vercel-build.json'));
+    const marker = JSON.parse(await readFile(decision.paths.markerPath, 'utf8'));
     expect(marker).toEqual({
       deploymentId: 'dpl_first',
       gitCommitSha: 'abc123',
@@ -147,11 +148,15 @@ describe('vercel build once policy', () => {
 
   it('reuses a marker for the same deployment and commit', async () => {
     const outputDirectory = fixtureDirectory();
-    writeFileSync(join(outputDirectory, '.vercel-build.json'), JSON.stringify({
+    const expected = {
       deploymentId: 'dpl_reuse',
       gitCommitSha: 'def456',
       timestamp: '2026-09-12T10:05:00.000Z',
-    }));
+    };
+    const paths = vercelBuildOncePaths(outputDirectory, expected);
+    mkdirSync(paths.stateDirectory, { recursive: true });
+    fixturePaths.push(paths.stateDirectory);
+    writeFileSync(paths.markerPath, JSON.stringify(expected));
 
     const decision = await beginVercelBuildOnce({
       env: {
@@ -173,11 +178,15 @@ describe('vercel build once policy', () => {
 
   it('runs when an existing marker belongs to a different commit', async () => {
     const outputDirectory = fixtureDirectory();
-    writeFileSync(join(outputDirectory, '.vercel-build.json'), JSON.stringify({
+    const existing = {
       deploymentId: 'dpl_mismatch',
       gitCommitSha: 'old',
       timestamp: '2026-09-12T10:10:00.000Z',
-    }));
+    };
+    const paths = vercelBuildOncePaths(outputDirectory, existing);
+    mkdirSync(paths.stateDirectory, { recursive: true });
+    fixturePaths.push(paths.stateDirectory);
+    writeFileSync(paths.markerPath, JSON.stringify(existing));
 
     const decision = await beginVercelBuildOnce({
       env: {
@@ -190,7 +199,6 @@ describe('vercel build once policy', () => {
     expect(decision.action).toBe('run');
     if (decision.action !== 'run') throw new Error('expected a mismatched marker to run');
     expect(decision.lockAcquired).toBe(true);
-    fixturePaths.push(decision.paths.lockDirectory);
     await releaseVercelBuildOnce(decision);
   });
 
@@ -202,8 +210,8 @@ describe('vercel build once policy', () => {
       timestamp: '2026-09-12T10:15:00.000Z',
     };
     const paths = vercelBuildOncePaths(outputDirectory, expected);
-    mkdirSync(paths.lockDirectory);
-    fixturePaths.push(paths.lockDirectory);
+    mkdirSync(paths.lockDirectory, { recursive: true });
+    fixturePaths.push(paths.stateDirectory);
 
     let clock = 0;
     const decision = await beginVercelBuildOnce({
@@ -224,7 +232,40 @@ describe('vercel build once policy', () => {
     expect(decision).toEqual({ action: 'reuse', marker: expected });
   });
 
-  it('falls back to running when the lock wait times out', async () => {
+  it('falls back to running when the first lock holder exits without a marker', async () => {
+    const outputDirectory = fixtureDirectory();
+    const expected = {
+      deploymentId: 'dpl_holder_failed',
+      gitCommitSha: 'cafe',
+      timestamp: '2026-09-12T10:20:00.000Z',
+    };
+    const paths = vercelBuildOncePaths(outputDirectory, expected);
+    mkdirSync(paths.lockDirectory, { recursive: true });
+    fixturePaths.push(paths.stateDirectory);
+
+    let clock = 0;
+    const decision = await beginVercelBuildOnce({
+      env: {
+        VERCEL_DEPLOYMENT_ID: 'dpl_holder_failed',
+        VERCEL_GIT_COMMIT_SHA: 'cafe',
+      },
+      outputDirectory,
+      now: () => new Date(clock),
+      pollIntervalMs: 10,
+      waitTimeoutMs: 50,
+      sleep: async (milliseconds) => {
+        clock += milliseconds;
+        rmSync(paths.lockDirectory, { recursive: true, force: true });
+      },
+    });
+
+    expect(decision.action).toBe('run');
+    if (decision.action !== 'run') throw new Error('expected a failed first holder to run');
+    expect(decision.lockAcquired).toBe(true);
+    await releaseVercelBuildOnce(decision);
+  });
+
+  it('fails when the lock wait times out', async () => {
     const outputDirectory = fixtureDirectory();
     const expected = {
       deploymentId: 'dpl_timeout',
@@ -232,8 +273,8 @@ describe('vercel build once policy', () => {
       timestamp: '2026-09-12T10:20:00.000Z',
     };
     const paths = vercelBuildOncePaths(outputDirectory, expected);
-    mkdirSync(paths.lockDirectory);
-    fixturePaths.push(paths.lockDirectory);
+    mkdirSync(paths.lockDirectory, { recursive: true });
+    fixturePaths.push(paths.stateDirectory);
 
     let clock = 0;
     const decision = await beginVercelBuildOnce({
@@ -250,8 +291,9 @@ describe('vercel build once policy', () => {
       },
     });
 
-    expect(decision.action).toBe('run');
-    if (decision.action !== 'run') throw new Error('expected a timed-out wait to run');
-    expect(decision.lockAcquired).toBe(false);
+    expect(decision).toEqual({
+      action: 'fail',
+      message: 'vercel-build: timed out waiting for the first build invocation for deployment dpl_timeout',
+    });
   });
 });

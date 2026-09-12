@@ -5,6 +5,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   marketingDirectoryContracts,
+  marketingSignupContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -467,6 +468,10 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
+  getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
+  createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),
+  updateMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.updateMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.updateMarketingSignupForm.output, input, signal),
   uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
     const form = new FormData();
     form.append('file', new Blob([input.csv], { type: 'text/csv' }), input.metadata.fileName);

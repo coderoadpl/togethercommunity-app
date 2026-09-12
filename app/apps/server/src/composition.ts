@@ -1,3 +1,5 @@
+import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
+import type { MarketingSignupDeps } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
 import { createMarketingContactCampaignTransaction } from '#adapters/db/marketing-contact-campaign-transactions.js';
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
@@ -520,6 +522,7 @@ export interface AppDeps {
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
   marketingContacts?: MarketingContactDeps;
+  marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
 }
@@ -1416,6 +1419,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     authConfig: { googleEnabled: google !== null, googleClientId: google?.clientId ?? null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
+    marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,
     marketing: {

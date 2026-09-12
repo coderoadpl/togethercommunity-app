@@ -53,6 +53,7 @@ describe('request body limits', () => {
   });
 
   it('caps public HTML mutations outside the API prefix', () => {
+    expect(requestBodyLimit('POST', '/api/public/marketing/forms/newsletter/submit')).toBe(PUBLIC_FORM_BODY_LIMIT);
     expect(requestBodyLimit('POST', '/u/token/preferences')).toBe(PUBLIC_FORM_BODY_LIMIT);
     expect(requestBodyLimit('POST', '/marketing/confirm/token')).toBe(PUBLIC_FORM_BODY_LIMIT);
     expect(requestBodyLimit('GET', '/u/token')).toBeUndefined();

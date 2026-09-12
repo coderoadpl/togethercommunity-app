@@ -107,3 +107,38 @@ contains only this reviewed advisory:
   `drizzle-kit` resolves esbuild 0.25 only from 1.0, which in turn requires
   `drizzle-orm` 1.0 while `better-auth` still declares a `drizzle-orm` 0.45
   peer, so revisit when `better-auth` supports `drizzle-orm` 1.0.
+
+## Public newsletter signup
+
+`POST /api/public/marketing/forms/:slug/submit` resolves the tenant from the
+request host and ignores tenant-selection headers. Only active forms and
+active optional marketing consent definitions can collect signups. The
+16 KiB body limit is applied before parsing or rate-limit email extraction;
+oversized signup requests return 413. Names are limited to 120 characters.
+Addresses are normalized and never included in route logs or error details.
+
+The shared public rate-limit repository enforces separate signup buckets:
+`PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE` defaults to 10 in production,
+and `PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES` defaults to 3. The
+email bucket uses a SHA-256 digest scoped to the tenant; the IP comes only from
+the trusted connection/proxy policy. Development defaults are 1000 and 100.
+Environment overrides follow the existing rate-limit convention, including
+zero to disable a bucket. Rejections carry `Retry-After`.
+
+Browser JSON requests and preflights require an exact origin in the form's
+allow-list. No credentials or wildcard origins are enabled. Ordinary HTML
+form posts support cross-site embeds without CORS. Every real submission must
+carry the form revision's public token. The token binds an embed to its wording
+snapshot; it is public and is not an authentication credential. A filled
+honeypot silently succeeds without creating contact, consent, or mail records.
+`MarketingSignupDeps.abuseCheck` is an optional pre-write integration point
+for a future abuse-verification provider.
+
+The response status is determined solely by the consent definition, including
+for existing and suppressed addresses. Submission responses have a minimum
+500 ms duration, and confirmation delivery is asynchronous. This reduces the
+usefulness of timing differences without promising constant database latency.
+The hosted success URL contains no recipient information. Redirect targets
+must use HTTPS without embedded credentials; users cannot override them in a
+submission. Suppression lifting, consent, contact changes, list membership,
+submission history, and mail enqueueing share a transaction.

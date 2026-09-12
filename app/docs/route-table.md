@@ -57,6 +57,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /marketing/confirm/:token` | public | mutating | Double opt-in confirmation |
 | `GET /legal/:slug` | public | read | Latest public legal document |
 | `GET /legal/:slug/v/:version` | public | read | Versioned public legal document |
+| `GET /marketing/forms/:slug` | public | read | Hosted tenant newsletter signup form with explicit consent wording |
+| `GET /marketing/forms/:slug/thanks` | public | read | Generic signup acknowledgement without recipient information |
+| `OPTIONS /api/public/marketing/forms/:slug/submit` | public | read | Form-specific allow-listed JSON submission preflight |
+| `POST /api/public/marketing/forms/:slug/submit` | public | mutating | Rate-limited public signup recording contacts, consent evidence and confirmation mail requests |
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
@@ -161,6 +165,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/suppressions/import` | authenticated | mutating | import marketing suppressions |
 | `POST /api/marketing/contact-imports/:id/process` | authenticated | mutating | process marketing contact import |
 | `POST /api/marketing/contacts/sync` | authenticated | mutating | sync marketing member contacts |
+| `GET /api/marketing/forms` | authenticated | read | list marketing signup forms |
+| `GET /api/marketing/forms/:slug` | authenticated | read | get marketing signup form |
+| `POST /api/marketing/forms` | authenticated | mutating | create marketing signup form |
+| `POST /api/marketing/forms/:slug` | authenticated | mutating | update marketing signup form |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

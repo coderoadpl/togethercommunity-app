@@ -10,6 +10,8 @@ import {
   marketingListMemberships,
   marketingDirectoryEvents,
   marketingMemberSyncJobs,
+  marketingSignupForms,
+  marketingSignupSubmissions,
   marketingContacts,
   marketingLists,
   marketingContactImports,
@@ -100,12 +102,14 @@ export type DemoTenantWipeTable = AnyPgTable & { tenantId: AnyPgColumn };
 // Order is load-bearing: children before parents, so the wipe holds even for FKs without ON DELETE CASCADE.
 export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   marketingOutbox,
+  marketingSignupSubmissions,
   marketingSnsInboxEvents,
   marketingSnsInbox,
   marketingContactImportRows,
   marketingListMemberships,
   marketingDirectoryEvents,
   marketingMemberSyncJobs,
+  marketingSignupForms,
   marketingLists,
   marketingContactImports,
   autoInvoiceJobs,

@@ -198,3 +198,51 @@ pnpm --silent run cli campaign sends --contact contact-id
 setter uses `POST /api/marketing/campaigns/audience` and only accepts drafts.
 The existing send journal accepts `contactId` on list and CSV-export queries;
 Studio contact detail links each send to its delivery/event timeline.
+
+## Public signup forms
+
+Studio → Marketing → Signup forms manages tenant-owned forms. A form has an
+immutable tenant-unique slug, an active optional consent definition, an optional
+active static list, tags, optional name collection, success messages in both
+languages, an optional HTTPS redirect, and an exact JSON origin allow-list.
+Archiving disables public reads and submissions while retaining history.
+Changes use optimistic revisions and append directory events. Saving snapshots
+the current consent wording and rotates the public form token; replace existing
+embed snippets after editing.
+
+The consent definition determines single or double opt-in. A submission upserts
+a contact with source `form:<slug>`, merges tags, adds static list membership,
+and records immutable consent evidence with wording, document reference,
+submission time, tenant-keyed IP hash, user agent, form revision, and source.
+Double opt-in queues the existing confirmation email in the same transaction.
+Bounce, complaint, and erasure suppressions remain in force and prevent that
+email. Explicit signup lifts unsubscribe and manual suppressions, with a
+contact event linking the suppression and new consent evidence.
+
+The Embed panel supplies a hosted link, an ordinary HTML form, and a JSON fetch
+example. Hosted pages are `/marketing/forms/:slug` and
+`/marketing/forms/:slug/thanks`. `POST /api/public/marketing/forms/:slug/submit`
+accepts JSON or URL-encoded fields `email`, optional `displayName`, `website`
+(the empty honeypot), and the generated `token`. JSON returns HTTP 200 with
+`{"status":"pending"}` or `{"status":"subscribed"}`. HTML submissions redirect
+with HTTP 303 to the configured HTTPS URL or the localized thank-you page.
+The JSON response depends on the definition, never on address existence.
+
+Counters count accepted, non-honeypot submissions during the last 24 hours,
+last 7 days, and all time. Confirmed counts include single opt-in submissions
+and double opt-in submissions whose specific consent was confirmed; pending
+counts include unconfirmed double opt-in submissions. Repeated submissions are
+separate evidence records and separate counter entries. Confirmation events update
+a submission projection, so later consent-evidence retention does not reset
+aggregate counters or prevent evidence purging.
+
+```bash
+pnpm --silent run cli marketing forms list
+pnpm --silent run cli marketing forms create --input '{"slug":"newsletter","name":"Newsletter","consentDefinitionId":"definition-id","successText":{"en":"Thank you","pl":"Thank you"}}'
+pnpm --silent run cli marketing forms show newsletter
+```
+
+The authenticated contract provides list, create, show, and revision-checked
+update at `/api/marketing/forms` and `/api/marketing/forms/:slug`. Archive by
+updating `status` to `archived`. Form management uses the existing
+`marketing:list:read` and `marketing:list:write` capabilities.

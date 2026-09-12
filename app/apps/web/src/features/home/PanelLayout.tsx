@@ -64,6 +64,7 @@ import {
   MarketingListsIcon,
   MarketingConsentsIcon,
   MarketingDocumentsIcon,
+  MarketingFormsIcon,
   MarketingLayoutsIcon,
   MarketingSendsIcon,
   MembersIcon,
@@ -93,6 +94,7 @@ type PanelSection =
   | 'marketingSends'
   | 'marketingContacts'
   | 'marketingLists'
+  | 'marketingForms'
   | 'marketingCampaigns'
   | 'marketingConsents'
   | 'marketingDocuments'
@@ -181,6 +183,7 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'marketing',
     sections: [
       { id: 'marketingContacts', to: '/panel/marketing/contacts' },
+      { id: 'marketingForms', to: '/panel/marketing/forms' },
       { id: 'marketingLists', to: '/panel/marketing/lists' },
       { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
       { id: 'marketingActivity', to: '/panel/marketing/activity' },
@@ -230,6 +233,8 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MarketingSendsIcon />;
     case 'marketingContacts':
       return <MarketingContactsIcon />;
+    case 'marketingForms':
+      return <MarketingFormsIcon />;
     case 'marketingLists':
       return <MarketingListsIcon />;
     case 'marketingCampaigns':

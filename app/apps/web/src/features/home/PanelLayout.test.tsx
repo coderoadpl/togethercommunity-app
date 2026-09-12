@@ -250,6 +250,7 @@ describe('Creator panel routing', () => {
     ] as const;
     const marketingSectionIds = [
       'marketingContacts',
+      'marketingForms',
       'marketingLists',
       'marketingCampaigns',
       'marketingActivity',

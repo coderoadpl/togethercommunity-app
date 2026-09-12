@@ -1,3 +1,4 @@
+import type { MarketingSignupForm } from '#core/domain/index.js';
 import { DEFAULT_LANGUAGE, deriveDarkAccent, deriveLightAccent, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
 import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
@@ -214,6 +215,7 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .prose blockquote{border-left:3px solid var(--line);padding-left:1rem;color:var(--muted)}
 .prose pre{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--muted-surface);padding:1rem}
 .prose code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}
+.signup-field{display:grid;gap:.5rem;margin-block:1.25rem}.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}.signup-trap{display:none}
 .social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.875rem}
 .social-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
 @media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}.brand-name{font-size:1.5rem}.card{padding:1.75rem}}
@@ -360,4 +362,16 @@ export const renderConfirmationPage = (input: {
     body: `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${action}</div>`,
     testId: `marketing-confirmation-${input.state}`,
   });
+};
+
+export const renderSignupFormPage = (input: {
+  nonce: string; brand: PublicBrand; language: Language; form: MarketingSignupForm;
+  wording: string; doubleOptIn: boolean; thanks: boolean;
+}): string => {
+  const t = messages[input.language];
+  const path = `/marketing/forms/${encodeURIComponent(input.form.slug)}`;
+  const body = input.thanks
+    ? `<div class="status"><p class="lede">${escapeHtml(input.form.successText[input.language])}</p>${input.doubleOptIn ? `<p class="notice">${escapeHtml(t.signupPending)}</p>` : ''}</div>`
+    : `<form class="card" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}"><p class="fine">${escapeHtml(input.wording)}</p><div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.thanks ? `${path}/thanks` : path, title: input.thanks ? t.signupThanks : input.form.name, eyebrow: t.signupEyebrow, body, testId: input.thanks ? 'marketing-signup-thanks' : 'marketing-signup-form' });
 };

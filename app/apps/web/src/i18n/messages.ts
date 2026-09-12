@@ -16,6 +16,49 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  signupForms: {
+    noList: string;
+    title: string;
+    description: string;
+    create: string;
+    edit: string;
+    empty: string;
+    slug: string;
+    consent: string;
+    chooseConsent: string;
+    singleOptIn: string;
+    doubleOptIn: string;
+    list: string;
+    listHelp: string;
+    tags: string;
+    collectName: string;
+    successEn: string;
+    successPl: string;
+    defaultSuccessEn: string;
+    defaultSuccessPl: string;
+    redirect: string;
+    redirectHelp: string;
+    origins: string;
+    originsHelp: string;
+    invalid: string;
+    embed: string;
+    embedHelp: string;
+    hostedLink: string;
+    htmlEmbed: string;
+    jsonExample: string;
+    labelLanguage: string;
+    email: string;
+    displayName: string;
+    submit: string;
+    last24h: string;
+    last7d: string;
+    total: string;
+    confirmed: string;
+    pending: string;
+    actions: string;
+    editorHelp: string;
+    suppressionLifted: string;
+  };
   deletedContent: { member: string; post: string };
   common: {
     appName: string;
@@ -276,6 +319,7 @@ export interface Messages {
     marketingActivity: string;
     marketingSends: string;
     marketingContacts: string;
+    marketingForms: string;
     marketingLists: string;
     marketingCampaigns: string;
     marketingConsents: string;

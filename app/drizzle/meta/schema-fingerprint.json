@@ -1,6 +1,6 @@
 {
-  "hash": "39e9a8022ad8165101d80392cfec10be864b6075bee73d991cf65553ad822253",
-  "shortId": "39e9a8022ad8",
+  "hash": "7db8f4bd91fac7625124867762ecf639118d236ec118dd62e6e4d80c6ff78059",
+  "shortId": "7db8f4bd91fa",
   "schema": {
     "constraints": [
       {
@@ -74,6 +74,16 @@
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((revision > 0))",
+        "name": "marketing_signup_forms_revision_check",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
+        "name": "marketing_signup_forms_status_check",
+        "table": "marketing_signup_forms"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
         "name": "tenants_status_check",
         "table": "tenants"
@@ -122,6 +132,11 @@
         "definition": "FOREIGN KEY (consent_definition_id) REFERENCES consent_definitions(id) ON DELETE RESTRICT",
         "name": "campaigns_consent_definition_id_consent_definitions_id_fk",
         "table": "campaigns"
+      },
+      {
+        "definition": "FOREIGN KEY (consent_id) REFERENCES marketing_consents(id) ON DELETE SET NULL",
+        "name": "marketing_signup_submissions_consent_id_fkey",
+        "table": "marketing_signup_submissions"
       },
       {
         "definition": "FOREIGN KEY (consent_row_id) REFERENCES marketing_consents(id) ON DELETE SET NULL",
@@ -560,6 +575,16 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_signup_forms_tenant_id_fkey",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_signup_submissions_tenant_id_fkey",
+        "table": "marketing_signup_submissions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "marketing_sns_inbox_events_tenant_id_tenants_id_fk",
         "table": "marketing_sns_inbox_events"
       },
@@ -794,6 +819,11 @@
         "table": "marketing_campaign_audience_snapshots"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id) ON DELETE RESTRICT",
+        "name": "marketing_signup_form_definition_fk",
+        "table": "marketing_signup_forms"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id)",
         "name": "marketing_campaign_audience_snapshots_tenant_id_consent_definit",
         "table": "marketing_campaign_audience_snapshots"
@@ -824,6 +854,11 @@
         "table": "member_course_progress"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, form_id) REFERENCES marketing_signup_forms(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_signup_submission_form_fk",
+        "table": "marketing_signup_submissions"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, import_id) REFERENCES marketing_contact_imports(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_import_row_batch_fk",
         "table": "marketing_contact_import_rows"
@@ -842,6 +877,11 @@
         "definition": "FOREIGN KEY (tenant_id, list_id) REFERENCES marketing_lists(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_membership_list_fk",
         "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, list_id) REFERENCES marketing_lists(tenant_id, id)",
+        "name": "marketing_signup_form_list_fk",
+        "table": "marketing_signup_forms"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id) ON DELETE CASCADE",
@@ -1152,6 +1192,16 @@
         "definition": "PRIMARY KEY (id)",
         "name": "marketing_outbox_pkey",
         "table": "marketing_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_signup_forms_pkey",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_signup_submissions_pkey",
+        "table": "marketing_signup_submissions"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1499,6 +1549,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
+        "name": "project_marketing_signup_confirmation"
       }
     ],
     "indexes": [
@@ -1898,6 +1953,11 @@
         "table": "marketing_outbox"
       },
       {
+        "definition": "CREATE INDEX marketing_signup_submissions_counts_idx ON marketing_signup_submissions USING btree (tenant_id, form_id, occurred_at)",
+        "name": "marketing_signup_submissions_counts_idx",
+        "table": "marketing_signup_submissions"
+      },
+      {
         "definition": "CREATE INDEX marketing_sns_inbox_events_tenant_idx ON marketing_sns_inbox_events USING btree (tenant_id, inbox_id)",
         "name": "marketing_sns_inbox_events_tenant_idx",
         "table": "marketing_sns_inbox_events"
@@ -2286,6 +2346,16 @@
         "definition": "CREATE UNIQUE INDEX marketing_outbox_send_uidx ON marketing_outbox USING btree (tenant_id, campaign_send_id)",
         "name": "marketing_outbox_send_uidx",
         "table": "marketing_outbox"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_signup_forms_tenant_slug_uidx ON marketing_signup_forms USING btree (tenant_id, slug)",
+        "name": "marketing_signup_forms_tenant_slug_uidx",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_signup_forms_tenant_token_uidx ON marketing_signup_forms USING btree (tenant_id, token)",
+        "name": "marketing_signup_forms_tenant_token_uidx",
+        "table": "marketing_signup_forms"
       },
       {
         "definition": "CREATE UNIQUE INDEX marketing_sns_inbox_receipt_uidx ON marketing_sns_inbox USING btree (tenant_id, topic_arn, sns_message_id)",
@@ -7884,6 +7954,147 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "allowed_origins",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "collect_name",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_definition_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_version",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "list_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "redirect_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "success_text",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tags",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "token",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_signup_forms"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "api_key_id",
             "notNull": true,
             "type": "text"
@@ -9354,6 +9565,67 @@
           }
         ],
         "name": "marketing_idempotency_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "confirmed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "double_opt_in",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "form_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_signup_submissions"
       },
       {
         "columns": [
@@ -11723,6 +11995,11 @@
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",
         "table": "members"
+      },
+      {
+        "definition": "CREATE TRIGGER marketing_signup_confirmation_projection AFTER INSERT ON marketing_consents FOR EACH ROW WHEN ((new.status = 'confirmed'::text)) EXECUTE FUNCTION project_marketing_signup_confirmation()",
+        "name": "marketing_signup_confirmation_projection",
+        "table": "marketing_consents"
       },
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",

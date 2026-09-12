@@ -4,7 +4,7 @@ import { basename } from 'node:path';
 import type { Command } from 'commander';
 import { z } from 'zod';
 
-import { parseMarketingImportCsv, mapMarketingImportCsv, renderMarketingContactCsv, marketingDirectoryContracts, MARKETING_IMPORT_ATTESTATION_VERSION, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT, type ApiClient } from '#core/client/index.js';
+import { parseMarketingImportCsv, mapMarketingImportCsv, renderMarketingContactCsv, marketingDirectoryContracts, marketingSignupContracts, MARKETING_IMPORT_ATTESTATION_VERSION, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT, type ApiClient } from '#core/client/index.js';
 import { marketingImportMappingSchema } from '#core/contract/index.js';
 import { err, ok, validation, internal, type AppError, type Result, type MarketingContactView } from '#core/domain/index.js';
 
@@ -122,6 +122,16 @@ export const registerMarketingCommands = (program: Command, context: () => Resul
     const rule: unknown = options.rule === undefined ? null : JSON.parse(options.rule);
     const input = marketingDirectoryContracts.createMarketingList.input.safeParse({ ...options, rule });
     return input.success ? ctx.api.createMarketingList(input.data) : Promise.resolve(err(validation('Invalid list rule', input.error.flatten())));
+  }));
+  const forms = marketing.command('forms').description('Manage public newsletter signup forms');
+  forms.command('list').action(run(z.tuple([z.object({})]), (ctx) => ctx.api.listMarketingSignupForms({})));
+  forms.command('show <slug>').action(run(z.tuple([z.string(), z.object({})]), (ctx, [slug]) => ctx.api.getMarketingSignupForm({ slug })));
+  forms.command('create').requiredOption('--input <json>', 'Signup form as JSON').action(run(z.tuple([z.object({ input: z.string() })]), (ctx, [options]) => {
+    let raw: unknown;
+    try { raw = JSON.parse(options.input); }
+    catch { return Promise.resolve(err(validation('Signup form input must be valid JSON'))); }
+    const parsed = marketingSignupContracts.createMarketingSignupForm.input.safeParse(raw);
+    return parsed.success ? ctx.api.createMarketingSignupForm(parsed.data) : Promise.resolve(err(validation('Invalid signup form', parsed.error.flatten())));
   }));
   lists.command('list').action(run(z.tuple([z.object({})]), (ctx) => ctx.api.listMarketingLists({})));
   for (const action of ['add', 'remove'] as const) {

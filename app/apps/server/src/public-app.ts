@@ -1,3 +1,4 @@
+import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
@@ -714,6 +715,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   );
 
   registerPublicMarketingRoutes(app, deps);
+  registerPublicMarketingSignupRoutes(app, deps);
 
   app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
     const tenantId = c.req.param('tenantId');

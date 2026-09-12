@@ -21,11 +21,11 @@ export const DirectoryError = ({ error }: { error: unknown }) => {
   return error ? <Alert severity="error">{localizePanelError(error, t)}</Alert> : null;
 };
 
-export const DirectoryListSelect = ({ value, onChange, staticOnly = false, label, helperText }: { value: string; onChange: (value: string) => void; staticOnly?: boolean; label?: string; helperText?: string }) => {
+export const DirectoryListSelect = ({ value, onChange, staticOnly = false, label, helperText, emptyLabel }: { value: string; onChange: (value: string) => void; staticOnly?: boolean; label?: string; helperText?: string; emptyLabel?: string }) => {
   const t = useTranslations();
   const { tenant } = usePanelContext();
   const lists = useInfiniteQuery(actions.directory.listOptions(tenant.id));
-  return <Stack useFlexGap spacing="0.5rem"><DirectorySelect label={label ?? t.directory.list} value={value} onChange={onChange} {...(helperText === undefined ? {} : { helperText })} options={[{ value: '', label: t.directory.all }, ...(lists.data?.pages.flatMap((page) => page.lists).filter((list) => !staticOnly || list.kind === 'static').map((list) => ({ value: list.id, label: `${list.name} (${list.key})` })) ?? [])]} />{lists.hasNextPage ? <Button disabled={lists.isFetchingNextPage} onClick={() => void lists.fetchNextPage()}>{t.directory.loadMore}</Button> : null}<DirectoryError error={lists.error} /></Stack>;
+  return <Stack useFlexGap spacing="0.5rem"><DirectorySelect label={label ?? t.directory.list} value={value} onChange={onChange} {...(helperText === undefined ? {} : { helperText })} options={[{ value: '', label: emptyLabel ?? t.directory.all }, ...(lists.data?.pages.flatMap((page) => page.lists).filter((list) => !staticOnly || list.kind === 'static').map((list) => ({ value: list.id, label: `${list.name} (${list.key})` })) ?? [])]} />{lists.hasNextPage ? <Button disabled={lists.isFetchingNextPage} onClick={() => void lists.fetchNextPage()}>{t.directory.loadMore}</Button> : null}<DirectoryError error={lists.error} /></Stack>;
 };
 
 export const DirectoryPagination = ({ nextCursor, cursor, onChange }: { nextCursor: string | null | undefined; cursor: string | undefined; onChange: (cursor: string | undefined) => void }) => {
@@ -45,6 +45,6 @@ export const suppressionLabel = (reason: string, t: Messages): string => {
 };
 
 export const directoryEventLabel = (type: string, t: Messages): string => {
-  const labels: Record<string, string> = { contact_created: t.directory.eventCreated, contact_updated: t.directory.eventUpdated, contact_archived: t.directory.eventArchived, contact_restored: t.directory.eventRestored, member_linked: t.directory.eventLinked, member_unlinked: t.directory.eventUnlinked, membership_added: t.directory.eventMembershipAdded, membership_removed: t.directory.eventMembershipRemoved };
+  const labels: Record<string, string> = { suppression_lifted: t.signupForms.suppressionLifted, contact_created: t.directory.eventCreated, contact_updated: t.directory.eventUpdated, contact_archived: t.directory.eventArchived, contact_restored: t.directory.eventRestored, member_linked: t.directory.eventLinked, member_unlinked: t.directory.eventUnlinked, membership_added: t.directory.eventMembershipAdded, membership_removed: t.directory.eventMembershipRemoved };
   return labels[type] ?? type;
 };

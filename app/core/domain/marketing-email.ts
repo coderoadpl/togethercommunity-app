@@ -103,6 +103,7 @@ export const marketingConsentSourceSchema = z.enum([
   'import',
   'api',
   'preference_page',
+  'signup_form',
 ]);
 
 const consentEvidenceSchema = z.object({

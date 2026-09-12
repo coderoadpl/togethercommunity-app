@@ -91,6 +91,15 @@ export const recordMarketingDirectoryFixtures = async (api: ApiClient, tick: () 
   await capture('panel-marketing-lists', '/panel/marketing/lists', async (client) => { await client.listMarketingLists({ limit: 50, archived: false }); await client.getMarketingList({ listId: staticList.id }); await client.getMarketingList({ listId: dynamicList.id }); });
   await capture('panel-marketing-list-static', `/panel/marketing/lists/${staticList.id}`, async (client) => listDetail(client, staticList.id));
   await capture('panel-marketing-list-dynamic', `/panel/marketing/lists/${dynamicList.id}`, async (client) => listDetail(client, dynamicList.id));
+  const signupForm = unwrap(await api.createMarketingSignupForm({
+    slug: 'newsletter', name: 'Newsletter signups', consentDefinitionId: definition.id, listId: staticList.id,
+    tags: ['newsletter', 'website'], collectName: true, redirectUrl: null, allowedOrigins: ['https://courses.example.org'],
+    successText: { en: 'Thank you for joining the newsletter.', pl: 'Thank you for joining the newsletter.' },
+  })).form;
+  alias(signupForm.id, 'signup-newsletter');
+  alias(signupForm.token, 'signup_token_0000000000000000000000');
+  alias(signupForm.consentVersion.id, 'definition-directory-news-v1');
+  await capture('panel-marketing-forms', '/panel/marketing/forms', async (client) => { await client.listMarketingSignupForms({}); await client.getTenantRouting(); await consents(client); await lists(client); });
   const products = unwrap(await api.listProducts()).products;
   const product = products[0];
   if (!product) throw new Error('Missing seeded product');

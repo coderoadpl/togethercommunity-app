@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Chip, FormControlLabel, Paper, Stack, Step, StepLabel, Stepper, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Button, Checkbox, Chip, FormControlLabel, LinearProgress, Paper, Stack, Step, StepLabel, Stepper, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { MARKETING_DIRECTORY_ATTESTATION_TEXT, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_IMPORT_ATTESTATION_VERSION, mapMarketingImportCsv, parseMarketingImportCsv } from '#core/client/index.js';
-import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, marketingImportMappingSchema, type MarketingContactImport, type MarketingImportValidation } from '#core/domain/index.js';
+import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, MARKETING_IMPORT_LIMITS, marketingImportMappingSchema, type MarketingContactImport, type MarketingImportPreviewResult, type MarketingImportValidation } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { usePanelContext } from '../panel-context.js';
-import { ContactImportResult } from './ContactImportResult.js';
+import { ContactImportResult, ImportErrorsDownload } from './ContactImportResult.js';
 import { DirectoryActions, DirectoryError, DirectoryField, DirectorySelect } from './DirectoryFields.js';
 
 const importSearchSchema = z.object({ importId: z.string().min(1).optional(), kind: z.enum(['contacts', 'suppressions']).optional() });
@@ -27,6 +27,16 @@ const nextUploadId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `import-${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+const localDateTime = (value: string | undefined): string => {
+  if (value === undefined) return '';
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
+const utcDateTime = (value: string): string | undefined => {
+  const parsed = new Date(value);
+  return value === '' || Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
 const localizeImportIssue = (message: string, t: Messages): string => {
   return message.split('; ').map((issue) => {
     if (issue === `email: ${MARKETING_IMPORT_EMAIL_MISSING}` || issue === `Invalid row: email: ${MARKETING_IMPORT_EMAIL_MISSING}`) return t.directory.importErrors.emailMissing;
@@ -37,17 +47,21 @@ const localizeImportIssue = (message: string, t: Messages): string => {
 
 const ImportPreview = ({ preview }: { preview: MarketingImportValidation }) => {
   const t = useTranslations();
+  const columns = preview.import.kind === 'contacts'
+    ? [t.directory.row, t.directory.email, t.directory.name, t.directory.tags, t.directory.listsTitle, t.directory.errors, t.directory.warnings]
+    : [t.directory.row, t.directory.email, t.directory.reason, t.directory.at, t.directory.errors, t.directory.warnings];
   return <>
     <Typography>{t.directory.totalRows}: {preview.import.rowCount} · {t.directory.validRows}: {preview.counts.validRows} · {t.directory.rejectedRows}: {preview.counts.rejectedRows} · {t.directory.duplicateRows}: {preview.counts.duplicateRows}</Typography>
     <Typography>{t.directory.listsToCreate}: {preview.counts.listsToCreate.join(', ') || '—'}</Typography>
     <Typography>{t.directory.previewHint}</Typography>
-    <ResponsiveTable><Table size="small" aria-label={t.directory.mapping}><TableHead><TableRow>{[t.directory.row, t.directory.email, t.directory.name, t.directory.tags, t.directory.listsTitle, t.directory.errors, t.directory.warnings].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{preview.preview.map((row) => <TableRow key={row.rowNumber}><TableCell>{row.rowNumber}</TableCell><TableCell>{row.normalizedPayload?.email ?? String(row.stagedPayload?.['email'] ?? '')}</TableCell><TableCell>{row.normalizedPayload?.name ?? [row.normalizedPayload?.firstName, row.normalizedPayload?.lastName].filter(Boolean).join(' ')}</TableCell><TableCell>{row.normalizedPayload?.tags?.join(', ')}</TableCell><TableCell>{row.normalizedPayload?.lists?.join(', ')}</TableCell><TableCell>{row.errors.map((error) => localizeImportIssue(error, t)).join('; ')}</TableCell><TableCell>{row.warnings.join('; ')}</TableCell></TableRow>)}</TableBody></Table></ResponsiveTable>
-    {preview.errors.length ? <Alert severity="error"><Typography>{t.directory.errors}</Typography>{preview.errors.map((error, index) => <Typography key={index}>{t.directory.row} {error.rowNumber}: {localizeImportIssue(error.message, t)}</Typography>)}</Alert> : null}
-    {preview.warnings.length ? <Alert severity="warning"><Typography>{t.directory.warnings}</Typography>{preview.warnings.map((warning, index) => <Typography key={index}>{t.directory.row} {warning.rowNumber}: {warning.message}</Typography>)}</Alert> : null}
+    <ResponsiveTable><Table size="small" aria-label={t.directory.mapping}><TableHead><TableRow>{columns.map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{preview.preview.map((row) => <TableRow key={row.rowNumber}><TableCell>{row.rowNumber}</TableCell><TableCell>{row.normalizedPayload?.email ?? String(row.stagedPayload?.['email'] ?? '')}</TableCell>{preview.import.kind === 'contacts' ? <><TableCell>{row.normalizedPayload?.name ?? [row.normalizedPayload?.firstName, row.normalizedPayload?.lastName].filter(Boolean).join(' ')}</TableCell><TableCell>{row.normalizedPayload?.tags?.join(', ')}</TableCell><TableCell>{row.normalizedPayload?.lists?.join(', ')}</TableCell></> : <><TableCell>{row.normalizedPayload?.reason ? t.directory[row.normalizedPayload.reason] : ''}</TableCell><TableCell>{row.normalizedPayload?.at ?? ''}</TableCell></>}<TableCell>{row.errors.map((error) => localizeImportIssue(error, t)).join('; ')}</TableCell><TableCell>{row.warnings.join('; ')}</TableCell></TableRow>)}</TableBody></Table></ResponsiveTable>
+    {preview.counts.rejectedRows > 0 && preview.import.stagedDataPurgedAt === null ? <ImportErrorsDownload importId={preview.import.id} /> : null}
+    {preview.errors.length ? <Alert severity="error"><Typography>{t.directory.errors}</Typography>{preview.errors.map((error, index) => <Typography key={index}>{t.directory.row} {error.rowNumber}: {localizeImportIssue(error.message, t)}</Typography>)}{preview.errors.length < MARKETING_IMPORT_LIMITS.previewIssues ? null : <Typography>{t.directory.previewIssuesLimited({ count: MARKETING_IMPORT_LIMITS.previewIssues })}</Typography>}</Alert> : null}
+    {preview.warnings.length ? <Alert severity="warning"><Typography>{t.directory.warnings}</Typography>{preview.warnings.map((warning, index) => <Typography key={index}>{t.directory.row} {warning.rowNumber}: {warning.message}</Typography>)}{preview.warnings.length < MARKETING_IMPORT_LIMITS.previewIssues ? null : <Typography>{t.directory.previewIssuesLimited({ count: MARKETING_IMPORT_LIMITS.previewIssues })}</Typography>}</Alert> : null}
   </>;
 };
 
-const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions'; initialBatch?: MarketingContactImport }) => {
+const ImportEditor = ({ kind, initialBatch, previewProgress }: { kind: 'contacts' | 'suppressions'; initialBatch?: MarketingContactImport; previewProgress?: { validatedRows: number; totalRows: number } }) => {
   const t = useTranslations();
   const { tenant } = usePanelContext();
   const { language } = useLanguage();
@@ -57,6 +71,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
   const heading = useRef<HTMLDivElement>(null);
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState(initialBatch?.fileName ?? '');
+  const [fileSize, setFileSize] = useState<number>();
   const [delimiter, setDelimiter] = useState<'' | ',' | ';'>(initialBatch?.delimiter ?? '');
   const [mapping, setMapping] = useState<Mapping>(initialBatch?.mapping ?? {});
   const [preview, setPreview] = useState<MarketingImportValidation>();
@@ -64,7 +79,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
   const [consentDefinitionId, setConsentDefinitionId] = useState(initialBatch?.consentDefinitionId ?? '');
   const [source, setSource] = useState(initialBatch?.defaults.source ?? '');
   const [reason, setReason] = useState<'' | 'unsubscribe' | 'bounce' | 'complaint' | 'manual'>(initialBatch?.defaults.reason ?? '');
-  const [at, setAt] = useState(initialBatch?.defaults.at ?? '');
+  const [at, setAt] = useState(localDateTime(initialBatch?.defaults.at));
   const [accepted, setAccepted] = useState(false);
   const [note, setNote] = useState('');
   const [skipInvalid, setSkipInvalid] = useState(false);
@@ -83,20 +98,29 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
     cache.setQueryData(actions.directory.import(tenant.id, { importId: value.import.id }).queryKey, { import: value.import });
     await navigate({ to: '/panel/marketing/contacts/import', search: { importId: value.import.id }, replace: true });
   };
-  const upload = useMutation({ ...actions.directory.uploadMarketingContactImport, onSuccess: validated });
-  const remap = useMutation({ ...actions.directory.previewMarketingContactImport, onSuccess: validated });
+  const previewStarted = async (value: MarketingImportPreviewResult) => {
+    if ('validationHash' in value) { await validated(value); return; }
+    setBatchId(value.import.id); setPreview(undefined); setStale(false); setStep(1);
+    cache.setQueryData(actions.directory.import(tenant.id, { importId: value.import.id }).queryKey, { import: value.import, previewProgress: value.progress });
+    await navigate({ to: '/panel/marketing/contacts/import', search: { importId: value.import.id }, replace: true });
+  };
+  const upload = useMutation({ ...actions.directory.uploadMarketingContactImport, onSuccess: previewStarted });
+  const remap = useMutation({ ...actions.directory.previewMarketingContactImport, onSuccess: previewStarted });
   const { mutate: validate, ...validation } = useMutation({ ...actions.directory.validateMarketingContactImport, onSuccess: validated });
   const commit = useMutation({ ...actions.directory.commitMarketingContactImport, onSuccess: async ({ import: batch }) => { await cache.invalidateQueries(actions.directory.invalidates(tenant.id)); await navigate({ to: '/panel/marketing/contacts/import', search: { importId: batch.id } }); } });
   const cancel = useMutation({ ...actions.directory.cancelMarketingContactImport, onSuccess: async () => cache.invalidateQueries(actions.directory.invalidates(tenant.id)) });
   const initialId = initialBatch?.id;
-  useEffect(() => { if (initialId) validate({ importId: initialId }); }, [initialId, validate]);
+  const initialStatus = initialBatch?.status;
+  useEffect(() => { if (initialId && initialStatus === 'ready') validate({ importId: initialId }); }, [initialId, initialStatus, validate]);
   useEffect(() => { heading.current?.focus(); }, [step]);
   const parsed = csv ? parseMarketingImportCsv(csv, delimiter || undefined) : undefined;
   const headers = parsed?.ok ? parsed.value.headers : preview?.headers ?? Object.keys(initialBatch?.mapping ?? {});
   const dirty = () => { editRevision.current += 1; setStale(true); setAccepted(false); setNote(''); commit.reset(); };
-  const pending = reading || upload.isPending || remap.isPending || validation.isPending || commit.isPending || cancel.isPending;
+  const previewStatus = initialStatus === 'preview_queued' || initialStatus === 'previewing' ? initialStatus : undefined;
+  const previewPending = previewStatus !== undefined;
+  const pending = reading || previewPending || upload.isPending || remap.isPending || validation.isPending || commit.isPending || cancel.isPending;
   const readFile = (file: File | undefined) => {
-    setCsv(''); setFileName(''); setFileError(''); setPreview(undefined); setMapping({}); setBatchId(undefined); dirty();
+    setCsv(''); setFileName(''); setFileSize(undefined); setFileError(''); setPreview(undefined); setMapping({}); setBatchId(undefined); dirty();
     if (!file) return;
     if (file.size > 3 * 1024 * 1024) { setFileError(t.directory.fileError); return; }
     setReading(true);
@@ -107,6 +131,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
         try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
         catch { setFileError(t.directory.encodingError); return; }
         setFileName(file.name);
+        setFileSize(file.size);
         setCsv(text);
         const result = parseMarketingImportCsv(text, delimiter || undefined);
         if (result.ok) { const mapped = mapMarketingImportCsv(result.value, { kind }); if (mapped.ok) setMapping(mapped.value.mapping); }
@@ -115,7 +140,8 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
     })();
   };
   const canContinue = preview && !stale && !pending && (preview.canCommit || skipInvalid && preview.canCommitWithSkippedRows);
-  const defaults = { ...(source ? { source } : {}), ...(reason ? { reason } : {}), ...(at ? { at } : {}) };
+  const atUtc = utcDateTime(at);
+  const defaults = { ...(source ? { source } : {}), ...(reason ? { reason } : {}), ...(atUtc === undefined ? {} : { at: atUtc }) };
   const validatePreview = () => {
     setAccepted(false); setNote(''); requestedRevision.current = editRevision.current;
     const fingerprint = JSON.stringify({ csv, kind, fileName, mapping, delimiter, defaults, consentDefinitionId });
@@ -139,7 +165,7 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
           <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}>
             <input ref={fileInput} type="file" accept=".csv,text/csv" aria-label={t.directory.file} hidden disabled={pending} onChange={(event) => readFile(event.target.files?.[0])} />
             <Button variant="outlined" disabled={pending} onClick={() => fileInput.current?.click()}>{t.directory.chooseFile}</Button>
-            {fileName ? <Chip size="small" variant="outlined" label={fileName} /> : null}
+            {fileName ? <Chip size="small" variant="outlined" label={`${fileName}${fileSize === undefined ? '' : ` · ${new Intl.NumberFormat(language, { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 1 }).format(fileSize / 1024)}`}`} /> : null}
             <Button component="a" href={`data:text/csv;charset=utf-8,${encodeURIComponent(sampleCsv[kind])}`} download={`${kind}-import-sample.csv`}>{t.directory.downloadSample}</Button>
           </Stack>
         </Paper>
@@ -150,7 +176,13 @@ const ImportEditor = ({ kind, initialBatch }: { kind: 'contacts' | 'suppressions
         <Typography>{fileName} · {t.directory.delimiter}: {delimiter}</Typography>
         <Alert severity="info">{t.directory.unknownColumns}</Alert>
         {headers.map((header) => <DirectorySelect key={header} label={header} value={mapping[header] ?? ''} onChange={(field) => { setMapping(field ? { ...mapping, [header]: field } : Object.fromEntries(Object.entries(mapping).filter(([key]) => key !== header))); dirty(); }} options={[{ value: '', label: t.directory.ignoreColumn }, ...(kind === 'contacts' ? contactFields : suppressionFields).map((value) => ({ value, label: t.directory.importFields[value] }))]} />)}
-        {kind === 'contacts' ? <><DirectoryField label={t.directory.defaultSource} value={source} onChange={(value) => { setSource(value); dirty(); }} maxLength={120} /><DirectorySelect label={t.directory.consentDefinition} value={consentDefinitionId} onChange={(value) => { setConsentDefinitionId(value); dirty(); }} options={[{ value: '', label: t.directory.contactsOnly }, ...(consents.data?.definitions.filter((definition) => definition.status === 'active' && definition.kind === 'optional_marketing' && !definition.doubleOptIn).map((definition) => ({ value: definition.id, label: definition.key })) ?? [])]} />{consentDefinitionId ? null : <Alert severity="info">{t.directory.doiHint}</Alert>}</> : <><DirectorySelect label={t.directory.defaultReason} value={reason} onChange={(value) => { setReason(value); dirty(); }} options={[{ value: '', label: t.directory.noDefault }, ...(['unsubscribe', 'bounce', 'complaint', 'manual'] as const).map((value) => ({ value, label: t.directory[value] }))]} /><DirectoryField label={t.directory.defaultAt} value={at} onChange={(value) => { setAt(value); dirty(); }} /></>}
+        {kind === 'contacts' ? <><DirectoryField label={t.directory.defaultSource} value={source} onChange={(value) => { setSource(value); dirty(); }} maxLength={120} /><DirectorySelect label={t.directory.consentDefinition} value={consentDefinitionId} onChange={(value) => { setConsentDefinitionId(value); dirty(); }} options={[{ value: '', label: t.directory.contactsOnly }, ...(consents.data?.definitions.filter((definition) => definition.status === 'active' && definition.kind === 'optional_marketing' && !definition.doubleOptIn).map((definition) => ({ value: definition.id, label: definition.key })) ?? [])]} />{consentDefinitionId ? null : <Alert severity="info">{t.directory.doiHint}</Alert>}</> : <><DirectorySelect label={t.directory.defaultReason} value={reason} onChange={(value) => { setReason(value); dirty(); }} options={[{ value: '', label: t.directory.noDefault }, ...(['unsubscribe', 'bounce', 'complaint', 'manual'] as const).map((value) => ({ value, label: t.directory[value] }))]} /><DirectoryField label={t.directory.defaultAt} type="datetime-local" value={at} onChange={(value) => { setAt(value); dirty(); }} {...(atUtc === undefined ? {} : { helperText: t.directory.defaultAtUtc({ value: atUtc }) })} /></>}
+        {previewStatus ? <Stack useFlexGap spacing="0.5rem">
+          <Chip role="status" size="small" label={t.directory[previewStatus]} sx={{ alignSelf: 'flex-start' }} />
+          <Typography>{t.directory.statusGuidance[previewStatus]}</Typography>
+          {previewProgress ? <><Typography>{t.directory.previewProgress({ validated: previewProgress.validatedRows, total: previewProgress.totalRows })}</Typography><LinearProgress variant="determinate" value={previewProgress.totalRows === 0 ? 0 : previewProgress.validatedRows / previewProgress.totalRows * 100} aria-label={t.directory.previewProgressLabel} /></> : null}
+        </Stack> : null}
+        {!previewStatus && initialBatch?.lastError ? <Alert severity="error">{initialBatch.lastError}</Alert> : null}
         {stale && preview ? <Alert severity="warning">{t.directory.previewStale}</Alert> : null}
         <Button disabled={pending || !marketingImportMappingSchema.safeParse(mapping).success} onClick={validatePreview}>{t.directory.validate}</Button>
         {preview ? <ImportPreview preview={preview} /> : null}
@@ -174,9 +206,9 @@ export const ContactImportWizard = () => {
   const { tenant } = usePanelContext();
   const search = useSearch({ strict: false });
   const { importId, kind } = importSearchSchema.parse(search);
-  const batch = useQuery({ ...actions.directory.import(tenant.id, { importId: importId ?? '' }), enabled: importId !== undefined });
-  const uncommitted = batch.data && ['draft', 'ready'].includes(batch.data.import.status);
+  const batch = useQuery({ ...actions.directory.import(tenant.id, { importId: importId ?? '' }), enabled: importId !== undefined, refetchInterval: (query) => query.state.data && ['preview_queued', 'previewing'].includes(query.state.data.import.status) ? 1000 : false });
+  const uncommitted = batch.data && ['draft', 'preview_queued', 'previewing', 'ready'].includes(batch.data.import.status);
   return <PanelPage title={(batch.data?.import.kind ?? kind) === 'suppressions' ? t.directory.suppressionImport : t.directory.importTitle} backTo={<PanelBackLink to="/panel/marketing/contacts">{t.directory.contactsTitle}</PanelBackLink>}>
-    {importId ? batch.isPending ? <StatusView state={{ kind: 'loading', label: t.directory.loading }} /> : batch.isError ? <DirectoryError error={batch.error} /> : uncommitted && batch.data ? <ImportEditor key={importId} kind={batch.data.import.kind} initialBatch={batch.data.import} /> : <ContactImportResult importId={importId} /> : <ImportEditor key={kind ?? 'contacts'} kind={kind ?? 'contacts'} />}
+    {importId ? batch.isPending ? <StatusView state={{ kind: 'loading', label: t.directory.loading }} /> : batch.isError ? <DirectoryError error={batch.error} /> : uncommitted && batch.data ? <ImportEditor key={importId} kind={batch.data.import.kind} initialBatch={batch.data.import} {...(batch.data.previewProgress === undefined ? {} : { previewProgress: batch.data.previewProgress })} /> : <ContactImportResult importId={importId} /> : <ImportEditor key={kind ?? 'contacts'} kind={kind ?? 'contacts'} />}
   </PanelPage>;
 };

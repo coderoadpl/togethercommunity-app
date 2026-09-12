@@ -2304,6 +2304,8 @@ export interface Messages {
     version: string;
     totalRows: string;
     draft: string;
+    preview_queued: string;
+    previewing: string;
     ready: string;
     queued: string;
     processing: string;
@@ -2313,6 +2315,8 @@ export interface Messages {
     cancelled: string;
     statusGuidance: {
       draft: string;
+      preview_queued: string;
+      previewing: string;
       ready: string;
       queued: string;
       processing: string;
@@ -2329,6 +2333,10 @@ export interface Messages {
     defaultSource: string;
     defaultReason: string;
     defaultAt: string;
+    defaultAtUtc: (input: { value: string }) => string;
+    previewProgress: (input: { validated: number; total: number }) => string;
+    previewProgressLabel: string;
+    previewIssuesLimited: (input: { count: number }) => string;
     unsubscribe: string;
     bounce: string;
     complaint: string;

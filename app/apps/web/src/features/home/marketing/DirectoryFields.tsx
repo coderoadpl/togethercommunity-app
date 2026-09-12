@@ -6,9 +6,9 @@ import { actions } from '../../../api.js';
 import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 
-export const DirectoryField = ({ label, value, onChange, required = false, disabled = false, multiline = false, maxLength, helperText }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; disabled?: boolean; multiline?: boolean; maxLength?: number; helperText?: string }) => {
+export const DirectoryField = ({ label, value, onChange, required = false, disabled = false, multiline = false, type, maxLength, helperText }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; disabled?: boolean; multiline?: boolean; type?: string; maxLength?: number; helperText?: string }) => {
   const id = useId();
-  return <FormControl fullWidth><FormLabel htmlFor={id}>{label}</FormLabel><OutlinedInput id={id} value={value} onChange={(event) => onChange(event.target.value)} required={required} disabled={disabled} multiline={multiline} inputProps={{ maxLength }} />{helperText === undefined ? null : <FormHelperText>{helperText}</FormHelperText>}</FormControl>;
+  return <FormControl fullWidth><FormLabel htmlFor={id}>{label}</FormLabel><OutlinedInput id={id} value={value} onChange={(event) => onChange(event.target.value)} required={required} disabled={disabled} multiline={multiline} type={type} inputProps={{ maxLength }} />{helperText === undefined ? null : <FormHelperText>{helperText}</FormHelperText>}</FormControl>;
 };
 
 export const DirectorySelect = <T extends string,>({ label, value, onChange, options, disabled = false, helperText }: { label: string; value: T; onChange: (value: T) => void; options: { value: T; label: string }[]; disabled?: boolean; helperText?: string }) => {

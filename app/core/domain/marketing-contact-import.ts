@@ -5,7 +5,7 @@ import { marketingNameSchema, marketingTagsSchema } from './marketing-contact.js
 import { importActorSchema } from './marketing-directory-event.js';
 import { marketingListKeySchema } from './marketing-list.js';
 
-export const MARKETING_IMPORT_LIMITS = { csvBytes: 3 * 1024 * 1024, multipartBytes: 4 * 1024 * 1024, rows: 10_000, chunkRows: 200, chunkBytes: 1024 * 1024, rowBytes: 16 * 1024 } as const;
+export const MARKETING_IMPORT_LIMITS = { csvBytes: 3 * 1024 * 1024, multipartBytes: 4 * 1024 * 1024, rows: 10_000, chunkRows: 200, previewSyncRows: 500, previewChunkRows: 500, previewIssues: 100, chunkBytes: 1024 * 1024, rowBytes: 16 * 1024 } as const;
 export const MARKETING_IMPORT_ATTESTATION_VERSION = 'marketing-import-attestation/v1';
 export const MARKETING_IMPORT_ATTESTATION_TEXT = 'I confirm that I am authorized to import these contacts and that each contact for whom consent is being recorded gave valid permission for email marketing covered by the selected consent definition. I have included known unsubscribes, complaints, and permanent bounces in the suppression import. This import must not restore withdrawn consent or remove a suppression.';
 export const MARKETING_DIRECTORY_ATTESTATION_TEXT = 'I confirm that I am authorized to import this directory data. This import does not assert marketing consent or remove a suppression.';
@@ -47,7 +47,7 @@ export const marketingImportCountsSchema = z.object({
   suppressionsCreated: z.number().int().nonnegative().default(0), suppressionsExisting: z.number().int().nonnegative().default(0),
 });
 export type MarketingImportCounts = z.output<typeof marketingImportCountsSchema>;
-const marketingContactImportStatusSchema = z.enum(['draft', 'ready', 'queued', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled']);
+const marketingContactImportStatusSchema = z.enum(['draft', 'preview_queued', 'previewing', 'ready', 'queued', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled']);
 export const marketingContactImportSchema = z.object({
   id: z.string(), tenantId: z.string(), kind: z.enum(['contacts', 'suppressions']), fileName: z.string(), fileSha256: z.string().nullable(),
   datasetVersion: z.literal('together-marketing-contacts/v1'), mapping: marketingImportMappingSchema, delimiter: z.enum([',', ';']).nullable(), defaults: marketingImportDefaultsSchema,
@@ -63,7 +63,7 @@ export type MarketingContactImport = z.output<typeof marketingContactImportSchem
 export const marketingImportRowReceiptSchema = z.object({
   tenantId: z.string(), importId: z.string(), rowNumber: z.number().int().positive(), rowHash: z.string(), normalizedEmailHmac: z.string().nullable(),
   stagedPayload: z.record(z.unknown()).nullable(), normalizedPayload: marketingImportRowSchema.nullable(),
-  status: z.enum(['staged', 'valid', 'invalid', 'duplicate', 'processed']), duplicateOf: z.number().int().nullable(),
+  status: z.enum(['staged', 'checking', 'valid', 'invalid', 'duplicate', 'processed']), duplicateOf: z.number().int().nullable(),
   contactId: z.string().nullable(), consentRowId: z.string().nullable(), suppressionId: z.string().nullable(),
   outcome: z.enum(['created', 'updated', 'unchanged', 'duplicate', 'rejected', 'suppression_created', 'suppression_existing']).nullable(),
   errors: z.array(z.string()), warnings: z.array(z.string()), counts: marketingImportCountsSchema, processedAt: z.string().datetime().nullable(),
@@ -82,6 +82,12 @@ export const marketingImportValidationSchema = z.object({
   errors: z.array(z.object({ rowNumber: z.number(), message: z.string() })), warnings: z.array(z.object({ rowNumber: z.number(), message: z.string() })), canCommit: z.boolean(),
 });
 export type MarketingImportValidation = z.output<typeof marketingImportValidationSchema>;
+const marketingImportPreviewJobSchema = z.object({
+  import: marketingContactImportSchema,
+  progress: z.object({ validatedRows: z.number().int().nonnegative(), totalRows: z.number().int().positive() }),
+});
+export const marketingImportPreviewResultSchema = z.union([marketingImportValidationSchema, marketingImportPreviewJobSchema]);
+export type MarketingImportPreviewResult = z.output<typeof marketingImportPreviewResultSchema>;
 export const marketingCanonicalJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(marketingCanonicalJson).join(',')}]`;
   if (value !== null && typeof value === 'object') {

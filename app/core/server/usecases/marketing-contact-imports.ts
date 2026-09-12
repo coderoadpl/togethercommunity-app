@@ -4,14 +4,15 @@ import {
   marketingImportCreateSchema, marketingImportAppendSchema, marketingImportCommitSchema, marketingImportRowSchema,
   marketingImportCountsSchema, marketingCanonicalJson, MARKETING_IMPORT_LIMITS, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT,
   type AppError, type Result, type MarketingContactImport, type MarketingImportValidation, type MarketingImportRowReceipt,
-  type MarketingImportRow, type MarketingImportCounts, type ImportActor, type Capability,
+  type MarketingImportRow, type MarketingImportCounts, type MarketingImportPreviewResult, type ImportActor, type Capability,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { authorizeRequiredTenant } from '../authorize.js';
-import type { MarketingImportDeps, MarketingImportTransactionRepos } from '../marketing-contact-ports.js';
+import type { MarketingImportDeps, MarketingImportPreviewProgress, MarketingImportTransactionRepos } from '../marketing-contact-ports.js';
 
 const conflict = (message: string) => err(appError('conflict', message));
+const previewProgressOf = (progress: MarketingImportPreviewProgress, totalRows: number) => ({ validatedRows: Math.floor((progress.normalizedRows + progress.checkedRows) / 2), totalRows });
 const authorizeImport = (ctx: Ctx, batch: Pick<MarketingContactImport, 'kind' | 'consentDefinitionId'>, hasLists: boolean, read = false): Result<string, AppError> => {
   const capabilities: Capability[] = ['marketing:import:write', batch.kind === 'contacts' ? read ? 'marketing:contact:read' : 'marketing:contact:write' : read ? 'marketing:suppression:read' : 'marketing:suppression:write'];
   if (hasLists) capabilities.push(read ? 'marketing:list:read' : 'marketing:list:write');
@@ -69,8 +70,8 @@ export const appendMarketingContactImportRows = async (ctx: Ctx, input: unknown,
     const allowed = authorizeImport(ctx, batch, parsed.data.rows.some((row) => Array.isArray(row['lists']) && row['lists'].length > 0));
     if (!allowed.ok) return allowed;
     if (parsed.data.offset + parsed.data.rows.length > batch.rowCount) return err(validation('Chunk exceeds declared row count'));
-    const existing = await repos.imports.rows(tenant.value, batch.id);
-    let changed = false;
+    const existing = await repos.imports.rowsRange(tenant.value, batch.id, parsed.data.offset + 1, parsed.data.offset + parsed.data.rows.length);
+    const staged: MarketingImportRowReceipt[] = [];
     for (const [index, payload] of parsed.data.rows.entries()) {
       const canonical = marketingCanonicalJson(payload);
       if (new TextEncoder().encode(canonical).length > MARKETING_IMPORT_LIMITS.rowBytes) return err(validation('Staged row exceeds 16 KiB'));
@@ -79,13 +80,13 @@ export const appendMarketingContactImportRows = async (ctx: Ctx, input: unknown,
       const previous = existing.find((row) => row.rowNumber === rowNumber);
       if (previous !== undefined) { if (previous.rowHash !== rowHash) return conflict('Row number already contains different content'); continue; }
       if (batch.status !== 'draft' && batch.status !== 'ready') return conflict('Import no longer accepts new rows');
-      await repos.imports.saveRow(tenant.value, {
+      staged.push({
         tenantId: tenant.value, importId: batch.id, rowNumber, rowHash, normalizedEmailHmac: null, stagedPayload: payload, normalizedPayload: null,
         status: 'staged', duplicateOf: null, contactId: null, consentRowId: null, suppressionId: null, outcome: null, errors: [], warnings: [], counts: marketingImportCountsSchema.parse({}), processedAt: null,
       });
-      changed = true;
     }
-    if (changed) { batch.status = 'draft'; batch.validationHash = null; await repos.imports.save(tenant.value, batch); }
+    await repos.imports.stageRows(tenant.value, staged);
+    if (staged.length > 0) { batch.status = 'draft'; batch.validationHash = null; await repos.imports.save(tenant.value, batch); }
     return ok({ import: batch });
   });
 };
@@ -115,6 +116,103 @@ const mergeDuplicate = (first: MarketingImportRowReceipt, next: MarketingImportR
   next.duplicateOf = first.rowNumber;
   next.status = 'duplicate';
 };
+const buildImportValidation = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos): Promise<MarketingImportValidation> => {
+  const rawCsv = await repos.imports.readCsv(tenantId, batch.id);
+  const csv = rawCsv === null ? null : parseMarketingImportCsv(rawCsv, batch.delimiter ?? undefined);
+  const mapped = csv?.ok ? mapMarketingImportCsv(csv.value, { kind: batch.kind, mapping: batch.mapping, defaults: batch.defaults }) : null;
+  const mappingWarnings = mapped?.ok ? [...mapped.value.warnings, ...mapped.value.unknownColumns.map((header) => ({ rowNumber: 0, message: `Unmapped column: ${header}` }))] : [];
+  const listKeys = new Set(rows.flatMap((row) => row.normalizedPayload?.lists ?? []));
+  const listsToCreate = new Set<string>();
+  const staleLists: string[] = [];
+  for (const key of listKeys) {
+    const list = await repos.lists.findByKey(tenantId, key);
+    if (list === null) listsToCreate.add(key);
+    else if (list.kind !== 'static' || list.archivedAt !== null) staleLists.push(key);
+  }
+  const errors = [...staleLists.sort().map((key) => ({ rowNumber: 0, message: `List ${key} must be active and static` })), ...rows.flatMap((row) => row.errors.map((message) => ({ rowNumber: row.rowNumber, message })))];
+  const warnings = [...mappingWarnings, ...rows.flatMap((row) => row.warnings.map((message) => ({ rowNumber: row.rowNumber, message })))];
+  return { headers: csv?.ok ? csv.value.headers : Object.keys(batch.mapping), canCommitWithSkippedRows: staleLists.length === 0 && rows.some((row) => row.status === 'valid') && !rows.some((row) => row.status === 'duplicate' && row.errors.length > 0), import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows: rows.filter((row) => row.status === 'valid').length, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors: errors.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), warnings: warnings.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), canCommit: errors.length === 0 };
+};
+
+const validateRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
+  const primary = new Map<string, MarketingImportRowReceipt>();
+  const lists = new Map<string, Awaited<ReturnType<typeof repos.lists.findByKey>>>();
+  for (const row of rows) {
+    row.errors = []; row.warnings = []; row.duplicateOf = null; row.normalizedPayload = null;
+    const parsed = normalizeRow(row.stagedPayload ?? {}, batch, deps.clock.nowIso());
+    if (!parsed.ok) { row.status = 'invalid'; row.errors.push(parsed.error.message); continue; }
+    row.normalizedPayload = parsed.value;
+    row.normalizedEmailHmac = deps.hmac.compute(tenantId, parsed.value.email);
+    row.status = 'valid';
+    const previous = primary.get(parsed.value.email);
+    if (previous === undefined) primary.set(parsed.value.email, row);
+    else if (batch.kind === 'contacts') mergeDuplicate(previous, row, batch.consentDefinitionId !== null);
+  }
+  for (const row of primary.values()) {
+    const payload = row.normalizedPayload;
+    if (payload === null) continue;
+    const existing = await repos.contacts.findByEmail(tenantId, payload.email);
+    if (existing !== null && existing.email !== payload.email) row.errors.push('Address was erased');
+    if (new Set([...(existing?.tags ?? []), ...(payload.tags ?? [])]).size > 50 || (payload.lists?.length ?? 0) > 50) row.errors.push('Merged row exceeds tag or list limits');
+    for (const key of payload.lists ?? []) {
+      if (!lists.has(key)) lists.set(key, await repos.lists.findByKey(tenantId, key));
+      const list = lists.get(key) ?? null;
+      if (list !== null && (list.kind !== 'static' || list.archivedAt !== null)) row.errors.push(`List ${key} must be active and static`);
+    }
+    if (row.errors.length > 0) { row.status = 'invalid'; row.normalizedPayload = null; }
+  }
+  for (const row of rows) await repos.imports.saveRow(tenantId, row);
+};
+
+const normalizePreviewRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
+  const primary = new Map(rows.filter((row) => row.status === 'checking' && row.normalizedPayload !== null).map((row) => [row.normalizedPayload?.email ?? '', row]));
+  const changed = new Set<MarketingImportRowReceipt>();
+  for (const row of pending) {
+    row.errors = []; row.warnings = []; row.duplicateOf = null; row.normalizedPayload = null;
+    const parsed = normalizeRow(row.stagedPayload ?? {}, batch, deps.clock.nowIso());
+    if (!parsed.ok) { row.status = 'invalid'; row.errors.push(parsed.error.message); changed.add(row); continue; }
+    row.normalizedPayload = parsed.value;
+    row.normalizedEmailHmac = deps.hmac.compute(tenantId, parsed.value.email);
+    row.status = batch.kind === 'contacts' ? 'checking' : 'valid';
+    const previous = primary.get(parsed.value.email);
+    if (previous === undefined) primary.set(parsed.value.email, row);
+    else if (batch.kind === 'contacts') { mergeDuplicate(previous, row, batch.consentDefinitionId !== null); changed.add(previous); }
+    changed.add(row);
+  }
+  for (const row of changed) await repos.imports.saveRow(tenantId, row);
+};
+
+const checkPreviewRows = async (tenantId: string, pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos): Promise<void> => {
+  const lists = new Map<string, Awaited<ReturnType<typeof repos.lists.findByKey>>>();
+  for (const row of pending) {
+    const payload = row.normalizedPayload;
+    if (payload === null) { row.status = 'invalid'; row.errors.push('Normalized row is unavailable'); await repos.imports.saveRow(tenantId, row); continue; }
+    const existing = await repos.contacts.findByEmail(tenantId, payload.email);
+    if (existing !== null && existing.email !== payload.email) row.errors.push('Address was erased');
+    if (new Set([...(existing?.tags ?? []), ...(payload.tags ?? [])]).size > 50 || (payload.lists?.length ?? 0) > 50) row.errors.push('Merged row exceeds tag or list limits');
+    for (const key of payload.lists ?? []) {
+      if (!lists.has(key)) lists.set(key, await repos.lists.findByKey(tenantId, key));
+      const list = lists.get(key) ?? null;
+      if (list !== null && (list.kind !== 'static' || list.archivedAt !== null)) row.errors.push(`List ${key} must be active and static`);
+    }
+    row.status = row.errors.length > 0 ? 'invalid' : 'valid';
+    if (row.status === 'invalid') row.normalizedPayload = null;
+    await repos.imports.saveRow(tenantId, row);
+  }
+};
+
+const finishValidation = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps, actor: string): Promise<Result<MarketingImportValidation, AppError>> => {
+  const definition = await definitionSnapshot(tenantId, batch, repos, deps);
+  if (!definition.ok) return definition;
+  batch.definitionVersion = definition.value?.version.version ?? null;
+  batch.definitionHash = definition.value?.hash ?? null;
+  batch.contentHash = deps.contentHash.sha256(marketingCanonicalJson({ rows: rows.map((row) => ({ rowNumber: row.rowNumber, payload: row.normalizedPayload, errors: row.errors, duplicateOf: row.duplicateOf })), mapping: batch.mapping, defaults: batch.defaults, definitionHash: batch.definitionHash, delimiter: batch.delimiter }));
+  batch.validationHash = batch.contentHash; batch.status = 'ready'; batch.lockedBy = null; batch.lockedUntil = null; batch.lastError = null;
+  await repos.imports.save(tenantId, batch);
+  await importEvent(tenantId, batch, 'import_validated', repos, deps, actor);
+  return ok(await buildImportValidation(tenantId, batch, rows, repos));
+};
+
 export const validateMarketingContactImport = async (ctx: Ctx, input: { importId: string }, deps: MarketingImportDeps): Promise<Result<MarketingImportValidation, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
   if (!tenant.ok) return tenant;
@@ -124,52 +222,60 @@ export const validateMarketingContactImport = async (ctx: Ctx, input: { importId
     if (batch === null) return err(notFound('Import was not found'));
     const allowed = authorizeImport(ctx, batch, true, true);
     if (!allowed.ok) return allowed;
+    const rows = await repos.imports.rows(tenant.value, batch.id);
+    if (batch.status === 'ready' && batch.validationHash !== null && batch.rowCount > MARKETING_IMPORT_LIMITS.previewSyncRows) {
+      const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
+      if (!definition.ok) return definition;
+      if ((definition.value?.hash ?? null) !== batch.definitionHash) return conflict('Consent definition changed; validate and attest again');
+      return ok(await buildImportValidation(tenant.value, batch, rows, repos));
+    }
     if (batch.status !== 'draft' && batch.status !== 'ready') return conflict('Only uncommitted imports can be validated');
+    if (rows.length !== batch.rowCount) return err(validation('Upload all declared rows before validation'));
+    await validateRows(tenant.value, batch, rows, repos, deps);
+    return finishValidation(tenant.value, batch, rows, repos, deps, ctx.identity.userId);
+  });
+};
+
+export const processMarketingContactImportPreview = async (ctx: Ctx, input: { importId: string; workerId: string; maxRows: number }, deps: MarketingImportDeps): Promise<Result<{ import: MarketingContactImport; processed: number }, AppError>> => {
+  const tenant = authorizeRequiredTenant(ctx, 'scheduler:dispatch');
+  if (!tenant.ok) return tenant;
+  const slice = await deps.transaction.run(tenant.value, async (repos) => {
+    await repos.imports.lock(tenant.value, input.importId);
+    const batch = await repos.imports.findById(tenant.value, input.importId);
+    if (batch === null) return err(notFound('Import was not found'));
+    if (batch.status === 'ready') return ok({ import: batch, processed: 0 });
+    const now = deps.clock.nowIso();
+    if (!['preview_queued', 'previewing'].includes(batch.status) || (batch.lockedUntil !== null && batch.lockedUntil > now && batch.lockedBy !== input.workerId)) return conflict('Preview is not runnable or has an active worker');
+    batch.status = 'previewing'; batch.lockedBy = input.workerId; batch.lockedUntil = new Date(Date.parse(now) + 30_000).toISOString(); batch.lastError = null;
     const rows = await repos.imports.rows(tenant.value, batch.id);
     if (rows.length !== batch.rowCount) return err(validation('Upload all declared rows before validation'));
-    const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
-    if (!definition.ok) return definition;
-    const primary = new Map<string, MarketingImportRowReceipt>();
-    const listsToCreate = new Set<string>();
-    for (const row of rows) {
-      row.errors = []; row.warnings = []; row.duplicateOf = null; row.normalizedPayload = null;
-      const parsed = normalizeRow(row.stagedPayload ?? {}, batch, deps.clock.nowIso());
-      if (!parsed.ok) { row.status = 'invalid'; row.errors.push(parsed.error.message); continue; }
-      row.normalizedPayload = parsed.value;
-      row.normalizedEmailHmac = deps.hmac.compute(tenant.value, parsed.value.email);
-      row.status = 'valid';
-      const previous = primary.get(parsed.value.email);
-      if (previous === undefined) primary.set(parsed.value.email, row);
-      else if (batch.kind === 'contacts') mergeDuplicate(previous, row, batch.consentDefinitionId !== null);
+    const staged = rows.filter((row) => row.status === 'staged').slice(0, input.maxRows);
+    const checking = staged.length === 0 ? rows.filter((row) => row.status === 'checking').slice(0, input.maxRows) : [];
+    if (staged.length > 0) await normalizePreviewRows(tenant.value, batch, rows, staged, repos, deps);
+    else await checkPreviewRows(tenant.value, checking, repos);
+    const processed = staged.length + checking.length;
+    const remaining = rows.length - (await repos.imports.previewProgress(tenant.value, batch.id)).checkedRows;
+    if (remaining > 0) {
+      batch.lockedBy = null; batch.lockedUntil = null; batch.nextAttemptAt = now;
+      await repos.imports.save(tenant.value, batch);
+      return ok({ import: batch, processed });
     }
-    for (const row of primary.values()) {
-      const payload = row.normalizedPayload;
-      if (payload === null) continue;
-      const existing = await repos.contacts.findByEmail(tenant.value, payload.email);
-      if (existing !== null && existing.email !== payload.email) row.errors.push('Address was erased');
-      if (new Set([...(existing?.tags ?? []), ...(payload.tags ?? [])]).size > 50 || (payload.lists?.length ?? 0) > 50) row.errors.push('Merged row exceeds tag or list limits');
-      for (const key of payload.lists ?? []) {
-        const list = await repos.lists.findByKey(tenant.value, key);
-        if (list === null) listsToCreate.add(key);
-        else if (list.kind !== 'static' || list.archivedAt !== null) row.errors.push(`List ${key} must be active and static`);
-      }
-      if (row.errors.length > 0) { row.status = 'invalid'; row.normalizedPayload = null; }
-    }
-    for (const row of rows) await repos.imports.saveRow(tenant.value, row);
-    batch.definitionVersion = definition.value?.version.version ?? null;
-    batch.definitionHash = definition.value?.hash ?? null;
-    batch.contentHash = deps.contentHash.sha256(marketingCanonicalJson({ rows: rows.map((row) => ({ rowNumber: row.rowNumber, payload: row.normalizedPayload, errors: row.errors, duplicateOf: row.duplicateOf })), mapping: batch.mapping, defaults: batch.defaults, definitionHash: batch.definitionHash, delimiter: batch.delimiter }));
-    batch.validationHash = batch.contentHash; batch.status = 'ready';
-    await repos.imports.save(tenant.value, batch);
-    await importEvent(tenant.value, batch, 'import_validated', repos, deps, ctx.identity.userId);
-    const errors = rows.flatMap((row) => row.errors.map((message) => ({ rowNumber: row.rowNumber, message })));
-    const warnings = rows.flatMap((row) => row.warnings.map((message) => ({ rowNumber: row.rowNumber, message })));
-    const rawCsv = await repos.imports.readCsv(tenant.value, batch.id);
-    const csv = rawCsv === null ? null : parseMarketingImportCsv(rawCsv, batch.delimiter ?? undefined);
-    const headers = csv?.ok ? csv.value.headers : Object.keys(batch.mapping);
-    const canCommitWithSkippedRows = rows.some((row) => row.status === 'valid') && !rows.some((row) => row.status === 'duplicate' && row.errors.length > 0);
-    return ok({ headers, canCommitWithSkippedRows, import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows: rows.filter((row) => row.status === 'valid').length, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors, warnings, canCommit: errors.length === 0 });
+    const refreshed = await repos.imports.rows(tenant.value, batch.id);
+    const finished = await finishValidation(tenant.value, batch, refreshed, repos, deps, input.workerId);
+    return finished.ok ? ok({ import: finished.value.import, processed }) : finished;
   });
+  if (!slice.ok && slice.error.code !== 'conflict') {
+    await deps.transaction.run(tenant.value, async (repos) => {
+      await repos.imports.lock(tenant.value, input.importId);
+      const batch = await repos.imports.findById(tenant.value, input.importId);
+      if (batch === null || !['preview_queued', 'previewing'].includes(batch.status)) return ok(false);
+      batch.status = 'draft'; batch.lockedBy = null; batch.lockedUntil = null; batch.lastError = slice.error.message; batch.nextAttemptAt = deps.clock.nowIso();
+      await repos.imports.save(tenant.value, batch);
+      await importEvent(tenant.value, batch, 'import_failed', repos, deps, input.workerId);
+      return ok(true);
+    });
+  }
+  return slice;
 };
 export const commitMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps & { actor: ImportActor }): Promise<Result<{ import: MarketingContactImport }, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
@@ -199,11 +305,12 @@ export const commitMarketingContactImport = async (ctx: Ctx, input: unknown, dep
     return ok({ import: batch });
   });
 };
-export const getMarketingContactImport = async (ctx: Ctx, input: { importId: string }, deps: MarketingImportDeps): Promise<Result<{ import: MarketingContactImport }, AppError>> => {
+export const getMarketingContactImport = async (ctx: Ctx, input: { importId: string }, deps: MarketingImportDeps): Promise<Result<{ import: MarketingContactImport; previewProgress?: { validatedRows: number; totalRows: number } }, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
   if (!tenant.ok) return tenant;
   const batch = await deps.imports.findById(tenant.value, input.importId);
-  return batch === null ? err(notFound('Import was not found')) : ok({ import: batch });
+  if (batch === null) return err(notFound('Import was not found'));
+  return ['preview_queued', 'previewing'].includes(batch.status) ? ok({ import: batch, previewProgress: previewProgressOf(await deps.imports.previewProgress(tenant.value, batch.id), batch.rowCount) }) : ok({ import: batch });
 };
 export const getMarketingContactImportRows = async (ctx: Ctx, input: { importId: string; offset?: number | undefined; limit?: number | undefined }, deps: MarketingImportDeps): Promise<Result<{ rows: MarketingImportRowReceipt[]; nextOffset: number | null }, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
@@ -381,7 +488,29 @@ export const importMarketingSuppressions = async (ctx: Ctx, input: unknown, deps
   return createMarketingContactImport(ctx, parsed.data, deps);
 };
 
-export const uploadMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps): Promise<Result<MarketingImportValidation, AppError>> => {
+const startMarketingContactImportPreview = async (ctx: Ctx, importId: string, deps: MarketingImportDeps): Promise<Result<MarketingImportPreviewResult, AppError>> => {
+  const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
+  if (!tenant.ok) return tenant;
+  const queued = await deps.transaction.run(tenant.value, async (repos) => {
+    await repos.imports.lock(tenant.value, importId);
+    const batch = await repos.imports.findById(tenant.value, importId);
+    if (batch === null) return err(notFound('Import was not found'));
+    if (batch.rowCount <= MARKETING_IMPORT_LIMITS.previewSyncRows) return ok({ batch, async: false });
+    const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
+    if (!definition.ok) return definition;
+    if (batch.status === 'draft') {
+      batch.status = 'preview_queued'; batch.validationHash = null; batch.lockedBy = null; batch.lockedUntil = null; batch.lastError = null; batch.nextAttemptAt = deps.clock.nowIso();
+      await repos.imports.save(tenant.value, batch);
+    }
+    if (!['preview_queued', 'previewing'].includes(batch.status)) return conflict('Only an uncommitted import can start preview validation');
+    return ok({ batch, async: true });
+  });
+  if (!queued.ok) return queued;
+  if (!queued.value.async) return validateMarketingContactImport(ctx, { importId }, deps);
+  return ok({ import: queued.value.batch, progress: previewProgressOf(await deps.imports.previewProgress(tenant.value, importId), queued.value.batch.rowCount) });
+};
+
+export const uploadMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps): Promise<Result<MarketingImportPreviewResult, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
   if (!tenant.ok) return tenant;
   const parsed = marketingImportUploadSchema.safeParse(input);
@@ -397,11 +526,9 @@ export const uploadMarketingContactImport = async (ctx: Ctx, input: unknown, dep
     if (!appended.ok) return appended;
   }
   await deps.imports.saveCsv(tenant.value, created.value.import.id, parsed.data.csv);
-  const validated = await validateMarketingContactImport(ctx, { importId: created.value.import.id }, deps);
-  if (validated.ok) validated.value.warnings.push(...mapped.value.warnings, ...mapped.value.unknownColumns.map((header) => ({ rowNumber: 0, message: `Unmapped column: ${header}` })));
-  return validated;
+  return startMarketingContactImportPreview(ctx, created.value.import.id, deps);
 };
-export const previewMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps): Promise<Result<MarketingImportValidation, AppError>> => {
+export const previewMarketingContactImport = async (ctx: Ctx, input: unknown, deps: MarketingImportDeps): Promise<Result<MarketingImportPreviewResult, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:import:write');
   if (!tenant.ok) return tenant;
   const parsed = marketingImportRemapSchema.safeParse(input);
@@ -431,7 +558,5 @@ export const previewMarketingContactImport = async (ctx: Ctx, input: unknown, de
     const appended = await appendMarketingContactImportRows(ctx, { importId: changed.value.importId, offset, rows: changed.value.rows.slice(offset, offset + 200) }, deps);
     if (!appended.ok) return appended;
   }
-  const validated = await validateMarketingContactImport(ctx, { importId: changed.value.importId }, deps);
-  if (validated.ok) validated.value.warnings.push(...changed.value.warnings);
-  return validated;
+  return startMarketingContactImportPreview(ctx, changed.value.importId, deps);
 };

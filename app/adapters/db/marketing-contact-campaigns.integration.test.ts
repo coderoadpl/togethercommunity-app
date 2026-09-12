@@ -1,11 +1,12 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { addMarketingListContacts, createMarketingList, createCampaign, scheduleCampaign, campaignTick, dispatchMarketingOutbox, updateMarketingCampaign, pauseCampaign, cancelCampaign } from '#core/server/index.js';
+import type { ContactCampaignAudience } from '#core/domain/index.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { createContactCampaignFixture } from './marketing-contact-campaign-test-fixture.js';
 import { deliveryCtx, deliveryWorkerCtx, DELIVERY_NOW } from './marketing-delivery-test-fixture.js';
 import { directoryValue } from './marketing-contact-test-fixture.js';
-import { campaignSends, campaigns, marketingOutbox, unsubscribeTokens, members, marketingContacts, marketingCampaignAudienceContacts } from './schema.js';
+import { campaignSends, campaigns, marketingOutbox, unsubscribeTokens, members, marketingContacts, marketingCampaignAudienceContacts, marketingCampaignAudienceSnapshots } from './schema.js';
 
 let fixture: Awaited<ReturnType<typeof createContactCampaignFixture>>;
 afterEach(async () => { await fixture?.close(); });
@@ -92,6 +93,38 @@ describe('contact campaign materialization and delivery', () => {
     expect(fixture.sent).toHaveLength(0);
     expect((await fixture.deps.sends.listByCampaign('delivery-a', campaign.id))[0]).toMatchObject({ email: contact.email, status: 'skipped', skipReason: 'contact_address_changed' });
     expect((await fixture.db.select().from(marketingCampaignAudienceContacts))[0]?.email).toBe(contact.email);
+  });
+  it('snapshots the audience re-read under the scheduling lock', async () => {
+    fixture = await createContactCampaignFixture();
+    const staleContact = await fixture.directory.contacts.upsertByEmail('delivery-a', { email: 'stale@example.test', displayName: 'Stale' });
+    const lockedContact = await fixture.directory.contacts.upsertByEmail('delivery-a', { email: 'locked@example.test', displayName: 'Locked' });
+    await fixture.consent('stale@example.test');
+    await fixture.consent('locked@example.test');
+    const staleList = directoryValue(await createMarketingList(deliveryCtx(), { key: 'stale', name: 'Stale' }, fixture.directory)).list;
+    const lockedList = directoryValue(await createMarketingList(deliveryCtx(), { key: 'locked', name: 'Locked' }, fixture.directory)).list;
+    directoryValue(await addMarketingListContacts(deliveryCtx(), { listId: staleList.id, contactIds: [staleContact.contact.id] }, fixture.directory));
+    directoryValue(await addMarketingListContacts(deliveryCtx(), { listId: lockedList.id, contactIds: [lockedContact.contact.id] }, fixture.directory));
+    const staleAudience: ContactCampaignAudience = { version: 2, includeLists: [staleList.id], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false };
+    const lockedAudience: ContactCampaignAudience = { version: 2, includeLists: [staleList.id, lockedList.id], excludeLists: [staleList.id], excludeProductIds: [], includeMembersWithConsent: false };
+    const normalizedLockedAudience: ContactCampaignAudience = { ...lockedAudience, includeLists: [lockedList.id] };
+    const draft = directoryValue(await createCampaign(deliveryCtx(), { name: 'Contact campaign', subject: 'Hello', bodyHtml: '<p>Hello</p>', consentDefinitionId: 'consent', audience: staleAudience }, fixture.deps));
+    const schedule = fixture.deps.contactAudienceDeps.contactCampaigns.schedule;
+    fixture.deps.contactAudienceDeps.contactCampaigns = {
+      schedule: async (tenantId, input) => {
+        await fixture.db.update(campaigns).set({ audience: lockedAudience }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, input.campaignId)));
+        return schedule(tenantId, input);
+      },
+    };
+
+    const scheduled = directoryValue(await scheduleCampaign(deliveryCtx(), { campaignId: draft.id, sendAt: DELIVERY_NOW }, fixture.deps));
+
+    expect(scheduled.audience).toEqual(normalizedLockedAudience);
+    expect(scheduled.candidateCount).toBe(1);
+    expect(scheduled.toSend).toBe(1);
+    if (scheduled.audienceSnapshotId === null) throw new Error('Missing snapshot');
+    const snapshot = (await fixture.db.select().from(marketingCampaignAudienceSnapshots).where(eq(marketingCampaignAudienceSnapshots.id, scheduled.audienceSnapshotId)))[0];
+    expect(snapshot?.audienceJson).toEqual(normalizedLockedAudience);
+    expect((await fixture.db.select().from(marketingCampaignAudienceContacts)).map((row) => row.contactId)).toEqual([lockedContact.contact.id]);
   });
   it('pseudonymizes snapshot identity on erasure and prevents subsequent delivery', async () => {
     const { campaign, contact } = await setup();

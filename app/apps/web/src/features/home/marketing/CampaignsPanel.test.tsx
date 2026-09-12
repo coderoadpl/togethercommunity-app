@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignEngagementStats, CampaignResults } from '#core/domain/index.js';
+import { CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE, type Campaign, type CampaignEngagementStats, type CampaignResults } from '#core/domain/index.js';
 import { en } from '../../../i18n/en.js';
 import { renderDirectory } from './directory-test-helpers.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -395,6 +395,91 @@ describe('campaign reputation warning', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.marketing.testSend })).not.toBeInTheDocument();
+  });
+
+  it('shows a persistent tracking-off alert with an email integrations link on editable campaign forms', async () => {
+    const detail = campaignRow({
+      id: 'campaign-tracking-off',
+      name: 'Tracking off',
+      status: 'draft',
+      audienceVersion: 2,
+      audience: { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false },
+      engagement: { uniqueOpens: 2, totalOpens: 4, uniqueClicks: 1, totalClicks: 2 },
+    });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(false),
+      http.post('/api/marketing/audience-preview', () => HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 0, excludedCount: 0, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: now, audienceHash: 'hash' } })),
+    );
+    await renderDirectory(CampaignDetailPage, '/panel/marketing/campaigns/$campaignId', '/panel/marketing/campaigns/campaign-tracking-off');
+
+    expect(await screen.findByText(en.marketing.trackingDisabledCampaignForm)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: en.marketing.trackingSettingsLink });
+    expect(link).toHaveAttribute('href', '/panel/integrations#email');
+    expect(screen.queryByText(en.marketing.trackingDisabledCampaignMetrics)).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('campaign-engagement-stats')).getAllByText('2')).toHaveLength(2);
+  });
+
+  it('does not show the campaign form tracking alert when tracking is enabled', async () => {
+    const detail = campaignRow({
+      id: 'campaign-tracking-on',
+      name: 'Tracking on',
+      status: 'draft',
+      audienceVersion: 2,
+      audience: { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false },
+    });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(true),
+      http.post('/api/marketing/audience-preview', () => HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 0, excludedCount: 0, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: now, audienceHash: 'hash' } })),
+    );
+    await renderDirectory(CampaignDetailPage, '/panel/marketing/campaigns/$campaignId', '/panel/marketing/campaigns/campaign-tracking-on');
+
+    expect(await screen.findByLabelText(en.marketing.nameLabel)).toBeInTheDocument();
+    expect(screen.queryByText(en.marketing.trackingDisabledCampaignForm)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.marketing.trackingSettingsLink })).not.toBeInTheDocument();
+  });
+
+  it('shows audience overlap validation from the API under the list selectors', async () => {
+    const user = userEvent.setup();
+    const detail = campaignRow({
+      id: 'campaign-overlap',
+      name: 'Overlap',
+      status: 'draft',
+      audienceVersion: 2,
+      audience: { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false },
+    });
+    server.use(
+      http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+      http.post('/api/marketing/campaigns/update', () => HttpResponse.json({
+        ok: false,
+        error: {
+          code: 'validation',
+          message: 'Invalid campaign payload',
+          details: { formErrors: [], fieldErrors: { audience: [CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE] } },
+        },
+      })),
+      consentDefinitionsHandler(),
+      productsHandler(),
+      layoutsHandler(),
+      listsHandler(),
+      settingsHandler(true),
+      http.post('/api/marketing/audience-preview', () => HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 0, excludedCount: 0, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: now, audienceHash: 'hash' } })),
+    );
+    await renderDirectory(CampaignDetailPage, '/panel/marketing/campaigns/$campaignId', '/panel/marketing/campaigns/campaign-overlap');
+
+    await screen.findByLabelText(en.marketing.nameLabel);
+    await user.click(screen.getByRole('button', { name: en.marketing.save }));
+
+    expect(await screen.findAllByText(en.marketing.listAudienceOverlap)).toHaveLength(2);
   });
 
   it('keeps the editor for scheduled version 1 campaigns and reports scheduled version 2 campaigns', async () => {

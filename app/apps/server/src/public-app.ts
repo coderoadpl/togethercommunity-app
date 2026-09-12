@@ -35,6 +35,7 @@ import {
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
   normalizeEmail,
+  notFound,
   ok,
   resolveEmailLanguage,
   tenantNotFound,
@@ -722,7 +723,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.logger.error(
         `[stripe-webhook] ignored tenant=${tenantId} status=${tenant?.status ?? 'unknown'}`,
       );
-      return respond(ok({ received: true as const, processed: false }));
+      return respond(err(notFound()));
     }
     const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);

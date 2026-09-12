@@ -53,6 +53,10 @@ successful `ci.yml` or `staging-smoke.yml` runs for the exact staging SHA. See
 the staging Preview deployment, it then checks for seed markers and runs
 `pnpm run db:seed` only when the staging database has none. Production never
 runs the deployed seed path.
+On Vercel, the first successful build invocation for a deployment writes
+`dist/web/.vercel-build.json` with the deployment id and commit SHA. Later
+invocations for the same deployment reuse that marker and skip migrations, seed
+inspection, typecheck, and the web build.
 
 The manual reset path remains `POST /api/platform/data-reset`, exposed only for
 `APP_ENV=staging` and `APP_ENV=preview` and guarded by platform-owner access.

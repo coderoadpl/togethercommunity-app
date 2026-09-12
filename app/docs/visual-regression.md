@@ -15,7 +15,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 `dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
 native locale drift, not a changing default date.
 
-The catalogue currently covers 130 captures in Shadcn, the maintained base theme
+The catalogue currently covers 136 captures in Shadcn, the maintained base theme
 described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -32,7 +32,16 @@ The inherited active-named DNS goldens repeat the pending DNS capture after a
 same-document navigation. Both map to the pending story to preserve that page
 state; verified DNS has separate Active stories.
 
-Both capture paths use `createVisualCapture` in `scripts/visual-browser-setup.ts`.
+Component screens are the second mapping. `scripts/storybook-component-screens.ts`
+declares them directly as screen specs, each with one story ID and one viewport,
+so they never appear in `SCREENS` and never touch `scripts/fixtures-record.ts`.
+They render a single component from props instead of a seeded route, so they
+skip the `fixtureReady` handshake and record no fixture path or fixture SHA in
+`measurements.json`. Their captures run after the page screens within each
+viewport and authentication group. Because a single component is smaller than a
+full page, they use a 4 KiB size floor.
+
+Every capture path uses `createVisualCapture` in `scripts/visual-browser-setup.ts`.
 It fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and
@@ -60,7 +69,7 @@ Migration acceptance is stricter: each converted capture must report
 cause must be listed in the pull request. Browser errors, unexpected fixture
 calls, unexercised expected errors, unresolved queries and suspiciously small
 screenshots also fail. The default size floor is 10 KiB; the held boot splash
-uses 7 KiB and skips network-idle waiting.
+uses 7 KiB and skips network-idle waiting, and component screens use 4 KiB.
 
 Screenshots are written to `out/visual/current`, diffs to `out/visual/diff`, and
 per-capture counts, byte equality, fixture hashes and diagnostics to
@@ -89,6 +98,15 @@ controls. The default `pnpm run visual` always captures the full catalogue.
 4. Build Storybook and inspect the story. Author a new golden on macOS with
    `pnpm run visual:update`, then run the serial static gate and visual gate.
    Review every new image and its diff in the pull request.
+
+## Add a component screen
+
+1. Add a story whose args cover the state to capture, with a stable test id the
+   readiness condition can wait for. No fixture, route or seed data is involved.
+2. Add the screen and its story ID to `scripts/storybook-component-screens.ts`,
+   choosing one viewport per screen.
+3. Author the golden with `pnpm run visual:update` on macOS and review the image
+   in the pull request, exactly as for page screens.
 
 Story files have the bounded lint exceptions described in [Storybook](storybook.md).
 Fixture clients, decorators and composition infrastructure still obey layering

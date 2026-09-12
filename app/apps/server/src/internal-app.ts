@@ -1271,6 +1271,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
       definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
+      logger: deps.logger,
     });
     return respond(result.ok ? ok({ campaign: result.value }) : result);
   });

@@ -899,9 +899,13 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const campaigns = createCampaignRepository(db);
   const layouts = createEmailLayoutRepository(db);
   const campaignSends = createCampaignSendRepository(db);
+  const writeLog = (message: string): void => {
+    process.stderr.write(`${safeLogMessage(message)}\n`);
+  };
+  const logger = { error: writeLog, warn: writeLog };
   const directoryDeps = { ids, clock, hmac: emailHmac, contentHash: { sha256: (value: string) => createHash('sha256').update(value).digest('hex') } };
   const marketingContacts = { ...createMarketingImportTransactionRepos(db, directoryDeps), transaction: createMarketingImportTransaction(db, directoryDeps), ...directoryDeps };
-  const contactAudienceDeps = { contactAudience: createMarketingContactAudienceRepository(db, directoryDeps), contactCampaigns: createMarketingContactCampaignTransaction(db, directoryDeps), directory: marketingContacts, clock };
+  const contactAudienceDeps = { contactAudience: createMarketingContactAudienceRepository(db, directoryDeps), contactCampaigns: createMarketingContactCampaignTransaction(db, { ...directoryDeps, logger }), directory: marketingContacts, clock };
   const audience = createMarketingAudienceRepository(db);
   const suppressions = createSuppressionRepository(db);
   const unsubscribes = createUnsubscribeTokenRepository(db);
@@ -924,10 +928,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const waiter = createMarketingWaiter();
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = isProductionEnvironment(env);
-  const writeLog = (message: string): void => {
-    process.stderr.write(`${safeLogMessage(message)}\n`);
-  };
-  const logger = { error: writeLog, warn: writeLog };
   const devEndpoints = selectDevEndpoints(env);
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const platformReset = selectPlatformReset(env, () => ({

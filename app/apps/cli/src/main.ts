@@ -14,7 +14,7 @@ import {
 import {
   accessItemSchema,
   currencySchema,
-  contactCampaignAudienceSchema,
+  contactCampaignAudienceInputSchema,
   devGrantInputSchema,
   err,
   internal,
@@ -302,7 +302,7 @@ const consentDefinitionCreateOptionsSchema = z.object({
 });
 const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
   try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
-}).pipe(contactCampaignAudienceSchema);
+}).pipe(contactCampaignAudienceInputSchema);
 const campaignCreateOptionsSchema = z.object({
   audience: campaignAudienceJsonSchema.optional(),
   name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), bodyText: z.string().optional(), replyTo: z.string().email().optional(), consentDefinition: z.string().min(1),

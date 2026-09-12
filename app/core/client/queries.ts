@@ -1948,6 +1948,9 @@ export const promptGoogleOneTapMutation = (
   });
 
 export const marketingDirectoryActions = (api: ApiClient) => ({
+  signupForms: (tenantId: string) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'signup-forms'] as const, call: ({ signal }) => api.listMarketingSignupForms({}, signal) }),
+  createSignupForm: defineMutation({ mutationKey: ['marketing', 'directory', 'createSignupForm'], call: (input: Parameters<ApiClient['createMarketingSignupForm']>[0]) => api.createMarketingSignupForm(input) }),
+  updateSignupForm: defineMutation({ mutationKey: ['marketing', 'directory', 'updateSignupForm'], call: (input: Parameters<ApiClient['updateMarketingSignupForm']>[0]) => api.updateMarketingSignupForm(input) }),
   contactSends: (tenantId: string, input: EmailSendsQueryInput) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contact-sends', input] as const, call: ({ signal }) => api.listEmailSends(input, signal) }),
   contacts: (tenantId: string, input: Parameters<ApiClient['listMarketingContacts']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contacts', input] as const, call: ({ signal }) => api.listMarketingContacts(input, undefined, signal) }),
   contact: (tenantId: string, input: Parameters<ApiClient['getMarketingContact']>[0]) => defineQuery({ queryKey: ['marketing', 'directory', tenantId, 'contact', input] as const, call: ({ signal }) => api.getMarketingContact(input, undefined, signal) }),

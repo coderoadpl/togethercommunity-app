@@ -55,7 +55,7 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
     passkeys: { data: state === 'PasskeysLoading' || state === 'PasskeysError' ? undefined : state === 'PasskeysEmpty' || state === 'ProofAbsent' ? [] : accountPasskeys, pending: state === 'PasskeysLoading', error: state === 'PasskeysError' ? previewFailure : null, retry: () => undefined },
     registerPasskey: { ...idleOperation, pending: state === 'AddPending', error: state === 'AddError' ? previewFailure : null },
     removePasskey: { ...idleOperation, pending: state === 'RemovalPending' },
-    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordLinkPending', success: state === 'PasswordLinkSent', error: state === 'PasswordLinkError' ? previewFailure : null },
+    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordLinkPending', error: state === 'PasswordLinkError' ? previewFailure : null },
     enableTwoFactor: { ...idleOperation, submittedAt: 0, data: state === 'LaterDisable' ? enrollment : undefined },
     verifyTotp: { ...idleOperation, submittedAt: 0 },
     disableTwoFactor: { ...idleOperation, submittedAt: 3, success: state === 'LaterDisable' },
@@ -135,10 +135,6 @@ export const PasswordLinkPendingLightDesktop1440: Story = stateStory('PasswordLi
 export const PasswordLinkPendingLightMobile390: Story = stateStory('PasswordLinkPending', 'light', 'mobile');
 export const PasswordLinkPendingDarkDesktop1440: Story = stateStory('PasswordLinkPending', 'dark', 'desktop');
 export const PasswordLinkPendingDarkMobile390: Story = stateStory('PasswordLinkPending', 'dark', 'mobile');
-export const PasswordLinkSentLightDesktop1440: Story = stateStory('PasswordLinkSent', 'light', 'desktop');
-export const PasswordLinkSentLightMobile390: Story = stateStory('PasswordLinkSent', 'light', 'mobile');
-export const PasswordLinkSentDarkDesktop1440: Story = stateStory('PasswordLinkSent', 'dark', 'desktop');
-export const PasswordLinkSentDarkMobile390: Story = stateStory('PasswordLinkSent', 'dark', 'mobile');
 export const PasswordLinkErrorLightDesktop1440: Story = stateStory('PasswordLinkError', 'light', 'desktop');
 export const PasswordLinkErrorLightMobile390: Story = stateStory('PasswordLinkError', 'light', 'mobile');
 export const PasswordLinkErrorDarkDesktop1440: Story = stateStory('PasswordLinkError', 'dark', 'desktop');

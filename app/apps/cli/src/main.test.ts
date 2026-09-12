@@ -11,6 +11,9 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  listMarketingSignupForms: ReturnType<typeof vi.fn>;
+  getMarketingSignupForm: ReturnType<typeof vi.fn>;
+  createMarketingSignupForm: ReturnType<typeof vi.fn>;
   config: CliConfig;
   loadError: Error | null;
   saved: CliConfig[];
@@ -43,6 +46,9 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    listMarketingSignupForms: vi.fn(),
+    getMarketingSignupForm: vi.fn(),
+    createMarketingSignupForm: vi.fn(),
     config: {
       version: 2,
       currentOrigin: 'https://one.example',
@@ -123,6 +129,9 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    listMarketingSignupForms: h.listMarketingSignupForms,
+    getMarketingSignupForm: h.getMarketingSignupForm,
+    createMarketingSignupForm: h.createMarketingSignupForm,
     createProduct: h.createProduct,
     updateProduct: h.updateProduct,
     listCourses: h.listCourses,
@@ -183,6 +192,9 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.listMarketingSignupForms.mockReset().mockResolvedValue(ok({ forms: [] }));
+  h.getMarketingSignupForm.mockReset().mockResolvedValue(err(appError('not_found', 'Signup form was not found')));
+  h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
   h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.listCourses.mockReset();
@@ -960,5 +972,33 @@ describe('post purge', () => {
     await run('--json', 'post', 'purge');
     expect(h.purgePost).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+
+describe('marketing signup form commands', () => {
+  it('lists forms in one JSON envelope', async () => {
+    await run('--json', 'marketing', 'forms', 'list');
+    expect(h.listMarketingSignupForms).toHaveBeenCalledExactlyOnceWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { forms: [] } });
+  });
+  it('passes the slug to show and preserves the not-found exit code', async () => {
+    await run('--json', 'marketing', 'forms', 'show', 'newsletter');
+    expect(h.getMarketingSignupForm).toHaveBeenCalledExactlyOnceWith({ slug: 'newsletter' });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(process.exitCode).toBe(5);
+  });
+  it('validates form JSON and sends the parsed creation input', async () => {
+    const input = { slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'updates', successText: { en: 'Thank you', pl: 'Thank you' } };
+    await run('--json', 'marketing', 'forms', 'create', '--input', JSON.stringify(input));
+    expect(h.createMarketingSignupForm).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(input));
+    expect(soleJson()).toMatchObject({ ok: true, data: { form: { id: 'form-newsletter' } } });
+  });
+  it('rejects malformed JSON without sending it or echoing its content', async () => {
+    await run('--json', 'marketing', 'forms', 'create', '--input', '{private-input');
+    expect(h.createMarketingSignupForm).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(logSpy.mock.calls[0]?.[0]).not.toContain('private-input');
+    expect(process.exitCode).toBe(2);
   });
 });

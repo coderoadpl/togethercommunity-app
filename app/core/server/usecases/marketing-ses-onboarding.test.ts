@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  capabilitiesForPrincipal,
   err,
   integrationUnavailable,
   ok,
@@ -364,6 +365,39 @@ describe('SES onboarding wizard', () => {
       ok: true,
       value: {
         replyTo: null, identityVerifiedAt: null,
+        identityCheckedAt: NOW,
+        identityCheckError: null,
+      },
+    });
+  });
+
+  it('authorizes scheduled identity refreshes through scheduler capabilities', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    const identity = {
+      ...ctx.identity,
+      userId: 'marketing-worker',
+      email: 'worker@together.invalid',
+      name: 'Marketing worker',
+      staffRole: null,
+      memberId: null,
+      memberDisplayName: null,
+      memberBannedAt: null,
+      memberDmOptOutAt: null,
+      memberLanguage: null,
+      memberVideoAutoplay: false,
+    };
+
+    const forbidden = await refreshSesIdentity({ identity }, deps(repository, controlPlane));
+    const authorized = await refreshSesIdentity({
+      identity,
+      capabilities: capabilitiesForPrincipal('operator-secret'),
+    }, deps(repository, controlPlane));
+
+    expect(forbidden).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(authorized).toMatchObject({
+      ok: true,
+      value: {
         identityCheckedAt: NOW,
         identityCheckError: null,
       },

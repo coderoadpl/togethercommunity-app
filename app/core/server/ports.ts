@@ -1949,8 +1949,14 @@ export interface CampaignRepository {
 export interface MarketingJobRepository {
   listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
   listRetentionTenantIds(): Promise<string[]>;
-  listSesIdentityRefreshTenantIds(checkedBefore: string): Promise<string[]>;
-  listSesTenantIds(checkedBefore: string): Promise<string[]>;
+  listSesIdentityRefreshTenantIds(checkedBefore: string, retryableAt: string): Promise<string[]>;
+  listSesTenantIds(checkedBefore: string, retryableAt: string): Promise<string[]>;
+}
+
+export interface SesMaintenanceBackoffRepository {
+  countAttempts(tenantId: string): Promise<number>;
+  defer(tenantId: string, input: { attempts: number; retryAt: string }): Promise<void>;
+  clear(tenantId: string): Promise<void>;
 }
 
 export interface EmailLayoutRepository {

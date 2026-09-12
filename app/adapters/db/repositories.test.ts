@@ -4086,6 +4086,8 @@ it('isolates test commerce in the database and keeps test grants out of member a
   const ordersRepo = createOrderRepository(db);
   const grantsRepo = createProductGrantRepository(db);
   const subscriptionsRepo = createMemberSubscriptionRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-2', tenantId: ACME, title: 'Acme Course 2' }));
   const revenue = await ordersRepo.revenueSince(ACME, PAST);
   const count = await ordersRepo.countSince(ACME, PAST);
   const active = await subscriptionsRepo.countActive(ACME, NOW);
@@ -4096,14 +4098,14 @@ it('isolates test commerce in the database and keeps test grants out of member a
   expect(await ordersRepo.completeTestCheckout(GLOBEX, pending)).toBeNull();
   expect(await ordersRepo.completeTestCheckout(ACME, pending)).toMatchObject({ mode: 'test', status: 'paid' });
   expect(await ordersRepo.completeTestCheckout(ACME, pending)).toBeNull();
-  await grantsRepo.createGrant(ACME, grant({ id: 'grant-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test' }));
+  await grantsRepo.createGrant(ACME, grant({ id: 'grant-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2', mode: 'test' }));
   expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme')).toEqual(liveGrant);
-  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme', 'test')).toMatchObject({ id: 'grant-mode-test', mode: 'test' });
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme-2', 'test')).toMatchObject({ id: 'grant-mode-test', mode: 'test' });
   expect((await grantsRepo.listActiveForMember(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(false);
   expect((await grantsRepo.listForMemberWithProductNames(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(true);
   const pricesRepo = createProductPriceRepository(db);
-  await pricesRepo.create(ACME, price({ id: 'price-mode-test', tenantId: ACME, productId: 'prod-acme', kind: 'recurring', interval: 'month' }));
-  await subscriptionsRepo.create(ACME, subscription({ id: 'sub-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+  await pricesRepo.create(ACME, price({ id: 'price-mode-test', tenantId: ACME, productId: 'prod-acme-2', kind: 'recurring', interval: 'month' }));
+  await subscriptionsRepo.create(ACME, subscription({ id: 'sub-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2',
     priceId: 'price-mode-test', providerSubscriptionId: 'stripe-sub-mode-test', mode: 'test' }));
   expect(await subscriptionsRepo.countActive(ACME, NOW)).toBe(active);
   expect(await ordersRepo.revenueSince(ACME, PAST)).toEqual(revenue);

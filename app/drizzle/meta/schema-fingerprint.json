@@ -1,6 +1,6 @@
 {
-  "hash": "de994dddecffdcd77fb55106e03e0dd4a6531a54224618053c11bd10cc4a417c",
-  "shortId": "de994dddecff",
+  "hash": "f938e8a2c3cc35d7062da157996d4df73d72003b89c7d2a53efad24b3ffb8ad9",
+  "shortId": "f938e8a2c3cc",
   "schema": {
     "constraints": [
       {
@@ -2390,6 +2390,11 @@
       {
         "definition": "CREATE UNIQUE INDEX product_grants_tenant_member_product_mode_uidx ON product_grants USING btree (tenant_id, member_id, product_id, mode)",
         "name": "product_grants_tenant_member_product_mode_uidx",
+        "table": "product_grants"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX product_grants_tenant_member_product_uidx ON product_grants USING btree (tenant_id, member_id, product_id)",
+        "name": "product_grants_tenant_member_product_uidx",
         "table": "product_grants"
       },
       {

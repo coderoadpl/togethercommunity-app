@@ -196,6 +196,22 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
+    name: 'marketing-signup-form',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    fixtureName: 'panel-marketing-forms',
+    path: '/marketing/forms/newsletter?lang=en',
+    ready: (page) => page.getByTestId('marketing-signup-form').waitFor(visible),
+  },
+  {
+    name: 'marketing-signup-thanks',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    fixtureName: 'panel-marketing-forms',
+    path: '/marketing/forms/newsletter/thanks?lang=en',
+    ready: (page) => page.getByTestId('marketing-signup-thanks').waitFor(visible),
+  },
+  {
     name: 'anon-home-branded',
     auth: 'public',
     tenantSlug: 'akademia',
@@ -666,6 +682,12 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/marketing/layouts',
     ready: (page) => page.getByRole('heading', { name: en.marketing.layoutsTitle, exact: true }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-forms',
+    auth: 'creator',
+    path: '/panel/marketing/forms',
+    ready: (page) => page.getByRole('table', { name: en.signupForms.title }).waitFor(visible),
   },
   {
     name: 'panel-integrations-email',

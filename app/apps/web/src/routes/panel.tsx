@@ -92,3 +92,4 @@ export { ContactDetailPanel } from '../features/home/marketing/ContactDetailPane
 export { ContactImportWizard, validateContactImportSearch } from '../features/home/marketing/ContactImportWizard.js';
 export { ListsPanel } from '../features/home/marketing/ListsPanel.js';
 export { ListCreatePanel, ListDetailPanel } from '../features/home/marketing/ListDetailPanel.js';
+export { SignupFormsPanel } from '../features/home/marketing/SignupFormsPanel.js';

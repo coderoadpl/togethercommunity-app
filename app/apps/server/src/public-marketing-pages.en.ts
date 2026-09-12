@@ -1,6 +1,13 @@
 import type { PublicMarketingMessages } from './public-marketing-pages-messages.js';
 
 export const publicMarketingMessagesEn = {
+  signupEyebrow: 'Stay in touch',
+  signupEmail: 'Email address',
+  signupName: 'Name (optional)',
+  signupSubmit: 'Sign up',
+  signupThanks: 'Thank you for signing up',
+  signupPending: 'Check your inbox and confirm your email address to complete your signup.',
+
   language: 'Language',
   polish: 'Polish',
   english: 'English',

@@ -1,3 +1,4 @@
+import type { ConsentDefinitionVersion } from '#core/domain/index.js';
 import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
 import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
@@ -198,7 +199,7 @@ export const marketingConsents = pgTable(
     documentRefSnapshot: jsonb('document_ref_snapshot').$type<ConsentDocumentVersionRef>().notNull(),
     status: text('status', { enum: ['granted', 'confirmed', 'withdrawn'] }).notNull(),
     previousId: text('previous_id'),
-    source: text('source', { enum: ['checkout', 'panel', 'import', 'api', 'preference_page'] }).notNull(),
+    source: text('source', { enum: ['checkout', 'panel', 'import', 'api', 'preference_page', 'signup_form'] }).notNull(),
     evidence: jsonb('evidence').$type<ConsentEvidence>().notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
     retentionStartedAt: timestamp('retention_started_at', { withTimezone: true, mode: 'string' }),
@@ -2425,4 +2426,27 @@ export const marketingCampaignAudienceContacts = pgTable('marketing_campaign_aud
   uniqueIndex('marketing_audience_contacts_email_uidx').on(table.tenantId, table.snapshotId, table.email),
   foreignKey({ columns: [table.tenantId, table.snapshotId], foreignColumns: [marketingCampaignAudienceSnapshots.tenantId, marketingCampaignAudienceSnapshots.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.tenantId, table.contactId], foreignColumns: [marketingContacts.tenantId, marketingContacts.id] }),
+]);
+
+export const marketingSignupForms = pgTable('marketing_signup_forms', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  consentVersion: jsonb('consent_version').$type<ConsentDefinitionVersion>().notNull(),
+  slug: text('slug').notNull(), name: text('name').notNull(), consentDefinitionId: text('consent_definition_id').notNull(),
+  listId: text('list_id'), tags: jsonb('tags').$type<string[]>().notNull(), collectName: boolean('collect_name').notNull(),
+  successText: jsonb('success_text').$type<{ en: string; pl: string }>().notNull(), redirectUrl: text('redirect_url'),
+  allowedOrigins: jsonb('allowed_origins').$type<string[]>().notNull(), status: text('status', { enum: ['active', 'archived'] }).notNull(),
+  token: text('token').notNull(), revision: integer('revision').notNull(), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('marketing_signup_forms_tenant_slug_uidx').on(t.tenantId, t.slug),
+  uniqueIndex('marketing_signup_forms_tenant_id_uidx').on(t.tenantId, t.id),
+  uniqueIndex('marketing_signup_forms_tenant_token_uidx').on(t.tenantId, t.token),
+  foreignKey({ columns: [t.tenantId, t.consentDefinitionId], foreignColumns: [consentDefinitions.tenantId, consentDefinitions.id], name: 'marketing_signup_form_definition_fk' }).onDelete('restrict'),
+  foreignKey({ columns: [t.tenantId, t.listId], foreignColumns: [marketingLists.tenantId, marketingLists.id], name: 'marketing_signup_form_list_fk' }).onDelete('restrict'),
+]);
+export const marketingSignupSubmissions = pgTable('marketing_signup_submissions', {
+  id: text('id').primaryKey(), tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  formId: text('form_id').notNull(), consentId: text('consent_id').references(() => marketingConsents.id, { onDelete: 'set null' }), confirmedAt: text('confirmed_at'), doubleOptIn: boolean('double_opt_in').notNull(), occurredAt: text('occurred_at').notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.tenantId, t.formId], foreignColumns: [marketingSignupForms.tenantId, marketingSignupForms.id], name: 'marketing_signup_submission_form_fk' }).onDelete('cascade'),
+  index('marketing_signup_submissions_counts_idx').on(t.tenantId, t.formId, t.occurredAt),
 ]);

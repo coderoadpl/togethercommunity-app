@@ -10,7 +10,9 @@ import { z } from 'zod';
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { TENANT_HEADER } from '#core/contract/index.js';
 
+import { verifyMarketingSignupBrowser } from './marketing-signup-e2e.js';
 import {
+  rootDir,
   bootServer,
   delay,
   ephemeralPort,
@@ -18,6 +20,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
+import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 import { passwordFixture } from './password-fixture.js';
 
 const verifyContainer = 'together-marketing-verify-pg';
@@ -660,6 +663,9 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     steps += 1;
     console.log('  8. E4 DOI GET interstitial and POST confirmation regression verified');
 
+    await verifyMarketingSignupBrowser(baseUrl, staffToken, definitionId);
+    steps += 1;
+    console.log('  9. Hosted signup and Studio consent visibility verified');
     return steps;
   } finally {
     await db.end().catch(() => undefined);
@@ -679,8 +685,9 @@ try {
   console.log('marketing-e2e: running migrations...');
   await migrate();
   const runtimeDir = mkdtempSync(join(tmpdir(), 'marketing-e2e-'));
-  const webDistDir = mkdtempSync(join(tmpdir(), 'marketing-e2e-web-'));
-  temporaryDirectories.push(runtimeDir, webDistDir);
+  await ensureWebBundleFresh(rootDir);
+  const webDistDir = join(rootDir, 'dist/web');
+  temporaryDirectories.push(runtimeDir);
   const certificate = await generateCertificate(runtimeDir);
   const port = await ephemeralPort();
   console.log(`marketing-e2e: booting server on port ${port}...`);

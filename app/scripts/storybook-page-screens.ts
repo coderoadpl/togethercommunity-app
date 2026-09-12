@@ -53,6 +53,7 @@ const pageScreenNames = new Set([
   'panel-marketing-consents',
   'panel-marketing-documents',
   'panel-marketing-layouts',
+  'panel-marketing-forms',
   'panel-integrations-email',
   'panel-course',
   'member-detail',
@@ -70,6 +71,8 @@ export const serverHtmlScreenNames = new Set([
   'marketing-preferences',
   'marketing-confirmation-success',
   'marketing-confirmation-expired',
+  'marketing-signup-form',
+  'marketing-signup-thanks',
 ]);
 
 export const pageStoryId = (screen: string, viewport: string): string => {

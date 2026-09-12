@@ -66,6 +66,8 @@ export * from './marketing-contact.js';
 
 export * from './marketing-list.js';
 
+export * from './marketing-signup-form.js';
+
 export * from './marketing-contact-import.js';
 
 export * from './marketing-import-csv.js';

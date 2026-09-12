@@ -4623,7 +4623,7 @@ describe('post search route', () => {
 });
 
 describe('public route manifest', () => {
-  it('records the six approved mutating surfaces', () => {
+  it('records the seven approved mutating surfaces', () => {
     const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
       .filter((route) => route.mutating)
       .map((route) => route.why));
@@ -4635,6 +4635,7 @@ describe('public route manifest', () => {
       'Stripe payment webhook',
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
+      'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
     ]));
   });
 });

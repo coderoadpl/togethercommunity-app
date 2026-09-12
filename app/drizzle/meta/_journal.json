@@ -873,8 +873,15 @@
     {
       "idx": 124,
       "version": "7",
-      "when": 1789066929000,
-      "tag": "0124_stripe_test_mode",
+      "when": 1789200000000,
+      "tag": "0124_marketing_signup_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1789200001000,
+      "tag": "0125_stripe_test_mode",
       "breakpoints": true
     }
   ]

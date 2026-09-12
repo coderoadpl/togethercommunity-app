@@ -9,7 +9,7 @@ import { createMarketingImportTransaction, createMarketingImportTransactionRepos
 import { tenants } from './schema.js';
 
 export const DIRECTORY_NOW = '2026-09-08T10:00:00.000Z';
-export const directoryCtx = (tenantId = 'directory-a'): Ctx => ({ identity: { userId: 'directory-owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantId, tenantSlug: tenantId, tenantName: 'Directory', staffRole: 'owner', memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false } });
+export const directoryCtx = (tenantId = 'directory-a'): Ctx => ({ identity: { userId: 'directory-owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantAccess: 'staff', tenantId, tenantSlug: tenantId, tenantName: 'Directory', staffRole: 'owner', memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false } });
 export const directoryWorkerCtx = (): Ctx => ({ ...directoryCtx(), capabilities: capabilitiesForPrincipal('operator-secret') });
 export const directoryValue = <T>(result: Result<T, AppError>): T => {
   if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);

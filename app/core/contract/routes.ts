@@ -274,7 +274,21 @@ export const authResolveOutputSchema = z.object({
   methods: z.array(signInMethodSchema).min(1),
 });
 
+const meTenantSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  staffRole: staffRoleSchema.nullable(),
+  memberId: z.string().nullable(),
+  displayName: z.string().nullable().default(null),
+  banned: z.boolean(),
+  dmOptOut: z.boolean().default(false),
+  language: languageSchema.nullable().default(null),
+  videoAutoplay: z.boolean().nullable().default(null),
+});
+
 export const meOutputSchema = z.object({
+  tenantAccess: z.enum(['none', 'member', 'staff']).default('none'),
   userId: z.string(),
   email: z.string(),
   name: z.string(),
@@ -282,20 +296,7 @@ export const meOutputSchema = z.object({
   hasPassword: z.boolean().default(false),
   twoFactorEnabled: z.boolean().default(false),
   avatarUrl: z.string().nullable().default(null),
-  tenant: z
-    .object({
-      id: z.string(),
-      slug: z.string(),
-      name: z.string(),
-      staffRole: staffRoleSchema.nullable(),
-      memberId: z.string().nullable(),
-      displayName: z.string().nullable().default(null),
-      banned: z.boolean(),
-      dmOptOut: z.boolean().default(false),
-      language: languageSchema.nullable().default(null),
-      videoAutoplay: z.boolean().nullable().default(null),
-    })
-    .nullable(),
+  tenant: meTenantSchema.nullable(),
   impersonation: impersonationViewSchema.nullable().default(null),
 });
 
@@ -351,6 +352,7 @@ export const memberBillingOrdersOutputSchema = z.object({
 
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
+  memberTenants: z.array(meTenantSchema).default([]),
   canCreateTenant: z.boolean(),
   /** Non-null only for a platform owner on a disposable deployment. */
   dataResetEnvironment: z.string().min(1).nullable().default(null),

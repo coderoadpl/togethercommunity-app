@@ -1512,7 +1512,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const acmeAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp';
     const globexAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
 
-    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).sort())
+    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).map((tenant) => tenant.id).sort())
       .toEqual([ACME, GLOBEX].sort());
     await avatars.setAvatar(ACME, 'user-shared-avatar', acmeAvatar);
     await avatars.setAvatar(GLOBEX, 'user-shared-avatar', globexAvatar);

@@ -9,6 +9,7 @@ const ctx = {
     email: 'member@example.com',
     name: 'Member',
     emailVerified: true,
+    tenantAccess: 'member' as const,
     tenantId: 'tenant-1',
     tenantSlug: 'studio',
     tenantName: 'Studio',

@@ -271,6 +271,7 @@ const ctx = {
     email: 'owner@example.com',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: 'staff' as const,
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

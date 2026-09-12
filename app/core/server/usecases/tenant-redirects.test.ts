@@ -25,6 +25,7 @@ const identity: Identity = {
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: TENANT_ID,
   tenantSlug: 'acme',
   tenantName: 'Acme',

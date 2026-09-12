@@ -17,6 +17,7 @@ const identity: Identity = {
   email: 'demo@example.com',
   name: 'Demo',
   emailVerified: true,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,

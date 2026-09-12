@@ -6,7 +6,7 @@ import { createStripeTestSession, hasStripeTestSession } from './stripe-test-ses
 
 const identity: Identity = {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null,
-  tenantId: 'tenant-1', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'admin', memberId: null,
+  tenantAccess: 'staff', tenantId: 'tenant-1', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'admin', memberId: null,
   memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null,
   memberVideoAutoplay: null,
 };

@@ -34,6 +34,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: 't1',
   tenantSlug: 'acme',
   tenantName: 'Acme',

@@ -207,8 +207,9 @@ active static list, tags, optional name collection, success messages in both
 languages, an optional HTTPS redirect, and an exact JSON origin allow-list.
 Archiving disables public reads and submissions while retaining history.
 Changes use optimistic revisions and append directory events. Saving snapshots
-the current consent wording and rotates the public form token; replace existing
-embed snippets after editing.
+the current consent wording. The public form token rotates only when the consent
+definition or wording version changes; replace existing embed snippets after
+those edits.
 
 The consent definition determines single or double opt-in. A submission upserts
 a contact with source `form:<slug>`, merges tags, adds static list membership,

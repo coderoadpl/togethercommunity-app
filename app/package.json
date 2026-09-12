@@ -41,6 +41,7 @@
     "permissions:check": "tsx scripts/permission-inventory.ts --check",
     "tenant-scope-check": "tsx scripts/tenant-scope-check.ts",
     "tenant-neutral-lint": "tsx scripts/tenant-neutral-lint.ts",
+    "rulesets-drift": "tsx scripts/rulesets-drift.ts",
     "check": "pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run lock-lint && pnpm run license-lint && pnpm run migration-lint && pnpm run tenant-scope-check && pnpm run tenant-neutral-lint && pnpm run depcruise && pnpm run knip && pnpm run doc-lint && pnpm run language-lint && pnpm run test",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:generate": "drizzle-kit generate",

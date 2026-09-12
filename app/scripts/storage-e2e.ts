@@ -17,6 +17,7 @@ import {
 } from '#core/server/index.js';
 
 import { delay, ephemeralPort, run } from './server-harness.js';
+import { MINIO_IMAGE } from './test-images.js';
 
 const container = `together-storage-e2e-minio-${randomUUID()}`;
 const managedPort = await ephemeralPort();
@@ -80,7 +81,7 @@ const startMinio = async (): Promise<void> => {
     `MINIO_ROOT_PASSWORD=${configuration.secretAccessKey}`,
     '-p',
     `${String(managedPort)}:9000`,
-    'minio/minio',
+    MINIO_IMAGE,
     'server',
     '/data',
   ]);

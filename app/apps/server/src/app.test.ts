@@ -2655,6 +2655,33 @@ describe('marketing HTTP surfaces', () => {
       });
     });
 
+    it('accepts a verified SES notification received on a custom-domain host', async () => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([snsSettings()]);
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn,
+        message: JSON.stringify({
+          eventType: 'Delivery',
+          mail: { messageId: 'ses-custom-host-message', timestamp: now },
+          delivery: { timestamp: now },
+        }),
+        subscribeUrl: null,
+      }));
+
+      const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+        method: 'POST',
+        body: '{}',
+        headers: { host: 'community.example.test', 'x-amz-sns-message-type': 'Notification' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await marketing.snsDeliveries.findByTenant('t-acme')).toMatchObject({
+        messageType: 'Notification',
+        outcome: 'recorded',
+      });
+      expect(await marketing.snsInbox.list('t-acme')).toMatchObject([{ status: 'ignored' }]);
+    });
+
     it('refuses a receipt when tenant topic binding disappears', async () => {
       const marketing = marketingDeps();
       const settings = new InMemoryTenantSesSettingsRepository([snsSettings()]);

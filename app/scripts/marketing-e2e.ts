@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { TENANT_HEADER } from '#core/contract/index.js';
 
+import { verifyMarketingSignupBrowser } from './marketing-signup-e2e.js';
 import {
   bootServer,
   delay,
@@ -729,9 +730,13 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     steps += 1;
     console.log('  8. E4 DOI GET interstitial and POST confirmation regression verified');
 
+    await verifyMarketingSignupBrowser(baseUrl, staffToken, definitionId);
+    steps += 1;
+    console.log('  9. Hosted signup and Studio consent visibility verified');
+
     await verifyMarkdownCampaignEditor(baseUrl, tenant.id, db);
     steps += 1;
-    console.log('  9. campaign Markdown editor source and preview verified in the browser');
+    console.log('  10. campaign Markdown editor source and preview verified in the browser');
 
     return steps;
   } finally {

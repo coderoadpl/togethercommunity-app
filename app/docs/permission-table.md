@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 117. Route rows: 373. Exported `Ctx` use-case rows: 290.
+Closed capability count: 117. Route rows: 381. Exported `Ctx` use-case rows: 294.
 
 ## Human-readable diff
 
@@ -80,6 +80,10 @@ no changes
 | `POST /marketing/confirm/:token` | marketing:consent:write | token | token | yes | public route manifest |
 | `GET /legal/:slug` | legal:read | public | public | yes | public route manifest |
 | `GET /legal/:slug/v/:version` | legal:read | public | public | yes | public route manifest |
+| `GET /marketing/forms/:slug` | offer:read | public | public | yes | public route manifest |
+| `GET /marketing/forms/:slug/thanks` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/marketing/forms/:slug/submit` | offer:read | public | public | yes | public route manifest |
+| `POST /api/public/marketing/forms/:slug/submit` | marketing:consent:write | public | public | yes | public route manifest |
 | `POST /api/webhooks/stripe/:tenantId` | webhook:process | webhook | webhook | yes | public route manifest |
 | `POST /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `GET /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
@@ -186,6 +190,10 @@ no changes
 | `POST /api/marketing/suppressions/import` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/contact-imports/:id/process` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/contacts/sync` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/forms` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/forms/:slug` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/forms` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/forms/:slug` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -607,6 +615,10 @@ no changes
 | `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
+| `marketing-signup-forms.ts#listMarketingSignupForms` | marketing:list:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#getMarketingSignupForm` | marketing:list:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#createMarketingSignupForm` | marketing:list:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#updateMarketingSignupForm` | marketing:list:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
 | `marketing-sns-inbox.ts#recordVerifiedMarketingSnsEnvelope` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
 | `marketing-sns-inbox.ts#processMarketingSnsInbox` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
 | `marketing-sns-inbox.ts#retryMarketingSnsInbox` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
@@ -705,14 +717,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:13` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:177` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1098` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1100` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1122` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1136` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1645` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1645` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:14` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:178` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1099` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1101` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1123` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1137` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1647` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1647` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -873,8 +873,15 @@
     {
       "idx": 124,
       "version": "7",
-      "when": 1789160400000,
-      "tag": "0124_stripe_subscription_adoption",
+      "when": 1789200000000,
+      "tag": "0124_marketing_signup_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1789200000001,
+      "tag": "0125_stripe_subscription_adoption",
       "breakpoints": true
     }
   ]

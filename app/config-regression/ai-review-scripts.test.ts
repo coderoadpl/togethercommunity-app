@@ -121,6 +121,7 @@ describe('AI review classifiers', () => {
     [{ type: 'result', is_error: true, total_cost_usd: 0, result: 'insufficient credits' }, 'usage_limit'],
     [{ type: 'error', status: 404, error: { message: 'model claude-x not found' } }, 'model_unavailable'],
     [{ type: 'result', is_error: true, result: 'process timed out' }, 'timeout'],
+    [{ type: 'result', is_error: true, result: 'Claude reported a successful result after 121 turns, exceeding the configured maximum of 120' }, 'turn_limit'],
   ])('classifies provider failures without treating them as cold starts', (event, reason) => {
     const result = classify('', 'failure', 'staging', event);
     expect(result.outputs).toContain(`reason=${reason}`);
@@ -218,6 +219,21 @@ describe('AI review gate and diagnostics', () => {
     expect(gate({ O_1P: 'pass' }, { PREPARED: 'false' }).status).toBe(1);
   });
 
+  it('summarizes a moved base from the dedicated preparation reason', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ai-review-gate-summary-'));
+    const summary = join(directory, 'summary.md');
+    const result = execute('gate-review.sh', {
+      PREPARED: 'false',
+      CURRENT: 'false',
+      DRAFT: 'false',
+      PREPARE_REASON: 'base_moved',
+      GITHUB_STEP_SUMMARY: summary,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+    expect(readFileSync(summary, 'utf8')).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+  });
+
   it('prefixes every diagnostic line and redacts credential-shaped text', () => {
     const directory = mkdtempSync(join(tmpdir(), 'ai-review-reason-'));
     const log = join(directory, 'log.json');
@@ -243,6 +259,18 @@ describe('AI review gate and diagnostics', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toMatch(/diagnostic/);
     }
+  });
+
+  it('renders the turn-limit diagnostic as an actionable budget message', () => {
+    const result = execute('failure-reason.sh', {
+      REASON: 'turn_limit',
+      MAX_TURNS: '120',
+      MODEL: 'claude-opus-5',
+      SLOT: '1',
+      ATTEMPT: 'try1p',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
   });
 });
 
@@ -333,6 +361,17 @@ describe('AI review attempt ladder', () => {
     });
     expect(calls).toEqual([
       { id: 'try1p', model: 'primary', reason: 'auth_rejected' },
+      { id: 'try1f', model: 'fallback', reason: 'pass' },
+    ]);
+  });
+
+  it('keeps turn-limit attempts on the fallback ladder', () => {
+    const calls = simulateLadder([true, true, false], {
+      try1p: { outcome: 'infra', reason: 'turn_limit' },
+      try1f: { outcome: 'pass' },
+    });
+    expect(calls).toEqual([
+      { id: 'try1p', model: 'primary', reason: 'turn_limit' },
       { id: 'try1f', model: 'fallback', reason: 'pass' },
     ]);
   });
@@ -635,6 +674,22 @@ describe('AI review comment publication', () => {
     expect(noVerdict.body).toContain('- try1p: usage_limit');
     expect(noVerdict.body).toContain('- try1f: auth_rejected');
     expect(noVerdict.body).toContain('Producer: none');
+  });
+
+  it('renders base-moved and turn-limit no-verdict messages', () => {
+    const baseMoved = runPost({
+      CURRENT: 'false',
+      PREPARE_REASON: 'base_moved',
+    }, '[]');
+    expect(baseMoved.status).toBe(0);
+    expect(baseMoved.body).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+
+    const turnLimit = runPost({
+      R_1P: 'turn_limit',
+      MAX_TURNS: '120',
+    }, '[]');
+    expect(turnLimit.status).toBe(0);
+    expect(turnLimit.body).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
   });
 });
 
@@ -967,6 +1022,18 @@ describe('AI review preparation', () => {
     const changed = runPreparation(fixture, pullMetadata(fixture), { expectedHead: fixture.baseSha });
     expect(changed.status).not.toBe(0);
     expect(changed.stderr).toContain('PR head SHA changed before preparation');
+    expect(outputValue(changed.output, 'reason')).toBe('base_moved');
+
+    const baseMovedFixture = createPreparationFixture('staging');
+    runGit(baseMovedFixture.repository, 'checkout', 'staging');
+    writeFixtureFile(baseMovedFixture.repository, 'base-advanced.txt', 'base advanced\n');
+    runGit(baseMovedFixture.repository, 'add', '-A');
+    runGit(baseMovedFixture.repository, 'commit', '-m', 'Advance base');
+    const baseMoved = runPreparation(baseMovedFixture, pullMetadata(baseMovedFixture));
+    expect(baseMoved.status).not.toBe(0);
+    expect(baseMoved.stderr).toContain('Fetched refs do not match pinned PR metadata');
+    expect(outputValue(baseMoved.output, 'prepared')).toBe('false');
+    expect(outputValue(baseMoved.output, 'reason')).toBe('base_moved');
 
     const revalidated = runPreparation(
       fixture,

@@ -1,6 +1,7 @@
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
 import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions } from '#core/server/index.js';
+import { registerSessionMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
 import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
 import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
@@ -1207,6 +1208,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   registerSessionMarketingContactRoutes(app, deps);
+  registerSessionMarketingSignupRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

@@ -419,6 +419,7 @@ import { impersonationDeps } from './impersonation-guard.js';
 import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
+import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import {
   createNotificationEventStream,
@@ -1089,6 +1090,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerM2mMarketingContactRoutes(app, deps);
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
+  registerReportRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

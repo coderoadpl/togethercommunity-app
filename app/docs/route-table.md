@@ -129,6 +129,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/import/members` | self-authenticating | mutating | m2m import members |
 | `POST /api/m2m/import/grants` | self-authenticating | mutating | m2m import grants |
 | `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
+| `GET /api/reports/activity-summary` | self-authenticating | read | activity summary |
+| `GET /api/reports/member-activity` | self-authenticating | read | member activity |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

@@ -394,6 +394,19 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByRole('heading', { name: en.marketing.quota })).toBeInTheDocument();
   });
 
+  it('creates an exclusive read-only report key without expiry', async () => {
+    const { apiKeySubmissions } = renderPanel();
+    await openTab(en.integrations.tabApiKeys);
+    await userEvent.type(await screen.findByTestId('import-api-key-name'), 'Activity reporting');
+    await userEvent.click(screen.getByTestId('import-api-key-content-scope'));
+    await userEvent.click(screen.getByRole('checkbox', { name: en.integrations.reportKeysScope }));
+    expect(screen.getByRole('checkbox', { name: en.integrations.importKeysContentScope })).toBeDisabled();
+    expect(screen.queryByTestId('import-api-key-expiry')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('import-api-key-create'));
+    await screen.findByTestId('import-api-key-secret');
+    expect(apiKeySubmissions).toEqual([{ name: 'Activity reporting', scopes: ['report:read'], expiresAt: null }]);
+  });
+
   it('creates a short-lived import key with independently selectable scopes', async () => {
     const { apiKeySubmissions } = renderPanel();
 

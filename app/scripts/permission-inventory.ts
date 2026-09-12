@@ -49,6 +49,7 @@ const staff = ['owner', 'admin'] as const;
 const owner = ['owner'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
+const reportApiKey = ['report-api-key'] as const;
 const transactionalApiKey = ['transactional-api-key'] as const;
 const importContentApiKey = ['import-content-api-key'] as const;
 const importUsersApiKey = ['import-users-api-key'] as const;
@@ -71,6 +72,8 @@ const effectiveAfter = (
 };
 
 const capabilityForRoute = (method: string, path: string): Capability | null => {
+  const declared = selfAuthenticatingRouteManifestEntry({ method, path })?.capability;
+  if (declared !== undefined) return declared;
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -256,6 +259,7 @@ const beforeForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) {
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
+      if (selfAuthenticatingEntry.capability !== undefined) return principalsForCapability(selfAuthenticatingEntry.capability);
       if (path === '/api/m2m/import/validate') return importApiKeys;
       if (
         path === '/api/m2m/import/members'
@@ -506,6 +510,7 @@ const beforeForUseCase = (
   capability: Capability,
 ): readonly Principal[] => {
   if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
+  if (file === 'activity-reports.ts') return reportApiKey;
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -562,7 +567,7 @@ const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory ? before : before === allHumans
+    const reachable = directory || before === reportApiKey ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner

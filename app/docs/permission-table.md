@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 369. Exported `Ctx` use-case rows: 288.
+Closed capability count: 116. Route rows: 371. Exported `Ctx` use-case rows: 290.
 
 ## Human-readable diff
 
@@ -152,6 +152,8 @@ no changes
 | `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -407,6 +409,8 @@ no changes
 | `account-sessions.ts#listMyAccountSessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyAccountSession` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyOtherAccountSessions` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
+| `activity-reports.ts#getActivitySummary` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
+| `activity-reports.ts#getMemberActivity` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
 | `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
@@ -701,10 +705,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1069` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1071` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1585` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1585` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1070` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1072` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1587` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1587` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

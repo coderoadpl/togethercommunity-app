@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
 import { eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, validation } from '#core/domain/index.js';
-import { createDb } from '#adapters/db/client.js';
+import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { user, verification } from '#adapters/db/schema.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
@@ -36,8 +36,14 @@ import {
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
 
-const connectionString =
-  process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+beforeAll(async () => {
+  database = await createTestDatabase(
+    'together_create_auth_test',
+    process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together',
+  );
+});
+afterAll(async () => { await database?.close(); });
 
 let signUpIpSuffix = 1;
 
@@ -133,8 +139,46 @@ describe('ASVS authentication policy', () => {
 });
 
 describe('real-provider sign-in and passkey proofs', () => {
+  it('contains sign-in event recorder failures after creating a session', async () => {
+    const warning = vi.fn();
+    const recordSignIn = vi.fn(async () => {
+      throw new Error('member-events unavailable for ada@example.test');
+    });
+    const { auth } = buildAuth({ logger: { warn: warning }, recordSignIn });
+    const email = `contained-recorder-${Date.now()}@together.dev`;
+    const password = passwordFixture('password-1234');
+    const signedUp = await signUp(auth, email, { password });
+    expect(signedUp.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+    warning.mockClear();
+    recordSignIn.mockClear();
+
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'studio.localhost:48730',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+        },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.headers.get('set-auth-token')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(recordSignIn).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+  });
+
   it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
-    const { auth } = buildAuth();
+    const recordSignIn = vi.fn(async () => undefined);
+    const { auth } = buildAuth({ recordSignIn });
     const email = `two-factor-${Date.now()}@together.dev`;
     const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
@@ -165,9 +209,11 @@ describe('real-provider sign-in and passkey proofs', () => {
     }, { authorization: `Bearer ${token}` });
     expect(verifiedEnrollment.status).toBe(200);
 
+    recordSignIn.mockClear();
     const challenged = await post('/sign-in/email', { email, password });
     expect(challenged.status).toBe(200);
     expect(await challenged.json()).toMatchObject({ twoFactorRedirect: true });
+    expect(recordSignIn).not.toHaveBeenCalled();
     const provisionalToken = challenged.headers.get('set-auth-token') ?? '';
     expect(await auth.api.getSession({
       headers: new Headers({ authorization: `Bearer ${provisionalToken}` }),
@@ -187,6 +233,7 @@ describe('real-provider sign-in and passkey proofs', () => {
       cookie: challengeCookie,
     });
     expect(completed.status).toBe(200);
+    expect(recordSignIn).toHaveBeenCalledTimes(1);
     expect(completed.headers.get('set-auth-token')).not.toBeNull();
     const completedCookies = completed.headers.getSetCookie();
     const completedSessionCookie = completedCookies
@@ -430,9 +477,11 @@ const buildAuth = (options: {
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
+  recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
+  logger?: { warn(message: string): void };
 } = {}) => {
-  const db = createDb('node-postgres', connectionString);
+  const db = database.db;
   const emailOutbox = createEmailOutboxRepository(db);
   const clock = { nowIso: () => new Date().toISOString() };
   const flushEmails = () =>
@@ -474,7 +523,9 @@ const buildAuth = (options: {
     dispatchEmail,
     defaultTenantName: 'Together',
     google: null,
+    ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
     validateSignUpConsent: async ({ accepted }) =>
       consentRequired && accepted !== true
         ? err(validation('Accepting the terms and privacy policy is required'))
@@ -1276,7 +1327,7 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
 
   it('expires enrollment links after one hour and redirects reused tokens to login', async () => {
     const { auth, authPort } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const email = `enrollment-expiry-${Date.now()}@together.dev`;
     const requestedAt = Date.now();
 
@@ -1442,7 +1493,7 @@ describe('reset password email', () => {
 
   it('expires reset tokens after one hour and revokes existing sessions on one-time completion', async () => {
     const { auth } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const passwordOptions = (await auth.$context).options.emailAndPassword;
     expect(passwordOptions?.resetPasswordTokenExpiresIn).toBe(PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS);
     expect(passwordOptions?.revokeSessionsOnPasswordReset).toBe(true);
@@ -1501,7 +1552,7 @@ describe('reset password email', () => {
 
   it('proves the address, so a later magic-link sign-in keeps the credential and the session', async () => {
     const { auth, authPort, magicLinks } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const email = `reset-verifies-${Date.now()}@together.dev`;
     const { userId } = await authPort.ensureUser(email);
     const { internalAdapter } = await auth.$context;

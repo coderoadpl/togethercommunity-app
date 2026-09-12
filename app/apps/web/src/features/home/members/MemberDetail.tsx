@@ -284,6 +284,8 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         course: event.payload.courseTitle ?? t.members.timelineUnavailableCourse,
         lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
       });
+    case 'sign-in':
+      return t.members.timelineEventLabels['sign-in'];
     case 'email-sent':
       return t.members.timelineEmail({ subject: event.payload.subject });
     case 'banned':

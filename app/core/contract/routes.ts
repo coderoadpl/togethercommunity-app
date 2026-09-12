@@ -1766,6 +1766,8 @@ export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
+  memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
@@ -2050,6 +2052,8 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  activitySummary: API_ROUTES.activitySummary.path,
+  memberActivity: API_ROUTES.memberActivity.path,
   listMarketingContacts: API_ROUTES.listMarketingContacts.path,
   m2mListMarketingContacts: API_ROUTES.m2mListMarketingContacts.path,
   exportMarketingContacts: API_ROUTES.exportMarketingContacts.path,

@@ -13,13 +13,22 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(369);
-    expect(inventory.useCases).toHaveLength(288);
+    expect(inventory.routes).toHaveLength(371);
+    expect(inventory.useCases).toHaveLength(290);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('classifies report routes through the tenant API-key manifest', () => {
+    const routes = collectPermissionInventory().routes;
+    for (const path of ['activity-summary', 'member-activity']) {
+      expect(routes.find((row) => row.subject === `GET /api/reports/${path}`)).toMatchObject({
+        capability: 'report:read', before: ['report-api-key'], after: ['report-api-key'], evidence: 'Tenant API key',
+      });
+    }
   });
 
   it('machine-checks every derivable before and after principal set', () => {

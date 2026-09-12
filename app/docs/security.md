@@ -107,3 +107,28 @@ contains only this reviewed advisory:
   `drizzle-kit` resolves esbuild 0.25 only from 1.0, which in turn requires
   `drizzle-orm` 1.0 while `better-auth` still declares a `drizzle-orm` 0.45
   peer, so revisit when `better-auth` supports `drizzle-orm` 1.0.
+
+## Tenant API keys
+
+The `report:read` scope grants only the `report:read` capability through the
+`report-api-key` principal. It cannot be combined with enrollment, marketing,
+transactional, or either import scope. Legacy unscoped keys do not gain reporting
+access. Import scope combinations and expiry rules remain unchanged.
+
+Report keys may omit expiry, like other non-import keys; no separate maximum
+lifetime is imposed. Owners can revoke them through the existing key controls.
+Studio supports exclusive report keys and both English and Polish copy.
+
+The [activity reports API](reports-api.md) accepts API-key authentication only.
+Every lookup uses the resolved tenant. Sign-in activity comes only from that
+tenant's `member_events`, joined to its current members. Global auth sessions
+are never a report data source. Session credentials alone cannot access reports.
+An API key issued for one tenant cannot be used for another. Both endpoints use
+the existing API-key minute/day policy and atomic PostgreSQL rate buckets before
+reading reports. Revocation and expiry are checked on each request.
+
+Report responses contain member email addresses and use `Cache-Control: no-store`.
+Report telemetry records route templates and status, without response rows or
+query strings. Database exceptions are sanitized at the report adapter boundary
+because driver exceptions can include bound email filters. Reporting uses the
+normal application repository connection and requires no database role changes.

@@ -7,6 +7,7 @@ export const defineMemberEventRegistry = <const TRegistry extends MemberEventReg
 ): TRegistry => registry;
 
 export const memberEventRegistry = defineMemberEventRegistry({
+  'sign-in': z.object({}).strict(),
   banned: z.object({
     reason: z.string().nullable(),
     actorUserId: z.string().min(1),
@@ -57,6 +58,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
 });
 
 const memberTimelineEventRegistry = defineMemberEventRegistry({
+  'sign-in': memberEventRegistry['sign-in'],
   banned: memberEventRegistry.banned,
   unbanned: memberEventRegistry.unbanned,
   purchase: memberEventRegistry.purchase.extend({

@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { MARKETING_IMPORT_ATTESTATION_VERSION, marketingImportCountsSchema, type MarketingImportRow } from '#core/domain/index.js';
-import { appendMarketingContactImportRows, commitMarketingContactImport, createMarketingContactImport, processMarketingContactImport, processMarketingContactImportPreview, getMarketingContactImport, getMarketingContactImportRows, retryMarketingContactImport, uploadMarketingContactImport, previewMarketingContactImport, validateMarketingContactImport } from '#core/server/index.js';
+import { MARKETING_IMPORT_ATTESTATION_VERSION, marketingImportCountsSchema, type MarketingImportRowReceipt } from '#core/domain/index.js';
+import { mapMarketingImportCsv, parseMarketingImportCsv } from '#core/domain/marketing-import-csv.js';
+import { appendMarketingContactImportRows, commitMarketingContactImport, createMarketingContactImport, processMarketingContactImport, processMarketingContactImportPreview, getMarketingContactImport, getMarketingContactImportRows, retryMarketingContactImport, uploadMarketingContactImport, previewMarketingContactImport, validateMarketingContactImport, upsertMarketingContact } from '#core/server/index.js';
 
+import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { createDirectoryFixture, directoryCtx, directoryWorkerCtx, directoryValue, DIRECTORY_NOW } from './marketing-contact-test-fixture.js';
 import { members, user } from './schema.js';
 
@@ -10,15 +12,39 @@ let fixture: Awaited<ReturnType<typeof createDirectoryFixture>>;
 beforeAll(async () => { fixture = await createDirectoryFixture(); }, 60_000);
 afterAll(async () => { await fixture?.close(); });
 const attest = (importId: string, validationHash: string) => ({ importId, validationHash, attestation: { accepted: true, version: MARKETING_IMPORT_ATTESTATION_VERSION, locale: 'en', note: 'Synthetic newsletter export; permission evidence retained in test records.' } });
-const stage = async (key: string, rows: MarketingImportRow[], consentDefinitionId: string | null = 'newsletter', kind = 'contacts') => {
-  const metadata = { datasetVersion: 'together-marketing-contacts/v1', kind, fileName: 'contacts.csv', rowCount: rows.length, consentDefinitionId, idempotencyKey: key };
+const stage = async (key: string, rows: Record<string, unknown>[], consentDefinitionId: string | null = 'newsletter', kind = 'contacts', defaults?: { reason: 'manual'; at: string }) => {
+  const metadata = { datasetVersion: 'together-marketing-contacts/v1', kind, fileName: 'contacts.csv', rowCount: rows.length, consentDefinitionId, defaults, idempotencyKey: key };
   const batch = directoryValue(await createMarketingContactImport(directoryCtx(), metadata, fixture.deps)).import;
-  directoryValue(await appendMarketingContactImportRows(directoryCtx(), { importId: batch.id, offset: 0, rows }, fixture.deps));
+  for (let offset = 0; offset < rows.length; offset += 200) directoryValue(await appendMarketingContactImportRows(directoryCtx(), { importId: batch.id, offset, rows: rows.slice(offset, offset + 200) }, fixture.deps));
   const preview = directoryValue(await validateMarketingContactImport(directoryCtx(), { importId: batch.id }, fixture.deps));
   return { batch, preview, metadata };
 };
 const commit = async (importId: string, hash: string) => directoryValue(await commitMarketingContactImport(directoryCtx(), attest(importId, hash), { ...fixture.deps, actor: { kind: 'api_key', apiKeyId: 'actual-marketing-key' } }));
 const processBatch = async (importId: string, maxRows = 200) => directoryValue(await processMarketingContactImport(directoryWorkerCtx(), { importId, workerId: crypto.randomUUID(), maxRows, deadlineAt: '2026-09-08T10:01:00.000Z' }, fixture.deps));
+const eraseAddress = async (email: string, tombstoneEmail: string) => {
+  directoryValue(await upsertMarketingContact(directoryCtx(), { email }, fixture.deps));
+  await fixture.db.transaction((tx) => eraseMarketingMemberContact(tx, 'directory-a', { memberId: crypto.randomUUID(), email, tombstoneEmail, deletedAt: DIRECTORY_NOW }, fixture.deps.hmac));
+};
+const finishQueuedPreview = async (importId: string) => {
+  let run = directoryValue(await processMarketingContactImportPreview(directoryWorkerCtx(), { importId, workerId: 'preview-worker', maxRows: 600 }, fixture.deps));
+  for (let index = 0; index < 4 && run.import.status !== 'ready'; index += 1) {
+    run = directoryValue(await processMarketingContactImportPreview(directoryWorkerCtx(), { importId, workerId: 'preview-worker', maxRows: 600 }, fixture.deps));
+  }
+  expect(run.import.status).toBe('ready');
+  return directoryValue(await validateMarketingContactImport(directoryCtx(), { importId }, fixture.deps));
+};
+const rowVerdicts = (rows: MarketingImportRowReceipt[]) => rows.map((row) => ({
+  rowNumber: row.rowNumber,
+  status: row.status,
+  duplicateOf: row.duplicateOf,
+  errors: row.errors,
+  warnings: row.warnings,
+  normalizedPayload: row.normalizedPayload,
+}));
+const mappedRowsFromCsv = (csv: string, kind: 'contacts' | 'suppressions', defaults?: { reason: 'manual'; at: string }) => {
+  const parsed = directoryValue(parseMarketingImportCsv(csv));
+  return directoryValue(mapMarketingImportCsv(parsed, { kind, defaults })).rows;
+};
 
 describe('durable contact imports', () => {
   it('validates large previews in resumable chunks with stable duplicate counts', async () => {
@@ -35,6 +61,46 @@ describe('durable contact imports', () => {
     const completed = directoryValue(await validateMarketingContactImport(directoryCtx(), { importId: started.import.id }, fixture.deps));
     expect(completed.counts).toMatchObject({ validRows: 500, duplicateRows: 1, rejectedRows: 0 });
     expect(completed.preview[0]?.normalizedPayload).toMatchObject({ email: 'large-0@example.test', name: 'Updated' });
+  });
+
+  it('rejects erased addresses in large suppression previews', async () => {
+    await eraseAddress('large-erased-suppression@example.test', 'large-erased-suppression@example.invalid');
+    const small = directoryValue(await uploadMarketingContactImport(directoryCtx(), {
+      csv: 'email\nlarge-erased-suppression@example.test\n',
+      metadata: { datasetVersion: 'together-marketing-contacts/v1', kind: 'suppressions', fileName: 'small-erased-suppression.csv', defaults: { reason: 'manual', at: '2025-02-03T10:00:00Z' }, idempotencyKey: 'small-erased-suppression' },
+    }, fixture.deps));
+    if ('progress' in small) throw new Error('Expected synchronous preview');
+    expect(small).toMatchObject({ canCommit: false, counts: { rejectedRows: 1 }, errors: [{ rowNumber: 1, message: 'Address was erased' }] });
+    const csv = ['email', ...Array.from({ length: 501 }, (_, index) => index === 500 ? 'large-erased-suppression@example.test' : `large-suppression-${index}@example.test`)].join('\n');
+    const started = directoryValue(await uploadMarketingContactImport(directoryCtx(), {
+      csv,
+      metadata: { datasetVersion: 'together-marketing-contacts/v1', kind: 'suppressions', fileName: 'large-erased-suppression.csv', defaults: { reason: 'manual', at: '2025-02-03T10:00:00Z' }, idempotencyKey: 'large-erased-suppression' },
+    }, fixture.deps));
+    expect(started).toMatchObject({ import: { status: 'preview_queued', rowCount: 501 } });
+    const large = await finishQueuedPreview(started.import.id);
+    expect(large).toMatchObject({ canCommit: false, counts: { validRows: 500, rejectedRows: 1 }, errors: [{ rowNumber: 501, message: 'Address was erased' }] });
+    expect(await fixture.deps.imports.rowsRange('directory-a', started.import.id, 501, 501)).toMatchObject([{ status: 'invalid', errors: ['Address was erased'] }]);
+    expect(await fixture.deps.suppressions.findActive('directory-a', fixture.deps.hmac.compute('directory-a', 'large-erased-suppression@example.test'))).toBeNull();
+  });
+
+  it.each(['contacts', 'suppressions'] as const)('keeps sync and async preview row verdicts identical for %s CSVs', async (kind) => {
+    const erasedEmail = `parity-erased-${kind}@example.test`;
+    await eraseAddress(erasedEmail, `parity-erased-${kind}@example.invalid`);
+    const defaults = kind === 'suppressions' ? { reason: 'manual' as const, at: '2025-02-03T10:00:00Z' } : undefined;
+    const csv = kind === 'contacts'
+      ? ['email,name', 'parity-duplicate@example.test,First', 'parity-duplicate@example.test,Second', 'bad-address,Bad', `${erasedEmail},Erased`, ...Array.from({ length: 497 }, (_, index) => `parity-contact-${index}@example.test,Contact ${index}`)].join('\n')
+      : ['email', 'parity-suppression-0@example.test', 'bad-address', erasedEmail, ...Array.from({ length: 498 }, (_, index) => `parity-suppression-${index + 1}@example.test`)].join('\n');
+    const rows = mappedRowsFromCsv(csv, kind, defaults);
+    const sync = await stage(`sync-parity-${kind}`, rows, null, kind, defaults);
+    const asyncStarted = directoryValue(await uploadMarketingContactImport(directoryCtx(), {
+      csv,
+      metadata: { datasetVersion: 'together-marketing-contacts/v1', kind, fileName: `${kind}-parity.csv`, defaults, idempotencyKey: `async-parity-${kind}` },
+    }, fixture.deps));
+    expect(asyncStarted).toMatchObject({ import: { status: 'preview_queued', rowCount: 501 } });
+    await finishQueuedPreview(asyncStarted.import.id);
+    const syncRows = await fixture.deps.imports.rows('directory-a', sync.batch.id);
+    const asyncRows = await fixture.deps.imports.rows('directory-a', asyncStarted.import.id);
+    expect(rowVerdicts(asyncRows)).toEqual(rowVerdicts(syncRows));
   });
 
   it('stages uploaded chunks with one bulk insert instead of per-row writes', async () => {

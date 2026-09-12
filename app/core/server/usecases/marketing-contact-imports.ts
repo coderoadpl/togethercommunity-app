@@ -135,70 +135,60 @@ const buildImportValidation = async (tenantId: string, batch: MarketingContactIm
 };
 
 const validateRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
-  const primary = new Map<string, MarketingImportRowReceipt>();
-  const lists = new Map<string, Awaited<ReturnType<typeof repos.lists.findByKey>>>();
-  for (const row of rows) {
-    row.errors = []; row.warnings = []; row.duplicateOf = null; row.normalizedPayload = null;
-    const parsed = normalizeRow(row.stagedPayload ?? {}, batch, deps.clock.nowIso());
-    if (!parsed.ok) { row.status = 'invalid'; row.errors.push(parsed.error.message); continue; }
-    row.normalizedPayload = parsed.value;
-    row.normalizedEmailHmac = deps.hmac.compute(tenantId, parsed.value.email);
-    row.status = 'valid';
-    const previous = primary.get(parsed.value.email);
-    if (previous === undefined) primary.set(parsed.value.email, row);
-    else if (batch.kind === 'contacts') mergeDuplicate(previous, row, batch.consentDefinitionId !== null);
-  }
-  for (const row of primary.values()) {
-    const payload = row.normalizedPayload;
-    if (payload === null) continue;
-    const existing = await repos.contacts.findByEmail(tenantId, payload.email);
-    if (existing !== null && existing.email !== payload.email) row.errors.push('Address was erased');
-    if (new Set([...(existing?.tags ?? []), ...(payload.tags ?? [])]).size > 50 || (payload.lists?.length ?? 0) > 50) row.errors.push('Merged row exceeds tag or list limits');
-    for (const key of payload.lists ?? []) {
-      if (!lists.has(key)) lists.set(key, await repos.lists.findByKey(tenantId, key));
-      const list = lists.get(key) ?? null;
-      if (list !== null && (list.kind !== 'static' || list.archivedAt !== null)) row.errors.push(`List ${key} must be active and static`);
-    }
-    if (row.errors.length > 0) { row.status = 'invalid'; row.normalizedPayload = null; }
-  }
+  normalizeRows(tenantId, batch, rows, rows, deps);
+  await checkNormalizedRows(tenantId, batch, rows.filter((row) => row.status === 'checking'), repos);
   for (const row of rows) await repos.imports.saveRow(tenantId, row);
 };
 
-const normalizePreviewRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
-  const primary = new Map(rows.filter((row) => row.status === 'checking' && row.normalizedPayload !== null).map((row) => [row.normalizedPayload?.email ?? '', row]));
+const normalizeRows = (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], pending: MarketingImportRowReceipt[], deps: MarketingImportDeps): Set<MarketingImportRowReceipt> => {
+  const primary = new Map<string, MarketingImportRowReceipt>();
   const changed = new Set<MarketingImportRowReceipt>();
+  for (const row of rows) {
+    if (row.status === 'checking' && row.normalizedPayload !== null) primary.set(row.normalizedPayload.email, row);
+  }
   for (const row of pending) {
     row.errors = []; row.warnings = []; row.duplicateOf = null; row.normalizedPayload = null;
     const parsed = normalizeRow(row.stagedPayload ?? {}, batch, deps.clock.nowIso());
     if (!parsed.ok) { row.status = 'invalid'; row.errors.push(parsed.error.message); changed.add(row); continue; }
     row.normalizedPayload = parsed.value;
     row.normalizedEmailHmac = deps.hmac.compute(tenantId, parsed.value.email);
-    row.status = batch.kind === 'contacts' ? 'checking' : 'valid';
+    row.status = 'checking';
     const previous = primary.get(parsed.value.email);
     if (previous === undefined) primary.set(parsed.value.email, row);
     else if (batch.kind === 'contacts') { mergeDuplicate(previous, row, batch.consentDefinitionId !== null); changed.add(previous); }
     changed.add(row);
   }
-  for (const row of changed) await repos.imports.saveRow(tenantId, row);
+  return changed;
 };
 
-const checkPreviewRows = async (tenantId: string, pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos): Promise<void> => {
+const checkNormalizedRows = async (tenantId: string, batch: MarketingContactImport, pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos): Promise<void> => {
   const lists = new Map<string, Awaited<ReturnType<typeof repos.lists.findByKey>>>();
   for (const row of pending) {
     const payload = row.normalizedPayload;
-    if (payload === null) { row.status = 'invalid'; row.errors.push('Normalized row is unavailable'); await repos.imports.saveRow(tenantId, row); continue; }
+    if (payload === null) { row.status = 'invalid'; row.errors.push('Normalized row is unavailable'); continue; }
     const existing = await repos.contacts.findByEmail(tenantId, payload.email);
     if (existing !== null && existing.email !== payload.email) row.errors.push('Address was erased');
-    if (new Set([...(existing?.tags ?? []), ...(payload.tags ?? [])]).size > 50 || (payload.lists?.length ?? 0) > 50) row.errors.push('Merged row exceeds tag or list limits');
-    for (const key of payload.lists ?? []) {
+    const tags = batch.kind === 'contacts' ? payload.tags ?? [] : [];
+    const listKeys = batch.kind === 'contacts' ? payload.lists ?? [] : [];
+    if (new Set([...(existing?.tags ?? []), ...tags]).size > 50 || listKeys.length > 50) row.errors.push('Merged row exceeds tag or list limits');
+    for (const key of listKeys) {
       if (!lists.has(key)) lists.set(key, await repos.lists.findByKey(tenantId, key));
       const list = lists.get(key) ?? null;
       if (list !== null && (list.kind !== 'static' || list.archivedAt !== null)) row.errors.push(`List ${key} must be active and static`);
     }
-    row.status = row.errors.length > 0 ? 'invalid' : 'valid';
-    if (row.status === 'invalid') row.normalizedPayload = null;
-    await repos.imports.saveRow(tenantId, row);
+    if (row.errors.length > 0) { row.status = 'invalid'; row.normalizedPayload = null; }
+    else row.status = 'valid';
   }
+};
+
+const normalizePreviewRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
+  const changed = normalizeRows(tenantId, batch, rows, pending, deps);
+  for (const row of changed) await repos.imports.saveRow(tenantId, row);
+};
+
+const checkPreviewRows = async (tenantId: string, batch: MarketingContactImport, pending: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos): Promise<void> => {
+  await checkNormalizedRows(tenantId, batch, pending, repos);
+  for (const row of pending) await repos.imports.saveRow(tenantId, row);
 };
 
 const finishValidation = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps, actor: string): Promise<Result<MarketingImportValidation, AppError>> => {
@@ -252,7 +242,7 @@ export const processMarketingContactImportPreview = async (ctx: Ctx, input: { im
     const staged = rows.filter((row) => row.status === 'staged').slice(0, input.maxRows);
     const checking = staged.length === 0 ? rows.filter((row) => row.status === 'checking').slice(0, input.maxRows) : [];
     if (staged.length > 0) await normalizePreviewRows(tenant.value, batch, rows, staged, repos, deps);
-    else await checkPreviewRows(tenant.value, checking, repos);
+    else await checkPreviewRows(tenant.value, batch, checking, repos);
     const processed = staged.length + checking.length;
     const remaining = rows.length - (await repos.imports.previewProgress(tenant.value, batch.id)).checkedRows;
     if (remaining > 0) {

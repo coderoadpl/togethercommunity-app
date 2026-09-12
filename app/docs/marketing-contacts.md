@@ -109,12 +109,13 @@ key on creation. Preview validation stays synchronous through 500 rows. Larger
 previews enter the durable import queue, validate at most 500 rows per worker slice,
 and expose persisted validated-row progress through the import status route. Studio
 polls that status and restores the preview from the same batch URL after refresh.
-Normalization, duplicate merging, contact checks, list checks, counts, and rejected
-row receipts resume idempotently; preview error CSV data uses the same retained row
-receipts as processing errors. A preview that cannot finish returns to draft with the
-recorded error instead of staying queued, so the owner fixes the mapping, defaults, or
-consent definition and validates again. Reopening a validated batch re-checks the
-consent definition and the referenced lists before the stored preview is served. Commit returns 202 after durable queueing. The authenticated
+Normalization, address checks for contacts and suppressions, contact duplicate
+merging, contact list checks, counts, and rejected row receipts resume idempotently;
+preview error CSV data uses the same retained row receipts as processing errors. A
+preview that cannot finish returns to draft with the recorded error instead of staying
+queued, so the owner fixes the mapping, defaults, or consent definition and validates
+again. Reopening a validated batch re-checks the consent definition and the referenced
+lists before the stored preview is served. Commit returns 202 after durable queueing. The authenticated
 `GET /api/internal/marketing/imports/tick` uses `CRON_SECRET`, runs every minute on
 hosted deployments, and shares a 20-second budget across imports and member sync.
 Interrupted imports resume unfinished rows under fenced leases; each row's effects

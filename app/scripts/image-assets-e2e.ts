@@ -29,6 +29,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
+import { MINIO_IMAGE } from './test-images.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -156,7 +157,7 @@ const startMinio = async (port: number, studioOrigin: string): Promise<MinioRunt
       `${minioCertificateDirectory}:/certs:ro`,
       '-p',
       `${String(port)}:9000`,
-      'minio/minio',
+      MINIO_IMAGE,
       'server',
       '--certs-dir',
       '/certs',

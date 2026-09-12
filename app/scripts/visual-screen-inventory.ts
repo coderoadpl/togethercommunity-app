@@ -82,12 +82,44 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
+const UNREAD_BADGE_SELECTOR = '[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)';
+
 // The count arrives asynchronously, so a shot can otherwise land on a bare bell.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
-  await page
-    .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
-    .waitFor(visible);
+  await page.locator(UNREAD_BADGE_SELECTOR).waitFor(visible);
 };
+
+export interface AntialiasRepaint {
+  waitForTarget: () => Promise<void>;
+  setHidden: (hidden: boolean) => Promise<void>;
+  repaint: () => Promise<void>;
+}
+
+export const repaintForStableAntialiasing = async (steps: AntialiasRepaint): Promise<void> => {
+  // Repeated captures of these screens alternated between two antialias states for the same geometry; forcing a re-raster once the async chrome is final made them byte-stable.
+  // The wait is the alarm: a selector that stops matching must fail the capture instead of silently skipping the re-raster.
+  await steps.waitForTarget();
+  await steps.setHidden(true);
+  await steps.repaint();
+  await steps.setHidden(false);
+  await steps.repaint();
+};
+
+const repaintLocator = (page: Page, locator: Locator): Promise<void> => repaintForStableAntialiasing({
+  waitForTarget: () => locator.first().waitFor(visible),
+  setHidden: async (hidden) => {
+    await locator.evaluateAll((elements, hide) => {
+      for (const element of elements) {
+        if (hide) element.style.visibility = 'hidden';
+        else element.style.removeProperty('visibility');
+      }
+    }, hidden);
+  },
+  repaint: () => waitForPaint(page),
+});
+
+const repaintUnreadBadge = (page: Page): Promise<void> =>
+  repaintLocator(page, page.locator(UNREAD_BADGE_SELECTOR));
 
 export const domainChecklistRouting = (active: boolean): TenantRouting => {
   const domain = 'courses.example.org';
@@ -229,6 +261,11 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('anon-course-program').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
     },
+    settled: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) >= 900) {
+        await repaintLocator(page, page.getByTestId('anon-sidebar').locator('svg'));
+      }
+    },
   },
   {
     name: 'anon-space',
@@ -305,7 +342,9 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('continue-cta').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
       await page.getByTestId('course-discussion-search').waitFor(visible);
+      await waitForUnreadBadge(page);
     },
+    settled: repaintUnreadBadge,
   },
   {
     name: 'course-long-curriculum',
@@ -376,6 +415,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       }
       await page.evaluate(() => window.scrollTo(0, 0));
       await waitForPaint(page);
+      await repaintUnreadBadge(page);
     },
   },
   {
@@ -685,6 +725,11 @@ export const SCREENS: readonly ScreenSpec[] = [
     isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
+    settled: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) >= 900) {
+        await repaintLocator(page, page.getByTestId('course-image-upload'));
+      }
+    },
   },
   {
     name: 'member-detail',

@@ -48,6 +48,12 @@ the live harness's request policy, stream suppression, font readiness and
 animation freezing. Each story must finish its fixture calls and queries before capture; fonts and
 image decoding also settle before screenshots. Panel stories load their shell
 fonts before mounting to reproduce navigation within an already loaded panel.
+Course captures repaint their asynchronously settled notification badge, public
+sidebar icons and editor upload control before the screenshot: repeated runs of
+those screens alternated between two antialias states for the same geometry, and
+forcing a re-raster once the chrome is final made them byte-stable. Each repaint
+first waits for its target, so a selector that stops matching fails the capture
+instead of silently skipping the re-raster.
 The email integration story preserves the initial font-loading sequence used
 by its recorded tab-underline measurement through `preloadFonts: false`.
 The lesson-attachment scenario explicitly scrolls its HTML
@@ -74,6 +80,16 @@ uses 7 KiB and skips network-idle waiting, and component screens use 4 KiB.
 Screenshots are written to `out/visual/current`, diffs to `out/visual/diff`, and
 per-capture counts, byte equality, fixture hashes and diagnostics to
 `out/visual/measurements.json`. CI uploads this directory even on failure.
+Each capture log names the condition that failed the gate: `missing fixture
+calls: [...]` for calls the story made that its fixture does not hold, `fixture
+expectation issues: [...]` for the opposite problem (an unexercised expectation,
+or no fixture selected), `unreadable fixture diagnostics: ...` when the dataset
+value cannot be parsed, `error boundary rendered`, and `page errors: ...`. The
+first three read the same `data-fixture-errors` dataset, which the story harness
+fills from both classes. The measurement for every capture records the same
+information in `missingFixtureCalls`, `fixtureExpectationIssues`,
+`unreadableFixtureDiagnostics`, `errorBoundaryRendered` and `pageErrors`,
+including empty values on success.
 To inspect selected screens after explicitly building the current source:
 
 ```bash

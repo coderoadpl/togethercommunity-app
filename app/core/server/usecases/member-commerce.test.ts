@@ -24,6 +24,7 @@ const identity: Identity = {
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: TENANT_ID,
   tenantSlug: 'acme',
   tenantName: 'Acme',

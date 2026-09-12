@@ -46,7 +46,7 @@ const run = (command: string, args: readonly string[]): void => {
 // threaded separately into the server bundle, the browser bundle and the CLI.
 // Vercel invokes this script more than once per deployment, so a manifest that already
 // carries the derived number is a success, not a failure.
-const applyDerivedVersion = (): void => {
+const applyDerivedVersion = (): string => {
   const derived = deriveVersion({ repoRoot: appRoot });
   const outcome = stampManifestVersion(manifestPath, derived.version);
   if (outcome === 'missing-field') {
@@ -56,6 +56,7 @@ const applyDerivedVersion = (): void => {
   const history = derived.complete ? '' : ' (git history unavailable)';
   const repeat = outcome === 'unchanged' ? ' (already stamped)' : '';
   process.stdout.write(`vercel-build: version ${derived.version}${history}${repeat}\n`);
+  return derived.version;
 };
 
 const assertDeploymentDatabase = (): DeploymentDatabaseVerdict => {
@@ -123,21 +124,22 @@ const seedEmptyStagingDeployment = async (verdict: DeploymentDatabaseVerdict): P
   run('pnpm', ['run', 'db:seed']);
 };
 
-const runFullBuild = async (): Promise<void> => {
-  applyDerivedVersion();
+const runFullBuild = async (): Promise<string> => {
+  const derivedVersion = applyDerivedVersion();
   const deploymentVerdict = assertDeploymentDatabase();
   await assertMigrationJournalReady();
   run('pnpm', ['run', 'db:migrate']);
   await seedEmptyStagingDeployment(deploymentVerdict);
   run('pnpm', ['run', 'build']);
+  return derivedVersion;
 };
 
 const runDeploymentBuild = async (
   decision: Extract<VercelBuildOnceDecision, { action: 'run' }>,
 ): Promise<void> => {
   try {
-    await runFullBuild();
-    await completeVercelBuildOnce(decision);
+    const derivedVersion = await runFullBuild();
+    await completeVercelBuildOnce(decision, manifestPath, derivedVersion);
   } finally {
     await releaseVercelBuildOnce(decision);
   }
@@ -147,6 +149,7 @@ try {
   const decision = await beginVercelBuildOnce({
     env: process.env,
     outputDirectory: webOutputDirectory,
+    manifestPath,
   });
   if (decision.action === 'reuse') {
     process.stdout.write(`vercel-build: reused first run for deployment ${decision.marker.deploymentId}\n`);

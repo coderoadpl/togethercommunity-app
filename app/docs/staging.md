@@ -49,15 +49,16 @@ successful `ci.yml` or `staging-smoke.yml` runs for the exact staging SHA. See
 
 ## Deployed Seed Behavior
 
-`app/scripts/vercel-build.ts` runs migrations on the first invocation for a
-deployment before the app build; subsequent function builds reuse that result.
-On the staging Preview deployment, the first invocation then checks for seed
-markers and runs `pnpm run db:seed` only when the staging database has none.
-Production never runs the deployed seed path.
-On Vercel, the first successful build invocation for a deployment writes a
-non-served build-once marker keyed by the deployment id. Later invocations for
-the same deployment reuse that marker and skip migrations, seed inspection,
-typecheck, and the web build.
+On the first `app/scripts/vercel-build.ts` invocation per deployment, the
+version is derived, migrations run, staging seed markers are inspected, and the
+app is built. The staging Preview deployment runs `pnpm run db:seed` only when
+the staging database has no seed markers; production never runs that seed path.
+After success, the invocation writes a non-served build-once marker keyed by the
+deployment id with the derived manifest version and a hash of
+`dist/web/index.html`. Later invocations skip migrations, seed inspection,
+typecheck, and the web build only when that artifact evidence still matches;
+otherwise the invocation builds as the first runner. A waiter fails when the
+lock disappears without a verified marker or when its wait times out.
 
 The manual reset path remains `POST /api/platform/data-reset`, exposed only for
 `APP_ENV=staging` and `APP_ENV=preview` and guarded by platform-owner access.

@@ -4,7 +4,7 @@ import {
   type DeploymentDatabaseVerdict,
 } from '#core/domain/index.js';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -37,7 +37,16 @@ export interface VercelBuildOnceMarker {
   deploymentId: string;
   gitCommitSha: string;
   timestamp: string;
+  artifact: {
+    outputDirectory: string;
+    manifestPath: string;
+    entryPath: string;
+    entrySha256: string;
+    derivedVersion: string;
+  };
 }
+
+type VercelBuildOnceAttempt = Omit<VercelBuildOnceMarker, 'artifact'>;
 
 export interface VercelBuildOncePaths {
   outputDirectory: string;
@@ -53,7 +62,7 @@ export type VercelBuildOnceDecision =
   | {
       action: 'run';
       lockAcquired: boolean;
-      marker: VercelBuildOnceMarker;
+      marker: VercelBuildOnceAttempt;
       paths: VercelBuildOncePaths;
     };
 
@@ -64,7 +73,9 @@ export type MigrationJournalDecision =
 export interface VercelBuildOnceOptions {
   env: VercelBuildPolicyEnv;
   outputDirectory: string;
+  manifestPath: string;
   now?: () => Date;
+  readMarker?: (markerPath: string) => Promise<VercelBuildOnceMarker | null>;
   sleep?: (milliseconds: number) => Promise<void>;
   waitTimeoutMs?: number;
   pollIntervalMs?: number;
@@ -89,7 +100,7 @@ const safePathSegment = (value: string): string => value.replace(/[^A-Za-z0-9._-
 const vercelBuildOnceMarker = (
   env: VercelBuildPolicyEnv,
   now: () => Date,
-): VercelBuildOnceMarker | null => {
+): VercelBuildOnceAttempt | null => {
   if (env.VERCEL_DEPLOYMENT_ID === undefined || env.VERCEL_DEPLOYMENT_ID === '') return null;
   return {
     deploymentId: env.VERCEL_DEPLOYMENT_ID,
@@ -100,7 +111,7 @@ const vercelBuildOnceMarker = (
 
 export const vercelBuildOncePaths = (
   outputDirectory: string,
-  marker: VercelBuildOnceMarker,
+  marker: VercelBuildOnceAttempt,
 ): VercelBuildOncePaths => {
   const key = safePathSegment(marker.deploymentId);
   const stateDirectory = join(tmpdir(), 'together-vercel-build-once', key);
@@ -117,14 +128,31 @@ const parseVercelBuildOnceMarker = (value: unknown): VercelBuildOnceMarker | nul
   const deploymentId = value['deploymentId'];
   const gitCommitSha = value['gitCommitSha'];
   const timestamp = value['timestamp'];
+  const artifact = value['artifact'];
   if (typeof deploymentId !== 'string') return null;
   if (typeof gitCommitSha !== 'string') return null;
   if (typeof timestamp !== 'string') return null;
-  return { deploymentId, gitCommitSha, timestamp };
+  if (!isRecord(artifact)) return null;
+  const outputDirectory = artifact['outputDirectory'];
+  const manifestPath = artifact['manifestPath'];
+  const entryPath = artifact['entryPath'];
+  const entrySha256 = artifact['entrySha256'];
+  const derivedVersion = artifact['derivedVersion'];
+  if (typeof outputDirectory !== 'string') return null;
+  if (typeof manifestPath !== 'string') return null;
+  if (typeof entryPath !== 'string') return null;
+  if (typeof entrySha256 !== 'string') return null;
+  if (typeof derivedVersion !== 'string') return null;
+  return {
+    deploymentId,
+    gitCommitSha,
+    timestamp,
+    artifact: { outputDirectory, manifestPath, entryPath, entrySha256, derivedVersion },
+  };
 };
 
 export const vercelBuildOnceMarkerMatches = (
-  expected: VercelBuildOnceMarker,
+  expected: VercelBuildOnceAttempt,
   actual: VercelBuildOnceMarker | null,
 ): actual is VercelBuildOnceMarker =>
   actual !== null
@@ -147,6 +175,39 @@ export const readVercelBuildOnceMarker = async (
     return null;
   }
 };
+
+const vercelBuildOnceArtifactMatches = async (
+  marker: VercelBuildOnceMarker,
+  paths: VercelBuildOncePaths,
+  manifestPath: string,
+): Promise<boolean> => {
+  const entryPath = join(paths.outputDirectory, 'index.html');
+  if (marker.artifact.outputDirectory !== paths.outputDirectory) return false;
+  if (marker.artifact.manifestPath !== manifestPath) return false;
+  if (marker.artifact.entryPath !== entryPath) return false;
+  try {
+    const [entry, manifestContents] = await Promise.all([
+      readFile(entryPath),
+      readFile(manifestPath, 'utf8'),
+    ]);
+    const manifest = JSON.parse(manifestContents);
+    if (!isRecord(manifest) || manifest['version'] !== marker.artifact.derivedVersion) return false;
+    return createHash('sha256').update(entry).digest('hex') === marker.artifact.entrySha256;
+  } catch {
+    return false;
+  }
+};
+
+const reusableVercelBuildOnceMarker = async (
+  expected: VercelBuildOnceAttempt,
+  actual: VercelBuildOnceMarker | null,
+  paths: VercelBuildOncePaths,
+  manifestPath: string,
+): Promise<VercelBuildOnceMarker | null> =>
+  vercelBuildOnceMarkerMatches(expected, actual)
+  && await vercelBuildOnceArtifactMatches(actual, paths, manifestPath)
+    ? actual
+    : null;
 
 const acquireVercelBuildOnceLock = async (paths: VercelBuildOncePaths): Promise<boolean> => {
   await mkdir(paths.outputDirectory, { recursive: true });
@@ -176,8 +237,10 @@ type VercelBuildOnceWaitResult =
   | { status: 'timed-out' };
 
 const waitForVercelBuildOnceMarker = async (
-  expected: VercelBuildOnceMarker,
+  expected: VercelBuildOnceAttempt,
   paths: VercelBuildOncePaths,
+  manifestPath: string,
+  readMarker: (markerPath: string) => Promise<VercelBuildOnceMarker | null>,
   now: () => Date,
   sleep: (milliseconds: number) => Promise<void>,
   timeoutMs: number,
@@ -185,14 +248,34 @@ const waitForVercelBuildOnceMarker = async (
 ): Promise<VercelBuildOnceWaitResult> => {
   const deadline = now().getTime() + timeoutMs;
   while (now().getTime() < deadline) {
-    const existing = await readVercelBuildOnceMarker(paths.markerPath);
-    if (vercelBuildOnceMarkerMatches(expected, existing)) return { status: 'completed', marker: existing };
-    if (!await vercelBuildOnceLockExists(paths)) return { status: 'holder-failed' };
+    const existing = await reusableVercelBuildOnceMarker(
+      expected,
+      await readMarker(paths.markerPath),
+      paths,
+      manifestPath,
+    );
+    if (existing !== null) return { status: 'completed', marker: existing };
+    if (!await vercelBuildOnceLockExists(paths)) {
+      const completed = await reusableVercelBuildOnceMarker(
+        expected,
+        await readMarker(paths.markerPath),
+        paths,
+        manifestPath,
+      );
+      return completed === null
+        ? { status: 'holder-failed' }
+        : { status: 'completed', marker: completed };
+    }
     const remaining = deadline - now().getTime();
     await sleep(Math.min(pollIntervalMs, remaining));
   }
-  const existing = await readVercelBuildOnceMarker(paths.markerPath);
-  return vercelBuildOnceMarkerMatches(expected, existing)
+  const existing = await reusableVercelBuildOnceMarker(
+    expected,
+    await readMarker(paths.markerPath),
+    paths,
+    manifestPath,
+  );
+  return existing !== null
     ? { status: 'completed', marker: existing }
     : { status: 'timed-out' };
 };
@@ -205,15 +288,36 @@ export const beginVercelBuildOnce = async (
   if (marker === null) return { action: 'run-local' };
 
   const paths = vercelBuildOncePaths(options.outputDirectory, marker);
-  const existing = await readVercelBuildOnceMarker(paths.markerPath);
-  if (vercelBuildOnceMarkerMatches(marker, existing)) return { action: 'reuse', marker: existing };
+  const readMarker = options.readMarker ?? readVercelBuildOnceMarker;
+  const existing = await reusableVercelBuildOnceMarker(
+    marker,
+    await readMarker(paths.markerPath),
+    paths,
+    options.manifestPath,
+  );
+  if (existing !== null) return { action: 'reuse', marker: existing };
 
   const lockAcquired = await acquireVercelBuildOnceLock(paths);
-  if (lockAcquired) return { action: 'run', lockAcquired: true, marker, paths };
+  if (lockAcquired) {
+    const completed = await reusableVercelBuildOnceMarker(
+      marker,
+      await readMarker(paths.markerPath),
+      paths,
+      options.manifestPath,
+    );
+    if (completed !== null) {
+      await rm(paths.lockDirectory, { recursive: true, force: true });
+      return { action: 'reuse', marker: completed };
+    }
+    await rm(paths.markerPath, { force: true });
+    return { action: 'run', lockAcquired: true, marker, paths };
+  }
 
   const waitResult = await waitForVercelBuildOnceMarker(
     marker,
     paths,
+    options.manifestPath,
+    readMarker,
     now,
     options.sleep ?? defaultSleep,
     options.waitTimeoutMs ?? defaultWaitTimeoutMs,
@@ -221,10 +325,10 @@ export const beginVercelBuildOnce = async (
   );
   if (waitResult.status === 'completed') return { action: 'reuse', marker: waitResult.marker };
   if (waitResult.status === 'holder-failed') {
-    const replacementLockAcquired = await acquireVercelBuildOnceLock(paths);
-    return replacementLockAcquired
-      ? { action: 'run', lockAcquired: true, marker, paths }
-      : { action: 'fail', message: `vercel-build: build-once lock disappeared for deployment ${marker.deploymentId}, but another invocation acquired it first` };
+    return {
+      action: 'fail',
+      message: `vercel-build: first build invocation ended without publishing an artifact for deployment ${marker.deploymentId}`,
+    };
   }
   return {
     action: 'fail',
@@ -234,10 +338,24 @@ export const beginVercelBuildOnce = async (
 
 export const completeVercelBuildOnce = async (
   decision: Extract<VercelBuildOnceDecision, { action: 'run' }>,
+  manifestPath: string,
+  derivedVersion: string,
 ): Promise<void> => {
+  const entryPath = join(decision.paths.outputDirectory, 'index.html');
+  const entry = await readFile(entryPath);
+  const marker: VercelBuildOnceMarker = {
+    ...decision.marker,
+    artifact: {
+      outputDirectory: decision.paths.outputDirectory,
+      manifestPath,
+      entryPath,
+      entrySha256: createHash('sha256').update(entry).digest('hex'),
+      derivedVersion,
+    },
+  };
   await mkdir(dirname(decision.paths.markerPath), { recursive: true });
   const temporaryPath = join(dirname(decision.paths.markerPath), `${markerFileName}.${process.pid}.${randomUUID()}.tmp`);
-  await writeFile(temporaryPath, `${JSON.stringify(decision.marker, null, 2)}\n`);
+  await writeFile(temporaryPath, `${JSON.stringify(marker, null, 2)}\n`);
   await rename(temporaryPath, decision.paths.markerPath);
 };
 

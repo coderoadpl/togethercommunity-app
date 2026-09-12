@@ -169,6 +169,7 @@ const harness = (options: {
         setActive: async () => null,
       },
       orders: {
+        completeTestCheckout: async () => null,
         create: async (_t, order) => {
           orders.push(order);
         },
@@ -189,6 +190,7 @@ const harness = (options: {
 };
 
 const activeGrant = (): ProductGrant => ({
+  mode: 'live',
   id: 'grant-existing',
   tenantId: 't1',
   memberId: 'm1',

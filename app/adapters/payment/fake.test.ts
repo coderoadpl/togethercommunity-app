@@ -10,6 +10,7 @@ const secret = 'whsec_known_test_secret';
 const provider = createFakePaymentProvider({ resolve: async () => ok(secret) });
 const payload = JSON.stringify({
   id: 'evt_123',
+  livemode: false,
   type: 'checkout.session.completed',
   data: {
     object: {
@@ -69,6 +70,7 @@ describe('fake Stripe webhook verification', () => {
       ok: true,
       value: {
         id: 'evt_123',
+        livemode: false,
         type: 'checkout.session.completed',
         objectId: 'cs_123',
         createdAt: null,

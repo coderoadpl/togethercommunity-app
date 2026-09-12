@@ -140,6 +140,7 @@ const erasureFor = (
 const subscriptionRow = (
   input: Partial<MemberSubscription> & { id: string },
 ): MemberSubscription => ({
+  mode: 'live',
   id: input.id,
   tenantId: input.tenantId ?? 't-acme',
   memberId: input.memberId ?? 'm1',
@@ -523,6 +524,7 @@ describe('removeMember', () => {
       {
         tenantId: 't-acme',
         providerSubscriptionId: 'sub_subscription-1',
+        mode: 'live',
         idempotencyKey: 'member-removal-subscription-1',
       },
     ]);

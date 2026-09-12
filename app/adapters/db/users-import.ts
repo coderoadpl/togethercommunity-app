@@ -157,7 +157,7 @@ const commitGrant = async (
     const [current] = await executor
       .select({ memberId: productGrants.memberId, productId: productGrants.productId })
       .from(productGrants)
-      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grant.id)))
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.id, grant.id)))
       .limit(1);
     if (
       current === undefined
@@ -172,7 +172,7 @@ const commitGrant = async (
           expiresAt: grant.expiresAt,
           legacyId: grant.legacyId,
         })
-        .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grant.id)))
+        .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.id, grant.id)))
         .returning({ id: productGrants.id });
       if (updated.length !== 1) return false;
     }
@@ -313,7 +313,7 @@ export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
     const [row] = await db
       .select()
       .from(productGrants)
-      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.id, grantId)))
       .limit(1);
     return row === undefined ? null : productGrantSchema.parse(row);
   },
@@ -322,7 +322,7 @@ export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
       .select()
       .from(productGrants)
       .where(and(
-        eq(productGrants.tenantId, tenantId),
+        eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'),
         eq(productGrants.memberId, input.memberId),
         eq(productGrants.productId, input.productId),
       ))

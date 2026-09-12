@@ -48,6 +48,7 @@ export const listOrders = async (
   if (!parsed.success) return err(validation('Invalid orders query', parsed.error.flatten()));
 
   const { orders, total } = await deps.orders.list(tenant.value, {
+    ...(parsed.data.mode === undefined ? {} : { mode: parsed.data.mode }),
     page: parsed.data.page,
     pageSize: parsed.data.pageSize,
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
@@ -136,6 +137,7 @@ export const exportOrders = async (
 
   const pageSize = 100;
   const first = await deps.orders.list(tenant.value, {
+    mode: 'live',
     page: 1,
     pageSize,
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
@@ -148,6 +150,7 @@ export const exportOrders = async (
   const remaining = await Promise.all(
     Array.from({ length: Math.max(0, pageCount - 1) }, (_value, index) =>
       deps.orders.list(tenant.value, {
+        mode: 'live',
         page: index + 2,
         pageSize,
         ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),

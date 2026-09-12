@@ -3,6 +3,10 @@ import { z } from 'zod';
 export const tenantSecretKeySchema = z.enum([
   'stripe.restrictedKey',
   'stripe.webhookSecret',
+  'stripe.testRestrictedKey',
+  'stripe.testWebhookSecret',
+  'stripe.testWebhookEndpointId',
+  'stripe.testLastEventAt',
   'bunny.apiKey',
   'bunny.securityKey',
   's3.accessKeyId',

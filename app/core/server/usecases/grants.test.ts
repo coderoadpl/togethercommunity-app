@@ -99,6 +99,7 @@ const product = (id: string, tenantId: string): Product => ({
 });
 
 const grantRow = (overrides: Partial<ProductGrant> & { id: string }): ProductGrant => ({
+  mode: 'live',
   tenantId: 't-acme',
   memberId: 'm1',
   productId: 'p1',
@@ -169,6 +170,7 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
       grants
         .filter((g) => g.tenantId === tenantId && g.memberId === memberId)
         .map((g) => ({
+          mode: g.mode,
           id: g.id,
           productId: g.productId,
           productName: products.find((p) => p.id === g.productId)?.title ?? 'unknown',

@@ -112,6 +112,7 @@ const pCourse: Product = {
 };
 
 const activeGrant: ProductGrant = {
+  mode: 'live',
   id: 'g1',
   tenantId: 't1',
   memberId: 'mem1',

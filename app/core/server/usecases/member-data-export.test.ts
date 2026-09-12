@@ -110,6 +110,7 @@ const deps = (
     countActive: async () => 0,
   },
   orders: {
+    completeTestCheckout: async () => null,
     create: async () => undefined,
     list: async () => ({ orders: [], total: 0 }),
     listForMember: async () => [],

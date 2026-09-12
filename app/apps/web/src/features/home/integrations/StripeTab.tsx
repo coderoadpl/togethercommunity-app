@@ -16,16 +16,19 @@ import type { StripeMode } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
-import { localizePanelError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { ProviderTest } from './ProviderTest.js';
 import { previewFor } from './secret-preview.js';
 
 const StripeConfiguration = ({
+  slot = 'live',
   maskedPreview,
   webhookConfigured,
   mode,
 }: {
+  slot?: StripeMode;
   maskedPreview: string | null;
   webhookConfigured: boolean;
   mode: StripeMode | null;
@@ -41,26 +44,28 @@ const StripeConfiguration = ({
       await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
     },
   });
-  const remove = useMutation({
-    ...actions.deleteStripeSecrets,
+  const removalCallbacks = {
     onSuccess: () => setConfirmingRemove(false),
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
     },
-  });
+  };
+  const removeLive = useMutation({ ...actions.deleteStripeSecrets, ...removalCallbacks });
+  const removeTest = useMutation({ ...actions.removeStripeTestMode, ...removalCallbacks });
+  const remove = slot === 'test' ? removeTest : removeLive;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    configure.mutate({ restrictedKey });
+    configure.mutate({ restrictedKey, mode: slot });
   };
 
   return (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.6rem' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <FormLabel htmlFor="stripe-restricted-key">{t.integrations.restrictedKeyLabel}</FormLabel>
+        <FormLabel htmlFor={`stripe-${slot}-restricted-key`}>{t.integrations.restrictedKeyLabel}</FormLabel>
         <Chip
           size="small"
           variant="outlined"
-          data-testid="stripe-key-status"
+          data-testid={`stripe-${slot === 'test' ? 'test-' : ''}key-status`}
           label={maskedPreview === null
             ? t.integrations.notConfigured
             : `${t.integrations.configured} · ${maskedPreview}`}
@@ -69,18 +74,18 @@ const StripeConfiguration = ({
           <Chip
             size="small"
             color={mode === 'live' ? 'success' : 'info'}
-            data-testid="stripe-mode-badge"
+            data-testid={`stripe-${slot === 'test' ? 'test-' : ''}mode-badge`}
             label={mode === 'live' ? t.integrations.stripeLiveMode : t.integrations.stripeTestMode}
           />
         )}
       </Box>
       <OutlinedInput
-        id="stripe-restricted-key"
+        id={`stripe-${slot}-restricted-key`}
         type="password"
         value={restrictedKey}
         placeholder={t.integrations.valuePlaceholder}
         onChange={(event) => setRestrictedKey(event.target.value)}
-        inputProps={{ 'data-testid': 'stripe-restricted-key' }}
+        inputProps={{ 'data-testid': `stripe-${slot === 'test' ? 'test-' : ''}restricted-key` }}
         autoComplete="off"
       />
       <Typography variant="caption" component="p">
@@ -90,7 +95,7 @@ const StripeConfiguration = ({
         <Button
           type="submit"
           variant="contained"
-          data-testid="stripe-configure"
+          data-testid={`stripe-${slot === 'test' ? 'test-' : ''}configure`}
           disabled={configure.isPending || restrictedKey.trim() === ''}
         >
           {configure.isPending ? t.integrations.stripeConfiguring : t.integrations.stripeConfigure}
@@ -99,7 +104,7 @@ const StripeConfiguration = ({
           <Button
             type="button"
             color="error"
-            data-testid="stripe-remove"
+            data-testid={`stripe-${slot === 'test' ? 'test-' : ''}remove`}
             disabled={remove.isPending}
             onClick={() => setConfirmingRemove(true)}
           >
@@ -108,7 +113,7 @@ const StripeConfiguration = ({
         )}
       </Box>
       {configure.isSuccess ? (
-        <Typography variant="caption" component="p" data-testid="stripe-configured">
+        <Typography variant="caption" component="p" data-testid={`stripe-${slot === 'test' ? 'test-' : ''}configured`}>
           {t.integrations.stripeConfigured}
         </Typography>
       ) : null}
@@ -128,7 +133,7 @@ const StripeConfiguration = ({
         pending={remove.isPending}
         onClose={() => setConfirmingRemove(false)}
         onConfirm={() => remove.mutate(undefined)}
-        confirmTestId="stripe-remove-confirm"
+        confirmTestId={`stripe-${slot === 'test' ? 'test-' : ''}remove-confirm`}
       />
     </Box>
   );
@@ -204,6 +209,7 @@ const BillingPortalField = ({ canEdit }: { canEdit: boolean }) => {
 
 export const StripeTab = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const { tenant } = usePanelContext();
   const secrets = useQuery(actions.tenantSecrets);
 
@@ -222,11 +228,18 @@ export const StripeTab = () => {
         ) : secrets.isError ? (
           <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
         ) : (
-          <StripeConfiguration
-            maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}
-            webhookConfigured={previewFor(secrets.data.secrets, 'stripe.webhookSecret') !== null}
-            mode={stripeMode}
-          />
+          <>
+            <StripeConfiguration
+              maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}
+              webhookConfigured={previewFor(secrets.data.secrets, 'stripe.webhookSecret') !== null}
+              mode={stripeMode}
+            />
+            {stripeMode === 'test' ? (
+              <Alert severity="warning" data-testid="stripe-live-slot-test-key">
+                {t.integrations.stripeLiveSlotTestKey}
+              </Alert>
+            ) : null}
+          </>
         )}
 
         <CopyField
@@ -242,6 +255,24 @@ export const StripeTab = () => {
           hint={t.integrations.saveKeysFirst}
           showHint={!secrets.isPending && !secrets.isError}
         />
+      </SectionCard>
+
+      <SectionCard title={t.integrations.stripeTestMode} description={t.integrations.stripeTestDescription}>
+        {secrets.isSuccess ? <>
+          <StripeConfiguration slot="test"
+            maskedPreview={previewFor(secrets.data.secrets, 'stripe.testRestrictedKey')}
+            webhookConfigured={previewFor(secrets.data.secrets, 'stripe.testWebhookSecret') !== null}
+            mode={previewFor(secrets.data.secrets, 'stripe.testRestrictedKey') === null ? null : 'test'}
+          />
+          <Typography>{previewFor(secrets.data.secrets, 'stripe.testWebhookSecret') !== null
+            ? t.integrations.stripeTestEndpointRegistered : t.integrations.notConfigured}</Typography>
+          <Typography>{t.integrations.stripeTestLastEvent({
+            value: secrets.data.stripeTestLastEventAt === null
+              ? t.integrations.stripeTestNoEvents
+              : formatDateTime(secrets.data.stripeTestLastEventAt, language),
+          })}</Typography>
+          <CopyField label={t.integrations.webhookUrlLabel} value={`${secrets.data.stripeWebhookUrl}?mode=test`} testId="stripe-test-webhook-url" />
+        </> : null}
       </SectionCard>
 
       <BillingPortalField canEdit={tenant.staffRole === 'owner'} />

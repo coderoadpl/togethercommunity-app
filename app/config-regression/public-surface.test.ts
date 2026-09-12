@@ -25,6 +25,8 @@ const publicServerImports = publicApp
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'authLinkBaseUrl',
+  'ensureMember',
+  'hasStripeTestSession',
   'fulfillStripeWebhook',
   'getPaymentConfig',
   'getPlayableLesson',
@@ -40,6 +42,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'resolveSignInMethods',
   'resolveTenant',
   'startCheckoutSession',
+  'testCheckoutRejection',
   'type PaymentWebhookEvent',
   'type ResolvedTenant',
   'validateCheckoutSelection',

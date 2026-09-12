@@ -40,6 +40,7 @@ const member: MemberWithProductIds = {
 
 const grants: MemberGrant[] = [
   {
+    mode: 'live',
     id: 'grant-active',
     productId: 'p1',
     productName: 'Full Course',
@@ -49,6 +50,7 @@ const grants: MemberGrant[] = [
     active: true,
   },
   {
+    mode: 'live',
     id: 'grant-expired',
     productId: 'p2',
     productName: 'Old Bundle',
@@ -352,6 +354,36 @@ describe('MemberDetail', () => {
     expect(screen.getByText(/1999/)).toBeInTheDocument();
   });
 
+  it('chips the sandbox grant, drops its renewal and filters by payment mode', async () => {
+    const user = userEvent.setup();
+    setup();
+    server.use(
+      http.get('/api/members/:memberId/grants', () => HttpResponse.json({
+        ok: true,
+        data: {
+          grants: [
+            grants[0],
+            { ...grants[0], id: 'grant-sandbox', mode: 'test', productName: 'Sandbox Course' },
+          ],
+        },
+      })),
+    );
+    renderMemberDetail();
+
+    expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
+    const sandbox = screen.getAllByTestId('grant-row')[1];
+    expect(sandbox).toHaveTextContent(en.sales.testChip);
+    expect(within(sandbox ?? document.body).queryByRole('button', { name: en.members.renew }))
+      .not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(en.sales.mode));
+    await user.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
+
+    await waitFor(() => expect(screen.getAllByTestId('grant-row')).toHaveLength(1));
+    expect(screen.getByTestId('grant-row')).toHaveTextContent('Sandbox Course');
+    expect(screen.queryByTestId('member-purchase-row')).not.toBeInTheDocument();
+  });
+
   it('labels every grant source', async () => {
     setup();
     const sources: GrantSource[] = ['manual', 'simulated', 'stripe', 'import'];
@@ -360,6 +392,7 @@ describe('MemberDetail', () => {
         ok: true,
         data: {
           grants: sources.map((source, index): MemberGrant => ({
+            mode: 'live',
             id: `grant-${source}`,
             productId: `p-${source}`,
             productName: `Product ${index}`,

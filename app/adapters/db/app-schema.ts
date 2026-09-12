@@ -467,6 +467,7 @@ export const couponEvents = pgTable(
 export const orders = pgTable(
   'orders',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
@@ -859,6 +860,7 @@ export const productPriceHistory = pgTable(
 export const memberSubscriptions = pgTable(
   'member_subscriptions',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
@@ -903,6 +905,7 @@ export const memberSubscriptions = pgTable(
 export const productGrants = pgTable(
   'product_grants',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
@@ -932,10 +935,11 @@ export const productGrants = pgTable(
     }).onDelete('cascade'),
     index('product_grants_tenantId_idx').on(table.tenantId),
     index('product_grants_memberId_idx').on(table.memberId),
-    uniqueIndex('product_grants_tenant_member_product_uidx').on(
+    uniqueIndex('product_grants_tenant_member_product_mode_uidx').on(
       table.tenantId,
       table.memberId,
       table.productId,
+      table.mode,
     ),
     uniqueIndex('product_grants_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)

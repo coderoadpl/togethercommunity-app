@@ -113,6 +113,7 @@ const product = (id: string): Product => ({
 });
 
 const grant = (memberId: string, productId: string, expiresAt: string | null = null): ProductGrant => ({
+  mode: 'live',
   id: `grant-${memberId}-${productId}`,
   tenantId: 't1',
   memberId,

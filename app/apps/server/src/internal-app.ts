@@ -1,3 +1,4 @@
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
 import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
 import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
@@ -113,6 +114,7 @@ import {
   spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
+  stripeTestSessionInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
   studentLessonPlaybackOutputSchema,
@@ -180,6 +182,8 @@ import {
   avatarUrlFor,
   cancelCampaign,
   configureStripe,
+  removeStripeTestMode,
+  createStripeTestSession,
   createCampaign,
   createCoupon,
   createCourse,
@@ -2314,6 +2318,25 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
+
+  app.post(API_PATHS.stripeTestSession, async (c) => {
+    if (!(await probeCorsOrigins(c.req, deps)).includes(c.req.header('origin') ?? '')) return respond(err(forbidden()));
+    const parsed = stripeTestSessionInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid test session payload')));
+    const session = createStripeTestSession(ctxOf(c), deps);
+    if (!session.ok) return respond(session);
+    c.res = respond(ok({ enabled: parsed.data.enabled }));
+    if (parsed.data.enabled) {
+      setCookie(c, 'together_stripe_test', session.value, {
+        httpOnly: true, secure: deps.secureCookies, sameSite: 'Strict', path: '/', maxAge: 3600,
+      });
+    } else {
+      deleteCookie(c, 'together_stripe_test', { path: '/' });
+    }
+    return c.res;
+  });
+
+  app.post(API_PATHS.stripeTestRemove, async (c) => respond(await removeStripeTestMode(ctxOf(c), deps)));
 
   app.post(API_PATHS.stripeConfigure, async (c) => {
     const body: unknown = await readJson(c.req.raw);

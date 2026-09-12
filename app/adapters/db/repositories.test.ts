@@ -180,6 +180,7 @@ const price = (over: Partial<ProductPrice> & { id: string; tenantId: string; pro
 });
 
 const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; memberId: string; productId: string }): ProductGrant => ({
+  mode: 'live',
   source: 'stripe',
   startsAt: PAST,
   expiresAt: FUTURE,
@@ -189,6 +190,7 @@ const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; mem
 });
 
 const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: string; productId: string }): Order => ({
+  mode: 'live',
   priceId: null,
   kind: 'one_time',
   status: 'paid',
@@ -205,6 +207,7 @@ const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: 
 const subscription = (
   over: Partial<MemberSubscription> & { id: string; tenantId: string; memberId: string; productId: string; priceId: string },
 ): MemberSubscription => ({
+  mode: 'live',
   provider: 'stripe',
   providerSubscriptionId: 'psub-1',
   status: 'active',
@@ -4077,4 +4080,36 @@ describe('createAccountSecurityReader', () => {
       twoFactorEnabled: false,
     });
   });
+});
+
+it('isolates test commerce in the database and keeps test grants out of member access', async () => {
+  const ordersRepo = createOrderRepository(db);
+  const grantsRepo = createProductGrantRepository(db);
+  const subscriptionsRepo = createMemberSubscriptionRepository(db);
+  const revenue = await ordersRepo.revenueSince(ACME, PAST);
+  const count = await ordersRepo.countSince(ACME, PAST);
+  const active = await subscriptionsRepo.countActive(ACME, NOW);
+  const liveGrant = await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme');
+  const pending = order({ id: 'order-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+    mode: 'test', status: 'pending', providerObjectIds: { checkoutSession: 'cs-mode-test' } });
+  await ordersRepo.create(ACME, pending);
+  expect(await ordersRepo.completeTestCheckout(GLOBEX, pending)).toBeNull();
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toMatchObject({ mode: 'test', status: 'paid' });
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toBeNull();
+  await grantsRepo.createGrant(ACME, grant({ id: 'grant-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test' }));
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme')).toEqual(liveGrant);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme', 'test')).toMatchObject({ id: 'grant-mode-test', mode: 'test' });
+  expect((await grantsRepo.listActiveForMember(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(false);
+  expect((await grantsRepo.listForMemberWithProductNames(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(true);
+  const pricesRepo = createProductPriceRepository(db);
+  await pricesRepo.create(ACME, price({ id: 'price-mode-test', tenantId: ACME, productId: 'prod-acme', kind: 'recurring', interval: 'month' }));
+  await subscriptionsRepo.create(ACME, subscription({ id: 'sub-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+    priceId: 'price-mode-test', providerSubscriptionId: 'stripe-sub-mode-test', mode: 'test' }));
+  expect(await subscriptionsRepo.countActive(ACME, NOW)).toBe(active);
+  expect(await ordersRepo.revenueSince(ACME, PAST)).toEqual(revenue);
+  expect(await ordersRepo.countSince(ACME, PAST)).toBe(count);
+  const testOrders = await ordersRepo.list(ACME, { mode: 'test', page: 1, pageSize: 100 });
+  expect(testOrders.orders.map((row) => row.id)).toContain(pending.id);
+  expect(testOrders.orders.every((row) => row.mode === 'test')).toBe(true);
+  expect((await ordersRepo.list(ACME, { mode: 'live', page: 1, pageSize: 100 })).orders.some((row) => row.id === pending.id)).toBe(false);
 });

@@ -24,6 +24,7 @@ memberVideoAutoplay: false,
 });
 
 const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem => ({
+  mode: 'live',
   id,
   tenantId: 't1',
   memberId: 'm1',
@@ -50,6 +51,7 @@ const harness = (rows: OrderListItem[] = []) => {
   const queries: OrderListQuery[] = [];
   const deps: OrdersDeps = {
     orders: {
+      completeTestCheckout: async () => null,
       create: async () => undefined,
       list: async (_tenantId, query) => {
         queries.push(query);

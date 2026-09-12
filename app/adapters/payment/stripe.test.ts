@@ -91,7 +91,7 @@ describe('configureWebhook', () => {
     expect(STRIPE_WEBHOOK_EVENTS.every((event) => [...body.values()].includes(event))).toBe(true);
   });
 
-  it('deletes endpoints matching the tenant metadata or URL before creating one', async () => {
+  it('replaces the tenant endpoints of the same slot and preserves the other slot and other tenants', async () => {
     const stripeApi = providerOverHttp((request) => {
       if (request.method === 'DELETE') {
         const id = new URL(request.url).pathname.split('/').at(-1);
@@ -111,13 +111,20 @@ describe('configureWebhook', () => {
         object: 'webhook_endpoint',
         metadata: { tenantId: 'tenant-1' },
         status: 'enabled',
-        url: 'https://old.example.test/stripe',
+        url: `${webhookUrl}?mode=test`,
       },
       {
         id: 'we_manual',
         object: 'webhook_endpoint',
         status: 'enabled',
         url: webhookUrl,
+      },
+      {
+        id: 'we_renamed',
+        object: 'webhook_endpoint',
+        metadata: { tenantId: 'tenant-1' },
+        status: 'enabled',
+        url: 'https://old.example.test/api/webhooks/stripe/tenant-1',
       },
       {
         id: 'we_other',
@@ -139,8 +146,8 @@ describe('configureWebhook', () => {
     expect(stripeApi.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`))
       .toEqual([
         'GET /v1/webhook_endpoints',
-        'DELETE /v1/webhook_endpoints/we_metadata',
         'DELETE /v1/webhook_endpoints/we_manual',
+        'DELETE /v1/webhook_endpoints/we_renamed',
         'POST /v1/webhook_endpoints',
       ]);
   });
@@ -538,4 +545,44 @@ describe('verifyWebhookEvent', () => {
       },
     });
   });
+});
+
+it('selects the sandbox key for test checkout and cancellation', async () => {
+  const slots: string[] = [];
+  const keys: string[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async (_tenantId, key) => {
+      slots.push(key);
+      return { ok: true, value: key === 'stripe.testRestrictedKey' ? 'rk_test_private' : 'rk_live_private' };
+    } },
+    clientFactory: (key) => {
+      keys.push(key);
+      return new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () =>
+        stripeJson({ id: 'cs_test', url: 'https://checkout.stripe.test/session' })) });
+    },
+  });
+  expect(await payment.createCheckoutSession({ tenantId: 'tenant-1', mode: 'test', productId: 'product-1',
+    productName: 'Course', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' }))
+    .toMatchObject({ ok: true });
+  expect(await payment.cancelSubscription({ tenantId: 'tenant-1', mode: 'test', providerSubscriptionId: 'sub_test', idempotencyKey: 'cancel-test' }))
+    .toMatchObject({ ok: true });
+  expect(slots).toEqual(['stripe.testRestrictedKey', 'stripe.testRestrictedKey']);
+  expect(keys).toEqual(['rk_test_private', 'rk_test_private']);
+});
+
+it.each(['live', 'test'] as const)('refuses the wrong key mode before making a %s API request', async (mode) => {
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ({ ok: true, value: mode === 'test' ? 'rk_live_wrong' : 'rk_test_wrong' }) },
+    clientFactory: () => { throw new Error('Must not construct a client for the wrong mode'); },
+  });
+  expect(await payment.cancelSubscription({ tenantId: 'tenant-1', mode, providerSubscriptionId: 'sub', idempotencyKey: 'cancel' }))
+    .toMatchObject({ ok: false, error: { code: 'validation' } });
+});
+
+it.each([true, false])('preserves the signed event livemode=%s', async (livemode) => {
+  const payloadRaw = JSON.stringify({ id: 'evt_mode', object: 'event', type: 'customer.subscription.deleted', livemode,
+    data: { object: { id: 'sub_mode', status: 'canceled' } } });
+  const signatureHeader = stripe.webhooks.generateTestHeaderString({ payload: payloadRaw, secret: webhookSecret });
+  expect(await provider.verifyWebhookEvent({ payloadRaw, signatureHeader, webhookSecret }))
+    .toMatchObject({ ok: true, value: { livemode } });
 });

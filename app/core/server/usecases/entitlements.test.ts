@@ -122,6 +122,7 @@ const grant = (
   startsAt: string,
   expiresAt: string | null,
 ): ProductGrant => ({
+  mode: 'live',
   id,
   tenantId: 't1',
   memberId: 'mem1',

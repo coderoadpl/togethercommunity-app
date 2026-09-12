@@ -654,6 +654,15 @@ export const publicPaymentConfigQuery = (api: ApiClient) =>
     call: ({ signal }) => api.publicPaymentConfig(signal),
   });
 
+export const removeStripeTestModeMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: ['stripe-test-remove'] as const, call: () => api.removeStripeTestMode() });
+
+export const stripeTestSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['stripe-test-session'] as const,
+    call: (input: { enabled: boolean }) => api.setStripeTestSession(input),
+  });
+
 export const createCheckoutSessionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: ['checkout-session'] as const,

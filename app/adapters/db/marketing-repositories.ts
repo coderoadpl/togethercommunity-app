@@ -715,14 +715,14 @@ export const createMarketingAudienceRepository = (db: Db): MarketingAudienceRepo
     if (input.afterMemberId !== null) filters.push(gt(members.id, input.afterMemberId));
     if (input.maxMemberId !== undefined) filters.push(lte(members.id, input.maxMemberId));
     if (input.productIds.length > 0) filters.push(inArray(members.id, db.select({ memberId: productGrants.memberId }).from(productGrants).where(and(
-      eq(productGrants.tenantId, tenantId), inArray(productGrants.productId, input.productIds),
+      eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), inArray(productGrants.productId, input.productIds),
       or(isNull(productGrants.expiresAt), gt(productGrants.expiresAt, new Date().toISOString())),
     ))));
     filters.push(sql`exists (select 1 from ${marketingConsents} mc where mc.tenant_id = ${tenantId} and mc.email = lower(trim(${members.email})) and mc.definition_id = ${input.definitionId})`);
     const candidates = await db.select({ id: members.id, email: members.email, displayName: members.displayName }).from(members).where(and(...filters)).orderBy(asc(members.id)).limit(input.limit === undefined ? 100000 : Math.max(input.limit * 4, input.limit));
     const output = [];
     for (const member of candidates) {
-      const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, member.id)));
+      const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.memberId, member.id)));
       output.push({ memberId: member.id, email: normalizeEmail(member.email), displayName: member.displayName, productIds: grants.map((grant) => grant.productId) });
       if (input.limit !== undefined && output.length >= input.limit) break;
     }

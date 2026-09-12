@@ -18,6 +18,7 @@ import {
   type CouponCheckoutSession,
   type Order,
   type ProductPrice,
+  type StripeMode,
   type MemberSubscription,
 } from '#core/domain/index.js';
 
@@ -76,13 +77,23 @@ interface EventApplication {
   pendingConsent?: string;
 }
 
+const ignorePaymentMode = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+  reason: string,
+): Result<EventApplication, AppError> => {
+  deps.logger.warn(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} mode=${event.mode ?? 'live'} reason=${reason}`);
+  return ok({ processed: false });
+};
+
 const enqueueAutoInvoice = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
   transactionDeps: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<void> => {
-  if (event.objectId === null) return;
+  if (event.objectId === null || event.mode === 'test') return;
   const providerObjectIds =
     event.type === 'invoice.paid'
       ? { invoice: event.objectId }
@@ -119,6 +130,10 @@ const enqueueSubscriptionNotice = async (
   deps: StripeWebhookDeps,
 ): Promise<Result<void, AppError>> => {
   if (subscription === null) return ok(undefined);
+  if (subscription.mode === 'test') {
+    deps.logger.warn(`[stripe-test] suppressed ${kind} tenant=${tenant.id} subscription=${subscription.id}`);
+    return ok(undefined);
+  }
   const [member, product, settings] = await Promise.all([
     deps.members.findById(tenant.id, subscription.memberId),
     deps.products.findById(tenant.id, subscription.productId),
@@ -294,6 +309,7 @@ const claimDiscountedOrder = async (
   const discountCents =
     event.checkoutSession?.discountTotalCents ?? context.session.discountCents;
   const order: Order = {
+    mode: 'live',
     id: deps.ids.nextId(),
     tenantId: tenant.id,
     memberId,
@@ -366,11 +382,20 @@ const applyCheckoutCompleted = async (
     price?.kind === 'recurring'
       ? nextPeriodEnd(deps.clock.nowIso(), price.interval ?? 'month')
       : null;
-  const couponContext = await couponPaymentContext(tenant, event, deps);
+  const couponContext = event.mode === 'test' ? null : await couponPaymentContext(tenant, event, deps);
   const billing = await billingForCheckout(tenant.id, event, deps);
   const couponCoversFullPrice =
     couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === 0;
 
+  const pending = event.mode === 'test'
+    ? await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId })
+    : null;
+  if (pending !== null && pending.mode !== 'test') return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
+  if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
+  const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
+    ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
+  });
+  if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const fulfilled = await fulfillEnrollment(
     tenant,
     {
@@ -379,7 +404,8 @@ const applyCheckoutCompleted = async (
       expiresAt: periodEnd === null ? null : graceExpiresAt(periodEnd),
       language: metadata.language ?? null,
       source: provider,
-      sendEmail: true,
+      mode: event.mode ?? 'live',
+      sendEmail: event.mode !== 'test',
       allowUnpublished: true,
     },
     deps,
@@ -401,11 +427,13 @@ const applyCheckoutCompleted = async (
     return err(validation('Coupon redemption limit reached'));
   }
   const product = await deps.products.findById(tenant.id, metadata.productId);
+  if (event.mode === 'test') deps.logger.warn(`[stripe-test] fulfilled tenant=${tenant.id} checkout=${event.objectId}; member email suppressed`);
   const paidOrder =
-    discounted?.order ??
+    completedTestOrder ?? discounted?.order ??
     (await appendOrder(
       tenant.id,
       {
+        mode: event.mode ?? 'live',
         memberId: fulfilled.value.memberId,
         productId: metadata.productId,
         priceId: price?.id ?? null,
@@ -437,6 +465,7 @@ const applyCheckoutCompleted = async (
     await startSubscription(
       tenant.id,
       {
+        mode: event.mode ?? 'live',
         memberId: fulfilled.value.memberId,
         price,
         provider,
@@ -480,6 +509,7 @@ const applyInvoiceEvent = async (
     providerSubscriptionId,
   );
   if (!subscription) return ok({ processed: false });
+  if (subscription.mode !== (event.mode ?? 'live')) return ignorePaymentMode(tenant, event, deps, 'subscription mode mismatch');
 
   const cycle = {
     subscription,
@@ -503,6 +533,7 @@ const applyInvoiceEvent = async (
       tenant.id,
       providerSubscriptionId,
     );
+    if (previousOrder !== null && previousOrder.mode !== subscription.mode) return ignorePaymentMode(tenant, event, deps, 'invoice order mode mismatch');
     const renewed = await renewSubscriptionPeriod(
       tenant.id,
       {
@@ -514,6 +545,7 @@ const applyInvoiceEvent = async (
       deps,
     );
     if (
+      subscription.mode === 'live' &&
       existingOrder === null &&
       subscription.couponId !== null &&
       subscription.couponRecurringDuration === 'forever' &&
@@ -577,6 +609,7 @@ const applyPaymentAdjustment = async (
   };
   const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, providerObjectIds);
   if (!order) return ok({ processed: false });
+  if (order.mode !== (event.mode ?? 'live')) return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
 
   if (adjustment.refund != null && !adjustment.refund.full) {
     if (order.status === 'paid') {
@@ -593,15 +626,18 @@ const applyPaymentAdjustment = async (
       tenant.id,
       providerSubscriptionId,
     );
+    if (latest !== null && latest.mode !== order.mode) return ignorePaymentMode(tenant, event, deps, 'latest order mode mismatch');
     if (latest?.id === order.id) {
       subscriptionToCancel = await deps.subscriptions.findByProviderSubscriptionId(
         tenant.id,
         providerSubscriptionId,
       );
+      if (subscriptionToCancel !== null && subscriptionToCancel.mode !== order.mode) return ignorePaymentMode(tenant, event, deps, 'adjustment subscription mode mismatch');
       if (subscriptionToCancel !== null && subscriptionToCancel.status !== 'canceled') {
         const canceled = await deps.payment.cancelSubscription({
           tenantId: tenant.id,
           providerSubscriptionId,
+          mode: order.mode,
           idempotencyKey: `payment-adjustment-${event.id}-${subscriptionToCancel.id}`,
         });
         if (!canceled.ok) return canceled;
@@ -618,10 +654,11 @@ const applyPaymentAdjustment = async (
     order.memberId,
     order.productId,
   );
-  let remainingAccess = remainingOrders.some((candidate) => candidate.kind === 'one_time');
+  let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
   if (!remainingAccess) {
     const providerSubscriptionIds = new Set(
       remainingOrders
+        .filter((candidate) => candidate.mode === order.mode)
         .map((candidate) => candidate.providerObjectIds['subscription'])
         .filter((id): id is string => id !== undefined),
     );
@@ -631,7 +668,7 @@ const applyPaymentAdjustment = async (
         deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
       ]);
       if (
-        latest !== null &&
+        latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
         ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
         subscription?.productId === order.productId &&
         subscription.currentPeriodEnd >= deps.clock.nowIso()
@@ -642,7 +679,7 @@ const applyPaymentAdjustment = async (
     }
   }
   if (!remainingAccess) {
-    const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId);
+    const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId, order.mode);
     if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
   }
 
@@ -675,6 +712,7 @@ const applySubscriptionEvent = async (
   if (!event.objectId) return ok({ processed: false });
   const subscription = await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
   if (!subscription) return ok({ processed: false });
+  if (subscription.mode !== (event.mode ?? 'live')) return ignorePaymentMode(tenant, event, deps, 'subscription mode mismatch');
   const deleted = event.type === 'customer.subscription.deleted';
   const providerEventAt = event.createdAt ?? null;
   if (!deleted && providerEventAt !== null && providerEventAt < subscription.updatedAt) {
@@ -686,7 +724,7 @@ const applySubscriptionEvent = async (
   const endedAt = event.subscription?.endedAt ?? null;
   const paidThrough = canceled && endedAt !== null && endedAt < periodEnd ? endedAt : periodEnd;
   const grantBefore = deleted
-    ? await deps.grants.findGrant(tenant.id, subscription.memberId, subscription.productId)
+    ? await deps.grants.findGrant(tenant.id, subscription.memberId, subscription.productId, subscription.mode)
     : null;
   const updated = await updateSubscriptionFromProvider(
     tenant.id,
@@ -726,7 +764,7 @@ const processCheckoutConsent = async (
   deps: StripeWebhookDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<Result<string | null, AppError>> => {
-  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
+  if (event.mode === 'test' || !event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
   const consent = await transaction.consentTransaction.run((repositories) =>
     recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
   if (consent.ok) return ok(null);
@@ -744,6 +782,58 @@ const processCheckoutConsent = async (
   return ok(reason);
 };
 
+const paymentModeMatches = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Promise<boolean> => {
+  const mode = event.mode ?? 'live';
+  const ignore = (reason: string): false => {
+    ignorePaymentMode(tenant, event, deps, reason);
+    return false;
+  };
+  if ((event.mode !== undefined || event.livemode !== undefined) && event.livemode !== (mode === 'live')) return ignore('livemode mismatch');
+  const ids = event.checkoutSession !== null ? providerObjectIdsForCheckout(event) : {
+    ...(event.invoice !== undefined && event.invoice !== null && event.objectId !== null ? { invoice: event.objectId } : {}),
+    ...(event.invoice?.paymentIntentId == null ? {} : { paymentIntent: event.invoice.paymentIntentId }),
+    ...(event.invoice?.chargeId == null ? {} : { charge: event.invoice.chargeId }),
+    ...(event.adjustment?.invoiceId == null ? {} : { invoice: event.adjustment.invoiceId }),
+    ...(event.adjustment?.paymentIntentId == null ? {} : { paymentIntent: event.adjustment.paymentIntentId }),
+    ...(event.adjustment?.chargeId == null ? {} : { charge: event.adjustment.chargeId }),
+  };
+  const correlated = Object.fromEntries(Object.entries(ids).filter(([key]) => key !== 'subscription'));
+  const findOrder = async (searched: StripeMode): Promise<Order | null> =>
+    Object.keys(correlated).length === 0
+      ? null
+      : deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, correlated, searched);
+  if (await findOrder(mode === 'live' ? 'test' : 'live') !== null) return ignore('order mode mismatch');
+  const order = mode === 'test' ? await findOrder('test') : null;
+  let matched = order !== null;
+  if (order !== null && event.checkoutSession !== null) {
+    const member = await deps.members.findById(tenant.id, order.memberId);
+    if (order.productId !== event.checkoutSession.metadata.productId ||
+      order.priceId !== event.checkoutSession.metadata.priceId ||
+      member?.email !== normalizeEmail(event.checkoutSession.email ?? event.checkoutSession.metadata.memberEmail ?? '')) {
+      return ignore('checkout does not match the recorded order');
+    }
+  }
+  const subscriptionId = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
+    (event.type.startsWith('customer.subscription.') ? event.objectId : null);
+  if (subscriptionId != null) {
+    const subscription = await deps.subscriptions.findByProviderSubscriptionId(tenant.id, subscriptionId);
+    if (subscription !== null) {
+      if (subscription.mode !== mode) return ignore('subscription mode mismatch');
+      matched = true;
+    }
+  }
+  if (mode === 'live') return true;
+  if (!matched) return ignore('no matching test record');
+  if (event.checkoutSession !== null && order?.providerObjectIds.checkoutSession !== event.objectId) {
+    return ignore('no matching test checkout');
+  }
+  return true;
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
@@ -751,6 +841,8 @@ export const fulfillStripeWebhook = async (
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
+  if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
+  if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
 
   const processedEvent: ProcessedPaymentEvent = {

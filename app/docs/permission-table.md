@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 369. Exported `Ctx` use-case rows: 288.
+Closed capability count: 115. Route rows: 371. Exported `Ctx` use-case rows: 290.
 
 ## Human-readable diff
 
@@ -287,6 +287,8 @@ no changes
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/checkout/stripe-test-session` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/integrations/stripe/test-mode/remove` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ifirma/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ksef/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
@@ -430,6 +432,7 @@ no changes
 | `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `configure-stripe.ts#configureStripe` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
+| `configure-stripe.ts#removeStripeTestMode` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
 | `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#restoreContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
@@ -676,6 +679,7 @@ no changes
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `storage-configuration.ts#probeStorageConnection` | integration:test | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
 | `storage-configuration.ts#configureStorageConnection` | tenant:secret:write | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
+| `stripe-test-session.ts#createStripeTestSession` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stripe-test-session.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
@@ -699,12 +703,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1070` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1072` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:11` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:175` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1074` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1076` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1592` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1592` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -713,6 +717,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:586` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| staff-role | `apps/server/src/public-app.ts:534` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -757,6 +762,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
 | staff-role | `core/server/usecases/progress.ts:113` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
 | staff-role | `core/server/usecases/resolve-identity.ts:91` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
+| staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
 
 ## Suspicious but preserved
 

@@ -77,6 +77,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           <Stack direction="row" useFlexGap spacing="0.5rem">
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
+            {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
           </Stack>
         </Stack>
       </SectionCard>
@@ -167,7 +168,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                 {refreshInvoice.isPending ? t.sales.refreshingInvoice : t.sales.refreshInvoice}
               </Button>
             ) : null}
-          {order.billing !== null &&
+          {order.mode === 'live' && order.billing !== null &&
           order.billing !== undefined &&
           (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
             <Button

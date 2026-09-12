@@ -154,6 +154,60 @@ describe('SalesPanel', () => {
     expect(exportQueries[0]).not.toContain('page=');
     expect(exportQueries[0]).not.toContain('pageSize=');
   });
+
+  it('filters the sandbox rows and blocks the exports while the test mode is selected', async () => {
+    const user = userEvent.setup();
+    const listQueries: string[] = [];
+    server.use(
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/coupons/options', () => HttpResponse.json({ ok: true, data: { coupons: [] } })),
+      http.get('/api/orders/reconciliation', () =>
+        HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-08-03T12:00:00.000Z' } }),
+      ),
+      http.get('/api/orders', ({ request }) => {
+        const search = new URL(request.url).search;
+        listQueries.push(search);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            orders: [{
+              id: 'o-test', tenantId: 't1', memberId: 'm1', productId: 'p1', priceId: null,
+              mode: search.includes('mode=test') ? 'test' : 'live',
+              kind: 'one_time', status: 'paid', amountCents: 4900, currency: 'PLN',
+              provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+              couponCode: null, createdAt: '2026-07-18T10:00:00.000Z',
+              memberEmail: 'member@example.com', memberName: 'Ada', productTitle: 'Workshop',
+            }],
+            total: 1, page: 1, pageSize: 25,
+          },
+        });
+      }),
+    );
+
+    const rootRoute = createRootRoute();
+    const salesRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/panel/sales',
+      component: SalesPanel,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([salesRoute]),
+      history: createMemoryHistory({ initialEntries: ['/panel/sales'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
+    expect(screen.getByTestId('sales-export-csv')).toBeEnabled();
+
+    await user.click(screen.getByLabelText(en.sales.mode));
+    await user.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
+
+    await waitFor(() => expect(listQueries.some((query) => query.includes('mode=test'))).toBe(true));
+    await waitFor(() => expect(screen.getByTestId('sales-row')).toHaveTextContent(en.sales.testChip));
+    expect(screen.getByTestId('sales-export-csv')).toBeDisabled();
+    expect(screen.getByTestId('sales-export-json')).toBeDisabled();
+  });
 });
 
 describe('OrderDetailPage', () => {

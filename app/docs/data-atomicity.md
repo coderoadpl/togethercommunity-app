@@ -31,6 +31,8 @@ at all.
   members, outbox messages, or ownerless tenants.
 - Payments and webhooks: `PaymentTransactionPort.run` keeps every payment
   projection write, automatic invoice job enqueue, and webhook finalization in
+  one commit. `SubscriptionAdoptionTransaction.run` keeps the imported price,
+  subscription projection, product grant, and append-only member event writes in
   one commit.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,

@@ -3054,6 +3054,7 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
           and(
             eq(productPrices.tenantId, tenantId),
             eq(productPrices.active, true),
+            eq(productPrices.imported, false),
             inArray(productPrices.productId, productIds),
           ),
         )
@@ -3078,7 +3079,10 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
       interval: price.interval,
       amountCents: price.amountCents,
       currency: price.currency,
-      active: price.active,
+      active: price.imported === true ? false : price.active,
+      imported: price.imported ?? false,
+      providerPriceId: price.providerPriceId ?? null,
+      intervalCount: price.intervalCount ?? 1,
       createdAt: price.createdAt,
     });
   },
@@ -3086,7 +3090,7 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
     const rows = await db
       .update(productPrices)
       .set({ active })
-      .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, id)))
+      .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, id), ...(active ? [eq(productPrices.imported, false)] : [])))
       .returning();
     const row = rows[0];
     return row ? parseProductPrice(row) : null;
@@ -3469,6 +3473,19 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
       const row = rows[0];
       return row ? parseSubscription(row) : null;
     },
+    listKnownProviderSubscriptionIds: async (tenantId, providerSubscriptionIds) => {
+      if (providerSubscriptionIds.length === 0) return [];
+      const rows = await db
+        .select({ providerSubscriptionId: memberSubscriptions.providerSubscriptionId })
+        .from(memberSubscriptions)
+        .where(
+          and(
+            eq(memberSubscriptions.tenantId, tenantId),
+            inArray(memberSubscriptions.providerSubscriptionId, [...providerSubscriptionIds]),
+          ),
+        );
+      return rows.flatMap((row) => (row.providerSubscriptionId === null ? [] : [row.providerSubscriptionId]));
+    },
     listForMember: async (tenantId, memberId) =>
       (
         await db
@@ -3500,6 +3517,7 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
       const rows = await tx
         .update(memberSubscriptions)
         .set({
+          priceId: subscription.priceId,
           status: subscription.status,
           currentPeriodEnd: subscription.currentPeriodEnd,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,

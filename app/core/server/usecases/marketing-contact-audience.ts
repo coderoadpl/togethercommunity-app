@@ -8,6 +8,10 @@ import { reconcileMarketingMemberContacts } from './marketing-member-contacts.js
 export const prepareMarketingContactAudience = async (tenantId: string, audience: ContactCampaignAudience, deps: MarketingContactAudienceDeps): Promise<Result<void, AppError>> => {
   const parsed = contactCampaignAudienceInputSchema.safeParse(audience);
   if (!parsed.success) return err(validation('Invalid contact audience', parsed.error.flatten()));
+  return prepareValidatedMarketingContactAudience(tenantId, parsed.data, deps);
+};
+
+export const prepareValidatedMarketingContactAudience = async (tenantId: string, audience: ContactCampaignAudience, deps: MarketingContactAudienceDeps): Promise<Result<void, AppError>> => {
   const lists = await Promise.all([...new Set([...audience.includeLists, ...audience.excludeLists])].map((id) => deps.directory.lists.findById(tenantId, id)));
   if (lists.some((list) => list === null || list.archivedAt !== null)) return err(validation('Audience lists must exist and be active in this tenant'));
   if (audience.excludeProductIds.length > 0 && !await deps.directory.lists.validateRule(tenantId, { kind: 'product_grant', productIds: audience.excludeProductIds, state: 'ever' })) return err(validation('Excluded products must exist in this tenant'));

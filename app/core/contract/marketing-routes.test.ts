@@ -4,7 +4,9 @@ import {
   integrationTestInputSchema,
   marketingConsentDefinitionCreateInputSchema,
   marketingConsentDefinitionUpdateInputSchema,
+  marketingCampaignAudienceInputSchema,
   marketingCampaignCreateInputSchema,
+  marketingCampaignUpdateInputSchema,
   marketingAudiencePreviewInputSchema,
   marketingSesSettingsUpdateInputSchema,
 } from './routes.js';
@@ -74,6 +76,18 @@ describe('marketing route contracts', () => {
     expect(marketingAudiencePreviewInputSchema.safeParse({
       audience,
       consentDefinitionId: 'definition-news',
+    }).success).toBe(false);
+    expect(marketingCampaignUpdateInputSchema.safeParse({
+      audience,
+      campaignId: 'campaign-news',
+      name: 'Newsletter',
+      subject: 'Newsletter',
+      bodyHtml: '<p>Hello</p>',
+      consentDefinitionId: 'definition-news',
+    }).success).toBe(false);
+    expect(marketingCampaignAudienceInputSchema.safeParse({
+      campaignId: 'campaign-news',
+      audience,
     }).success).toBe(false);
   });
 });

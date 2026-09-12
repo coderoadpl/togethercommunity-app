@@ -1,6 +1,6 @@
 import { CampaignAudienceSection } from './CampaignAudienceSection.js';
 import { ApiError } from '#core/client/index.js';
-import { CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE, type ContactCampaignAudience } from '#core/domain/index.js';
+import type { ContactCampaignAudience } from '#core/domain/index.js';
 import type { marketingCampaignDetailOutputSchema } from '#core/contract/index.js';
 import { CampaignTextSection } from './CampaignTextSection.js';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -83,8 +83,13 @@ const engagementHasCounts = (engagement: CampaignEngagementStats): boolean =>
 const shouldMaskEngagement = (engagement: CampaignEngagementStats, trackingDisabled: boolean): boolean =>
   trackingDisabled && !engagementHasCounts(engagement);
 
+const trackingDisabledFromSettings = (settings: { isSuccess: boolean; data: { settings: { trackingEnabled: boolean } | null } | undefined }): boolean =>
+  settings.isSuccess && settings.data?.settings?.trackingEnabled !== true;
+
 const campaignAudienceOverlapError = (error: unknown, t: Messages): string | undefined =>
-  error instanceof ApiError && fieldErrorEntries(error.appError.details).some(([, messages]) => messages.includes(CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE))
+  error instanceof ApiError
+  && error.appError.code === 'validation'
+  && fieldErrorEntries(error.appError.details).some(([field]) => field === 'audience' || field === 'includeLists' || field === 'excludeLists')
     ? t.marketing.listAudienceOverlap
     : undefined;
 
@@ -198,7 +203,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
   const editable = campaign === undefined || campaignEditable(campaign);
-  const trackingDisabled = settings.isSuccess && settings.data.settings !== null && !settings.data.settings.trackingEnabled;
+  const trackingDisabled = trackingDisabledFromSettings(settings);
   const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId, audience]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
@@ -448,7 +453,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
           }}
         />
       ) : null}
-      {preview.isError ? <Alert severity="error">{localizePanelError(preview.error, t)}</Alert> : null}
+      {preview.isError ? <Alert severity="error">{t.marketing.audiencePreviewFailed}: {localizePanelError(preview.error, t)}</Alert> : null}
       {create.isError || update.isError ? <Alert severity="error">{localizePanelError(create.error ?? update.error, t)}</Alert> : null}
       {dirty ? <Alert severity="warning">{t.common.unsavedChanges}</Alert> : null}
     </SectionCard>
@@ -517,7 +522,8 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         )}
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
-      {schedule.isError || action.isError || testSend.isError ? <Alert severity="error">{localizePanelError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
+      {schedule.isError ? <Alert severity="error">{t.marketing.campaignScheduleFailed}: {localizePanelError(schedule.error, t)}</Alert> : null}
+      {action.isError || testSend.isError ? <Alert severity="error">{localizePanelError(action.error ?? testSend.error, t)}</Alert> : null}
       <ConfirmDialog
         open={confirmingCancel}
         title={t.marketing.cancelCampaignConfirmTitle}
@@ -546,7 +552,7 @@ export const CampaignsPanel = () => {
   const reputation = useQuery(actions.marketingReputation);
   const settings = useQuery(actions.marketingSesSettings);
   const navigate = useNavigate();
-  const trackingDisabled = settings.isSuccess && settings.data.settings?.trackingEnabled !== true;
+  const trackingDisabled = trackingDisabledFromSettings(settings);
   const showTrackingDisabledAlert = trackingDisabled && campaigns.isSuccess && campaigns.data.campaigns.some((campaign) => shouldMaskEngagement(campaign.engagement, true));
 
   return (
@@ -704,7 +710,7 @@ export const CampaignDetailPage = () => {
   const params = useParams({ strict: false });
   const campaign = useQuery(actions.marketingCampaign(params.campaignId ?? ''));
   const settings = useQuery(actions.marketingSesSettings);
-  const trackingDisabled = settings.isSuccess && settings.data.settings?.trackingEnabled !== true;
+  const trackingDisabled = trackingDisabledFromSettings(settings);
   if (campaign.isPending) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} />;
   if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizePanelError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;

@@ -2566,12 +2566,14 @@ export interface Messages {
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;
+    audiencePreviewFailed: string;
     audienceCount: (params: { count: number }) => string;
     create: string;
     creating: string;
     save: string;
     saving: string;
     schedule: string;
+    campaignScheduleFailed: string;
     scheduling: string;
     sendAtLabel: string;
     pause: string;

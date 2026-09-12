@@ -622,6 +622,7 @@ interface CampaignDeps {
   ids: IdGenerator;
   clock: Clock;
   scheduler: SchedulerPort;
+  logger?: { warn(message: string): void };
 }
 
 export const createCampaign = async (
@@ -798,7 +799,7 @@ export const scheduleCampaign = async (
   if (campaign === null) return err(notFound('Campaign was not found'));
   if (campaign.audienceVersion === 2) {
     if (deps.contactAudienceDeps === undefined) return err(validation('Contact audiences are not configured'));
-    const scheduled = await scheduleMarketingContactCampaign(ctx, input, { ...deps.contactAudienceDeps, campaigns: deps.campaigns });
+    const scheduled = await scheduleMarketingContactCampaign(ctx, input, { ...deps.contactAudienceDeps, campaigns: deps.campaigns, logger: deps.logger ?? { warn: () => undefined } });
     if (!scheduled.ok) return scheduled;
     const queued = await deps.scheduler.scheduleCampaignTick(tenantId.value, campaign.id, input.sendAt);
     return queued.ok ? scheduled : queued;

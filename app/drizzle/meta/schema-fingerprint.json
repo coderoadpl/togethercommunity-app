@@ -1,6 +1,6 @@
 {
-  "hash": "43c05b9f1833ad51cf8ca3af6b95f0dbc3dbbe2ea34200f4741241ae95f9cad1",
-  "shortId": "43c05b9f1833",
+  "hash": "55398982b11466d178ff78befad9a7bb669b65b3ca0615a91262f62c827c5b4f",
+  "shortId": "55398982b114",
   "schema": {
     "constraints": [
       {
@@ -12,6 +12,11 @@
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
         "name": "marketing_lists_rule_check",
         "table": "marketing_lists"
+      },
+      {
+        "definition": "CHECK (((NOT imported) OR (NOT active)))",
+        "name": "product_prices_imported_inactive",
+        "table": "product_prices"
       },
       {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
@@ -67,6 +72,11 @@
         "definition": "CHECK ((email = lower(btrim(email))))",
         "name": "marketing_contacts_normalized_email_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK ((interval_count > 0))",
+        "name": "product_prices_interval_count_positive",
+        "table": "product_prices"
       },
       {
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
@@ -6350,6 +6360,107 @@
       {
         "columns": [
           {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "interval_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "imported",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "active",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "interval",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_price_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_prices"
+      },
+      {
+        "columns": [
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -7113,83 +7224,6 @@
           }
         ],
         "name": "session"
-      },
-      {
-        "columns": [
-          {
-            "default": "true",
-            "generated": "",
-            "identity": "",
-            "name": "active",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "amount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "interval",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_prices"
       },
       {
         "columns": [

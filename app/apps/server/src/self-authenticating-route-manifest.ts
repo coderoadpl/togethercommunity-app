@@ -53,6 +53,8 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: API_PATHS.devGrant, methods: ['POST'], mechanism: 'Local-development-only composition flag' },
   { path: API_PATHS.devSubscriptionSimulateCycle, methods: ['POST'], mechanism: 'Local-development-only composition flag' },
   { path: API_PATHS.devSubscriptionSimulateFailure, methods: ['POST'], mechanism: 'Local-development-only composition flag' },
+  { path: API_PATHS.m2mAdoptStripeSubscription, methods: ['POST'], mechanism: 'Tenant API key' },
+  { path: API_PATHS.m2mListStripeSubscriptions, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mEnroll, methods: ['POST'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mTransactionalMessagesCreate, methods: ['POST'], mechanism: 'Tenant API key' },
   { path: API_PATHS.m2mTransactionalMessage, methods: ['GET'], mechanism: 'Tenant API key' },

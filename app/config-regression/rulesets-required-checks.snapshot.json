@@ -1,0 +1,40 @@
+{
+  "staging": [
+    "ai-review",
+    "check",
+    "visual",
+    "smoke",
+    "e2e (auth)",
+    "e2e (poc)",
+    "e2e (subs)",
+    "e2e (marketing)",
+    "e2e (coupon)",
+    "e2e (public-authz)",
+    "e2e (member-activity)",
+    "e2e (member-shell)",
+    "e2e (impersonation)",
+    "e2e (two-factor)",
+    "e2e (image-assets)",
+    "e2e (custom-domain)",
+    "staging-freeze"
+  ],
+  "main": [
+    "ai-review",
+    "check",
+    "visual",
+    "smoke",
+    "e2e (auth)",
+    "e2e (poc)",
+    "e2e (subs)",
+    "e2e (marketing)",
+    "e2e (coupon)",
+    "e2e (public-authz)",
+    "e2e (member-activity)",
+    "e2e (member-shell)",
+    "e2e (impersonation)",
+    "e2e (two-factor)",
+    "e2e (image-assets)",
+    "e2e (custom-domain)",
+    "promotion-guard"
+  ]
+}

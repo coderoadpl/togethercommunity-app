@@ -2869,18 +2869,16 @@ const reclaimGrantRowForMode = async (
   mode: 'live' | 'test',
 ): Promise<'blocked' | 'clear'> => {
   const otherMode = mode === 'live' ? 'test' : 'live';
-  const [conflicting] = await tx
-    .select({ id: productGrants.id })
-    .from(productGrants)
-    .where(and(
-      eq(productGrants.tenantId, tenantId),
-      eq(productGrants.memberId, memberId),
-      eq(productGrants.productId, productId),
-      eq(productGrants.mode, otherMode),
-    ));
+  const otherModeRow = and(
+    eq(productGrants.tenantId, tenantId),
+    eq(productGrants.memberId, memberId),
+    eq(productGrants.productId, productId),
+    eq(productGrants.mode, otherMode),
+  );
+  const [conflicting] = await tx.select({ id: productGrants.id }).from(productGrants).where(otherModeRow);
   if (conflicting === undefined) return 'clear';
   if (mode === 'test') return 'blocked';
-  await tx.delete(productGrants).where(eq(productGrants.id, conflicting.id));
+  await tx.delete(productGrants).where(otherModeRow);
   return 'clear';
 };
 

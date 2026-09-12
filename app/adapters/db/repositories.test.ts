@@ -4152,3 +4152,20 @@ it('reclaims the row from a stray test grant when a live grant is created for th
   expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toBeNull();
   expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2')).toMatchObject({ id: 'grant-mode-collision-live', mode: 'live' });
 });
+
+it('reclaiming a stray test grant does not delete another tenant grant that happens to share the same row id', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-shared-id', tenantId: ACME, title: 'Acme Shared Id' }));
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-shared-id', tenantId: GLOBEX, title: 'Globex Shared Id' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-shared-id', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-shared-id', mode: 'live',
+  }));
+  await grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'test',
+  }));
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id-live', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-shared-id')).toMatchObject({ id: 'grant-shared-id', mode: 'live' });
+});

@@ -55,6 +55,10 @@ SHA-256 hash, and only then returns 200. Receipt identity is `(tenant, topic ARN
 Duplicates retain the original receipt; conflicting bodies return 409. Storage failures return 5xx,
 allowing SNS redelivery. Unsupported verified payloads are durably ignored with a reason.
 
+The SNS subscription always points at the platform host for the tenant webhook path. Custom domains
+never change the subscription endpoint; user-facing unsubscribe and preference links may use the
+tenant origin separately.
+
 Workers process receipts before bulk sends. Feedback projection changes, suppression creation and
 receipt completion commit together. Callback-before-send correlation retries with exponential
 backoff capped at 15 minutes; unresolved receipts become dead letters after 24 hours. Replayed

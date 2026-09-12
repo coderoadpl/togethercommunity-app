@@ -911,7 +911,6 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
   const unsubscribeBaseUrl = async (tenantId: string): Promise<string> => `${await resolveOrigin(tenantId)}/u`;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants,
-    tenantDomains,
     routing: { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode },
   });
   const delivery = createMarketingDeliveryTransaction(db);

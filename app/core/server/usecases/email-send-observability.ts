@@ -2,6 +2,7 @@ import {
   emailSendExportQuerySchema,
   emailSendListQuerySchema,
   err,
+  isRedactedAuthEmailKind,
   notFound,
   ok,
   validation,
@@ -57,11 +58,12 @@ const neutralizeFormula = (value: string): string =>
 const quoteCsv = (value: string): string => `"${neutralizeFormula(value).replaceAll('"', '""')}"`;
 
 const csv = (rows: Awaited<ReturnType<EmailSendRepository['listPage']>>['sends']): string => [
-  'kind,recipient,subject,status,delivery_status,transport,campaign,source,source_app,sent_at,created_at',
+  'kind,source_kind,recipient,subject,status,delivery_status,transport,campaign,source,source_app,sent_at,created_at',
   ...rows.map((send) => [
     send.kind,
+    send.sourceKind,
     send.recipient,
-    send.subject,
+    isRedactedAuthEmailKind(send.sourceKind) ? '' : send.subject,
     send.status,
     send.deliveryStatus ?? '',
     send.transport,
@@ -91,6 +93,7 @@ export const exportEmailSends = async (
     ...(parsed.data.campaignId === undefined ? {} : { campaignId: parsed.data.campaignId }),
     ...(parsed.data.runId === undefined ? {} : { runId: parsed.data.runId }),
     ...(parsed.data.sourceApp === undefined ? {} : { sourceApp: parsed.data.sourceApp }),
+    ...(parsed.data.recipient === undefined ? {} : { recipient: parsed.data.recipient }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
   };
   const rows = [];

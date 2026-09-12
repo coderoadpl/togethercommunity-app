@@ -198,7 +198,8 @@ pnpm run check
 pnpm run smoke
 ```
 
-In `.github/workflows/ci.yml`, `check` also runs the production dependency audit.
+In `.github/workflows/ci.yml`, `check` also runs the production dependency audit
+and the pull-request ruleset drift check after workflow changes.
 The `smoke` job runs `smoke` and `quickstart:probe`; the macOS `visual` job runs
 `visual`, which builds Storybook before comparing captures. The twelve e2e
 matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`, `public-authz`,
@@ -208,7 +209,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->449<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->455<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -316,8 +317,9 @@ pnpm --silent run cli --tenant studio storage configure --provider minio \
 ```
 
 `pnpm run e2e:storage` runs the probe and its failure paths against a throwaway
-MinIO container; point `STORAGE_E2E_*` at a real bucket to run the same
-verification against a provider account. Runtime probes reject loopback,
+MinIO container using the image pinned in `scripts/test-images.ts`; point
+`STORAGE_E2E_*` at a real bucket to run the same verification against a provider
+account. Runtime probes reject loopback,
 link-local and private-network endpoints by default. Self-hosted MinIO on a
 trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 

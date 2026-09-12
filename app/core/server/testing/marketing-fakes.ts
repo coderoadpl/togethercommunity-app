@@ -57,6 +57,7 @@ import type {
   SnsVerifier,
   SnsWebhookDeliveryRepository,
   SuppressionRepository,
+  SesMaintenanceBackoffRepository,
   TenantSesSettingsRepository,
   TenantDocumentRepository,
   UnsubscribeTokenRepository,
@@ -1077,6 +1078,29 @@ export class InMemoryTenantSesSettingsRepository implements TenantSesSettingsRep
     if (index < 0) this.rows.push(structuredClone(settings));
     else this.rows[index] = structuredClone(settings);
     return structuredClone(settings);
+  }
+}
+
+export class InMemorySesMaintenanceBackoffRepository implements SesMaintenanceBackoffRepository {
+  private readonly entries = new Map<string, { attempts: number; retryAt: string }>();
+
+  async countAttempts(tenantId: string): Promise<number> {
+    return this.entries.get(tenantId)?.attempts ?? 0;
+  }
+
+  async defer(tenantId: string, input: { attempts: number; retryAt: string }): Promise<void> {
+    this.entries.set(tenantId, { ...input });
+  }
+
+  async clear(tenantId: string): Promise<void> {
+    this.entries.delete(tenantId);
+  }
+
+  retryable(tenantIds: string[], retryableAt: string): string[] {
+    return tenantIds.filter((tenantId) => {
+      const entry = this.entries.get(tenantId);
+      return entry === undefined || Date.parse(entry.retryAt) <= Date.parse(retryableAt);
+    });
   }
 }
 

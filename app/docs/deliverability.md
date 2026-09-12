@@ -3,6 +3,42 @@
 Together records transport acceptance for every successful transactional send. Later provider
 feedback depends on the selected transport.
 
+## Redacted platform auth sends
+
+Magic links, password-reset links and verification links always use the platform transport. When
+the recipient is already a member of the tenant that initiated the request, the tenant send log
+stores a projection before sending and settles it after the transport responds. The durable row
+contains only the normalized recipient, auth-message kind, lifecycle timestamps and status,
+platform transport marker, and returned provider message id. It never contains the rendered
+subject, template variables, body, URL or bearer value. Its lifecycle events follow the same
+redaction rule, and member and contact histories resolve the localized kind label at read time.
+
+The platform transport currently has no tenant-bound feedback configuration set, so these rows
+normally remain at `sent`. If verified feedback for the provider message id enters a tenant's
+existing inbox, the normal transactional correlation path can advance the row to delivered,
+bounced or complained. Two-factor authentication currently uses authenticator and backup codes,
+not mailed codes; a future mailed-code flow must add its own redacted auth-message kind before it
+can send.
+
+Redaction rules out storing the rendered message, so the outbox worker can never re-render a
+redacted row and never claims one. Delivery runs in the API process instead, with a bounded retry
+of three attempts, rather than the outbox's five attempts with backoff — a row left `queued` by a
+process restart is not resent, and the member has to request a new link. A failed attempt stores
+the transport error code, never its message, so the log stays diagnosable without leaking message
+content. These sends are also never charged to the tenant's lifetime platform starter pool:
+capping them would lock a space out of sign-in once the pool ran out.
+
+Delivery is started after the request is answered, so the response time and status of a
+magic-link, reset or verification request are the same whether or not the address belongs to a
+member of the requesting space.
+
+Only a request whose host resolves to a tenant *and* whose recipient is already a member of that
+tenant produces a send-log row. Sign-in mail requested through the platform host, or through a
+host that does not resolve to a tenant, keeps the earlier behaviour: it travels through the shared
+outbox with no tenant attached and appears in no tenant send log. Addresses that are not members
+are handled the same way on purpose — recording them would turn the send log into a membership
+oracle.
+
 | Transport | Feedback available to Together | Operational meaning |
 |---|---|---|
 | Tenant SES | Delivery, permanent and transient bounce, and complaint events through the non-engagement transactional configuration set and signed SNS webhook | Reputation reports and automated reactions reflect the SES event stream without open pixels or click redirects. |
@@ -54,6 +90,10 @@ The SNS webhook verifies the signature and topic binding, commits the exact raw 
 SHA-256 hash, and only then returns 200. Receipt identity is `(tenant, topic ARN, verified SNS MessageId)`.
 Duplicates retain the original receipt; conflicting bodies return 409. Storage failures return 5xx,
 allowing SNS redelivery. Unsupported verified payloads are durably ignored with a reason.
+
+The SNS subscription always points at the platform host for the tenant webhook path. Custom domains
+never change the subscription endpoint; user-facing unsubscribe and preference links may use the
+tenant origin separately.
 
 Workers process receipts before bulk sends. Feedback projection changes, suppression creation and
 receipt completion commit together. Callback-before-send correlation retries with exponential
@@ -114,6 +154,14 @@ across campaigns and tenants. Retention and identity/reputation maintenance use 
 `marketing_maintenance` scheduler run to keep their 30-minute schedule. Overdue maintenance runs
 before campaigns so bulk sending cannot consume its entire budget. The batch budget is `min(floor(0.9 × SES rate × send seconds), daily remaining, batch cap)`.
 Delayed cron invocations still run overdue maintenance; failed or incomplete passes retry on the next tick.
+The internal marketing tick runs SES identity refreshes, reputation alerts, outbox dispatch, retention
+and campaign dispatch through one scheduler worker context: the tenant worker identity plus the
+`operator-secret` capability set, which is the narrowest principal holding `scheduler:dispatch`. A failed
+identity refresh or reputation check is recorded on the maintenance run, logged, and the tenant's next
+attempt is pushed out with exponential backoff starting at one minute and capped at one hour. That
+next-attempt time lives on the tenant's SES settings row, so it survives restarts, deploys and serverless
+cold starts, and both maintenance list queries skip the tenant until it passes. A successful pass clears
+it. Campaign dispatch and retention keep running while a tenant is backing off.
 Every transport attempt consumes the shared tenant limiter; transactional traffic reserves half the
 marketing allocation when pending. Cached provider daily usage and local reservations constrain it
 further. Database work and provider latency consume the window, so these are capacity estimates.

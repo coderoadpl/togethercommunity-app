@@ -15,6 +15,11 @@ const auth = createAuth(db, {
   secureCookies: false,
   exposeMagicLinks: false,
   emailOutbox: createEmailOutboxRepository(db),
+  emailSender: { send: async () => ({ ok: true, value: { messageId: 'policy-auth-email', transport: 'platform' as const } }) },
+  authSendLog: {
+    queue: async () => ({ ok: true, value: undefined }),
+    settle: async () => ({ ok: true, value: undefined }),
+  },
   ids: { nextId: () => crypto.randomUUID() },
   clock: { nowIso: () => new Date(0).toISOString() },
   dispatchEmail: () => undefined,

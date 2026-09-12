@@ -66,6 +66,7 @@ import type {
   MarketingSesCredentialResolver,
   MarketingThrottleRepository,
   MemberRepository,
+  SesMaintenanceBackoffRepository,
   SesMarketingQuotaReader,
   SesMarketingSender,
   SuppressionRepository,
@@ -1734,6 +1735,36 @@ export const SES_IDENTITY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const SCHEDULER_RUN_PURGE_BATCH_SIZE = 500;
 const SCHEDULER_RUN_PURGE_TIME_BUDGET_MS = 5_000;
 const SCHEDULER_RUN_PURGE_MIN_BATCH_MS = 1_500;
+const SES_MAINTENANCE_RETRY_BASE_MS = 60_000;
+const SES_MAINTENANCE_RETRY_CAP_MS = 60 * 60_000;
+
+type ScheduledMaintenanceStep = 'identity' | 'reputation';
+
+export interface ScheduledMaintenanceBackoff {
+  defer(tenantId: string, now: string): Promise<string>;
+  clear(tenantId: string): Promise<void>;
+}
+
+/**
+ * Serverless ticks run in short-lived instances, so the next attempt has to
+ * outlive the process that scheduled it.
+ */
+export const createScheduledMaintenanceBackoff = (
+  store: SesMaintenanceBackoffRepository,
+): ScheduledMaintenanceBackoff => ({
+  defer: async (tenantId, now) => {
+    const attempts = await store.countAttempts(tenantId);
+    const retryAt = new Date(Date.parse(now) + Math.min(
+      SES_MAINTENANCE_RETRY_BASE_MS * 2 ** attempts,
+      SES_MAINTENANCE_RETRY_CAP_MS,
+    )).toISOString();
+    await store.defer(tenantId, { attempts: attempts + 1, retryAt });
+    return retryAt;
+  },
+  clear: async (tenantId) => {
+    await store.clear(tenantId);
+  },
+});
 
 const purgeFailureLabel = (cause: unknown): string => {
   if (!(cause instanceof Error)) return typeof cause;
@@ -1772,6 +1803,7 @@ export const runScheduledMarketingJobs = async (
     runReputationAlerts(
       tenantId: string,
     ): Promise<Result<{ sent: number }, AppError>>;
+    maintenanceBackoff: ScheduledMaintenanceBackoff;
     logger: { warn(message: string): void };
   },
 ): Promise<Result<{
@@ -1839,27 +1871,56 @@ export const runScheduledMarketingJobs = async (
     Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
   ).toISOString();
   const [identityTenantIds, sesTenantIds] = !maintenanceDue ? [[], []] : await Promise.all([
-    deps.jobs.listSesIdentityRefreshTenantIds(checkedBefore),
-    deps.jobs.listSesTenantIds(checkedBefore),
+    deps.jobs.listSesIdentityRefreshTenantIds(checkedBefore, input.now),
+    deps.jobs.listSesTenantIds(checkedBefore, input.now),
   ]);
+  const maintenanceFailures = new Map<string, string[]>();
+  const deferMaintenance = async (step: ScheduledMaintenanceStep, tenantId: string, failure: AppError) => {
+    const failures = maintenanceFailures.get(tenantId);
+    if (failures === undefined) {
+      const retryAt = await deps.maintenanceBackoff.defer(tenantId, input.now);
+      deps.logger.warn(`[marketing] ses maintenance deferred tenant=${tenantId} step=${step} error=${failure.code} retryAt=${retryAt}`);
+      maintenanceFailures.set(tenantId, [`${step}: ${failure.message}`]);
+    } else {
+      failures.push(`${step}: ${failure.message}`);
+    }
+    if (firstError === null) firstError = failure;
+  };
   for (const tenantId of identityTenantIds) {
     if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
     const refreshed = await deps.refreshIdentity(tenantId);
-    if (!refreshed.ok && firstError === null) firstError = refreshed.error;
+    if (refreshed.ok) await deps.maintenanceBackoff.clear(tenantId);
+    else await deferMaintenance('identity', tenantId, refreshed.error);
   }
   let reputationAlertsSent = 0;
   for (const tenantId of sesTenantIds) {
     if (input.shouldContinue?.() === false) { maintenanceIncomplete = true; break; }
     const alerted = await deps.runReputationAlerts(tenantId);
-    if (alerted.ok) reputationAlertsSent += alerted.value.sent;
-    else if (firstError === null) firstError = alerted.error;
+    if (alerted.ok) {
+      reputationAlertsSent += alerted.value.sent;
+      if (!maintenanceFailures.has(tenantId)) await deps.maintenanceBackoff.clear(tenantId);
+    } else await deferMaintenance('reputation', tenantId, alerted.error);
   }
   if (maintenanceRunId !== null) {
     const finishedAt = deps.clock.nowIso();
     const error = firstError?.message ?? (maintenanceIncomplete ? 'Marketing maintenance exceeded its time budget' : null);
     await deps.runs.finalize(maintenanceRunId, {
       finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(input.now)),
-      status: error === null ? 'completed' : 'failed', error, totals, tenants: [],
+      status: error === null ? 'completed' : 'failed', error, totals,
+      tenants: [...maintenanceFailures].map(([tenantId, errors]) => ({
+        id: deps.ids.nextId(),
+        runId: maintenanceRunId,
+        tenantId,
+        campaignsTouched: 0,
+        batchSize: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        budgetComputed: 0,
+        budgetUsed: 0,
+        errors,
+        createdAt: finishedAt,
+      })),
       idle: retentionTenantIds.length === 0
         && identityTenantIds.length === 0
         && sesTenantIds.length === 0

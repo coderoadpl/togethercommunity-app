@@ -1,6 +1,6 @@
 {
-  "hash": "9495e9e3307b39f86f35d4c919061440b5d409b85e6934c3ac7bf18e7c485e8f",
-  "shortId": "9495e9e3307b",
+  "hash": "39e9a8022ad8165101d80392cfec10be864b6075bee73d991cf65553ad822253",
+  "shortId": "39e9a8022ad8",
   "schema": {
     "constraints": [
       {
@@ -2561,6 +2561,14 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "maintenance_attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "quota_daily",
             "notNull": true,
             "type": "integer"
@@ -2666,6 +2674,14 @@
             "generated": "",
             "identity": "",
             "name": "identity_verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "maintenance_retry_at",
             "notNull": false,
             "type": "timestamp with time zone"
           },

@@ -71,7 +71,9 @@ export const createLayeredTransactionalEmailSender = (
     // The starter pool is a lifetime allowance, so capping auth mail would lock a space out of sign-in for good.
     if (message.forcePlatformTransport === true) {
       const sent = await sendWith('platform', deps.platform, message);
-      if (sent.ok) await deps.pool.recordCapExemptSend(message.tenantId);
+      if (sent.ok && message.unmeteredPlatformSend !== true) {
+        await deps.pool.recordCapExemptSend(message.tenantId);
+      }
       return sent;
     }
     const tenant = await resolveTenantTransactionalTransport(message.tenantId, deps.transports);

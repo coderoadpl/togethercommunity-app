@@ -35,6 +35,7 @@ import {
   InMemoryMarketingConsentRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySchedulerRunRepository,
+  InMemorySesMaintenanceBackoffRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
@@ -53,6 +54,7 @@ import {
   completeIdempotentRequest,
   confirmMarketingConsent,
   createCampaign,
+  createScheduledMaintenanceBackoff,
   createSmokeTenantSilencedCredentials,
   deleteCampaign,
   getMarketingEligibility,
@@ -1297,6 +1299,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
       runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
@@ -1364,6 +1367,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesTenantIds: async () => [],
       },
       runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
       refreshIdentity: async () => ok(undefined),
@@ -1408,6 +1412,7 @@ describe('marketing e-mail use-case integration', () => {
         listSesTenantIds: async () => ['tenant-1'],
       },
       runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);
         return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);

@@ -6,6 +6,7 @@ import { resolve, extname, join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { z } from 'zod';
 import { createVisualCapture, settlePage, waitForPaint } from './visual-browser-setup.js';
+import { componentScreenNames, componentScreens, componentStoryId } from './storybook-component-screens.js';
 import { pageScreens, pageStoryId, serverHtmlScreenNames } from './storybook-page-screens.js';
 import { SCREENS, VIEWPORTS, includesViewport, type ScreenSpec } from './visual-screen-inventory.js';
 import { comparePng } from './visual-png-compare.js';
@@ -41,7 +42,7 @@ const browser = await chromium.launch(executablePath ? { headless: true, executa
 const browserVersion = browser.version();
 const measurements: unknown[] = [];
 const startedAt = Date.now();
-const captureScreens: readonly ScreenSpec[] = [...pageScreens, ...[...serverHtmlScreenNames].map((name) => {
+const captureScreens: readonly ScreenSpec[] = [...pageScreens, ...componentScreens, ...[...serverHtmlScreenNames].map((name) => {
   const screen = SCREENS.find((entry) => entry.name === name);
   if (!screen) throw new Error(`Missing server HTML screen ${name}`);
   return {
@@ -60,7 +61,7 @@ try {
   const expectedGoldens = new Set<string>();
   for (const spec of captureScreens) {
     for (const viewport of VIEWPORTS.filter((viewport) => includesViewport(spec, viewport))) {
-      const id = pageStoryId(spec.name, viewport.name);
+      const id = componentStoryId(spec.name) ?? pageStoryId(spec.name, viewport.name);
       if (index.entries[id]?.type !== 'story') throw new Error(`Missing story ${id} for ${spec.name} at ${viewport.name}`);
       const file = `${spec.name}--shadcn--${viewport.name}.png`;
       if (expectedGoldens.has(file)) throw new Error(`Duplicate golden mapping: ${file}`);
@@ -75,10 +76,14 @@ try {
     if (!captureScreens.some((entry) => entry.name === name)) throw new Error(`Unknown page screen ${name}`);
   }
   // Match the authoring order and page reuse to preserve rounded-shadow paint caches.
+  const captureOrder = (name: string): number => {
+    const componentIndex = componentScreens.findIndex((entry) => entry.name === name);
+    return componentIndex === -1 ? SCREENS.findIndex((entry) => entry.name === name) : SCREENS.length + componentIndex;
+  };
   for (const viewport of VIEWPORTS) {
     for (const auth of ['public', 'member', 'member-free', 'creator'] as const) {
       const specs = captureScreens.filter((entry) => selected.includes(entry.name) && entry.auth === auth && includesViewport(entry, viewport))
-        .sort((left, right) => SCREENS.findIndex((entry) => entry.name === left.name) - SCREENS.findIndex((entry) => entry.name === right.name));
+        .sort((left, right) => captureOrder(left.name) - captureOrder(right.name));
       if (specs.length === 0) continue;
       const mode = 'light';
       const createCapture = async () => {
@@ -92,7 +97,7 @@ try {
         const capture = spec.isolateCapture ? await createCapture() : sharedCapture;
         const { page, errors } = capture;
         const screen = spec.name;
-        const id = pageStoryId(screen, viewport.name);
+        const id = componentStoryId(screen) ?? pageStoryId(screen, viewport.name);
         errors.length = 0;
         const captureStartedAt = Date.now();
         let failure: string | undefined;
@@ -101,7 +106,7 @@ try {
           const host = spec.host ?? `${spec.tenantSlug ?? 'studio'}.localhost`;
           await page.goto(`http://${host}:${address.port}/iframe.html?id=${id}&viewMode=story`, { waitUntil: 'load' });
           await spec.ready(page);
-          if (!serverHtmlScreenNames.has(screen)) await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
+          if (!serverHtmlScreenNames.has(screen) && !componentScreenNames.has(screen)) await page.waitForFunction(() => document.documentElement.dataset['fixtureReady'] === 'true');
           await settlePage(page, spec.waitForNetworkIdle ?? true);
           if (spec.settled) {
             await spec.settled(page);
@@ -122,8 +127,8 @@ try {
         if ((!updateMode && comparison !== null) || failure || errors.length > 0 || (diagnostics.missing !== undefined && diagnostics.missing !== '[]') || diagnostics.text.includes('Something went wrong!')) process.exitCode = 1;
         const byteIdentical = hasBaseline && (await readFile(baseline)).equals(await readFile(join(shots, `${file}.png`)));
         if (updateMode && !byteIdentical) updates.push({ baseline, current: join(shots, `${file}.png`) });
-        const fixturePath = resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
-        const fixtureSha256 = createHash('sha256').update(await readFile(fixturePath)).digest('hex');
+        const fixturePath = componentScreenNames.has(screen) ? null : resolve(`apps/web/src/stories/fixtures/${spec.fixtureName ?? screen}.json`);
+        const fixtureSha256 = fixturePath === null ? null : createHash('sha256').update(await readFile(fixturePath)).digest('hex');
         const result = { fixturePath, fixtureSha256, baseline, file, id, mode, viewport, milliseconds: Date.now() - captureStartedAt, comparison: comparison?.reason ?? `${String(countedPixels)} px differ`, countedPixels, byteIdentical, failure, errors: [...errors], diagnostics };
         if (spec.isolateCapture) await capture.context.close();
         measurements.push(result);

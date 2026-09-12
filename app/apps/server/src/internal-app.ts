@@ -477,6 +477,7 @@ const issueMagicLink = async (
   await deps.authPort.requestMagicLink({
     email: input.email,
     callbackURL: input.baseUrl,
+    tenantId: input.tenantId,
     tenantName: input.tenantName,
     language: input.language,
     baseUrl: input.baseUrl,
@@ -652,7 +653,6 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   const selfAuthenticatingRouteStart = app.routes.length;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
-    tenantDomains: deps.tenantDomains,
     routing: deps,
   });
   app.post(API_PATHS.emailDispatch, async (c) => {
@@ -1499,6 +1499,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
+      ...(c.req.query('recipient') === undefined ? {} : { recipient: c.req.query('recipient') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     });
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends export query', parsed.error.flatten())));
@@ -1520,6 +1521,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
+      ...(c.req.query('recipient') === undefined ? {} : { recipient: c.req.query('recipient') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
@@ -2322,6 +2324,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
+        baseDomain: deps.baseDomain,
+        singleTenantMode: deps.singleTenantMode,
         payment: deps.payment,
         tenantSecrets: deps.tenantSecrets,
         secretCrypto: deps.secretCrypto,

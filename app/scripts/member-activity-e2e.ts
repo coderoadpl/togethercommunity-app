@@ -355,14 +355,19 @@ const pressRepeatedly = async (page: Page, key: string, times: number): Promise<
 const authorWithToolbar = async (page: Page, composer: Locator, suffix: string): Promise<void> => {
   const bold = `Bold ${suffix}`;
   const label = 'safe link';
+  const fullText = `${bold} <script>alert(1)</script> with a ${label}`;
   await composer.getByTestId('space-composer-input').click();
-  await page.keyboard.type(`${bold} <script>alert(1)</script> with a ${label}`);
+  await page.keyboard.type(fullText);
 
   await page.keyboard.press('Home');
   await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
   await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
+  await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
 
-  await page.keyboard.press('End');
+  // Toggling bold re-renders the selected range, so 'End' no longer moves the caret to the
+  // real end of the (now mark-wrapped) text; arrowing right from the known selection edge does.
+  await page.keyboard.press('ArrowRight');
+  await pressRepeatedly(page, 'ArrowRight', fullText.length - bold.length);
   await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
   await composer.getByRole('button', { name: en.markdownEditor.link }).click();
   await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');

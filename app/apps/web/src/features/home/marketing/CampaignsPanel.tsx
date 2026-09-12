@@ -2,7 +2,7 @@ import { CampaignAudienceSection } from './CampaignAudienceSection.js';
 import type { ContactCampaignAudience } from '#core/domain/index.js';
 import type { marketingCampaignDetailOutputSchema } from '#core/contract/index.js';
 import { CampaignTextSection } from './CampaignTextSection.js';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -32,6 +32,7 @@ import type { z } from 'zod';
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ChevronDownIcon } from '../../../components/ui/account-icons.js';
+import { MarkdownEditor, type MarkdownEditorHandle } from '../../../components/ui/MarkdownEditor.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -165,6 +166,8 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
   const [bodyMode, setBodyMode] = useState<'markdown' | 'html'>(
     campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
   );
+  const [bodyAttempted, setBodyAttempted] = useState(false);
+  const bodyRef = useRef<MarkdownEditorHandle>(null);
   const [consentDefinitionId, setConsentDefinitionId] = useState(campaign?.consentDefinitionId ?? '');
   const [audience, setAudience] = useState<ContactCampaignAudience | null>(campaign === undefined ? { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: false } : campaign.audience);
   const [productIds, setProductIds] = useState<string[]>(campaign?.audienceFilter?.productIds ?? []);
@@ -216,6 +219,11 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    setBodyAttempted(true);
+    if (bodySource.trim() === '') {
+      bodyRef.current?.focus();
+      return;
+    }
     const bodyHtml = prepareCampaignHtml(bodySource, bodyMode);
     const input = {
       name,
@@ -263,7 +271,9 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
           spacing="0.75rem"
           sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
         >
-          <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
+          {bodyMode === 'html'
+            ? <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
+            : <FormLabel component="span">{t.marketing.bodyLabel}</FormLabel>}
           <ToggleButtonGroup
             exclusive
             size="small"
@@ -280,17 +290,30 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
         </Stack>
         {bodyMode === 'html' ? <Alert severity="warning">{t.marketing.rawHtmlHint}</Alert> : null}
         <Box sx={{ display: 'grid', gap: '1rem', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' } }}>
-          <FormControl fullWidth>
-            <OutlinedInput
-              id="marketing-campaign-body"
+          {bodyMode === 'html' ? (
+            <FormControl fullWidth>
+              <OutlinedInput
+                id="marketing-campaign-body"
+                value={bodySource}
+                onChange={(event) => setBodySource(event.target.value)}
+                disabled={!editable}
+                multiline
+                minRows={12}
+              />
+            </FormControl>
+          ) : (
+            <MarkdownEditor
+              ref={bodyRef}
               value={bodySource}
-              onChange={(event) => setBodySource(event.target.value)}
-              disabled={!editable}
-              multiline
+              onChange={setBodySource}
+              placeholder={t.marketing.bodyPlaceholder}
               minRows={12}
-              required
+              disabled={!editable}
+              testId="marketing-campaign-body"
+              aria-label={t.marketing.bodyLabel}
+              aria-describedby="marketing-campaign-body-error"
             />
-          </FormControl>
+          )}
           <Paper
             aria-label={t.marketing.livePreview}
             variant="outlined"
@@ -304,13 +327,12 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
             <Box
               data-testid="campaign-body-preview"
               dangerouslySetInnerHTML={{
-                __html: bodyMode === 'markdown'
-                  ? renderCampaignPreview(bodySource)
-                  : renderCampaignPreview(bodySource, 'html'),
+                __html: renderCampaignPreview(bodySource, bodyMode),
               }}
             />
           </Paper>
         </Box>
+        {bodyAttempted && bodySource.trim() === '' ? <FormHelperText id="marketing-campaign-body-error" error>{t.marketing.bodyRequired}</FormHelperText> : null}
       </Stack>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-consent-label">{t.marketing.consentScopeLabel}</FormLabel>

@@ -1,13 +1,15 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import type { Campaign, CampaignEngagementStats, CampaignResults } from '#core/domain/index.js';
 import { en } from '../../../i18n/en.js';
+import { renderDirectory } from './directory-test-helpers.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { CampaignActions, CampaignDetailPage, CampaignsPanel } from './CampaignsPanel.js';
+import { CampaignActions, CampaignCreatePage, CampaignDetailPage, CampaignsPanel } from './CampaignsPanel.js';
 
 const baseCampaign = {
   id: 'campaign-cancelled',
@@ -446,5 +448,44 @@ describe('campaign reputation warning', () => {
     expect(await screen.findByText(en.marketing.productFilterLabel)).toBeInTheDocument();
     expect(screen.getByText('product-legacy')).toBeInTheDocument();
     expect(screen.getByText(en.marketing.noExcludedProducts)).toBeInTheDocument();
+  });
+});
+
+describe('campaign body editor', () => {
+  const formHandlers = () => {
+    server.use(consentDefinitionsHandler(), productsHandler(), layoutsHandler(), listsHandler(), settingsHandler(true));
+  };
+
+  it('opens a campaign stored as raw HTML in the raw HTML editor', async () => {
+    const bodyHtml = '<div class="promo">Legacy body</div>';
+    const detail = campaignRow({ id: 'campaign-raw-html', name: 'Raw HTML', status: 'draft', bodyHtml, bodySource: bodyHtml });
+    server.use(http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })));
+    formHandlers();
+    const root = createRootRoute();
+    const route = createRoute({ getParentRoute: () => root, path: '/panel/marketing/campaigns/$campaignId', component: CampaignDetailPage });
+    const router = createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/panel/marketing/campaigns/campaign-raw-html'] }) });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByDisplayValue(bodyHtml)).toBeInTheDocument();
+    expect(screen.getByText(en.marketing.rawHtmlHint)).toBeInTheDocument();
+    expect(screen.queryByTestId('marketing-campaign-body-wysiwyg')).not.toBeInTheDocument();
+  });
+
+  it('edits a Markdown campaign body in the visual editor and explains an empty body', async () => {
+    const user = userEvent.setup();
+    formHandlers();
+    server.use(http.post('/api/marketing/audience-preview', () =>
+      HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 0, excludedCount: 0, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: now, audienceHash: 'hash' } })));
+    await renderDirectory(CampaignCreatePage, '/panel/marketing/campaigns/new');
+
+    expect(await screen.findByTestId('marketing-campaign-body-wysiwyg')).toBeInTheDocument();
+    expect(screen.queryByText(en.marketing.rawHtmlHint)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(en.marketing.nameLabel), 'Autumn news');
+    await user.type(screen.getByLabelText(en.marketing.subjectLabel), 'Autumn subject');
+    await user.click(screen.getByRole('button', { name: en.marketing.create }));
+
+    expect(await screen.findByText(en.marketing.bodyRequired)).toBeInTheDocument();
   });
 });

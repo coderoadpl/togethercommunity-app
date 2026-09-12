@@ -90,10 +90,26 @@ const autolinks = /<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>@]+>/gu;
 const tableDelimiterRow = /^ {0,3}\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)+\|?[ \t]*$/mu;
 const taskListItem = /^ {0,7}[-*+] \[[ xX]\](?:\s|$)/mu;
 const htmlTag = /<\/?[a-zA-Z][^>]*>/u;
+const linkOrImageDestination = /(!?)\[[^\]\n]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/gu;
+
+const hasUnrepresentableLinkOrImage = (prose: string): boolean => {
+  for (const match of prose.matchAll(linkOrImageDestination)) {
+    const isImage = match[1] === '!';
+    const destination = match[2] ?? '';
+    const accepted = isImage ? httpsImage(destination) : authoredLink(destination);
+    if (accepted === null) return true;
+  }
+  return false;
+};
 
 const needsSourceOnlyEditing = (value: string): boolean => {
   const prose = value.replace(codeSpans, '').replace(autolinks, '');
-  return tableDelimiterRow.test(prose) || taskListItem.test(prose) || htmlTag.test(prose);
+  return (
+    tableDelimiterRow.test(prose) ||
+    taskListItem.test(prose) ||
+    htmlTag.test(prose) ||
+    hasUnrepresentableLinkOrImage(prose)
+  );
 };
 
 const editorExtensions = (placeholder: string) => [

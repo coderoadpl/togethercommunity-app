@@ -197,12 +197,31 @@ describe('MarkdownEditor', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('drops unsafe Markdown links and unsafe HTML paste attributes', async () => {
+  it('keeps documents with unrepresentable link or image destinations on the Markdown tab instead of dropping them', () => {
+    const value = '[Unsafe](javascript:alert(1)) [HTTP](http://example.com) [Safe](https://example.com) ![Unsafe image](http://example.com/image.png)';
+    render(<ControlledEditor initialValue={value} />);
+
+    expect(screen.getByText(en.markdownEditor.sourceOnlyHint)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: en.markdownEditor.editorTab })).toBeDisabled();
+    expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(value);
+    expect(screen.queryByTestId('markdown-editor-wysiwyg')).not.toBeInTheDocument();
+  });
+
+  it('keeps documents with root-relative or template-variable link destinations on the Markdown tab', () => {
+    const value = '[Privacy](/privacy) and [Unsubscribe]({{unsubscribeUrl}})';
+    render(<ControlledEditor initialValue={value} />);
+
+    expect(screen.getByText(en.markdownEditor.sourceOnlyHint)).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(value);
+    expect(screen.queryByTestId('markdown-editor-wysiwyg')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes unsafe HTML paste attributes in the visual editor', async () => {
     const onChange = vi.fn();
     render(
       <LanguageProvider>
         <MarkdownEditor
-          value="[Unsafe](javascript:alert(1)) [HTTP](http://example.com) [Safe](https://example.com) ![Unsafe image](http://example.com/image.png)"
+          value="[Safe](https://example.com)"
           onChange={onChange}
           testId="secure-editor"
           aria-label="Secure content"
@@ -211,10 +230,7 @@ describe('MarkdownEditor', () => {
     );
 
     const visualEditor = await screen.findByTestId('secure-editor-wysiwyg');
-    expect(visualEditor.querySelector('a[href^="javascript:"]')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'HTTP' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Safe' })).toHaveAttribute('href', 'https://example.com/');
-    expect(visualEditor.querySelector('img[src^="http://"]')).toBeNull();
 
     const previousCalls = onChange.mock.calls.length;
     visualEditor.focus();

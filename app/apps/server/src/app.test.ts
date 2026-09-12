@@ -1,4 +1,3 @@
-import { validation } from '#core/domain/index.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -8346,7 +8345,7 @@ describe('Stripe subscription adoption authorization', () => {
       id: 'key-1', tenantId, name: 'Migration', keyHash: 'hash:adoption-key', scopes: ['subscriptions:adopt'],
       createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
     } : null;
-    base.rateLimitBuckets.claim = async () => false;
+    base.apiKeyRateLimits.claim = async () => false;
     expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(429);
     expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, { ...request, headers: { ...headers, host: 'globex.localhost:48730' } })).status).toBe(401);
     expect(retrieve).not.toHaveBeenCalled();

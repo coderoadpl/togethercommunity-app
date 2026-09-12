@@ -1,6 +1,6 @@
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
-import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions, claimRateLimitWindow } from '#core/server/index.js';
+import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions } from '#core/server/index.js';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
 import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
 import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
@@ -137,6 +137,7 @@ import {
 import {
   devGrantInputSchema,
   apiKeyHasCapability,
+  appError,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
@@ -599,6 +600,30 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberLanguage: null,
   memberVideoAutoplay: false,
 });
+
+const apiKeyWindowStart = (now: string, durationMs: number): string =>
+  new Date(Math.floor(Date.parse(now) / durationMs) * durationMs).toISOString();
+
+const claimSubscriptionApiKeyRateLimit = async (
+  tenantId: string,
+  apiKeyId: string,
+  deps: Pick<AppDeps, 'apiKeyRateLimits' | 'clock'>,
+): Promise<Result<void, AppError>> => {
+  const now = deps.clock.nowIso();
+  const durationMs = 60_000;
+  const windowStartedAt = apiKeyWindowStart(now, durationMs);
+  const claimed = await deps.apiKeyRateLimits.claim(tenantId, {
+    apiKeyId,
+    period: 'minute',
+    windowStartedAt,
+    limit: 60,
+  });
+  if (claimed) return ok(undefined);
+  return err(appError('rate_limited', 'Subscription API rate limit exceeded', {
+    period: 'minute',
+    retryAfterSeconds: Math.max(1, Math.ceil((Date.parse(windowStartedAt) + durationMs - Date.parse(now)) / 1000)),
+  }));
+};
 
 const recordCheckoutConsents = async (
   deps: AppDeps,
@@ -1097,10 +1122,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
     if (!authed.ok) return respond(authed);
     if (!apiKeyHasCapability(authed.value, 'subscriptions:adopt')) return respond(err(forbidden('subscriptions:adopt is not permitted')));
-    const limited = await claimRateLimitWindow({
-      scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
-      window: { limit: 60, windowMs: 60_000 },
-    }, { buckets: deps.rateLimitBuckets, clock: deps.clock });
+    const limited = await claimSubscriptionApiKeyRateLimit(tenant.value.tenant.id, authed.value.id, deps);
     if (!limited.ok) return respond(limited);
     const parsed = adoptStripeSubscriptionRequestSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) return respond(err(validation('Invalid subscription request')));
@@ -1114,10 +1136,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
     if (!authed.ok) return respond(authed);
     if (!apiKeyHasCapability(authed.value, 'subscriptions:read')) return respond(err(forbidden('subscriptions:read is not permitted')));
-    const limited = await claimRateLimitWindow({
-      scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
-      window: { limit: 60, windowMs: 60_000 },
-    }, { buckets: deps.rateLimitBuckets, clock: deps.clock });
+    const limited = await claimSubscriptionApiKeyRateLimit(tenant.value.tenant.id, authed.value.id, deps);
     if (!limited.ok) return respond(limited);
     const parsed = listStripeSubscriptionsInputSchema.safeParse({ ...c.req.query(), ...(c.req.query('unadopted') === undefined ? {} : { unadopted: c.req.query('unadopted') === 'true' ? true : c.req.query('unadopted') === 'false' ? false : c.req.query('unadopted') }) });
     if (!parsed.success) return respond(err(validation('Invalid subscription request')));

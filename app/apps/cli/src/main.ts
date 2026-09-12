@@ -1567,7 +1567,7 @@ subscriptions.command('adopt')
   .requiredOption('--product <id>')
   .option('--price <id>')
   .option('--allow-email-mismatch', 'Explicitly allow a different Stripe customer email')
-  .option('--api-key <secret>', 'Use an enrollment API key instead of the signed-in session')
+  .option('--api-key <secret>', 'Use a subscriptions:adopt API key instead of the signed-in session')
   .action(withInput(z.tuple([subscriptionAdoptOptionsSchema]), async (ctx, [options]) => {
     if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
     const tenant = ctx.tenant;
@@ -1582,7 +1582,7 @@ subscriptions.command('list-stripe')
   .option('--status <status>', 'Filter by Stripe status (defaults to all)')
   .option('--unadopted', 'Show only subscriptions without a local record')
   .option('--starting-after <id>', 'Continue from the nextCursor returned by the previous page')
-  .option('--api-key <secret>', 'Use an enrollment API key instead of the signed-in session')
+  .option('--api-key <secret>', 'Use a subscriptions:read API key instead of the signed-in session')
   .action(withInput(z.tuple([subscriptionListOptionsSchema]), async (ctx, [options]) => {
     if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
     const tenant = ctx.tenant;

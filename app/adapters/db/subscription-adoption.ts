@@ -21,6 +21,7 @@ export const createSubscriptionAdoptionTransaction = (db: Db): SubscriptionAdopt
           prices: createProductPriceRepository(tx), subscriptions: createMemberSubscriptionRepository(tx),
           grants: createProductGrantRepository(tx), memberEvents: createMemberEventRepository(tx),
         });
+        // Drizzle rolls back by throwing, so remember expected domain errors before aborting the transaction.
         if (!result.ok) { rejected = result; tx.rollback(); }
         return result;
       });

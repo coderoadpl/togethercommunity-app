@@ -33,6 +33,8 @@ add it here before using it in either dictionary.
 | Shareable purchase URL | link do zakupu | checkout link | Use consistently instead of purchase link or link do płatności. |
 | Provider billing UI | portal płatności | billing portal | Member heading: Płatności / Payments; action: Zarządzaj płatnościami / Manage payments. |
 | Payment integration | dostawca płatności | payment provider | Use the same term in orders, subscriptions, and integrations. |
+| Adopting an existing provider subscription | Podłącz subskrypcję Stripe | Adopt Stripe subscription | Action label for connecting an existing Stripe subscription to a member. Progress copy uses Podłączanie subskrypcji… / Adopting subscription…; hints explain that billing continues unchanged; refusal and timeline copy use the same adoption concept. |
+| Imported price | cena zaimportowana | imported price | Compact price label is Zaimportowana / Imported. Imported recurring periods use localized interval copy from the importedPeriod dictionary key and must not imply the price is active for new checkout. |
 | Free sample content | bezpłatna lekcja próbna | free preview lesson | Use consistently across sample content. |
 
 ## Content structure

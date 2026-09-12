@@ -10,6 +10,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 ## Quickstart (local demo)
 
 For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+Payment setup and existing Stripe subscription adoption are covered in the
+[payments guide](docs/payments.md).
 
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24

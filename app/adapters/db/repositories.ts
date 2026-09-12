@@ -2857,6 +2857,33 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
     }),
 });
 
+// A legacy (tenant, member, product) unique index still predates the mode column and remains
+// until a separate, owner-reviewed migration retires it, so the two modes cannot both hold a row
+// for the same member+product. A live grant reclaims the row from stray test data; a test grant
+// yields to an existing live one instead of raising an unarbitrated unique_violation.
+const reclaimGrantRowForMode = async (
+  tx: Db,
+  tenantId: string,
+  memberId: string,
+  productId: string,
+  mode: 'live' | 'test',
+): Promise<'blocked' | 'clear'> => {
+  const otherMode = mode === 'live' ? 'test' : 'live';
+  const [conflicting] = await tx
+    .select({ id: productGrants.id })
+    .from(productGrants)
+    .where(and(
+      eq(productGrants.tenantId, tenantId),
+      eq(productGrants.memberId, memberId),
+      eq(productGrants.productId, productId),
+      eq(productGrants.mode, otherMode),
+    ));
+  if (conflicting === undefined) return 'clear';
+  if (mode === 'test') return 'blocked';
+  await tx.delete(productGrants).where(eq(productGrants.id, conflicting.id));
+  return 'clear';
+};
+
 export const createProductGrantRepository = (db: Db): ProductGrantRepository => ({
   findById: async (tenantId, grantId) => {
     const rows = await db
@@ -2884,6 +2911,8 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     return row ? parseGrant(row) : null;
   },
   createGrant: async (tenantId, grant) => db.transaction(async (tx) => {
+    const reclaimed = await reclaimGrantRowForMode(tx, tenantId, grant.memberId, grant.productId, grant.mode);
+    if (reclaimed === 'blocked') return false;
     const rows = await tx
       .insert(productGrants)
       .values({
@@ -3882,6 +3911,8 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
         .limit(1);
       const member = memberRows[0];
       if (!member) throw new Error('Member create/read failed inside purchase transaction');
+
+      await reclaimGrantRowForMode(tx, input.tenantId, member.id, input.productId, 'live');
 
       const grantRows = await tx
         .insert(productGrants)

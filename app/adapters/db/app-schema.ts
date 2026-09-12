@@ -942,6 +942,12 @@ export const productGrants = pgTable(
       table.productId,
       table.mode,
     ),
+    // Predates the mode column; a follow-up, owner-reviewed contraction migration retires it.
+    uniqueIndex('product_grants_tenant_member_product_uidx').on(
+      table.tenantId,
+      table.memberId,
+      table.productId,
+    ),
     uniqueIndex('product_grants_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
       .where(sql`${table.legacyId} is not null`),

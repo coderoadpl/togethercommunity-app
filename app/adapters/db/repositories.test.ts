@@ -4116,9 +4116,25 @@ it('isolates test commerce in the database and keeps test grants out of member a
   expect((await ordersRepo.list(ACME, { mode: 'live', page: 1, pageSize: 100 })).orders.some((row) => row.id === pending.id)).toBe(false);
 });
 
-it('rejects a grant for the other mode on a member+product that already has one, instead of silently no-oping', async () => {
+it('skips a test grant for a member+product that already has a live grant, without erroring', async () => {
   const grantsRepo = createProductGrantRepository(db);
   await expect(grantsRepo.createGrant(ACME, grant({
-    id: 'grant-mode-collision', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test',
-  }))).rejects.toThrow();
+    id: 'grant-mode-collision-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test',
+  }))).resolves.toBe(false);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme', 'test')).toBeNull();
+});
+
+it('reclaims the row from a stray test grant when a live grant is created for the same member+product', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-2', tenantId: GLOBEX, title: 'Globex Course 2' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-stray-test', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'test',
+  }));
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toMatchObject({ id: 'grant-mode-collision-stray-test' });
+  await expect(grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-live', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toBeNull();
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2')).toMatchObject({ id: 'grant-mode-collision-live', mode: 'live' });
 });

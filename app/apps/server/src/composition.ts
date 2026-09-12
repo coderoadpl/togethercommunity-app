@@ -15,7 +15,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
@@ -1212,6 +1212,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: devEndpoints.exposeMagicLinks,
     emailOutbox,
+    emailSender: transactionalEmail,
+    authSendLog: createPlatformAuthSendLog(db),
     ids,
     clock,
     dispatchEmail,

@@ -650,6 +650,12 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('email-event').last().waitFor(visible),
   },
   {
+    name: 'panel-marketing-send-detail-auth',
+    auth: 'creator',
+    path: '/panel/marketing/sends/transactional/send-studio-auth-magic-link',
+    ready: (page) => page.getByTestId('email-event').last().waitFor(visible),
+  },
+  {
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',

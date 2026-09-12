@@ -868,6 +868,11 @@ describe('marketing database repositories', () => {
     expect(first.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
       { kind: 'transactional', id: 'transactional-send-view' },
     ]);
+    expect(first.sends[0]).toMatchObject({
+      sourceKind: 'welcome-sign-in',
+      transport: 'platform',
+    });
+    expect(JSON.stringify(first.sends[0])).not.toContain('https://example.test/sign-in');
     expect(first.nextCursor).not.toBeNull();
     if (first.nextCursor === null) throw new Error('Expected another unified send page');
     const second = await repository.listPage(tenantId, { cursor: first.nextCursor, limit: 1 });

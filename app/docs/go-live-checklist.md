@@ -94,7 +94,12 @@ Open **Integrations → Stripe** and save an `rk_test_…` or `rk_live_…` rest
 key with write access to Checkout Sessions, Coupons, Promotion Codes,
 Subscriptions, and Webhook Endpoints. Alternatively, configure a headless
 deployment with the CLI. Together registers the webhook, stores its signing
-secret, and derives the mode from the stored key prefix. Then run:
+secret, and derives the mode from the stored key prefix. The webhook URL is on
+the tenant platform host:
+`https://<slug>.<APP_BASE_DOMAIN>/api/webhooks/stripe/<tenantId>`. In
+single-tenant deployments it stays on `APP_BASE_URL`. If a webhook was
+registered manually with another URL, update it in the Stripe Dashboard before
+accepting payments. Then run:
 
 ```sh
 pnpm --silent run cli --tenant <slug> stripe configure rk_test_…
@@ -298,7 +303,9 @@ Repeat the signature and refund checks once in live mode with a 1 PLN product.
 
 Save the restricted key through **Integrations → Stripe** or `stripe configure`.
 Confirm that the panel shows the expected test/live badge and that Stripe
-contains the generated tenant endpoint. Together enables exactly
+contains the generated tenant endpoint on the tenant platform host. If Stripe
+already contains a manually registered endpoint on another URL, update that URL
+in the Stripe Dashboard. Together enables exactly
 `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
 `customer.subscription.updated`, `customer.subscription.deleted`,
 `charge.refunded`, and `charge.dispute.created`

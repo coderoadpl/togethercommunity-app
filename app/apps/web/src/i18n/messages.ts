@@ -92,7 +92,9 @@ export interface Messages {
     markdownTab: string;
     toolbarAria: string;
     bold: string;
+    boldShort: string;
     italic: string;
+    italicShort: string;
     heading2: string;
     heading3: string;
     bulletList: string;

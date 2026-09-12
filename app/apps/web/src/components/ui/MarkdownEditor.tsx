@@ -321,8 +321,8 @@ export const MarkdownEditor = ({
             aria-label={t.markdownEditor.toolbarAria}
             sx={{ flexWrap: 'wrap', p: '0.55rem' }}
           >
-            <FormatButton active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>B</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
-            <FormatButton active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>I</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+            <FormatButton active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
+            <FormatButton active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
             <FormatButton active={toolbar?.heading2 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading2} shortLabel="H2" onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} />
             <FormatButton active={toolbar?.heading3 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading3} shortLabel="H3" onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
             <FormatButton active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />

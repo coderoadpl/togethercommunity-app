@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import pg from 'pg';
+import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
@@ -15,9 +16,11 @@ import {
   delay,
   ephemeralPort,
   killServer,
+  rootDir,
   run,
   tsxBin,
 } from './server-harness.js';
+import { signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
 
 const verifyContainer = 'together-marketing-verify-pg';
@@ -31,6 +34,8 @@ const topicArn = 'arn:aws:sns:eu-central-1:123456789012:marketing-e2e';
 const legalName = 'Marketing Verify LLC';
 const legalAddress = '1 Test Street, 00-001 Warsaw';
 const consentLabel = 'I want to receive updates about new materials';
+const viteBin = join(rootDir, 'node_modules/.bin/vite');
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const emails = {
   confirmedA: 'confirmed-a@marketing.test',
   confirmedB: 'confirmed-b@marketing.test',
@@ -86,6 +91,11 @@ const waitForPostgres = async (): Promise<void> => {
 const migrate = async (): Promise<void> => {
   const result = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: verifyDatabaseUrl });
   assert(result.code === 0, `Migration failed:\n${result.stdout}${result.stderr}`);
+};
+
+const buildWeb = async (outputDirectory: string): Promise<void> => {
+  const result = await run(viteBin, ['build', '--config', 'apps/web/vite.config.ts', '--outDir', outputDirectory], {});
+  assert(result.code === 0, `Web build failed:\n${result.stdout}${result.stderr}`);
 };
 
 const generateCertificate = async (directory: string): Promise<{ certificate: string; privateKey: string }> => {
@@ -260,6 +270,65 @@ const createCampaign = async (
     layoutId: null,
   }), 200);
   return z.object({ campaign: idSchema }).parse(created.data).campaign.id;
+};
+
+const verifyMarkdownCampaignEditor = async (
+  baseUrl: string,
+  tenantId: string,
+  db: pg.Client,
+): Promise<void> => {
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    const context = await browser.newContext();
+    await context.addInitScript(() => {
+      window.localStorage.setItem('together-language', 'en');
+    });
+    const page = await context.newPage();
+    await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+    await signInWithPassword(page, 'owner@marketing.test', passwordFixture('Demo1234!'));
+    await page.waitForURL((url) => url.pathname !== '/login', { timeout: 15_000 });
+    await page.goto(`${baseUrl}/panel/marketing/campaigns/new`, { waitUntil: 'networkidle' });
+
+    await page.locator('#marketing-campaign-name').fill('Markdown editor browser check');
+    await page.locator('#marketing-campaign-subject').fill('Canonical Markdown check');
+    const editor = page.getByTestId('marketing-campaign-body-wysiwyg');
+    await editor.waitFor({ state: 'visible', timeout: 15_000 });
+    await editor.click();
+    await page.getByRole('button', { name: 'Heading 2' }).click();
+    await editor.pressSequentially('Browser-authored update');
+    await editor.press('Enter');
+    await page.getByRole('button', { name: 'Bold' }).click();
+    await editor.pressSequentially('Markdown');
+    await page.getByRole('button', { name: 'Bold' }).click();
+    await editor.pressSequentially(' remains canonical.');
+
+    const preview = page.getByTestId('campaign-body-preview');
+    await preview.getByRole('heading', { level: 2, name: 'Browser-authored update' }).waitFor();
+    await preview.locator('strong').getByText('Markdown', { exact: true }).waitFor();
+    const create = page.getByRole('button', { name: 'Create' });
+    await create.waitFor({ state: 'visible' });
+    const [createResponse] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === '/api/marketing/campaigns' && response.request().method() === 'POST'),
+      create.click(),
+    ]);
+    assert(createResponse.ok(), `Editor campaign creation failed with HTTP ${createResponse.status()}: ${await createResponse.text()}`);
+    await page.waitForURL((url) => /^\/panel\/marketing\/campaigns\/[^/]+$/u.test(url.pathname) && !url.pathname.endsWith('/new'), { timeout: 15_000 });
+
+    const row = z.object({ body_source: z.string(), body_html: z.string() }).parse((await db.query(
+      'select body_source, body_html from campaigns where tenant_id = $1 and name = $2',
+      [tenantId, 'Markdown editor browser check'],
+    )).rows[0]);
+    assert(row.body_source === '## Browser-authored update\n\n**Markdown** remains canonical.', `Editor saved unexpected Markdown source: ${row.body_source}`);
+    assert(row.body_html.includes('<h2>Browser-authored update</h2>') && row.body_html.includes('<strong>Markdown</strong> remains canonical.'), 'Editor preview and saved HTML did not match the Markdown source');
+    await context.close();
+  } finally {
+    if (browser !== null) await browser.close();
+  }
 };
 
 const canonicalSnsInput = (envelope: {
@@ -660,6 +729,10 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     steps += 1;
     console.log('  8. E4 DOI GET interstitial and POST confirmation regression verified');
 
+    await verifyMarkdownCampaignEditor(baseUrl, tenant.id, db);
+    steps += 1;
+    console.log('  9. campaign Markdown editor source and preview verified in the browser');
+
     return steps;
   } finally {
     await db.end().catch(() => undefined);
@@ -679,8 +752,10 @@ try {
   console.log('marketing-e2e: running migrations...');
   await migrate();
   const runtimeDir = mkdtempSync(join(tmpdir(), 'marketing-e2e-'));
-  const webDistDir = mkdtempSync(join(tmpdir(), 'marketing-e2e-web-'));
-  temporaryDirectories.push(runtimeDir, webDistDir);
+  temporaryDirectories.push(runtimeDir);
+  const webDistDir = join(runtimeDir, 'web');
+  console.log('marketing-e2e: building the web SPA...');
+  await buildWeb(webDistDir);
   const certificate = await generateCertificate(runtimeDir);
   const port = await ephemeralPort();
   console.log(`marketing-e2e: booting server on port ${port}...`);

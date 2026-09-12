@@ -134,7 +134,9 @@ as \`@fontsource\` packages and imported in \`app/apps/web/src/main.tsx\`. They 
 licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/),
 whose copyright notice and license text must accompany every copy of the font
 files; each package carries the full license in its \`LICENSE\` file under
-\`app/node_modules/@fontsource/\`.
+\`app/node_modules/@fontsource/\`. Inter and Poppins subsets are additionally
+served to the server-rendered public pages from \`app/apps/web/public/fonts/\`,
+where the same license text ships as \`OFL-Inter.txt\` and \`OFL-Poppins.txt\`.
 
 - Fraunces — Copyright 2020 The Fraunces Project Authors
   ([undercasetype/Fraunces](https://github.com/undercasetype/Fraunces))

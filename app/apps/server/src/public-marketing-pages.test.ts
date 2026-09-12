@@ -139,6 +139,45 @@ describe('public marketing pages', () => {
     expect(rendered).not.toContain('href="https://acme.example/privacy<em>policy</em>v2"');
   });
 
+  it('renders numbered lists, escaped punctuation, and encoded entities the way the editor writes them', () => {
+    const rendered = renderHostedMarkdown([
+      '1. First step',
+      '2. Second step',
+      '',
+      '- Only bullet',
+      '',
+      'Keep snake\\_case readable, show R&amp;D and 5 &lt; 6, and render _emphasis_.',
+    ].join('\n'));
+    expect(rendered).toContain('<ol><li>First step</li><li>Second step</li></ol>');
+    expect(rendered).toContain('<ul><li>Only bullet</li></ul>');
+    expect(rendered).toContain('Keep snake_case readable, show R&amp;D and 5 &lt; 6, and render <em>emphasis</em>.');
+  });
+
+  it('renders the block structures the visual editor can produce', () => {
+    const rendered = renderHostedMarkdown([
+      '- one',
+      '  - nested',
+      '- two',
+      '',
+      '> first paragraph',
+      '>',
+      '> second paragraph',
+      '',
+      '---',
+      '',
+      '~~withdrawn~~ and ![diagram](https://acme.example/diagram.png)',
+      '',
+      '![blocked](http://acme.example/tracker.gif)',
+    ].join('\n'));
+    expect(rendered).toContain('<ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>');
+    expect(rendered).toContain('<blockquote><p>first paragraph</p><p>second paragraph</p></blockquote>');
+    expect(rendered).toContain('<hr>');
+    expect(rendered).toContain('<del>withdrawn</del>');
+    expect(rendered).toContain('<img src="https://acme.example/diagram.png" alt="diagram">');
+    expect(rendered).not.toContain('http://acme.example/tracker.gif');
+    expect(rendered).not.toContain('!<a');
+  });
+
   it('adds a locale-aware immutable version notice only to versioned legal pages', () => {
     const publishedAt = '2026-07-22T10:00:00.000Z';
     const publishedDate = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long' }).format(new Date(publishedAt));

@@ -1,3 +1,4 @@
+import { MARKETING_SIGNUP_ROUTES } from './marketing-signup-forms.js';
 import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
 import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
@@ -1769,6 +1770,7 @@ export const API_ROUTES = {
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
+  ...MARKETING_SIGNUP_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -2054,6 +2056,11 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   activitySummary: API_ROUTES.activitySummary.path,
   memberActivity: API_ROUTES.memberActivity.path,
+  listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,
+  createMarketingSignupForm: API_ROUTES.createMarketingSignupForm.path,
+  getMarketingSignupForm: API_ROUTES.getMarketingSignupForm.path,
+  updateMarketingSignupForm: API_ROUTES.updateMarketingSignupForm.path,
+  submitMarketingSignupForm: API_ROUTES.submitMarketingSignupForm.path,
   listMarketingContacts: API_ROUTES.listMarketingContacts.path,
   m2mListMarketingContacts: API_ROUTES.m2mListMarketingContacts.path,
   exportMarketingContacts: API_ROUTES.exportMarketingContacts.path,

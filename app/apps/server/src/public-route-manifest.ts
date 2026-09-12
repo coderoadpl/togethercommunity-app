@@ -17,6 +17,10 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: '/marketing/forms/:slug', methods: ['GET'], mutating: false, why: 'Hosted tenant newsletter signup form with explicit consent wording' },
+  { path: '/marketing/forms/:slug/thanks', methods: ['GET'], mutating: false, why: 'Generic signup acknowledgement without recipient information' },
+  { path: API_PATHS.submitMarketingSignupForm, methods: ['OPTIONS'], mutating: false, why: 'Form-specific allow-listed JSON submission preflight' },
+  { path: API_PATHS.submitMarketingSignupForm, methods: ['POST'], mutating: true, why: 'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests' },
   { path: '*', methods: ['GET'], mutating: false, why: 'Tenant-configured path redirects and the social preview for link crawlers' },
   { path: '/manifest.webmanifest', methods: ['GET'], mutating: false, why: 'PWA web app manifest with tenant name' },
   { path: '/robots.txt', methods: ['GET'], mutating: false, why: 'Tenant crawler policy must bypass the SPA and social preview fallback' },

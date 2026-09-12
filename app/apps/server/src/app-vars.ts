@@ -12,5 +12,6 @@ export type AppVars = {
     impersonationCookie?: ImpersonationCookieOperation;
     sessionId?: string;
     secureHeadersNonce?: string;
+    signupRedirectOrigin?: string;
   };
 };

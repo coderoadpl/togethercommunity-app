@@ -17,3 +17,4 @@ export * from './marketing-contacts.js';
 export { marketingCampaignAudienceInputSchema, type MarketingCampaignAudienceInput } from './routes.js';
 
 export { activitySummaryQuerySchema, memberActivityQuerySchema, activitySummarySchema, memberActivitySchema } from '#core/domain/index.js';
+export * from './marketing-signup-forms.js';

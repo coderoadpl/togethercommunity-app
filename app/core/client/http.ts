@@ -6,6 +6,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   marketingDirectoryContracts,
+  marketingSignupContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -472,6 +473,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
+  getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
+  createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),
+  updateMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.updateMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.updateMarketingSignupForm.output, input, signal),
   uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
     const form = new FormData();
     form.append('file', new Blob([input.csv], { type: 'text/csv' }), input.metadata.fileName);

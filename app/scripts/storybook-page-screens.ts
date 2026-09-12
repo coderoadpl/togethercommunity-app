@@ -50,6 +50,7 @@ const pageScreenNames = new Set([
   'panel-marketing-activity-detail',
   'panel-marketing-sends',
   'panel-marketing-send-detail',
+  'panel-marketing-send-detail-auth',
   'panel-marketing-consents',
   'panel-marketing-documents',
   'panel-marketing-layouts',

@@ -182,6 +182,30 @@ describe('layered transactional e-mail sender', () => {
     expect(pool.reserved).toBe(0);
   });
 
+  it('leaves the platform pool untouched for an unmetered forced send', async () => {
+    const calls: string[] = [];
+    const pool = new MemoryPool(1000);
+    const sender = createLayeredTransactionalEmailSender({
+      transports: transports({ ses: port('tenant-ses', calls), smtp: null, resend: null }),
+      platform: port('platform', calls),
+      pool,
+      platformLimit: 1000,
+    });
+
+    const sent = await sender.send({
+      forcePlatformTransport: true,
+      unmeteredPlatformSend: true,
+      tenantId: 'tenant-1',
+      to: 'member@example.test',
+      ...message,
+    });
+
+    expect(sent).toEqual(ok({ messageId: 'platform-message', transport: 'platform' }));
+    expect(calls).toEqual(['platform']);
+    expect(pool.sent).toBe(1000);
+    expect(pool.reserved).toBe(0);
+  });
+
   it('never uses the platform pool when a tenant transport is required', async () => {
     const calls: string[] = [];
     const pool = new MemoryPool();

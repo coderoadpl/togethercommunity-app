@@ -43,7 +43,7 @@ import { createCheckoutState, reduceCheckoutState } from './index.web.js';
 type OfferPrice = {
   id: string;
   kind: 'one_time' | 'recurring';
-  interval: 'month' | 'year' | null;
+  interval: 'day' | 'week' | 'month' | 'year' | null;
   amountCents: number;
   currency: string;
 };

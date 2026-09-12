@@ -144,7 +144,8 @@ all directory tables through their tenant references.
 
 Owners and administrators have directory read/write, list read/write and import
 write capabilities. Marketing-scoped API keys receive the same directory
-capabilities. Enrollment, transactional and content/users import scopes do not.
+capabilities. Enrollment, transactional, subscription read/adopt and content/users
+import scopes do not.
 Import operations additionally authorize contact/list/consent/suppression writes as
 applicable; previews require the corresponding reads. List previews require both
 list and contact read. See [permission table](permission-table.md).

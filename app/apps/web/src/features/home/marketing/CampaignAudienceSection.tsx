@@ -1,5 +1,5 @@
 import { useEffect, useId, type ReactNode } from 'react';
-import { Alert, Button, Checkbox, FormControl, FormControlLabel, FormLabel, MenuItem, Select, Stack, Typography } from '@mui/material';
+import { Alert, Button, Checkbox, FormControl, FormControlLabel, FormHelperText, FormLabel, MenuItem, Select, Stack, Tooltip, Typography, type MenuItemProps } from '@mui/material';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import type { ContactCampaignAudience } from '#core/domain/index.js';
@@ -8,12 +8,23 @@ import { useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 import { DirectoryError } from './DirectoryFields.js';
 
-const AudienceSelect = ({ label, values, options, disabled, onChange }: { label: string; values: string[]; options: { id: string; name: string }[]; disabled: boolean; onChange: (ids: string[]) => void }) => {
+// A disabled MenuItem drops pointer and keyboard events, hiding the reason from both modalities; aria-disabled keeps it reachable and onChange enforces the conflict.
+const AudienceOption = ({ name, reason, ...item }: MenuItemProps & { name: string; reason: string | null }) => reason === null
+  ? <MenuItem {...item}>{name}</MenuItem>
+  : <Tooltip describeChild title={reason}><MenuItem {...item} aria-disabled sx={{ opacity: (theme) => theme.palette.action.disabledOpacity }}>{name}</MenuItem></Tooltip>;
+
+const AudienceSelect = ({ label, values, options, disabled, helperText, conflictLabel, onChange }: { label: string; values: string[]; options: { id: string; name: string }[]; disabled: boolean; helperText?: string | undefined; conflictLabel?: (id: string) => string | null; onChange: (ids: string[]) => void }) => {
   const id = useId();
-  return <FormControl fullWidth><FormLabel id={id}>{label}</FormLabel><Select multiple labelId={id} value={values} disabled={disabled} onChange={(event) => onChange(typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value)} renderValue={(ids) => ids.map((value) => options.find((option) => option.id === value)?.name ?? value).join(', ')}>{options.map((option) => <MenuItem key={option.id} value={option.id}>{option.name}</MenuItem>)}</Select></FormControl>;
+  const helperId = helperText === undefined ? undefined : `${id}-helper`;
+  const conflictOf = (optionId: string) => values.includes(optionId) ? null : conflictLabel?.(optionId) ?? null;
+  const commit = (selection: string[] | string) => {
+    const next = typeof selection === 'string' ? selection.split(',') : selection;
+    if (next.every((value) => conflictOf(value) === null)) onChange(next);
+  };
+  return <FormControl fullWidth error={helperText !== undefined}><FormLabel id={id}>{label}</FormLabel><Select multiple labelId={id} value={values} disabled={disabled} aria-describedby={helperId} onChange={(event) => commit(event.target.value)} renderValue={(ids) => ids.map((value) => options.find((option) => option.id === value)?.name ?? value).join(', ')}>{options.map((option) => <AudienceOption key={option.id} value={option.id} name={option.name} reason={conflictOf(option.id)} />)}</Select>{helperText === undefined ? null : <FormHelperText id={helperId}>{helperText}</FormHelperText>}</FormControl>;
 };
 
-export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen, disabled, progress, onChange }: { audience: ContactCampaignAudience; consentDefinitionId: string; frozen: boolean; disabled: boolean; progress?: ReactNode | undefined; onChange: (audience: ContactCampaignAudience) => void }) => {
+export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen, disabled, progress, overlapError, onChange }: { audience: ContactCampaignAudience; consentDefinitionId: string; frozen: boolean; disabled: boolean; progress?: ReactNode | undefined; overlapError?: string | undefined; onChange: (audience: ContactCampaignAudience) => void }) => {
   const t = useTranslations();
   const { tenant } = usePanelContext();
   const lists = useInfiniteQuery(actions.directory.listOptions(tenant.id));
@@ -27,8 +38,8 @@ export const CampaignAudienceSection = ({ audience, consentDefinitionId, frozen,
     <Typography variant="h6" component="h3">{t.marketing.contactAudience}</Typography>
     {progress}
     {frozen ? <Alert severity="info">{t.marketing.frozenAudience}</Alert> : <Typography>{t.marketing.audienceEstimateHint}</Typography>}
-    <AudienceSelect label={t.marketing.includeLists} values={audience.includeLists} options={options} disabled={disabled || lists.isPending} onChange={(includeLists) => onChange({ ...audience, includeLists })} />
-    <AudienceSelect label={t.marketing.excludeLists} values={audience.excludeLists} options={options} disabled={disabled || lists.isPending} onChange={(excludeLists) => onChange({ ...audience, excludeLists })} />
+    <AudienceSelect label={t.marketing.includeLists} values={audience.includeLists} options={options} disabled={disabled || lists.isPending} helperText={overlapError} conflictLabel={(id) => audience.excludeLists.includes(id) ? t.marketing.listAlreadyExcluded : null} onChange={(includeLists) => onChange({ ...audience, includeLists })} />
+    <AudienceSelect label={t.marketing.excludeLists} values={audience.excludeLists} options={options} disabled={disabled || lists.isPending} helperText={overlapError} conflictLabel={(id) => audience.includeLists.includes(id) ? t.marketing.listAlreadyIncluded : null} onChange={(excludeLists) => onChange({ ...audience, excludeLists })} />
     {lists.hasNextPage ? <Button disabled={lists.isFetchingNextPage} onClick={() => void lists.fetchNextPage()}>{t.directory.loadMore}</Button> : null}
     <FormControlLabel label={t.marketing.includeConsentedMembers} control={<Checkbox checked={audience.includeMembersWithConsent} disabled={disabled} onChange={(_event, includeMembersWithConsent) => onChange({ ...audience, includeMembersWithConsent })} />} />
     <AudienceSelect label={t.marketing.excludeProductGrants} values={audience.excludeProductIds} options={products.data?.products.map((product) => ({ id: product.id, name: product.title })) ?? []} disabled={disabled || products.isPending} onChange={(excludeProductIds) => onChange({ ...audience, excludeProductIds })} />

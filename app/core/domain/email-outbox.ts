@@ -35,7 +35,23 @@ const m2mTransactionalPayloadSchema = z.object({
   replyTo: m2mTransactionalMessageFields.replyTo,
 }).strict();
 
+const redactedAuthEmailKindSchema = z.enum([
+  'auth-magic-link',
+  'auth-password-reset',
+  'auth-email-verification',
+]);
+
+export const REDACTED_AUTH_EMAIL_KINDS = redactedAuthEmailKindSchema.options;
+
+export type RedactedAuthEmailKind = z.output<typeof redactedAuthEmailKindSchema>;
+
+export const isRedactedAuthEmailKind = (kind: string): kind is RedactedAuthEmailKind =>
+  redactedAuthEmailKindSchema.safeParse(kind).success;
+
 export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('auth-magic-link') }).strict(),
+  z.object({ kind: z.literal('auth-password-reset') }).strict(),
+  z.object({ kind: z.literal('auth-email-verification') }).strict(),
   z.object({ kind: z.literal('welcome-sign-in'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('verify-email'), language: z.string(), actionUrl: z.string().url() }),
@@ -57,6 +73,9 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
 export type EmailOutboxPayload = z.output<typeof emailOutboxPayloadSchema>;
 
 const AUTH_BEARING_EMAIL_KINDS = {
+  'auth-magic-link': true,
+  'auth-password-reset': true,
+  'auth-email-verification': true,
   'welcome-sign-in': true,
   'reset-password': true,
   'verify-email': true,
@@ -85,7 +104,25 @@ const htmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, 
   '&': '&amp;', '<': '&lt;', '>': '&gt;',
 })[character] ?? character)}</pre>`;
 
+const isRedactedAuthEmailPayload = (
+  value: EmailOutboxPayload,
+): value is Extract<EmailOutboxPayload, { kind: RedactedAuthEmailKind }> =>
+  isRedactedAuthEmailKind(value.kind);
+
+/** The kind slug stands in for the subject so no localized copy is stored on the redacted row. */
+const redactedAuthMessage = (kind: RedactedAuthEmailKind) => ({
+  subject: kind,
+  html: '<p>Redacted</p>',
+  text: 'Redacted',
+});
+
 const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
+  if (isRedactedAuthEmailPayload(value)) {
+    return {
+      success: true as const,
+      data: redactedAuthMessage(value.kind),
+    };
+  }
   if (value.kind === 'm2m-transactional') {
     if (value.html === undefined && value.text === undefined) return emailMessageSchema.safeParse({});
     return {

@@ -185,6 +185,14 @@ describe('AI review workflow', () => {
     }
     expect(stepByName('Gate — fail-closed verdict').env?.TRUSTED_INSTALLED)
       .toBe('${{ steps.trusted.outputs.installed }}');
+    expect(stepByName('Gate — fail-closed verdict').env?.PREPARE_REASON)
+      .toBe('${{ steps.prepare.outputs.reason }}');
+    expect(stepByName('Post the review verdict').if)
+      .toContain("steps.prepare.outputs.reason == 'base_moved'");
+    expect(stepByName('Post the review verdict').env?.PREPARE_REASON)
+      .toBe('${{ steps.prepare.outputs.reason }}');
+    expect(stepByName('Gate — fail-closed verdict').run)
+      .toContain('[ "$PREPARE_REASON" = base_moved ]');
   });
 
   it('keeps every embedded shell step syntactically valid', () => {

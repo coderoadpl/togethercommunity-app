@@ -2324,6 +2324,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
+        baseDomain: deps.baseDomain,
+        singleTenantMode: deps.singleTenantMode,
         payment: deps.payment,
         tenantSecrets: deps.tenantSecrets,
         secretCrypto: deps.secretCrypto,

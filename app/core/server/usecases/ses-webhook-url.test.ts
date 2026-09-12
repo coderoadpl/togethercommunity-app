@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Tenant, TenantDomain } from '#core/domain/index.js';
+import type { Tenant } from '#core/domain/index.js';
 
-import type { TenantDomainRepository, TenantRepository } from '../ports.js';
-import { tenantDomainFixture, tenantDomainRepositoryStub } from '../testing/tenant-domain-fakes.js';
+import type { TenantRepository } from '../ports.js';
 import { createSesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 const acme: Tenant = {
@@ -25,22 +24,6 @@ const fakeTenants: TenantRepository = {
   createTenantWithOwnerGrant: async () => acme,
 };
 
-const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository =>
-  tenantDomainRepositoryStub({
-    findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
-    listVerifiedDomains: async () => domains.filter((candidate) => candidate.verified),
-    listByTenant: async (tenantId) => domains.filter((candidate) => candidate.tenantId === tenantId),
-  });
-
-const customDomain = (overrides: Partial<TenantDomain> = {}): TenantDomain =>
-  tenantDomainFixture({
-    id: 'domain-acme',
-    tenantId: 't-acme',
-    domain: 'community.acme.test',
-    verified: true,
-    ...overrides,
-  });
-
 const routing = {
   appBaseUrl: 'https://togethercommunity.app',
   baseDomain: 'togethercommunity.app',
@@ -48,52 +31,21 @@ const routing = {
 };
 
 describe('SES webhook base URL', () => {
-  it('uses the tenant subdomain instead of the platform apex', async () => {
-    const resolve = createSesWebhookBaseUrlResolver({
-      tenants: fakeTenants,
-      tenantDomains: fakeDomains([]),
-      routing,
-    });
+  it('uses the platform host for the tenant instead of the platform apex', async () => {
+    const resolve = createSesWebhookBaseUrlResolver({ tenants: fakeTenants, routing });
 
     expect(await resolve('t-acme')).toBe('https://acme.togethercommunity.app/api/webhooks/ses');
   });
 
-  it('prefers a verified custom domain', async () => {
-    const resolve = createSesWebhookBaseUrlResolver({
-      tenants: fakeTenants,
-      tenantDomains: fakeDomains([customDomain()]),
-      routing,
-    });
+  it('falls back to the platform apex for an unknown tenant', async () => {
+    const resolve = createSesWebhookBaseUrlResolver({ tenants: fakeTenants, routing });
 
-    expect(await resolve('t-acme')).toBe('https://community.acme.test/api/webhooks/ses');
-  });
-
-  it('selects the earliest verified custom domain independently of repository order', async () => {
-    const resolve = createSesWebhookBaseUrlResolver({
-      tenants: fakeTenants,
-      tenantDomains: fakeDomains([
-        customDomain({ domain: 'academy.example.org', verifiedAt: '2026-09-02T00:00:00.000Z' }),
-        customDomain({ domain: 'courses.example.org', verifiedAt: '2026-09-01T00:00:00.000Z' }),
-      ]),
-      routing,
-    });
-    expect(await resolve('t-acme')).toBe('https://courses.example.org/api/webhooks/ses');
-  });
-
-  it('ignores an unverified custom domain', async () => {
-    const resolve = createSesWebhookBaseUrlResolver({
-      tenants: fakeTenants,
-      tenantDomains: fakeDomains([customDomain({ verified: false })]),
-      routing,
-    });
-
-    expect(await resolve('t-acme')).toBe('https://acme.togethercommunity.app/api/webhooks/ses');
+    expect(await resolve('t-missing')).toBe('https://togethercommunity.app/api/webhooks/ses');
   });
 
   it('keeps the configured base URL in single-tenant mode', async () => {
     const resolve = createSesWebhookBaseUrlResolver({
       tenants: fakeTenants,
-      tenantDomains: fakeDomains([]),
       routing: { ...routing, appBaseUrl: 'http://localhost:48730', singleTenantMode: true },
     });
 

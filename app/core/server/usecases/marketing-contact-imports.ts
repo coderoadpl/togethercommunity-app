@@ -131,11 +131,12 @@ const buildImportValidation = async (tenantId: string, batch: MarketingContactIm
   }
   const errors = [...staleLists.sort().map((key) => ({ rowNumber: 0, message: `List ${key} must be active and static` })), ...rows.flatMap((row) => row.errors.map((message) => ({ rowNumber: row.rowNumber, message })))];
   const warnings = [...mappingWarnings, ...rows.flatMap((row) => row.warnings.map((message) => ({ rowNumber: row.rowNumber, message })))];
-  return { headers: csv?.ok ? csv.value.headers : Object.keys(batch.mapping), canCommitWithSkippedRows: staleLists.length === 0 && rows.some((row) => row.status === 'valid') && !rows.some((row) => row.status === 'duplicate' && row.errors.length > 0), import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows: rows.filter((row) => row.status === 'valid').length, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors: errors.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), warnings: warnings.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), canCommit: errors.length === 0 };
+  const validRows = rows.filter((row) => row.status === 'valid').length;
+  return { headers: csv?.ok ? csv.value.headers : Object.keys(batch.mapping), canCommitWithSkippedRows: staleLists.length === 0 && validRows > 0 && !rows.some((row) => row.status === 'duplicate' && row.errors.length > 0), previewIssuesLimited: errors.length > MARKETING_IMPORT_LIMITS.previewIssues || warnings.length > MARKETING_IMPORT_LIMITS.previewIssues, import: batch, validationHash: batch.contentHash, preview: rows.slice(0, 20), counts: { validRows, rejectedRows: rows.filter((row) => row.status === 'invalid').length, duplicateRows: rows.filter((row) => row.status === 'duplicate').length, listsToCreate: [...listsToCreate].sort() }, errors: errors.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), warnings: warnings.slice(0, MARKETING_IMPORT_LIMITS.previewIssues), canCommit: validRows > 0 && errors.length === 0 };
 };
 
 const validateRows = async (tenantId: string, batch: MarketingContactImport, rows: MarketingImportRowReceipt[], repos: MarketingImportTransactionRepos, deps: MarketingImportDeps): Promise<void> => {
-  normalizeRows(tenantId, batch, rows, rows, deps);
+  normalizeRows(tenantId, batch, [], rows, deps);
   await checkNormalizedRows(tenantId, batch, rows.filter((row) => row.status === 'checking'), repos);
   for (const row of rows) await repos.imports.saveRow(tenantId, row);
 };
@@ -284,6 +285,7 @@ export const commitMarketingContactImport = async (ctx: Ctx, input: unknown, dep
     const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
     if (!definition.ok) return definition;
     if ((definition.value?.hash ?? null) !== batch.definitionHash) return conflict('Consent definition changed; validate and attest again');
+    if (!rows.some((row) => row.status === 'valid')) return err(validation('Import has no valid rows'));
     if (rows.some((row) => row.status === 'duplicate' && row.errors.length > 0)) return err(validation('Resolve conflicting consent evidence before commit'));
     if (parsed.data.invalidRows === 'reject_batch' && rows.some((row) => row.errors.length > 0)) return err(validation('Correct invalid rows or explicitly select skip_invalid'));
     batch.attestationVersion = parsed.data.attestation.version;

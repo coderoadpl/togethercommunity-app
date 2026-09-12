@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { MARKETING_IMPORT_ATTESTATION_TEXT, marketingDirectoryContracts } from '#core/client/index.js';
-import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, marketingImportRowSchema } from '#core/domain/index.js';
+import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, MARKETING_IMPORT_LIMITS, marketingImportRowSchema } from '#core/domain/index.js';
 import { directoryTestFixtures } from './directory-test-data.js';
 import { en } from '../../../i18n/en.js';
 import { fixtureValue, installDirectoryFixture, renderDirectory } from './directory-test-helpers.js';
@@ -77,6 +77,13 @@ describe('contact import wizard', () => {
     await screen.findByText(/Evidence conflict/);
     await userEvent.click(screen.getByRole('checkbox', { name: en.directory.skipInvalid }));
     expect(screen.getByRole('button', { name: en.directory.next })).toBeDisabled();
+  });
+
+  it('shows the preview issue limit only when the response reports truncation', async () => {
+    installDirectoryFixture(previewFixture);
+    server.use(http.post('/api/marketing/contact-imports/:id/validate', () => HttpResponse.json({ ok: true, data: { ...preview, previewIssuesLimited: true } })));
+    await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', previewFixture.route);
+    expect(await screen.findByText(en.directory.previewIssuesLimited({ count: MARKETING_IMPORT_LIMITS.previewIssues }))).toBeInTheDocument();
   });
 
 

@@ -109,6 +109,12 @@ key on creation. Preview validation stays synchronous through 500 rows. Larger
 previews enter the durable import queue, validate at most 500 rows per worker slice,
 and expose persisted validated-row progress through the import status route. Studio
 polls that status and restores the preview from the same batch URL after refresh.
+Upload and remapping start validation automatically. Their response is either the
+complete validation preview or `{ import, progress }` for a queued preview; this
+same-deploy response-shape change does not change the dataset version. Studio also
+revalidates a reopened ready batch automatically. Cancel is disabled while upload,
+remapping, validation, or queued preview work is pending, and is unavailable until
+the server has returned the durable batch identifier.
 Normalization, address checks for contacts and suppressions, contact duplicate
 merging, contact list checks, counts, and rejected row receipts resume idempotently;
 preview error CSV data uses the same retained row receipts as processing errors. A

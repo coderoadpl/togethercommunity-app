@@ -377,6 +377,7 @@
       "value": {
         "canCommit": true,
         "canCommitWithSkippedRows": true,
+        "previewIssuesLimited": false,
         "counts": {
           "duplicateRows": 0,
           "listsToCreate": [],

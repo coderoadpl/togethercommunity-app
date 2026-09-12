@@ -63,6 +63,39 @@ describe('durable contact imports', () => {
     expect(completed.preview[0]?.normalizedPayload).toMatchObject({ email: 'large-0@example.test', name: 'Updated' });
   });
 
+  it('revalidates checking rows without merging them into themselves', async () => {
+    const csv = ['email', ...Array.from({ length: 501 }, (_, index) => `recovered-${index}@example.test`)].join('\n');
+    const started = directoryValue(await uploadMarketingContactImport(directoryCtx(), { csv, metadata: { datasetVersion: 'together-marketing-contacts/v1', kind: 'contacts', fileName: 'recovered.csv', idempotencyKey: 'recovered-preview' } }, fixture.deps));
+    directoryValue(await processMarketingContactImportPreview(directoryWorkerCtx(), { importId: started.import.id, workerId: 'preview-worker', maxRows: 600 }, fixture.deps));
+    const checking = await fixture.deps.imports.rows('directory-a', started.import.id);
+    expect(checking).toHaveLength(501);
+    expect(checking.every((row) => row.status === 'checking')).toBe(true);
+    const batch = await fixture.deps.imports.findById('directory-a', started.import.id);
+    if (batch === null) throw new Error('Expected import');
+    await fixture.deps.imports.save('directory-a', { ...batch, status: 'draft', lockedBy: null, lockedUntil: null });
+    const preview = directoryValue(await validateMarketingContactImport(directoryCtx(), { importId: started.import.id }, fixture.deps));
+    const validated = await fixture.deps.imports.rows('directory-a', started.import.id);
+    expect(preview.counts).toMatchObject({ validRows: 501, duplicateRows: 0, rejectedRows: 0 });
+    expect(validated.map((row) => ({ rowNumber: row.rowNumber, normalizedPayload: row.normalizedPayload }))).toEqual(checking.map((row) => ({ rowNumber: row.rowNumber, normalizedPayload: row.normalizedPayload })));
+    expect(validated.every((row) => row.status === 'valid' && row.duplicateOf === null)).toBe(true);
+  });
+
+  it('rejects commit when validation has no valid rows', async () => {
+    const staged = await stage('zero-valid-rows', [{ email: 'not-an-address' }], null);
+    expect(staged.preview).toMatchObject({ canCommit: false, canCommitWithSkippedRows: false, counts: { validRows: 0, rejectedRows: 1 } });
+    expect(await commitMarketingContactImport(directoryCtx(), { ...attest(staged.batch.id, staged.preview.validationHash), invalidRows: 'skip_invalid' }, { ...fixture.deps, actor: { kind: 'user', userId: 'owner' } })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Import has no valid rows' } });
+  });
+
+  it('marks preview issues limited only after truncation', async () => {
+    const invalidRows = Array.from({ length: 101 }, (_, index) => ({ email: `invalid-${index}` }));
+    const exact = await stage('exact-preview-issue-limit', invalidRows.slice(0, 100), null);
+    const truncated = await stage('truncated-preview-issues', invalidRows, null);
+    expect(exact.preview.previewIssuesLimited).toBe(false);
+    expect(exact.preview.errors).toHaveLength(100);
+    expect(truncated.preview.previewIssuesLimited).toBe(true);
+    expect(truncated.preview.errors).toHaveLength(100);
+  });
+
   it('rejects erased addresses in large suppression previews', async () => {
     await eraseAddress('large-erased-suppression@example.test', 'large-erased-suppression@example.invalid');
     const small = directoryValue(await uploadMarketingContactImport(directoryCtx(), {
@@ -119,6 +152,18 @@ describe('durable contact imports', () => {
     expect(started).toMatchObject({ import: { status: 'preview_queued', rowCount: 501 } });
     expect(chunks).toBe(3);
     expect(await fixture.deps.imports.rowsRange('directory-a', started.import.id, 500, 501)).toMatchObject([{ rowNumber: 500 }, { rowNumber: 501 }]);
+  });
+
+  it('scopes range, progress and bulk staging to the requested tenant', async () => {
+    const staged = await stage('repository-tenant-isolation', [{ email: 'tenant-a-row@example.test' }], null);
+    const tenantARows = await fixture.deps.imports.rowsRange('directory-a', staged.batch.id, 1, 1);
+    expect(await fixture.deps.imports.rowsRange('directory-b', staged.batch.id, 1, 1)).toEqual([]);
+    expect(await fixture.deps.imports.previewProgress('directory-b', staged.batch.id)).toEqual({ normalizedRows: 0, checkedRows: 0 });
+    const tenantARow = tenantARows[0];
+    if (tenantARow === undefined) throw new Error('Expected staged row');
+    await expect(fixture.deps.imports.stageRows('directory-b', [{ ...tenantARow, stagedPayload: { email: 'tenant-b-row@example.test' }, normalizedPayload: null, normalizedEmailHmac: null, rowHash: 'tenant-b-row', status: 'staged' }])).rejects.toThrow();
+    expect(await fixture.deps.imports.rowsRange('directory-a', staged.batch.id, 1, 1)).toEqual(tenantARows);
+    expect(await fixture.deps.imports.rowsRange('directory-b', staged.batch.id, 1, 1)).toEqual([]);
   });
 
   it('parks a failing preview as an editable draft instead of re-running it every tick', async () => {

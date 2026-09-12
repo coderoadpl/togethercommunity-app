@@ -92,7 +92,7 @@ memberLanguage: null,
 memberVideoAutoplay: false,
 } };
 const anonymousCtx: Ctx = { identity: {
-  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantAccess: 'member', tenantId: 'tenant-1',
+  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantAccess: 'none', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
 image: null,
 memberDisplayName: null,

@@ -1226,8 +1226,8 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     google,
     importGoogleAvatar: async ({ userId, sourceUrl }) => {
       const tenantIds = await accountAvatarTenants.listTenantIdsForUser(userId);
-      await Promise.all(tenantIds.map((tenantId) => importGoogleAvatar(
-        { tenantId, userId, sourceUrl },
+      await Promise.all(tenantIds.map((tenant) => importGoogleAvatar(
+        { tenantId: tenant.id, userId, sourceUrl },
         { avatars: accountAvatars, avatarImages, ids, secretResolver, storage },
       )));
     },

@@ -2339,7 +2339,7 @@ describe('marketing HTTP surfaces', () => {
     const workerDeps = deps();
     const processed = await processMarketingSnsInbox({
       identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
-        tenantAccess: 'member',
+        tenantAccess: 'none',
         tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
         memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
       capabilities: capabilitiesForPrincipal('webhook'),
@@ -2530,7 +2530,7 @@ describe('marketing HTTP surfaces', () => {
       const workerDeps = deps();
       const processed = await processMarketingSnsInbox({
         identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
-          tenantAccess: 'member',
+          tenantAccess: 'none',
           tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
           memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
         capabilities: capabilitiesForPrincipal('webhook'),

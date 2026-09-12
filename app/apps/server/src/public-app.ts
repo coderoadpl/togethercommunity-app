@@ -238,7 +238,7 @@ const anonymousIdentity = (
   email: `${actor.toLowerCase()}@invalid.test`,
   name: actor,
   emailVerified: true,
-  tenantAccess: 'member',
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,

@@ -587,7 +587,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   name: 'Checkout',
   emailVerified: false,
   image: null,
-  tenantAccess: 'member',
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,

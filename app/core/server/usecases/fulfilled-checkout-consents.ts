@@ -41,7 +41,7 @@ export const recordFulfilledCheckoutConsents = async (
       email: 'checkout@invalid.test',
       name: 'Checkout',
       emailVerified: true,
-      tenantAccess: 'member',
+      tenantAccess: 'none',
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
       tenantName: tenant.name,

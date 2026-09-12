@@ -43,20 +43,28 @@ const deps = (hasAny: boolean, tenantCreationMode: TenantCreationMode) => ({
     findMember: async () => null,
   },
   accountAvatarTenants: { listTenantIdsForUser: async () => [] },
-  tenants: { hasAny: async () => hasAny, findById: async () => null },
+  tenants: { hasAny: async () => hasAny },
   tenantCreationMode,
 });
 
 describe('listMyTenants', () => {
   it('includes member communities without duplicating staff workspaces', async () => {
-    const community = { ...membership.tenant, id: 'tenant-member', slug: 'acme' };
+    const community = {
+      id: 'tenant-member',
+      slug: 'acme',
+      name: 'Studio',
+      staffRole: null,
+      memberId: 'member-acme',
+      displayName: null,
+      banned: false,
+      dmOptOut: false,
+      language: null,
+      videoAutoplay: null,
+    };
     const result = await listMyTenants({ identity }, {
       ...deps(true, 'closed'),
-      accountAvatarTenants: { listTenantIdsForUser: async () => [membership.tenant.id, community.id, 'deleted'] },
-      tenants: {
-        hasAny: async () => true,
-        findById: async (id) => id === community.id ? community : null,
-      },
+      accountAvatarTenants: { listTenantIdsForUser: async () => [{ ...community, id: membership.tenant.id }, community] },
+      tenants: { hasAny: async () => true },
     });
     expect(result).toMatchObject({ ok: true, value: { tenants: [membership], memberTenants: [community] } });
   });
@@ -102,7 +110,7 @@ describe('listMyTenants', () => {
       { identity, capabilities: ['tenant:list-own'] },
       {
         tenantAccess: { listTenantsForStaff: async () => [] },
-        tenants: { hasAny: async () => false, findById: async () => null },
+        tenants: { hasAny: async () => false },
         accountAvatarTenants: { listTenantIdsForUser: async () => [] },
         tenantCreationMode: 'open',
       },

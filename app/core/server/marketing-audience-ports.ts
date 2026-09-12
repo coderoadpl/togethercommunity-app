@@ -8,7 +8,7 @@ export interface MarketingContactAudienceRepository {
   fetchSnapshotPage(tenantId: string, input: { snapshotId: string; afterContactId: string | null; maxContactId: string; limit: number }): Promise<MarketingAudienceContact[]>;
 }
 export interface MarketingContactCampaignTransaction {
-  schedule(tenantId: string, input: { campaignId: string; sendAt: string; asOf: string; audience: ContactCampaignAudience }): Promise<Result<Campaign, AppError>>;
+  schedule(tenantId: string, input: { campaignId: string; sendAt: string; asOf: string }): Promise<Result<Campaign, AppError>>;
 }
 export interface MarketingContactAudienceDeps {
   contactAudience: MarketingContactAudienceRepository;

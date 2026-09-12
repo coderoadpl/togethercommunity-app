@@ -60,7 +60,7 @@ describe('contact campaign lifecycle authorization', () => {
     expect(await scheduleMarketingContactCampaign({ ...ctx, identity: { ...ctx.identity, tenantId: 'tenant-b' } }, { campaignId: 'campaign', sendAt: deps.clock.nowIso() }, deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(deps.contactCampaigns.schedule).not.toHaveBeenCalled();
     expect(await scheduleMarketingContactCampaign(ctx, { campaignId: 'campaign', sendAt: deps.clock.nowIso() }, deps)).toMatchObject({ ok: true });
-    expect(deps.contactCampaigns.schedule).toHaveBeenCalledExactlyOnceWith('tenant-a', { campaignId: 'campaign', sendAt: deps.clock.nowIso(), audience, asOf: deps.clock.nowIso() });
+    expect(deps.contactCampaigns.schedule).toHaveBeenCalledExactlyOnceWith('tenant-a', { campaignId: 'campaign', sendAt: deps.clock.nowIso(), asOf: deps.clock.nowIso() });
   });
   it('schedules legacy overlapping audiences after normalizing include lists', async () => {
     const stored = { ...audience, includeLists: ['keep', 'overlap'], excludeLists: ['overlap'] };
@@ -72,7 +72,6 @@ describe('contact campaign lifecycle authorization', () => {
       campaignId: 'campaign',
       sendAt: deps.clock.nowIso(),
       asOf: deps.clock.nowIso(),
-      audience: { ...audience, includeLists: ['keep'], excludeLists: ['overlap'] },
     });
     expect(deps.logger.warn).toHaveBeenCalledWith('[marketing] normalized overlapping contact audience campaign=campaign');
   });

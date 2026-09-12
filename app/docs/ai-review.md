@@ -18,6 +18,19 @@ Each model/slot pair receives one immediate retry only when the execution log pr
 
 The workflow uses a read-only GitHub token for preparation and a pull-request-write token only for its deterministic sticky comment. The model receives one OAuth credential at a time, no GitHub token, no shell, no network tools, no write tools, no plugins, and no repository or user configuration. Its reads are confined to the prepared runner-temporary input directory.
 
+## Failure Reasons
+
+| Reason | Meaning | Operator action |
+| --- | --- | --- |
+| `base_moved` | The pinned pull-request metadata no longer matches the fetched base or head ref. | Update the pull request branch with `gh pr update-branch`; the `pull_request` `synchronize` event starts a new review. |
+| `turn_limit` | The reviewer exceeded `AI_REVIEW_MAX_TURNS` before producing an accepted verdict. | Raise `AI_REVIEW_MAX_TURNS` or split the pull request. |
+| `auth_rejected` | The OAuth token was rejected by the provider. | Rotate or replace the affected token slot. |
+| `usage_limit` | The provider reported a quota, rate-limit, or credit-capacity failure. | Wait for capacity or use another available slot. |
+| `model_unavailable` | The configured model was unavailable or inaccessible. | Correct the model variable or provider access. |
+| `timeout` | The action or provider hit a time limit. | Re-run after checking capacity, or reduce the pull-request scope. |
+| `cold_start` | The action failed before calling the model. | The workflow retries that model/slot pair once automatically. |
+| `empty_output` / `invalid_output` / `action_failure` | The action returned no accepted structured verdict. | Inspect the attempt diagnostics in the workflow log. |
+
 ## Owner setup
 
 Land the workflow, scripts, prompts, tests, and this document on `staging`, then promote them to `main` under the existing controls before making `ai-review` required. The introducing pull request is expected to be red because its trusted base does not contain the gate yet.

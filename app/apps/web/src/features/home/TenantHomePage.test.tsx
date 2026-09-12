@@ -51,6 +51,19 @@ const tenantsBody = {
   canCreateTenant: true,
 };
 
+const memberTenant = {
+  id: 't1',
+  slug: 'acme',
+  name: 'Acme',
+  staffRole: null,
+  memberId: 'm1',
+  displayName: null,
+  banned: false,
+  dmOptOut: false,
+  language: null,
+  videoAutoplay: null,
+};
+
 const stub = (label: string) => () => <div>{label}</div>;
 
 const renderHome = async (component: () => ReactNode = TenantHomePage) => {
@@ -135,7 +148,7 @@ describe('TenantHomePage dispatcher', () => {
       http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
       http.get('/api/tenants', () => HttpResponse.json({
         ok: true,
-        data: { tenants: [], memberTenants: [tenantsBody.tenants[0]?.tenant], canCreateTenant: false },
+        data: { tenants: [], memberTenants: [memberTenant], canCreateTenant: false },
       })),
     );
     await renderHome();

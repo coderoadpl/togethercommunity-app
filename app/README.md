@@ -10,6 +10,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 ## Quickstart (local demo)
 
 For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+Payment setup and existing Stripe subscription adoption are covered in the
+[payments guide](docs/payments.md).
 
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
@@ -209,7 +211,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->459<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->462<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

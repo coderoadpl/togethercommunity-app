@@ -642,9 +642,12 @@
             "createdAt": "2026-07-01T12:01:03.000Z",
             "currency": "PLN",
             "id": "price-product-download-workbook",
+            "imported": false,
             "interval": null,
+            "intervalCount": 1,
             "kind": "one_time",
             "productId": "product-download-workbook",
+            "providerPriceId": null,
             "tenantId": "tenant-studio"
           }
         ]

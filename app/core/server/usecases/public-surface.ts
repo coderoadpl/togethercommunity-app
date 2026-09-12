@@ -200,7 +200,7 @@ export const getPublicCourseStructure = async (
         id: product.id,
         priceCents: price?.amountCents ?? product.priceCents,
         currency: price?.currency ?? product.currency,
-        interval: price?.interval ?? null,
+        interval: price?.interval === 'month' || price?.interval === 'year' ? price.interval : null,
       },
     },
   });

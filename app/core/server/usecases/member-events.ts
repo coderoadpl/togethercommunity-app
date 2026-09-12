@@ -30,6 +30,7 @@ interface MemberTimelineDeps {
 const productIdFor = (event: MemberEvent): string | null => {
   switch (event.type) {
     case 'purchase':
+    case 'subscription-adopted':
     case 'subscription-change':
     case 'grant':
     case 'revoke':
@@ -83,6 +84,8 @@ export const listMemberTimeline = async (
             productTitle: productTitles.get(event.payload.productId) ?? null,
           },
         };
+      case 'subscription-adopted':
+        return { ...event, payload: { ...event.payload, productTitle: productTitles.get(event.payload.productId) ?? null } };
       case 'subscription-change':
         return {
           ...event,

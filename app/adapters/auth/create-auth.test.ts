@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
-import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, validation } from '#core/domain/index.js';
+import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
 import { createDb } from '#adapters/db/client.js';
-import { user, verification } from '#adapters/db/schema.js';
+import { emailEvents, members, tenants, user, verification } from '#adapters/db/schema.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
-import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
+import { createEmailOutboxRepository, createPlatformAuthSendLog } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
+import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { dispatchEmailBatch } from '#core/server/index.js';
 import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-fakes.js';
 
@@ -430,6 +431,7 @@ const buildAuth = (options: {
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
+  platformTransportFails?: boolean;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
 } = {}) => {
   const db = createDb('node-postgres', connectionString);
@@ -455,8 +457,8 @@ const buildAuth = (options: {
       runs: new InMemorySchedulerRunRepository(),
       trigger: 'manual',
     });
-  const dispatchEmail = (): void => undefined;
   const consentRequired = options.consentRequired ?? false;
+  let platformSendAttempts = 0;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
@@ -469,9 +471,20 @@ const buildAuth = (options: {
       (options.verifiedCustomHosts ?? []).includes(host),
     exposeMagicLinks: true,
     emailOutbox,
+    emailSender: {
+      send: async (message) => {
+        platformSendAttempts += 1;
+        if (options.platformTransportFails === true) {
+          return err(unavailable('Platform transport is throttling'));
+        }
+        const sent = await createDevEmailPort(db).send(message);
+        return sent.ok ? ok({ ...sent.value, transport: 'platform' as const }) : sent;
+      },
+    },
+    authSendLog: createPlatformAuthSendLog(db),
     ids: { nextId: () => crypto.randomUUID() },
     clock,
-    dispatchEmail,
+    dispatchEmail: () => undefined,
     defaultTenantName: 'Together',
     google: null,
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
@@ -488,9 +501,12 @@ const buildAuth = (options: {
   return {
     auth,
     authPort: createAuthPort(auth),
+    db,
+    emailOutbox,
     magicLinks: createDevMagicLinkReader(db),
     emails: createDevEmailReader(db),
     flushEmails,
+    platformSendAttempts: () => platformSendAttempts,
   };
 };
 
@@ -869,12 +885,27 @@ describe('soft email verification', () => {
     expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
   });
 
-  it('resends an English verification link through the outbox', async () => {
-    const { auth, emails, flushEmails } = buildAuth();
+  it('resends an English verification link and records redacted tenant metadata', async () => {
+    const { auth, db, emails, flushEmails } = buildAuth();
     const email = `verification-resend-${Date.now()}@together.dev`;
     await signUp(auth, email);
     await flushEmails();
+    const tenantId = `tenant-verification-${crypto.randomUUID()}`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `verification-${Date.now()}`,
+      name: 'Verification',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-verification-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-verification-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
     auth.setEmailVerificationDeliveryContext(email, {
+      tenantId,
       language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
@@ -884,11 +915,18 @@ describe('soft email verification', () => {
       headers: new Headers({ 'x-forwarded-for': `198.51.100.${signUpIpSuffix++}` }),
     });
     await flushEmails();
+    await auth.flushAuthEmails();
 
     expect(response.status).toBe(true);
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Verify your email address');
     expect(message?.text).toContain('studio.localhost:48730');
+    expect((await createEmailSendRepository(db).listPage(tenantId, { limit: 10 })).sends)
+      .toContainEqual(expect.objectContaining({
+        sourceKind: 'auth-email-verification',
+        subject: 'auth-email-verification',
+        transport: 'platform',
+      }));
   });
 
   it('returns indistinguishable resend responses for known and unknown addresses', async () => {
@@ -1106,6 +1144,102 @@ describe('createAuthPort.requestMagicLink', () => {
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Sign in to Studio');
     expect(message?.html).toContain('studio.localhost:48730');
+  });
+
+  it('records a tenant magic-link send as redacted platform metadata', async () => {
+    const { auth, authPort, db, magicLinks } = buildAuth();
+    const tenantId = `tenant-auth-send-${crypto.randomUUID()}`;
+    const email = `magic-log-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-send-${Date.now()}`,
+      name: 'Auth send',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-send-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-send-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
+
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantId,
+      tenantName: 'Studio',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    await auth.flushAuthEmails();
+
+    const projection = await createEmailSendRepository(db).listPage(tenantId, { limit: 10 });
+    expect(projection.sends).toHaveLength(1);
+    expect(projection.sends[0]).toMatchObject({
+      kind: 'transactional',
+      source: 'auth-magic-link',
+      sourceKind: 'auth-magic-link',
+      subject: 'auth-magic-link',
+      recipient: normalizeEmail(email),
+      status: 'sent',
+      transport: 'platform',
+    });
+    const serializedSend = JSON.stringify(projection.sends[0]);
+    expect(serializedSend).not.toContain('http');
+    expect(serializedSend).not.toContain('Studio');
+    expect(serializedSend).not.toContain(link?.token ?? 'missing-token');
+
+    const events = await db.select().from(emailEvents).where(eq(emailEvents.tenantId, tenantId)).orderBy(asc(emailEvents.sequence));
+    expect(events.map((event) => event.type)).toEqual(['queued', 'accepted']);
+    for (const event of events) {
+      const serializedMeta = JSON.stringify(event.meta);
+      expect(serializedMeta).not.toContain('http');
+      expect(serializedMeta).not.toContain('Studio');
+      expect(serializedMeta).not.toContain(link?.token ?? 'missing-token');
+    }
+  });
+
+  it('retries a failing platform transport and answers the member as it answers a stranger', async () => {
+    const { auth, authPort, db, platformSendAttempts } = buildAuth({ platformTransportFails: true });
+    const tenantId = `tenant-auth-retry-${crypto.randomUUID()}`;
+    const memberEmail = `magic-retry-member-${Date.now()}@together.dev`;
+    const strangerEmail = `magic-retry-stranger-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-retry-${Date.now()}`,
+      name: 'Auth retry',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-retry-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-retry-${crypto.randomUUID()}`,
+      email: memberEmail,
+      createdAt: new Date().toISOString(),
+    });
+    const requestLink = (email: string, forTenant: boolean) => authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/my',
+      ...(forTenant ? { tenantId } : {}),
+      tenantName: 'Auth retry',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    await expect(requestLink(memberEmail, true)).resolves.toBeUndefined();
+    await expect(requestLink(strangerEmail, false)).resolves.toBeUndefined();
+    await auth.flushAuthEmails();
+
+    expect(platformSendAttempts()).toBe(3);
+    const sends = await createEmailSendRepository(db).listPage(tenantId, { limit: 10 });
+    expect(sends.sends).toEqual([expect.objectContaining({
+      sourceKind: 'auth-magic-link',
+      status: 'failed',
+      failureCode: 'unavailable',
+      failureMessage: null,
+    })]);
   });
 
   it('rebases a platform request onto the platform host and returns to its picker', async () => {
@@ -1331,12 +1465,27 @@ describe('reset password email', () => {
     expect(await response.json()).toMatchObject({ code: 'INVALID_PASSWORD_RESET_ORIGIN' });
   });
 
-  it('rebases the reset link onto the requesting host and sends an English email', async () => {
-    const { auth, authPort, emails, flushEmails } = buildAuth();
+  it('rebases the reset link and records redacted tenant metadata', async () => {
+    const { auth, authPort, db, emails, flushEmails } = buildAuth();
     const email = `reset-en-${Date.now()}@together.dev`;
     await authPort.ensureUser(email);
+    const tenantId = `tenant-reset-${crypto.randomUUID()}`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `reset-${Date.now()}`,
+      name: 'Reset',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-reset-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-reset-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
 
     auth.setResetPasswordDeliveryContext(email, {
+      tenantId,
       language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
@@ -1348,6 +1497,7 @@ describe('reset password email', () => {
       }),
     });
     await flushEmails();
+    await auth.flushAuthEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Reset your password');
@@ -1358,6 +1508,12 @@ describe('reset password email', () => {
     expect(parsedActionUrl.searchParams.get('callbackURL')).toBe(
       'http://studio.localhost:48730/reset-password',
     );
+    expect((await createEmailSendRepository(db).listPage(tenantId, { limit: 10 })).sends)
+      .toContainEqual(expect.objectContaining({
+        sourceKind: 'auth-password-reset',
+        subject: 'auth-password-reset',
+        transport: 'platform',
+      }));
   });
 
   it('sends an English email when the requested language is en', async () => {

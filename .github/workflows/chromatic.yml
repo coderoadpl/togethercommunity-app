@@ -3,13 +3,24 @@ name: chromatic
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'app/apps/web/**'
+      - 'app/apps/server/src/**'
+      - 'app/core/**'
+      - 'app/.storybook/**'
+      - 'app/package.json'
+      - 'app/pnpm-lock.yaml'
+      - 'app/tasks/visual-goldens/**'
+      - '.github/workflows/chromatic.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: chromatic-${{ github.event.pull_request.number || github.ref }}
+  group: chromatic-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -31,7 +42,7 @@ jobs:
 
   chromatic:
     needs: token
-    if: needs.token.outputs.available == 'true'
+    if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.token.outputs.available == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -100,17 +111,16 @@ jobs:
             set -- "$@" --skip
           fi
           pnpm exec chromatic "$@"
-      - name: Upsert Chromatic preview comment
+      - name: Upsert Chromatic comment
         if: github.event_name == 'pull_request'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
           COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
           CHROMATIC_SKIPPED: ${{ steps.ui-changes.outputs.changed == 'false' }}
         run: |
-          marker='<!-- chromatic-preview -->'
+          marker='<!-- chromatic -->'
           diagnostics='chromatic-diagnostics.json'
 
           read_json() {
@@ -127,14 +137,11 @@ jobs:
           repo_name="${GITHUB_REPOSITORY#*/}"
           owner="${GITHUB_REPOSITORY%%/*}"
           pages_url="https://${owner}.github.io/${repo_name}/"
-          if [ "$BASE_REF" = "staging" ]; then
-            pages_url="${pages_url}staging/"
-          fi
 
           body_file="$(mktemp)"
           {
             echo "$marker"
-            echo "### Chromatic preview"
+            echo "### Chromatic"
             echo
             if [ "$CHROMATIC_SKIPPED" = "true" ]; then
               echo "Chromatic skipped: no UI changes"
@@ -164,3 +171,42 @@ jobs:
             gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
               --input "$payload_file"
           fi
+
+  main-baseline:
+    needs: token
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.token.outputs.available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Accept Chromatic main baseline
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: |
+          set -- \
+            --project-token="$CHROMATIC_PROJECT_TOKEN" \
+            --build-script-name=storybook:build \
+            --diagnostics-file=chromatic-diagnostics.json \
+            --only-changed \
+            --auto-accept-changes \
+            --exit-once-uploaded \
+            --zip
+          pnpm exec chromatic "$@"

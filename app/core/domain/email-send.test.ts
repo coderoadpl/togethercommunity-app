@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
+import { emailOutboxPayloadSchema } from './email-outbox.js';
 import {
+  EMAIL_SEND_SOURCE_KINDS,
   emailSendExportQuerySchema,
   emailSendListQuerySchema,
   emailSendProjectionSchema,
 } from './email-send.js';
 
 describe('unified email send projection', () => {
+  it('names every outbox payload kind plus the marketing row source', () => {
+    const outboxKinds = emailOutboxPayloadSchema.options.map((option) => option.shape.kind.value);
+
+    expect([...EMAIL_SEND_SOURCE_KINDS].sort()).toEqual([...outboxKinds, 'marketing-campaign'].sort());
+  });
+
   it('parses transactional and marketing rows without erasing kind-specific status', () => {
     const base = {
       id: 'send-1',
@@ -28,6 +36,7 @@ describe('unified email send projection', () => {
     expect(emailSendProjectionSchema.parse({
       ...base,
       kind: 'transactional',
+      sourceKind: 'welcome-sign-in',
       source: 'welcome-sign-in',
       status: 'queued',
       skipReason: null,
@@ -36,6 +45,7 @@ describe('unified email send projection', () => {
     expect(emailSendProjectionSchema.parse({
       ...base,
       kind: 'marketing',
+      sourceKind: 'marketing-campaign',
       source: 'api',
       status: 'skipped',
       skipReason: 'not_consented',

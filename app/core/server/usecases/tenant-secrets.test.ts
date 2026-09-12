@@ -5,10 +5,12 @@ import { ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { SecretCrypto, TenantSecretRepository } from '../ports.js';
+import type { TenantUrlDeps } from '../tenant-url.js';
 import {
   deleteTenantSecret,
   getTenantSecretsMasked,
   setTenantSecret,
+  stripeWebhookUrl,
   type TenantSecretDeps,
 } from './tenant-secrets.js';
 
@@ -34,7 +36,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   } satisfies Identity,
 });
 
-type TestDeps = TenantSecretDeps & { appBaseUrl: string };
+type TestDeps = TenantSecretDeps & TenantUrlDeps;
 
 const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecret[] } => {
   const store = [...rows];
@@ -65,6 +67,8 @@ const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecre
     rows: store,
     deps: {
       appBaseUrl: 'https://app.example.test/base',
+      baseDomain: 'example.test',
+      singleTenantMode: false,
       tenantSecrets,
       secretCrypto,
       ids: { nextId: () => `secret-${(seq += 1)}` },
@@ -177,13 +181,21 @@ describe('getTenantSecretsMasked', () => {
       .resolves.toMatchObject({ ok: true, value: { stripeMode: null } });
   });
 
-  it('returns the server-derived Stripe webhook URL including an application path prefix', async () => {
+  it('returns the server-derived Stripe webhook URL on the tenant platform host', async () => {
     const h = harness();
 
     await expect(getTenantSecretsMasked(ctx('admin'), h.deps)).resolves.toMatchObject({
       ok: true,
-      value: { stripeWebhookUrl: 'https://app.example.test/base/api/webhooks/stripe/t1' },
+      value: { stripeWebhookUrl: 'https://acme.example.test/api/webhooks/stripe/t1' },
     });
+  });
+
+  it('keeps the Stripe webhook URL on APP_BASE_URL in single-tenant mode', () => {
+    expect(stripeWebhookUrl('acme', 't1', {
+      appBaseUrl: 'https://learn.example.test/base',
+      baseDomain: 'example.test',
+      singleTenantMode: true,
+    })).toBe('https://learn.example.test/api/webhooks/stripe/t1');
   });
 
   it('forbids a non-staff caller', async () => {

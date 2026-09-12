@@ -22,6 +22,8 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
     secureCookies: false,
     exposeMagicLinks: false,
     emailOutbox: createEmailOutboxRepository(db),
+    emailSender: { send: async () => ({ ok: true, value: { messageId: 'seed-auth-email', transport: 'platform' as const } }) },
+    authSendLog: { queue: async () => ({ ok: true, value: undefined }), settle: async () => ({ ok: true, value: undefined }) },
     ids: { nextId: () => crypto.randomUUID() },
     clock,
     dispatchEmail: () => undefined,

@@ -5,6 +5,21 @@ import { emailOutboxPayloadSchema, isAuthBearingEmailPayload, renderEmailOutboxP
 const branding = { logoUrl: 'https://cdn.test/logo.png', accentColor: '#123456' };
 
 describe('renderEmailOutboxPayload', () => {
+  it.each([
+    'auth-magic-link',
+    'auth-password-reset',
+    'auth-email-verification',
+  ] as const)('accepts only redacted metadata for %s', (kind) => {
+    expect(emailOutboxPayloadSchema.parse({ kind })).toEqual({ kind });
+    expect(emailOutboxPayloadSchema.safeParse({
+      kind,
+      subject: 'Secret subject',
+      url: 'https://example.test/auth?token=secret',
+      token: 'secret',
+      code: '123456',
+    }).success).toBe(false);
+  });
+
   it('renders a welcome-sign-in payload with branding', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'welcome-sign-in',
@@ -206,7 +221,13 @@ describe('isAuthBearingEmailPayload', () => {
     'classifies $kind for global auth bearer isolation',
     ({ kind }) => {
       expect(isAuthBearingEmailPayload({ kind })).toBe([
-        'welcome-sign-in', 'reset-password', 'verify-email', 'magic-link',
+        'auth-magic-link',
+        'auth-password-reset',
+        'auth-email-verification',
+        'welcome-sign-in',
+        'reset-password',
+        'verify-email',
+        'magic-link',
       ].includes(kind));
     },
   );

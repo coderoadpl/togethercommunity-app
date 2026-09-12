@@ -1462,6 +1462,37 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .onConflictDoNothing();
 
   await db
+    .insert(emailOutbox)
+    .values([
+      {
+        id: 'send-studio-auth-magic-link', tenantId: 'tenant-studio', kind: 'auth-magic-link',
+        to: 'student.active@together.dev', payload: { kind: 'auth-magic-link' },
+        status: 'sent' as const, attempts: 1, nextAttemptAt: relativeIso(-2), lastError: null,
+        createdAt: relativeIso(-2), sentAt: relativeIso(-2),
+        sesMessageId: 'ses-studio-auth-magic-link', transport: 'platform' as const,
+        deliveryStatus: null, deliveryOccurredAt: null,
+      },
+      {
+        id: 'send-studio-auth-password-reset', tenantId: 'tenant-studio', kind: 'auth-password-reset',
+        to: 'student.active@together.dev', payload: { kind: 'auth-password-reset' },
+        status: 'sent' as const, attempts: 1, nextAttemptAt: relativeIso(-2.5), lastError: null,
+        createdAt: relativeIso(-2.5), sentAt: relativeIso(-2.5),
+        sesMessageId: 'ses-studio-auth-password-reset', transport: 'platform' as const,
+        deliveryStatus: null, deliveryOccurredAt: null,
+      },
+      {
+        id: 'send-studio-auth-email-verification', tenantId: 'tenant-studio', kind: 'auth-email-verification',
+        to: 'student.subscriber@together.dev', payload: { kind: 'auth-email-verification' },
+        status: 'failed' as const, attempts: 1, nextAttemptAt: relativeIso(-2.75), lastError: null,
+        lastErrorCode: 'unavailable',
+        createdAt: relativeIso(-2.75), sentAt: null,
+        sesMessageId: null, transport: 'platform' as const,
+        deliveryStatus: null, deliveryOccurredAt: null,
+      },
+    ])
+    .onConflictDoNothing();
+
+  await db
     .insert(emailEvents)
     .values([
       {
@@ -1489,6 +1520,39 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         refId: 'send-studio-transactional', type: 'accepted', occurredAt: relativeIso(-3),
         meta: { sesMessageId: 'ses-studio-transactional', runId: 'scheduler-run-studio-outbox' },
         createdAt: relativeIso(-3),
+      },
+      {
+        id: 'event-studio-auth-magic-link-queued', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-magic-link', type: 'queued', occurredAt: relativeIso(-2),
+        meta: null, createdAt: relativeIso(-2),
+      },
+      {
+        id: 'event-studio-auth-magic-link-accepted', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-magic-link', type: 'accepted', occurredAt: relativeIso(-2),
+        meta: { sesMessageId: 'ses-studio-auth-magic-link', transport: 'platform' },
+        createdAt: relativeIso(-2),
+      },
+      {
+        id: 'event-studio-auth-password-reset-queued', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-password-reset', type: 'queued', occurredAt: relativeIso(-2.5),
+        meta: null, createdAt: relativeIso(-2.5),
+      },
+      {
+        id: 'event-studio-auth-password-reset-accepted', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-password-reset', type: 'accepted', occurredAt: relativeIso(-2.5),
+        meta: { sesMessageId: 'ses-studio-auth-password-reset', transport: 'platform' },
+        createdAt: relativeIso(-2.5),
+      },
+      {
+        id: 'event-studio-auth-email-verification-queued', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-email-verification', type: 'queued', occurredAt: relativeIso(-2.75),
+        meta: null, createdAt: relativeIso(-2.75),
+      },
+      {
+        id: 'event-studio-auth-email-verification-failed', tenantId: 'tenant-studio', mailKind: 'transactional',
+        refId: 'send-studio-auth-email-verification', type: 'failed', occurredAt: relativeIso(-2.75),
+        meta: { error: 'Platform transport failed', errorCode: 'unavailable', transport: 'platform' },
+        createdAt: relativeIso(-2.75),
       },
     ])
     .onConflictDoNothing();

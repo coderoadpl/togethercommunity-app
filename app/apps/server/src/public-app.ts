@@ -35,6 +35,7 @@ import {
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
   normalizeEmail,
+  notFound,
   ok,
   resolveEmailLanguage,
   tenantNotFound,
@@ -45,6 +46,7 @@ import {
   type EmailBranding,
   type Identity,
   type Language,
+  type Member,
   type Result
 } from '#core/domain/index.js';
 import {
@@ -151,16 +153,13 @@ const EMAIL_MAX_LENGTH = 254;
 const authEmailBodySchema = z.object({ email: z.string().email().max(EMAIL_MAX_LENGTH) });
 
 const authEmailLanguage = async (
-  email: string,
+  member: Member | null,
   resolved: ResolvedTenant | null,
   requested: Language | null,
   deps: AppDeps,
 ): Promise<Language> => {
   if (resolved === null) return requested ?? DEFAULT_LANGUAGE;
-  const [member, settings] = await Promise.all([
-    deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email)),
-    deps.tenants.findSettings(resolved.tenant.id),
-  ]);
+  const settings = await deps.tenants.findSettings(resolved.tenant.id);
   return resolveEmailLanguage(member?.language, requested, settings?.defaultLanguage);
 };
 
@@ -178,6 +177,7 @@ const withAuthDeliveryContext = async (
   setContext: (input: {
     email: string;
     resolved: ResolvedTenant | null;
+    tenantId?: string;
     baseUrl: string;
     language: Language;
   }) => Promise<void> | void,
@@ -200,14 +200,18 @@ const withAuthDeliveryContext = async (
       deps,
     );
     const resolved = tenant.ok ? tenant.value : null;
+    const member = resolved === null
+      ? null
+      : await deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email));
     const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
     await setContext({
       email,
       resolved,
+      ...(resolved !== null && member !== null ? { tenantId: resolved.tenant.id } : {}),
       baseUrl: platformAuthBaseUrl(c.req.header('host') ?? '', deps)
         ?? await authLinkBaseUrl(resolved, deps),
       language: await authEmailLanguage(
-        email,
+        member,
         resolved,
         headerLanguage.success ? headerLanguage.data : null,
         deps,
@@ -674,11 +678,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     withAuthDeliveryContext(
       c,
       deps,
-      async ({ email, resolved, baseUrl, language }) => {
+      async ({ email, resolved, tenantId, baseUrl, language }) => {
         const branding = resolved
           ? await emailBranding(deps, resolved.tenant.id, baseUrl)
           : undefined;
         deps.auth.setMagicLinkDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
           ...(resolved ? { tenantName: resolved.tenant.name } : {}),
           language,
           mode: 'email',
@@ -693,8 +698,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     withAuthDeliveryContext(
       c,
       deps,
-      ({ email, baseUrl, language }) => {
-        deps.auth.setResetPasswordDeliveryContext(email, { language, baseUrl });
+      ({ email, tenantId, baseUrl, language }) => {
+        deps.auth.setResetPasswordDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
+          language,
+          baseUrl,
+        });
       },
       (email) => { deps.auth.clearResetPasswordDeliveryContext(email); },
     ));
@@ -703,8 +712,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     withAuthDeliveryContext(
       c,
       deps,
-      ({ email, baseUrl, language }) => {
-        deps.auth.setEmailVerificationDeliveryContext(email, { language, baseUrl });
+      ({ email, tenantId, baseUrl, language }) => {
+        deps.auth.setEmailVerificationDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
+          language,
+          baseUrl,
+        });
       },
       (email) => { deps.auth.clearEmailVerificationDeliveryContext(email); },
     ));
@@ -722,7 +735,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.logger.error(
         `[stripe-webhook] ignored tenant=${tenantId} status=${tenant?.status ?? 'unknown'}`,
       );
-      return respond(ok({ received: true as const, processed: false }));
+      return respond(err(notFound()));
     }
     const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);

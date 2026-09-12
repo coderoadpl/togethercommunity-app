@@ -1,5 +1,6 @@
-import type { ActivitySummary, ActivitySummaryQuery, MemberActivity, MemberActivityQuery } from '#core/domain/index.js';
 import type {
+  ActivitySummary,
+  ActivitySummaryQuery,
   AppError,
   Course,
   CourseLesson,
@@ -129,6 +130,10 @@ import type {
   KsefEnvironment,
   KsefStatus,
   Language,
+  ListStripeSubscriptionsInput,
+  MemberActivity,
+  MemberActivityQuery,
+  StripeSubscriptionSnapshot,
   WipedTable,
 } from '#core/domain/index.js';
 
@@ -1015,6 +1020,8 @@ export interface PaymentWebhookEvent {
 }
 
 export interface PaymentProvider {
+  retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
+  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {
     tenantId: string;
     restrictedKey: string;
@@ -1507,6 +1514,10 @@ export interface MemberSubscriptionRepository {
     tenantId: string,
     providerSubscriptionId: string,
   ): Promise<MemberSubscription | null>;
+  listKnownProviderSubscriptionIds(
+    tenantId: string,
+    providerSubscriptionIds: readonly string[],
+  ): Promise<string[]>;
   listForMember(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
   create(tenantId: string, subscription: MemberSubscription): Promise<void>;
   update(tenantId: string, subscription: MemberSubscription): Promise<MemberSubscription | null>;
@@ -2377,4 +2388,17 @@ export interface Clock {
 export interface ActivityReportRepository {
   activitySummary(tenantId: string, query: ActivitySummaryQuery): Promise<ActivitySummary>;
   memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
+}
+
+export interface SubscriptionAdoptionRepositories {
+  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  products: Pick<ProductRepository, 'findById'>;
+  prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
+  subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
+  grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
+  memberEvents: Pick<MemberEventRepository, 'append'>;
+}
+
+export interface SubscriptionAdoptionTransaction {
+  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }

@@ -17,7 +17,7 @@ export const formatOfferPrice = (
 
 export type OfferPriceTerms = {
   kind: 'one_time' | 'recurring';
-  interval: 'month' | 'year' | null;
+  interval: 'day' | 'week' | 'month' | 'year' | null;
   amountCents: number;
   currency: string;
 };

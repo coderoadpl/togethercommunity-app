@@ -79,3 +79,4 @@ export { marketingBodyTextSchema, marketingReplyToSchema } from './marketing-ema
 export * from './marketing-audience.js';
 
 export * from './activity-report.js';
+export * from './stripe-subscription.js';

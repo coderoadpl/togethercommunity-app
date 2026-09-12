@@ -124,5 +124,6 @@ export * from './usecases/marketing-contact-audience.js';
 export * from './usecases/marketing-contact-campaigns.js';
 
 export * from './usecases/activity-reports.js';
+export * from './usecases/stripe-subscription-adoption.js';
 export * from './marketing-signup-ports.js';
 export * from './usecases/marketing-signup-forms.js';

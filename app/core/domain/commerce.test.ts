@@ -74,6 +74,18 @@ describe('graceExpiresAt', () => {
 });
 
 describe('nextPeriodEnd', () => {
+  it.each([
+    ['1998-12-31T10:15:30.000Z', 'day', 1, '1999-01-01T10:15:30.000Z'],
+    ['2000-02-28T10:15:30.000Z', 'day', 2, '2000-03-01T10:15:30.000Z'],
+    ['1998-12-28T10:15:30.000Z', 'week', 1, '1999-01-04T10:15:30.000Z'],
+    ['1998-12-28T10:15:30.000Z', 'week', 2, '1999-01-11T10:15:30.000Z'],
+    ['1998-11-14T10:15:30.000Z', 'month', 3, '1999-02-14T10:15:30.000Z'],
+    ['1998-01-31T10:15:30.000Z', 'month', 3, '1998-05-01T10:15:30.000Z'],
+    ['1998-02-28T10:15:30.000Z', 'year', 2, '2000-02-28T10:15:30.000Z'],
+  ] as const)('advances %s by %s intervals with count %i to %s', (from, interval, count, expected) => {
+    expect(nextPeriodEnd(from, interval, count)).toBe(expected);
+  });
+
   it('advances one month', () => {
     expect(nextPeriodEnd('1998-07-14T10:00:00.000Z', 'month')).toBe('1998-08-14T10:00:00.000Z');
   });

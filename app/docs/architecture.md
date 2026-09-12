@@ -16,8 +16,8 @@ route, port and use case, adapter repository, server route, client method, CLI
 command, then web page. Runtime verification uses `pnpm run smoke`; completion
 also requires the static `pnpm run check` gate.
 
-The current CLI parity gap is **102 of 275 API client actions**; CLI code calls
-173 actions. Regenerate the inventory after client or command changes:
+The current CLI parity gap is **102 of 277 API client actions**; CLI code calls
+175 actions. Regenerate the inventory after client or command changes:
 
 ```bash
 pnpm run cli-parity

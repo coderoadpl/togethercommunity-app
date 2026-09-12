@@ -441,3 +441,45 @@ describe('MemberDetail', () => {
       .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });
 });
+
+
+it('adopts a Stripe subscription from the member access dialog and refreshes commerce', async () => {
+  setup();
+  const bodies: unknown[] = [];
+  server.use(http.post('/api/subscriptions/adopt', async ({ request }) => {
+    bodies.push(await request.json());
+    return HttpResponse.json({ ok: true, data: {
+      subscription: { id: 'local-sub', tenantId: 't1', memberId: member.id, productId: 'p3', priceId: 'imported-price', provider: 'stripe', providerSubscriptionId: 'sub_existing', status: 'active', currentPeriodEnd: '1998-09-01T00:00:00.000Z', cancelAtPeriodEnd: false, couponId: null, couponDiscountCents: 0, couponRecurringDuration: null, createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z' },
+      price: { id: 'imported-price', tenantId: 't1', productId: 'p3', kind: 'recurring', interval: 'month', amountCents: 3500, currency: 'EUR', active: false, imported: true, providerPriceId: 'price_existing', createdAt: '1998-07-01T00:00:00.000Z' },
+      subscriptionCreated: true, priceCreated: true, grantId: 'grant-adopted', grantCreated: true, grantExtended: false,
+    } });
+  }));
+  const user = userEvent.setup();
+  renderMemberDetail();
+  await user.click(await screen.findByRole('button', { name: en.members.adoptSubscription }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('button', { name: en.members.adoptSubscription })).toBeDisabled();
+  await user.type(within(dialog).getByLabelText(en.members.subscriptionIdLabel), 'sub_existing');
+  await user.click(within(dialog).getByRole('combobox', { name: en.members.colProduct }));
+  await user.click(await screen.findByRole('option', { name: 'New Workshop' }));
+  await user.click(within(dialog).getByRole('button', { name: en.members.adoptSubscription }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(bodies).toEqual([{ memberId: member.id, subscriptionId: 'sub_existing', productId: 'p3' }]);
+});
+
+it('explains a refused Stripe adoption in the operator language', async () => {
+  setup();
+  server.use(http.post('/api/subscriptions/adopt', () => HttpResponse.json({ ok: false, error: {
+    code: 'validation', message: 'Stripe customer email does not match the member',
+    details: { adoptionRefusal: 'email-mismatch' },
+  } }, { status: 400 })));
+  const user = userEvent.setup();
+  renderMemberDetail();
+  await user.click(await screen.findByRole('button', { name: en.members.adoptSubscription }));
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByLabelText(en.members.subscriptionIdLabel), 'sub_existing');
+  await user.click(within(dialog).getByRole('combobox', { name: en.members.colProduct }));
+  await user.click(await screen.findByRole('option', { name: 'New Workshop' }));
+  await user.click(within(dialog).getByRole('button', { name: en.members.adoptSubscription }));
+  expect(await within(dialog).findByText(en.members.adoptionRefusals['email-mismatch'])).toBeInTheDocument();
+});

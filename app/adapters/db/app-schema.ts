@@ -35,6 +35,7 @@ import type {
   SchedulerRunTrigger,
   StorageCorsProbeResult,
   TenantDomainEventKind,
+  TenantApiKeyScope,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -359,10 +360,13 @@ export const productPrices = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     productId: text('product_id').notNull(),
     kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
-    interval: text('interval', { enum: ['month', 'year'] }),
+    interval: text('interval', { enum: ['day', 'week', 'month', 'year'] }),
     amountCents: integer('amount_cents').notNull(),
     currency: text('currency').notNull(),
     active: boolean('active').notNull().default(true),
+    providerPriceId: text('provider_price_id'),
+    imported: boolean('imported').notNull().default(false),
+    intervalCount: integer('interval_count').notNull().default(1),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
@@ -371,6 +375,8 @@ export const productPrices = pgTable(
       columns: [table.tenantId, table.productId],
       foreignColumns: [products.tenantId, products.id],
     }).onDelete('cascade'),
+    check('product_prices_imported_inactive', sql`NOT ${table.imported} OR NOT ${table.active}`),
+    check('product_prices_interval_count_positive', sql`${table.intervalCount} > 0`),
     index('product_prices_tenantId_idx').on(table.tenantId),
     index('product_prices_tenant_product_idx').on(table.tenantId, table.productId),
   ],
@@ -952,9 +958,7 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
-    scopes: jsonb('scopes').$type<Array<
-      'enrollment' | 'marketing' | 'transactional' | 'import:content' | 'import:users'
-    >>(),
+    scopes: jsonb('scopes').$type<TenantApiKeyScope[]>(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at'),
     revokedAt: text('revoked_at'),

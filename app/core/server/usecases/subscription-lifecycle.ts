@@ -145,7 +145,7 @@ export const renewSubscriptionPeriod = async (
   const now = deps.clock.nowIso();
   const price = await deps.prices.findById(tenantId, input.subscription.priceId);
   const base = input.subscription.currentPeriodEnd > now ? input.subscription.currentPeriodEnd : now;
-  const periodEnd = input.periodEnd ?? nextPeriodEnd(base, price?.interval ?? 'month');
+  const periodEnd = input.periodEnd ?? nextPeriodEnd(base, price?.interval ?? 'month', price?.intervalCount ?? 1);
   const subscription: MemberSubscription = {
     ...input.subscription,
     status: 'active',

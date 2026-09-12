@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(369);
-    expect(inventory.useCases).toHaveLength(288);
+    expect(inventory.routes).toHaveLength(373);
+    expect(inventory.useCases).toHaveLength(290);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
@@ -50,6 +50,23 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'community:moderate', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+  });
+
+  it('classifies subscription routes and use-cases with dedicated capabilities', () => {
+    const inventory = collectPermissionInventory();
+    for (const [operation, method, capability, principal] of [
+      ['stripe', 'GET', 'subscriptions:read', 'subscriptions-read-api-key'],
+      ['adopt', 'POST', 'subscriptions:adopt', 'subscriptions-adopt-api-key'],
+    ] as const) {
+      expect(inventory.routes.find((row) => row.subject === `${method} /api/m2m/subscriptions/${operation}`))
+        .toMatchObject({ capability, before: [principal], after: [principal] });
+      expect(inventory.routes.find((row) => row.subject === `${method} /api/subscriptions/${operation}`))
+        .toMatchObject({ capability, before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    expect(inventory.useCases.find((row) => row.subject === 'stripe-subscription-adoption.ts#adoptStripeSubscription')?.capability)
+      .toBe('subscriptions:adopt');
+    expect(inventory.useCases.find((row) => row.subject === 'stripe-subscription-adoption.ts#listStripeSubscriptions')?.capability)
+      .toBe('subscriptions:read');
   });
 
   it('reads use-case capabilities from their authorization calls', () => {

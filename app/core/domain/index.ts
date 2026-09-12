@@ -75,3 +75,5 @@ export * from './marketing-directory-event.js';
 export { marketingBodyTextSchema, marketingReplyToSchema } from './marketing-email.js';
 
 export * from './marketing-audience.js';
+
+export * from './stripe-subscription.js';

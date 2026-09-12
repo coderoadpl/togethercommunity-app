@@ -16,7 +16,7 @@ The CLI creates the same keys: `pnpm run cli --tenant <slug> api-key create 'Mig
 | `import:users` | Upsert of members (always passwordless), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
 
 - The two scopes are independent but may be combined on one key. Separate keys reduce the effect of a leaked key and keep their rate-limit counters independent.
-- Import scopes cannot be combined with `enrollment`, `marketing`, or `transactional` on the same key. Existing unscoped keys never gain import access.
+- Import scopes cannot be combined with non-import scopes (`enrollment`, `marketing`, `transactional`, `subscriptions:read`, or `subscriptions:adopt`) on the same key. Existing unscoped keys never gain import access.
 - **Expiry is mandatory.** The panel defaults to 7 days and caps the lifetime at 30 days. There is no renewal — create a new key.
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
 - Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.

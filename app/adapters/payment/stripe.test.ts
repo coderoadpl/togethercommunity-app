@@ -1,3 +1,4 @@
+import { ok } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 
@@ -538,4 +539,51 @@ describe('verifyWebhookEvent', () => {
       },
     });
   });
+});
+
+
+it('reads adoption state using the tenant key without mutating Stripe', async () => {
+  const requests: Request[] = [];
+  const resolved: string[] = [];
+  const httpClient = Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+    const request = new Request(input, init); requests.push(request);
+    return stripeJson({ id: 'sub_existing', status: 'past_due', cancel_at_period_end: true,
+      customer: { id: 'cus_existing', email: 'buyer@example.com' },
+      items: { data: [{ current_period_end: 904608000, price: { id: 'price_existing', unit_amount: 3500,
+        currency: 'eur', recurring: { interval: 'week', interval_count: 2 } } }] } });
+  });
+  const adoptionProvider = createStripePaymentProvider({
+    resolver: { resolve: async (tenantId) => { resolved.push(tenantId); return ok('rk_test_tenant'); } },
+    clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
+  });
+  const result = await adoptionProvider.retrieveStripeSubscription?.('tenant-1', 'sub_existing');
+  expect(result).toMatchObject({ ok: true, value: { id: 'sub_existing', status: 'past_due', cancelAtPeriodEnd: true,
+    price: { id: 'price_existing', amountCents: 3500, currency: 'EUR', interval: 'week', intervalCount: 2 } } });
+  expect(resolved).toEqual(['tenant-1']);
+  expect(requests.map((request) => request.method)).toEqual(['GET']);
+  expect(requests[0]?.headers.get('authorization')).toBe('Bearer rk_test_tenant');
+  expect(requests[0]?.url).toContain('/v1/subscriptions/sub_existing');
+});
+
+it('reports a permission failure as an integration diagnostic instead of throwing', async () => {
+  const httpClient = Stripe.createFetchHttpClient(async () => stripeJson({ error: {
+    type: 'invalid_request_error', code: 'api_key_expired',
+    message: 'This key does not have the required permissions.',
+  } }, 403));
+  const restrictedProvider = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_test_tenant') },
+    clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
+  });
+  expect(await restrictedProvider.listStripeSubscriptions?.('tenant-1', {}))
+    .toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('required permissions') } });
+  expect(await restrictedProvider.retrieveStripeSubscription?.('tenant-1', 'sub_existing'))
+    .toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('required permissions') } });
+});
+
+it('maps a legacy invoice.paid without metadata by subscription id', async () => {
+  const payload = JSON.stringify({ id: 'evt_legacy', type: 'invoice.paid', created: 904608000,
+    data: { object: { id: 'in_legacy', subscription: 'sub_existing', amount_paid: 3500, currency: 'eur', lines: { data: [{ period: { end: 904608000 } }] } } } });
+  const signatureHeader = stripe.webhooks.generateTestHeaderString({ payload, secret: webhookSecret });
+  expect(await provider.verifyWebhookEvent({ payloadRaw: payload, signatureHeader, webhookSecret }))
+    .toMatchObject({ ok: true, value: { checkoutSession: null, invoice: { subscriptionId: 'sub_existing', amountCents: 3500, currency: 'EUR' } } });
 });

@@ -137,6 +137,7 @@ const products: ProductRepository & ProductBatchReader = {
 const subscriptions: MemberSubscriptionRepository = {
   findById: async () => null,
   findByProviderSubscriptionId: async () => null,
+  listKnownProviderSubscriptionIds: async () => [],
   listForMember: async () => [subscription('active'), subscription('past_due'), subscription('canceled')],
   create: async () => undefined,
   update: async () => null,

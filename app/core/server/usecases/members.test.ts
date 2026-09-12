@@ -163,6 +163,7 @@ const subscriptionRow = (
 const subscriptionsFor = (rows: MemberSubscription[]): MemberSubscriptionRepository => ({
   findById: async () => null,
   findByProviderSubscriptionId: async () => null,
+  listKnownProviderSubscriptionIds: async () => [],
   listForMember: async (tenantId, memberId) =>
     rows.filter((row) => row.tenantId === tenantId && row.memberId === memberId),
   create: async () => undefined,

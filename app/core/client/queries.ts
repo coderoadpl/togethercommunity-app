@@ -1,3 +1,4 @@
+import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
   DefaultError,
   FetchQueryOptions,
@@ -1974,3 +1975,9 @@ export const marketingDirectoryActions = (api: ApiClient) => ({
   cancelMarketingContactImport: defineMutation({ mutationKey: ['marketing', 'directory', 'cancelMarketingContactImport'], call: (input: Parameters<ApiClient['cancelMarketingContactImport']>[0]) => api.cancelMarketingContactImport(input) }),
   invalidates: (tenantId: string) => ({ queryKey: ['marketing', 'directory', tenantId] as const }),
 });
+
+export const adoptStripeSubscriptionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'adopt-subscription'],
+    call: (input: AdoptStripeSubscriptionInput) => api.adoptStripeSubscription(input),
+  });

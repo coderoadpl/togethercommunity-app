@@ -33,6 +33,8 @@ import {
   type MemberWithProductIds,
 } from '#core/domain/index.js';
 
+import { AdoptStripeSubscriptionDialog } from './AdoptStripeSubscriptionDialog.js';
+
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -270,6 +272,8 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         amount: formatPrice(event.payload.amountCents, event.payload.currency, language),
         status: t.sales[event.payload.status],
       });
+    case 'subscription-adopted':
+      return t.members.timelineAdoption({ product });
     case 'subscription-change':
       return t.members.timelineSubscription({
         product,
@@ -628,7 +632,10 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           <LearningSummary memberId={member.id} />
 
           {member.deletedAt === null ? (
-            <GrantForm memberId={member.id} onGranted={refresh} />
+            <>
+              <GrantForm memberId={member.id} onGranted={refresh} />
+              <AdoptStripeSubscriptionDialog memberId={member.id} onAdopted={refresh} />
+            </>
           ) : (
             <StatusView
               state={{ kind: 'empty', title: t.members.tombstoneNotice }}

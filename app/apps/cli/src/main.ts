@@ -1,3 +1,4 @@
+import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
 import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -368,7 +369,7 @@ const devGrantOptionsSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 const apiKeyCreateOptionsSchema = z.object({
-  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'import:content', 'import:users'])).min(1).optional(),
+  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users'])).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
 });
 const m2mEnrollOptionsSchema = z.object({
@@ -1557,6 +1558,43 @@ couponsCommand
       );
     }),
   );
+
+const subscriptions = program.command('subscriptions').description('Adopt and inspect existing Stripe subscriptions');
+
+subscriptions.command('adopt')
+  .requiredOption('--subscription <id>')
+  .requiredOption('--member <id-or-email>')
+  .requiredOption('--product <id>')
+  .option('--price <id>')
+  .option('--allow-email-mismatch', 'Explicitly allow a different Stripe customer email')
+  .option('--api-key <secret>', 'Use an enrollment API key instead of the signed-in session')
+  .action(withInput(z.tuple([subscriptionAdoptOptionsSchema]), async (ctx, [options]) => {
+    if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
+    const tenant = ctx.tenant;
+    const secret = options.apiKey;
+    const result = secret === undefined
+      ? await ctx.api.adoptStripeSubscription(options.input)
+      : await createApiClient({ baseUrl: ctx.apiUrl, headers: () => ({ [TENANT_HEADER]: tenant, [API_KEY_HEADER]: secret }) }).m2mAdoptStripeSubscription(options.input);
+    emit(result, ctx.json, (data) => `${data.subscriptionCreated ? 'adopted' : 'reused'}: ${data.subscription.providerSubscriptionId} for member ${data.subscription.memberId}; price ${data.priceCreated ? 'created' : 'reused'}: ${data.price.id}`);
+  }));
+
+subscriptions.command('list-stripe')
+  .option('--status <status>', 'Filter by Stripe status (defaults to all)')
+  .option('--unadopted', 'Show only subscriptions without a local record')
+  .option('--starting-after <id>', 'Continue from the nextCursor returned by the previous page')
+  .option('--api-key <secret>', 'Use an enrollment API key instead of the signed-in session')
+  .action(withInput(z.tuple([subscriptionListOptionsSchema]), async (ctx, [options]) => {
+    if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
+    const tenant = ctx.tenant;
+    const { apiKey: secret, ...input } = options;
+    const result = secret === undefined
+      ? await ctx.api.listStripeSubscriptions(input)
+      : await createApiClient({ baseUrl: ctx.apiUrl, headers: () => ({ [TENANT_HEADER]: tenant, [API_KEY_HEADER]: secret }) }).m2mListStripeSubscriptions(input);
+    emit(result, ctx.json, (data) => [
+      ...data.subscriptions.map((item) => `${item.id} ${item.status} ${item.adopted ? 'adopted' : 'unadopted'} ${item.providerPriceId ?? ''}`),
+      ...(data.nextCursor === null ? [] : [`next cursor: ${data.nextCursor}`]),
+    ].join('\n'));
+  }));
 
 const subscriptionCommand = program
   .command('subscription')
@@ -3227,7 +3265,7 @@ apiKey.command('list').description('List API keys (no secrets)').action(
 apiKey
   .command('create <name...>')
   .description('Create an API key; the secret is shown once')
-  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, import:content, import:users')
+  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users')
   .option('--expires-at <iso>', 'ISO datetime when the key expires')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), apiKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {

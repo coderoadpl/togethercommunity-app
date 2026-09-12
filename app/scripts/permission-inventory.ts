@@ -106,6 +106,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/terms-consent') return 'terms:accept';
   if (path === '/api/tenants' && method === 'POST') return 'tenant:create';
   if (path.startsWith('/api/dev/')) return method === 'GET' ? 'development:inspect' : 'development:mutate';
+  if (path === '/api/m2m/subscriptions/adopt' || path === '/api/subscriptions/adopt') return 'subscriptions:adopt';
+  if (path === '/api/m2m/subscriptions/stripe' || path === '/api/subscriptions/stripe') return 'subscriptions:read';
   if (path === '/api/m2m/enroll') return 'enrollment:create';
   if (path.startsWith('/api/m2m/transactional/messages')) return method === 'GET' ? 'transactional:message:read' : 'transactional:message:send';
   if (
@@ -256,6 +258,8 @@ const beforeForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) {
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
+      if (path === '/api/m2m/subscriptions/adopt') return ['subscriptions-adopt-api-key'];
+      if (path === '/api/m2m/subscriptions/stripe') return ['subscriptions-read-api-key'];
       if (path === '/api/m2m/import/validate') return importApiKeys;
       if (
         path === '/api/m2m/import/members'

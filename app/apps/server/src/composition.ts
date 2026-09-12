@@ -1,3 +1,5 @@
+import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
+import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
 import { createMarketingContactCampaignTransaction } from '#adapters/db/marketing-contact-campaign-transactions.js';
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
@@ -473,6 +475,7 @@ export interface AppDeps {
   emailTransports: EmailIntegrationTransportResolver;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
+  subscriptionAdoptionTransaction: SubscriptionAdoptionTransaction;
   paymentTransaction: PaymentTransactionPort;
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   drainNotificationFanout(): Promise<Result<NotificationFanoutDrainResult, AppError>>;
@@ -1372,6 +1375,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     emailTransports,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
+    subscriptionAdoptionTransaction: createSubscriptionAdoptionTransaction(db),
     paymentTransaction: createPaymentTransactionPort(db),
     consentTokens: { nextToken: () => randomUUID().replaceAll('-', '') },
     dispatchEmails,

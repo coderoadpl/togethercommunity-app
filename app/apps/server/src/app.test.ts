@@ -1,3 +1,4 @@
+import { validation } from '#core/domain/index.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -35,6 +36,7 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  memberSchema,
   forbidden,
   impersonationCookieName,
   integrationUnavailable,
@@ -274,6 +276,7 @@ const deps = (input: {
     subscriptions: {
       findById: async () => null,
       findByProviderSubscriptionId: async () => null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async () => [],
       create: async () => undefined,
       update: async () => null,
@@ -504,6 +507,7 @@ const deps = (input: {
         },
       }),
     },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation(appDeps) },
     paymentTransaction: {
       run: async (operation) =>
         operation({
@@ -8277,5 +8281,80 @@ describe('post purge route', () => {
     });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('Stripe subscription adoption authorization', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json', 'x-api-key': 'adoption-key' };
+  const payload = { subscriptionId: 'sub_existing', memberId: 'member-1', productId: 'product-1' };
+
+  it.each([null, 'enrollment', 'marketing', 'transactional', 'import:content', 'import:users', 'subscriptions:read', 'subscriptions:adopt'] as const)(
+    'requires an explicit subscription scope: %s', async (scope) => {
+      const base = deps();
+      base.tenantApiKeys.findActiveByHash = async (tenantId, hash) => tenantId === acme.id && hash === 'hash:adoption-key' ? {
+        id: 'key-1', tenantId, name: 'Migration', keyHash: hash, scopes: scope === null ? null : [scope],
+        createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
+      } : null;
+      base.members.findById = async () => memberSchema.parse({
+        id: payload.memberId, tenantId: acme.id, userId: 'user-1', email: 'buyer@example.com',
+        displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {},
+        createdAt: '1998-07-01T00:00:00.000Z', deletedAt: null,
+      });
+      const retrieve = vi.fn(async () => ok({
+        id: payload.subscriptionId, status: 'active', currentPeriodEnd: '1998-08-01T00:00:00.000Z',
+        cancelAtPeriodEnd: false, customerEmail: 'buyer@example.com',
+        price: { id: 'price_existing', amountCents: 3500, currency: 'EUR' as const, interval: 'month' as const, intervalCount: 1 },
+      }));
+      const list = vi.fn(async () => ok({ subscriptions: [
+        { id: 'sub_existing', status: 'active', providerPriceId: 'price_existing' },
+        { id: 'sub_unadopted', status: 'active', providerPriceId: 'price_other' },
+      ], nextCursor: null }));
+      base.payment.retrieveStripeSubscription = retrieve;
+      base.payment.listStripeSubscriptions = list;
+      base.subscriptions.listKnownProviderSubscriptionIds = async () => ['sub_existing'];
+      const createGrant = vi.spyOn(base.grants, 'createGrant');
+      const app = buildApp(base);
+      const listing = await app.request(API_PATHS.m2mListStripeSubscriptions, { headers });
+      expect(listing.status).toBe(scope === 'subscriptions:read' ? 200 : 403);
+      expect(list).toHaveBeenCalledTimes(scope === 'subscriptions:read' ? 1 : 0);
+      if (scope === 'subscriptions:read') {
+        expect(list).toHaveBeenCalledWith(acme.id, {});
+        expect(await listing.json()).toMatchObject({ ok: true, data: { subscriptions: [
+          { id: 'sub_existing', adopted: true }, { id: 'sub_unadopted', adopted: false },
+        ] } });
+      }
+      const response = await app.request(API_PATHS.m2mAdoptStripeSubscription, {
+        method: 'POST', headers, body: JSON.stringify({ ...payload, productId: 'acme-published' }),
+      });
+      expect(response.status).toBe(scope === 'subscriptions:adopt' ? 200 : 403);
+      expect(retrieve).toHaveBeenCalledTimes(scope === 'subscriptions:adopt' ? 1 : 0);
+      expect(createGrant).toHaveBeenCalledTimes(scope === 'subscriptions:adopt' ? 1 : 0);
+      if (scope === 'subscriptions:adopt') {
+        expect(retrieve).toHaveBeenCalledWith(acme.id, payload.subscriptionId);
+        expect(await response.json()).toMatchObject({ ok: true, data: { subscriptionCreated: true, grantCreated: true } });
+      }
+    },
+  );
+
+  it('rejects absent and cross-tenant API keys and enforces the rate limit', async () => {
+    const base = deps();
+    const retrieve = vi.fn(async () => err(validation('Reached Stripe')));
+    base.payment.retrieveStripeSubscription = retrieve;
+    const request = { method: 'POST', headers, body: JSON.stringify(payload) };
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(401);
+    base.tenantApiKeys.findActiveByHash = async (tenantId) => tenantId === acme.id ? {
+      id: 'key-1', tenantId, name: 'Migration', keyHash: 'hash:adoption-key', scopes: ['subscriptions:adopt'],
+      createdAt: '1998-01-01T00:00:00.000Z', expiresAt: null, revokedAt: null,
+    } : null;
+    base.rateLimitBuckets.claim = async () => false;
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, request)).status).toBe(429);
+    expect((await buildApp(base).request(API_PATHS.m2mAdoptStripeSubscription, { ...request, headers: { ...headers, host: 'globex.localhost:48730' } })).status).toBe(401);
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it('denies ordinary members on Studio adoption and Stripe listing', async () => {
+    const app = scopedApp('member');
+    expect((await app.request(API_PATHS.adoptStripeSubscription, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(403);
+    expect((await app.request(API_PATHS.listStripeSubscriptions, { headers })).status).toBe(403);
   });
 });

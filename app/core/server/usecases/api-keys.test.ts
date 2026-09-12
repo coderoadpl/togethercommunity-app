@@ -96,6 +96,13 @@ describe('createTenantApiKey', () => {
     expect(h.rows[0]?.scopes).toEqual(['transactional']);
   });
 
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('creates a key explicitly scoped to %s', async (scope) => {
+    const h = harness();
+    expect(await createTenantApiKey(ctx('owner'), { name: 'Subscriptions', scopes: [scope] }, h.deps))
+      .toMatchObject({ ok: true, value: { apiKey: { scopes: [scope] } } });
+    expect(h.rows[0]?.scopes).toEqual([scope]);
+  });
+
   it('creates an expiring key with both import scopes', async () => {
     const h = harness();
     const expiresAt = '2026-06-08T00:00:00.000Z';
@@ -126,11 +133,11 @@ describe('createTenantApiKey', () => {
     expect(h.rows).toHaveLength(0);
   });
 
-  it('rejects import scopes combined with existing scopes', async () => {
+  it.each(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt'] as const)('rejects import scopes combined with %s', async (scope) => {
     const h = harness();
     const result = await createTenantApiKey(ctx('owner'), {
       name: 'Unsafe migration',
-      scopes: ['import:users', 'transactional'],
+      scopes: ['import:users', scope],
       expiresAt: '2026-06-08T00:00:00.000Z',
     }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -174,6 +181,21 @@ describe('createTenantApiKey', () => {
 });
 
 describe('API key scope capabilities', () => {
+  it.each([null, undefined, 'enrollment', 'marketing', 'transactional', 'import:content', 'import:users'] as const)(
+    'withholds subscription capabilities from existing scopes: %s', (scope) => {
+      const capabilities = capabilitiesForApiKey(scope === undefined ? {} : { scopes: scope === null ? null : [scope] });
+      expect(capabilities).not.toContain('subscriptions:read');
+      expect(capabilities).not.toContain('subscriptions:adopt');
+    },
+  );
+
+  it('keeps subscription read and adoption independent and combines them explicitly', () => {
+    expect(capabilitiesForApiKey({ scopes: ['subscriptions:read'] })).toEqual(['subscriptions:read']);
+    expect(capabilitiesForApiKey({ scopes: ['subscriptions:adopt'] })).toEqual(['subscriptions:adopt']);
+    expect(capabilitiesForApiKey({ scopes: ['subscriptions:read', 'subscriptions:adopt'] }))
+      .toEqual(['subscriptions:read', 'subscriptions:adopt']);
+  });
+
   it('derives the marketing scope from the legacy API-key principal', () => {
     expect(capabilitiesForApiKey({ scopes: ['marketing'] })).toEqual(
       capabilitiesForPrincipal('api-key').filter((capability) => capability !== 'enrollment:create'),

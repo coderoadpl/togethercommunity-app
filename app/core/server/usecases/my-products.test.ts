@@ -57,6 +57,7 @@ const clock: Clock = { nowIso: () => '2026-07-15T00:00:00.000Z' };
 const subscriptions = {
   findById: async () => null,
   findByProviderSubscriptionId: async () => null,
+  listKnownProviderSubscriptionIds: async () => [],
   listForMember: async () => [],
   create: async () => undefined,
   update: async () => null,

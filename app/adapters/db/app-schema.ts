@@ -2123,6 +2123,8 @@ export const tenantSesSettings = pgTable(
       withTimezone: true,
       mode: 'string',
     }),
+    maintenanceAttempts: integer('maintenance_attempts').notNull().default(0),
+    maintenanceRetryAt: timestamp('maintenance_retry_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
 );

@@ -18,6 +18,9 @@ const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['backslashes', 'a \\ b', 'a \\\\ b'],
   ['pipes and tildes', 'a | b ~ c', 'a \\| b \\~ c'],
   ['angle brackets', '<b>bold</b>', '\\<b\\>bold\\</b\\>'],
+  ['html entities', 'a &amp; b &copy; c', 'a &amp;amp; b &amp;copy; c'],
+  ['marker-only lines', 'Para\n-\nPara\n+\nPara\n#\n1.', 'Para\n\\-\nPara\n\\+\nPara\n\\#\n1\\.'],
+  ['single-character setext underlines', 'Para\n-\nUnder\n=', 'Para\n\\-\nUnder\n\\='],
 ];
 
 const normalizePlain = (value: string): string =>

@@ -2,7 +2,10 @@ const bareUrls = /\b(?:https?:\/\/|mailto:|www\.)[^\s<>"']+/giu;
 const leadingWhitespace = /^[ \t]+/u;
 
 const escapeInline = (value: string): string =>
-  value.replaceAll('\\', '\\\\').replace(/([`*_[\]<>~|])/gu, '\\$1');
+  value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('&', '&amp;')
+    .replace(/([`*_[\]<>~|])/gu, '\\$1');
 
 // A bare URL is autolinked verbatim, so a backslash inside it would land in the destination; a
 // scheme-less one additionally needs the explicit https destination the plain renderer gives it.
@@ -38,8 +41,8 @@ export const escapePlainTextForMarkdown = (value: string): string =>
     .split('\n')
     .map((line) =>
       escapeIndent(escapeAroundUrls(line))
-        .replace(/^(\s{0,3})(#{1,6}|>|[-+])(?=\s)/u, '$1\\$2')
-        .replace(/^(\s{0,3}\d+)([.)])(?=\s)/u, '$1\\$2')
-        .replace(/^(\s{0,3})(?=(?:-{3,}|={3,}|_{3,})\s*$)/u, '$1\\'),
+        .replace(/^(\s{0,3})(#{1,6}|>|[-+])(?=\s|$)/u, '$1\\$2')
+        .replace(/^(\s{0,3}\d+)([.)])(?=\s|$)/u, '$1\\$2')
+        .replace(/^(\s{0,3})(?=(?:-{1,}|={1,}|_{3,})\s*$)/u, '$1\\'),
     )
     .join('\n');

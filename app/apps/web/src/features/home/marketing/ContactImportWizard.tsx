@@ -9,6 +9,7 @@ import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, MARKETI
 import { actions } from '../../../api.js';
 import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { usePanelContext } from '../panel-context.js';
 import { ContactImportResult, ImportErrorsDownload } from './ContactImportResult.js';
@@ -47,6 +48,7 @@ const localizeImportIssue = (message: string, t: Messages): string => {
 
 const ImportPreview = ({ preview }: { preview: MarketingImportValidation }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const columns = preview.import.kind === 'contacts'
     ? [t.directory.row, t.directory.email, t.directory.name, t.directory.tags, t.directory.listsTitle, t.directory.errors, t.directory.warnings]
     : [t.directory.row, t.directory.email, t.directory.reason, t.directory.at, t.directory.errors, t.directory.warnings];
@@ -54,7 +56,7 @@ const ImportPreview = ({ preview }: { preview: MarketingImportValidation }) => {
     <Typography>{t.directory.totalRows}: {preview.import.rowCount} · {t.directory.validRows}: {preview.counts.validRows} · {t.directory.rejectedRows}: {preview.counts.rejectedRows} · {t.directory.duplicateRows}: {preview.counts.duplicateRows}</Typography>
     <Typography>{t.directory.listsToCreate}: {preview.counts.listsToCreate.join(', ') || '—'}</Typography>
     <Typography>{t.directory.previewHint}</Typography>
-    <ResponsiveTable><Table size="small" aria-label={t.directory.mapping}><TableHead><TableRow>{columns.map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{preview.preview.map((row) => <TableRow key={row.rowNumber}><TableCell>{row.rowNumber}</TableCell><TableCell>{row.normalizedPayload?.email ?? String(row.stagedPayload?.['email'] ?? '')}</TableCell>{preview.import.kind === 'contacts' ? <><TableCell>{row.normalizedPayload?.name ?? [row.normalizedPayload?.firstName, row.normalizedPayload?.lastName].filter(Boolean).join(' ')}</TableCell><TableCell>{row.normalizedPayload?.tags?.join(', ')}</TableCell><TableCell>{row.normalizedPayload?.lists?.join(', ')}</TableCell></> : <><TableCell>{row.normalizedPayload?.reason ? t.directory[row.normalizedPayload.reason] : ''}</TableCell><TableCell>{row.normalizedPayload?.at ?? ''}</TableCell></>}<TableCell>{row.errors.map((error) => localizeImportIssue(error, t)).join('; ')}</TableCell><TableCell>{row.warnings.join('; ')}</TableCell></TableRow>)}</TableBody></Table></ResponsiveTable>
+    <ResponsiveTable><Table size="small" aria-label={t.directory.mapping}><TableHead><TableRow>{columns.map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{preview.preview.map((row) => <TableRow key={row.rowNumber}><TableCell>{row.rowNumber}</TableCell><TableCell>{row.normalizedPayload?.email ?? String(row.stagedPayload?.['email'] ?? '')}</TableCell>{preview.import.kind === 'contacts' ? <><TableCell>{row.normalizedPayload?.name ?? [row.normalizedPayload?.firstName, row.normalizedPayload?.lastName].filter(Boolean).join(' ')}</TableCell><TableCell>{row.normalizedPayload?.tags?.join(', ')}</TableCell><TableCell>{row.normalizedPayload?.lists?.join(', ')}</TableCell></> : <><TableCell>{row.normalizedPayload?.reason ? t.directory[row.normalizedPayload.reason] : ''}</TableCell><TableCell>{row.normalizedPayload?.at ? formatDateTime(row.normalizedPayload.at, language) : ''}</TableCell></>}<TableCell>{row.errors.map((error) => localizeImportIssue(error, t)).join('; ')}</TableCell><TableCell>{row.warnings.join('; ')}</TableCell></TableRow>)}</TableBody></Table></ResponsiveTable>
     {preview.counts.rejectedRows > 0 && preview.import.stagedDataPurgedAt === null ? <ImportErrorsDownload importId={preview.import.id} /> : null}
     {preview.errors.length ? <Alert severity="error"><Typography>{t.directory.errors}</Typography>{preview.errors.map((error, index) => <Typography key={index}>{t.directory.row} {error.rowNumber}: {localizeImportIssue(error.message, t)}</Typography>)}</Alert> : null}
     {preview.warnings.length ? <Alert severity="warning"><Typography>{t.directory.warnings}</Typography>{preview.warnings.map((warning, index) => <Typography key={index}>{t.directory.row} {warning.rowNumber}: {warning.message}</Typography>)}</Alert> : null}

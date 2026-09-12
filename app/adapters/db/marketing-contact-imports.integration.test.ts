@@ -63,6 +63,17 @@ describe('durable contact imports', () => {
     expect(completed.preview[0]?.normalizedPayload).toMatchObject({ email: 'large-0@example.test', name: 'Updated' });
   });
 
+  it('returns stored validation for same-key upload retry after a large preview is ready', async () => {
+    const csv = ['email', ...Array.from({ length: 501 }, (_, index) => `ready-retry-${index}@example.test`)].join('\n');
+    const metadata = { datasetVersion: 'together-marketing-contacts/v1', kind: 'contacts', fileName: 'ready-retry.csv', idempotencyKey: 'ready-large-preview-retry' };
+    const started = directoryValue(await uploadMarketingContactImport(directoryCtx(), { csv, metadata }, fixture.deps));
+    expect(started).toMatchObject({ import: { status: 'preview_queued', rowCount: 501 } });
+    const ready = await finishQueuedPreview(started.import.id);
+    const retried = directoryValue(await uploadMarketingContactImport(directoryCtx(), { csv, metadata }, fixture.deps));
+    expect('progress' in retried).toBe(false);
+    expect(retried).toMatchObject({ import: { id: started.import.id, status: 'ready' }, validationHash: ready.validationHash, counts: { validRows: 501, rejectedRows: 0 } });
+  });
+
   it('revalidates checking rows without merging them into themselves', async () => {
     const csv = ['email', ...Array.from({ length: 501 }, (_, index) => `recovered-${index}@example.test`)].join('\n');
     const started = directoryValue(await uploadMarketingContactImport(directoryCtx(), { csv, metadata: { datasetVersion: 'together-marketing-contacts/v1', kind: 'contacts', fileName: 'recovered.csv', idempotencyKey: 'recovered-preview' } }, fixture.deps));

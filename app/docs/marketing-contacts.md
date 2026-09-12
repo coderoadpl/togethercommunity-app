@@ -26,12 +26,14 @@ single opt-in. Double opt-in definitions require contacts-only import or the
 existing explicit confirmation flow.
 
 `--dry-run` stages and validates an expiring batch without changing directory or
-consent records. `--no-wait` returns its durable identifier after commit. The default
-wait polls progress; it does not run the worker. `--resume ID` verifies the original
-file hash and resumes staging, commit, retry or progress. Resuming a committed batch
-with `--dry-run` only reads its status, including after a worker failure. JSON mode prints one final
-envelope; progress goes to stderr. A self-hosted deployment must invoke the worker
-or use the staff `marketing imports process --input JSON` command.
+consent records. `--no-wait` returns its durable identifier after commit or the
+current `preview_queued` or `previewing` status during async preview validation.
+The default wait polls progress; it does not run the worker. `--resume ID`
+verifies the original file hash, waits for async preview states to reach `ready`,
+and resumes staging, commit, retry or progress. Resuming a committed batch with
+`--dry-run` only reads its status, including after a worker failure. JSON mode
+prints one final envelope; progress goes to stderr. A self-hosted deployment must
+invoke the worker or use the staff `marketing imports process --input JSON` command.
 
 `marketing contacts` also provides get, upsert, update, archive, restore and sync.
 `marketing lists` provides create, list, get, update, archive, add, remove, preview

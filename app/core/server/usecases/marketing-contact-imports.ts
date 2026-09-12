@@ -487,6 +487,7 @@ const startMarketingContactImportPreview = async (ctx: Ctx, importId: string, de
     await repos.imports.lock(tenant.value, importId);
     const batch = await repos.imports.findById(tenant.value, importId);
     if (batch === null) return err(notFound('Import was not found'));
+    if (batch.status === 'ready') return ok({ batch, async: false });
     if (batch.rowCount <= MARKETING_IMPORT_LIMITS.previewSyncRows) return ok({ batch, async: false });
     const definition = await definitionSnapshot(tenant.value, batch, repos, deps);
     if (!definition.ok) return definition;

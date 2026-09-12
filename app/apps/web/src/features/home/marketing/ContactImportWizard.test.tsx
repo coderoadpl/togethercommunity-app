@@ -6,6 +6,7 @@ import { MARKETING_IMPORT_ATTESTATION_TEXT, marketingDirectoryContracts } from '
 import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, MARKETING_IMPORT_LIMITS, marketingImportRowSchema } from '#core/domain/index.js';
 import { directoryTestFixtures } from './directory-test-data.js';
 import { en } from '../../../i18n/en.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { fixtureValue, installDirectoryFixture, renderDirectory } from './directory-test-helpers.js';
 import { server } from '../../../test/server.js';
 import { ContactImportWizard } from './ContactImportWizard.js';
@@ -268,6 +269,7 @@ describe('contact import wizard', () => {
     expect(screen.getByRole('columnheader', { name: en.directory.at })).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: en.directory.name })).not.toBeInTheDocument();
     expect(screen.getByText(en.directory.unsubscribe)).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2026-07-01T12:00:00.000Z', 'en'))).toBeInTheDocument();
     expect(screen.getByLabelText(en.directory.defaultReason)).toBeInTheDocument();
     expect(screen.getByLabelText(en.directory.defaultAt)).toHaveAttribute('type', 'datetime-local');
   });

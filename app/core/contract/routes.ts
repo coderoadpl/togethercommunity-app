@@ -1,4 +1,4 @@
-import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
+import { contactCampaignAudienceInputSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
 import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
@@ -1583,7 +1583,7 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   status: z.enum(['active', 'archived']),
 });
 export const marketingCampaignCreateInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
   bodyText: marketingBodyTextSchema.nullable().optional(),
   replyTo: marketingReplyToSchema.nullable().optional(),
@@ -1599,12 +1599,12 @@ export const marketingCampaignActionInputSchema = z.object({
   action: z.enum(['pause', 'resume', 'cancel', 'draft']),
 });
 export const marketingAudiencePreviewInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
 });
 export const marketingAudiencePreviewOutputSchema = z.union([contactAudiencePreviewSchema, z.object({ count: z.number().int().nonnegative() })]);
-export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceSchema });
+export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceInputSchema });
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({

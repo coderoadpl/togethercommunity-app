@@ -1,4 +1,4 @@
-import { appError, contactCampaignAudienceSchema, err, ok, validation, type AppError, type ContactAudiencePreview, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
+import { appError, contactCampaignAudienceInputSchema, err, ok, validation, type AppError, type ContactAudiencePreview, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
@@ -6,7 +6,7 @@ import type { MarketingContactAudienceDeps } from '../marketing-audience-ports.j
 import { reconcileMarketingMemberContacts } from './marketing-member-contacts.js';
 
 export const prepareMarketingContactAudience = async (tenantId: string, audience: ContactCampaignAudience, deps: MarketingContactAudienceDeps): Promise<Result<void, AppError>> => {
-  const parsed = contactCampaignAudienceSchema.safeParse(audience);
+  const parsed = contactCampaignAudienceInputSchema.safeParse(audience);
   if (!parsed.success) return err(validation('Invalid contact audience', parsed.error.flatten()));
   const lists = await Promise.all([...new Set([...audience.includeLists, ...audience.excludeLists])].map((id) => deps.directory.lists.findById(tenantId, id)));
   if (lists.some((list) => list === null || list.archivedAt !== null)) return err(validation('Audience lists must exist and be active in this tenant'));
@@ -24,7 +24,7 @@ export const previewMarketingContactAudience = async (ctx: Ctx, input: { audienc
   if (!tenant.ok) return tenant;
   const read = authorizeRequiredTenant(ctx, 'marketing:contact:read');
   if (!read.ok) return read;
-  const parsed = contactCampaignAudienceSchema.safeParse(input.audience);
+  const parsed = contactCampaignAudienceInputSchema.safeParse(input.audience);
   if (!parsed.success) return err(validation('Invalid contact audience', parsed.error.flatten()));
   const prepared = await prepareMarketingContactAudience(tenant.value, parsed.data, deps);
   if (!prepared.ok) return prepared;

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE = 'A list cannot be both included and excluded';
+
 const listIds = z.array(z.string().min(1)).max(100).transform((ids) => [...new Set(ids)].sort());
 export const contactCampaignAudienceSchema = z.object({
   version: z.literal(2),
@@ -9,6 +11,12 @@ export const contactCampaignAudienceSchema = z.object({
   includeMembersWithConsent: z.boolean(),
 }).strict();
 export type ContactCampaignAudience = z.output<typeof contactCampaignAudienceSchema>;
+
+export const contactCampaignAudienceInputSchema = contactCampaignAudienceSchema.superRefine((audience, ctx) => {
+  if (!audience.includeLists.some((id) => audience.excludeLists.includes(id))) return;
+  ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['includeLists'], message: CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE });
+  ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['excludeLists'], message: CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE });
+});
 
 export const marketingAudienceSkipReasonSchema = z.enum(['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation', 'contact_archived', 'contact_address_changed']);
 const marketingAudienceSkippedSchema = z.object({ suppressed: z.number().int().nonnegative(), withdrawn: z.number().int().nonnegative(), pendingConfirmation: z.number().int().nonnegative(), noConsent: z.number().int().nonnegative() });

@@ -1,5 +1,6 @@
 import { CampaignAudienceSection } from './CampaignAudienceSection.js';
-import type { ContactCampaignAudience } from '#core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import { CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE, type ContactCampaignAudience } from '#core/domain/index.js';
 import type { marketingCampaignDetailOutputSchema } from '#core/contract/index.js';
 import { CampaignTextSection } from './CampaignTextSection.js';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -35,6 +36,7 @@ import { ChevronDownIcon } from '../../../components/ui/account-icons.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../../../components/ui/MarkdownEditor.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { fieldErrorEntries } from '../../../lib/validation-details.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
@@ -80,6 +82,11 @@ const engagementHasCounts = (engagement: CampaignEngagementStats): boolean =>
 
 const shouldMaskEngagement = (engagement: CampaignEngagementStats, trackingDisabled: boolean): boolean =>
   trackingDisabled && !engagementHasCounts(engagement);
+
+const campaignAudienceOverlapError = (error: unknown, t: Messages): string | undefined =>
+  error instanceof ApiError && fieldErrorEntries(error.appError.details).some(([, messages]) => messages.includes(CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE))
+    ? t.marketing.listAudienceOverlap
+    : undefined;
 
 const compactEngagement = (engagement: CampaignEngagementStats, masked: boolean, t: Messages): ReactNode => (
   <>
@@ -158,6 +165,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
   const consents = useQuery(actions.marketingConsents);
   const products = useQuery(actions.products);
   const layouts = useQuery(actions.marketingLayouts);
+  const settings = useQuery(actions.marketingSesSettings);
   const [name, setName] = useState(campaign?.name ?? '');
   const [subject, setSubject] = useState(campaign?.subject ?? '');
   const [bodyText, setBodyText] = useState(campaign?.bodyText ?? '');
@@ -190,6 +198,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
   const editable = campaign === undefined || campaignEditable(campaign);
+  const trackingDisabled = settings.isSuccess && settings.data.settings !== null && !settings.data.settings.trackingEnabled;
   const currentSnapshot = JSON.stringify([name, subject, bodyText, replyTo, bodySource, bodyMode, consentDefinitionId, productIds, layoutId, audience]);
   const dirty = editable && currentSnapshot !== savedSnapshot;
   const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
@@ -255,6 +264,14 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
         ) : undefined
       }
     >
+      {trackingDisabled ? (
+        <Alert
+          severity="info"
+          action={<Button component={Link} to="/panel/integrations" hash="email" color="inherit" size="small">{t.marketing.trackingSettingsLink}</Button>}
+        >
+          {t.marketing.trackingDisabledCampaignForm}
+        </Alert>
+      ) : null}
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-campaign-name">{t.marketing.nameLabel}</FormLabel>
         <OutlinedInput id="marketing-campaign-name" value={name} onChange={(event) => setName(event.target.value)} disabled={!editable} required />
@@ -357,6 +374,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
         disabled={!editable}
         frozen={campaign?.audienceSnapshotId != null}
         progress={campaign?.audienceVersion === 2 ? <Typography variant="body2">{campaignEditorProgress(campaign, t)}</Typography> : undefined}
+        overlapError={campaignAudienceOverlapError(create.error ?? update.error, t)}
         onChange={setAudience}
       />
       </> : <>
@@ -698,7 +716,6 @@ export const CampaignDetailPage = () => {
     >
       {campaignEditable(campaign.data.campaign) ? (
         <>
-          {shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled) ? <Alert severity="info">{t.marketing.trackingDisabledCampaignMetrics}</Alert> : null}
           <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} masked={shouldMaskEngagement(campaign.data.campaign.engagement, trackingDisabled)} />
           <CampaignForm key={`${campaign.data.campaign.id}:${campaign.data.campaign.status}`} campaign={campaign.data.campaign} />
           <CampaignActions campaign={campaign.data.campaign} />

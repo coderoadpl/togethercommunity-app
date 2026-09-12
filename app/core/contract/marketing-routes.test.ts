@@ -4,6 +4,8 @@ import {
   integrationTestInputSchema,
   marketingConsentDefinitionCreateInputSchema,
   marketingConsentDefinitionUpdateInputSchema,
+  marketingCampaignCreateInputSchema,
+  marketingAudiencePreviewInputSchema,
   marketingSesSettingsUpdateInputSchema,
 } from './routes.js';
 
@@ -50,6 +52,28 @@ describe('marketing route contracts', () => {
     expect(marketingConsentDefinitionCreateInputSchema.safeParse({
       ...create,
       footerLabel: 'x'.repeat(201),
+    }).success).toBe(false);
+  });
+
+  it('rejects overlapping contact list audiences before they reach campaign handlers', () => {
+    const audience = {
+      version: 2,
+      includeLists: ['newsletter'],
+      excludeLists: ['newsletter'],
+      excludeProductIds: [],
+      includeMembersWithConsent: false,
+    };
+
+    expect(marketingCampaignCreateInputSchema.safeParse({
+      audience,
+      name: 'Newsletter',
+      subject: 'Newsletter',
+      bodyHtml: '<p>Hello</p>',
+      consentDefinitionId: 'definition-news',
+    }).success).toBe(false);
+    expect(marketingAudiencePreviewInputSchema.safeParse({
+      audience,
+      consentDefinitionId: 'definition-news',
     }).success).toBe(false);
   });
 });

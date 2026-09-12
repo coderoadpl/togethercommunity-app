@@ -2359,6 +2359,9 @@ export interface Messages {
     audienceEstimateHint: string;
     includeLists: string;
     excludeLists: string;
+    listAlreadyExcluded: string;
+    listAlreadyIncluded: string;
+    listAudienceOverlap: string;
     includeConsentedMembers: string;
     excludeProductGrants: string;
     excludeProductGrantsHint: string;
@@ -2530,6 +2533,8 @@ export interface Messages {
     percentageOfSent: (params: { percentage: string }) => string;
     unresolvedAcceptance: (params: { count: number }) => string;
     trackingDisabledCampaignMetrics: string;
+    trackingDisabledCampaignForm: string;
+    trackingSettingsLink: string;
     createdTimeValue: (params: { date: string }) => string;
     scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;

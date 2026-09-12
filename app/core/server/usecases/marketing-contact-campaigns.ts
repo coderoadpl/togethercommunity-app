@@ -1,4 +1,4 @@
-import { contactCampaignAudienceSchema, err, notFound, ok, validation, type AppError, type Campaign, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
+import { contactCampaignAudienceInputSchema, err, notFound, ok, validation, type AppError, type Campaign, type ContactCampaignAudience, type Result } from '#core/domain/index.js';
 
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
@@ -9,7 +9,7 @@ import { prepareMarketingContactAudience } from './marketing-contact-audience.js
 export const setMarketingCampaignAudience = async (ctx: Ctx, input: { campaignId: string; audience: ContactCampaignAudience }, deps: MarketingContactAudienceDeps & { campaigns: CampaignRepository }): Promise<Result<{ campaign: Campaign }, AppError>> => {
   const tenant = authorizeRequiredTenant(ctx, 'marketing:campaign:write');
   if (!tenant.ok) return tenant;
-  const audience = contactCampaignAudienceSchema.safeParse(input.audience);
+  const audience = contactCampaignAudienceInputSchema.safeParse(input.audience);
   if (!audience.success) return err(validation('Invalid contact audience', audience.error.flatten()));
   const campaign = await deps.campaigns.findById(tenant.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));

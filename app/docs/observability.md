@@ -418,7 +418,7 @@ travels with the fixture:
   `listAll()`. That is the only cross-tenant enumeration reaching a public
   surface (`/api/health/deep`), so on production the synthetic tenant is neither
   listed nor probed there. The platform exposes no other public tenant listing;
-  `GET /api/tenants` returns the caller's own staff memberships.
+  `GET /api/tenants` returns the caller's own staff workspaces and member communities.
 - **Marketing.** On production the marketing SES credential resolver refuses the
   tenant with `broadcasts_disabled`, and every marketing send — campaign
   dispatch, the M2M send API, the send-to-self test — resolves credentials

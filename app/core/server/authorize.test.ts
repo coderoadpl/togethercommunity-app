@@ -9,6 +9,7 @@ const identity = (tenantId: string | null): Identity => ({
   email: 'person@example.test',
   name: 'Person',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'staff',
   tenantId,
   tenantSlug: tenantId === null ? null : 'tenant',
   tenantName: tenantId === null ? null : 'Tenant',
@@ -76,18 +77,16 @@ describe('authorize', () => {
 });
 
 describe('authorizeTenant', () => {
+  it('denies tenant capabilities to a signed-in visitor', () => {
+    expect(authorizeTenant({ identity: { ...identity(null), staffRole: null, tenantAccess: 'none' } }, 'product:read'))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('returns the tenant id after authorization', () => {
     expect(authorizeTenant(
       { identity: identity('tenant-1'), capabilities: ['product:read'] },
       'product:read',
     )).toEqual({ ok: true, value: 'tenant-1' });
-  });
-
-  it('preserves tenant scoping before capability denial', () => {
-    expect(authorizeTenant({ identity: identity(null), capabilities: [] }, 'product:read')).toMatchObject({
-      ok: false,
-      error: { code: 'tenant_not_found' },
-    });
   });
 
   it('returns tenant_not_found for a permitted tenantless context', () => {

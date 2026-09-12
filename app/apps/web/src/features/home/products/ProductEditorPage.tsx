@@ -158,7 +158,7 @@ const PriceRow = ({ price, onDeactivate }: { price: ProductPrice; onDeactivate: 
     <TableRow data-testid="price-row">
       <TableCell>{price.kind === 'one_time' ? t.products.oneTime : t.products.recurring}</TableCell>
       <TableCell>
-        {price.interval === null ? '—' : price.interval === 'month' ? t.products.month : t.products.year}
+        {price.interval === null ? '—' : price.imported === true ? t.products.importedPeriod({ interval: price.interval, count: price.intervalCount ?? 1 }) : price.interval === 'month' ? t.products.month : t.products.year}
       </TableCell>
       <TableCell>{formatPrice(price.amountCents, price.currency, language)}</TableCell>
       <TableCell>{price.currency}</TableCell>
@@ -167,7 +167,7 @@ const PriceRow = ({ price, onDeactivate }: { price: ProductPrice; onDeactivate: 
           size="small"
           color={price.active ? 'success' : 'default'}
           variant={price.active ? 'filled' : 'outlined'}
-          label={price.active ? t.products.active : t.products.inactive}
+          label={price.imported === true ? t.products.importedPrice : price.active ? t.products.active : t.products.inactive}
         />
       </TableCell>
       <TableCell align="right">

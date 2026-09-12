@@ -413,7 +413,15 @@ export const publicNavigationOutputSchema = z.object({
   navigation: publicNavigationSchema,
 });
 
+export const stripeTestRemoveOutputSchema = z.object({ removed: z.literal(true) });
+
+export const stripeTestSessionInputSchema = z.object({ enabled: z.boolean() });
+export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
+
 export const publicPaymentConfigOutputSchema = z.object({
+  canTest: z.boolean().default(false),
+  testConfigured: z.boolean().default(false),
+  testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
 });
@@ -1363,6 +1371,7 @@ export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
   stripeMode: stripeModeSchema.nullable(),
   stripeWebhookUrl: z.string().url(),
+  stripeTestLastEventAt: z.string().datetime().nullable().default(null),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -1786,6 +1795,8 @@ export const API_ROUTES = {
   publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
+  stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
+  stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
@@ -2124,6 +2135,8 @@ export const API_PATHS = {
   publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
+  stripeTestRemove: API_ROUTES.stripeTestRemove.path,
+  stripeTestSession: API_ROUTES.stripeTestSession.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
   termsConsent: API_ROUTES.termsConsent.path,

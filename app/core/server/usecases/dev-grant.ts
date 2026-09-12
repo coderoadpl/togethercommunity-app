@@ -36,6 +36,7 @@ export const devGrantProduct = async (
 
   const now = deps.clock.nowIso();
   const grant: ProductGrant = {
+    mode: 'live',
     id: deps.ids.nextId(),
     tenantId,
     memberId: member.value.id,

@@ -127,6 +127,8 @@ delivery events, and an English transactional outbox sample.
 
 ## CLI — the agent feedback loop
 
+For isolated staff purchases, see [Test mode for staff](docs/payments.md#test-mode-for-staff).
+
 See [CLI usage](docs/cli.md) for lesson preview controls and the parity inventory.
 
 ```bash
@@ -208,7 +210,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->450<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->451<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -322,17 +324,17 @@ account. Runtime probes reject loopback,
 link-local and private-network endpoints by default. Self-hosted MinIO on a
 trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 
-## Stripe test mode
+## Stripe payments
 
 Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, open **Integrations →
-Stripe**, and save the tenant's `rk_test_…` restricted key. Together detects the
-mode from the prefix, registers the tenant webhook through Stripe, and stores
+Stripe**, and save the tenant's `rk_live_…` restricted key. The live card accepts
+only live keys. Together registers the tenant webhook through Stripe and stores
 the returned signing secret encrypted without adding either credential to an
 env file or Git. Headless deployments can perform the same setup through the
 CLI. Then verify the connection:
 
 ```bash
-pnpm --silent run cli --tenant studio stripe configure rk_test_…
+pnpm --silent run cli --tenant studio stripe configure rk_live_…
 pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
@@ -345,12 +347,19 @@ the Stripe CLI can still forward events:
 stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
 ```
 
-Open a published product's `/checkout/<product-slug-or-id>` page and pay with a Stripe
-test card. The browser return page only shows status; the signed webhook creates
-or renews access and sends the welcome magic link.
+Open a published product's `/checkout/<product-slug-or-id>` page and pay. The
+browser return page only shows status; the signed webhook creates or renews
+access and sends the welcome magic link. Stripe test cards belong to the
+sandbox card described below, never to the live key.
 
 Checkout supports one-time and recurring prices. Stripe subscription webhooks
 renew access, handle payment failures, and end grants when subscriptions are canceled.
+
+Staff can run a real purchase against the tenant's Stripe sandbox from a second
+key slot that keeps its orders, subscriptions and grants out of live data. A
+deployment whose live card still holds an `rk_test_…` key has to move that key
+to the sandbox card before checkout works again. Both are described in the
+[payments guide](docs/payments.md).
 
 ## Versioning
 

@@ -38,6 +38,7 @@ const row: PaidWithoutGrantRow = {
 };
 
 const orders = (rows: PaidWithoutGrantRow[]): OrderRepository => ({
+  completeTestCheckout: async () => null,
   create: async () => undefined,
   list: async () => ({ orders: [], total: 0 }),
   revenueSince: async () => [],

@@ -87,9 +87,9 @@ export const exportMyData = async (
       createdAt: member.createdAt,
     },
     consents: { terms, marketing },
-    grants,
-    subscriptions,
-    orders,
+    grants: grants.filter((grant) => grant.mode === 'live'),
+    subscriptions: subscriptions.filter((subscription) => subscription.mode === 'live'),
+    orders: orders.filter((order) => order.mode === 'live'),
     invoices,
     courseProgress,
     posts: posts.map((post) => ({

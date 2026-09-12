@@ -213,3 +213,13 @@ describe('deleteTenantSecret', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });
+
+it.each([
+  ['stripe.restrictedKey', 'rk_test_wrong'],
+  ['stripe.testRestrictedKey', 'rk_live_wrong'],
+] as const)('rejects cross-mode keys through the generic secret API: %s', async (key, value) => {
+  const h = harness();
+  expect(await setTenantSecret(ctx('owner'), { key, value }, h.deps))
+    .toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(await h.deps.tenantSecrets.findByKey('tenant-1', key)).toBeNull();
+});

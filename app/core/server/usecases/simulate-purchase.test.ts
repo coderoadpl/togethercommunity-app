@@ -86,6 +86,7 @@ const fakePurchases = () => {
       );
       if (existingGrant) return { member, grantCreated: false };
       grants.push({
+        mode: 'live',
         id: input.grantId,
         tenantId: input.tenantId,
         memberId: member.id,
@@ -149,6 +150,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
       setActive: async () => null,
     },
     orders: {
+      completeTestCheckout: async () => null,
       create: async (_tenantId, order) => {
         orders.push(order);
       },

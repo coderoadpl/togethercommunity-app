@@ -92,6 +92,12 @@ export const setTenantSecret = async (
   if (!tenant.ok) return tenant;
   const parsed = setTenantSecretInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant secret', parsed.error.flatten()));
+  if (parsed.data.key === 'stripe.restrictedKey' || parsed.data.key === 'stripe.testRestrictedKey') {
+    const expected = parsed.data.key === 'stripe.testRestrictedKey' ? 'test' : 'live';
+    if (stripeModeFromKey(parsed.data.value) !== expected) {
+      return err(validation(`The Stripe ${expected} slot requires a ${expected} restricted key`));
+    }
+  }
   const encrypted = deps.secretCrypto.encrypt(parsed.data.value);
   const stored = await deps.tenantSecrets.upsert(tenant.value, {
     id: deps.ids.nextId(),
@@ -109,6 +115,7 @@ export interface TenantSecretsView {
   secrets: TenantSecretMasked[];
   stripeMode: StripeMode | null;
   stripeWebhookUrl: string;
+  stripeTestLastEventAt: string | null;
 }
 
 const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): StripeMode | null => {
@@ -131,6 +138,7 @@ export const getTenantSecretsMasked = async (
   const rows = await deps.tenantSecrets.listByTenant(tenant.value);
   return ok({
     secrets: rows.map(masked),
+    stripeTestLastEventAt: rows.find((row) => row.key === 'stripe.testLastEventAt')?.updatedAt ?? null,
     stripeMode: readStripeMode(rows, deps.secretCrypto),
     stripeWebhookUrl: stripeWebhookUrl(deps.appBaseUrl, tenant.value),
   });

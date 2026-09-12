@@ -118,6 +118,7 @@ const product: Product = {
 };
 
 const grant: ProductGrant = {
+  mode: 'live',
   id: 'grant-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',

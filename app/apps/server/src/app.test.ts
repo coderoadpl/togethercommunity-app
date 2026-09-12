@@ -256,6 +256,7 @@ const deps = (input: {
       setActive: async () => null,
     },
     orders: {
+      completeTestCheckout: async () => null,
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
       listForMember: async () => [],
@@ -3916,6 +3917,7 @@ describe('purchased product download route', () => {
     createdAt: '1998-07-12T00:00:00.000Z',
   };
   const grant: ProductGrant = {
+    mode: 'live',
     id: 'download-grant',
     tenantId: acme.id,
     memberId: 'member-1',
@@ -6595,6 +6597,7 @@ describe('checkout consent ordering', () => {
     };
     const recorded: TermsConsent[] = [];
     const order: Order = {
+      mode: 'live',
       id: 'order-webhook',
       tenantId: acme.id,
       memberId: 'member-webhook',
@@ -6721,7 +6724,7 @@ describe('checkout consent ordering', () => {
       },
       payment: {
         ...base.payment,
-        verifyWebhookEvent: async () => ok(event),
+        verifyWebhookEvent: async () => ok({ ...event, livemode: true }),
       },
       processedPaymentEvents: {
         claim: async (_tenantId, paymentEvent) => {
@@ -6734,9 +6737,9 @@ describe('checkout consent ordering', () => {
       },
       paymentRefunds: {
         ...base.paymentRefunds,
-        findOrderByProviderObjectIds: async (_tenantId, providerObjectIds) => {
+        findOrderByProviderObjectIds: async (_tenantId, providerObjectIds, mode) => {
           orderLookups.push(providerObjectIds);
-          return orderResult;
+          return mode === 'test' ? null : orderResult;
         },
       },
       prices: {
@@ -6799,7 +6802,7 @@ describe('checkout consent ordering', () => {
 
     expect((await deliver()).status).toBe(200);
     expect(invoiceRequests).toBe(0);
-    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook', paymentIntent: 'pi_webhook' }, { checkoutSession: 'cs_webhook' }]);
     expect(durableJobs).toMatchObject([{ webhookEventId: 'evt_webhook', status: 'queued' }]);
     orderLookups.length = 0;
     expect((await deliver()).status).toBe(200);
@@ -6957,6 +6960,7 @@ describe('checkout consent ordering', () => {
       payment: {
         ...base.payment,
         verifyWebhookEvent: async () => ok({
+          livemode: true,
           id: 'evt_leased',
           type: 'checkout.session.completed',
           objectId: 'cs_leased',
@@ -8114,5 +8118,131 @@ describe('post purge route', () => {
     });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('staff Stripe test mode routes', () => {
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json', cookie: 'session=staff' };
+  const crypto: AppDeps['secretCrypto'] = {
+    encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
+    decrypt: (value) => ok(value.ciphertext),
+  };
+
+  it.each(['member', 'none', 'staff', 'owner'] as const)('exposes the switch only to tenant staff: %s', async (scope) => {
+    const app = scopedApp(scope);
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ data: { canTest: scope === 'staff' || scope === 'owner', testEnabled: false } });
+    const enable = await app.request(API_PATHS.stripeTestSession, { method: 'POST', headers, body: JSON.stringify({ enabled: true }) });
+    expect(enable.status).toBe(scope === 'staff' || scope === 'owner' ? 200 : 403);
+  });
+
+  it('sets an expiring HttpOnly flag, rechecks membership and rejects cross-origin switches', async () => {
+    const app = scopedApp('staff', { overrides: { secretCrypto: crypto } });
+    const enable = await app.request(API_PATHS.stripeTestSession, { method: 'POST', headers, body: JSON.stringify({ enabled: true }) });
+    const cookie = enable.headers.get('set-cookie')?.split(';')[0];
+    if (cookie === undefined) throw new Error('Missing test session cookie');
+    expect(enable.headers.get('set-cookie')).toContain('HttpOnly');
+    expect(enable.headers.get('set-cookie')).toContain('SameSite=Strict');
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers: { ...headers, cookie } });
+    expect(await config.json()).toMatchObject({ data: { testEnabled: true } });
+    const demoted = await scopedApp('member', { overrides: { secretCrypto: crypto } }).request(API_PATHS.publicPaymentConfig, { headers: { ...headers, cookie } });
+    expect(await demoted.json()).toMatchObject({ data: { canTest: false, testEnabled: false } });
+    const crossOrigin = await app.request(API_PATHS.stripeTestSession, { method: 'POST', headers: { ...headers, origin: 'https://another.example.test' }, body: JSON.stringify({ enabled: true }) });
+    expect(crossOrigin.status).toBe(403);
+  });
+
+  it('ignores a requested test mode in an ordinary checkout body', async () => {
+    const base = deps();
+    const create = vi.fn(base.payment.createCheckoutSession);
+    const app = scopedApp('member', { overrides: {
+      payment: { ...base.payment, createCheckoutSession: create },
+      tenantSecrets: { ...base.tenantSecrets, findByKey: async (_tenantId, key) => ({
+        id: key, tenantId: acme.id, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: '2026-09-12T12:00:00.000Z',
+      }) },
+    } });
+    const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', termsAccepted: true }) });
+    expect(response.status).toBe(200);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }));
+  });
+
+  const testSlotDeps = (base: AppDeps, overrides: Partial<AppDeps>): Partial<AppDeps> => ({
+    secretCrypto: crypto,
+    tenantSecrets: { ...base.tenantSecrets, findByKey: async (_tenantId, key) => ({
+      id: key, tenantId: acme.id, key, ciphertext: 'rk_test_slot', iv: 'iv', authTag: 'tag',
+      maskedPreview: 'masked', updatedAt: '2026-09-12T12:00:00.000Z',
+    }) },
+    ...overrides,
+  });
+
+  const enableTestSession = async (app: ReturnType<typeof buildApp>): Promise<string> => {
+    const enabled = await app.request(API_PATHS.stripeTestSession, { method: 'POST', headers, body: JSON.stringify({ enabled: true }) });
+    const cookie = enabled.headers.get('set-cookie')?.split(';')[0];
+    if (cookie === undefined) throw new Error('Missing test session cookie');
+    return cookie;
+  };
+
+  it('records no member, consent capture or Stripe session when a test checkout is rejected', async () => {
+    const base = deps();
+    const createMember = vi.fn(base.members.create);
+    const createCapture = vi.fn(base.checkoutConsentCaptures.create);
+    const createSession = vi.fn(base.payment.createCheckoutSession);
+    let storedMember: Member | null = null;
+    const app = scopedApp('staff', { overrides: testSlotDeps(base, {
+      members: {
+        ...base.members,
+        findById: async () => storedMember,
+        findByEmail: async () => storedMember,
+        create: async (tenantId, member) => {
+          storedMember = member;
+          await createMember(tenantId, member);
+        },
+      },
+      checkoutConsentCaptures: { ...base.checkoutConsentCaptures, create: createCapture },
+      payment: { ...base.payment, createCheckoutSession: createSession },
+    }) });
+    const cookie = await enableTestSession(app);
+    const membersBefore = createMember.mock.calls.length;
+
+    const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers: { ...headers, cookie },
+      body: JSON.stringify({ productId: 'acme-published', termsAccepted: true, couponCode: 'SUMMER' }) });
+
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(createMember.mock.calls).toHaveLength(membersBefore);
+    expect(createCapture).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps a started test checkout out of the consent capture table', async () => {
+    const base = deps();
+    const createCapture = vi.fn(base.checkoutConsentCaptures.create);
+    const createOrder = vi.fn(base.orders.create);
+    const app = scopedApp('staff', { overrides: testSlotDeps(base, {
+      checkoutConsentCaptures: { ...base.checkoutConsentCaptures, create: createCapture },
+      orders: { ...base.orders, create: createOrder },
+    }) });
+    const cookie = await enableTestSession(app);
+
+    const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers: { ...headers, cookie },
+      body: JSON.stringify({ productId: 'acme-published', termsAccepted: true }) });
+
+    expect(response.status).toBe(200);
+    expect(createCapture).not.toHaveBeenCalled();
+    expect(createOrder).toHaveBeenCalledWith(acme.id, expect.objectContaining({ mode: 'test' }));
+  });
+
+  it('selects the test endpoint secret and ignores a signed livemode mismatch', async () => {
+    const base = deps();
+    const resolve = vi.fn(base.secretResolver.resolve);
+    const verify = vi.fn<AppDeps['payment']['verifyWebhookEvent']>(async () => ok({
+      id: 'evt-mismatch', type: 'checkout.session.completed', objectId: 'cs-mismatch', checkoutSession: null, livemode: true,
+    }));
+    const createOrder = vi.fn(base.orders.create);
+    const app = buildApp({ ...base, secretResolver: { resolve }, orders: { ...base.orders, create: createOrder },
+      payment: { ...base.payment, verifyWebhookEvent: verify } });
+    const response = await app.request('/api/webhooks/stripe/t-acme?mode=test', { method: 'POST', body: '{}' });
+    expect(await response.json()).toMatchObject({ data: { received: true, processed: false } });
+    expect(resolve).toHaveBeenCalledWith('t-acme', 'stripe.testWebhookSecret');
+    expect(createOrder).not.toHaveBeenCalled();
   });
 });

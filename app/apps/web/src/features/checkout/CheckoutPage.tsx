@@ -13,6 +13,7 @@ import {
   RadioGroup,
   Stack,
   SvgIcon,
+  Switch,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -88,7 +89,15 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
   const offer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage });
-  const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
+  const paymentConfig = useQuery(actions.publicPaymentConfig);
+  const testSession = useMutation({
+    ...actions.stripeTestSession,
+    onSuccess: () => { void paymentConfig.refetch(); },
+  });
+  const testEnabled = paymentConfig.data?.testEnabled === true;
+  const testPurchase = paymentConfig.data?.canTest === true &&
+    new URLSearchParams(window.location.search).get('test_purchase') === '1';
+  const stripeConfigured = testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true;
   const [email, setEmail] = useState('');
   const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [nip, setNip] = useState('');
@@ -137,6 +146,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const couponValidation = useMutation({
     ...actions.validateCouponForCheckout,
   });
+  const appliedCoupon = testEnabled ? undefined : couponValidation.data;
   const autoAppliedCoupon = useRef(false);
 
   useEffect(() => {
@@ -179,7 +189,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const priceId = selectedPrice?.id;
-    if (paymentConfig.data?.stripeConfigured || payableCents === 0) {
+    if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
         productId,
         email,
@@ -188,7 +198,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
         ...consent,
         ...billing,
         ...(priceId === undefined ? {} : { priceId }),
-        ...(couponValidation.data === undefined ? {} : { couponCode }),
+        ...(appliedCoupon === undefined ? {} : { couponCode }),
       });
       return;
     }
@@ -200,7 +210,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
       ...consent,
       ...billing,
       ...(priceId === undefined ? {} : { priceId }),
-      ...(couponValidation.data === undefined ? {} : { couponCode }),
+      ...(appliedCoupon === undefined ? {} : { couponCode }),
     });
   };
 
@@ -219,11 +229,14 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
     return (
       <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.successEyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
+          {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessTitle : t.checkout.successTitle}
           </CardTitle>
           <Typography variant="body1">
-            {subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody}
+            {testPurchase
+              ? t.checkout.testPurchaseBody
+              : subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody}
           </Typography>
           <Button component={Link} to="/login" variant="contained" fullWidth>
             {t.checkout.goToLogin}
@@ -308,7 +321,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
 
   const selectedAmountCents = selectedPrice?.amountCents ?? product.priceCents;
   const selectedCurrency = selectedPrice?.currency ?? product.currency;
-  const payableCents = couponValidation.data?.breakdown.finalCents ?? selectedAmountCents;
+  const payableCents = appliedCoupon?.breakdown.finalCents ?? selectedAmountCents;
   const formattedPayable = formatPrice(payableCents, selectedCurrency, language);
 
   if (purchaseComplete) {
@@ -413,6 +426,18 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               required
             />
           </FormControl>
+          {paymentConfig.data.canTest && (paymentConfig.data.testConfigured || testEnabled) ? <>
+            <FormControlLabel label={t.checkout.stripeTestMode}
+              control={<Switch checked={testEnabled} data-testid="checkout-test-mode-switch"
+                disabled={testSession.isPending || checkoutSession.isPending}
+                onChange={(_event, enabled) => testSession.mutate({ enabled })} />} />
+            {testEnabled ? (
+              <Alert severity={paymentConfig.data.testConfigured ? 'info' : 'warning'} data-testid="checkout-test-mode-hint">
+                {paymentConfig.data.testConfigured ? t.checkout.testModeHint : t.checkout.testModeUnavailable}
+              </Alert>
+            ) : null}
+            {testSession.isError ? <Alert severity="error">{localizeError(testSession.error, t)}</Alert> : null}
+          </> : null}
           <CheckoutDisclosureButton
             type="button"
             variant="text"
@@ -446,6 +471,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
             variant="text"
             size="small"
             color="primary"
+            disabled={testEnabled}
             startIcon={<DisclosureIcon expanded={couponVisible} />}
             data-testid="checkout-coupon-reveal"
             onClick={() => dispatchCheckout({
@@ -457,7 +483,12 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
           >
             {t.checkout.couponReveal}
           </CheckoutDisclosureButton>
-          {couponVisible ? (
+          {testEnabled ? (
+            <FinePrint component="p" variant="caption" data-testid="checkout-coupon-blocked">
+              {t.checkout.testModeCouponBlocked}
+            </FinePrint>
+          ) : null}
+          {couponVisible && !testEnabled ? (
             <Stack useFlexGap spacing="0.5rem">
               <FormControl fullWidth>
                 <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
@@ -572,9 +603,10 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
             data-testid="checkout-pay-cta"
             disabled={
               simulatePurchase.isPending ||
-              checkoutSession.isPending ||
+              testSession.isPending || checkoutSession.isPending ||
+              (testEnabled && payableCents === 0) ||
               (payableCents > 0 &&
-                !paymentConfig.data.stripeConfigured &&
+                !stripeConfigured &&
                 !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
@@ -582,7 +614,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle({ price: formattedPayable })
-              : paymentConfig.data.stripeConfigured
+              : stripeConfigured
               ? checkoutSession.isPending
                 ? t.checkout.payPending
                 : t.checkout.payIdle({ price: formattedPayable })
@@ -591,14 +623,14 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                 : t.checkout.payIdle({ price: formattedPayable })}
           </EmberCtaButton>
           {payableCents > 0
-          && !paymentConfig.data.stripeConfigured
+          && !stripeConfigured
           && paymentConfig.data.simulatedPaymentsEnabled ? (
             <FinePrint component="p" variant="caption">
               {t.checkout.simulatedPaymentNote}
             </FinePrint>
           ) : null}
           {selectedAmountCents > 0 &&
-          paymentConfig.data.stripeConfigured &&
+          stripeConfigured &&
           paymentConfig.data.simulatedPaymentsEnabled ? (
             <Stack useFlexGap spacing="0.35rem">
               <Button
@@ -613,7 +645,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                   ...consent,
                   ...billing,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
-                  ...(couponValidation.data === undefined ? {} : { couponCode }),
+                  ...(appliedCoupon === undefined ? {} : { couponCode }),
                 })}
               >
                 {payableCents === 0
@@ -629,7 +661,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
               </FinePrint>
             </Stack>
           ) : null}
-          {payableCents > 0 && !paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
+          {payableCents > 0 && !stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
             <Alert severity="error">{t.checkout.paymentUnavailable}</Alert>
           ) : null}
           {checkoutSession.isError ? (

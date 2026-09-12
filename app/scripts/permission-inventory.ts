@@ -186,6 +186,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/support/message') return 'support:request';
   if (path === '/api/platform/data-reset') return 'platform:data:reset';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
+  if (path === '/api/checkout/stripe-test-session') return 'product:write';
+  if (path === '/api/integrations/stripe/test-mode/remove') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
@@ -536,6 +538,7 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts') return owner;
+  if (file === 'stripe-test-session.ts') return staff;
   if (capability === 'integration:test') return owner;
   if (file === 'community.ts' && name === 'purgePost') return staff;
   if (

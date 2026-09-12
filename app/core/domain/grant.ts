@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { stripeModeSchema } from './integration.js';
+
 import type { Product } from './product.js';
 
 const grantSourceSchema = z.enum(['simulated', 'manual', 'stripe', 'import']);
@@ -17,6 +19,7 @@ export type GrantedProduct = Product & {
 };
 
 export const productGrantSchema = z.object({
+  mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
   memberId: z.string(),
@@ -31,6 +34,7 @@ export const productGrantSchema = z.object({
 export type ProductGrant = z.infer<typeof productGrantSchema>;
 
 export const memberGrantSchema = z.object({
+  mode: stripeModeSchema.default('live'),
   id: z.string(),
   productId: z.string(),
   productName: z.string(),

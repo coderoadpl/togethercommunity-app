@@ -3337,6 +3337,22 @@ stripe
     }),
   );
 
+const stripeTestMode = stripe.command('test-mode').description('Manage the isolated staff Stripe sandbox');
+stripeTestMode.command('status').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.listTenantSecrets(), ctx.json, (data) => {
+    const configured = ['stripe.testRestrictedKey', 'stripe.testWebhookSecret'].every((key) => data.secrets.some((secret) => secret.key === key));
+    return `test mode ${configured ? 'configured' : 'not configured'}\nlast test event ${data.stripeTestLastEventAt ?? 'none'}`;
+  });
+}));
+stripeTestMode.command('configure <restrictedKey>').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [restrictedKey]) => {
+    emit(await ctx.api.configureStripe({ restrictedKey, mode: 'test' }), ctx.json, (data) => `configured Stripe test mode\nwebhook ${data.webhookUrl}`);
+  }),
+);
+stripeTestMode.command('remove').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.removeStripeTestMode(), ctx.json, () => 'removed Stripe test mode');
+}));
+
 stripe
   .command('test-connection')
   .description('Create and immediately expire a test checkout session via the port')

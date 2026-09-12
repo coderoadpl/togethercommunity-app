@@ -32,6 +32,7 @@ const billing = {
 };
 
 const order = (billingSnapshot: OrderListItem['billing'] = billing): OrderListItem => ({
+  mode: 'live',
   id: 'order-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',

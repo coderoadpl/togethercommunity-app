@@ -144,6 +144,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
 });
 
 const grant = (memberId: string, productId: string): ProductGrant => ({
+  mode: 'live',
   id: `grant-${memberId}-${productId}`,
   tenantId: 't1',
   memberId,

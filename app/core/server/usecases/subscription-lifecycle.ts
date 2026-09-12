@@ -34,7 +34,8 @@ const grantSourceFor = (provider: OrderProvider): GrantSource =>
 
 export const appendOrder = async (
   tenantId: string,
-  input: Omit<Order, 'id' | 'tenantId' | 'createdAt' | 'couponId' | 'discountCents'> & {
+  input: Omit<Order, 'id' | 'tenantId' | 'createdAt' | 'couponId' | 'discountCents' | 'mode'> & {
+    mode?: 'live' | 'test';
     couponId?: string | null;
     discountCents?: number;
     billing?: BillingData | null;
@@ -43,6 +44,7 @@ export const appendOrder = async (
 ): Promise<Order> => {
   const order: Order = {
     ...input,
+    mode: input.mode ?? 'live',
     couponId: input.couponId ?? null,
     discountCents: input.discountCents ?? 0,
     billing: input.billing ?? null,
@@ -55,6 +57,7 @@ export const appendOrder = async (
 };
 
 export interface StartSubscriptionInput {
+  mode?: 'live' | 'test';
   memberId: string;
   price: ProductPrice;
   provider: OrderProvider;
@@ -79,6 +82,7 @@ export const startSubscription = async (
   const subscription: MemberSubscription = {
     id: deps.ids.nextId(),
     tenantId,
+    mode: input.mode ?? 'live',
     memberId: input.memberId,
     productId: input.price.productId,
     priceId: input.price.id,
@@ -97,6 +101,7 @@ export const startSubscription = async (
   await createOrRenewGrant(
     tenantId,
     {
+      mode: input.mode ?? 'live',
       memberId: input.memberId,
       productId: input.price.productId,
       expiresAt: graceExpiresAt(periodEnd),
@@ -109,6 +114,7 @@ export const startSubscription = async (
     (await appendOrder(
       tenantId,
       {
+        mode: input.mode ?? 'live',
         memberId: input.memberId,
         productId: input.price.productId,
         priceId: input.price.id,
@@ -156,6 +162,7 @@ export const renewSubscriptionPeriod = async (
   await createOrRenewGrant(
     tenantId,
     {
+      mode: subscription.mode,
       memberId: subscription.memberId,
       productId: subscription.productId,
       expiresAt: graceExpiresAt(periodEnd),
@@ -168,6 +175,7 @@ export const renewSubscriptionPeriod = async (
     (await appendOrder(
       tenantId,
       {
+        mode: subscription.mode,
         memberId: subscription.memberId,
         productId: subscription.productId,
         priceId: subscription.priceId,
@@ -213,6 +221,7 @@ export const failSubscriptionPayment = async (
   const order = await appendOrder(
     tenantId,
     {
+      mode: subscription.mode,
       memberId: subscription.memberId,
       productId: subscription.productId,
       priceId: subscription.priceId,
@@ -256,7 +265,7 @@ export const syncGrantToSubscription = async (
   paidThrough: string | null,
   deps: Pick<SubscriptionLifecycleDeps, 'grants' | 'clock'>,
 ): Promise<string | null> => {
-  const grant = await deps.grants.findGrant(tenantId, subscription.memberId, subscription.productId);
+  const grant = await deps.grants.findGrant(tenantId, subscription.memberId, subscription.productId, subscription.mode);
   if (grant === null) return null;
   const { expiresAt } = grant;
   const grantsLifetimeAccess = expiresAt === null;

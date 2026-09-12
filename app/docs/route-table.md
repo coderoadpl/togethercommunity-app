@@ -264,6 +264,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
+| `POST /api/checkout/stripe-test-session` | authenticated | mutating | stripe test session |
+| `POST /api/integrations/stripe/test-mode/remove` | authenticated | mutating | stripe test remove |
 | `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |

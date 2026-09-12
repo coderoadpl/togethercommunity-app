@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { stripeModeSchema } from './integration.js';
+
 import { currencySchema } from './product.js';
 
 export const priceKindSchema = z.enum(['one_time', 'recurring']);
@@ -99,6 +101,7 @@ export const billingDataSchema = z.object({
 export type BillingData = z.output<typeof billingDataSchema>;
 
 export const orderSchema = z.object({
+  mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
   memberId: z.string(),
@@ -140,6 +143,7 @@ export const orderExportFileSchema = z.object({
 export type OrderExportFile = z.infer<typeof orderExportFileSchema>;
 
 export const listOrdersQuerySchema = z.object({
+  mode: stripeModeSchema.optional(),
   status: orderStatusSchema.optional(),
   productId: z.string().min(1).optional(),
   kind: priceKindSchema.optional(),
@@ -179,6 +183,7 @@ const subscriptionStatusSchema = z.enum(['active', 'past_due', 'canceled']);
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 
 export const memberSubscriptionSchema = z.object({
+  mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
   memberId: z.string(),

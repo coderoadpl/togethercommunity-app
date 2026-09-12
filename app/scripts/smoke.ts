@@ -576,10 +576,29 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const freeEmail = await waitForDevEmail('free-smoke@together.dev');
   assert(freeEmail.email !== null, 'free checkout did not send the account welcome email');
 
+  for (const [slot, key] of [
+    ['stripe.restrictedKey', 'rk_test_smoke_rejected'],
+    ['stripe.testRestrictedKey', 'rk_live_smoke_rejected'],
+  ] as const) {
+    expectError(
+      await cli(['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', slot, key], authedHome),
+      'stripe: refuse a key in the wrong mode slot', EXIT_CODE_BY_ERROR_CODE.validation, 'validation',
+    );
+  }
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'configure', 'rk_test_smoke_sandbox',
+  ], authedHome), 'stripe: configure sandbox endpoint');
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'status',
+  ], authedHome), 'stripe: sandbox status');
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'remove',
+  ], authedHome), 'stripe: remove sandbox endpoint');
+
   const webhookSecret = 'whsec_smoke_known_secret';
   expectOk(
     await cli(
-      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_restricted'],
+      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.restrictedKey', 'rk_live_smoke_restricted'],
       authedHome,
     ),
     'stripe: configure restricted key',
@@ -615,6 +634,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const event = JSON.stringify({
     id: `evt_${randomUUID()}`,
     type: 'checkout.session.completed',
+    livemode: true,
     data: {
       object: {
         id: sessionId,
@@ -1818,7 +1838,7 @@ const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<
   );
 
   expectOk(
-    await studio(['tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_public'], creatorHome),
+    await studio(['tenant-secret', 'set', 'stripe.restrictedKey', 'rk_live_smoke_public'], creatorHome),
     'public: configure the studio restricted key',
   );
   expectOk(

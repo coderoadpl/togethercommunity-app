@@ -869,6 +869,13 @@
       "when": 1789066928000,
       "tag": "0123_ses_maintenance_backoff",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1789066929000,
+      "tag": "0124_stripe_test_mode",
+      "breakpoints": true
     }
   ]
 }

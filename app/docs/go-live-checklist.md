@@ -90,16 +90,22 @@ fake adapter remains available outside production for local and staging use.
 **OWNER ACTION:** Set `PAYMENT_PROVIDER=stripe` for the Production environment
 in the Vercel project settings.
 
-Open **Integrations → Stripe** and save an `rk_test_…` or `rk_live_…` restricted
-key with write access to Checkout Sessions, Coupons, Promotion Codes,
-Subscriptions, and Webhook Endpoints. Alternatively, configure a headless
-deployment with the CLI. Together registers the webhook, stores its signing
-secret, and derives the mode from the stored key prefix. Then run:
+Open **Integrations → Stripe** and save an `rk_live_…` restricted key with write
+access to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, and
+Webhook Endpoints. The live card refuses `rk_test_…` keys; a sandbox key belongs
+to the separate test-mode card described in the
+[payments guide](payments.md). Alternatively, configure a headless deployment
+with the CLI. Together registers the webhook and stores its signing secret. Then
+run:
 
 ```sh
-pnpm --silent run cli --tenant <slug> stripe configure rk_test_…
+pnpm --silent run cli --tenant <slug> stripe configure rk_live_…
 pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
+
+A deployment that already stores an `rk_test_…` key in the live slot keeps
+serving Studio but cannot start a checkout. Move that key to the test-mode card
+and save a live key here before accepting payments.
 
 Complete item 11 before accepting payments.
 

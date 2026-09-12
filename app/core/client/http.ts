@@ -170,6 +170,8 @@ import {
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
+  stripeTestSessionOutputSchema,
+  stripeTestRemoveOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
@@ -907,6 +909,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  removeStripeTestMode: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.stripeTestRemove.method, API_ROUTES.stripeTestRemove.path, stripeTestRemoveOutputSchema, {}, signal),
+  setStripeTestSession: (input: { enabled: boolean }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.stripeTestSession.method, API_ROUTES.stripeTestSession.path,
+      stripeTestSessionOutputSchema, input, signal),
   createCheckoutSession: (input: CheckoutSessionRequest, signal?: AbortSignal) =>
     request(
       options,
@@ -1100,6 +1107,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   listOrders: (input: OrdersListQueryInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
+    if (input.mode !== undefined) params.set('mode', input.mode);
     if (input.status !== undefined) params.set('status', input.status);
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);

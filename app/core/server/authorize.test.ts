@@ -31,6 +31,17 @@ describe('authorize', () => {
     });
   });
 
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('grants %s only to staff and explicit capability contexts', (capability) => {
+    const staffIdentity = identity('tenant-1');
+    expect(authorize({ identity: staffIdentity }, capability)).toBeNull();
+    expect(authorize({ identity: { ...staffIdentity, staffRole: 'admin' } }, capability)).toBeNull();
+    expect(authorize({ identity: { ...staffIdentity, staffRole: null, memberId: 'member-1' } }, capability))
+      .toMatchObject({ code: 'forbidden' });
+    expect(authorize({ identity: staffIdentity, capabilities: ['member:commerce:read', 'member:grant:write'] }, capability))
+      .toMatchObject({ code: 'forbidden' });
+    expect(authorize({ identity: staffIdentity, capabilities: [capability] }, capability)).toBeNull();
+  });
+
   it('allows only a capability declared on the context', () => {
     const ctx = { identity: identity('tenant-1'), capabilities: ['product:read'] as const };
     expect(authorize(ctx, 'product:read')).toBeNull();
@@ -111,6 +122,11 @@ const impersonation: ImpersonationPrincipal = {
 };
 
 describe('authorize under impersonation', () => {
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('blocks %s while impersonating a member', (capability) => {
+    expect(authorize({ identity: subjectIdentity, impersonation }, capability))
+      .toMatchObject({ code: 'impersonation_read_only' });
+  });
+
   it('passes allowlisted reads through the ordinary subject checks', () => {
     expect(authorize({ identity: subjectIdentity, impersonation }, 'community:read')).toBeNull();
     expect(authorize({ identity: subjectIdentity, impersonation }, 'lesson:play')).toBeNull();

@@ -52,6 +52,23 @@ describe('permission inventory', () => {
     }
   });
 
+  it('classifies subscription routes and use-cases with dedicated capabilities', () => {
+    const inventory = collectPermissionInventory();
+    for (const [operation, method, capability, principal] of [
+      ['stripe', 'GET', 'subscriptions:read', 'subscriptions-read-api-key'],
+      ['adopt', 'POST', 'subscriptions:adopt', 'subscriptions-adopt-api-key'],
+    ] as const) {
+      expect(inventory.routes.find((row) => row.subject === `${method} /api/m2m/subscriptions/${operation}`))
+        .toMatchObject({ capability, before: [principal], after: [principal] });
+      expect(inventory.routes.find((row) => row.subject === `${method} /api/subscriptions/${operation}`))
+        .toMatchObject({ capability, before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    expect(inventory.useCases.find((row) => row.subject === 'stripe-subscription-adoption.ts#adoptStripeSubscription')?.capability)
+      .toBe('subscriptions:adopt');
+    expect(inventory.useCases.find((row) => row.subject === 'stripe-subscription-adoption.ts#listStripeSubscriptions')?.capability)
+      .toBe('subscriptions:read');
+  });
+
   it('reads use-case capabilities from their authorization calls', () => {
     const useCases = new Map(
       collectPermissionInventory().useCases.map((row) => [row.subject, row]),

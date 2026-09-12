@@ -68,10 +68,14 @@ An absent or mismatched Stripe customer email is refused by default. After
 independently verifying the customer/member mapping, an operator can explicitly
 pass `--allow-email-mismatch`. The Studio member access action, **Adopt Stripe
 subscription**, asks for the subscription ID and product and always checks email.
-Erased members cannot receive an adopted subscription.
+Erased members cannot receive an adopted subscription. The product must be published,
+including when repeating adoption to reconcile existing access.
 
 For automation, append `--api-key <secret>` to either CLI command, using a tenant
-API key with the `enrollment` scope. The corresponding HTTP endpoints are
+API key with `subscriptions:read` for listing or `subscriptions:adopt` for adoption.
+These scopes are independent; use both when both operations are needed. Legacy
+unscoped keys and enrollment-only keys cannot use either endpoint. Subscription
+scopes cannot be combined with import scopes. The corresponding HTTP endpoints are
 `POST /api/m2m/subscriptions/adopt` and `GET /api/m2m/subscriptions/stripe`, with
 `x-api-key` and the normal tenant selection header or hostname. The POST body is:
 
@@ -86,7 +90,8 @@ API key with the `enrollment` scope. The corresponding HTTP endpoints are
 Use exactly one of `memberId` or `email`; optional fields are `priceId` and
 `allowEmailMismatch`. The listing query accepts `status`, `unadopted=true` and
 `startingAfter`. Both M2M endpoints share a tenant limit of 60 requests per minute.
-Studio and signed-in CLI sessions use staff-authorized subscription endpoints.
+Studio and signed-in CLI sessions require the corresponding `subscriptions:read`
+or `subscriptions:adopt` capability, granted only to owners and admins.
 
 Adoption does not replay invoices received before the local subscription existed.
 Schedule the cutover so webhook delivery and adoption overlap as little as

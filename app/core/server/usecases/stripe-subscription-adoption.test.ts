@@ -11,7 +11,7 @@ import { m2mAdoptStripeSubscription, m2mListStripeSubscriptions, type StripeSubs
 const now = '1998-07-01T00:00:00.000Z';
 const periodEnd = '1998-08-01T00:00:00.000Z';
 const input = { subscriptionId: 'sub_existing', memberId: 'member-1', productId: 'product-1' };
-const harness = () => {
+const harness = (published = true) => {
   const member = memberSchema.parse({ id: input.memberId, tenantId: 't1', userId: 'user-1',
     email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {},
     externalCustomerIds: {}, createdAt: now, deletedAt: null });
@@ -29,7 +29,7 @@ const harness = () => {
       findByEmail: async (tenantId, email) => tenantId === member.tenantId && email === member.email ? member : null },
     products: { findById: async (tenantId, id) => tenantId === 't1' && id === input.productId ? {
       id, tenantId, type: 'course', slug: 'course', title: 'Course', description: '', coverUrl: null,
-      priceCents: 0, currency: 'EUR', visibility: 'listed', published: false, accessItems: [], legacyId: null, createdAt: now,
+      priceCents: 0, currency: 'EUR', visibility: 'listed', published, accessItems: [], legacyId: null, createdAt: now,
     } : null },
     prices: { listByProduct: async (tenantId, productId) => prices.filter((price) => price.tenantId === tenantId && price.productId === productId),
       findById: async (tenantId, id) => prices.find((price) => price.tenantId === tenantId && price.id === id) ?? null,
@@ -75,6 +75,29 @@ const existingGrant = (expiresAt: string | null): ProductGrant => ({ id: 'grant-
   expiresAt, legacyId: null, createdAt: now });
 
 describe('Stripe subscription adoption', () => {
+  it('refuses an unpublished product without creating access or commerce records', async () => {
+    const h = harness(false);
+    expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toEqual({
+      ok: false, error: { code: 'validation', message: 'Product must be published before adopting a subscription' },
+    });
+    expect(h.prices).toEqual([]);
+    expect(h.subscriptions).toEqual([]);
+    expect(h.grants).toEqual([]);
+    expect(h.events).toEqual([]);
+  });
+
+  it('refuses reconciliation after a product is unpublished without restoring access', async () => {
+    const h = harness();
+    expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: true });
+    h.repositories.products = harness(false).repositories.products;
+    h.grants.length = 0;
+    h.remote.currentPeriodEnd = '1998-09-01T00:00:00.000Z';
+    expect(await m2mAdoptStripeSubscription('t1', input, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.grants).toEqual([]);
+    expect(h.subscriptions[0]?.currentPeriodEnd).toBe(periodEnd);
+    expect(h.events).toHaveLength(1);
+  });
+
   it('imports a price, preserves Stripe state, grants access and records only ids', async () => {
     const h = harness();
     const result = await m2mAdoptStripeSubscription('t1', input, h.deps);

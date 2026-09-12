@@ -146,6 +146,7 @@ const saveAdoption = async (
   if (!member.ok) return member;
   const product = await deps.products.findById(tenantId, input.productId);
   if (product === null) return err(notFound('Product was not found'));
+  if (!product.published) return err(validation('Product must be published before adopting a subscription'));
   const existing = await deps.subscriptions.findByProviderSubscriptionId(tenantId, input.subscriptionId);
   if (existing !== null) {
     return reconcileAdoption(tenantId, input, existing, member.value, product, remote, deps);
@@ -200,7 +201,7 @@ export const adoptStripeSubscription = async (
   input: AdoptStripeSubscriptionInput,
   deps: StripeSubscriptionAdoptionDeps,
 ): Promise<Result<AdoptStripeSubscriptionResult, AppError>> => {
-  const tenant = authorizeTenant(ctx, 'member:grant:write');
+  const tenant = authorizeTenant(ctx, 'subscriptions:adopt');
   if (!tenant.ok) return tenant;
   return m2mAdoptStripeSubscription(tenant.value, input, deps);
 };
@@ -235,7 +236,7 @@ export const listStripeSubscriptions = async (
   input: ListStripeSubscriptionsInput,
   deps: ListStripeSubscriptionsDeps,
 ) => {
-  const tenant = authorizeTenant(ctx, 'member:commerce:read');
+  const tenant = authorizeTenant(ctx, 'subscriptions:read');
   if (!tenant.ok) return tenant;
   return m2mListStripeSubscriptions(tenant.value, input, deps);
 };

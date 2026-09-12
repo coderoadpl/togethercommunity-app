@@ -1096,7 +1096,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!tenant.value) return respond(err(tenantNotFound()));
     const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
     if (!authed.ok) return respond(authed);
-    if (!apiKeyHasCapability(authed.value, 'enrollment:create')) return respond(err(forbidden('enrollment:create is not permitted')));
+    if (!apiKeyHasCapability(authed.value, 'subscriptions:adopt')) return respond(err(forbidden('subscriptions:adopt is not permitted')));
     const limited = await claimRateLimitWindow({
       scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
       window: { limit: 60, windowMs: 60_000 },
@@ -1113,7 +1113,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!tenant.value) return respond(err(tenantNotFound()));
     const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
     if (!authed.ok) return respond(authed);
-    if (!apiKeyHasCapability(authed.value, 'enrollment:create')) return respond(err(forbidden('enrollment:create is not permitted')));
+    if (!apiKeyHasCapability(authed.value, 'subscriptions:read')) return respond(err(forbidden('subscriptions:read is not permitted')));
     const limited = await claimRateLimitWindow({
       scope: 'm2m-subscriptions', key: tenant.value.tenant.id,
       window: { limit: 60, windowMs: 60_000 },

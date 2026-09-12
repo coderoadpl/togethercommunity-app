@@ -1545,6 +1545,17 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
   });
 
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('round-trips explicit %s API key scopes within the tenant', async (scope) => {
+    const repo = createTenantApiKeyRepository(db);
+    const apiKey: TenantApiKey = {
+      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`,
+      scopes: [scope], createdAt: NOW, expiresAt: null, revokedAt: null,
+    };
+    await repo.create(ACME, apiKey);
+    expect(await repo.findActiveByHash(ACME, apiKey.keyHash)).toEqual(apiKey);
+    expect(await repo.findActiveByHash(GLOBEX, apiKey.keyHash)).toBeNull();
+  });
+
   it('counts public rate-limit windows and purges only the expired ones', async () => {
     const buckets = createPublicRateLimitRepository(db);
     const window = {

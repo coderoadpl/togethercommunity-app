@@ -35,6 +35,7 @@ import type {
   SchedulerRunTrigger,
   StorageCorsProbeResult,
   TenantDomainEventKind,
+  TenantApiKeyScope,
 } from '#core/domain/index.js';
 
 export const tenants = pgTable(
@@ -957,9 +958,7 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
-    scopes: jsonb('scopes').$type<Array<
-      'enrollment' | 'marketing' | 'transactional' | 'import:content' | 'import:users'
-    >>(),
+    scopes: jsonb('scopes').$type<TenantApiKeyScope[]>(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at'),
     revokedAt: text('revoked_at'),

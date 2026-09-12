@@ -17,7 +17,7 @@ beforeAll(async () => {
   await database.db.insert(tenants).values({ id: 't1', slug: 'acme', name: 'Acme', createdAt: now });
   await database.db.insert(user).values({ id: 'user-1', email: 'buyer@example.com', name: 'Buyer' });
   await database.db.insert(members).values({ id: 'member-1', tenantId: 't1', userId: 'user-1', email: 'buyer@example.com', createdAt: now });
-  await database.db.insert(products).values({ id: 'product-1', tenantId: 't1', slug: 'course', title: 'Course', type: 'course', description: '', priceCents: 0, currency: 'EUR', createdAt: now });
+  await database.db.insert(products).values({ id: 'product-1', tenantId: 't1', slug: 'course', title: 'Course', type: 'course', published: true, description: '', priceCents: 0, currency: 'EUR', createdAt: now });
   let sequence = 0;
   deps = {
     subscriptionAdoptionTransaction: createSubscriptionAdoptionTransaction(database.db),

@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 369. Exported `Ctx` use-case rows: 288.
+Closed capability count: 117. Route rows: 373. Exported `Ctx` use-case rows: 290.
 
 ## Human-readable diff
 
@@ -102,6 +102,8 @@ no changes
 | `POST /api/dev/subscriptions/simulate-cycle` | development:mutate | public | public | yes | Local-development-only composition flag |
 | `POST /api/dev/subscriptions/simulate-failure` | development:mutate | public | public | yes | Local-development-only composition flag |
 | `POST /api/m2m/enroll` | enrollment:create | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/subscriptions/adopt` | subscriptions:adopt | subscriptions-adopt-api-key | subscriptions-adopt-api-key | yes | Tenant API key |
+| `GET /api/m2m/subscriptions/stripe` | subscriptions:read | subscriptions-read-api-key | subscriptions-read-api-key | yes | Tenant API key |
 | `POST /api/m2m/transactional/messages` | transactional:message:send | transactional-api-key | transactional-api-key | yes | Tenant API key |
 | `GET /api/m2m/transactional/messages/:id` | transactional:message:read | transactional-api-key | transactional-api-key | yes | Tenant API key |
 | `POST /api/m2m/marketing/messages` | marketing:message:send | api-key | api-key | yes | Tenant API key |
@@ -262,6 +264,8 @@ no changes
 | `GET /api/members/:memberId/learning-summary` | member:learning:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/:memberId/progress-reset` | member:progress:manage | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/members/:memberId` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/subscriptions/adopt` | subscriptions:adopt | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/subscriptions/stripe` | subscriptions:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/grants` | member:grant:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/grants/:grantId` | member:grant:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/api-keys` | api-key:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -676,6 +680,8 @@ no changes
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `storage-configuration.ts#probeStorageConnection` | integration:test | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
 | `storage-configuration.ts#configureStorageConnection` | tenant:secret:write | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
+| `stripe-subscription-adoption.ts#adoptStripeSubscription` | subscriptions:adopt | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
+| `stripe-subscription-adoption.ts#listStripeSubscriptions` | subscriptions:read | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
@@ -699,12 +705,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1070` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1072` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1588` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:13` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:176` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1073` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1075` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1097` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1114` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1626` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1626` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

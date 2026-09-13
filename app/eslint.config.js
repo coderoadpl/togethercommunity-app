@@ -567,7 +567,7 @@ export default tseslint.config(
             },
             {
               from: ['platform-entry'],
-              allow: ['@hono/node-server', 'node:http'],
+              allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
             },
             {
               from: ['app-server'],

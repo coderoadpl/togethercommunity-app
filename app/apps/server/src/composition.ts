@@ -393,6 +393,7 @@ export interface AppDeps {
     | 'clearResetPasswordDeliveryContext'
     | 'setEmailVerificationDeliveryContext'
     | 'clearEmailVerificationDeliveryContext'
+    | 'flushAuthEmails'
   >;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
@@ -806,7 +807,10 @@ export const selectDeploymentIdentity = (
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
-export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): AppDeps => {
+export const createDeps = (
+  env: Env,
+  options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
+): AppDeps => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
@@ -1230,6 +1234,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     ids,
     clock,
     dispatchEmail,
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
     defaultTenantName: 'Together',
     google,
     logger,

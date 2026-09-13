@@ -185,6 +185,7 @@ const deps = (input: {
       clearResetPasswordDeliveryContext: () => undefined,
       setEmailVerificationDeliveryContext: () => undefined,
       clearEmailVerificationDeliveryContext: () => undefined,
+      flushAuthEmails: async () => undefined,
     },
     authPort: {
       getAuthenticatedUser: input.getAuthenticatedUser ?? (async () => {

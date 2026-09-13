@@ -40,7 +40,8 @@ handler owns request-body consumption. Vercel provisions this as a project-level
 environment setting through the dashboard or CLI; its per-function
 `vercel.json` schema cannot express environment variables. The platform entry
 maps `VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
-attestation.
+attestation. Auth e-mail delivery for members is registered with the platform's
+`waitUntil` and drained before the function returns.
 
 A serverless function does not survive between requests, so the platform entry
 carries none of the in-process tickers that `entry.node.ts` runs. Every queue

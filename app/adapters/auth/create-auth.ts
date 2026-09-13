@@ -48,6 +48,7 @@ export interface AuthSettings {
   ids: IdGenerator;
   clock: Clock;
   dispatchEmail(): void;
+  keepAlive?(task: Promise<unknown>): void;
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
@@ -521,14 +522,17 @@ const createAuthEmailSender = (settings: AuthSettings) => {
       process.stderr.write(`[auth] Auth e-mail delivery failed: ${safeErrorMessage(cause)}\n`);
     });
     pending.add(tracked);
+    try {
+      settings.keepAlive?.(tracked);
+    } catch (cause: unknown) {
+      process.stderr.write(`[auth] Could not register background delivery: ${safeErrorMessage(cause)}\n`);
+    }
     void tracked.finally(() => { pending.delete(tracked); });
   };
   return {
     /**
-     * The log row is queued before the message leaves so a failed transport still leaves a
-     * 'failed' row behind instead of a silently dropped auth mail. Delivery then runs off the
-     * request, so neither the response time nor its status can tell a member of the requesting
-     * space apart from an address that is not one.
+     * The queued row makes failed transports visible without storing the rendered body. Delivery
+     * stays outside the response path so timing and status do not reveal membership.
      */
     send: async (input: {
       tenantId: string | undefined;

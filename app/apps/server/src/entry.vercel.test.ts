@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => {
   const app = { fetch: vi.fn() };
-  const deps = { marker: 'deps' };
+  const deps = { auth: { flushAuthEmails: vi.fn() }, marker: 'deps' };
   const flush = vi.fn();
   const listener = vi.fn();
   const request = { marker: 'request' };
@@ -40,12 +40,30 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('entry.vercel composition', () => {
   it('creates the request listener from app.fetch', async () => {
     await importEntry();
 
     expect(harness.getRequestListener).toHaveBeenCalledOnce();
     expect(harness.getRequestListener).toHaveBeenCalledWith(harness.app.fetch);
+  });
+
+  it('passes keepAlive into dependency composition', async () => {
+    const entry = await importEntry();
+
+    expect(harness.createDeps).toHaveBeenCalledOnce();
+    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env' }, { keepAlive: entry.keepAlive });
+  });
+
+  it('does not throw when keepAlive runs outside a Vercel request context', async () => {
+    vi.stubEnv('VERCEL', '1');
+    const { keepAlive } = await importEntry();
+
+    expect(() => { keepAlive(Promise.resolve()); }).not.toThrow();
   });
 
   it('awaits the observability flush when the listener rejects', async () => {
@@ -76,5 +94,40 @@ describe('entry.vercel composition', () => {
 
     harness.completeFlush();
     await expect(result).rejects.toBe(listenerError);
+  });
+
+  it('drains pending auth emails before the observability flush', async () => {
+    const calls: string[] = [];
+    harness.deps.auth.flushAuthEmails.mockImplementationOnce(async () => {
+      calls.push('auth');
+    });
+    harness.flush.mockImplementationOnce(async () => {
+      calls.push('observability');
+    });
+    const { default: handler } = await importEntry();
+
+    await Reflect.apply(handler, undefined, [harness.request, harness.response]);
+
+    expect(calls).toEqual(['auth', 'observability']);
+  });
+
+  it('caps the auth email drain before flushing observability', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      harness.deps.auth.flushAuthEmails.mockReturnValueOnce(new Promise(() => undefined));
+      harness.flush.mockImplementationOnce(async () => {
+        calls.push('observability');
+      });
+      const { default: handler } = await importEntry();
+
+      const result = Reflect.apply(handler, undefined, [harness.request, harness.response]);
+      await vi.advanceTimersByTimeAsync(25_000);
+
+      await expect(result).resolves.toBeUndefined();
+      expect(calls).toEqual(['observability']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

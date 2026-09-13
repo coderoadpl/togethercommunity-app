@@ -9,12 +9,15 @@ import {
   SMOKE_TENANT_SLUG,
 } from '#core/domain/index.js';
 import {
+  API_PATHS,
+  authSendLogLatestOutputSchema,
   courseStructureOutputSchema,
   deepHealthOutputSchema,
   envelopeSchema,
   healthOutputSchema,
   meOutputSchema,
   publicOfferOutputSchema,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
   studentCoursesOutputSchema,
   studentLessonPlaybackOutputSchema,
   studentLessonOutputSchema,
@@ -60,6 +63,9 @@ const STUDIO_SETTINGS_SKIP_REASON =
 
 const MEMBER_CREDENTIALS_SKIP_REASON =
   'SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD are not configured';
+
+const OPERATOR_SECRET_SKIP_REASON =
+  'OPERATOR_SECRET is absent — create the OPERATOR_SECRET_STAGING repository secret';
 
 const MEMBER_CREDENTIALS_NOTICE =
   'smoke:remote: NOTICE member checks skipped — set SMOKE_MEMBER_EMAIL and SMOKE_MEMBER_PASSWORD';
@@ -375,6 +381,8 @@ export interface StagingSmokeOptions {
   publicPagePath: string;
   member: MemberCredentials;
   bypassSecret: string;
+  /** Null while the workflow runs without the staging operator secret. */
+  operatorSecret: string | null;
   productionFingerprint: string;
   /** Null until the owner pins the observed fingerprint in a repository variable. */
   expectedFingerprint: string | null;
@@ -436,6 +444,100 @@ const failsOnlyOnTheMissingPin = (
   && result.failing.length === 1
   && result.failing[0] === 'database-fingerprint';
 
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface AuthMailCheckTiming {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  now?: () => number;
+  wait?: (ms: number) => Promise<void>;
+}
+
+/**
+ * The send-log row carries the deployment's clock, this script the runner's;
+ * without an allowance a runner running ahead filters the fresh row out forever.
+ */
+const AUTH_MAIL_CLOCK_SKEW_MS = 30_000;
+
+const errorCodeOf = (json: unknown): string | null =>
+  typeof json === 'object' && json !== null && 'code' in json && typeof json.code === 'string'
+    ? json.code
+    : null;
+
+export const runAuthMailServerlessCheck = async (
+  options: Pick<StagingSmokeOptions, 'baseUrl' | 'tenant' | 'member' | 'bypassSecret'>
+    & { operatorSecret: string },
+  request: Fetch = fetch,
+  timing: AuthMailCheckTiming = {},
+): Promise<void> => {
+  if (options.member.status !== 'configured') {
+    throw new Error('the staging smoke member is not configured');
+  }
+  const now = timing.now ?? Date.now;
+  const waitFor = timing.wait ?? wait;
+  const timeoutMs = timing.timeoutMs ?? 90_000;
+  const pollIntervalMs = timing.pollIntervalMs ?? 3_000;
+  const requestedAtMs = now();
+  const since = new Date(requestedAtMs - AUTH_MAIL_CLOCK_SKEW_MS).toISOString();
+  const origin = new URL(options.baseUrl).origin;
+  const callbackURL = new URL('/login?verification=verified', origin).toString();
+  const errorCallbackURL = new URL('/login?error=INVALID_TOKEN', origin).toString();
+  const auth = createAuthE2eClient({
+    connectUrl: options.baseUrl,
+    origin,
+    headers: { [VERCEL_BYPASS_HEADER]: options.bypassSecret },
+    request,
+  });
+  const authResponse = await auth.requestMagicLink({
+    email: options.member.email,
+    callbackURL,
+    errorCallbackURL,
+  });
+  if (authResponse.status < 200 || authResponse.status >= 300) {
+    const code = errorCodeOf(authResponse.json);
+    throw new Error(
+      `magic-link request returned HTTP ${String(authResponse.status)}${code === null ? '' : ` (${code})`}`,
+    );
+  }
+
+  const evidenceUrl = endpoint(options.baseUrl, API_PATHS.authSendLogLatest);
+  evidenceUrl.searchParams.set('tenant', options.tenant);
+  evidenceUrl.searchParams.set('kind', 'magic-link');
+  evidenceUrl.searchParams.set('since', since);
+  const deadline = requestedAtMs + timeoutMs;
+  let latestStatus = 'not found';
+  while (true) {
+    const evidenceResponse = await request(evidenceUrl, {
+      headers: {
+        [SCHEDULER_OPERATOR_SECRET_HEADER]: options.operatorSecret,
+        [VERCEL_BYPASS_HEADER]: options.bypassSecret,
+      },
+    });
+    const evidence = unwrap(
+      await envelopeOf(
+        evidenceResponse,
+        envelopeSchema(authSendLogLatestOutputSchema.nullable()),
+        'auth send-log evidence',
+      ),
+      'auth send-log evidence',
+    );
+    latestStatus = evidence?.status ?? 'not found';
+    if (evidence?.status === 'sent') {
+      if (evidence.settledAt === null) {
+        throw new Error('auth mail send log is sent without a settlement timestamp');
+      }
+      return;
+    }
+    if (evidence?.status === 'failed') {
+      throw new Error('auth mail send log settled as failed');
+    }
+    if (now() >= deadline) {
+      throw new Error(`auth mail send log timed out with latest status ${latestStatus}`);
+    }
+    await waitFor(pollIntervalMs);
+  }
+};
+
 export const runStagingSmoke = async (
   options: StagingSmokeOptions,
   request: Fetch = fetch,
@@ -466,6 +568,13 @@ export const runStagingSmoke = async (
     },
     request,
   );
+  const operatorSecret = options.operatorSecret;
+  if (operatorSecret === null) {
+    run.skip('auth-mail-serverless', OPERATOR_SECRET_SKIP_REASON);
+  } else {
+    await run.step('auth-mail-serverless', () =>
+      runAuthMailServerlessCheck({ ...options, operatorSecret }, request));
+  }
 
   const result = run.result();
   const observedFingerprint = health?.databaseFingerprint ?? null;
@@ -528,6 +637,7 @@ export const stagingSmokeOptionsFromEnv = (env: Environment): StagingSmokeOption
     publicPagePath: provided(env, 'PUBLIC_PAGE_PATH') ?? '/',
     member: stagingMemberFromEnv(env),
     bypassSecret,
+    operatorSecret: provided(env, 'OPERATOR_SECRET'),
     productionFingerprint,
     expectedFingerprint: provided(env, 'STAGING_DATABASE_FINGERPRINT'),
     sanitized: provided(env, 'SANITIZED') !== 'false',

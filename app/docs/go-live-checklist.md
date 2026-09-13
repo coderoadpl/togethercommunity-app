@@ -302,11 +302,22 @@ requires verifying it before a browser on that domain can read the lookup.
 
 **STATUS:** pre-launch-verify
 
-Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Run this procedure
-on staging with `PAYMENT_PROVIDER=stripe` and an `rk_live_…` key saved in the
-**live** card — the live card refuses an `rk_test_…` key, so a Stripe
-test-mode/sandbox account cannot be used here. Repeat the signature and refund
-checks once more against production with a 1 PLN product.
+Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Steps a-i below use
+Stripe test clocks and test cards, which only exist against a Stripe test-mode
+account; run them with `PAYMENT_PROVIDER=stripe` on staging through the
+[test-mode card](payments.md#test-mode-for-staff) (an `rk_test_…` key) and its
+`?mode=test` endpoint. Because a test-mode purchase does not unlock member
+access, does not send a fulfillment e-mail, and is excluded from sales lists,
+exports and invoicing, adjust each step's expectation accordingly — the
+lettered steps verify Stripe signature handling, event correlation and
+subscription-lifecycle mechanics, not the live money path.
+
+Afterward, repeat step a (a real purchase) and step d (a refund) once more
+against **production** with an `rk_live_…` key saved in the **live** card and a
+1 PLN product — the live card refuses an `rk_test_…` key, so this repeat is
+the only way to confirm the actual member, grant, paid order and fulfillment
+e-mail. Steps b, c, e, f and g depend on Stripe test clocks and decline/dispute
+test cards that do not exist in live mode, so they are not repeated live.
 
 Save the restricted key through **Integrations → Stripe** or `stripe configure`.
 Confirm that the panel shows the expected test/live badge and that Stripe
@@ -317,14 +328,6 @@ in the Stripe Dashboard. Together enables exactly
 `customer.subscription.updated`, `customer.subscription.deleted`,
 `charge.refunded`, and `charge.dispute.created`
 (`core/server/usecases/stripe-webhook.ts`).
-
-To rehearse the same lifecycle against a sandbox instead, use the
-[test-mode card](payments.md#test-mode-for-staff) and its `?mode=test`
-endpoint. Expect different, test-scoped outcomes throughout: no fulfillment
-e-mail, a `mode=test` grant that does not unlock member access, and orders
-excluded from sales lists, exports and invoicing — a sandbox rehearsal proves
-webhook signature handling, not the go-live money path, and does not satisfy
-this item.
 
 Confirm credentials with:
 

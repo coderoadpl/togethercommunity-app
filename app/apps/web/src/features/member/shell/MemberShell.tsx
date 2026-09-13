@@ -22,6 +22,7 @@ import { CourseLoading } from '../CourseLoading.js';
 import { AnonShell } from './AnonShell.js';
 import { CourseBreadcrumbs } from './CourseBreadcrumbs.js';
 import { CourseSidebar } from './CourseSidebar.js';
+import { ForeignTenantNotice } from './ForeignTenantNotice.js';
 import { ImpersonationBanner } from './ImpersonationBanner.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { courseContextFromPath, memberHomePath } from './member-nav.js';
@@ -43,9 +44,9 @@ export const MemberShell = ({
 }: { hostname?: string } = {}) =>
   isConfiguredBaseDomainHost(hostname)
     ? <Navigate to="/" replace />
-    : <TenantMemberShell />;
+    : <TenantMemberShell hostname={hostname} />;
 
-const TenantMemberShell = () => {
+const TenantMemberShell = ({ hostname }: { hostname: string }) => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
@@ -226,6 +227,9 @@ const TenantMemberShell = () => {
   if (viewer === 'anonymous') {
     return (
       <AnonShell>
+        {me.data?.tenantAccess === 'none' ? (
+          <ForeignTenantNotice email={me.data.email} hostname={hostname} />
+        ) : null}
         {notices}
         {outlet}
       </AnonShell>

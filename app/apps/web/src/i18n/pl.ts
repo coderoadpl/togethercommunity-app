@@ -304,6 +304,9 @@ export const pl: Messages = {
     and: 'i',
   },
   tenant: {
+    visitorNotice: ({ email }: { email: string }) => `Zalogowano jako ${email}, ale nie należysz do tej społeczności`,
+    visitorOwnCommunity: 'Przejdź do swojej społeczności',
+    visitorSwitchAccount: 'Wyloguj się i zaloguj na inne konto',
     choose: 'Wybierz platformę',
     eachOwnDomain: 'Każda platforma ma własną domenę',
     welcome: 'Witaj w Together. Otwórz istniejącą platformę albo utwórz nową.',

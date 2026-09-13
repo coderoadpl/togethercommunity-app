@@ -643,6 +643,7 @@ const deps = (input: {
     avatarSources: {
       listAvatarSources: async () => [],
     },
+    accountAvatarTenants: { listTenantIdsForUser: async () => [] },
     accountAvatars: {
       findState: async () => ({ image: null, canImport: true }),
       setAvatar: async () => undefined,
@@ -2341,6 +2342,7 @@ describe('marketing HTTP surfaces', () => {
     const workerDeps = deps();
     const processed = await processMarketingSnsInbox({
       identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
+        tenantAccess: 'none',
         tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
         memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
       capabilities: capabilitiesForPrincipal('webhook'),
@@ -2531,6 +2533,7 @@ describe('marketing HTTP surfaces', () => {
       const workerDeps = deps();
       const processed = await processMarketingSnsInbox({
         identity: { userId: 'worker', email: 'worker@example.test', name: 'Worker', emailVerified: true, image: null,
+          tenantAccess: 'none',
           tenantId: 't-acme', tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null,
           memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
         capabilities: capabilitiesForPrincipal('webhook'),
@@ -3731,6 +3734,30 @@ describe('server edge security baseline', () => {
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
   });
+
+  it('returns a visitor identity on a foreign host while keeping actions protected', async () => {
+    const app = scopedApp('none');
+    const headers = { host: 'acme.localhost:48730' };
+    const response = await app.request(API_PATHS.me, { headers });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true, data: { email: 'user@acme.test', tenantAccess: 'none', tenant: null },
+    });
+    expect((await app.request(API_PATHS.members, { headers })).status).toBe(403);
+  });
+
+  it.each([API_PATHS.publicOffer, API_PATHS.publicNavigation, API_PATHS.authConfig])(
+    'serves %s identically to signed-in non-members and anonymous visitors', async (path) => {
+      const anonymous = scopedApp('none', {
+        overrides: { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } },
+      });
+      const headers = { host: 'acme.localhost:48730' };
+      const visitor = await scopedApp('none').request(path, { headers });
+      const expected = await anonymous.request(path, { headers });
+      expect(visitor.status).toBe(200);
+      expect(await visitor.json()).toEqual(await expected.json());
+    },
+  );
 
   it('projects account security fields through GET /api/me', async () => {
     const read = vi.fn(async () => ({ hasPassword: true, twoFactorEnabled: true }));
@@ -5440,10 +5467,12 @@ describe('free lesson preview route', () => {
     modules: { ...base.modules, list: async () => [moduleFor(course.id, lessonId)] },
   });
 
-  it('serves an anonymous preview and returns 401 for a non-preview lesson', async () => {
+  it.each([false, true])('serves visitor previews with a shared session: %s', async (signedIn) => {
     const preview = lesson('preview', true);
     const paid = lesson('paid', false);
-    const getAuthenticatedUser = vi.fn(async () => null);
+    const getAuthenticatedUser = vi.fn(async () => signedIn
+      ? { sessionId: 'shared-session', userId: 'foreign-user', email: 'visitor@example.test', name: 'Visitor', emailVerified: true, image: null }
+      : null);
     const app = appWithCourse(
       deps({ lessons: [preview, paid], getAuthenticatedUser }),
       courseFor('course-open', true),
@@ -5544,44 +5573,6 @@ describe('free lesson preview route', () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
-  });
-
-  it('serves a preview as public to a user authenticated in another tenant', async () => {
-    const preview = lesson('preview', true);
-    const paid = lesson('paid', false);
-    const app = appWithCourse(
-      deps({
-        lessons: [preview, paid],
-        getAuthenticatedUser: async () => ({
-          sessionId: 'session-other',
-          userId: 'other-tenant-user',
-          email: 'other@example.com',
-          name: 'Other Tenant User',
-          emailVerified: true,
-          image: null,
-        }),
-      }),
-      courseFor('course-open', true),
-      preview.id,
-    );
-    const request = (lessonId: string) => app.request(
-      API_PATHS.studentLesson.replace(':lessonId', lessonId),
-      { headers: { [TENANT_HEADER]: acme.slug } },
-    );
-
-    const previewResponse = await request(preview.id);
-    expect(previewResponse.status).toBe(200);
-    expect(await previewResponse.json()).toMatchObject({
-      ok: true,
-      data: { lesson: { id: preview.id, isPreview: true }, authenticated: false },
-    });
-
-    const paidResponse = await request(paid.id);
-    expect(paidResponse.status).toBe(403);
-    expect(await paidResponse.json()).toMatchObject({
-      ok: false,
-      error: { code: 'forbidden' },
-    });
   });
 });
 

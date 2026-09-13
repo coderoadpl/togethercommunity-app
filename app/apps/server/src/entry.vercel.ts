@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { getRequestListener } from '@hono/node-server';
-import { getDeadline } from '@vercel/functions';
+import { getDeadline, waitUntil } from '@vercel/functions';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -10,8 +10,17 @@ import { startServerObservability } from './observability.js';
 
 process.env.APP_COMMIT_SHA ??= process.env.VERCEL_GIT_COMMIT_SHA;
 
+export const keepAlive = (task: Promise<unknown>): void => {
+  if (process.env.VERCEL === undefined && process.env.VERCEL_URL === undefined) return;
+  try {
+    waitUntil(task);
+  } catch {
+    return;
+  }
+};
+
 const flush = startServerObservability();
-const deps = createDeps(loadEnv());
+const deps = createDeps(loadEnv(), { keepAlive });
 const app = buildApp(deps);
 const handler = getRequestListener(app.fetch);
 

@@ -330,7 +330,6 @@ import { communityEventPath, communityPostPath, communitySpacePath, conversation
 import { createCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
-import { keepAlive } from './background-work.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
@@ -808,7 +807,10 @@ export const selectDeploymentIdentity = (
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
-export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): AppDeps => {
+export const createDeps = (
+  env: Env,
+  options: { clock?: Clock; db?: Db; keepAlive?: (task: Promise<unknown>) => void } = {},
+): AppDeps => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = options.db ?? createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
@@ -1232,7 +1234,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     ids,
     clock,
     dispatchEmail,
-    keepAlive,
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
     defaultTenantName: 'Together',
     google,
     logger,

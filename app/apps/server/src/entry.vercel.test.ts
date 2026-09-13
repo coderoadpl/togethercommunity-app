@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => {
   const app = { fetch: vi.fn() };
@@ -40,12 +40,30 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('entry.vercel composition', () => {
   it('creates the request listener from app.fetch', async () => {
     await importEntry();
 
     expect(harness.getRequestListener).toHaveBeenCalledOnce();
     expect(harness.getRequestListener).toHaveBeenCalledWith(harness.app.fetch);
+  });
+
+  it('passes keepAlive into dependency composition', async () => {
+    const entry = await importEntry();
+
+    expect(harness.createDeps).toHaveBeenCalledOnce();
+    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env' }, { keepAlive: entry.keepAlive });
+  });
+
+  it('does not throw when keepAlive runs outside a Vercel request context', async () => {
+    vi.stubEnv('VERCEL', '1');
+    const { keepAlive } = await importEntry();
+
+    expect(() => { keepAlive(Promise.resolve()); }).not.toThrow();
   });
 
   it('awaits the observability flush when the listener rejects', async () => {

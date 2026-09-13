@@ -121,8 +121,8 @@ module.exports = {
     {
       name: 'vercel-and-neon-only-in-adapters',
       severity: 'error',
-      comment: 'Zero platform lock-in outside adapters and the reviewed platform boundary',
-      from: { pathNot: '^(adapters|apps/server/src/(background-work|entry\\.vercel)\\.ts$)' },
+      comment: 'Zero platform lock-in outside adapters and the reviewed platform entry',
+      from: { pathNot: '^(adapters|apps/server/src/entry\\.vercel\\.ts$)' },
       to: { path: 'node_modules/(@vercel|@neondatabase)' },
     },
     {

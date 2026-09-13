@@ -303,8 +303,10 @@ requires verifying it before a browser on that domain can read the lookup.
 **STATUS:** pre-launch-verify
 
 Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Run this procedure
-against a Stripe test-mode account on staging with `PAYMENT_PROVIDER=stripe`.
-Repeat the signature and refund checks once in live mode with a 1 PLN product.
+on staging with `PAYMENT_PROVIDER=stripe` and an `rk_live_…` key saved in the
+**live** card — the live card refuses an `rk_test_…` key, so a Stripe
+test-mode/sandbox account cannot be used here. Repeat the signature and refund
+checks once more against production with a 1 PLN product.
 
 Save the restricted key through **Integrations → Stripe** or `stripe configure`.
 Confirm that the panel shows the expected test/live badge and that Stripe
@@ -315,6 +317,14 @@ in the Stripe Dashboard. Together enables exactly
 `customer.subscription.updated`, `customer.subscription.deleted`,
 `charge.refunded`, and `charge.dispute.created`
 (`core/server/usecases/stripe-webhook.ts`).
+
+To rehearse the same lifecycle against a sandbox instead, use the
+[test-mode card](payments.md#test-mode-for-staff) and its `?mode=test`
+endpoint. Expect different, test-scoped outcomes throughout: no fulfillment
+e-mail, a `mode=test` grant that does not unlock member access, and orders
+excluded from sales lists, exports and invoicing — a sandbox rehearsal proves
+webhook signature handling, not the go-live money path, and does not satisfy
+this item.
 
 Confirm credentials with:
 

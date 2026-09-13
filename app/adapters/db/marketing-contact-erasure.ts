@@ -5,6 +5,7 @@ import type { EmailHmac } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { marketingCampaignAudienceContacts, marketingContacts, marketingContactImports, marketingContactImportRows, marketingListMemberships } from './schema.js';
 import { createMarketingDirectoryEventRepository, lockMarketingAddress } from './marketing-contact-repositories.js';
+import { eraseTelemetrySubject } from './telemetry-outbox.js';
 
 export const eraseMarketingMemberContact = async (db: Db, tenantId: string, input: { memberId: string; email: string; tombstoneEmail: string; deletedAt: string }, hmac: EmailHmac): Promise<void> => {
   const addressHmac = hmac.compute(tenantId, input.email);
@@ -20,6 +21,7 @@ export const eraseMarketingMemberContact = async (db: Db, tenantId: string, inpu
     for (const membership of removed) await createMarketingDirectoryEventRepository(db).append(tenantId, { id: crypto.randomUUID(), tenantId, subjectKind: 'membership', subjectId: `${membership.listId}:${contact.id}`, type: 'membership_removed', actor: 'member_erasure', importId: null, payload: {}, occurredAt: input.deletedAt, createdAt: input.deletedAt });
     await createMarketingDirectoryEventRepository(db).append(tenantId, { id: crypto.randomUUID(), tenantId, subjectKind: 'contact', subjectId: contact.id, type: 'contact_erased', actor: 'member_erasure', importId: null, payload: {}, occurredAt: input.deletedAt, createdAt: input.deletedAt });
   }
+  await eraseTelemetrySubject(db, tenantId, { contactIds: contacts.map((contact) => contact.id), memberIds: [input.memberId] });
   const affected = await db.update(marketingContactImportRows).set({ stagedPayload: null, normalizedPayload: null, normalizedEmailHmac: addressHmac, errors: ['Address erased'], warnings: [] })
     .where(stagedAddress).returning({ importId: marketingContactImportRows.importId });
   const importIds = [...new Set(affected.map((row) => row.importId))];

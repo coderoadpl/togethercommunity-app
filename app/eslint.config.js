@@ -245,6 +245,7 @@ export default tseslint.config(
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
+        { type: 'adapter-telemetry', pattern: 'adapters/telemetry/**', mode: 'full' },
         { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         {
           type: 'platform-entry',
@@ -336,6 +337,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-telemetry',
               ],
               allow: [
                 'core-domain',
@@ -349,6 +351,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-telemetry',
               ],
             },
             {
@@ -369,6 +372,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-telemetry',
                 'app-server',
               ],
             },
@@ -560,6 +564,10 @@ export default tseslint.config(
             {
               from: ['adapter-video'],
               allow: ['zod'],
+            },
+            {
+              from: ['adapter-telemetry'],
+              allow: ['mongodb', 'node:crypto', 'node:dns', 'node:net'],
             },
             {
               from: ['adapter-storage'],
@@ -851,6 +859,10 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    files: ['adapters/telemetry/**/*.test.{ts,tsx}'],
+    rules: { 'boundaries/external': ['error', { default: 'disallow', rules: [{ from: ['adapter-telemetry'], allow: ['mongodb', 'mongodb-memory-server', 'node:crypto', 'node:dns', 'node:net', 'vitest'] }] }] },
   },
   {
     files: ['adapters/storage/**/*.test.{ts,tsx}'],

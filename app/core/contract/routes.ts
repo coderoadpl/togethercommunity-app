@@ -1,3 +1,5 @@
+import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
+import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
 import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
 
 export { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema };
@@ -1497,6 +1499,9 @@ export const integrationTestOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
 });
 
+export const telemetryStoreInputSchema = telemetryConnectionSchema;
+export const telemetryStoreOutputSchema = telemetryStoreViewSchema;
+
 export const storageProbeInputSchema = storageConfigurationSchema;
 
 export type StorageProbeInput = z.input<typeof storageProbeInputSchema>;
@@ -1625,10 +1630,10 @@ export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.str
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) }),
+  campaign: z.union([campaignWithoutStatisticsSchema, campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })]),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })),
+  campaigns: z.array(z.union([campaignWithoutStatisticsSchema, campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })])),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
@@ -1980,6 +1985,10 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  telemetryStore: { method: 'GET', path: '/api/integrations/telemetry' },
+  telemetryConnect: { method: 'POST', path: '/api/integrations/telemetry/connect' },
+  telemetryProbe: { method: 'POST', path: '/api/integrations/telemetry/probe' },
+  telemetryDisconnect: { method: 'POST', path: '/api/integrations/telemetry/disconnect' },
   storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
   storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
   stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
@@ -2320,6 +2329,10 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
+  telemetryStore: API_ROUTES.telemetryStore.path,
+  telemetryConnect: API_ROUTES.telemetryConnect.path,
+  telemetryProbe: API_ROUTES.telemetryProbe.path,
+  telemetryDisconnect: API_ROUTES.telemetryDisconnect.path,
   storageProbe: API_ROUTES.storageProbe.path,
   storageConfigure: API_ROUTES.storageConfigure.path,
   stripeConfigure: API_ROUTES.stripeConfigure.path,

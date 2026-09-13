@@ -1,3 +1,5 @@
+import { normalizeMemberTelemetry } from '#core/domain/telemetry.js';
+import { appendTelemetry } from './telemetry-outbox.js';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import {
@@ -8,7 +10,7 @@ import {
 import type { MemberEventRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { memberEvents, members } from './schema.js';
+import { marketingContacts, memberEvents, members } from './schema.js';
 
 export const appendMemberEvent = async (
   db: Db,
@@ -18,7 +20,12 @@ export const appendMemberEvent = async (
   const inserted = await db.insert(memberEvents).values(parsed).onConflictDoNothing({
     target: [memberEvents.tenantId, memberEvents.id],
   }).returning({ id: memberEvents.id });
-  if (inserted.length > 0) return;
+  if (inserted.length > 0) {
+    const [contact] = await db.select({ id: marketingContacts.id }).from(marketingContacts).where(and(eq(marketingContacts.tenantId, parsed.tenantId), eq(marketingContacts.memberId, parsed.memberId)));
+    const telemetry = normalizeMemberTelemetry(parsed, { contactId: contact?.id ?? null, ingestedAt: new Date().toISOString(), trackingPolicyVersion: '1' });
+    if (telemetry !== null) await appendTelemetry(db, telemetry);
+    return;
+  }
 
   const duplicates = await db.select({ id: memberEvents.id }).from(memberEvents).where(and(
     eq(memberEvents.tenantId, parsed.tenantId),
@@ -83,10 +90,9 @@ export const appendEmailSentMemberEvents = async (
 };
 
 export const createMemberEventRepository = (db: Db): MemberEventRepository => ({
-  append: async (tenantId, event) => appendMemberEvent(
-    db,
-    memberEventSchema.parse({ ...event, tenantId }),
-  ),
+  append: async (tenantId, event) => db.transaction((tx) => appendMemberEvent(
+    tx, memberEventSchema.parse({ ...event, tenantId }),
+  )),
   listForMember: async (tenantId, memberId) => (
     await db.select().from(memberEvents).where(and(
       eq(memberEvents.tenantId, tenantId),

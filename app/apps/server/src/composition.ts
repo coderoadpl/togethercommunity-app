@@ -1,3 +1,8 @@
+import { createTelemetrySettingsRepository, createTelemetryOutbox, listTelemetryTenants } from '#adapters/db/telemetry-outbox.js';
+import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
+import { drainTelemetry } from '#core/server/telemetry/drain.js';
+import type { TelemetryStoreDeps } from '#core/server/usecases/telemetry-store.js';
+import { createTelemetryEgressProbe } from './telemetry-egress.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
@@ -383,6 +388,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  telemetryStore?: TelemetryStoreDeps;
   telemetry: AppErrorTelemetry;
   auth: Pick<
     Auth,
@@ -834,6 +840,12 @@ export const createDeps = (
   const clock = options.clock ?? { nowIso: () => new Date().toISOString() };
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
   const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
+  const telemetryStore: TelemetryStoreDeps = {
+    settings: createTelemetrySettingsRepository(db), outbox: createTelemetryOutbox(db), stores: createMongoTelemetryFactory(),
+    secrets: tenantSecrets, crypto: secretCrypto, clock, ids,
+    egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
+    hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
+  };
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
@@ -1099,7 +1111,6 @@ export const createDeps = (
       now,
       pendingOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_PENDING_CONSENTS_DAYS),
       renderedBodiesOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RENDERED_BODIES_DAYS),
-      engagementOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS),
       rawSnsInboxOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RAW_SNS_INBOX_DAYS),
       schedulerRunsOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_SCHEDULER_RUNS_DAYS),
       schedulerIdleRunsOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS),
@@ -1167,6 +1178,10 @@ export const createDeps = (
           { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
         )
       : ok({ purged: 0, tenantsProcessed: 0 });
+    for (const tenantId of await listTelemetryTenants(db)) {
+      if (Date.parse(clock.nowIso()) + 5000 >= Date.parse(deadlineAt)) break;
+      await drainTelemetry(tenantId, { ...telemetryStore, random: Math.random, deadlineAt });
+    }
     const sweptViews = clock.nowIso() < deadlineAt ? await sweepLapsedImpersonations({ impersonations, ids, clock }) : ok(undefined);
     if (firstError !== null) return err(firstError);
     if (!purged.ok) return purged;
@@ -1378,6 +1393,7 @@ export const createDeps = (
     apiKeyCrypto: createApiKeyCrypto(),
     tenantSecrets,
     secretCrypto,
+    telemetryStore,
     secretResolver,
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),

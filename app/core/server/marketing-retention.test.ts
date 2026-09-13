@@ -6,7 +6,6 @@ describe('marketingRetentionCutoff', () => {
   it.each([
     { days: MARKETING_RETENTION_DAYS.rawSnsInboxDays, cutoff: '2026-09-03T10:15:30.000Z' },
     { days: MARKETING_RETENTION_DAYS.renderedBodiesDays, cutoff: '2026-08-27T10:15:30.000Z' },
-    { days: MARKETING_RETENTION_DAYS.engagementEventsDays, cutoff: '2026-08-11T10:15:30.000Z' },
     { days: MARKETING_RETENTION_DAYS.schedulerIdleRunsDays, cutoff: '2026-09-08T10:15:30.000Z' },
   ])('subtracts $days days from the reference instant', ({ days, cutoff }) => {
     expect(marketingRetentionCutoff('2026-09-10T10:15:30.000Z', days)).toBe(cutoff);

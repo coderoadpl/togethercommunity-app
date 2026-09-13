@@ -1,3 +1,6 @@
+import { telemetryStoreInputSchema } from '#core/contract/index.js';
+import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
+import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
@@ -1252,7 +1255,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       campaigns: deps.marketing.campaigns,
       sends: deps.marketing.campaignSends,
     });
-    return respond(result.ok ? ok({ campaigns: result.value }) : result);
+    const hidden = await telemetryReportsHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok ? ok({ campaigns: hidden.value ? result.value.map(campaignWithoutStatistics) : result.value }) : result);
   });
 
   app.post(API_PATHS.marketingCampaigns, async (c) => {
@@ -1290,7 +1295,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { campaignId: c.req.param('id') },
       { campaigns: deps.marketing.campaigns, sends: deps.marketing.campaignSends },
     );
-    return respond(result.ok ? ok({ campaign: result.value }) : result);
+    const hidden = await telemetryReportsHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok ? ok({ campaign: hidden.value ? campaignWithoutStatistics(result.value) : result.value }) : result);
   });
 
   app.post(API_PATHS.marketingCampaignUpdate, async (c) => {
@@ -1605,11 +1612,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const kind = z.enum(['transactional', 'marketing']).safeParse(c.req.param('kind'));
     if (!kind.success) return respond(err(validation('Invalid e-mail kind', kind.error.flatten())));
-    return respond(await getEmailSend(
+    const result = await getEmailSend(
       ctxOf(c),
       { kind: kind.data, id: c.req.param('id') },
       { sends: deps.marketing.emailSends, events: deps.marketing.events },
-    ));
+    );
+    const hidden = await telemetryDeliveryEngagementHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok && hidden.value ? ok(sendWithoutEngagement(result.value)) : result);
   });
 
   app.get(API_PATHS.memberEmailSends, async (c) => {
@@ -2369,6 +2379,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     ));
   });
+
+  app.get(API_PATHS.telemetryStore, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await getTelemetryStore(ctxOf(c), deps.telemetryStore)));
+  app.post(API_PATHS.telemetryConnect, async (c) => {
+    const parsed = telemetryStoreInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid telemetry connection')));
+    return respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await connectTelemetryStore(ctxOf(c), parsed.data, deps.telemetryStore));
+  });
+  app.post(API_PATHS.telemetryProbe, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await probeTelemetryStore(ctxOf(c), deps.telemetryStore)));
+  app.post(API_PATHS.telemetryDisconnect, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await disconnectTelemetryStore(ctxOf(c), deps.telemetryStore)));
 
   app.post(API_PATHS.storageProbe, async (c) => {
     const body: unknown = await readJson(c.req.raw);

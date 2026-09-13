@@ -39,6 +39,9 @@ const scriptsTestExternal =
 
 module.exports = {
   forbidden: [
+    { name: 'mongodb-only-in-telemetry', severity: 'error', from: { pathNot: '^adapters/telemetry/' }, to: { path: 'node_modules/(mongodb|mongodb-memory-server)(/|$)' } },
+    { name: 'telemetry-external-allowlist', severity: 'error', from: { path: '^adapters/telemetry/', pathNot: '\\.test\\.ts$' }, to: { path: external, pathNot: 'node_modules/mongodb(/|$)' } },
+    { name: 'telemetry-test-external-allowlist', severity: 'error', from: { path: '^adapters/telemetry/.*\\.test\\.ts$' }, to: { path: external, pathNot: 'node_modules/(mongodb|mongodb-memory-server|vitest)(/|$)' } },
     {
       name: 'visual-support-only-client-contract',
       severity: 'error',

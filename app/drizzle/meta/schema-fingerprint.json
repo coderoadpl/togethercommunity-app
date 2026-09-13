@@ -1,6 +1,6 @@
 {
-  "hash": "ce5f1430bdadafb84280d4377a9177069dcc367552185f23a785cb217f02b3f1",
-  "shortId": "ce5f1430bdad",
+  "hash": "4e30df448ddb1c721658aa489b6d9ea6ef71a243e9fc9db3c2aa7a95116c7a20",
+  "shortId": "4e30df448ddb",
   "schema": {
     "constraints": [
       {
@@ -97,6 +97,11 @@
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
         "name": "product_grants_mode_check",
         "table": "product_grants"
+      },
+      {
+        "definition": "CHECK ((pending_bytes >= 0))",
+        "name": "telemetry_pending_bytes_nonnegative",
+        "table": "telemetry_accounting"
       },
       {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
@@ -1434,6 +1439,11 @@
         "table": "invoice_events"
       },
       {
+        "definition": "PRIMARY KEY (sequence)",
+        "name": "telemetry_outbox_pkey",
+        "table": "telemetry_outbox"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "marketing_throttle_buckets_pkey",
         "table": "marketing_throttle_buckets"
@@ -1447,6 +1457,16 @@
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "storage_cors_checks_pkey",
         "table": "storage_cors_checks"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "telemetry_accounting_pkey",
+        "table": "telemetry_accounting"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "telemetry_connections_pkey",
+        "table": "telemetry_connections"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -2163,6 +2183,11 @@
         "table": "space_subscriptions"
       },
       {
+        "definition": "CREATE INDEX telemetry_outbox_tenant_sequence ON telemetry_outbox USING btree (tenant_id, sequence)",
+        "name": "telemetry_outbox_tenant_sequence",
+        "table": "telemetry_outbox"
+      },
+      {
         "definition": "CREATE INDEX tenant_audit_events_tenant_at_idx ON tenant_audit_events USING btree (tenant_id, at)",
         "name": "tenant_audit_events_tenant_at_idx",
         "table": "tenant_audit_events"
@@ -2523,6 +2548,11 @@
         "table": "suppressions"
       },
       {
+        "definition": "CREATE UNIQUE INDEX telemetry_outbox_event_unique ON telemetry_outbox USING btree (tenant_id, event_id)",
+        "name": "telemetry_outbox_event_unique",
+        "table": "telemetry_outbox"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX tenant_admins_tenant_user_uidx ON tenant_admins USING btree (tenant_id, user_id)",
         "name": "tenant_admins_tenant_user_uidx",
         "table": "tenant_admins"
@@ -2640,6 +2670,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "product_price_history_id_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "telemetry_outbox_sequence_seq",
         "start": "1"
       }
     ],
@@ -5944,6 +5983,75 @@
             "type": "integer"
           },
           {
+            "default": "nextval('telemetry_outbox_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "charged_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "retry_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_outbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -6363,6 +6471,67 @@
           }
         ],
         "name": "two_factor"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "gap_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "last_acknowledged_sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "pending_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "gap_from",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "gap_through",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_acknowledged_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_accounting"
       },
       {
         "columns": [
@@ -12079,6 +12248,27 @@
           }
         ],
         "name": "space_seen_marks"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "settings",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_connections"
       }
     ],
     "triggers": [

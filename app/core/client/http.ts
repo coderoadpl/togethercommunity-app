@@ -1,3 +1,4 @@
+import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
@@ -2319,6 +2320,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  telemetryStore: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryStore.method, API_ROUTES.telemetryStore.path, telemetryStoreOutputSchema, undefined, signal),
+  connectTelemetry: (input: { connectionString: string; region: string }, signal?: AbortSignal) => request(options, API_ROUTES.telemetryConnect.method, API_ROUTES.telemetryConnect.path, telemetryStoreOutputSchema, input, signal),
+  probeTelemetry: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryProbe.method, API_ROUTES.telemetryProbe.path, telemetryStoreOutputSchema, {}, signal),
+  disconnectTelemetry: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryDisconnect.method, API_ROUTES.telemetryDisconnect.path, telemetryStoreOutputSchema, {}, signal),
   probeStorage: (input: StorageProbeInput, signal?: AbortSignal) =>
     request(
       options,

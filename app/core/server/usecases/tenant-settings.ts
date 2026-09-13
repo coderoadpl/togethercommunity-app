@@ -12,11 +12,13 @@ import {
   type UpdateTenantSettingsInput,
 } from '#core/domain/index.js';
 
+import type { TelemetrySettingsRepository } from '../telemetry/ports.js';
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type { ProductRepository, SpaceRepository, TenantRepository } from '../ports.js';
 
 export interface TenantSettingsDeps {
+  telemetryStore?: { settings: TelemetrySettingsRepository };
   tenants: TenantRepository;
   spaces: SpaceRepository;
   products: Pick<ProductRepository, 'bumpContentVersion'>;
@@ -30,6 +32,7 @@ export const getTenantSettings = async (
   if (!tenant.ok) return tenant;
   const settings = await deps.tenants.findSettings(tenant.value);
   if (!settings) return err(tenantNotFound());
+  if (deps.telemetryStore !== undefined) settings.telemetryStore = await deps.telemetryStore.settings.get(tenant.value);
   const supportConfigured = settings.supportEmail !== null && settings.supportEmail !== undefined;
   return ok(
     ctx.identity.staffRole === null

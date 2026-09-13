@@ -275,17 +275,6 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     ));
   }
 
-  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
-    const retained = this.rows.filter((row) =>
-      row.tenantId !== tenantId
-      || row.occurredAt >= olderThan
-      || (row.type !== 'opened' && row.type !== 'clicked')
-    );
-    const purged = this.rows.length - retained.length;
-    this.rows = retained;
-    return purged;
-  }
-
   async reputationCounts(tenantId: string, window: { since: string; until: string }) {
     const rows = this.rows.filter((row) =>
       row.tenantId === tenantId

@@ -1,6 +1,7 @@
 import { visible, type ScreenSpec } from './visual-screen-inventory.js';
 
 const storyByScreen: ReadonlyMap<string, string> = new Map([
+  ['telemetry-overview', 'integrations-telemetrystore--overview'],
   ['markdown-editor-empty', 'forms-markdowneditor--empty'],
   ['markdown-editor-long-content', 'forms-markdowneditor--long-content'],
   ['markdown-editor-code', 'forms-markdowneditor--code'],
@@ -40,7 +41,13 @@ const screen = (
   },
 });
 
+const telemetryScreens: ScreenSpec[] = [{
+  name: 'telemetry-overview', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 2000, fullPage: true,
+  ready: async (page) => { await page.getByTestId('telemetry-overview').waitFor(visible); },
+}];
+
 export const componentScreens: readonly ScreenSpec[] = [
+  ...telemetryScreens,
   screen('markdown-editor-empty', 'desktop'),
   screen('markdown-editor-long-content', 'mobile'),
   screen('markdown-editor-code', 'desktop'),

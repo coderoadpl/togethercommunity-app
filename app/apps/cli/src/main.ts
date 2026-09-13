@@ -1064,6 +1064,21 @@ redirect
     }),
   );
 
+const telemetryStore = program.command('telemetry-store').description('Customer-owned campaign statistics storage');
+telemetryStore.command('status').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.telemetryStore(), ctx.json, (data) => JSON.stringify(data));
+}));
+telemetryStore.command('probe').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.probeTelemetry(), ctx.json, (data) => JSON.stringify(data));
+}));
+telemetryStore.command('disconnect').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.disconnectTelemetry(), ctx.json, (data) => JSON.stringify(data));
+}));
+telemetryStore.command('connect').requiredOption('--connection-string <uri>', 'MongoDB connection string').requiredOption('--region <label>', 'Database region label')
+  .action(withInput(z.tuple([z.object({ connectionString: z.string().min(1), region: z.string().min(1) })]), async (ctx, [input]) => {
+    emit(await ctx.api.connectTelemetry(input), ctx.json, (data) => JSON.stringify(data));
+  }));
+
 const onboarding = program.command('onboarding').description('Creator onboarding checklist');
 
 const onboardingLines = (data: { onboarding: { steps: { id: string; done: boolean; target: string }[]; dismissed: boolean } }): string => {
@@ -3497,7 +3512,7 @@ campaign.command('sends').option('--contact <id>', 'Filter by contact').option('
 
 campaign.command('status <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
   emit(await ctx.api.getMarketingCampaign(id), ctx.json,
-    (data) => `${data.campaign.status}\t${data.campaign.sent}/${data.campaign.toSend} sent\t${data.campaign.failed} failed`);
+    (data) => 'statisticsUnavailable' in data.campaign ? data.campaign.status : `${data.campaign.status}\t${data.campaign.sent}/${data.campaign.toSend} sent\t${data.campaign.failed} failed`);
 }));
 
 campaign.command('dispatch')

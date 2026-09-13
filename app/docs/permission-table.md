@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 118. Route rows: 385. Exported `Ctx` use-case rows: 299.
+Closed capability count: 118. Route rows: 389. Exported `Ctx` use-case rows: 305.
 
 ## Human-readable diff
 
@@ -299,6 +299,10 @@ no changes
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/onboarding/setup` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/integrations/telemetry` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/connect` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/probe` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/disconnect` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/checkout/stripe-test-session` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -704,6 +708,12 @@ no changes
 | `stripe-subscription-adoption.ts#listStripeSubscriptions` | subscriptions:read | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
 | `stripe-test-session.ts#createStripeTestSession` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stripe-test-session.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
+| `telemetry-store.ts#getTelemetryStore` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#connectTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#probeTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#disconnectTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#telemetryReportsHidden` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#telemetryDeliveryEngagementHidden` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#checkTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
@@ -726,14 +736,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:15` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:180` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1105` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1107` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1129` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1143` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1656` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1656` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:18` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:183` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1108` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1110` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1132` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1146` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1666` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1666` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

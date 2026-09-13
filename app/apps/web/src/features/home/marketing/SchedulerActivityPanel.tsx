@@ -125,6 +125,7 @@ export const SchedulerActivityPanel = () => {
         ) : activeCampaigns.length === 0 ? <Typography color="text.secondary">{t.marketing.activity.noCampaignsInProgress}</Typography> : (
           <Stack useFlexGap spacing="1rem">
             {activeCampaigns.map((campaign) => {
+              if ('statisticsUnavailable' in campaign) return <Stack key={campaign.id} spacing="0.5rem"><Typography>{campaign.name}</Typography><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Typography>{t.telemetryStore.unavailable}</Typography></Stack>;
               const candidates = campaign.candidateCount === 0 ? campaign.results.candidates : campaign.candidateCount;
               const progress = candidates === 0 ? 0 : Math.min(100, campaign.results.sent / candidates * 100);
               return (

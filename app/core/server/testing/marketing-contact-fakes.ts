@@ -6,7 +6,7 @@ export const marketingContactCtx = (): Ctx => ({ identity: { userId: 'owner', em
 export const marketingContactDeps = (overrides: Partial<MarketingContactDeps> = {}): MarketingContactDeps => ({
   contacts: { lockAddress: unexpected, findById: unexpected, findByEmail: unexpected, listPage: unexpected, upsertByEmail: unexpected, update: unexpected, archive: unexpected },
   lists: { findById: unexpected, findByKey: unexpected, listPage: unexpected, save: unexpected, addMembers: unexpected, removeMembers: unexpected, validateRule: unexpected, counts: unexpected },
-  imports: { findById: unexpected, findByKey: unexpected, save: unexpected, runnable: unexpected, rows: unexpected, nextRow: unexpected, rowsPage: unexpected, hasLists: unexpected, saveRow: unexpected, lock: unexpected, saveCsv: unexpected, readCsv: unexpected, clearStagedRows: unexpected, purgeStaging: unexpected },
+  imports: { findById: unexpected, findByKey: unexpected, save: unexpected, runnable: unexpected, rows: unexpected, nextRow: unexpected, rowsPage: unexpected, rowsRange: unexpected, previewProgress: unexpected, hasLists: unexpected, saveRow: unexpected, stageRows: unexpected, lock: unexpected, saveCsv: unexpected, readCsv: unexpected, clearStagedRows: unexpected, purgeStaging: unexpected },
   directoryEvents: { append: unexpected, list: unexpected },
   definitions: { create: unexpected, findById: unexpected, list: unexpected, update: unexpected, appendVersion: unexpected, listVersions: unexpected },
   consents: { record: unexpected, listByEmail: unexpected, latestByEmail: unexpected, findById: unexpected, purgeStalePending: unexpected },

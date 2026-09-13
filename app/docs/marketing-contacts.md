@@ -26,12 +26,14 @@ single opt-in. Double opt-in definitions require contacts-only import or the
 existing explicit confirmation flow.
 
 `--dry-run` stages and validates an expiring batch without changing directory or
-consent records. `--no-wait` returns its durable identifier after commit. The default
-wait polls progress; it does not run the worker. `--resume ID` verifies the original
-file hash and resumes staging, commit, retry or progress. Resuming a committed batch
-with `--dry-run` only reads its status, including after a worker failure. JSON mode prints one final
-envelope; progress goes to stderr. A self-hosted deployment must invoke the worker
-or use the staff `marketing imports process --input JSON` command.
+consent records. `--no-wait` returns its durable identifier after commit or the
+current `preview_queued` or `previewing` status during async preview validation.
+The default wait polls progress; it does not run the worker. `--resume ID`
+verifies the original file hash, waits for async preview states to reach `ready`,
+and resumes staging, commit, retry or progress. Resuming a committed batch with
+`--dry-run` only reads its status, including after a worker failure. JSON mode
+prints one final envelope; progress goes to stderr. A self-hosted deployment must
+invoke the worker or use the staff `marketing imports process --input JSON` command.
 
 `marketing contacts` also provides get, upsert, update, archive, restore and sync.
 `marketing lists` provides create, list, get, update, archive, add, remove, preview
@@ -61,9 +63,10 @@ the future.
 
 Suppression fields are `email,reason,at`. Reasons are `unsubscribe`, `bounce`,
 `complaint`, and `manual`; bounce means a terminal hard bounce. Legacy email-only
-files require explicit `--default-reason` and `--default-at`, retained in batch and
-suppression evidence. Complaint escalation remains permanent. No import lifts a
-suppression or restores a withdrawal.
+files require explicit default reason and timestamp values, retained in batch and
+suppression evidence. The CLI exposes them as `--default-reason` and `--default-at`;
+Studio exposes the same defaults in the suppression import mapping step. Complaint
+escalation remains permanent. No import lifts a suppression or restores a withdrawal.
 Repeated suppression addresses retain separate row receipts so a later weaker
 signal cannot discard an earlier complaint or permanent bounce.
 
@@ -104,7 +107,23 @@ escaping is optional and separate from lossless machine export.
 
 Session routes use `/api/marketing`; JSON API-key routes use `/api/m2m/marketing`.
 CSV upload and remapping are session-only. `Idempotency-Key` may supply the batch
-key on creation. Commit returns 202 after durable queueing. The authenticated
+key on creation. Preview validation stays synchronous through 500 rows. Larger
+previews enter the durable import queue, validate at most 500 rows per worker slice,
+and expose persisted validated-row progress through the import status route. Studio
+polls that status and restores the preview from the same batch URL after refresh.
+Upload and remapping start validation automatically. Their response is either the
+complete validation preview or `{ import, progress }` for a queued preview; this
+same-deploy response-shape change does not change the dataset version. Studio also
+revalidates a reopened ready batch automatically. Cancel is disabled while upload,
+remapping, validation, or queued preview work is pending, and is unavailable until
+the server has returned the durable batch identifier.
+Normalization, address checks for contacts and suppressions, contact duplicate
+merging, contact list checks, counts, and rejected row receipts resume idempotently;
+preview error CSV data uses the same retained row receipts as processing errors. A
+preview that cannot finish returns to draft with the recorded error instead of staying
+queued, so the owner fixes the mapping, defaults, or consent definition and validates
+again. Reopening a validated batch re-checks the consent definition and the referenced
+lists before the stored preview is served. Commit returns 202 after durable queueing. The authenticated
 `GET /api/internal/marketing/imports/tick` uses `CRON_SECRET`, runs every minute on
 hosted deployments, and shares a 20-second budget across imports and member sync.
 Interrupted imports resume unfinished rows under fenced leases; each row's effects

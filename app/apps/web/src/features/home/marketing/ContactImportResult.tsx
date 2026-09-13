@@ -15,6 +15,8 @@ type ImportStatus = MarketingContactImport['status'];
 const importStatusColor = (status: ImportStatus): 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error' => {
   switch (status) {
     case 'draft':
+    case 'preview_queued':
+    case 'previewing':
     case 'ready':
       return 'default';
     case 'queued':
@@ -43,7 +45,7 @@ const ImportCounts = ({ counts }: { counts: MarketingImportCounts }) => {
   return <Stack useFlexGap spacing="0.5rem">{order.filter((key) => counts[key] > 0).map((key) => <Typography key={key}>{t.directory[key]}: {counts[key]}</Typography>)}</Stack>;
 };
 
-const ImportErrorsDownload = ({ importId }: { importId: string }) => {
+export const ImportErrorsDownload = ({ importId }: { importId: string }) => {
   const t = useTranslations();
   const { tenant } = usePanelContext();
   const cache = useQueryClient();

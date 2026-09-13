@@ -67,12 +67,14 @@ export const recordMarketingDirectoryFixtures = async (api: ApiClient, tick: () 
   alias(staticList.id, 'list-newsletter'); alias(dynamicList.id, 'list-launch');
   const attestation: Parameters<ApiClient['commitMarketingContactImport']>[0]['attestation'] = { accepted: true as const, version: MARKETING_IMPORT_ATTESTATION_VERSION, locale: 'en' as const, note: 'Synthetic newsletter export; permission evidence is retained in the demo archive.' };
   const suppression = unwrap(await api.uploadMarketingContactImport({ csv: 'email,reason,at\nblocked@example.org,unsubscribe,2026-06-01T10:00:00Z', metadata: { kind: 'suppressions', datasetVersion: 'together-marketing-contacts/v1', fileName: 'suppressions.csv', idempotencyKey: 'fixture-suppressions' } }));
+  if ('progress' in suppression) throw new Error('Expected synchronous suppression preview');
   alias(suppression.import.id, 'import-suppressions');
   await capture('panel-marketing-suppression-preview', `/panel/marketing/contacts/import?importId=${suppression.import.id}`, async (client) => { await client.getMarketingContactImport({ importId: suppression.import.id }); await client.validateMarketingContactImport({ importId: suppression.import.id }); });
   unwrap(await api.commitMarketingContactImport({ importId: suppression.import.id, validationHash: suppression.validationHash, attestation }));
   await tick();
   await capture('panel-marketing-suppression-result', `/panel/marketing/contacts/import?importId=${suppression.import.id}`, async (client) => { await client.getMarketingContactImport({ importId: suppression.import.id }); });
   const preview = unwrap(await api.uploadMarketingContactImport({ csv: 'email,name,tags,lists,consentAt\nanna@example.org,Anna Example,launch,newsletter,2026-06-01T10:00:00Z\nblocked@example.org,Blocked Contact,launch,newsletter,2026-06-01T10:00:00Z\n ANNA@example.org ,Anna Example,news,newsletter,2026-06-01T10:00:00Z\ninvalid,Invalid Address,,,', metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'contacts.csv', consentDefinitionId: definition.id, idempotencyKey: 'fixture-contacts' } }));
+  if ('progress' in preview) throw new Error('Expected synchronous contact preview');
   alias(preview.import.id, 'import-contacts');
   const importRoute = `/panel/marketing/contacts/import?importId=${preview.import.id}`;
   await capture('panel-marketing-contact-preview', importRoute, async (client) => { await consents(client); await client.getMarketingContactImport({ importId: preview.import.id }); await client.validateMarketingContactImport({ importId: preview.import.id }); });
@@ -137,6 +139,7 @@ export const recordMarketingDirectoryFixtures = async (api: ApiClient, tick: () 
   const failureList = unwrap(await api.createMarketingList({ key: 'retired', name: 'Retired list' })).list;
   alias(failureList.id, 'list-retired');
   const failure = unwrap(await api.uploadMarketingContactImport({ csv: 'email,lists\nfailure@example.org,retired', metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'failure.csv', idempotencyKey: 'fixture-failure' } }));
+  if ('progress' in failure) throw new Error('Expected synchronous failure preview');
   alias(failure.import.id, 'import-failure');
   unwrap(await api.commitMarketingContactImport({ importId: failure.import.id, validationHash: failure.validationHash, attestation }));
   unwrap(await api.archiveMarketingList({ listId: failureList.id, expectedRevision: failureList.revision }));
@@ -146,6 +149,7 @@ export const recordMarketingDirectoryFixtures = async (api: ApiClient, tick: () 
   unwrap(await api.cancelMarketingContactImport({ importId: failure.import.id }));
   await capture('panel-marketing-contact-cancelled', failureRoute, async (client) => { await client.getMarketingContactImport({ importId: failure.import.id }); });
   const large = unwrap(await api.uploadMarketingContactImport({ csv: 'email\n' + Array.from({ length: 201 }, (_, index) => `pending-${index}@example.org`).join('\n'), metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'processing.csv', idempotencyKey: 'fixture-processing' } }));
+  if ('progress' in large) throw new Error('Expected synchronous processing preview');
   alias(large.import.id, 'import-processing');
   unwrap(await api.commitMarketingContactImport({ importId: large.import.id, validationHash: large.validationHash, attestation }));
   await tick();

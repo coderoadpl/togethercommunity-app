@@ -25,6 +25,7 @@ export interface MarketingListRepository {
   validateRule(tenantId: string, rule: MarketingListRule): Promise<boolean>;
   counts(tenantId: string, listId: string, consentDefinitionId: string | null, asOf: string): Promise<MarketingListCounts>;
 }
+export interface MarketingImportPreviewProgress { normalizedRows: number; checkedRows: number }
 export interface MarketingContactImportRepository {
   findById(tenantId: string, importId: string): Promise<MarketingContactImport | null>;
   findByKey(tenantId: string, key: string): Promise<MarketingContactImport | null>;
@@ -33,8 +34,11 @@ export interface MarketingContactImportRepository {
   rows(tenantId: string, importId: string): Promise<MarketingImportRowReceipt[]>;
   nextRow(tenantId: string, importId: string): Promise<MarketingImportRowReceipt | null>;
   rowsPage(tenantId: string, importId: string, offset: number, limit: number): Promise<MarketingImportRowReceipt[]>;
+  rowsRange(tenantId: string, importId: string, fromRowNumber: number, toRowNumber: number): Promise<MarketingImportRowReceipt[]>;
+  previewProgress(tenantId: string, importId: string): Promise<MarketingImportPreviewProgress>;
   hasLists(tenantId: string, importId: string): Promise<boolean>;
   saveRow(tenantId: string, row: MarketingImportRowReceipt): Promise<void>;
+  stageRows(tenantId: string, rows: MarketingImportRowReceipt[]): Promise<void>;
   lock(tenantId: string, key: string): Promise<void>;
   saveCsv(tenantId: string, importId: string, csv: string): Promise<void>;
   readCsv(tenantId: string, importId: string): Promise<string | null>;

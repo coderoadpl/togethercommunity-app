@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 118. Route rows: 385. Exported `Ctx` use-case rows: 298.
+Closed capability count: 118. Route rows: 385. Exported `Ctx` use-case rows: 299.
 
 ## Human-readable diff
 
@@ -546,6 +546,7 @@ no changes
 | `marketing-contact-imports.ts#createMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#appendMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#validateMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#processMarketingContactImportPreview` | scheduler:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#commitMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#getMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#getMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |

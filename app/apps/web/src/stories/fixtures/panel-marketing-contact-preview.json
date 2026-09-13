@@ -700,8 +700,18 @@
             "warnings": []
           }
         ],
+        "previewIssuesLimited": false,
         "validationHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "warnings": []
+        "warnings": [
+          {
+            "message": "tags: pipes separate tags; literal pipes inside a token are unsupported",
+            "rowNumber": 0
+          },
+          {
+            "message": "lists: pipes separate lists; literal pipes inside a token are unsupported",
+            "rowNumber": 0
+          }
+        ]
       }
     }
   },

@@ -43,6 +43,7 @@ describe('contacts CSV to campaign delivery', () => {
     await fixture.directory.contacts.upsertByEmail('delivery-a', { email: 'member@example.test', displayName: 'Member' });
     const importCsv = async (csv: string, kind: 'contacts' | 'suppressions', key: string) => {
       const preview = directoryValue(await api.uploadMarketingContactImport({ csv, metadata: { datasetVersion: 'together-marketing-contacts/v1', kind, fileName: `${kind}.csv`, idempotencyKey: key, ...(kind === 'contacts' ? { consentDefinitionId: 'consent' } : {}) } }));
+      if ('progress' in preview) throw new Error('Expected synchronous preview');
       expect(preview.canCommit).toBe(true);
       directoryValue(await api.commitMarketingContactImport({ importId: preview.import.id, validationHash: preview.validationHash, attestation: { accepted: true, version: MARKETING_IMPORT_ATTESTATION_VERSION, locale: 'en', note: 'Synthetic newsletter export; consent evidence retained in test records.' } }));
       const worker = await app.request('/api/internal/marketing/imports/tick', { headers: { authorization: 'Bearer contacts-worker-secret' } });

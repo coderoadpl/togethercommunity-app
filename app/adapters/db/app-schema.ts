@@ -2321,7 +2321,7 @@ export const marketingContactImports = pgTable('marketing_contact_imports', {
   rowCount: integer('row_count').notNull(), consentDefinitionId: text('consent_definition_id'), definitionVersion: integer('definition_version'), definitionHash: text('definition_hash'), validationHash: text('validation_hash'),
   attestationVersion: text('attestation_version'), attestationText: text('attestation_text'), attestationLocale: text('attestation_locale'), attestationNote: text('attestation_note'),
   attestedBy: jsonb('attested_by').$type<ImportActor>(), attestedAt: text('attested_at'), invalidRows: text('invalid_rows', { enum: ['reject_batch', 'skip_invalid'] }).notNull(),
-  status: text('status', { enum: ['draft', 'ready', 'queued', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled'] }).notNull(),
+  status: text('status', { enum: ['draft', 'preview_queued', 'previewing', 'ready', 'queued', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled'] }).notNull(),
   resultCounts: jsonb('result_counts').$type<MarketingImportCounts>().notNull(),
   lockedBy: text('locked_by'), lockedUntil: text('locked_until'), attempts: integer('attempts').notNull(), nextAttemptAt: text('next_attempt_at').notNull(), lastError: text('last_error'),
   createdAt: text('created_at').notNull(), startedAt: text('started_at'), finishedAt: text('finished_at'), stagedDataPurgedAt: text('staged_data_purged_at'),
@@ -2346,7 +2346,7 @@ export const marketingListMemberships = pgTable('marketing_list_memberships', {
 export const marketingContactImportRows = pgTable('marketing_contact_import_rows', {
   tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }), importId: text('import_id').notNull(), rowNumber: integer('row_number').notNull(),
   rowHash: text('row_hash').notNull(), normalizedEmailHmac: text('normalized_email_hmac'), stagedPayload: jsonb('staged_payload').$type<Record<string, unknown>>(), normalizedPayload: jsonb('normalized_payload').$type<MarketingImportRow>(),
-  status: text('status', { enum: ['staged', 'valid', 'invalid', 'duplicate', 'processed'] }).notNull(), duplicateOf: integer('duplicate_of'),
+  status: text('status', { enum: ['staged', 'checking', 'valid', 'invalid', 'duplicate', 'processed'] }).notNull(), duplicateOf: integer('duplicate_of'),
   contactId: text('contact_id'), consentRowId: text('consent_row_id'), suppressionId: text('suppression_id'), outcome: text('outcome'),
   errors: jsonb('errors').$type<string[]>().notNull(), warnings: jsonb('warnings').$type<string[]>().notNull(), counts: jsonb('counts').$type<MarketingImportCounts>().notNull(), processedAt: text('processed_at'),
 }, (t) => [

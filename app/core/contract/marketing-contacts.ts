@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   marketingContactListQuerySchema, marketingContactUpsertSchema, marketingContactFieldsSchema, marketingContactPublicSchema, marketingContactPageSchema,
   marketingListSchema, marketingListCreateSchema, marketingListUpdateSchema, marketingListQuerySchema, marketingListPageSchema, marketingListCountsSchema, marketingListMembershipChangeSchema,
-  marketingImportUploadSchema, marketingImportRemapSchema, marketingImportCreateSchema, marketingImportAppendSchema, marketingImportCommitSchema, marketingContactImportSchema, marketingImportRowReceiptSchema, marketingImportValidationSchema, marketingDirectoryEventSchema,
+  marketingImportUploadSchema, marketingImportRemapSchema, marketingImportCreateSchema, marketingImportAppendSchema, marketingImportCommitSchema, marketingContactImportSchema, marketingImportRowReceiptSchema, marketingImportValidationSchema, marketingImportPreviewResultSchema, marketingDirectoryEventSchema,
 } from '#core/domain/index.js';
 
 export { renderMarketingContactCsv, parseMarketingImportCsv, mapMarketingImportCsv, marketingImportMappingSchema, MARKETING_IMPORT_ATTESTATION_VERSION, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT } from '#core/domain/index.js';
@@ -17,8 +17,8 @@ const marketingImportRowsQuerySchema = marketingImportIdSchema.extend({ offset: 
 const marketingImportWorkerRequestSchema = z.object({ importId: z.string(), workerId: z.string(), deadlineAt: z.string().datetime(), maxRows: z.number().int().min(1).max(10_000) }).strict();
 const marketingMemberSyncRequestSchema = z.object({ deadlineAt: z.string().datetime(), maxJobs: z.number().int().min(1).max(10_000) }).strict();
 export const marketingDirectoryContracts = {
-  uploadMarketingContactImport: { input: marketingImportUploadSchema, output: marketingImportValidationSchema },
-  previewMarketingContactImport: { input: marketingImportRemapSchema, output: marketingImportValidationSchema },
+  uploadMarketingContactImport: { input: marketingImportUploadSchema, output: marketingImportPreviewResultSchema },
+  previewMarketingContactImport: { input: marketingImportRemapSchema, output: marketingImportPreviewResultSchema },
   listMarketingContacts: { input: marketingContactListQuerySchema, output: marketingContactPageSchema },
   exportMarketingContacts: { input: marketingContactListQuerySchema, output: marketingContactPageSchema },
   getMarketingContact: { input: marketingContactIdSchema, output: z.object({ contact: marketingContactPublicSchema, events: z.array(marketingDirectoryEventSchema) }) },
@@ -39,7 +39,7 @@ export const marketingDirectoryContracts = {
   appendMarketingContactImportRows: { input: marketingImportAppendSchema, output: z.object({ import: marketingContactImportSchema }) },
   validateMarketingContactImport: { input: marketingImportIdSchema, output: marketingImportValidationSchema },
   commitMarketingContactImport: { input: marketingImportCommitSchema, output: z.object({ import: marketingContactImportSchema }) },
-  getMarketingContactImport: { input: marketingImportIdSchema, output: z.object({ import: marketingContactImportSchema }) },
+  getMarketingContactImport: { input: marketingImportIdSchema, output: z.object({ import: marketingContactImportSchema, previewProgress: z.object({ validatedRows: z.number().int().nonnegative(), totalRows: z.number().int().positive() }).optional() }) },
   getMarketingContactImportRows: { input: marketingImportRowsQuerySchema, output: z.object({ rows: z.array(marketingImportRowReceiptSchema), nextOffset: z.number().nullable() }) },
   retryMarketingContactImport: { input: marketingImportIdSchema, output: z.object({ import: marketingContactImportSchema }) },
   cancelMarketingContactImport: { input: marketingImportIdSchema, output: z.object({ import: marketingContactImportSchema }) },

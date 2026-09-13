@@ -6,7 +6,7 @@ Use it when you are switching platforms or restoring a bulk export. Do not use i
 
 ## Import keys
 
-An owner creates import keys in the panel at `/panel/integrations`, under **Integrations → API keys**. The secret is shown once at creation.
+An owner creates import keys (API keys with the import scopes) in the panel at `/panel/integrations`, under **Integrations → API keys**. The secret is shown once at creation.
 
 The CLI creates the same keys: `pnpm run cli --tenant <slug> api-key create 'Migration' --scope import:content --expires-at <iso>`.
 

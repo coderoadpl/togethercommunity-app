@@ -76,7 +76,11 @@ add it here before using it in either dictionary.
 | Passwordless credential | klucz dostępu | passkey | Keep distinct from an API key. |
 | Additional sign-in factor | uwierzytelnianie dwuskładnikowe | two-factor authentication | Spell it out in action labels. |
 | S3-compatible service | magazyn plików | file storage | Its container is a bucket in both languages. |
-| Short-lived migration credential | klucz importu | import key | Avoid migration API key. |
+| Tenant credential surface (any scope) | klucz API | API key | Umbrella term for every key created under Integrations; the scope names the purpose. Keep distinct from a passkey. |
+| Short-lived migration credential | klucz importu | import key | An API key with the import scopes. Avoid migration API key. |
+| Read-only reporting credential scope | Raporty (tylko odczyt) | Reports (read only) | Scope label of an API key. Activity reports, not content reports. |
+| Tenant activity summary | raport aktywności | activity report | Reporting data served to read-only API keys. Distinct from a content report (zgłoszenie) in moderation. |
+| Member authentication event in the staff timeline | Zalogowano | Signed in | Timeline label of a recorded sign-in; the details cell carries the method when known. |
 | Setup status | Skonfigurowane / Nieskonfigurowane | Configured / Not configured | One adjectival pair throughout setup checklists. |
 | Staff preview of member UI | podgląd uczestnika | member view | Name whose view it is, without impersonation jargon. |
 | Invoice provider | iFirma | iFirma | Preserve trademark casing. |

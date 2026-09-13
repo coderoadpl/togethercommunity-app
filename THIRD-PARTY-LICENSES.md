@@ -624,6 +624,7 @@ invoices can be checked locally.
 - [acorn-loose@8.5.2](https://github.com/acornjs/acorn) - MIT
 - [acorn-walk@8.3.5](https://github.com/acornjs/acorn) - MIT
 - [acorn@8.17.0](https://github.com/acornjs/acorn) - MIT
+- [agent-base@7.1.4](https://github.com/TooTallNate/proxy-agents#readme) - MIT
 - [ajv@6.15.0](https://ajv.js.org) - MIT
 - [ajv@8.20.0](https://ajv.js.org) - MIT
 - [ansi-regex@5.0.1](https://github.com/chalk/ansi-regex#readme) - MIT
@@ -644,10 +645,17 @@ invoices can be checked locally.
 - [ast-types@0.16.1](http://github.com/benjamn/ast-types) - MIT
 - [ast-v8-to-istanbul@1.0.5](https://github.com/AriPerkkio/ast-v8-to-istanbul) - MIT
 - [async-function@1.0.0](https://github.com/ljharb/async-function#readme) - MIT
+- [async-mutex@0.5.0](https://github.com/DirtyHairy/async-mutex#readme) - MIT
 - [available-typed-arrays@1.0.7](https://github.com/inspect-js/available-typed-arrays#readme) - MIT
+- [b4a@1.8.1](https://github.com/holepunchto/b4a#readme) - Apache-2.0
 - [babel-plugin-macros@3.1.0](https://github.com/kentcdodds/babel-plugin-macros#readme) - MIT
 - [balanced-match@1.0.2](https://github.com/juliangruber/balanced-match#readme) - MIT
 - [balanced-match@4.0.4](https://github.com/juliangruber/balanced-match#readme) - MIT
+- [bare-events@2.9.2](https://github.com/holepunchto/bare-events#readme) - Apache-2.0
+- [bare-fs@4.8.1](https://github.com/holepunchto/bare-fs#readme) - Apache-2.0
+- [bare-path@3.1.2](https://github.com/holepunchto/bare-path#readme) - Apache-2.0
+- [bare-stream@2.13.4](https://github.com/holepunchto/bare-stream#readme) - Apache-2.0
+- [bare-url@2.5.4](https://github.com/holepunchto/bare-url) - Apache-2.0
 - [baseline-browser-mapping@2.10.41](https://github.com/web-platform-dx/baseline-browser-mapping#readme) - Apache-2.0
 - [better-auth@1.6.25](https://better-auth.com) - MIT
 - [better-call@1.3.7](https://github.com/better-auth/better-call#readme) - MIT
@@ -665,6 +673,7 @@ invoices can be checked locally.
 - [call-bound@1.0.4](https://github.com/ljharb/call-bound#readme) - MIT
 - [callsites@3.1.0](https://github.com/sindresorhus/callsites#readme) - MIT
 - [camelcase@5.3.1](https://github.com/sindresorhus/camelcase#readme) - MIT
+- [camelcase@6.3.0](https://github.com/sindresorhus/camelcase#readme) - MIT
 - [caniuse-lite@1.0.30001800](https://github.com/browserslist/caniuse-lite#readme) - CC-BY-4.0
 - [chai@5.3.3](http://chaijs.com) - MIT
 - [chai@6.2.2](http://chaijs.com) - MIT
@@ -679,6 +688,7 @@ invoices can be checked locally.
 - [color-name@1.1.4](https://github.com/colorjs/color-name) - MIT
 - [commander@13.1.0](https://github.com/tj/commander.js#readme) - MIT
 - [commander@14.0.3](https://github.com/tj/commander.js#readme) - MIT
+- [commondir@1.0.1](https://github.com/substack/node-commondir#readme) - MIT
 - [concat-map@0.0.1](https://github.com/substack/node-concat-map#readme) - MIT
 - [convert-source-map@1.9.0](https://github.com/thlorenz/convert-source-map) - MIT
 - [convert-source-map@2.0.0](https://github.com/thlorenz/convert-source-map) - MIT
@@ -761,10 +771,12 @@ invoices can be checked locally.
 - [estree-walker@2.0.2](https://github.com/Rich-Harris/estree-walker#readme) - MIT
 - [estree-walker@3.0.3](https://github.com/Rich-Harris/estree-walker#readme) - MIT
 - [esutils@2.0.3](https://github.com/estools/esutils) - BSD-2-Clause
+- [events-universal@1.0.1](https://github.com/holepunchto/events-universal#readme) - Apache-2.0
 - [execa@5.1.1](https://github.com/sindresorhus/execa#readme) - MIT
 - [expect-type@1.4.0](https://github.com/mmkal/expect-type#readme) - Apache-2.0
 - [fast-deep-equal@3.1.3](https://github.com/epoberezkin/fast-deep-equal#readme) - MIT
 - [fast-equals@5.4.2](https://github.com/planttheidea/fast-equals#readme) - MIT
+- [fast-fifo@1.3.2](https://github.com/mafintosh/fast-fifo) - MIT
 - [fast-json-stable-stringify@2.1.0](https://github.com/epoberezkin/fast-json-stable-stringify) - MIT
 - [fast-levenshtein@2.0.6](https://github.com/hiddentao/fast-levenshtein#readme) - MIT
 - [fast-string-truncated-width@3.0.3](https://github.com/fabiospampinato/fast-string-truncated-width#readme) - MIT
@@ -775,11 +787,13 @@ invoices can be checked locally.
 - [fdir@6.5.0](https://github.com/thecodrr/fdir#readme) - MIT
 - [file-entry-cache@8.0.0](https://github.com/jaredwray/file-entry-cache#readme) - MIT
 - [fill-range@7.1.1](https://github.com/jonschlinkert/fill-range) - MIT
+- [find-cache-dir@3.3.2](https://github.com/avajs/find-cache-dir#readme) - MIT
 - [find-root@1.1.0](https://github.com/js-n/find-root#readme) - MIT
 - [find-up@4.1.0](https://github.com/sindresorhus/find-up#readme) - MIT
 - [find-up@5.0.0](https://github.com/sindresorhus/find-up#readme) - MIT
 - [flat-cache@4.0.1](https://github.com/jaredwray/flat-cache#readme) - MIT
 - [flatted@3.4.2](https://github.com/WebReflection/flatted#readme) - ISC
+- [follow-redirects@1.16.0](https://github.com/follow-redirects/follow-redirects) - MIT
 - [for-each@0.3.5](https://github.com/Raynos/for-each) - MIT
 - [formatly@0.3.0](https://github.com/JoshuaKGoldberg/formatly#readme) - MIT
 - [fsevents@2.3.3](https://github.com/fsevents/fsevents) - MIT
@@ -817,6 +831,7 @@ invoices can be checked locally.
 - [hono@4.13.7](https://hono.dev) - MIT
 - [html-encoding-sniffer@6.0.0](https://github.com/jsdom/html-encoding-sniffer#readme) - MIT
 - [html-escaper@2.0.2](https://github.com/WebReflection/html-escaper) - MIT
+- [https-proxy-agent@7.0.6](https://github.com/TooTallNate/proxy-agents#readme) - MIT
 - [human-signals@2.1.0](https://git.io/JeluP) - Apache-2.0
 - [ignore@5.3.2](https://github.com/kaelzhang/node-ignore#readme) - MIT
 - [ignore@7.0.5](https://github.com/kaelzhang/node-ignore#readme) - MIT
@@ -905,6 +920,7 @@ invoices can be checked locally.
 - [lz-string@1.5.0](http://pieroxy.net/blog/pages/lz-string/index.html) - MIT
 - [magic-string@0.30.21](https://github.com/Rich-Harris/magic-string#readme) - MIT
 - [magicast@0.5.4](https://github.com/unjs/magicast#readme) - MIT
+- [make-dir@3.1.0](https://github.com/sindresorhus/make-dir#readme) - MIT
 - [make-dir@4.0.0](https://github.com/sindresorhus/make-dir#readme) - MIT
 - [marked@17.0.6](https://marked.js.org) - MIT
 - [marked@18.0.7](https://marked.js.org) - MIT
@@ -922,6 +938,8 @@ invoices can be checked locally.
 - [minimist@1.2.8](https://github.com/minimistjs/minimist) - MIT
 - [minipass@7.1.3](https://github.com/isaacs/minipass#readme) - BlueOak-1.0.0
 - [mongodb-connection-string-url@7.0.2](https://github.com/mongodb-js/mongodb-connection-string-url) - Apache-2.0
+- [mongodb-memory-server-core@11.1.0](https://github.com/typegoose/mongodb-memory-server) - MIT
+- [mongodb-memory-server@11.1.0](https://github.com/typegoose/mongodb-memory-server) - MIT
 - [mongodb@7.5.0](https://github.com/mongodb/node-mongodb-native) - Apache-2.0
 - [ms@2.1.3](https://github.com/vercel/ms#readme) - MIT
 - [msw@2.15.0](https://mswjs.io) - MIT
@@ -931,6 +949,7 @@ invoices can be checked locally.
 - [napi-postinstall@0.3.4](https://github.com/un-ts/napi-postinstall#readme) - MIT
 - [natural-compare@1.4.0](https://github.com/litejs/natural-compare-lite#readme) - MIT
 - [neo-async@2.6.2](https://github.com/suguru03/neo-async) - MIT
+- [new-find-package-json@2.0.0](https://github.com/hasezoey/new-find-package-json#readme) - MIT
 - [node-exports-info@1.6.2](https://github.com/inspect-js/node-exports-info#readme) - MIT
 - [node-releases@2.0.50](https://github.com/chicoxyzzy/node-releases#readme) - MIT
 - [nodemailer@9.1.1](https://nodemailer.com/) - MIT-0
@@ -970,6 +989,7 @@ invoices can be checked locally.
 - [path-type@4.0.0](https://github.com/sindresorhus/path-type#readme) - MIT
 - [pathe@2.0.3](https://github.com/unjs/pathe#readme) - MIT
 - [pathval@2.0.1](https://github.com/chaijs/pathval) - MIT
+- [pend@1.2.0](https://github.com/andrewrk/node-pend#readme) - MIT
 - [pg-cloudflare@1.4.0](https://github.com/brianc/node-postgres#readme) - MIT
 - [pg-connection-string@2.14.0](https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string) - MIT
 - [pg-int8@1.0.1](https://github.com/charmander/pg-int8#readme) - ISC
@@ -982,6 +1002,7 @@ invoices can be checked locally.
 - [picomatch@2.3.2](https://github.com/micromatch/picomatch) - MIT
 - [picomatch@4.0.5](https://github.com/micromatch/picomatch) - MIT
 - [pixelmatch@7.2.0](https://github.com/mapbox/pixelmatch#readme) - ISC
+- [pkg-dir@4.2.0](https://github.com/sindresorhus/pkg-dir#readme) - MIT
 - [playwright-core@1.62.0](https://playwright.dev) - Apache-2.0
 - [pngjs@5.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [pngjs@7.0.0](https://github.com/lukeapage/pngjs) - MIT
@@ -1081,6 +1102,7 @@ invoices can be checked locally.
 - [std-env@4.2.0](https://github.com/unjs/std-env#readme) - MIT
 - [stop-iteration-iterator@1.1.0](https://github.com/ljharb/stop-iteration-iterator#readme) - MIT
 - [storybook@10.5.4](https://storybook.js.org) - MIT
+- [streamx@2.28.1](https://github.com/mafintosh/streamx) - MIT
 - [strict-event-emitter@0.5.1](https://github.com/open-draft/strict-event-emitter#readme) - MIT
 - [string-width@4.2.3](https://github.com/sindresorhus/string-width#readme) - MIT
 - [string.prototype.matchall@4.0.12](https://github.com/es-shims/String.prototype.matchAll#readme) - MIT
@@ -1102,7 +1124,10 @@ invoices can be checked locally.
 - [symbol-tree@3.2.4](https://github.com/jsdom/js-symbol-tree#symbol-tree) - MIT
 - [tagged-tag@1.0.0](https://github.com/sindresorhus/tagged-tag#readme) - MIT
 - [tapable@2.3.3](https://github.com/webpack/tapable) - MIT
+- [tar-stream@3.2.1](https://github.com/mafintosh/tar-stream) - MIT
 - [teamcity-service-messages@0.1.14](https://github.com/pifantastic/teamcity-service-messages#readme) - MIT
+- [teex@1.0.1](https://github.com/mafintosh/teex) - MIT
+- [text-decoder@1.2.7](https://github.com/holepunchto/text-decoder#readme) - Apache-2.0
 - [tiny-invariant@1.3.3](https://github.com/alexreardon/tiny-invariant#readme) - MIT
 - [tinybench@2.9.0](https://github.com/tinylibs/tinybench#readme) - MIT
 - [tinyexec@1.3.1](https://github.com/tinylibs/tinyexec#readme) - MIT
@@ -1182,6 +1207,7 @@ invoices can be checked locally.
 - [yargs-parser@21.1.1](https://github.com/yargs/yargs-parser#readme) - ISC
 - [yargs@15.4.1](https://yargs.js.org/) - MIT
 - [yargs@17.7.3](https://yargs.js.org/) - MIT
+- [yauzl@3.4.0](https://github.com/thejoshwolfe/yauzl) - MIT
 - [yocto-queue@0.1.0](https://github.com/sindresorhus/yocto-queue#readme) - MIT
 - [zod-validation-error@3.5.4](https://github.com/causaly/zod-validation-error#readme) - MIT
 - [zod-validation-error@4.0.2](https://github.com/causaly/zod-validation-error#readme) - MIT

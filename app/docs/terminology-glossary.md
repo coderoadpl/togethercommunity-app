@@ -139,3 +139,14 @@ Never in Polish copy: member, workspace, tenant, checkout (as a noun), billing
 postęp or postępy), community (use społeczność). Technical proper nouns are fine
 (Stripe, webhook, restricted key, PDF, HTML, CSV, JSON); gloss in parentheses
 when a Polish label exists, such as klucz ograniczony (restricted key).
+
+## Customer-owned statistics storage
+
+| Concept | English | Polish |
+|---|---|---|
+| Telemetry integration tab | Statistics | Statystyki |
+| Customer-controlled analytics database | Statistics store | Magazyn statystyk |
+| MongoDB connection URI | Connection string | Ciąg połączenia |
+| Outbound platform networking | Outbound IP address | Wychodzący adres IP |
+| Pending replication | Statistics sync | Synchronizacja statystyk |
+| Coverage lost at buffer capacity | Missing events | Brakujące zdarzenia |

@@ -155,6 +155,7 @@ export const deleteTenantSecret = async (
 ): Promise<Result<{ key: TenantSecretKey }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:write');
   if (!tenant.ok) return tenant;
+  if (key === 'telemetry.mongodb') return err(validation('Use the telemetry disconnect flow'));
   if (!(await deps.tenantSecrets.delete(tenant.value, key))) {
     return err(notFound(`No secret "${key}" in this tenant`));
   }

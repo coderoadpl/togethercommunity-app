@@ -821,6 +821,35 @@ export interface Messages {
     sessionsRevokeOthersConfirmTitle: string;
     sessionsRevokeOthersConfirmBody: string;
   };
+  telemetryStore: {
+    title: string;
+    intro: string;
+    connection: string;
+    region: string;
+    connect: string;
+    probe: string;
+    disconnect: string;
+    confirmDisconnect: string;
+    disconnectWarning: string;
+    connected: string;
+    disconnected: string;
+    probing: string;
+    error: string;
+    success: string;
+    stable: string;
+    dynamic: string;
+    unknown: string;
+    lastAck: string;
+    lastSync: string;
+    pending: string;
+    oldest: string;
+    gaps: string;
+    never: string;
+    empty: string;
+    unavailable: string;
+    privacy: string;
+    pause: string;
+  };
   integrations: {
     heading: string;
     intro: string;

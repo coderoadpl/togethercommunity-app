@@ -1148,7 +1148,6 @@ describe('marketing e-mail use-case integration', () => {
     expect(await runMarketingRetentionJobs(ctx, {
       pendingOlderThan: '1998-07-01T00:00:00.000Z',
       renderedBodiesOlderThan: NOW,
-      engagementOlderThan: NOW,
       rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
@@ -1162,7 +1161,6 @@ describe('marketing e-mail use-case integration', () => {
     const deps = await setup([]);
     const pending = vi.spyOn(deps.consents, 'purgeStalePending').mockResolvedValue(0);
     const rendered = vi.spyOn(deps.sends, 'ageOutRenderedBodies').mockResolvedValue(0);
-    const engagement = vi.spyOn(deps.events, 'purgeEngagement').mockResolvedValue(0);
     const outbox = vi.spyOn(deps.marketingOutbox, 'purge').mockResolvedValue(0);
     const inbox = vi.spyOn(deps.snsInbox, 'purge').mockResolvedValue(0);
     const idempotency = new InMemoryAutomationIdempotencyRepository();
@@ -1170,7 +1168,6 @@ describe('marketing e-mail use-case integration', () => {
     const boundaries = {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-07-08T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T11:00:00.000Z',
       rawSnsInboxOlderThan: '1998-07-15T10:00:00.000Z',
       idempotencyNow: NOW,
     };
@@ -1181,7 +1178,6 @@ describe('marketing e-mail use-case integration', () => {
     expect(rendered).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
     expect(outbox).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
     expect(inbox).toHaveBeenCalledWith('tenant-1', boundaries.rawSnsInboxOlderThan);
-    expect(engagement).toHaveBeenCalledWith('tenant-1', boundaries.engagementOlderThan);
     expect(idempotencySweep).toHaveBeenCalledWith(NOW);
   });
 
@@ -1281,7 +1277,6 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1355,7 +1350,6 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1397,7 +1391,6 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1688,16 +1681,15 @@ describe('marketing e-mail use-case integration', () => {
     const retention = await runMarketingRetentionJobs(ctx, {
       pendingOlderThan: NOW,
       renderedBodiesOlderThan: NOW,
-      engagementOlderThan: NOW,
       rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
     expect(retention).toMatchObject({
       ok: true,
-      value: { renderedBodiesPurged: 0, engagementEventsPurged: 1 },
+      value: { renderedBodiesPurged: 0 },
     });
     expect((await deps.events.listByRef('tenant-1', 'marketing', 'send-old')).map((event) => event.type))
-      .toEqual(['delivered']);
+      .toEqual(['opened', 'delivered']);
   });
 
   it('requires campaign write capability to delete a campaign', async () => {

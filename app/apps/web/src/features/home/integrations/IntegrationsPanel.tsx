@@ -10,9 +10,10 @@ import { EmailTab } from './EmailTab.js';
 import { InvoicingTab } from './InvoicingTab.js';
 import { StorageTab } from './StorageTab.js';
 import { StripeTab } from './StripeTab.js';
+import { TelemetryTab } from './TelemetryTab.js';
 import { VideoTab } from './VideoTab.js';
 
-type IntegrationsSection = 'stripe' | 'email' | 'storage' | 'video' | 'invoicing' | 'api-keys';
+type IntegrationsSection = 'telemetry' | 'stripe' | 'email' | 'storage' | 'video' | 'invoicing' | 'api-keys';
 
 const integrationsSectionFromHash = (hash: string): IntegrationsSection => {
   switch (hash.replace(/^#/, '')) {
@@ -25,6 +26,8 @@ const integrationsSectionFromHash = (hash: string): IntegrationsSection => {
     case 'storage':
     case 's3':
       return 'storage';
+    case 'telemetry':
+      return 'telemetry';
     case 'video':
     case 'bunny':
       return 'video';
@@ -63,6 +66,7 @@ export const IntegrationsPanel = () => {
         <Tab id="integrations-tab-stripe" aria-controls="integrations-panel-stripe" value="stripe" label={t.integrations.tabStripe} />
         <Tab id="integrations-tab-email" aria-controls="integrations-panel-email" value="email" label={t.integrations.tabEmail} />
         <Tab id="integrations-tab-storage" aria-controls="integrations-panel-storage" value="storage" label={t.integrations.tabStorage} />
+        <Tab id="integrations-tab-telemetry" aria-controls="integrations-panel-telemetry" value="telemetry" label={t.telemetryStore.title} />
         <Tab id="integrations-tab-video" aria-controls="integrations-panel-video" value="video" label={t.integrations.tabVideo} />
         <Tab id="integrations-tab-invoicing" aria-controls="integrations-panel-invoicing" value="invoicing" label={t.integrations.tabInvoicing} />
         <Tab id="integrations-tab-api-keys" aria-controls="integrations-panel-api-keys" value="api-keys" label={t.integrations.tabApiKeys} />
@@ -83,6 +87,7 @@ export const IntegrationsPanel = () => {
           <StorageTab />
         </Stack>
       ) : null}
+      {section === 'telemetry' ? <Stack id="integrations-panel-telemetry" role="tabpanel" aria-labelledby="integrations-tab-telemetry"><TelemetryTab /></Stack> : null}
       {section === 'video' ? (
         <Stack id="integrations-panel-video" role="tabpanel" aria-labelledby="integrations-tab-video" useFlexGap spacing="1.5rem">
           <VideoTab />

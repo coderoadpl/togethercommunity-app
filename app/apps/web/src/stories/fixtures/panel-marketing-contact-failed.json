@@ -101,6 +101,14 @@
           "supportConfigured": false,
           "supportEmail": null,
           "supportUrl": null,
+          "telemetryStore": {
+            "connectedAt": null,
+            "egressMode": "unknown",
+            "lastProbeAt": null,
+            "lastProbeResult": null,
+            "provider": null,
+            "region": ""
+          },
           "termsUrl": null,
           "videoAutoplayDefault": false
         }

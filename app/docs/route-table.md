@@ -277,6 +277,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
 | `GET /api/onboarding/setup` | authenticated | read | onboarding setup |
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
+| `GET /api/integrations/telemetry` | authenticated | read | telemetry store |
+| `POST /api/integrations/telemetry/connect` | authenticated | mutating | telemetry connect |
+| `POST /api/integrations/telemetry/probe` | authenticated | mutating | telemetry probe |
+| `POST /api/integrations/telemetry/disconnect` | authenticated | mutating | telemetry disconnect |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
 | `POST /api/checkout/stripe-test-session` | authenticated | mutating | stripe test session |

@@ -8,6 +8,7 @@ minimumReleaseAgeExclude:
   - undici@7.29.0
 onlyBuiltDependencies: []
 ignoredBuiltDependencies:
+  - mongodb-memory-server
   - esbuild
   - msw
   - unrs-resolver

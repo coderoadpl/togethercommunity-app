@@ -19,6 +19,7 @@ import {
   type StorageCorsProbeResult,
   type StorageProbeErrorCode,
 } from '#core/domain/index.js';
+import { privateNetworkAddress, privateNetworkHostname } from '#core/domain/network.js';
 import type { StorageProvider, TenantSecretResolver } from '#core/server/index.js';
 
 const S3_HOST_PATTERN =
@@ -158,47 +159,13 @@ const sendProbeRequest = async (
   }
 };
 
-const privateIpv4 = (address: string): boolean => {
-  const octets = address.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return true;
-  }
-  const first = octets[0] ?? 0;
-  const second = octets[1] ?? 0;
-  return first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 198 && (second === 18 || second === 19)) ||
-    first >= 224;
-};
-
-const privateAddress = (address: string): boolean => {
-  if (/^\d+(?:\.\d+){3}$/.test(address)) return privateIpv4(address);
-  if (!address.includes(':')) return false;
-  const normalized = address.toLowerCase();
-  return normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('::ffff:') ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    /^fe[89ab]/.test(normalized) ||
-    normalized.startsWith('ff');
-};
-
 const validateProbeEndpoint = async (
   endpoint: string,
   allowPrivateEndpoints: boolean,
   lookupAddresses: (hostname: string) => Promise<string[]>,
 ): Promise<Result<{ address: string }, AppError>> => {
   const hostname = new URL(endpoint).hostname.replace(/^\[|\]$/g, '');
-  if (
-    !allowPrivateEndpoints &&
-    (hostname === 'localhost' || hostname.endsWith('.localhost') || privateAddress(hostname))
-  ) {
+  if (!allowPrivateEndpoints && privateNetworkHostname(hostname)) {
     return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
   }
   if (isIP(hostname) !== 0) return ok({ address: hostname });
@@ -222,7 +189,7 @@ const validateProbeEndpoint = async (
   if (addresses.some((address) => isIP(address) === 0)) {
     return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
   }
-  if (!allowPrivateEndpoints && addresses.some(privateAddress)) {
+  if (!allowPrivateEndpoints && addresses.some(privateNetworkAddress)) {
     return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
   }
   const address = addresses[0];

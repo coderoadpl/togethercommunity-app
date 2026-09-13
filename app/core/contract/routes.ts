@@ -1777,6 +1777,19 @@ export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
 export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
 export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 
+export const authSendLogLatestQuerySchema = z.object({
+  tenant: z.string().trim().min(1).max(120),
+  kind: z.literal('magic-link'),
+  since: z.string().datetime({ offset: true }),
+}).strict();
+
+export const authSendLogLatestOutputSchema = z.object({
+  status: z.enum(['queued', 'sent', 'failed']),
+  kind: z.literal('magic-link'),
+  queuedAt: z.string().datetime({ offset: true }),
+  settledAt: z.string().datetime({ offset: true }).nullable(),
+}).strict();
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
@@ -1797,6 +1810,7 @@ export const API_ROUTES = {
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   smokeTenantReseed: { method: 'POST', path: '/api/internal/reseed-acme' },
   sanitizeStagingSecrets: { method: 'POST', path: '/api/internal/sanitize-staging-secrets' },
+  authSendLogLatest: { method: 'GET', path: '/api/internal/auth-send-log/latest' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicNavigation: { method: 'GET', path: '/api/public/navigation' },
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
@@ -2399,6 +2413,7 @@ export const API_PATHS = {
   platformDataReset: API_ROUTES.platformDataReset.path,
   smokeTenantReseed: API_ROUTES.smokeTenantReseed.path,
   sanitizeStagingSecrets: API_ROUTES.sanitizeStagingSecrets.path,
+  authSendLogLatest: API_ROUTES.authSendLogLatest.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,

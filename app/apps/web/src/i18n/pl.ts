@@ -148,6 +148,8 @@ export const pl: Messages = {
     linkApply: 'Zastosuj odnośnik',
     linkRemove: 'Usuń odnośnik',
     sourceOnlyHint: 'Ta treść zawiera tabelę, listę zadań lub surowy HTML, których edytor wizualny nie potrafi pokazać. Edycja zostaje w zakładce Markdown, aby nic nie przepadło.',
+    characterCount: ({ used, limit }) => format('Wykorzystane znaki: {used} z {limit}', { used, limit }),
+    overLimit: 'Ten tekst przekracza limit znaków. Skróć go, aby zapisać zmiany.',
   },
   pagination: {
     rowsPerPage: 'Wierszy na stronę:',

@@ -887,8 +887,15 @@
     {
       "idx": 126,
       "version": "7",
+      "when": 1789200000002,
+      "tag": "0126_dm_message_content_format",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
       "when": 1789200001000,
-      "tag": "0126_stripe_test_mode",
+      "tag": "0127_stripe_test_mode",
       "breakpoints": true
     }
   ]

@@ -164,7 +164,7 @@ describe('HomeFeedSection', () => {
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
         expect(input.id).toBe('p1');
-        expect(input.bodyFormat).toBeUndefined();
+        expect(input.bodyFormat).toBe('markdown');
         post = {
           ...post,
           body: input.body,
@@ -181,7 +181,7 @@ describe('HomeFeedSection', () => {
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('edit-button-p1'));
     const input = screen.getByTestId('edit-composer-p1-input');
-    expect(input).toHaveValue(post.body);
+    expect(input).toHaveTextContent(post.body);
     await userEvent.clear(input);
     await userEvent.type(input, 'Updated post');
     await userEvent.click(screen.getByTestId('edit-composer-p1-submit'));

@@ -103,3 +103,29 @@ export const MarkdownTab: Story = {
     await userEvent.click(within(canvasElement).getByRole('tab', { name: pl.markdownEditor.markdownTab }));
   },
 };
+
+const compactStory = (
+  value: string,
+  colorScheme: 'light' | 'dark',
+  locale: 'en' | 'pl',
+): Story => ({
+  args: { value, variant: 'compact', minRows: 2 },
+  parameters: { locale, colorScheme },
+  globals: { viewport: { value: 'mobile' } },
+});
+
+export const CompactEmptyLightMobile390: Story = compactStory('', 'light', 'en');
+
+export const CompactContentLightMobile390: Story = compactStory(
+  'A short update with **important news** and a [helpful link](https://example.com/help).',
+  'light',
+  'pl',
+);
+
+export const CompactEmptyDarkMobile390: Story = compactStory('', 'dark', 'pl');
+
+export const CompactContentDarkMobile390: Story = compactStory(
+  'A quick reply with _context_, `code`, and:\n\n- one clear next step',
+  'dark',
+  'en',
+);

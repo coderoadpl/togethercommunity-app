@@ -155,6 +155,8 @@ export interface Messages {
     linkApply: string;
     linkRemove: string;
     sourceOnlyHint: string;
+    characterCount: (params: { used: number; limit: number }) => string;
+    overLimit: string;
   };
   pagination: {
     rowsPerPage: string;

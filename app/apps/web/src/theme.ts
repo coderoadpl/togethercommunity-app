@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -3827,10 +3827,6 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.background.paper,
 }));
-
-export const ComposerInput = styled(TextField)({
-  '& .MuiInputBase-root': { minHeight: 44 },
-});
 
 export const SocialFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   display: 'flex',

@@ -956,7 +956,6 @@ describe('MemberShell', () => {
     const Composer = () => (
       <PostComposer
         label="Question"
-        compact
         placeholder="Write a question"
         submitLabel="Send"
         pendingLabel="Sending"

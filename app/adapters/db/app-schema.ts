@@ -1613,6 +1613,7 @@ export const dmMessages = pgTable(
       .references(() => dmConversations.id, { onDelete: 'cascade' }),
     senderUserId: text('sender_user_id').notNull(),
     body: text('body').notNull(),
+    bodyFormat: text('body_format', { enum: ['plain', 'markdown'] }).notNull().default('plain'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

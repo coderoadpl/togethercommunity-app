@@ -19,9 +19,9 @@ import { useNotificationsTransport } from '../../../notifications-transport.js';
 import {
   AuthorChip,
   MessageBubble,
-  PostBody,
   PostMetaText,
 } from '../../../theme.js';
+import { PostContent } from '../../../components/ui/PostContent.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { ConversationMenu } from './ConversationMenu.js';
 import { MessageComposer } from './MessageComposer.js';
@@ -43,9 +43,7 @@ const MessageRow = ({ message }: { message: PublicDmMessage }) => {
   const { language } = useLanguage();
   return (
     <MessageBubble own={message.isOwn} data-testid={`message-${message.id}`}>
-      <PostBody variant="body1" component="p">
-        {message.body}
-      </PostBody>
+      <PostContent html={message.bodyHtml} format={message.bodyFormat} />
       <PostMetaText component="time" dateTime={message.createdAt}>
         {formatRelativeTime(message.createdAt, language)}
       </PostMetaText>
@@ -181,7 +179,7 @@ export const ConversationPage = ({ conversationId }: { conversationId: string })
           <MessageComposer
             busy={send.isPending}
             onSend={(body, reset) =>
-              send.mutate({ conversationId, body }, { onSuccess: () => reset() })
+              send.mutate({ conversationId, body, bodyFormat: 'markdown' }, { onSuccess: () => reset() })
             }
           />
         ) : (

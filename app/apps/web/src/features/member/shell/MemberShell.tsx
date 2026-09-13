@@ -118,9 +118,13 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
   const closeSheet = () => setOpenSheet(null);
   const mobileKeyboardAnchor = (target: EventTarget): Element | null =>
     target instanceof Element ? target.closest('[data-mobile-keyboard-anchor]') : null;
+  const isComposerInput = (target: EventTarget): boolean =>
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLElement && target.getAttribute('contenteditable') === 'true');
   const handleMobileFocus = (event: FocusEvent<HTMLDivElement>) => {
     if (!hasMobileNavigation) return;
-    if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
+    if (!isComposerInput(event.target)) return;
     const anchor = mobileKeyboardAnchor(event.target);
     if (anchor === null) return;
     if (mobileKeyboardAnchorRef.current === anchor) return;

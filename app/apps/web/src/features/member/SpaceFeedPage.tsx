@@ -99,10 +99,11 @@ const FeedPost = ({
                 submitLabel={t.common.save}
                 pendingLabel={t.discussion.saving}
                 initialValue={item.body}
+                initialFormat={item.bodyFormat}
                 focusOnMount
                 busy={update.isPending}
                 disabled={writeDisabled}
-                onSubmit={(body) => update.mutate({ id: item.id, body }, { onSuccess: () => setEditing(false) })}
+                onSubmit={(body) => update.mutate({ id: item.id, body, bodyFormat: 'markdown' }, { onSuccess: () => setEditing(false) })}
                 onCancel={() => setEditing(false)}
                 testId={`edit-composer-${item.id}`}
               />
@@ -372,14 +373,13 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         <PostComposer
           label={t.community.composerLabel}
           placeholder={t.community.composerPlaceholder}
-          compact
           submitLabel={t.community.post}
           pendingLabel={t.community.posting}
           busy={create.isPending}
           disabled={banned}
           surface
           onSubmit={(body, reset) =>
-            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat: 'plain' }, { onSuccess: () => reset() })
+            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat: 'markdown' }, { onSuccess: () => reset() })
           }
           testId="space-composer"
         />

@@ -37,6 +37,7 @@ export const SalesPanel = () => {
   const products = useQuery(actions.products);
   const coupons = useQuery(actions.couponOptions);
   const [search, setSearch] = useState('');
+  const [mode, setMode] = useState<'all' | 'live' | 'test'>('all');
   const [status, setStatus] = useState<OrderStatus | 'all'>('all');
   const [productId, setProductId] = useState('all');
   const [kind, setKind] = useState<PriceKind | 'all'>('all');
@@ -48,6 +49,7 @@ export const SalesPanel = () => {
   const debouncedSearch = useDebouncedValue(search);
 
   const filters = {
+    ...(mode === 'all' ? {} : { mode }),
     ...(status === 'all' ? {} : { status }),
     ...(productId === 'all' ? {} : { productId }),
     ...(kind === 'all' ? {} : { kind }),
@@ -128,6 +130,15 @@ export const SalesPanel = () => {
           ),
           filters: (
             <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem">
+              <FormControl size="small">
+                <InputLabel id="sales-mode-label">{t.sales.mode}</InputLabel>
+                <Select labelId="sales-mode-label" label={t.sales.mode} value={mode}
+                  onChange={(event) => { const value = event.target.value; setMode(value === 'test' || value === 'live' ? value : 'all'); resetPage(); }}>
+                  <MenuItem value="all">{t.sales.all}</MenuItem>
+                  <MenuItem value="live">{t.integrations.stripeLiveMode}</MenuItem>
+                  <MenuItem value="test">{t.integrations.stripeTestMode}</MenuItem>
+                </Select>
+              </FormControl>
               <FormControl size="small" sx={{ minWidth: '8rem' }}>
                 <InputLabel id="sales-status-label">{t.sales.status}</InputLabel>
                 <Select
@@ -209,10 +220,10 @@ export const SalesPanel = () => {
           ),
           actions: (
             <Stack direction="row" useFlexGap spacing="0.5rem">
-              <Button variant="outlined" disabled={exporting !== null} onClick={() => void download('csv')} data-testid="sales-export-csv">
+              <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
                 {exporting === 'csv' ? t.sales.exporting : t.sales.exportCsv}
               </Button>
-              <Button variant="outlined" disabled={exporting !== null} onClick={() => void download('json')} data-testid="sales-export-json">
+              <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('json')} data-testid="sales-export-json">
                 {exporting === 'json' ? t.sales.exporting : t.sales.exportJson}
               </Button>
             </Stack>
@@ -283,7 +294,7 @@ export const SalesPanel = () => {
                         {order.memberName ?? order.memberEmail}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{order.productTitle}</TableCell>
+                    <TableCell>{order.productTitle} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>

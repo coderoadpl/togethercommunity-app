@@ -10,6 +10,7 @@ const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null =
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
   tenantId,
   tenantSlug: tenantId ? 'alpha' : null,
   tenantName: tenantId ? 'Alpha' : null,
@@ -24,6 +25,7 @@ memberVideoAutoplay: false,
 });
 
 const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem => ({
+  mode: 'live',
   id,
   tenantId: 't1',
   memberId: 'm1',
@@ -50,6 +52,7 @@ const harness = (rows: OrderListItem[] = []) => {
   const queries: OrderListQuery[] = [];
   const deps: OrdersDeps = {
     orders: {
+      completeTestCheckout: async () => null,
       create: async () => undefined,
       list: async (_tenantId, query) => {
         queries.push(query);

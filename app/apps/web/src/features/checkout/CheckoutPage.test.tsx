@@ -643,6 +643,103 @@ describe('CheckoutPage', () => {
     expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
   });
 
+  it('hides the staff test-mode switch from ordinary visitors', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } }),
+      ),
+    );
+
+    renderCheckout('course-1');
+
+    expect(await screen.findByTestId('checkout-pay-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-test-mode-switch')).not.toBeInTheDocument();
+  });
+
+  it('hides the switch from staff until the tenant stores a sandbox key', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+        stripeConfigured: true, simulatedPaymentsEnabled: false,
+        canTest: true, testConfigured: false, testEnabled: false,
+      } })),
+    );
+
+    renderCheckout('course-1');
+
+    expect(await screen.findByTestId('checkout-pay-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-test-mode-switch')).not.toBeInTheDocument();
+  });
+
+  it('lets staff switch the checkout into the sandbox and blocks coupons while it is on', async () => {
+    const sessions: unknown[] = [];
+    let testEnabled = false;
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+        stripeConfigured: true, simulatedPaymentsEnabled: false,
+        canTest: true, testConfigured: true, testEnabled,
+      } })),
+      http.post('/api/checkout/stripe-test-session', async ({ request }) => {
+        const body = await request.json();
+        sessions.push(body);
+        testEnabled = true;
+        return HttpResponse.json({ ok: true, data: { enabled: true } });
+      }),
+    );
+
+    renderCheckout('course-1');
+
+    expect(await screen.findByRole('button', { name: en.checkout.couponReveal })).toBeEnabled();
+    await userEvent.click(await screen.findByTestId('checkout-test-mode-switch'));
+
+    expect(await screen.findByTestId('checkout-test-mode-hint')).toHaveTextContent(en.checkout.testModeHint);
+    expect(sessions).toEqual([{ enabled: true }]);
+    expect(screen.getByTestId('checkout-coupon-blocked')).toHaveTextContent(en.checkout.testModeCouponBlocked);
+    expect(screen.getByRole('button', { name: en.checkout.couponReveal })).toBeDisabled();
+  });
+
+  it('warns staff when the switch is on without a configured sandbox', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+        stripeConfigured: true, simulatedPaymentsEnabled: false,
+        canTest: true, testConfigured: false, testEnabled: true,
+      } })),
+    );
+
+    renderCheckout('course-1');
+
+    expect(await screen.findByTestId('checkout-test-mode-hint'))
+      .toHaveTextContent(en.checkout.testModeUnavailable);
+    expect(screen.getByText(en.checkout.paymentUnavailable)).toBeInTheDocument();
+  });
+
+  it('keeps the live success copy when a buyer opens a forged test-purchase return URL', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_1');
+    renderCheckout('course-1');
+
+    expect(await screen.findByRole('heading', { name: en.checkout.successTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.successBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.testPurchaseBody)).not.toBeInTheDocument();
+  });
+
+  it('marks the return page as a test purchase for staff of the same tenant', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_1');
+    server.use(
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+        stripeConfigured: true, simulatedPaymentsEnabled: false,
+        canTest: true, testConfigured: true, testEnabled: false,
+      } })),
+    );
+    renderCheckout('course-1');
+
+    expect(await screen.findByText(en.checkout.testPurchase)).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.testPurchaseBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
+  });
+
   it('renders an unavailable offer as a not-found state with an escape action', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),

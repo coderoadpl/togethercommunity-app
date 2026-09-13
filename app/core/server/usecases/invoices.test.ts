@@ -32,6 +32,7 @@ const billing = {
 };
 
 const order = (billingSnapshot: OrderListItem['billing'] = billing): OrderListItem => ({
+  mode: 'live',
   id: 'order-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',
@@ -270,6 +271,7 @@ const ctx = {
     email: 'owner@example.com',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: 'staff' as const,
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

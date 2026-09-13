@@ -28,6 +28,7 @@ export type CheckoutConsentCapture = {
 };
 
 export const stripeWebhookPayloadSchema = z.object({
+  livemode: z.boolean().optional(),
   id: z.string().min(1),
   type: z.string().min(1),
   data: z.object({

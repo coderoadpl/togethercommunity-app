@@ -77,6 +77,7 @@ describe('direct message records', () => {
         body: 'x'.repeat(DM_BODY_MAX_LENGTH),
       }).success,
     ).toBe(true);
+    expect(sendDmMessageInputSchema.parse({ conversationId: 'c1', body: 'Legacy' }).bodyFormat).toBe('plain');
   });
 
   it('accepts both recipient resolution shapes and rejects unknown ones', () => {
@@ -101,14 +102,16 @@ describe('direct message records', () => {
 
 describe('direct message projections', () => {
   it('drops the sender id and pre-computes ownership', () => {
-    expect(toPublicDmMessage(message(), 'u1')).toEqual({
+    expect(toPublicDmMessage(message(), 'u1', '<p>Hello</p>')).toEqual({
       id: 'msg-1',
       conversationId: 'c1',
       body: 'Hello',
+      bodyFormat: 'plain',
+      bodyHtml: '<p>Hello</p>',
       createdAt: LATER,
       isOwn: false,
     });
-    expect(toPublicDmMessage(message(), 'u2').isOwn).toBe(true);
+    expect(toPublicDmMessage(message(), 'u2', '<p>Hello</p>').isOwn).toBe(true);
   });
 
   it('marks a conversation unread only for the recipient of the last message', () => {

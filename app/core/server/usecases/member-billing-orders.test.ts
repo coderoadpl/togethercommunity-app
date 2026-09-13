@@ -9,6 +9,7 @@ const ctx = {
     email: 'member@example.com',
     name: 'Member',
     emailVerified: true,
+    tenantAccess: 'member' as const,
     tenantId: 'tenant-1',
     tenantSlug: 'studio',
     tenantName: 'Studio',
@@ -27,6 +28,7 @@ describe('listMemberBillingOrders', () => {
   it('passes tenant, member and pagination to the narrow repository method', async () => {
     const calls: unknown[][] = [];
     const orders: OrderRepository = {
+      completeTestCheckout: async () => null,
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
       listBillingForMember: async (...args) => {
@@ -67,6 +69,7 @@ describe('listMemberBillingOrders', () => {
 
   it('forbids staff identities without a member record', async () => {
     const orders = {
+      completeTestCheckout: async () => null,
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],

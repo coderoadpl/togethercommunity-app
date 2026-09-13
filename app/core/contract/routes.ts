@@ -274,7 +274,21 @@ export const authResolveOutputSchema = z.object({
   methods: z.array(signInMethodSchema).min(1),
 });
 
+const meTenantSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  staffRole: staffRoleSchema.nullable(),
+  memberId: z.string().nullable(),
+  displayName: z.string().nullable().default(null),
+  banned: z.boolean(),
+  dmOptOut: z.boolean().default(false),
+  language: languageSchema.nullable().default(null),
+  videoAutoplay: z.boolean().nullable().default(null),
+});
+
 export const meOutputSchema = z.object({
+  tenantAccess: z.enum(['none', 'member', 'staff']).default('none'),
   userId: z.string(),
   email: z.string(),
   name: z.string(),
@@ -282,20 +296,7 @@ export const meOutputSchema = z.object({
   hasPassword: z.boolean().default(false),
   twoFactorEnabled: z.boolean().default(false),
   avatarUrl: z.string().nullable().default(null),
-  tenant: z
-    .object({
-      id: z.string(),
-      slug: z.string(),
-      name: z.string(),
-      staffRole: staffRoleSchema.nullable(),
-      memberId: z.string().nullable(),
-      displayName: z.string().nullable().default(null),
-      banned: z.boolean(),
-      dmOptOut: z.boolean().default(false),
-      language: languageSchema.nullable().default(null),
-      videoAutoplay: z.boolean().nullable().default(null),
-    })
-    .nullable(),
+  tenant: meTenantSchema.nullable(),
   impersonation: impersonationViewSchema.nullable().default(null),
 });
 
@@ -351,6 +352,7 @@ export const memberBillingOrdersOutputSchema = z.object({
 
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
+  memberTenants: z.array(meTenantSchema).default([]),
   canCreateTenant: z.boolean(),
   /** Non-null only for a platform owner on a disposable deployment. */
   dataResetEnvironment: z.string().min(1).nullable().default(null),
@@ -419,7 +421,15 @@ export const publicNavigationOutputSchema = z.object({
   navigation: publicNavigationSchema,
 });
 
+export const stripeTestRemoveOutputSchema = z.object({ removed: z.literal(true) });
+
+export const stripeTestSessionInputSchema = z.object({ enabled: z.boolean() });
+export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
+
 export const publicPaymentConfigOutputSchema = z.object({
+  canTest: z.boolean().default(false),
+  testConfigured: z.boolean().default(false),
+  testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
 });
@@ -1369,6 +1379,7 @@ export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
   stripeMode: stripeModeSchema.nullable(),
   stripeWebhookUrl: z.string().url(),
+  stripeTestLastEventAt: z.string().datetime().nullable().default(null),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -1793,6 +1804,8 @@ export const API_ROUTES = {
   publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
+  stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
+  stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
@@ -2140,6 +2153,8 @@ export const API_PATHS = {
   publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
+  stripeTestRemove: API_ROUTES.stripeTestRemove.path,
+  stripeTestSession: API_ROUTES.stripeTestSession.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
   termsConsent: API_ROUTES.termsConsent.path,

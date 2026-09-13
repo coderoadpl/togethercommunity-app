@@ -153,7 +153,7 @@ export const registerMarketingImportWorkerRoute = (app: Hono<Vars>, deps: Pick<D
       if (deps.clock.nowIso() >= deadlineAt) break;
       const ctx: Ctx = { identity: {
         userId: 'marketing-import-worker', email: 'worker@together.invalid', name: 'Marketing import worker', emailVerified: true, image: null,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+        tenantAccess: 'none', tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
       }, capabilities: capabilitiesForPrincipal('operator-secret') };
       const synced = await syncMarketingMemberContacts(ctx, { deadlineAt, maxJobs: 100 }, directory);
       if (!synced.ok) failure ??= synced.error;

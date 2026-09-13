@@ -17,6 +17,7 @@
           "memberEmail": "student.active@together.dev",
           "memberId": "member-studio-active",
           "memberName": "Active Student",
+          "mode": "live",
           "priceId": "price-product-js-full",
           "productId": "product-js-full",
           "productTitle": "JavaScript Course - full access",
@@ -150,6 +151,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }

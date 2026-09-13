@@ -24,6 +24,7 @@ const identity = (tenantId: string | null): Identity => ({
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'staff',
   tenantId,
   tenantSlug: tenantId === null ? null : 'acme',
   tenantName: tenantId === null ? null : 'Acme',

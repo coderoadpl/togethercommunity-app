@@ -41,6 +41,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   email: 'mem1@together.dev',
   name: 'Member One',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: 't1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -142,6 +143,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
 });
 
 const grant = (id: string, productId: string): ProductGrant => ({
+  mode: 'live',
   id,
   tenantId: 't1',
   memberId: 'mem1',

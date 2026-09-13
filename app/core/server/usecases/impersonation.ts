@@ -259,6 +259,7 @@ export const resolveImpersonation = async (
       tenantId,
       tenantSlug: actor.identity.tenantSlug,
       tenantName: actor.identity.tenantName,
+      tenantAccess: 'member',
       staffRole: null,
       memberId: member.id,
       memberDisplayName: member.displayName,

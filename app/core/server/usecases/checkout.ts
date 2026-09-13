@@ -3,6 +3,7 @@ import {
   err,
   notFound,
   ok,
+  stripeKeyModeConflicts,
   validation,
   type AppError,
   type CheckoutSessionInput,
@@ -20,9 +21,11 @@ import type {
   CouponRepository,
   IdGenerator,
   PaymentProvider,
+  OrderRepository,
   ProductPriceRepository,
   ProductPriceHistoryRepository,
   ProductRepository,
+  SecretCrypto,
   TenantSecretRepository,
 } from '../ports.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
@@ -32,10 +35,12 @@ export interface CheckoutDeps {
   prices: ProductPriceRepository;
   tenantSecrets: TenantSecretRepository;
   payment: PaymentProvider;
+  orders?: OrderRepository;
   coupons?: CouponRepository;
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
+  secretCrypto?: SecretCrypto;
   ids?: IdGenerator;
   clock?: Clock;
 }
@@ -47,14 +52,27 @@ export interface CheckoutSelection {
 
 export const getPaymentConfig = async (
   tenantId: string,
-  deps: Pick<CheckoutDeps, 'tenantSecrets'>,
+  deps: Pick<CheckoutDeps, 'tenantSecrets' | 'secretCrypto'>,
+  mode: 'live' | 'test' = 'live',
 ): Promise<Result<{ stripeConfigured: boolean }, AppError>> => {
   const [key, webhookSecret] = await Promise.all([
-    deps.tenantSecrets.findByKey(tenantId, 'stripe.restrictedKey'),
-    deps.tenantSecrets.findByKey(tenantId, 'stripe.webhookSecret'),
+    deps.tenantSecrets.findByKey(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey'),
+    deps.tenantSecrets.findByKey(tenantId, mode === 'test' ? 'stripe.testWebhookSecret' : 'stripe.webhookSecret'),
   ]);
-  return ok({ stripeConfigured: key !== null && webhookSecret !== null });
+  if (key === null || webhookSecret === null) return ok({ stripeConfigured: false });
+  const decrypted = deps.secretCrypto?.decrypt(key);
+  const conflicts = decrypted !== undefined && decrypted.ok && stripeKeyModeConflicts(decrypted.value, mode);
+  return ok({ stripeConfigured: !conflicts });
 };
+
+export const testCheckoutRejection = (
+  input: Pick<CheckoutSessionInput, 'couponCode'>,
+  selection: CheckoutSelection,
+): AppError | null =>
+  input.couponCode !== undefined ||
+  (selection.price?.amountCents ?? selection.product.priceCents) === 0
+    ? validation('Test checkout requires a paid price without a coupon')
+    : null;
 
 export const validateCheckoutSelection = async (
   tenantId: string,
@@ -88,6 +106,7 @@ export const startCheckoutSession = async (
   selection: CheckoutSelection,
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
+  testSession?: { mode: 'test'; memberId: string },
 ): Promise<Result<{
   url: string;
   coupon?: CouponCheckoutBreakdown;
@@ -95,6 +114,14 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
+  const mode = testSession?.mode ?? 'live';
+  if (mode === 'test') {
+    const rejected = testCheckoutRejection(input, selection);
+    if (rejected !== null) return err(rejected);
+  }
+  if (mode === 'test' && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
+    return err(validation('Test checkout is not configured'));
+  }
   const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   let applied:
@@ -185,17 +212,18 @@ export const startCheckoutSession = async (
     return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true });
   }
   if (input.couponCode === undefined) {
-    const configured = await getPaymentConfig(tenant.id, deps);
+    const configured = await getPaymentConfig(tenant.id, deps, mode);
     if (!configured.ok) return configured;
     if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
   }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    mode,
     productId: product.id,
     productName: product.title,
     priceCents: price?.amountCents ?? product.priceCents,
     currency: price?.currency ?? product.currency,
-    successUrl: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
+    successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${checkoutPath}?status=cancelled`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
@@ -212,6 +240,21 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
+  if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
+    try {
+      await deps.orders.create(tenant.id, {
+        id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
+        productId: product.id, priceId: price?.id ?? null, mode: 'test',
+        kind: price?.kind ?? 'one_time', status: 'pending',
+        amountCents: price?.amountCents ?? product.priceCents, currency: price?.currency ?? product.currency,
+        provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
+        couponId: null, discountCents: 0, billing: null, createdAt: deps.clock.nowIso(),
+      });
+    } catch (cause) {
+      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode: 'test' });
+      throw cause;
+    }
+  }
   if (applied !== undefined && deps.couponCheckoutSessions !== undefined) {
     await deps.couponCheckoutSessions.attachProviderSession(
       tenant.id,

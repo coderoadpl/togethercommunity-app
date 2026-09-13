@@ -35,6 +35,7 @@ const ctx: Ctx = { identity: {
   email: 'staff@example.test',
   name: 'Staff',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'tenant',
   tenantName: 'Tenant',

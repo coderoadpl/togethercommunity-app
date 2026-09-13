@@ -82,7 +82,7 @@ import {
 
 const NOW = '1998-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
-  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
+  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantAccess: 'staff', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
 image: null,
 memberDisplayName: null,
@@ -92,7 +92,7 @@ memberLanguage: null,
 memberVideoAutoplay: false,
 } };
 const anonymousCtx: Ctx = { identity: {
-  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
+  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantAccess: 'none', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
 image: null,
 memberDisplayName: null,

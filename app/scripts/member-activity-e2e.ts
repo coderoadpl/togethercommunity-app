@@ -359,20 +359,20 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   await composer.getByTestId('space-composer-input').click();
   await page.keyboard.type(fullText);
 
-  await page.keyboard.press('Home');
-  await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
-  await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
-  await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
-
-  // Toggling bold re-renders the selected range, so 'End' no longer moves the caret to the
-  // real end of the (now mark-wrapped) text; arrowing right from the known selection edge does.
-  await page.keyboard.press('ArrowRight');
-  await pressRepeatedly(page, 'ArrowRight', fullText.length - bold.length);
+  // Formatting a range re-renders it, which makes Home/End navigation over that range
+  // unreliable afterwards, so the link (applied to the trailing text) runs before the bold
+  // (applied to the leading text) — each selection is made on text no prior step has touched.
+  await page.keyboard.press('End');
   await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
   await composer.getByRole('button', { name: en.markdownEditor.link }).click();
   await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');
   await page.getByRole('button', { name: en.markdownEditor.linkApply }).click();
   await page.getByRole('dialog').waitFor({ state: 'detached', timeout: 15000 });
+
+  await page.keyboard.press('Home');
+  await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
+  await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
+  await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
 };
 
 const createMarkdownPost = async (

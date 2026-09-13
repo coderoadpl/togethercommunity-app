@@ -15,7 +15,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 `dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
 native locale drift, not a changing default date.
 
-The catalogue currently covers 130 captures in Shadcn, the maintained base theme
+The catalogue currently covers 148 captures in Shadcn, the maintained base theme
 described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -32,13 +32,28 @@ The inherited active-named DNS goldens repeat the pending DNS capture after a
 same-document navigation. Both map to the pending story to preserve that page
 state; verified DNS has separate Active stories.
 
-Both capture paths use `createVisualCapture` in `scripts/visual-browser-setup.ts`.
+Component screens are the second mapping. `scripts/storybook-component-screens.ts`
+declares them directly as screen specs, each with one story ID and one viewport,
+so they never appear in `SCREENS` and never touch `scripts/fixtures-record.ts`.
+They render a single component from props instead of a seeded route, so they
+skip the `fixtureReady` handshake and record no fixture path or fixture SHA in
+`measurements.json`. Their captures run after the page screens within each
+viewport and authentication group. Because a single component is smaller than a
+full page, they use a 4 KiB size floor.
+
+Every capture path uses `createVisualCapture` in `scripts/visual-browser-setup.ts`.
 It fixes Date to the recording time and sets locale to `pl-PL`,
 timezone to UTC, color scheme to light, scale to 1 and reduced motion. It shares
 the live harness's request policy, stream suppression, font readiness and
 animation freezing. Each story must finish its fixture calls and queries before capture; fonts and
 image decoding also settle before screenshots. Panel stories load their shell
 fonts before mounting to reproduce navigation within an already loaded panel.
+Course captures repaint their asynchronously settled notification badge, public
+sidebar icons and editor upload control before the screenshot: repeated runs of
+those screens alternated between two antialias states for the same geometry, and
+forcing a re-raster once the chrome is final made them byte-stable. Each repaint
+first waits for its target, so a selector that stops matching fails the capture
+instead of silently skipping the re-raster.
 The email integration story preserves the initial font-loading sequence used
 by its recorded tab-underline measurement through `preloadFonts: false`.
 The lesson-attachment scenario explicitly scrolls its HTML
@@ -60,11 +75,21 @@ Migration acceptance is stricter: each converted capture must report
 cause must be listed in the pull request. Browser errors, unexpected fixture
 calls, unexercised expected errors, unresolved queries and suspiciously small
 screenshots also fail. The default size floor is 10 KiB; the held boot splash
-uses 7 KiB and skips network-idle waiting.
+uses 7 KiB and skips network-idle waiting, and component screens use 4 KiB.
 
 Screenshots are written to `out/visual/current`, diffs to `out/visual/diff`, and
 per-capture counts, byte equality, fixture hashes and diagnostics to
 `out/visual/measurements.json`. CI uploads this directory even on failure.
+Each capture log names the condition that failed the gate: `missing fixture
+calls: [...]` for calls the story made that its fixture does not hold, `fixture
+expectation issues: [...]` for the opposite problem (an unexercised expectation,
+or no fixture selected), `unreadable fixture diagnostics: ...` when the dataset
+value cannot be parsed, `error boundary rendered`, and `page errors: ...`. The
+first three read the same `data-fixture-errors` dataset, which the story harness
+fills from both classes. The measurement for every capture records the same
+information in `missingFixtureCalls`, `fixtureExpectationIssues`,
+`unreadableFixtureDiagnostics`, `errorBoundaryRendered` and `pageErrors`,
+including empty values on success.
 To inspect selected screens after explicitly building the current source:
 
 ```bash
@@ -89,6 +114,15 @@ controls. The default `pnpm run visual` always captures the full catalogue.
 4. Build Storybook and inspect the story. Author a new golden on macOS with
    `pnpm run visual:update`, then run the serial static gate and visual gate.
    Review every new image and its diff in the pull request.
+
+## Add a component screen
+
+1. Add a story whose args cover the state to capture, with a stable test id the
+   readiness condition can wait for. No fixture, route or seed data is involved.
+2. Add the screen and its story ID to `scripts/storybook-component-screens.ts`,
+   choosing one viewport per screen.
+3. Author the golden with `pnpm run visual:update` on macOS and review the image
+   in the pull request, exactly as for page screens.
 
 Story files have the bounded lint exceptions described in [Storybook](storybook.md).
 Fixture clients, decorators and composition infrastructure still obey layering
@@ -167,33 +201,30 @@ workflow code and never executes pull-request code.
 
 ## Chromatic
 
-The `preview` project publishes a Storybook preview permalink for non-draft pull requests
-targeting `staging` and pushes to `staging` when `CHROMATIC_PREVIEW_PROJECT_TOKEN` is
-available and changes affect `app/apps/web/**`, `app/.storybook/**`,
-`app/apps/server/src/**`, `app/core/**`, `app/package.json`, `app/pnpm-lock.yaml`,
-`app/tasks/visual-goldens/**`, or `.github/workflows/chromatic-preview.yml`.
-The preview command uses TurboSnap (`--only-changed`) to copy unchanged stories
-instead of capturing them, while retaining `--exit-zero-on-changes` and `--exit-once-uploaded`.
+Chromatic uses one project for promotion review. Snapshot testing runs for
+promotion pull requests targeting `main`, plus manual `workflow_dispatch` runs.
+It reviews Storybook UI snapshots for baseline changes before promotion; it is
+not the visual regression gate and does not replace `pnpm run visual` or the
+committed route goldens.
 
-Chromatic snapshot testing runs only for promotion pull requests targeting `main`, plus manual
-`workflow_dispatch` runs. It reviews Storybook UI snapshots for baseline changes
-before promotion; it is not the visual regression gate and does not replace
-`pnpm run visual` or the committed route goldens.
+Pushes to `main` run the same project with `--auto-accept-changes` and
+TurboSnap (`--only-changed`) so the accepted baseline follows each promotion.
+The push trigger carries the same `paths:` list the pull-request job diffs, so a
+promotion that touches no UI file leaves the previous baseline in place.
 
-Pull-request workflows check out `github.event.pull_request.head.sha` with full
+The pull-request job checks out `github.event.pull_request.head.sha` with full
 history before running Chromatic. TurboSnap compares the real PR head with
 baseline ancestors; the synthetic merge commit from the default pull-request
 checkout does not provide a usable changed-file range and makes Chromatic fall
 back to the full Storybook catalogue.
 
-Before the Chromatic command, the workflow diffs the pull-request base and head
-for `app/apps/web/**`, `app/apps/server/src/**`, `app/core/**`, `app/.storybook/**`,
-`app/package.json`, `app/pnpm-lock.yaml`, `app/tasks/visual-goldens/**`, and the
-workflow's own file — the same set that triggers each workflow's `paths:` filter
-(where one is declared), so a pull request that only trips a trigger path never
-falls through to a false "no UI changes" skip. Pull requests with no matching
-files run the Chromatic CLI with `--skip`, leaving the check green and
-refreshing the sticky PR comment with `Chromatic skipped: no UI changes`.
+Before the pull-request Chromatic command, the workflow diffs the pull-request
+base and head for `app/apps/web/**`, `app/apps/server/src/**`, `app/core/**`,
+`app/.storybook/**`, `app/package.json`, `app/pnpm-lock.yaml`,
+`app/tasks/visual-goldens/**`, and `.github/workflows/chromatic.yml`. Pull
+requests with no matching files run the Chromatic CLI with `--skip`, leaving the
+check green and refreshing the sticky PR comment with `Chromatic skipped: no UI
+changes`.
 Dependency file changes are included because installed package changes can
 alter rendering, and `app/core/**` is included because `app/apps/web/src`
 imports it as `#core/domain` / `#core/contract` and its changes can alter
@@ -203,10 +234,12 @@ keeping every job on the lockfile-pinned dependency tree instead of an ad hoc
 install.
 
 The free plan budget is 5,000 snapshots per month in Chrome. The snapshot cost follows the current catalogue size. With
-TurboSnap enabled through `onlyChanged`, most promotion builds should snapshot
-only stories affected by the pull request instead of the whole catalogue. Manual
-runs still spend quota according to the number of stories Chromatic snapshots.
-The skip rule keeps non-UI pull requests from spending monthly snapshots.
+TurboSnap enabled through `onlyChanged`, most promotion and main-baseline builds
+should snapshot only stories affected by the change instead of the whole
+catalogue. Manual runs still spend quota according to the number of stories
+Chromatic snapshots. Non-UI pull requests spend nothing through the `--skip`
+rule, and non-UI promotions never start a main-baseline build because the push
+trigger filters the same paths.
 
 Review Chromatic from the UI Review status on the pull request. Inspect each
 changed snapshot, accept only intentional UI baseline changes in Chromatic, and

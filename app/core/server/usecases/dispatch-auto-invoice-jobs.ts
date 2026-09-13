@@ -1,5 +1,6 @@
 import { err, internal, ok, type AppError, type Result } from '#core/domain/index.js';
 
+import { safeErrorMessage } from '../log-safety.js';
 import type { AutoInvoiceJobRepository } from '../ports.js';
 import { issueAutoInvoiceOnPayment, type InvoiceDeps } from './invoices.js';
 
@@ -37,7 +38,7 @@ export const dispatchAutoInvoiceJobs = async (
       await issueAutoInvoiceOnPayment(job.tenantId, order, deps);
       await deps.jobs.complete(job.tenantId, job.id);
     } catch (cause) {
-      const message = String(cause);
+      const message = safeErrorMessage(cause);
       await deps.jobs.reschedule(job.tenantId, job.id, {
         nextAttemptAt: retryAt(now, job.attempts),
         error: message,

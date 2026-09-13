@@ -17,6 +17,7 @@ const run = {
   finishedAt: '2026-07-26T09:00:01.250Z',
   durationMs: 1250,
   status: 'failed',
+  idle: false,
   error: 'quota service unavailable',
   totals: {
     campaignsTouched: 2,
@@ -96,7 +97,9 @@ const renderRoute = async (path: string) => {
 describe('scheduler activity panel', () => {
   it('shows tenant-only counts, summary, filters, and keyset pagination', async () => {
     const requests: string[] = [];
-    server.use(http.get('/api/marketing/scheduler-runs', ({ request }) => {
+    server.use(
+      http.get('/api/marketing/campaigns', () => HttpResponse.json({ ok: true, data: { campaigns: [] } })),
+      http.get('/api/marketing/scheduler-runs', ({ request }) => {
       requests.push(request.url);
       const url = new URL(request.url);
       const filtered = url.searchParams.get('status') === 'failed';
@@ -113,7 +116,8 @@ describe('scheduler activity panel', () => {
           nextCursor: filtered ? null : 'next-page',
         },
       });
-    }));
+      }),
+    );
 
     await renderRoute('/panel/marketing/activity');
 
@@ -134,6 +138,22 @@ describe('scheduler activity panel', () => {
 
     expect(await screen.findByText('18')).toBeInTheDocument();
     expect(requests.some((request) => new URL(request).searchParams.get('status') === 'failed')).toBe(true);
+  });
+
+  it('marks an idle run in the status cell', async () => {
+    const idleRun = { ...run, status: 'completed' as const, idle: true, error: null };
+    server.use(http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({
+      ok: true,
+      data: {
+        items: [{ run: idleRun, tenant: { ...tenant, sent: 0, failed: 0, skipped: 0, batchSize: 0 } }],
+        summary: { runsLast24Hours: 1, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: idleRun },
+        nextCursor: null,
+      },
+    })));
+
+    await renderRoute('/panel/marketing/activity');
+
+    expect(await screen.findByText(en.marketing.activity.idle)).toBeInTheDocument();
   });
 
   it('shows the tenant breakdown, run failure, and a pre-filtered sends link', async () => {
@@ -184,6 +204,7 @@ describe('scheduler activity panel', () => {
 
   it('labels deleted evidence instead of send metrics for purge runs', async () => {
     server.use(
+      http.get('/api/marketing/campaigns', () => HttpResponse.json({ ok: true, data: { campaigns: [] } })),
       http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({
         ok: true,
         data: {
@@ -204,5 +225,58 @@ describe('scheduler activity panel', () => {
     expect(await screen.findByText(en.marketing.activity.evidencePurged)).toBeInTheDocument();
     expect(screen.queryByText(en.marketing.activity.batchSize)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: en.marketing.activity.viewSends })).not.toBeInTheDocument();
+  });
+
+  it('hides idle campaign ticks until the idle-run switch is enabled and uses the run-finished label', async () => {
+    const idleRun = { ...purgeRun, id: 'run-idle-1', kind: 'marketing_tick' } as const;
+    const idleTenant = { ...purgeTenant, id: 'run-tenant-idle-1', runId: idleRun.id, purged: undefined };
+    const failedEmptyRun = { ...run, id: 'run-failed-empty', totals: { ...run.totals, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0 } } as const;
+    const failedEmptyTenant = { ...idleTenant, id: 'run-tenant-failed-empty', runId: failedEmptyRun.id, errors: ['SES credentials unavailable'] };
+    server.use(
+      http.get('/api/marketing/campaigns', () => HttpResponse.json({ ok: true, data: { campaigns: [] } })),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({
+        ok: true,
+        data: {
+          items: [{ run: idleRun, tenant: idleTenant }, { run: failedEmptyRun, tenant: failedEmptyTenant }],
+          summary: { runsLast24Hours: 1, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: idleRun },
+          nextCursor: null,
+        },
+      })),
+    );
+
+    await renderRoute('/panel/marketing/activity');
+
+    expect(await screen.findByText('1')).toBeInTheDocument();
+    expect(screen.getAllByTestId('scheduler-activity-row')).toHaveLength(1);
+    expect(screen.getByText(en.marketing.activity.statuses.failed)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: en.marketing.activity.showIdleRuns }));
+    expect(await screen.findAllByTestId('scheduler-activity-row')).toHaveLength(2);
+    expect(screen.getAllByText(en.marketing.activity.statuses.completed).length).toBeGreaterThan(0);
+  });
+
+  it('shows scheduled campaigns with projected progress above the raw run table', async () => {
+    server.use(
+      http.get('/api/marketing/campaigns', () => HttpResponse.json({ ok: true, data: { campaigns: [{
+        id: 'campaign-progress', tenantId: 'tenant-a', name: 'Autumn update', subject: 'Update', bodyHtml: '<p>Update</p>', bodySource: '<p>Update</p>', bodyText: null, replyTo: null,
+        layoutId: null, consentDefinitionId: 'consent-1', audienceVersion: 2,
+        audience: { version: 2, includeLists: [], excludeLists: [], excludeProductIds: [], includeMembersWithConsent: true },
+        audienceSnapshotId: 'snapshot-1', snapshotMaxContactId: 'contact-5000', cursorContactId: 'contact-40', candidateCount: 5_000, skipped: 1,
+        audienceFilter: null, status: 'scheduled', sendAt: '2026-07-27T12:00:00.000Z', snapshotMaxMemberId: null, cursorMemberId: null,
+        toSend: 10, sent: 4, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
+        audienceNameSnapshot: 'Newsletter', consentLabelSnapshot: 'Newsletter', startedAt: null, finishedAt: null, createdAt: '2026-07-27T10:00:00.000Z',
+        engagement: { uniqueOpens: 0, totalOpens: 0, uniqueClicks: 0, totalClicks: 0 },
+        queued: 0, unresolved: 0,
+        results: { candidates: 40, waiting: 0, sent: 40, failed: 0, skipped: 0, delivered: 35, bounced: 3, complained: 2, unresolved: 0 },
+      }] } })),
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({ ok: true, data: { items: [], summary: { runsLast24Hours: 0, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: null }, nextCursor: null } })),
+    );
+
+    await renderRoute('/panel/marketing/activity');
+
+    expect(await screen.findByText(en.marketing.activity.campaignsInProgress)).toBeInTheDocument();
+    expect(await screen.findByText('Autumn update')).toBeInTheDocument();
+    expect(screen.getByText(en.marketing.activity.campaignProgress({ sent: 40, candidates: 5_000 }))).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: en.marketing.activity.campaignProgressLabel({ name: 'Autumn update' }) })).toHaveAttribute('aria-valuenow', '0.8');
+    expect(screen.getByRole('link', { name: en.marketing.activity.openCampaignReport })).toHaveAttribute('href', '/panel/marketing/campaigns/campaign-progress');
   });
 });

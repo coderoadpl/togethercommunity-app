@@ -14,8 +14,17 @@ while a verified custom domain gets host-only cookies and its own relying
 party and therefore remains a separate credential world. A `localhost` base
 domain and single-tenant deployments keep host-only cookies and the configured
 host as the relying party. Non-local authentication origins are HTTPS-only. HTTP origins are composed only
-for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
-development.
+for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
+outside local development.
+
+A signed-in account visiting another platform tenant without a staff grant or
+membership receives a successful `/api/me` response with `tenantAccess: "none"`
+and null tenant fields. The web shell presents that tenant’s public visitor
+experience with an account notice, a workspace-picker link, and an account-switch
+action; studio routes redirect to the visitor home. The picker includes both staff
+workspaces and member communities. Tenant membership and staff grants remain
+mandatory for tenant-scoped capabilities. Custom-domain cookies remain host-scoped,
+and visiting a tenant never creates a membership.
 
 Magic-link, password-reset, e-mail-verification and marketing-confirmation
 links are built from the resolved tenant, never from the request `Host` or a
@@ -61,11 +70,28 @@ previews so external creator sites can use the public checkout contract.
 Sign-in method resolution (`/api/public/auth-resolve`) is excluded: it answers
 CORS only to the platform host, the tenant subdomains of `APP_BASE_DOMAIN` and
 the verified custom domains held in `tenant_domains`, never with a wildcard, and
-a preflight from any other origin is refused. The lookup reveals only whether a
-tenant member or admin holds a password credential — unknown addresses and
-passwordless accounts are indistinguishable — and enumeration of that signal is
-bounded by the auth-resolve per-address and per-tenant limits recorded in the
-[go-live checklist](go-live-checklist.md).
+a preflight from any other origin is refused. It answers every address on every
+tenant with the same constant list — password, passkey and magic link — without
+reading account records, so the answer carries no signal about an account.
+Passkeys use discoverable credentials, including conditional browser autofill.
+Password sign-in answers an unknown address and a stored credential given the
+wrong password with the same status and the same body, and a magic-link request
+answers a known and an unknown address the same way. These three POST endpoints
+have a 300 ms response floor on accepted and rejected outcomes alike. The floor
+does not bound database or delivery latency above 300 ms.
+
+Each endpoint has separate IP and normalized email-hash buckets: production
+defaults are 60 requests per minute per IP and 10 per 10 minutes per email,
+with magic links limited to 5 per 10 minutes per email. Existing public auth
+limits still apply. `PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE`,
+`PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES` and
+`PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES` override these budgets.
+Development and staging retain higher defaults for automated suites. Rejections
+return `429` with `Retry-After`. Sign-in telemetry records only the normalized
+email's HMAC-SHA-256 digest keyed with `BETTER_AUTH_SECRET`, outcome and reason
+codes. Provider logging retains errors while suppressing warnings and lower
+levels. Magic links use the existing `auth-link:email` bucket without a second
+sign-in email counter.
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls
 back to anonymous public capabilities, which reach lessons flagged as free
@@ -90,3 +116,63 @@ contains only this reviewed advisory:
   `drizzle-kit` resolves esbuild 0.25 only from 1.0, which in turn requires
   `drizzle-orm` 1.0 while `better-auth` still declares a `drizzle-orm` 0.45
   peer, so revisit when `better-auth` supports `drizzle-orm` 1.0.
+
+## Tenant API keys
+
+The `report:read` scope grants only the `report:read` capability through the
+`report-api-key` principal. It cannot be combined with enrollment, marketing,
+transactional, or either import scope. Legacy unscoped keys do not gain reporting
+access. Import scope combinations and expiry rules remain unchanged.
+
+Report keys may omit expiry, like other non-import keys; no separate maximum
+lifetime is imposed. Owners can revoke them through the existing key controls.
+Studio supports exclusive report keys and both English and Polish copy.
+
+The [activity reports API](reports-api.md) accepts API-key authentication only.
+Every lookup uses the resolved tenant. Sign-in activity comes only from that
+tenant's `member_events`, joined to its current members. Global auth sessions
+are never a report data source. Session credentials alone cannot access reports.
+An API key issued for one tenant cannot be used for another. Both endpoints use
+the existing API-key minute/day policy and atomic PostgreSQL rate buckets before
+reading reports. Revocation and expiry are checked on each request.
+
+Report responses contain member email addresses and use `Cache-Control: no-store`.
+Report telemetry records route templates and status, without response rows or
+query strings. Database exceptions are sanitized at the report adapter boundary
+because driver exceptions can include bound email filters. Reporting uses the
+normal application repository connection and requires no database role changes.
+
+## Public newsletter signup
+
+`POST /api/public/marketing/forms/:slug/submit` resolves the tenant from the
+request host and ignores tenant-selection headers. Only active forms and
+active optional marketing consent definitions can collect signups. The
+16 KiB body limit is applied before parsing or rate-limit email extraction;
+oversized signup requests return 413. Names are limited to 120 characters.
+Addresses are normalized and never included in route logs or error details.
+
+The shared public rate-limit repository enforces separate signup buckets:
+`PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE` defaults to 10 in production,
+and `PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES` defaults to 3. The
+email bucket uses a SHA-256 digest scoped to the tenant; the IP comes only from
+the trusted connection/proxy policy. Development defaults are 1000 and 100.
+Environment overrides follow the existing rate-limit convention, including
+zero to disable a bucket. Rejections carry `Retry-After`.
+
+Browser JSON requests and preflights require an exact origin in the form's
+allow-list. No credentials or wildcard origins are enabled. Ordinary HTML
+form posts support cross-site embeds without CORS. Every real submission must
+carry the form revision's public token. The token binds an embed to its wording
+snapshot; it is public and is not an authentication credential. A filled
+honeypot silently succeeds without creating contact, consent, or mail records.
+`MarketingSignupDeps.abuseCheck` is an optional pre-write integration point
+for a future abuse-verification provider.
+
+The response status is determined solely by the consent definition, including
+for existing and suppressed addresses. Submission responses have a minimum
+500 ms duration, and confirmation delivery is asynchronous. This reduces the
+usefulness of timing differences without promising constant database latency.
+The hosted success URL contains no recipient information. Redirect targets
+must use HTTPS without embedded credentials; users cannot override them in a
+submission. Suppression lifting, consent, contact changes, list membership,
+submission history, and mail enqueueing share a transaction.

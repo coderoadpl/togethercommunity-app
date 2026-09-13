@@ -10,6 +10,7 @@ import {
   confirmationTokenIsValid,
   consumeUnsubscribeToken,
   deriveConsentState,
+  deriveCampaignResults,
   deriveMarketingEligibility,
   emailLayoutSchema,
   liftSuppression,
@@ -36,6 +37,31 @@ import {
   type Suppression,
   type UnsubscribeToken,
 } from './marketing-email.js';
+
+describe('campaign results', () => {
+  it('derives send and delivery outcomes without double-counting waiting sends', () => {
+    expect(deriveCampaignResults([
+      { status: 'pending', deliveryStatus: null },
+      { status: 'sending', deliveryStatus: null, acceptanceUncertain: true },
+      { status: 'sent', deliveryStatus: 'delivered' },
+      { status: 'sent', deliveryStatus: 'bounced' },
+      { status: 'sent', deliveryStatus: 'complained' },
+      { status: 'sent', deliveryStatus: null },
+      { status: 'failed', deliveryStatus: null },
+      { status: 'skipped', deliveryStatus: null },
+    ])).toEqual({
+      candidates: 8,
+      waiting: 1,
+      sent: 4,
+      failed: 1,
+      skipped: 1,
+      delivered: 1,
+      bounced: 1,
+      complained: 1,
+      unresolved: 1,
+    });
+  });
+});
 
 const definition = (doubleOptIn: boolean): ConsentDefinition => ({
   id: 'definition-1',

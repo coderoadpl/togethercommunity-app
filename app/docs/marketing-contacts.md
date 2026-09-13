@@ -26,12 +26,14 @@ single opt-in. Double opt-in definitions require contacts-only import or the
 existing explicit confirmation flow.
 
 `--dry-run` stages and validates an expiring batch without changing directory or
-consent records. `--no-wait` returns its durable identifier after commit. The default
-wait polls progress; it does not run the worker. `--resume ID` verifies the original
-file hash and resumes staging, commit, retry or progress. Resuming a committed batch
-with `--dry-run` only reads its status, including after a worker failure. JSON mode prints one final
-envelope; progress goes to stderr. A self-hosted deployment must invoke the worker
-or use the staff `marketing imports process --input JSON` command.
+consent records. `--no-wait` returns its durable identifier after commit or the
+current `preview_queued` or `previewing` status during async preview validation.
+The default wait polls progress; it does not run the worker. `--resume ID`
+verifies the original file hash, waits for async preview states to reach `ready`,
+and resumes staging, commit, retry or progress. Resuming a committed batch with
+`--dry-run` only reads its status, including after a worker failure. JSON mode
+prints one final envelope; progress goes to stderr. A self-hosted deployment must
+invoke the worker or use the staff `marketing imports process --input JSON` command.
 
 `marketing contacts` also provides get, upsert, update, archive, restore and sync.
 `marketing lists` provides create, list, get, update, archive, add, remove, preview
@@ -61,9 +63,10 @@ the future.
 
 Suppression fields are `email,reason,at`. Reasons are `unsubscribe`, `bounce`,
 `complaint`, and `manual`; bounce means a terminal hard bounce. Legacy email-only
-files require explicit `--default-reason` and `--default-at`, retained in batch and
-suppression evidence. Complaint escalation remains permanent. No import lifts a
-suppression or restores a withdrawal.
+files require explicit default reason and timestamp values, retained in batch and
+suppression evidence. The CLI exposes them as `--default-reason` and `--default-at`;
+Studio exposes the same defaults in the suppression import mapping step. Complaint
+escalation remains permanent. No import lifts a suppression or restores a withdrawal.
 Repeated suppression addresses retain separate row receipts so a later weaker
 signal cannot discard an earlier complaint or permanent bounce.
 
@@ -104,7 +107,23 @@ escaping is optional and separate from lossless machine export.
 
 Session routes use `/api/marketing`; JSON API-key routes use `/api/m2m/marketing`.
 CSV upload and remapping are session-only. `Idempotency-Key` may supply the batch
-key on creation. Commit returns 202 after durable queueing. The authenticated
+key on creation. Preview validation stays synchronous through 500 rows. Larger
+previews enter the durable import queue, validate at most 500 rows per worker slice,
+and expose persisted validated-row progress through the import status route. Studio
+polls that status and restores the preview from the same batch URL after refresh.
+Upload and remapping start validation automatically. Their response is either the
+complete validation preview or `{ import, progress }` for a queued preview; this
+same-deploy response-shape change does not change the dataset version. Studio also
+revalidates a reopened ready batch automatically. Cancel is disabled while upload,
+remapping, validation, or queued preview work is pending, and is unavailable until
+the server has returned the durable batch identifier.
+Normalization, address checks for contacts and suppressions, contact duplicate
+merging, contact list checks, counts, and rejected row receipts resume idempotently;
+preview error CSV data uses the same retained row receipts as processing errors. A
+preview that cannot finish returns to draft with the recorded error instead of staying
+queued, so the owner fixes the mapping, defaults, or consent definition and validates
+again. Reopening a validated batch re-checks the consent definition and the referenced
+lists before the stored preview is served. Commit returns 202 after durable queueing. The authenticated
 `GET /api/internal/marketing/imports/tick` uses `CRON_SECRET`, runs every minute on
 hosted deployments, and shares a 20-second budget across imports and member sync.
 Interrupted imports resume unfinished rows under fenced leases; each row's effects
@@ -127,7 +146,8 @@ all directory tables through their tenant references.
 
 Owners and administrators have directory read/write, list read/write and import
 write capabilities. Marketing-scoped API keys receive the same directory
-capabilities. Enrollment, transactional and content/users import scopes do not.
+capabilities. Enrollment, transactional, subscription read/adopt and content/users
+import scopes do not.
 Import operations additionally authorize contact/list/consent/suppression writes as
 applicable; previews require the corresponding reads. List previews require both
 list and contact read. See [permission table](permission-table.md).
@@ -141,6 +161,17 @@ linked members with active campaign consent. Every selected contact still needs
 that campaign's consent definition and must pass suppression checks. Product
 exclusions use any current grant projection, including expired, free, manual and
 imported grants; they are not a paid-purchase filter.
+
+New audience writes cannot put the same list in both `includeLists` and
+`excludeLists`. The HTTP contracts reject overlaps on
+`POST /api/marketing/campaigns`, `POST /api/marketing/campaigns/update`,
+`POST /api/marketing/campaigns/audience`, and
+`POST /api/marketing/audience-preview`. The CLI applies the same validation for
+`campaign create --audience <json>` and `campaign audience set --audience <json>`.
+Legacy campaigns that were already stored with an overlap remain readable and
+schedulable: when scheduling reads the saved audience, exclusion wins and any
+overlapping list is dropped from `includeLists`; the server logs the campaign ID
+for follow-up.
 
 ```json
 {
@@ -170,9 +201,16 @@ Member erasure pseudonymizes snapshot personalization as well as the directory.
 
 Scheduled version 2 campaigns must return to draft before content or audience
 changes. Rescheduling creates a fresh snapshot and retains the prior snapshot.
-Campaign details expose candidates, eligible-at-snapshot (`toSend`), sent, failed,
-skipped, currently queued and unresolved acceptance counts. Completion waits for
-all snapshot candidates to be enumerated and for pending sends to resolve.
+Campaign details expose the frozen audience total and a grouped send projection
+for waiting, sent, failed, skipped, delivered, bounced, complained and unresolved
+delivery outcomes.
+They also retain queued and unresolved provider-acceptance counters; uncertain
+acceptance is excluded from waiting and is never retried automatically. Completion
+waits for all snapshot candidates to be enumerated and for pending sends to resolve.
+
+The campaign detail page shows the editor for drafts and for version 1 campaigns
+in the `scheduled` status, which stay editable until sending starts. Every other
+non-draft status shows the read-only campaign report instead.
 
 Existing requests without `audience` still create version 1 member campaigns.
 Their inclusive product filter and member cursor retain their meaning. An old
@@ -191,3 +229,52 @@ pnpm --silent run cli campaign sends --contact contact-id
 setter uses `POST /api/marketing/campaigns/audience` and only accepts drafts.
 The existing send journal accepts `contactId` on list and CSV-export queries;
 Studio contact detail links each send to its delivery/event timeline.
+
+## Public signup forms
+
+Studio → Marketing → Signup forms manages tenant-owned forms. A form has an
+immutable tenant-unique slug, an active optional consent definition, an optional
+active static list, tags, optional name collection, success messages in both
+languages, an optional HTTPS redirect, and an exact JSON origin allow-list.
+Archiving disables public reads and submissions while retaining history.
+Changes use optimistic revisions and append directory events. Saving snapshots
+the current consent wording. The public form token rotates only when the consent
+definition or wording version changes; replace existing embed snippets after
+those edits.
+
+The consent definition determines single or double opt-in. A submission upserts
+a contact with source `form:<slug>`, merges tags, adds static list membership,
+and records immutable consent evidence with wording, document reference,
+submission time, tenant-keyed IP hash, user agent, form revision, and source.
+Double opt-in queues the existing confirmation email in the same transaction.
+Bounce, complaint, and erasure suppressions remain in force and prevent that
+email. Explicit signup lifts unsubscribe and manual suppressions, with a
+contact event linking the suppression and new consent evidence.
+
+The Embed panel supplies a hosted link, an ordinary HTML form, and a JSON fetch
+example. Hosted pages are `/marketing/forms/:slug` and
+`/marketing/forms/:slug/thanks`. `POST /api/public/marketing/forms/:slug/submit`
+accepts JSON or URL-encoded fields `email`, optional `displayName`, `website`
+(the empty honeypot), and the generated `token`. JSON returns HTTP 200 with
+`{"status":"pending"}` or `{"status":"subscribed"}`. HTML submissions redirect
+with HTTP 303 to the configured HTTPS URL or the localized thank-you page.
+The JSON response depends on the definition, never on address existence.
+
+Counters count accepted, non-honeypot submissions during the last 24 hours,
+last 7 days, and all time. Confirmed counts include single opt-in submissions
+and double opt-in submissions whose specific consent was confirmed; pending
+counts include unconfirmed double opt-in submissions. Repeated submissions are
+separate evidence records and separate counter entries. Confirmation events update
+a submission projection, so later consent-evidence retention does not reset
+aggregate counters or prevent evidence purging.
+
+```bash
+pnpm --silent run cli marketing forms list
+pnpm --silent run cli marketing forms create --input '{"slug":"newsletter","name":"Newsletter","consentDefinitionId":"definition-id","successText":{"en":"Thank you","pl":"Thank you"}}'
+pnpm --silent run cli marketing forms show newsletter
+```
+
+The authenticated contract provides list, create, show, and revision-checked
+update at `/api/marketing/forms` and `/api/marketing/forms/:slug`. Archive by
+updating `status` to `archived`. Form management uses the existing
+`marketing:list:read` and `marketing:list:write` capabilities.

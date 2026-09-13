@@ -33,6 +33,7 @@ import { SettingsPanel } from './SettingsPanel.js';
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 interface StoredSettings {
+  signInNotice?: { enabled: boolean; text: string };
   name: string;
   socialLinks: Array<{ label: string; url: string }>;
   billingPortalUrl: string | null;
@@ -840,6 +841,40 @@ describe('SettingsPanel security', () => {
     expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
   });
 
+  it('confirms regenerated backup codes on the creator surface', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ backupCodes: ['fresh-code'] })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.backupCodesRegenerated);
+  });
+
+  it('confirms a two-factor disable on the creator surface', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('disable-2fa'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.twoFactorOff);
+  });
+
+  it('reports a refused two-factor disable on the creator surface', async () => {
+    server.use(http.post('*', () =>
+      HttpResponse.json({ message: 'Invalid password' }, { status: 401 })));
+    renderPanel();
+    await openSettingsSection(en.settingsNavigation.security);
+
+    await userEvent.type(await screen.findByTestId('enable-2fa-password'), 'wrong-password');
+    await userEvent.click(screen.getByTestId('disable-2fa'));
+
+    expect(await findToast('error')).toBeInTheDocument();
+  });
+
   it('requests password setup from creator passkey management', async () => {
     let body: unknown;
     server.use(
@@ -1395,4 +1430,23 @@ describe('SettingsPanel branding', () => {
       ogImageUrl: 'https://cdn.example.com/share.png',
     }));
   }, BRANDING_TEST_TIMEOUT);
+});
+
+
+describe('SettingsPanel sign-in notice', () => {
+  it('edits and saves the switch and multiline notice through tenant settings', async () => {
+    const { updates } = renderPanel();
+    const text = await screen.findByRole('textbox', { name: en.signInNoticeSettings.label });
+    expect(text).toHaveAccessibleDescription(`${en.signInNoticeSettings.helper} ${en.signInNoticeSettings.counter({ count: 0 })}`);
+    await waitFor(() => expect(text).toBeEnabled());
+    await userEvent.click(screen.getByRole('switch', { name: en.signInNoticeSettings.enabled }));
+    await userEvent.type(text, 'Welcome back.\nUse your existing email.');
+    expect(text).toHaveAttribute('maxlength', '600');
+    expect(screen.getByText(en.signInNoticeSettings.counter({ count: 'Welcome back.\nUse your existing email.'.length }))).toBeInTheDocument();
+    const card = text.closest('form');
+    expect(card).not.toBeNull();
+    if (card === null) throw new Error('Missing notice form');
+    await userEvent.click(within(card).getByRole('button', { name: en.signInNoticeSettings.save }));
+    await waitFor(() => expect(updates).toContainEqual({ signInNotice: { enabled: true, text: 'Welcome back.\nUse your existing email.' } }));
+  });
 });

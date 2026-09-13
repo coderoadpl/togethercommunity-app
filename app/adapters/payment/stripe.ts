@@ -1,15 +1,19 @@
 import Stripe from 'stripe';
 
 import {
+  adoptionRefusal,
   err,
   ok,
   refundCoverage,
   stripeCancelErrorSchema,
+  stripeAdoptionObjectSchema,
+  stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
   stripeSubscriptionObjectSchema,
   validation,
+  stripeKeyModeConflicts,
   type AppError,
   type Result,
 } from '#core/domain/index.js';
@@ -234,21 +238,78 @@ const toSubscriptionEvent = (
   };
 };
 
+const webhookSlotOf = (webhookUrl: string): string | null => {
+  try {
+    return new URL(webhookUrl).searchParams.get('mode');
+  } catch {
+    return null;
+  }
+};
+
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
   const createClient = config.clientFactory ?? ((restrictedKey: string) => new Stripe(restrictedKey));
-  const clientFor = async (tenantId: string): Promise<Result<Stripe, AppError>> => {
-    const key = await config.resolver.resolve(tenantId, 'stripe.restrictedKey');
+  const clientFor = async (tenantId: string, mode: 'live' | 'test' = 'live'): Promise<Result<Stripe, AppError>> => {
+    const key = await config.resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
     if (!key.ok) return key;
+    if (stripeKeyModeConflicts(key.value, mode)) return err(validation('Stripe key mode does not match the requested mode'));
     return ok(createClient(key.value));
   };
 
   return {
+    retrieveStripeSubscription: async (tenantId, subscriptionId) => {
+      const client = await clientFor(tenantId);
+      if (!client.ok) return client;
+      let raw: unknown;
+      try {
+        raw = await client.value.subscriptions.retrieve(subscriptionId, { expand: ['customer'] });
+      } catch (cause) {
+        const failure = stripeCancelErrorSchema.safeParse(cause);
+        if (failure.success && failure.data.code === 'resource_missing') {
+          return err(adoptionRefusal('validation', 'not-found', 'Stripe subscription was not found in this account'));
+        }
+        return err(asDiagnostic('Stripe rejected the subscription lookup', cause));
+      }
+      const parsed = stripeAdoptionObjectSchema.safeParse(raw);
+      if (!parsed.success) return err(adoptionRefusal('validation', 'unsupported', 'Stripe subscription requires one fixed recurring price and an accessible customer'));
+      const item = parsed.data.items.data[0];
+      const periodEnd = parsed.data.current_period_end ?? item?.current_period_end;
+      if (item === undefined || periodEnd === undefined || parsed.data.customer.deleted === true) {
+        return err(adoptionRefusal('validation', 'unsupported', 'Stripe subscription has no current period or customer'));
+      }
+      return ok(stripeSubscriptionSnapshotSchema.parse({
+        id: parsed.data.id, status: parsed.data.status,
+        currentPeriodEnd: epochToIso(periodEnd), cancelAtPeriodEnd: parsed.data.cancel_at_period_end,
+        customerEmail: parsed.data.customer.email ?? null,
+        price: { id: item.price.id, amountCents: item.price.unit_amount,
+          currency: item.price.currency.toUpperCase(), interval: item.price.recurring.interval,
+          intervalCount: item.price.recurring.interval_count },
+      }));
+    },
+    listStripeSubscriptions: async (tenantId, input) => {
+      const client = await clientFor(tenantId);
+      if (!client.ok) return client;
+      try {
+        const page = await client.value.subscriptions.list({
+          status: input.status ?? 'all', limit: 100,
+          ...(input.startingAfter === undefined ? {} : { starting_after: input.startingAfter }),
+        });
+        return ok({ subscriptions: page.data.map((subscription) => ({
+          id: subscription.id, status: subscription.status,
+          providerPriceId: subscription.items.data[0]?.price.id ?? null,
+        })), nextCursor: page.has_more ? page.data.at(-1)?.id ?? null : null });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected the subscription listing', cause));
+      }
+    },
     configureWebhook: async (input) => {
       try {
         const webhookEndpoints = createClient(input.restrictedKey).webhookEndpoints;
         const registered = await webhookEndpoints.list({ limit: 100 });
+        const slot = webhookSlotOf(input.webhookUrl);
         const stale = registered.data.filter(
-          (endpoint) => endpoint.metadata?.tenantId === input.tenantId || endpoint.url === input.webhookUrl,
+          (endpoint) =>
+            endpoint.url === input.webhookUrl ||
+            (endpoint.metadata?.tenantId === input.tenantId && webhookSlotOf(endpoint.url) === slot),
         );
         for (const endpoint of stale) await webhookEndpoints.del(endpoint.id);
         const endpoint = await webhookEndpoints.create({
@@ -322,7 +383,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
     },
     createCheckoutSession: async (input) => {
-      const client = await clientFor(input.tenantId);
+      const client = await clientFor(input.tenantId, input.mode);
       if (!client.ok) return client;
       try {
         const session = await client.value.checkout.sessions.create(stripeCheckoutSessionParams(input));
@@ -335,7 +396,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
     },
     expireCheckoutSession: async (input) => {
-      const client = await clientFor(input.tenantId);
+      const client = await clientFor(input.tenantId, input.mode);
       if (!client.ok) return client;
       try {
         await client.value.checkout.sessions.expire(input.sessionId);
@@ -345,7 +406,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
     },
     cancelSubscription: async (input) => {
-      const client = await clientFor(input.tenantId);
+      const client = await clientFor(input.tenantId, input.mode);
       if (!client.ok) return client;
       try {
         await client.value.subscriptions.cancel(
@@ -376,11 +437,11 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           event.type === 'checkout.session.async_payment_succeeded' ||
           event.type === 'checkout.session.async_payment_failed'
         ) {
-          return ok(toCheckoutSessionEvent(event.id, event.type, event.data.object));
+          return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
         }
         if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
           const mapped = toInvoiceEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok(mapped);
+          if (mapped) return ok({ ...mapped, livemode: event.livemode });
         }
         if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
           const mapped = toSubscriptionEvent(
@@ -389,14 +450,15 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             event.data.object,
             epochToIso(event.created),
           );
-          if (mapped) return ok(mapped);
+          if (mapped) return ok({ ...mapped, livemode: event.livemode });
         }
         if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
           const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok(mapped);
+          if (mapped) return ok({ ...mapped, livemode: event.livemode });
         }
         const object = event.data.object;
         return ok({
+          livemode: event.livemode,
           id: event.id,
           type: event.type,
           objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,

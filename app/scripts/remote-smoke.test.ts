@@ -5,9 +5,11 @@ import {
   SMOKE_TENANT_COURSE_TITLE,
   SMOKE_TENANT_MEMBER_EMAIL,
 } from '#core/domain/index.js';
+import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
 
 import {
   remoteSmokeOptionsFromEnv,
+  runAuthMailServerlessCheck,
   runRemoteSmoke,
   runStagingSmoke,
   stagingSmokeOptionsFromEnv,
@@ -194,6 +196,7 @@ const stubbedFetch = (overrides: {
   lesson?: { payload: unknown; status: number };
   offer?: unknown;
   courses?: unknown;
+  authEvidence?: Array<'queued' | 'sent' | 'failed' | null>;
 } = {}) =>
   vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -203,6 +206,24 @@ const stubbedFetch = (overrides: {
       return Response.json(deep.payload, { status: deep.status });
     }
     if (url.pathname === '/api/public/offer') return Response.json(overrides.offer ?? offerPayload());
+    if (url.pathname.endsWith('/sign-in/magic-link')) {
+      expect(init?.method).toBe('POST');
+      return Response.json({ status: true });
+    }
+    if (url.pathname === '/api/internal/auth-send-log/latest') {
+      const status = overrides.authEvidence?.shift() ?? 'sent';
+      return Response.json({
+        ok: true,
+        data: status === null ? null : {
+          status,
+          kind: 'magic-link',
+          queuedAt: url.searchParams.get('since'),
+          settledAt: status === 'sent' || status === 'failed'
+            ? '2026-09-05T12:00:01.000Z'
+            : null,
+        },
+      });
+    }
     if (url.pathname.endsWith('/sign-in/email')) {
       const status = overrides.signInStatus ?? 200;
       expect(init?.method).toBe('POST');
@@ -386,6 +407,7 @@ const stagingOptions: StagingSmokeOptions = {
   publicPagePath: '/',
   member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: DEMO_SEED_PASSWORD },
   bypassSecret: 'bypass-secret',
+  operatorSecret: 'operator-secret',
   productionFingerprint: PRODUCTION_FINGERPRINT,
   expectedFingerprint: STAGING_FINGERPRINT,
   sanitized: true,
@@ -393,6 +415,97 @@ const stagingOptions: StagingSmokeOptions = {
 
 const detailOf = (result: { checks: { name: string; detail: string | null }[] }, name: string) =>
   result.checks.find((check) => check.name === name)?.detail;
+
+const authMailOptions = { ...stagingOptions, operatorSecret: 'operator-secret' };
+
+const authMailRequest = (
+  statuses: Array<'queued' | 'sent' | 'failed' | null>,
+  magicLink: { status: number; payload: unknown } = { status: 200, payload: { status: true } },
+) =>
+  vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === BETTER_AUTH_MAGIC_LINK_PATH) {
+      expect(init?.method).toBe('POST');
+      expect(new Headers(init?.headers)).toEqual(new Headers({
+        'content-type': 'application/json',
+        origin: new URL(stagingOptions.baseUrl).origin,
+        [VERCEL_BYPASS_HEADER]: stagingOptions.bypassSecret,
+      }));
+      expect(init?.body).toBe(JSON.stringify({
+        email: SMOKE_TENANT_MEMBER_EMAIL,
+        callbackURL: 'https://acme.staging.togethercommunity.app/login?verification=verified',
+        errorCallbackURL: 'https://acme.staging.togethercommunity.app/login?error=INVALID_TOKEN',
+      }));
+      return Response.json(magicLink.payload, { status: magicLink.status });
+    }
+    if (url.pathname === '/api/internal/auth-send-log/latest') {
+      expect(url.searchParams.get('tenant')).toBe('acme');
+      expect(url.searchParams.get('kind')).toBe('magic-link');
+      expect(url.searchParams.get('since')).toBe('2026-09-05T11:59:30.000Z');
+      expect(new Headers(init?.headers).get('x-scheduler-operator-secret')).toBe('operator-secret');
+      expect(new Headers(init?.headers).get(VERCEL_BYPASS_HEADER)).toBe('bypass-secret');
+      const status = statuses.shift() ?? null;
+      return Response.json({
+        ok: true,
+        data: status === null ? null : {
+          status,
+          kind: 'magic-link',
+          queuedAt: '2026-09-05T12:00:00.000Z',
+          settledAt: status === 'sent' || status === 'failed'
+            ? '2026-09-05T12:00:01.000Z'
+            : null,
+        },
+      });
+    }
+    return new Response('not found', { status: 404 });
+  });
+
+const authMailTiming = () => {
+  let current = Date.parse('2026-09-05T12:00:00.000Z');
+  return {
+    timeoutMs: 6_000,
+    pollIntervalMs: 3_000,
+    now: () => current,
+    wait: async (ms: number) => { current += ms; },
+  };
+};
+
+describe('auth-mail-serverless check', () => {
+  it('passes when the platform auth send settles within the budget', async () => {
+    const request = authMailRequest([null, 'queued', 'sent']);
+
+    await expect(runAuthMailServerlessCheck(authMailOptions, request, authMailTiming()))
+      .resolves.toBeUndefined();
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  it('fails immediately when the platform auth send settles as failed', async () => {
+    await expect(runAuthMailServerlessCheck(
+      authMailOptions,
+      authMailRequest(['failed']),
+      authMailTiming(),
+    )).rejects.toThrow('auth mail send log settled as failed');
+  });
+
+  it('fails on timeout with the latest observed status', async () => {
+    await expect(runAuthMailServerlessCheck(
+      authMailOptions,
+      authMailRequest(['queued', 'queued', 'queued']),
+      authMailTiming(),
+    )).rejects.toThrow('auth mail send log timed out with latest status queued');
+  });
+
+  it('reports the rejection code when the magic-link request is refused', async () => {
+    await expect(runAuthMailServerlessCheck(
+      authMailOptions,
+      authMailRequest([], {
+        status: 400,
+        payload: { code: 'INVALID_MAGIC_LINK_CALLBACK_ORIGIN', message: 'nope' },
+      }),
+      authMailTiming(),
+    )).rejects.toThrow('magic-link request returned HTTP 400 (INVALID_MAGIC_LINK_CALLBACK_ORIGIN)');
+  });
+});
 
 describe('staging smoke', () => {
   it('accepts a staging deployment answering from the pinned staging database', async () => {
@@ -415,10 +528,24 @@ describe('staging smoke', () => {
       'student-courses',
       'lesson-playback',
       'studio-tenant-settings',
+      'auth-mail-serverless',
     ]);
-    expect(request.mock.calls).toHaveLength(10);
+    expect(request.mock.calls).toHaveLength(12);
     expect(request.mock.calls.every(([, init]) =>
       new Headers(init?.headers).get(VERCEL_BYPASS_HEADER) === 'bypass-secret')).toBe(true);
+  });
+
+  it('skips the auth-mail check without the operator secret and keeps every other check', async () => {
+    const request = stubbedFetch({ health: stagingHealth() });
+
+    const result = await runStagingSmoke({ ...stagingOptions, operatorSecret: null }, request);
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toContain('auth-mail-serverless');
+    expect(detailOf(result, 'auth-mail-serverless'))
+      .toBe('OPERATOR_SECRET is absent — create the OPERATOR_SECRET_STAGING repository secret');
+    expect(request.mock.calls.some(([input]) =>
+      new URL(String(input)).pathname === '/api/internal/auth-send-log/latest')).toBe(false);
   });
 
   it('fails when staging answers from the production database', async () => {
@@ -593,6 +720,7 @@ describe('stagingSmokeOptionsFromEnv', () => {
   const environment = {
     STAGING_BASE_URL: 'https://acme.staging.togethercommunity.app',
     VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret',
+    OPERATOR_SECRET: 'operator-secret',
     PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
     STAGING_DATABASE_FINGERPRINT: STAGING_FINGERPRINT,
   };
@@ -604,6 +732,7 @@ describe('stagingSmokeOptionsFromEnv', () => {
       publicPagePath: '/',
       member: { status: 'configured', email: SMOKE_TENANT_MEMBER_EMAIL, password: DEMO_SEED_PASSWORD },
       bypassSecret: 'bypass-secret',
+      operatorSecret: 'operator-secret',
       productionFingerprint: PRODUCTION_FINGERPRINT,
       expectedFingerprint: STAGING_FINGERPRINT,
       sanitized: true,
@@ -631,6 +760,11 @@ describe('stagingSmokeOptionsFromEnv', () => {
     expect(stagingSmokeOptionsFromEnv({ ...environment, PRODUCTION_DATABASE_FINGERPRINT: '' }))
       .toBeNull();
     expect(stagingSmokeOptionsFromEnv({ ...environment, STAGING_BASE_URL: '' })).toBeNull();
+  });
+
+  it('keeps probing without the operator secret', () => {
+    expect(stagingSmokeOptionsFromEnv({ ...environment, OPERATOR_SECRET: '' })?.operatorSecret)
+      .toBeNull();
   });
 
   it('targets the seeded smoke tenant even when a copied tenant override is present', () => {

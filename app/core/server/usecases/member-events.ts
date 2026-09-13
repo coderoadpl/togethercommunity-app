@@ -30,11 +30,13 @@ interface MemberTimelineDeps {
 const productIdFor = (event: MemberEvent): string | null => {
   switch (event.type) {
     case 'purchase':
+    case 'subscription-adopted':
     case 'subscription-change':
     case 'grant':
     case 'revoke':
       return event.payload.productId;
     case 'lesson-completion':
+    case 'sign-in':
     case 'email-sent':
     case 'banned':
     case 'unbanned':
@@ -83,6 +85,8 @@ export const listMemberTimeline = async (
             productTitle: productTitles.get(event.payload.productId) ?? null,
           },
         };
+      case 'subscription-adopted':
+        return { ...event, payload: { ...event.payload, productTitle: productTitles.get(event.payload.productId) ?? null } };
       case 'subscription-change':
         return {
           ...event,
@@ -116,6 +120,7 @@ export const listMemberTimeline = async (
             lessonTitle: lessonTitles.get(event.payload.lessonId) ?? null,
           },
         };
+      case 'sign-in':
       case 'email-sent':
       case 'banned':
       case 'unbanned':

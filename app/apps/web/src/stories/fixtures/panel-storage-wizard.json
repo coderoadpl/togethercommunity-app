@@ -46,6 +46,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -117,7 +121,8 @@
       "value": {
         "secrets": [],
         "stripeMode": null,
-        "stripeWebhookUrl": "http://localhost:48730/api/webhooks/stripe/tenant-studio"
+        "stripeTestLastEventAt": null,
+        "stripeWebhookUrl": "http://studio.localhost:63871/api/webhooks/stripe/tenant-studio"
       }
     },
     "me:[]": {
@@ -141,6 +146,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
@@ -313,6 +319,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

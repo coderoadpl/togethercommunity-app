@@ -24,6 +24,7 @@ const identity: Identity = {
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: TENANT_ID,
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -72,6 +73,7 @@ const product: Product = {
 };
 
 const purchase: OrderListItem = {
+  mode: 'live',
   id: 'order-1',
   tenantId: TENANT_ID,
   memberId: member.id,
@@ -93,6 +95,7 @@ const purchase: OrderListItem = {
 };
 
 const subscription = (status: MemberSubscription['status']): MemberSubscription => ({
+  mode: 'live',
   id: `subscription-${status}`,
   tenantId: TENANT_ID,
   memberId: member.id,
@@ -137,6 +140,7 @@ const products: ProductRepository & ProductBatchReader = {
 const subscriptions: MemberSubscriptionRepository = {
   findById: async () => null,
   findByProviderSubscriptionId: async () => null,
+  listKnownProviderSubscriptionIds: async () => [],
   listForMember: async () => [subscription('active'), subscription('past_due'), subscription('canceled')],
   create: async () => undefined,
   update: async () => null,
@@ -144,6 +148,7 @@ const subscriptions: MemberSubscriptionRepository = {
 };
 
 const orders = (queries: Array<[string, string]>): OrderRepository & MemberOrderListReader => ({
+  completeTestCheckout: async () => null,
   create: async () => undefined,
   list: async () => ({ orders: [purchase], total: 1 }),
   listForMember: async (tenantId, memberId) => {

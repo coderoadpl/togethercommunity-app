@@ -1,5 +1,6 @@
 import { ok, type AppError, type Result } from '#core/domain/index.js';
 
+import { safeLogMessage } from '../log-safety.js';
 import type { KsefSubmissionJobRepository } from '../ports.js';
 import { runKsefSubmission, type KsefSubmissionDeps } from './ksef-submissions.js';
 
@@ -26,7 +27,7 @@ export const dispatchKsefJob = async (
     if (!submitted.ok) {
       await deps.jobs.reschedule(job.tenantId, job.id, {
         nextAttemptAt: new Date(Date.parse(now) + deps.retry.baseMs).toISOString(),
-        error: submitted.error.message,
+        error: safeLogMessage(submitted.error.message),
       });
       return submitted;
     }

@@ -20,10 +20,11 @@ import {
   createMarketingJobRepository,
   createMarketingConsentRepository,
   createMarketingThrottleRepository,
+  createSesMaintenanceBackoffRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { campaignSends, consents, emailOutbox, marketingConsents, members, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
+import { campaignSends, consents, emailOutbox, marketingConsents, marketingOutbox, members, schedulerRuns, schedulerRunTenants, tenantSesSettings, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -93,16 +94,35 @@ describe('marketing database repositories', () => {
     await expect(
       createMarketingJobRepository(db).listSesIdentityRefreshTenantIds(
         '1998-07-21T23:59:59.999Z',
+        NOW,
       ),
     ).resolves.toEqual(['tenant-a']);
     await expect(
-      createMarketingJobRepository(db).listSesTenantIds(NOW),
+      createMarketingJobRepository(db).listSesTenantIds(NOW, NOW),
     ).resolves.toEqual(['tenant-a', 'tenant-b']);
     await expect(
       createMarketingJobRepository(db).listSesTenantIds(
         '1998-07-21T23:59:59.999Z',
+        NOW,
       ),
     ).resolves.toEqual(['tenant-a']);
+  });
+
+  it('holds a deferred SES maintenance tenant back until its retry time', async () => {
+    const jobs = createMarketingJobRepository(db);
+    const backoff = createSesMaintenanceBackoffRepository(db);
+    const retryAt = '1998-07-22T01:00:00.000Z';
+
+    await backoff.defer('tenant-a', { attempts: 1, retryAt });
+
+    await expect(jobs.listSesTenantIds(NOW, NOW)).resolves.toEqual(['tenant-b']);
+    await expect(jobs.listSesIdentityRefreshTenantIds(NOW, retryAt)).resolves.toEqual(['tenant-a', 'tenant-b']);
+    await expect(backoff.countAttempts('tenant-a')).resolves.toBe(1);
+
+    await backoff.clear('tenant-a');
+
+    await expect(backoff.countAttempts('tenant-a')).resolves.toBe(0);
+    await expect(jobs.listSesTenantIds(NOW, NOW)).resolves.toEqual(['tenant-a', 'tenant-b']);
   });
 
   it('lists and summarizes scheduler runs with global and tenant scopes', async () => {
@@ -116,6 +136,7 @@ describe('marketing database repositories', () => {
         finishedAt: null,
         durationMs: null,
         status: 'running',
+        idle: false,
         error: null,
         totals: {
           campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
@@ -129,6 +150,7 @@ describe('marketing database repositories', () => {
       finishedAt: '1998-07-22T02:00:01.000Z',
       durationMs: 1000,
       status: 'completed',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 1, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,
@@ -143,6 +165,7 @@ describe('marketing database repositories', () => {
       finishedAt: '1998-07-21T02:00:01.000Z',
       durationMs: 1000,
       status: 'failed',
+      idle: false,
       error: 'dispatch failed',
       totals: {
         campaignsTouched: 0, sendsAttempted: 1, sent: 0, failed: 1, skipped: 0, reEnqueued: false,
@@ -178,6 +201,7 @@ describe('marketing database repositories', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0,
@@ -190,6 +214,7 @@ describe('marketing database repositories', () => {
         finishedAt: '1998-07-22T03:00:01.000Z',
         durationMs: 1000,
         status,
+        idle: false,
         error: status === 'failed' ? 'worker failed' : null,
         totals: {
           campaignsTouched: 1, sendsAttempted: 1, sent: status === 'completed' ? 1 : 0,
@@ -212,6 +237,7 @@ describe('marketing database repositories', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0,
@@ -232,6 +258,76 @@ describe('marketing database repositories', () => {
     await expect(repository.getWithTenants('run-fresh')).resolves.toMatchObject({
       run: { status: 'running', error: null },
     });
+  });
+
+  it('purges scheduler runs by idle and active windows while retaining the newest run per kind', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const addRun = async (id: string, kind: 'marketing_tick' | 'consent_evidence_purge', startedAt: string, idle: boolean) => {
+      await repository.start({
+        id, kind, trigger: 'cron', startedAt, finishedAt: null, durationMs: null,
+        status: 'running', idle: false, error: null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        createdAt: startedAt,
+      });
+      await repository.finalize(id, {
+        finishedAt: startedAt, durationMs: 0, status: 'completed', idle, error: null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        tenants: [{
+          id: `${id}-tenant`, runId: id, tenantId: 'tenant-a', campaignsTouched: 0,
+          batchSize: 0, sent: 0, failed: 0, skipped: 0, budgetComputed: 0, budgetUsed: 0,
+          errors: [], createdAt: startedAt,
+        }],
+      });
+    };
+    await addRun('retention-regular-old', 'marketing_tick', '1998-06-01T00:00:00.000Z', false);
+    await addRun('retention-regular-boundary', 'marketing_tick', '1998-07-01T00:00:00.000Z', false);
+    await addRun('retention-idle-old', 'marketing_tick', '1998-07-10T00:00:00.000Z', true);
+    await addRun('retention-idle-boundary', 'marketing_tick', '1998-07-20T00:00:00.000Z', true);
+    await addRun('retention-referenced', 'marketing_tick', '1998-06-02T00:00:00.000Z', false);
+    await addRun('retention-newest', 'marketing_tick', '1998-07-21T00:00:00.000Z', false);
+    await addRun('retention-only-kind', 'consent_evidence_purge', '1990-01-01T00:00:00.000Z', true);
+    await db.insert(campaignSends).values({
+      id: 'retention-referenced-send',
+      runId: 'retention-referenced',
+      tenantId: 'tenant-a',
+      campaignId: null,
+      source: 'api',
+      email: 'recipient@example.test',
+      subject: 'Retained attribution',
+      status: 'sent',
+      createdAt: '1998-06-02T00:00:00.000Z',
+    });
+    await expect(repository.purge({
+      runsBefore: '1998-07-01T00:00:00.000Z',
+      idleRunsBefore: '1998-07-20T00:00:00.000Z',
+    }, { batchSize: 500, timeoutMs: 5_000 })).resolves.toEqual({ purged: 2, cancelled: false });
+
+    expect(await repository.getWithTenants('retention-regular-old')).toBeNull();
+    expect(await repository.getWithTenants('retention-idle-old')).toBeNull();
+    expect(await repository.getWithTenants('retention-regular-boundary')).not.toBeNull();
+    expect(await repository.getWithTenants('retention-idle-boundary')).not.toBeNull();
+    expect(await repository.getWithTenants('retention-referenced')).not.toBeNull();
+    expect(await repository.getWithTenants('retention-only-kind')).not.toBeNull();
+    expect(await db.select().from(schedulerRunTenants).where(eq(schedulerRunTenants.id, 'retention-idle-old-tenant')))
+      .toEqual([]);
+  });
+
+  it('reports a purge batch cancelled by its statement timeout instead of throwing', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const blocker = new pg.Client({ connectionString: testUrl });
+    await blocker.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE scheduler_runs IN ACCESS EXCLUSIVE MODE');
+
+      await expect(repository.purge({
+        runsBefore: '1998-07-01T00:00:00.000Z',
+        idleRunsBefore: '1998-07-20T00:00:00.000Z',
+      }, { batchSize: 500, timeoutMs: 300 })).resolves.toEqual({ purged: 0, cancelled: true });
+    } finally {
+      await blocker.query('ROLLBACK');
+      await blocker.end();
+    }
   });
 
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {
@@ -568,6 +664,97 @@ describe('marketing database repositories', () => {
     ]]));
   });
 
+  it('projects campaign results in one tenant-scoped batch', async () => {
+    const tenantId = 'tenant-results';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Results', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, status: CampaignSend['status'], deliveryStatus: CampaignSend['deliveryStatus']): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast', memberId: null,
+      email: `${id}@example.test`, subject: 'Campaign results', consentRowId: null,
+      unsubscribeTokenId: null, status, skipReason: status === 'skipped' ? 'suppressed' : null,
+      sesMessageId: status === 'sent' ? `ses-${id}` : null, deliveryStatus,
+      deliveryOccurredAt: deliveryStatus === null ? null : NOW, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: NOW, sentAt: status === 'sent' ? NOW : null,
+    });
+    for (const row of [
+      send('results-pending', 'pending', null),
+      send('results-sending', 'sending', null),
+      send('results-delivered', 'sent', 'delivered'),
+      send('results-bounced', 'sent', 'bounced'),
+      send('results-complained', 'sent', 'complained'),
+      send('results-unresolved', 'sent', null),
+      send('results-failed', 'failed', null),
+      send('results-skipped', 'skipped', null),
+    ]) await sends.claimRecipient(tenantId, row);
+    await db.insert(marketingOutbox).values({
+      id: 'outbox-results-sending', tenantId, campaignSendId: 'results-sending', payload: null,
+      payloadPurgedAt: null, status: 'uncertain', attempts: 1, nextAttemptAt: NOW,
+      lockedBy: null, lockedUntil: null, claimVersion: 1, sesMessageId: null,
+      lastError: 'Provider response was not received', createdAt: NOW, updatedAt: NOW,
+    });
+
+    await expect(sends.results(tenantId, [`campaign-${tenantId}`, 'missing-campaign'])).resolves.toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { candidates: 8, waiting: 1, sent: 4, failed: 1, skipped: 1, delivered: 1, bounced: 1, complained: 1, unresolved: 1 },
+    ]]));
+    await expect(sends.progressStats(tenantId, [`campaign-${tenantId}`])).resolves.toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { queued: 1, unresolved: 1 },
+    ]]));
+    await expect(sends.results('tenant-a', [`campaign-${tenantId}`])).resolves.toEqual(new Map());
+
+    const runs = createSchedulerRunRepository(db);
+    await runs.start({
+      id: 'run-results', kind: 'marketing_tick', trigger: 'cron', startedAt: NOW,
+      finishedAt: null, durationMs: null, status: 'running', idle: false, error: null,
+      totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+      createdAt: NOW,
+    });
+    await runs.finalize('run-results', {
+      finishedAt: '1998-07-22T00:00:01.000Z', durationMs: 1000, status: 'completed', idle: false, error: null,
+      totals: { campaignsTouched: 1, sendsAttempted: 1, sent: 1, failed: 0, skipped: 0, reEnqueued: false },
+      tenants: [{
+        id: 'run-results-tenant', runId: 'run-results', tenantId, campaignsTouched: 1, batchSize: 1,
+        sent: 7, failed: 2, skipped: 3, budgetComputed: 10, budgetUsed: 1, errors: [], createdAt: NOW,
+      }],
+    });
+    await db.update(campaignSends).set({ runId: 'run-results' }).where(eq(campaignSends.id, 'results-delivered'));
+
+    await expect(runs.listForTenant(tenantId, { campaignId: `campaign-${tenantId}`, limit: 25 }))
+      .resolves.toMatchObject({ items: [{ run: { id: 'run-results' }, campaignCounts: { sent: 1, failed: 0, skipped: 0 } }] });
+    await expect(runs.listForTenant(tenantId, { campaignId: 'missing-campaign', limit: 25 }))
+      .resolves.toMatchObject({ items: [] });
+
+    for (const [id, status, errors] of [
+      ['run-results-idle', 'completed', []],
+      ['run-results-failed-empty', 'failed', ['SES credentials unavailable']],
+    ] as const) {
+      await runs.start({
+        id, kind: 'marketing_tick', trigger: 'cron', startedAt: NOW, finishedAt: null, durationMs: null,
+        status: 'running', idle: false, error: null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        createdAt: NOW,
+      });
+      await runs.finalize(id, {
+        finishedAt: '1998-07-22T00:00:01.000Z', durationMs: 1000, status,
+        idle: status === 'completed',
+        error: status === 'failed' ? 'SES credentials unavailable' : null,
+        totals: { campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false },
+        tenants: [{
+          id: `${id}-tenant`, runId: id, tenantId, campaignsTouched: 0, batchSize: 0,
+          sent: 0, failed: 0, skipped: 0, budgetComputed: 0, budgetUsed: 0, errors: [...errors], createdAt: NOW,
+        }],
+      });
+    }
+    const visibleRunIds = (await runs.listForTenant(tenantId, { limit: 25 })).items.map(({ run }) => run.id);
+    expect(visibleRunIds).toContain('run-results-failed-empty');
+    expect(visibleRunIds).not.toContain('run-results-idle');
+    expect((await runs.listForTenant(tenantId, { includeIdle: true, limit: 25 })).items.map(({ run }) => run.id))
+      .toContain('run-results-idle');
+  });
+
   it('counts reputation from the sent cohort instead of accepted-event fixtures', async () => {
     const tenantId = 'tenant-reputation';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Reputation', createdAt: NOW });
@@ -681,6 +868,11 @@ describe('marketing database repositories', () => {
     expect(first.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
       { kind: 'transactional', id: 'transactional-send-view' },
     ]);
+    expect(first.sends[0]).toMatchObject({
+      sourceKind: 'welcome-sign-in',
+      transport: 'platform',
+    });
+    expect(JSON.stringify(first.sends[0])).not.toContain('https://example.test/sign-in');
     expect(first.nextCursor).not.toBeNull();
     if (first.nextCursor === null) throw new Error('Expected another unified send page');
     const second = await repository.listPage(tenantId, { cursor: first.nextCursor, limit: 1 });

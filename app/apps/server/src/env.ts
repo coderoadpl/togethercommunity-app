@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isProductionEnvironment } from '#core/domain/index.js';
+import { MARKETING_RETENTION_DAYS } from '#core/server/index.js';
 
 const optionalNonEmptyString = z.preprocess(
   (value) => value === '' ? undefined : value,
@@ -24,7 +25,7 @@ const optionalCount = z.preprocess(
   z.coerce.number().int().min(0).optional(),
 );
 
-const isLocalHostname = (hostname: string): boolean =>
+export const isLocalHostname = (hostname: string): boolean =>
   hostname === 'localhost'
   || hostname.endsWith('.localhost')
   || /^127(?:\.\d{1,3}){3}$/.test(hostname)
@@ -136,6 +137,12 @@ export const envSchema = z
     MARKETING_SEND_SECONDS: z.coerce.number().min(1).max(50).default(50),
     MARKETING_BATCH_CAP: z.coerce.number().int().min(1).max(10000).default(1000),
     MARKETING_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).default(60000),
+    MARKETING_RETENTION_RAW_SNS_INBOX_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.rawSnsInboxDays),
+    MARKETING_RETENTION_RENDERED_BODIES_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.renderedBodiesDays),
+    MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.engagementEventsDays),
+    MARKETING_RETENTION_PENDING_CONSENTS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.pendingConsentsDays),
+    MARKETING_RETENTION_SCHEDULER_RUNS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.schedulerRunsDays),
+    MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.schedulerIdleRunsDays),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     KSEF_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
     CONSENT_EVIDENCE_PURGE_ENABLED: z
@@ -147,10 +154,14 @@ export const envSchema = z
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
     PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_LINKS_PER_EMAIL_PER_10_MINUTES: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_AUTH_RESOLVES_PER_TENANT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES: optionalCount,
     IMPORT_DAILY_MEMBER_RECORD_LIMIT: z.coerce.number().int().positive().default(10_000),
     IMPORT_DAILY_RECORD_LIMIT: z.coerce.number().int().positive().default(20_000),
     M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: z.coerce.number().int().positive().default(60),

@@ -22,6 +22,9 @@ export const server = setupServer(
   http.get('*/api/public/spaces/:spaceId/events', () =>
     HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } }),
   ),
+  http.get('*/api/public/payment-config', () =>
+    HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: false } }),
+  ),
   http.get('*/api/health', () =>
     HttpResponse.json({
       ok: true,

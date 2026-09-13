@@ -123,4 +123,17 @@ describe('EmailEventTimeline', () => {
     expect(screen.getByText(en.marketing.eventTypes.complained).closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
     expect(screen.getByText(en.marketing.eventTypes.suppressed_written).closest('.MuiChip-root')).toHaveClass('MuiChip-colorWarning');
   });
+
+  it('does not render the provider payload disclosure for empty metadata', () => {
+    renderWithProviders(
+      <LanguageProvider>
+        <EmailEventTimeline events={[{
+          id: 'empty-meta', tenantId: 'tenant-1', mailKind: 'marketing', refId: 'send-1',
+          type: 'queued', occurredAt: '2026-07-25T10:00:00.000Z', meta: {}, createdAt: '2026-07-25T10:00:00.000Z',
+        }]} />
+      </LanguageProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: en.marketing.rawMeta })).not.toBeInTheDocument();
+  });
 });

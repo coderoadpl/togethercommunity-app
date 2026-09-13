@@ -1,16 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
-import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, validation } from '#core/domain/index.js';
-import { createDb } from '#adapters/db/client.js';
-import { user, verification } from '#adapters/db/schema.js';
+import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
+import { emailEvents, members, tenants, user, verification } from '#adapters/db/schema.js';
+import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
-import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
+import { createEmailOutboxRepository, createPlatformAuthSendLog } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
+import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { dispatchEmailBatch } from '#core/server/index.js';
 import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-fakes.js';
 
@@ -36,8 +37,14 @@ import {
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
 
-const connectionString =
-  process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+beforeAll(async () => {
+  database = await createTestDatabase(
+    'together_create_auth_test',
+    process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together',
+  );
+});
+afterAll(async () => { await database?.close(); });
 
 let signUpIpSuffix = 1;
 
@@ -133,8 +140,46 @@ describe('ASVS authentication policy', () => {
 });
 
 describe('real-provider sign-in and passkey proofs', () => {
+  it('contains sign-in event recorder failures after creating a session', async () => {
+    const warning = vi.fn();
+    const recordSignIn = vi.fn(async () => {
+      throw new Error('member-events unavailable for ada@example.test');
+    });
+    const { auth } = buildAuth({ logger: { warn: warning }, recordSignIn });
+    const email = `contained-recorder-${Date.now()}@together.dev`;
+    const password = passwordFixture('password-1234');
+    const signedUp = await signUp(auth, email, { password });
+    expect(signedUp.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+    warning.mockClear();
+    recordSignIn.mockClear();
+
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'studio.localhost:48730',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+        },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.headers.get('set-auth-token')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(recordSignIn).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledWith('[auth] tenant-sign-in-events reason=record_sign_in_failed');
+    });
+  });
+
   it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
-    const { auth } = buildAuth();
+    const recordSignIn = vi.fn(async () => undefined);
+    const { auth } = buildAuth({ recordSignIn });
     const email = `two-factor-${Date.now()}@together.dev`;
     const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
@@ -165,9 +210,11 @@ describe('real-provider sign-in and passkey proofs', () => {
     }, { authorization: `Bearer ${token}` });
     expect(verifiedEnrollment.status).toBe(200);
 
+    recordSignIn.mockClear();
     const challenged = await post('/sign-in/email', { email, password });
     expect(challenged.status).toBe(200);
     expect(await challenged.json()).toMatchObject({ twoFactorRedirect: true });
+    expect(recordSignIn).not.toHaveBeenCalled();
     const provisionalToken = challenged.headers.get('set-auth-token') ?? '';
     expect(await auth.api.getSession({
       headers: new Headers({ authorization: `Bearer ${provisionalToken}` }),
@@ -187,6 +234,7 @@ describe('real-provider sign-in and passkey proofs', () => {
       cookie: challengeCookie,
     });
     expect(completed.status).toBe(200);
+    expect(recordSignIn).toHaveBeenCalledTimes(1);
     expect(completed.headers.get('set-auth-token')).not.toBeNull();
     const completedCookies = completed.headers.getSetCookie();
     const completedSessionCookie = completedCookies
@@ -430,9 +478,14 @@ const buildAuth = (options: {
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
+  recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
+  platformTransportFails?: boolean;
+  platformSendBlocker?: Promise<void>;
+  keepAlive?(task: Promise<unknown>): void;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
+  logger?: { warn(message: string): void };
 } = {}) => {
-  const db = createDb('node-postgres', connectionString);
+  const db = database.db;
   const emailOutbox = createEmailOutboxRepository(db);
   const clock = { nowIso: () => new Date().toISOString() };
   const flushEmails = () =>
@@ -455,8 +508,8 @@ const buildAuth = (options: {
       runs: new InMemorySchedulerRunRepository(),
       trigger: 'manual',
     });
-  const dispatchEmail = (): void => undefined;
   const consentRequired = options.consentRequired ?? false;
+  let platformSendAttempts = 0;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
@@ -469,12 +522,27 @@ const buildAuth = (options: {
       (options.verifiedCustomHosts ?? []).includes(host),
     exposeMagicLinks: true,
     emailOutbox,
+    emailSender: {
+      send: async (message) => {
+        platformSendAttempts += 1;
+        await options.platformSendBlocker;
+        if (options.platformTransportFails === true) {
+          return err(unavailable('Platform transport is throttling'));
+        }
+        const sent = await createDevEmailPort(db).send(message);
+        return sent.ok ? ok({ ...sent.value, transport: 'platform' as const }) : sent;
+      },
+    },
+    authSendLog: createPlatformAuthSendLog(db),
     ids: { nextId: () => crypto.randomUUID() },
     clock,
-    dispatchEmail,
+    dispatchEmail: () => undefined,
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
     defaultTenantName: 'Together',
     google: null,
+    ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
     validateSignUpConsent: async ({ accepted }) =>
       consentRequired && accepted !== true
         ? err(validation('Accepting the terms and privacy policy is required'))
@@ -488,9 +556,12 @@ const buildAuth = (options: {
   return {
     auth,
     authPort: createAuthPort(auth),
+    db,
+    emailOutbox,
     magicLinks: createDevMagicLinkReader(db),
     emails: createDevEmailReader(db),
     flushEmails,
+    platformSendAttempts: () => platformSendAttempts,
   };
 };
 
@@ -540,6 +611,31 @@ describe('provider avatar hooks', () => {
 });
 
 describe('auth cookie scope', () => {
+  it('returns identical password failures and magic-link acknowledgements for known and unknown accounts', async () => {
+    const { auth, authPort } = buildAuth();
+    const known = `uniform-known-${crypto.randomUUID()}@example.com`;
+    const unknown = `uniform-unknown-${crypto.randomUUID()}@example.com`;
+    expect((await signUp(auth, known)).status).toBe(200);
+    const passwordless = `uniform-passwordless-${crypto.randomUUID()}@example.com`;
+    await authPort.ensureUser(passwordless);
+    const request = (path: string, email: string) => auth.handler(new Request(`http://studio.localhost:48730/api/auth/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://studio.localhost:48730', 'x-forwarded-for': '198.51.100.249' },
+      body: JSON.stringify({ email, password: 'incorrect-password', callbackURL: 'http://studio.localhost:48730/' }),
+    }));
+    for (const path of ['sign-in/email', 'sign-in/magic-link']) {
+      const knownResponse = await request(path, known);
+      const unknownResponse = await request(path, unknown);
+      expect(knownResponse.status).toBe(path === 'sign-in/email' ? 401 : 200);
+      expect(unknownResponse.status).toBe(knownResponse.status);
+      const knownBody: unknown = await knownResponse.json();
+      expect(await unknownResponse.json()).toEqual(knownBody);
+      const passwordlessResponse = await request(path, passwordless);
+      expect(passwordlessResponse.status).toBe(knownResponse.status);
+      expect(await passwordlessResponse.json()).toEqual(knownBody);
+    }
+  });
+
   it('composes soft email verification without blocking password sign-in', async () => {
     const { auth } = buildAuth();
     const options = (await auth.$context).options;
@@ -844,12 +940,27 @@ describe('soft email verification', () => {
     expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
   });
 
-  it('resends an English verification link through the outbox', async () => {
-    const { auth, emails, flushEmails } = buildAuth();
+  it('resends an English verification link and records redacted tenant metadata', async () => {
+    const { auth, db, emails, flushEmails } = buildAuth();
     const email = `verification-resend-${Date.now()}@together.dev`;
     await signUp(auth, email);
     await flushEmails();
+    const tenantId = `tenant-verification-${crypto.randomUUID()}`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `verification-${Date.now()}`,
+      name: 'Verification',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-verification-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-verification-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
     auth.setEmailVerificationDeliveryContext(email, {
+      tenantId,
       language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
@@ -859,11 +970,18 @@ describe('soft email verification', () => {
       headers: new Headers({ 'x-forwarded-for': `198.51.100.${signUpIpSuffix++}` }),
     });
     await flushEmails();
+    await auth.flushAuthEmails();
 
     expect(response.status).toBe(true);
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Verify your email address');
     expect(message?.text).toContain('studio.localhost:48730');
+    expect((await createEmailSendRepository(db).listPage(tenantId, { limit: 10 })).sends)
+      .toContainEqual(expect.objectContaining({
+        sourceKind: 'auth-email-verification',
+        subject: 'auth-email-verification',
+        transport: 'platform',
+      }));
   });
 
   it('returns indistinguishable resend responses for known and unknown addresses', async () => {
@@ -1083,6 +1201,159 @@ describe('createAuthPort.requestMagicLink', () => {
     expect(message?.html).toContain('studio.localhost:48730');
   });
 
+  it('records a tenant magic-link send as redacted platform metadata', async () => {
+    const { auth, authPort, db, magicLinks } = buildAuth();
+    const tenantId = `tenant-auth-send-${crypto.randomUUID()}`;
+    const email = `magic-log-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-send-${Date.now()}`,
+      name: 'Auth send',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-send-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-send-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
+
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantId,
+      tenantName: 'Studio',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    await auth.flushAuthEmails();
+
+    const projection = await createEmailSendRepository(db).listPage(tenantId, { limit: 10 });
+    expect(projection.sends).toHaveLength(1);
+    expect(projection.sends[0]).toMatchObject({
+      kind: 'transactional',
+      source: 'auth-magic-link',
+      sourceKind: 'auth-magic-link',
+      subject: 'auth-magic-link',
+      recipient: normalizeEmail(email),
+      status: 'sent',
+      transport: 'platform',
+    });
+    const serializedSend = JSON.stringify(projection.sends[0]);
+    expect(serializedSend).not.toContain('http');
+    expect(serializedSend).not.toContain('Studio');
+    expect(serializedSend).not.toContain(link?.token ?? 'missing-token');
+
+    const events = await db.select().from(emailEvents).where(eq(emailEvents.tenantId, tenantId)).orderBy(asc(emailEvents.sequence));
+    expect(events.map((event) => event.type)).toEqual(['queued', 'accepted']);
+    for (const event of events) {
+      const serializedMeta = JSON.stringify(event.meta);
+      expect(serializedMeta).not.toContain('http');
+      expect(serializedMeta).not.toContain('Studio');
+      expect(serializedMeta).not.toContain(link?.token ?? 'missing-token');
+    }
+  });
+
+  it('registers only tenant-bound auth sends for background lifetime extension', async () => {
+    const keepAlive = vi.fn<(task: Promise<unknown>) => void>();
+    let releaseTransport: () => void = () => undefined;
+    const transportSettled = new Promise<void>((resolve) => {
+      releaseTransport = resolve;
+    });
+    const { auth, authPort, db } = buildAuth({ keepAlive, platformSendBlocker: transportSettled });
+    const tenantId = `tenant-auth-keepalive-${crypto.randomUUID()}`;
+    const memberEmail = `magic-keepalive-member-${Date.now()}@together.dev`;
+    const strangerEmail = `magic-keepalive-stranger-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-keepalive-${Date.now()}`,
+      name: 'Auth keepalive',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-keepalive-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-keepalive-${crypto.randomUUID()}`,
+      email: memberEmail,
+      createdAt: new Date().toISOString(),
+    });
+
+    await authPort.requestMagicLink({
+      email: memberEmail,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantId,
+      tenantName: 'Auth keepalive',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    await authPort.requestMagicLink({
+      email: strangerEmail,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantName: 'Auth keepalive',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    expect(keepAlive).toHaveBeenCalledOnce();
+    const registered = keepAlive.mock.calls[0]?.[0];
+    if (registered === undefined) throw new Error('keepAlive was not called');
+    expect(registered).toBeInstanceOf(Promise);
+    let settled = false;
+    void registered.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseTransport();
+    await expect(registered).resolves.toBeUndefined();
+    await auth.flushAuthEmails();
+    expect(settled).toBe(true);
+  });
+
+  it('retries a failing platform transport and answers the member as it answers a stranger', async () => {
+    const { auth, authPort, db, platformSendAttempts } = buildAuth({ platformTransportFails: true });
+    const tenantId = `tenant-auth-retry-${crypto.randomUUID()}`;
+    const memberEmail = `magic-retry-member-${Date.now()}@together.dev`;
+    const strangerEmail = `magic-retry-stranger-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-retry-${Date.now()}`,
+      name: 'Auth retry',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-retry-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-retry-${crypto.randomUUID()}`,
+      email: memberEmail,
+      createdAt: new Date().toISOString(),
+    });
+    const requestLink = (email: string, forTenant: boolean) => authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/my',
+      ...(forTenant ? { tenantId } : {}),
+      tenantName: 'Auth retry',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    await expect(requestLink(memberEmail, true)).resolves.toBeUndefined();
+    await expect(requestLink(strangerEmail, false)).resolves.toBeUndefined();
+    await auth.flushAuthEmails();
+
+    expect(platformSendAttempts()).toBe(3);
+    const sends = await createEmailSendRepository(db).listPage(tenantId, { limit: 10 });
+    expect(sends.sends).toEqual([expect.objectContaining({
+      sourceKind: 'auth-magic-link',
+      status: 'failed',
+      failureCode: 'unavailable',
+      failureMessage: null,
+    })]);
+  });
+
   it('rebases a platform request onto the platform host and returns to its picker', async () => {
     const { authPort, magicLinks } = buildAuth();
     const email = `magic-platform-${Date.now()}@together.dev`;
@@ -1251,7 +1522,7 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
 
   it('expires enrollment links after one hour and redirects reused tokens to login', async () => {
     const { auth, authPort } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const email = `enrollment-expiry-${Date.now()}@together.dev`;
     const requestedAt = Date.now();
 
@@ -1306,12 +1577,27 @@ describe('reset password email', () => {
     expect(await response.json()).toMatchObject({ code: 'INVALID_PASSWORD_RESET_ORIGIN' });
   });
 
-  it('rebases the reset link onto the requesting host and sends an English email', async () => {
-    const { auth, authPort, emails, flushEmails } = buildAuth();
+  it('rebases the reset link and records redacted tenant metadata', async () => {
+    const { auth, authPort, db, emails, flushEmails } = buildAuth();
     const email = `reset-en-${Date.now()}@together.dev`;
     await authPort.ensureUser(email);
+    const tenantId = `tenant-reset-${crypto.randomUUID()}`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `reset-${Date.now()}`,
+      name: 'Reset',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-reset-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-reset-${crypto.randomUUID()}`,
+      email,
+      createdAt: new Date().toISOString(),
+    });
 
     auth.setResetPasswordDeliveryContext(email, {
+      tenantId,
       language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
@@ -1323,6 +1609,7 @@ describe('reset password email', () => {
       }),
     });
     await flushEmails();
+    await auth.flushAuthEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Reset your password');
@@ -1333,6 +1620,12 @@ describe('reset password email', () => {
     expect(parsedActionUrl.searchParams.get('callbackURL')).toBe(
       'http://studio.localhost:48730/reset-password',
     );
+    expect((await createEmailSendRepository(db).listPage(tenantId, { limit: 10 })).sends)
+      .toContainEqual(expect.objectContaining({
+        sourceKind: 'auth-password-reset',
+        subject: 'auth-password-reset',
+        transport: 'platform',
+      }));
   });
 
   it('sends an English email when the requested language is en', async () => {
@@ -1417,7 +1710,7 @@ describe('reset password email', () => {
 
   it('expires reset tokens after one hour and revokes existing sessions on one-time completion', async () => {
     const { auth } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const passwordOptions = (await auth.$context).options.emailAndPassword;
     expect(passwordOptions?.resetPasswordTokenExpiresIn).toBe(PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS);
     expect(passwordOptions?.revokeSessionsOnPasswordReset).toBe(true);
@@ -1476,7 +1769,7 @@ describe('reset password email', () => {
 
   it('proves the address, so a later magic-link sign-in keeps the credential and the session', async () => {
     const { auth, authPort, magicLinks } = buildAuth();
-    const db = createDb('node-postgres', connectionString);
+    const db = database.db;
     const email = `reset-verifies-${Date.now()}@together.dev`;
     const { userId } = await authPort.ensureUser(email);
     const { internalAdapter } = await auth.$context;

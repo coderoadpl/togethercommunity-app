@@ -26,7 +26,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
-| `OPTIONS /api/public/auth-resolve` | public | read | Sign-in method discovery for a typed identifier |
+| `OPTIONS /api/public/auth-resolve` | public | read | Constant sign-in method list; no identifier is read |
 | `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
 | `GET /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/public/navigation` | public | read | Anonymous tenant-home navigation |
@@ -40,7 +40,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
 | `GET /api/public/auth-config` | public | read | Login capability discovery |
-| `POST /api/public/auth-resolve` | public | read | Sign-in method discovery for a typed identifier |
+| `POST /api/public/auth-resolve` | public | read | Constant sign-in method list; no identifier is read |
 | `POST /api/auth/sign-in/magic-link` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/auth/request-password-reset` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/auth/sign-up/email` | public | mutating | Login, recovery, and magic-link authentication surface |
@@ -57,6 +57,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /marketing/confirm/:token` | public | mutating | Double opt-in confirmation |
 | `GET /legal/:slug` | public | read | Latest public legal document |
 | `GET /legal/:slug/v/:version` | public | read | Versioned public legal document |
+| `GET /marketing/forms/:slug` | public | read | Hosted tenant newsletter signup form with explicit consent wording |
+| `GET /marketing/forms/:slug/thanks` | public | read | Generic signup acknowledgement without recipient information |
+| `OPTIONS /api/public/marketing/forms/:slug/submit` | public | read | Form-specific allow-listed JSON submission preflight |
+| `POST /api/public/marketing/forms/:slug/submit` | public | mutating | Rate-limited public signup recording contacts, consent evidence and confirmation mail requests |
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
@@ -65,6 +69,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/internal/domain-check` | self-authenticating | mutating | tenant domain dispatch |
 | `POST /api/internal/reseed-acme` | self-authenticating | mutating | smoke tenant reseed |
 | `POST /api/internal/sanitize-staging-secrets` | self-authenticating | mutating | sanitize staging secrets |
+| `GET /api/internal/auth-send-log/latest` | self-authenticating | read | auth send log latest |
 | `GET /api/internal/domain-check` | self-authenticating | read | api internal domain-check |
 | `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
 | `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |
@@ -79,6 +84,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/dev/subscriptions/simulate-cycle` | local-development-only | mutating | dev subscription simulate cycle |
 | `POST /api/dev/subscriptions/simulate-failure` | local-development-only | mutating | dev subscription simulate failure |
 | `POST /api/m2m/enroll` | self-authenticating | mutating | m2m enroll |
+| `POST /api/m2m/subscriptions/adopt` | self-authenticating | mutating | m2m adopt stripe subscription |
+| `GET /api/m2m/subscriptions/stripe` | self-authenticating | read | m2m list stripe subscriptions |
 | `POST /api/m2m/transactional/messages` | self-authenticating | mutating | m2m transactional messages create |
 | `GET /api/m2m/transactional/messages/:id` | self-authenticating | read | m2m transactional message |
 | `POST /api/m2m/marketing/messages` | self-authenticating | mutating | marketing messages create |
@@ -129,6 +136,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/import/members` | self-authenticating | mutating | m2m import members |
 | `POST /api/m2m/import/grants` | self-authenticating | mutating | m2m import grants |
 | `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
+| `GET /api/reports/activity-summary` | self-authenticating | read | activity summary |
+| `GET /api/reports/member-activity` | self-authenticating | read | member activity |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |
@@ -161,6 +170,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/marketing/suppressions/import` | authenticated | mutating | import marketing suppressions |
 | `POST /api/marketing/contact-imports/:id/process` | authenticated | mutating | process marketing contact import |
 | `POST /api/marketing/contacts/sync` | authenticated | mutating | sync marketing member contacts |
+| `GET /api/marketing/forms` | authenticated | read | list marketing signup forms |
+| `GET /api/marketing/forms/:slug` | authenticated | read | get marketing signup form |
+| `POST /api/marketing/forms` | authenticated | mutating | create marketing signup form |
+| `POST /api/marketing/forms/:slug` | authenticated | mutating | update marketing signup form |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |
@@ -239,6 +252,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
 | `DELETE /api/members/:memberId` | authenticated | mutating | member remove |
+| `POST /api/subscriptions/adopt` | authenticated | mutating | adopt stripe subscription |
+| `GET /api/subscriptions/stripe` | authenticated | read | list stripe subscriptions |
 | `POST /api/grants` | authenticated | mutating | grants create |
 | `DELETE /api/grants/:grantId` | authenticated | mutating | grant revoke |
 | `GET /api/api-keys` | authenticated | read | api keys |
@@ -264,6 +279,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
+| `POST /api/checkout/stripe-test-session` | authenticated | mutating | stripe test session |
+| `POST /api/integrations/stripe/test-mode/remove` | authenticated | mutating | stripe test remove |
 | `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |

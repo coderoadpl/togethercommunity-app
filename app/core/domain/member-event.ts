@@ -7,6 +7,7 @@ export const defineMemberEventRegistry = <const TRegistry extends MemberEventReg
 ): TRegistry => registry;
 
 export const memberEventRegistry = defineMemberEventRegistry({
+  'sign-in': z.object({}).strict(),
   banned: z.object({
     reason: z.string().nullable(),
     actorUserId: z.string().min(1),
@@ -35,6 +36,12 @@ export const memberEventRegistry = defineMemberEventRegistry({
     productId: z.string().min(1),
     expiresAt: z.string().datetime(),
   }).strict(),
+  'subscription-adopted': z.object({
+    subscriptionId: z.string().min(1),
+    providerSubscriptionId: z.string().min(1),
+    productId: z.string().min(1),
+    priceId: z.string().min(1),
+  }).strict(),
   'subscription-change': z.object({
     subscriptionId: z.string().min(1),
     productId: z.string().min(1),
@@ -57,6 +64,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
 });
 
 const memberTimelineEventRegistry = defineMemberEventRegistry({
+  'sign-in': memberEventRegistry['sign-in'],
   banned: memberEventRegistry.banned,
   unbanned: memberEventRegistry.unbanned,
   purchase: memberEventRegistry.purchase.extend({
@@ -66,6 +74,9 @@ const memberTimelineEventRegistry = defineMemberEventRegistry({
     productTitle: z.string().nullable(),
   }),
   revoke: memberEventRegistry.revoke.extend({
+    productTitle: z.string().nullable(),
+  }),
+  'subscription-adopted': memberEventRegistry['subscription-adopted'].extend({
     productTitle: z.string().nullable(),
   }),
   'subscription-change': memberEventRegistry['subscription-change'].extend({

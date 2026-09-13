@@ -15,6 +15,7 @@ describe('in-memory scheduler run repository', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0,
@@ -30,6 +31,7 @@ describe('in-memory scheduler run repository', () => {
       finishedAt: '2026-07-26T10:00:01.000Z',
       durationMs: 1000,
       status: 'completed',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 1,
@@ -59,6 +61,7 @@ describe('in-memory scheduler run repository', () => {
       finishedAt: NOW,
       durationMs: 0,
       status: 'failed',
+      idle: false,
       error: 'late',
       totals: finalized?.totals ?? {
         campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
@@ -86,6 +89,7 @@ describe('in-memory scheduler run repository', () => {
         finishedAt: null,
         durationMs: null,
         status: 'running',
+        idle: false,
         error: null,
         totals: {
           campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,

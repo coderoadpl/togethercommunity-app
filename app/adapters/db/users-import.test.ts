@@ -121,6 +121,7 @@ describe('users import repository', () => {
     const mutation: Extract<ImportUsersMutation, { kind: 'grant' }> = {
       kind: 'grant', action: 'created',
       resource: {
+        mode: 'live',
         id: 'grant-import-retry', tenantId: TENANT_ID, memberId: 'member-source',
         productId: 'product-import-retry', source: 'import', startsAt: NOW,
         expiresAt: null, legacyId: null, createdAt: NOW,

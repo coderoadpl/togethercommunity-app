@@ -25,7 +25,7 @@ export const eraseMarketingMemberContact = async (db: Db, tenantId: string, inpu
   const importIds = [...new Set(affected.map((row) => row.importId))];
   if (importIds.length > 0) {
     await db.update(marketingContactImports).set({ rawCsv: null }).where(and(eq(marketingContactImports.tenantId, tenantId), inArray(marketingContactImports.id, importIds)));
-    const cancelled = await db.update(marketingContactImports).set({ status: 'cancelled', finishedAt: input.deletedAt, lockedBy: null, lockedUntil: null }).where(and(eq(marketingContactImports.tenantId, tenantId), inArray(marketingContactImports.id, importIds), inArray(marketingContactImports.status, ['draft', 'ready', 'queued', 'processing', 'failed']))).returning();
+    const cancelled = await db.update(marketingContactImports).set({ status: 'cancelled', finishedAt: input.deletedAt, lockedBy: null, lockedUntil: null }).where(and(eq(marketingContactImports.tenantId, tenantId), inArray(marketingContactImports.id, importIds), inArray(marketingContactImports.status, ['draft', 'preview_queued', 'previewing', 'ready', 'queued', 'processing', 'failed']))).returning();
     for (const batch of cancelled) await createMarketingDirectoryEventRepository(db).append(tenantId, { id: crypto.randomUUID(), tenantId, subjectKind: 'import', subjectId: batch.id, type: 'import_cancelled', actor: 'member_erasure', importId: batch.id, payload: {}, occurredAt: input.deletedAt, createdAt: input.deletedAt });
   }
 };

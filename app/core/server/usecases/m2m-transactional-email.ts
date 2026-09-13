@@ -49,7 +49,7 @@ export interface M2mTransactionalEmailDeps {
 const windowStart = (now: string, durationMs: number): string =>
   new Date(Math.floor(Date.parse(now) / durationMs) * durationMs).toISOString();
 
-const claimRateLimit = async (
+export const claimApiKeyRateLimit = async (
   apiKeyId: string,
   tenantId: string,
   now: string,
@@ -70,7 +70,7 @@ const claimRateLimit = async (
     const retryAfterSeconds = Math.max(1, Math.ceil(
       (Date.parse(startedAt) + window.durationMs - Date.parse(now)) / 1000,
     ));
-    return err(appError('rate_limited', 'Transactional e-mail API rate limit exceeded', {
+    return err(appError('rate_limited', 'API key rate limit exceeded', {
       period: window.period,
       retryAfterSeconds,
     }));
@@ -134,7 +134,7 @@ export const sendM2mTransactionalMessage = async (
     }));
   }
   const release = async () => deps.idempotency.release(tenantId.value, parsed.data.idempotencyKey);
-  const rateLimit = await claimRateLimit(apiKey.id, tenantId.value, now, deps);
+  const rateLimit = await claimApiKeyRateLimit(apiKey.id, tenantId.value, now, deps);
   if (!rateLimit.ok) {
     await release();
     return rateLimit;

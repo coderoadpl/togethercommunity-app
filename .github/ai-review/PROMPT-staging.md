@@ -117,9 +117,12 @@ what evidence is missing, not an imagined defect. Identify each blocker by path,
 line or symbol, violated rule, consequence and smallest required correction.
 Do not claim tests were executed: this session can only inspect evidence.
 
-Conclude by calling StructuredOutput with verdict PASS or FAIL, summary,
+Conclude by calling StructuredOutput with verdict PASS or FAIL, summary, tldr,
 blocking_issues (array of strings, empty only on PASS), safe_to_merge (true only
 on PASS), and blast_radius {scope: isolated|contained|broad, note: one sentence}.
+tldr is at most three plain sentences naming the verdict driver and the largest
+residual risk; it condenses summary for a reader who stops there, and never
+replaces the full summary or the blocking_issues detail.
 Use broad for shared core, CI/gates, migrations or cross-tenant/runtime effects;
 contained for one feature/layer; isolated for effects limited to touched leaves.
 PASS requires no blockers and sufficient coverage of the relevant risk areas.

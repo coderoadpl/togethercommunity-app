@@ -188,6 +188,7 @@ describe('updateTenantSettingsInputSchema', () => {
 describe('resolveInvoiceVat', () => {
   const base = tenantSettingsSchema.parse({
     name: 'Acme',
+    signInNotice: { enabled: false, text: '' },
     billingPortalUrl: null,
     bunnyStreamLibraryId: null,
     bunnyStreamCdnHostname: null,
@@ -232,6 +233,7 @@ describe('resolveTenantSocial', () => {
     expect(resolveTenantSocial(tenant, {
       name: 'Acme',
       socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
@@ -259,6 +261,7 @@ describe('resolveTenantSocial', () => {
     expect(resolveTenantSocial(tenant, {
       name: 'Acme',
       socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
@@ -286,6 +289,7 @@ describe('resolveTenantSocial', () => {
     expect(resolveTenantSocial(tenant, {
       name: 'Acme',
       socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
@@ -314,12 +318,14 @@ describe('tenantSettingsSchema', () => {
   it('accepts a fully-cleared settings row', () => {
     expect(tenantSettingsSchema.parse({
       name: 'Acme',
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
     })).toEqual({
       name: 'Acme',
       socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       bunnyStreamCdnHostname: null,
@@ -343,5 +349,17 @@ describe('tenantSettingsSchema', () => {
 describe('DELETED_MEMBER_DISPLAY', () => {
   it('uses a language-neutral marker for an erased account', () => {
     expect(DELETED_MEMBER_DISPLAY).toBe('[deleted-member]');
+  });
+});
+
+describe('sign-in notice settings', () => {
+  it('defaults existing settings to a disabled empty notice', () => {
+    expect(tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null }).signInNotice)
+      .toEqual({ enabled: false, text: '' });
+  });
+  it('trims outer whitespace, preserves line breaks and limits text to 600 characters', () => {
+    expect(updateTenantSettingsInputSchema.parse({ signInNotice: { enabled: true, text: '  First line\nSecond line  ' } }).signInNotice)
+      .toEqual({ enabled: true, text: 'First line\nSecond line' });
+    expect(updateTenantSettingsInputSchema.safeParse({ signInNotice: { enabled: true, text: 'a'.repeat(601) } }).success).toBe(false);
   });
 });

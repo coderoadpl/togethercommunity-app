@@ -82,6 +82,7 @@ const fakeTenants = (branding?: {
       : {
           name: 'Acme',
           socialLinks: [],
+          signInNotice: { enabled: false, text: '' },
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
           bunnyStreamCdnHostname: null,
@@ -136,6 +137,7 @@ describe('getPublicOffer', () => {
         tenant: {
           slug: 'acme',
           name: 'Acme',
+          signInNotice: { enabled: false, text: '' },
           branding: { logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null },
           socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },

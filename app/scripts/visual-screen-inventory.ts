@@ -82,12 +82,53 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
+const UNREAD_BADGE_SELECTOR = '[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)';
+
 // The count arrives asynchronously, so a shot can otherwise land on a bare bell.
 const waitForUnreadBadge = async (page: Page): Promise<void> => {
-  await page
-    .locator('[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)')
-    .waitFor(visible);
+  await page.locator(UNREAD_BADGE_SELECTOR).waitFor(visible);
 };
+
+const waitForFixtureCall = async (page: Page, expected: string): Promise<void> => {
+  await page.waitForFunction((call) => {
+    const raw = document.documentElement.dataset['fixtureCalls'];
+    if (raw === undefined) return false;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.some((item) => typeof item === 'string' && item === call);
+  }, expected, { timeout: visible.timeout });
+};
+
+export interface AntialiasRepaint {
+  waitForTarget: () => Promise<void>;
+  setHidden: (hidden: boolean) => Promise<void>;
+  repaint: () => Promise<void>;
+}
+
+export const repaintForStableAntialiasing = async (steps: AntialiasRepaint): Promise<void> => {
+  // Repeated captures of these screens alternated between two antialias states for the same geometry; forcing a re-raster once the async chrome is final made them byte-stable.
+  // The wait is the alarm: a selector that stops matching must fail the capture instead of silently skipping the re-raster.
+  await steps.waitForTarget();
+  await steps.setHidden(true);
+  await steps.repaint();
+  await steps.setHidden(false);
+  await steps.repaint();
+};
+
+const repaintLocator = (page: Page, locator: Locator): Promise<void> => repaintForStableAntialiasing({
+  waitForTarget: () => locator.first().waitFor(visible),
+  setHidden: async (hidden) => {
+    await locator.evaluateAll((elements, hide) => {
+      for (const element of elements) {
+        if (hide) element.style.visibility = 'hidden';
+        else element.style.removeProperty('visibility');
+      }
+    }, hidden);
+  },
+  repaint: () => waitForPaint(page),
+});
+
+const repaintUnreadBadge = (page: Page): Promise<void> =>
+  repaintLocator(page, page.locator(UNREAD_BADGE_SELECTOR));
 
 export const domainChecklistRouting = (active: boolean): TenantRouting => {
   const domain = 'courses.example.org';
@@ -196,6 +237,22 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
+    name: 'marketing-signup-form',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    fixtureName: 'panel-marketing-forms',
+    path: '/marketing/forms/newsletter?lang=en',
+    ready: (page) => page.getByTestId('marketing-signup-form').waitFor(visible),
+  },
+  {
+    name: 'marketing-signup-thanks',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    fixtureName: 'panel-marketing-forms',
+    path: '/marketing/forms/newsletter/thanks?lang=en',
+    ready: (page) => page.getByTestId('marketing-signup-thanks').waitFor(visible),
+  },
+  {
     name: 'anon-home-branded',
     auth: 'public',
     tenantSlug: 'akademia',
@@ -228,6 +285,11 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('anon-course-program').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
+    },
+    settled: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) >= 900) {
+        await repaintLocator(page, page.getByTestId('anon-sidebar').locator('svg'));
+      }
     },
   },
   {
@@ -305,7 +367,9 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('continue-cta').waitFor(visible);
       await page.getByTestId('course-cover').waitFor(visible);
       await page.getByTestId('course-discussion-search').waitFor(visible);
+      await waitForUnreadBadge(page);
     },
+    settled: repaintUnreadBadge,
   },
   {
     name: 'course-long-curriculum',
@@ -376,6 +440,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       }
       await page.evaluate(() => window.scrollTo(0, 0));
       await waitForPaint(page);
+      await repaintUnreadBadge(page);
     },
   },
   {
@@ -443,6 +508,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('reaction-post-community-hello-👍').waitFor(visible);
       await page.getByTestId('space-follow-toggle').waitFor(visible);
       await waitForUnreadBadge(page);
+      await waitForFixtureCall(page, 'markSpaceSeen:[{"spaceId":"space-studio-community"}]');
     },
   },
   {
@@ -650,6 +716,12 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByTestId('email-event').last().waitFor(visible),
   },
   {
+    name: 'panel-marketing-send-detail-auth',
+    auth: 'creator',
+    path: '/panel/marketing/sends/transactional/send-studio-auth-magic-link',
+    ready: (page) => page.getByTestId('email-event').last().waitFor(visible),
+  },
+  {
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',
@@ -668,6 +740,12 @@ export const SCREENS: readonly ScreenSpec[] = [
     ready: (page) => page.getByRole('heading', { name: en.marketing.layoutsTitle, exact: true }).waitFor(visible),
   },
   {
+    name: 'panel-marketing-forms',
+    auth: 'creator',
+    path: '/panel/marketing/forms',
+    ready: (page) => page.getByRole('table', { name: en.signupForms.title }).waitFor(visible),
+  },
+  {
     name: 'panel-integrations-email',
     auth: 'creator',
     path: '/panel/integrations#email',
@@ -679,6 +757,11 @@ export const SCREENS: readonly ScreenSpec[] = [
     isolateCapture: true,
     path: '/panel/courses/course-js',
     ready: (page) => page.getByTestId('module-card').first().waitFor(visible),
+    settled: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) >= 900) {
+        await repaintLocator(page, page.getByTestId('course-image-upload'));
+      }
+    },
   },
   {
     name: 'member-detail',

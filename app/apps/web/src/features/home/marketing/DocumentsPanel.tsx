@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Alert, Button, Chip, FormControl, FormLabel, Link as MuiLink, OutlinedInput, Stack, Typography } from '@mui/material';
+import { useRef, useState, type FormEvent } from 'react';
+import { Alert, Button, Chip, FormControl, FormHelperText, FormLabel, Link as MuiLink, OutlinedInput, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
@@ -7,6 +7,7 @@ import type { TenantDocument, TenantDocumentVersion } from '#core/domain/index.j
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { MarkdownEditor, type MarkdownEditorHandle } from '../../../components/ui/MarkdownEditor.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -46,6 +47,8 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
   const [slug, setSlug] = useState(document?.slug ?? '');
   const [title, setTitle] = useState(document?.title ?? '');
   const [content, setContent] = useState(latest?.content ?? '');
+  const [contentAttempted, setContentAttempted] = useState(false);
+  const contentRef = useRef<MarkdownEditorHandle>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify([
     document?.slug ?? '',
     document?.title ?? '',
@@ -73,10 +76,20 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
   const publish = useMutation({ ...actions.publishMarketingDocument, onSuccess: invalidate });
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    setContentAttempted(true);
+    if (content.trim() === '') {
+      contentRef.current?.focus();
+      return;
+    }
     if (document === undefined) create.mutate({ slug, title, content });
     else update.mutate({ documentId: document.id, title, content });
   };
   const saveAndPublish = () => {
+    setContentAttempted(true);
+    if (content.trim() === '') {
+      contentRef.current?.focus();
+      return;
+    }
     if (document === undefined) return;
     update.mutate(
       { documentId: document.id, title, content },
@@ -117,8 +130,18 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
           <OutlinedInput id="marketing-document-title" value={title} onChange={(event) => setTitle(event.target.value)} required />
         </FormControl>
         <FormControl fullWidth>
-          <FormLabel htmlFor="marketing-document-markdown">{t.marketing.markdownLabel}</FormLabel>
-          <OutlinedInput id="marketing-document-markdown" value={content} onChange={(event) => setContent(event.target.value)} multiline minRows={12} required />
+          <FormLabel component="span">{t.marketing.markdownLabel}</FormLabel>
+          <MarkdownEditor
+            ref={contentRef}
+            value={content}
+            onChange={setContent}
+            placeholder={t.marketing.documentMarkdownPlaceholder}
+            minRows={12}
+            testId="marketing-document-markdown"
+            aria-label={t.marketing.markdownLabel}
+            aria-describedby="marketing-document-markdown-error"
+          />
+          {contentAttempted && content.trim() === '' ? <FormHelperText id="marketing-document-markdown-error" error>{t.marketing.documentMarkdownRequired}</FormHelperText> : null}
         </FormControl>
         {create.isError || update.isError || publish.isError ? <Alert severity="error">{localizePanelError(create.error ?? update.error ?? publish.error, t)}</Alert> : null}
         {dirty ? <Alert severity="warning">{t.common.unsavedChanges}</Alert> : null}

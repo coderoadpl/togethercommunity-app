@@ -35,6 +35,7 @@ import {
   InMemoryMarketingConsentRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySchedulerRunRepository,
+  InMemorySesMaintenanceBackoffRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
@@ -53,6 +54,7 @@ import {
   completeIdempotentRequest,
   confirmMarketingConsent,
   createCampaign,
+  createScheduledMaintenanceBackoff,
   createSmokeTenantSilencedCredentials,
   deleteCampaign,
   getMarketingEligibility,
@@ -80,7 +82,7 @@ import {
 
 const NOW = '1998-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
-  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
+  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantAccess: 'staff', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
 image: null,
 memberDisplayName: null,
@@ -90,7 +92,7 @@ memberLanguage: null,
 memberVideoAutoplay: false,
 } };
 const anonymousCtx: Ctx = { identity: {
-  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantId: 'tenant-1',
+  userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', emailVerified: true, tenantAccess: 'none', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
 image: null,
 memberDisplayName: null,
@@ -1092,6 +1094,7 @@ describe('marketing e-mail use-case integration', () => {
       subscriptions: {
         findById: async () => null,
         findByProviderSubscriptionId: async () => null,
+        listKnownProviderSubscriptionIds: async () => [],
         listForMember: async () => [],
         create: async () => undefined,
         update: async () => null,
@@ -1146,12 +1149,40 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-07-01T00:00:00.000Z',
       renderedBodiesOlderThan: NOW,
       engagementOlderThan: NOW,
+      rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
       ok: true,
       value: { pendingConsentsPurged: 1 },
     });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
+  });
+
+  it('applies each marketing retention boundary to its own data class', async () => {
+    const deps = await setup([]);
+    const pending = vi.spyOn(deps.consents, 'purgeStalePending').mockResolvedValue(0);
+    const rendered = vi.spyOn(deps.sends, 'ageOutRenderedBodies').mockResolvedValue(0);
+    const engagement = vi.spyOn(deps.events, 'purgeEngagement').mockResolvedValue(0);
+    const outbox = vi.spyOn(deps.marketingOutbox, 'purge').mockResolvedValue(0);
+    const inbox = vi.spyOn(deps.snsInbox, 'purge').mockResolvedValue(0);
+    const idempotency = new InMemoryAutomationIdempotencyRepository();
+    const idempotencySweep = vi.spyOn(idempotency, 'sweepExpired').mockResolvedValue(0);
+    const boundaries = {
+      pendingOlderThan: '1998-06-22T10:00:00.000Z',
+      renderedBodiesOlderThan: '1998-07-08T10:00:00.000Z',
+      engagementOlderThan: '1998-06-22T11:00:00.000Z',
+      rawSnsInboxOlderThan: '1998-07-15T10:00:00.000Z',
+      idempotencyNow: NOW,
+    };
+
+    await runMarketingRetentionJobs(ctx, boundaries, { ...deps, idempotency });
+
+    expect(pending).toHaveBeenCalledWith('tenant-1', boundaries.pendingOlderThan, [definition.id]);
+    expect(rendered).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
+    expect(outbox).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
+    expect(inbox).toHaveBeenCalledWith('tenant-1', boundaries.rawSnsInboxOlderThan);
+    expect(engagement).toHaveBeenCalledWith('tenant-1', boundaries.engagementOlderThan);
+    expect(idempotencySweep).toHaveBeenCalledWith(NOW);
   });
 
   it('sends the double opt-in confirmation in the recipient language, then the tenant default, then English', async () => {
@@ -1251,6 +1282,9 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
       sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
@@ -1265,7 +1299,8 @@ describe('marketing e-mail use-case integration', () => {
         },
         listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
@@ -1303,6 +1338,7 @@ describe('marketing e-mail use-case integration', () => {
       finishedAt: null,
       durationMs: null,
       status: 'running',
+      idle: false,
       error: null,
       totals: {
         campaignsTouched: 0,
@@ -1320,6 +1356,9 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
       sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
@@ -1328,7 +1367,8 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => [],
         listSesTenantIds: async () => [],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
       refreshIdentity: async () => ok(undefined),
@@ -1358,6 +1398,9 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
+      schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
       sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
@@ -1369,7 +1412,8 @@ describe('marketing e-mail use-case integration', () => {
         listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
         listSesTenantIds: async () => ['tenant-1'],
       },
-      runs, ids, clock,
+      runs, ids, clock, logger: { warn: () => {} },
+      maintenanceBackoff: createScheduledMaintenanceBackoff(new InMemorySesMaintenanceBackoffRepository()),
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);
         return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);
@@ -1645,6 +1689,7 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: NOW,
       renderedBodiesOlderThan: NOW,
       engagementOlderThan: NOW,
+      rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
     expect(retention).toMatchObject({

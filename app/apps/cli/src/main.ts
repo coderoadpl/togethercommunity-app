@@ -1,3 +1,4 @@
+import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
 import { registerMarketingCommands } from './marketing-commands.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -14,7 +15,7 @@ import {
 import {
   accessItemSchema,
   currencySchema,
-  contactCampaignAudienceSchema,
+  contactCampaignAudienceInputSchema,
   devGrantInputSchema,
   err,
   internal,
@@ -55,6 +56,7 @@ import {
   type CliOriginSource,
   type CliProfile,
 } from './config.js';
+import { registerReportCommands } from './report-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -301,7 +303,7 @@ const consentDefinitionCreateOptionsSchema = z.object({
 });
 const campaignAudienceJsonSchema = z.string().transform((value, ctx) => {
   try { return JSON.parse(value); } catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Audience must be JSON' }); return z.NEVER; }
-}).pipe(contactCampaignAudienceSchema);
+}).pipe(contactCampaignAudienceInputSchema);
 const campaignCreateOptionsSchema = z.object({
   audience: campaignAudienceJsonSchema.optional(),
   name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), bodyText: z.string().optional(), replyTo: z.string().email().optional(), consentDefinition: z.string().min(1),
@@ -368,7 +370,7 @@ const devGrantOptionsSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 const apiKeyCreateOptionsSchema = z.object({
-  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'import:content', 'import:users'])).min(1).optional(),
+  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users', 'report:read'])).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
 });
 const m2mEnrollOptionsSchema = z.object({
@@ -621,6 +623,7 @@ const cliCtx = (): Result<CliCtx, AppError> => {
 };
 
 registerMarketingCommands(program, cliCtx);
+registerReportCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -1557,6 +1560,43 @@ couponsCommand
       );
     }),
   );
+
+const subscriptions = program.command('subscriptions').description('Adopt and inspect existing Stripe subscriptions');
+
+subscriptions.command('adopt')
+  .requiredOption('--subscription <id>')
+  .requiredOption('--member <id-or-email>')
+  .requiredOption('--product <id>')
+  .option('--price <id>')
+  .option('--allow-email-mismatch', 'Explicitly allow a different Stripe customer email')
+  .option('--api-key <secret>', 'Use a subscriptions:adopt API key instead of the signed-in session')
+  .action(withInput(z.tuple([subscriptionAdoptOptionsSchema]), async (ctx, [options]) => {
+    if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
+    const tenant = ctx.tenant;
+    const secret = options.apiKey;
+    const result = secret === undefined
+      ? await ctx.api.adoptStripeSubscription(options.input)
+      : await createApiClient({ baseUrl: ctx.apiUrl, headers: () => ({ [TENANT_HEADER]: tenant, [API_KEY_HEADER]: secret }) }).m2mAdoptStripeSubscription(options.input);
+    emit(result, ctx.json, (data) => `${data.subscriptionCreated ? 'adopted' : 'reused'}: ${data.subscription.providerSubscriptionId} for member ${data.subscription.memberId}; price ${data.priceCreated ? 'created' : 'reused'}: ${data.price.id}`);
+  }));
+
+subscriptions.command('list-stripe')
+  .option('--status <status>', 'Filter by Stripe status (defaults to all)')
+  .option('--unadopted', 'Show only subscriptions without a local record')
+  .option('--starting-after <id>', 'Continue from the nextCursor returned by the previous page')
+  .option('--api-key <secret>', 'Use a subscriptions:read API key instead of the signed-in session')
+  .action(withInput(z.tuple([subscriptionListOptionsSchema]), async (ctx, [options]) => {
+    if (!ctx.tenant) { emit(err(validation('Select a tenant with --tenant')), ctx.json, () => ''); return; }
+    const tenant = ctx.tenant;
+    const { apiKey: secret, ...input } = options;
+    const result = secret === undefined
+      ? await ctx.api.listStripeSubscriptions(input)
+      : await createApiClient({ baseUrl: ctx.apiUrl, headers: () => ({ [TENANT_HEADER]: tenant, [API_KEY_HEADER]: secret }) }).m2mListStripeSubscriptions(input);
+    emit(result, ctx.json, (data) => [
+      ...data.subscriptions.map((item) => `${item.id} ${item.status} ${item.adopted ? 'adopted' : 'unadopted'} ${item.providerPriceId ?? ''}`),
+      ...(data.nextCursor === null ? [] : [`next cursor: ${data.nextCursor}`]),
+    ].join('\n'));
+  }));
 
 const subscriptionCommand = program
   .command('subscription')
@@ -3210,7 +3250,7 @@ grant
     }),
   );
 
-const apiKey = program.command('api-key').description('Tenant API keys for M2M enrollment (owner only)');
+const apiKey = program.command('api-key').alias('api-keys').description('Tenant API keys (owner only)');
 
 apiKey.command('list').description('List API keys (no secrets)').action(
   withCtx(async (ctx) => {
@@ -3227,7 +3267,7 @@ apiKey.command('list').description('List API keys (no secrets)').action(
 apiKey
   .command('create <name...>')
   .description('Create an API key; the secret is shown once')
-  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, import:content, import:users')
+  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users, report:read')
   .option('--expires-at <iso>', 'ISO datetime when the key expires')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), apiKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
@@ -3336,6 +3376,22 @@ stripe
       );
     }),
   );
+
+const stripeTestMode = stripe.command('test-mode').description('Manage the isolated staff Stripe sandbox');
+stripeTestMode.command('status').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.listTenantSecrets(), ctx.json, (data) => {
+    const configured = ['stripe.testRestrictedKey', 'stripe.testWebhookSecret'].every((key) => data.secrets.some((secret) => secret.key === key));
+    return `test mode ${configured ? 'configured' : 'not configured'}\nlast test event ${data.stripeTestLastEventAt ?? 'none'}`;
+  });
+}));
+stripeTestMode.command('configure <restrictedKey>').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [restrictedKey]) => {
+    emit(await ctx.api.configureStripe({ restrictedKey, mode: 'test' }), ctx.json, (data) => `configured Stripe test mode\nwebhook ${data.webhookUrl}`);
+  }),
+);
+stripeTestMode.command('remove').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {
+  emit(await ctx.api.removeStripeTestMode(), ctx.json, () => 'removed Stripe test mode');
+}));
 
 stripe
   .command('test-connection')

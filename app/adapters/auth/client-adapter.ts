@@ -300,8 +300,8 @@ export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<
       if (!verified.ok) return verified;
       return toResult(undefined, (await client.passkey.deletePasskey({ id })).error);
     },
-    signInWithPasskey: async () => {
-      const response = await client.signIn.passkey();
+    signInWithPasskey: async (options) => {
+      const response = await client.signIn.passkey(options);
       return toResult(readAuthSession(response.data), response.error);
     },
     enableTwoFactor: async (password) => {

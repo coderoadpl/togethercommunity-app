@@ -1,10 +1,17 @@
-import { contactCampaignAudienceSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
+import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
+
+export { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema };
+export const adoptStripeSubscriptionRequestSchema = adoptStripeSubscriptionInputSchema;
+
+import { MARKETING_SIGNUP_ROUTES } from './marketing-signup-forms.js';
+import { contactCampaignAudienceInputSchema, contactAudiencePreviewSchema } from '#core/domain/marketing-audience.js';
 import { marketingSnsReceiptSchema } from '#core/domain/marketing-sns-inbox.js';
 import { marketingBodyTextSchema, marketingReplyToSchema } from '#core/domain/index.js';
 import { MARKETING_CONTACT_ROUTES } from './marketing-contacts.js';
 import { z } from 'zod';
 
 import {
+  signInNoticeSchema,
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
@@ -171,6 +178,7 @@ import {
   tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
+  campaignResultsSchema,
   consentDefinitionVersionSchema,
   consentDocumentRefSchema,
   consentDefinitionSchema,
@@ -266,7 +274,21 @@ export const authResolveOutputSchema = z.object({
   methods: z.array(signInMethodSchema).min(1),
 });
 
+const meTenantSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  staffRole: staffRoleSchema.nullable(),
+  memberId: z.string().nullable(),
+  displayName: z.string().nullable().default(null),
+  banned: z.boolean(),
+  dmOptOut: z.boolean().default(false),
+  language: languageSchema.nullable().default(null),
+  videoAutoplay: z.boolean().nullable().default(null),
+});
+
 export const meOutputSchema = z.object({
+  tenantAccess: z.enum(['none', 'member', 'staff']).default('none'),
   userId: z.string(),
   email: z.string(),
   name: z.string(),
@@ -274,20 +296,7 @@ export const meOutputSchema = z.object({
   hasPassword: z.boolean().default(false),
   twoFactorEnabled: z.boolean().default(false),
   avatarUrl: z.string().nullable().default(null),
-  tenant: z
-    .object({
-      id: z.string(),
-      slug: z.string(),
-      name: z.string(),
-      staffRole: staffRoleSchema.nullable(),
-      memberId: z.string().nullable(),
-      displayName: z.string().nullable().default(null),
-      banned: z.boolean(),
-      dmOptOut: z.boolean().default(false),
-      language: languageSchema.nullable().default(null),
-      videoAutoplay: z.boolean().nullable().default(null),
-    })
-    .nullable(),
+  tenant: meTenantSchema.nullable(),
   impersonation: impersonationViewSchema.nullable().default(null),
 });
 
@@ -343,6 +352,7 @@ export const memberBillingOrdersOutputSchema = z.object({
 
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
+  memberTenants: z.array(meTenantSchema).default([]),
   canCreateTenant: z.boolean(),
   /** Non-null only for a platform owner on a disposable deployment. */
   dataResetEnvironment: z.string().min(1).nullable().default(null),
@@ -373,6 +383,7 @@ export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
     name: z.string(),
+    signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
     branding: tenantBrandingSchema.default({}),
     socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),
@@ -410,7 +421,15 @@ export const publicNavigationOutputSchema = z.object({
   navigation: publicNavigationSchema,
 });
 
+export const stripeTestRemoveOutputSchema = z.object({ removed: z.literal(true) });
+
+export const stripeTestSessionInputSchema = z.object({ enabled: z.boolean() });
+export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
+
 export const publicPaymentConfigOutputSchema = z.object({
+  canTest: z.boolean().default(false),
+  testConfigured: z.boolean().default(false),
+  testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
 });
@@ -1360,6 +1379,7 @@ export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
   stripeMode: stripeModeSchema.nullable(),
   stripeWebhookUrl: z.string().url(),
+  stripeTestLastEventAt: z.string().datetime().nullable().default(null),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -1580,7 +1600,7 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
   status: z.enum(['active', 'archived']),
 });
 export const marketingCampaignCreateInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
   bodyText: marketingBodyTextSchema.nullable().optional(),
   replyTo: marketingReplyToSchema.nullable().optional(),
@@ -1596,19 +1616,19 @@ export const marketingCampaignActionInputSchema = z.object({
   action: z.enum(['pause', 'resume', 'cancel', 'draft']),
 });
 export const marketingAudiencePreviewInputSchema = z.object({
-  audience: contactCampaignAudienceSchema.optional(),
+  audience: contactCampaignAudienceInputSchema.optional(),
   consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
 });
 export const marketingAudiencePreviewOutputSchema = z.union([contactAudiencePreviewSchema, z.object({ count: z.number().int().nonnegative() })]);
-export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceSchema });
+export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.string().min(1), audience: contactCampaignAudienceInputSchema });
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) }),
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) }),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0) })),
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
@@ -1757,13 +1777,29 @@ export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
 export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
 export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 
+export const authSendLogLatestQuerySchema = z.object({
+  tenant: z.string().trim().min(1).max(120),
+  kind: z.literal('magic-link'),
+  since: z.string().datetime({ offset: true }),
+}).strict();
+
+export const authSendLogLatestOutputSchema = z.object({
+  status: z.enum(['queued', 'sent', 'failed']),
+  kind: z.literal('magic-link'),
+  queuedAt: z.string().datetime({ offset: true }),
+  settledAt: z.string().datetime({ offset: true }).nullable(),
+}).strict();
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
+  memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
+  ...MARKETING_SIGNUP_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -1774,6 +1810,7 @@ export const API_ROUTES = {
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   smokeTenantReseed: { method: 'POST', path: '/api/internal/reseed-acme' },
   sanitizeStagingSecrets: { method: 'POST', path: '/api/internal/sanitize-staging-secrets' },
+  authSendLogLatest: { method: 'GET', path: '/api/internal/auth-send-log/latest' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicNavigation: { method: 'GET', path: '/api/public/navigation' },
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
@@ -1783,6 +1820,8 @@ export const API_ROUTES = {
   publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
+  stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
+  stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
@@ -1963,6 +2002,10 @@ export const API_ROUTES = {
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
+  adoptStripeSubscription: { method: 'POST', path: '/api/subscriptions/adopt' },
+  listStripeSubscriptions: { method: 'GET', path: '/api/subscriptions/stripe' },
+  m2mAdoptStripeSubscription: { method: 'POST', path: '/api/m2m/subscriptions/adopt' },
+  m2mListStripeSubscriptions: { method: 'GET', path: '/api/m2m/subscriptions/stripe' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   m2mTransactionalMessagesCreate: { method: 'POST', path: '/api/m2m/transactional/messages' },
   m2mTransactionalMessage: { method: 'GET', path: '/api/m2m/transactional/messages/:id' },
@@ -2047,6 +2090,13 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  activitySummary: API_ROUTES.activitySummary.path,
+  memberActivity: API_ROUTES.memberActivity.path,
+  listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,
+  createMarketingSignupForm: API_ROUTES.createMarketingSignupForm.path,
+  getMarketingSignupForm: API_ROUTES.getMarketingSignupForm.path,
+  updateMarketingSignupForm: API_ROUTES.updateMarketingSignupForm.path,
+  submitMarketingSignupForm: API_ROUTES.submitMarketingSignupForm.path,
   listMarketingContacts: API_ROUTES.listMarketingContacts.path,
   m2mListMarketingContacts: API_ROUTES.m2mListMarketingContacts.path,
   exportMarketingContacts: API_ROUTES.exportMarketingContacts.path,
@@ -2121,6 +2171,8 @@ export const API_PATHS = {
   publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
+  stripeTestRemove: API_ROUTES.stripeTestRemove.path,
+  stripeTestSession: API_ROUTES.stripeTestSession.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
   couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
   termsConsent: API_ROUTES.termsConsent.path,
@@ -2290,6 +2342,10 @@ export const API_PATHS = {
   bunnyVideos: API_ROUTES.bunnyVideos.path,
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
+  adoptStripeSubscription: API_ROUTES.adoptStripeSubscription.path,
+  listStripeSubscriptions: API_ROUTES.listStripeSubscriptions.path,
+  m2mAdoptStripeSubscription: API_ROUTES.m2mAdoptStripeSubscription.path,
+  m2mListStripeSubscriptions: API_ROUTES.m2mListStripeSubscriptions.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   m2mTransactionalMessagesCreate: API_ROUTES.m2mTransactionalMessagesCreate.path,
   m2mTransactionalMessage: API_ROUTES.m2mTransactionalMessage.path,
@@ -2357,6 +2413,7 @@ export const API_PATHS = {
   platformDataReset: API_ROUTES.platformDataReset.path,
   smokeTenantReseed: API_ROUTES.smokeTenantReseed.path,
   sanitizeStagingSecrets: API_ROUTES.sanitizeStagingSecrets.path,
+  authSendLogLatest: API_ROUTES.authSendLogLatest.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
   onboardingSetup: API_ROUTES.onboardingSetup.path,

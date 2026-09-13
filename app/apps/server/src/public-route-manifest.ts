@@ -17,6 +17,10 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: '/marketing/forms/:slug', methods: ['GET'], mutating: false, why: 'Hosted tenant newsletter signup form with explicit consent wording' },
+  { path: '/marketing/forms/:slug/thanks', methods: ['GET'], mutating: false, why: 'Generic signup acknowledgement without recipient information' },
+  { path: API_PATHS.submitMarketingSignupForm, methods: ['OPTIONS'], mutating: false, why: 'Form-specific allow-listed JSON submission preflight' },
+  { path: API_PATHS.submitMarketingSignupForm, methods: ['POST'], mutating: true, why: 'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests' },
   { path: '*', methods: ['GET'], mutating: false, why: 'Tenant-configured path redirects and the social preview for link crawlers' },
   { path: '/manifest.webmanifest', methods: ['GET'], mutating: false, why: 'PWA web app manifest with tenant name' },
   { path: '/robots.txt', methods: ['GET'], mutating: false, why: 'Tenant crawler policy must bypass the SPA and social preview fallback' },
@@ -39,7 +43,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },
   { path: '/api/public/checkout/session', methods: ['POST'], mutating: true, why: 'Checkout session start' },
   { path: '/api/public/auth-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Login capability discovery' },
-  { path: '/api/public/auth-resolve', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Sign-in method discovery for a typed identifier' },
+  { path: '/api/public/auth-resolve', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Constant sign-in method list; no identifier is read' },
   { path: BETTER_AUTH_MAGIC_LINK_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_PASSWORD_RESET_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },
   { path: BETTER_AUTH_SIGN_UP_PATH, methods: ['POST'], mutating: true, why: 'Login, recovery, and magic-link authentication surface' },

@@ -11,6 +11,12 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  activitySummary: ReturnType<typeof vi.fn>;
+  memberActivity: ReturnType<typeof vi.fn>;
+  createApiKey: ReturnType<typeof vi.fn>;
+  listMarketingSignupForms: ReturnType<typeof vi.fn>;
+  getMarketingSignupForm: ReturnType<typeof vi.fn>;
+  createMarketingSignupForm: ReturnType<typeof vi.fn>;
   config: CliConfig;
   loadError: Error | null;
   saved: CliConfig[];
@@ -43,6 +49,12 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    activitySummary: vi.fn(),
+    memberActivity: vi.fn(),
+    createApiKey: vi.fn(),
+    listMarketingSignupForms: vi.fn(),
+    getMarketingSignupForm: vi.fn(),
+    createMarketingSignupForm: vi.fn(),
     config: {
       version: 2,
       currentOrigin: 'https://one.example',
@@ -123,6 +135,12 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    activitySummary: h.activitySummary,
+    memberActivity: h.memberActivity,
+    createApiKey: h.createApiKey,
+    listMarketingSignupForms: h.listMarketingSignupForms,
+    getMarketingSignupForm: h.getMarketingSignupForm,
+    createMarketingSignupForm: h.createMarketingSignupForm,
     createProduct: h.createProduct,
     updateProduct: h.updateProduct,
     listCourses: h.listCourses,
@@ -183,6 +201,9 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.listMarketingSignupForms.mockReset().mockResolvedValue(ok({ forms: [] }));
+  h.getMarketingSignupForm.mockReset().mockResolvedValue(err(appError('not_found', 'Signup form was not found')));
+  h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
   h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.listCourses.mockReset();
@@ -583,11 +604,16 @@ describe('login two-factor challenge', () => {
 
 describe('stripe configure', () => {
   it('registers the webhook through the same API used by the integrations panel', async () => {
-    await run('stripe', 'configure', 'rk_test_private');
+    h.configureStripe.mockResolvedValue(ok({
+      mode: 'live',
+      webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+    }));
 
-    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_test_private' });
+    await run('stripe', 'configure', 'rk_live_private');
+
+    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_live_private' });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith(
-      'configured Stripe in test mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
+      'configured Stripe in live mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
     );
   });
 });
@@ -960,5 +986,74 @@ describe('post purge', () => {
     await run('--json', 'post', 'purge');
     expect(h.purgePost).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+
+describe('activity report CLI parsing', () => {
+  const range = ['--from', '1998-08-01T00:00:00Z', '--to', '1998-09-01T00:00:00Z'];
+  afterEach(() => vi.unstubAllEnvs());
+  it('passes the API key and normalized summary range', async () => {
+    vi.stubEnv('TOGETHER_API_KEY', 'report-secret');
+    h.activitySummary.mockReset().mockResolvedValue(ok({ days: [], totals: { membersTotal: 0, membersActive: 0 } }));
+    await run('reports', 'activity-summary', ...range, '--json');
+    expect(h.activitySummary).toHaveBeenCalledWith({ from: '1998-08-01T00:00:00.000Z', to: '1998-09-01T00:00:00.000Z' }, { apiKey: 'report-secret' });
+    expect(soleJson()).toMatchObject({ ok: true, data: { days: [] } });
+  });
+  it('collects repeated exclusions and follows pagination for CSV', async () => {
+    vi.stubEnv('TOGETHER_API_KEY', 'report-secret');
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    h.memberActivity.mockReset().mockResolvedValueOnce(ok({ members: [], nextCursor: 'one' })).mockResolvedValueOnce(ok({ members: [], nextCursor: null }));
+    await run('reports', 'member-activity', ...range, '--pivot', '1998-08-15T00:00:00Z', '--exclude', '%@example.test', '--exclude', 'test_%', '--csv');
+    expect(h.memberActivity).toHaveBeenCalledTimes(2);
+    expect(h.memberActivity).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'one', excludeEmailPatterns: '%@example.test,test_%', limit: 500 }), { apiKey: 'report-secret' });
+    expect(output).toHaveBeenCalledWith(expect.stringContaining('"memberId","displayName","email"'));
+    output.mockRestore();
+  });
+  it('rejects invalid dates and conflicting output modes', async () => {
+    vi.stubEnv('TOGETHER_API_KEY', 'report-secret');
+    h.memberActivity.mockReset();
+    await run('reports', 'member-activity', ...range, '--pivot', 'invalid', '--json');
+    expect(h.memberActivity).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('rejects simultaneous CSV and JSON output', async () => {
+    vi.stubEnv('TOGETHER_API_KEY', 'report-secret');
+    h.memberActivity.mockReset();
+    await run('reports', 'member-activity', ...range, '--pivot', range[1] ?? '', '--json', '--csv');
+    expect(h.memberActivity).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('accepts api-keys create --scope report:read without expiry', async () => {
+    h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Reporting' }, secret: 'secret' }));
+    await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
+    expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
+  });
+});
+
+describe('marketing signup form commands', () => {
+  it('lists forms in one JSON envelope', async () => {
+    await run('--json', 'marketing', 'forms', 'list');
+    expect(h.listMarketingSignupForms).toHaveBeenCalledExactlyOnceWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { forms: [] } });
+  });
+  it('passes the slug to show and preserves the not-found exit code', async () => {
+    await run('--json', 'marketing', 'forms', 'show', 'newsletter');
+    expect(h.getMarketingSignupForm).toHaveBeenCalledExactlyOnceWith({ slug: 'newsletter' });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(process.exitCode).toBe(5);
+  });
+  it('validates form JSON and sends the parsed creation input', async () => {
+    const input = { slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'updates', successText: { en: 'Thank you', pl: 'Thank you' } };
+    await run('--json', 'marketing', 'forms', 'create', '--input', JSON.stringify(input));
+    expect(h.createMarketingSignupForm).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(input));
+    expect(soleJson()).toMatchObject({ ok: true, data: { form: { id: 'form-newsletter' } } });
+  });
+  it('rejects malformed JSON without sending it or echoing its content', async () => {
+    await run('--json', 'marketing', 'forms', 'create', '--input', '{private-input');
+    expect(h.createMarketingSignupForm).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(logSpy.mock.calls[0]?.[0]).not.toContain('private-input');
+    expect(process.exitCode).toBe(2);
   });
 });

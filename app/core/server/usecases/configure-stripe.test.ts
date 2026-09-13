@@ -16,6 +16,7 @@ const identity = (staffRole: Identity['staffRole']): Identity => ({
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -62,6 +63,8 @@ const harness = (provider: PaymentProvider): { deps: ConfigureStripeDeps; rows: 
     rows,
     deps: {
       appBaseUrl: 'https://app.example.test/base',
+      baseDomain: 'example.test',
+      singleTenantMode: false,
       payment: provider,
       tenantSecrets,
       secretCrypto: {
@@ -92,13 +95,13 @@ describe('configureStripe', () => {
       ok: true,
       value: {
         mode: 'live',
-        webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+        webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1',
       },
     });
     expect(calls).toEqual([{
       tenantId: 'tenant-1',
       restrictedKey: 'rk_live_private',
-      webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+      webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1',
     }]);
     expect(h.rows.map(({ key, ciphertext, maskedPreview }) => ({ key, ciphertext, maskedPreview }))).toEqual([
       { key: 'stripe.webhookSecret', ciphertext: 'encrypted:whsec_created', maskedPreview: '••••ated' },
@@ -106,12 +109,35 @@ describe('configureStripe', () => {
     ]);
   });
 
+  it('registers the webhook on APP_BASE_URL in single-tenant mode', async () => {
+    const calls: Parameters<NonNullable<PaymentProvider['configureWebhook']>>[0][] = [];
+    const h = harness(payment(async (input) => {
+      calls.push(input);
+      return ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' });
+    }));
+    h.deps.appBaseUrl = 'https://learn.example.test/base';
+    h.deps.singleTenantMode = true;
+
+    await expect(configureStripe(
+      { identity: identity('owner') },
+      { restrictedKey: 'rk_test_private', mode: 'test' },
+      h.deps,
+    )).resolves.toMatchObject({
+      ok: true,
+      value: { webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1?mode=test' },
+    });
+    expect(calls).toMatchObject([{
+      tenantId: 'tenant-1',
+      webhookUrl: 'https://learn.example.test/api/webhooks/stripe/tenant-1?mode=test',
+    }]);
+  });
+
   it('does not persist partial configuration when Stripe rejects webhook registration', async () => {
     const h = harness(payment(async () => err(integrationUnavailable('Stripe unavailable'))));
 
     await expect(configureStripe(
       { identity: identity('owner') },
-      { restrictedKey: 'rk_test_private' },
+      { restrictedKey: 'rk_test_private', mode: 'test' },
       h.deps,
     )).resolves.toEqual({
       ok: false,
@@ -131,13 +157,12 @@ describe('configureStripe', () => {
 
     await expect(configureStripe(
       { identity: identity('owner') },
-      { restrictedKey },
+      { restrictedKey, mode },
       h.deps,
     )).resolves.toMatchObject({ ok: true, value: { mode } });
-    expect(h.rows.map((row) => row.key)).toEqual([
-      'stripe.webhookSecret',
-      'stripe.restrictedKey',
-    ]);
+    expect(h.rows.map((row) => row.key)).toEqual(mode === 'test'
+      ? ['stripe.testWebhookSecret', 'stripe.testRestrictedKey', 'stripe.testWebhookEndpointId']
+      : ['stripe.webhookSecret', 'stripe.restrictedKey']);
   });
 
   it.each(['sk_test_private', 'rk_unknown_private'])(
@@ -167,7 +192,7 @@ describe('configureStripe', () => {
 
     await expect(configureStripe(
       { identity: identity('admin') },
-      { restrictedKey: 'rk_test_private' },
+      { restrictedKey: 'rk_test_private', mode: 'test' },
       h.deps,
     )).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(h.rows).toEqual([]);
@@ -188,10 +213,53 @@ describe('configureStripe', () => {
 
     await expect(configureStripe(
       { identity: identity('owner') },
-      { restrictedKey: 'rk_test_private' },
+      { restrictedKey: 'rk_test_private', mode: 'test' },
       h.deps,
     )).rejects.toThrow('database unavailable');
     expect(deleted).toEqual(['we_created']);
     expect(h.rows).toEqual([]);
   });
+});
+
+it.each([
+  ['live', 'rk_test_wrong'],
+  ['test', 'rk_live_wrong'],
+] as const)('rejects a key from the other mode in the %s slot', async (mode, restrictedKey) => {
+  let calls = 0;
+  const h = harness(payment(async () => {
+    calls += 1;
+    return ok({ webhookEndpointId: 'we_unused', webhookSecret: 'whsec_unused' });
+  }));
+  expect(await configureStripe({ identity: identity('owner') }, { mode, restrictedKey }, h.deps))
+    .toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(calls).toBe(0);
+  expect(h.rows).toEqual([]);
+});
+
+it('configures and removes a second endpoint without changing live credentials', async () => {
+  const urls: string[] = [];
+  const deleted: string[] = [];
+  const h = harness(payment(async (input) => {
+    urls.push(input.webhookUrl);
+    return ok({ webhookEndpointId: `we_${urls.length}`, webhookSecret: `whsec_${urls.length}` });
+  }, async (input) => { deleted.push(input.webhookEndpointId); return ok({ deleted: true }); }));
+  h.deps.secretCrypto.decrypt = (encrypted) => ok(encrypted.ciphertext.replace('encrypted:', ''));
+  h.deps.tenantSecrets.delete = async (tenantId, key) => {
+    const index = h.rows.findIndex((row) => row.tenantId === tenantId && row.key === key);
+    if (index < 0) return false;
+    h.rows.splice(index, 1);
+    return true;
+  };
+  await configureStripe({ identity: identity('owner') }, { restrictedKey: 'rk_live_private' }, h.deps);
+  const live = structuredClone(h.rows);
+  expect(await configureStripe({ identity: identity('owner') }, { mode: 'test', restrictedKey: 'rk_test_private' }, h.deps))
+    .toMatchObject({ ok: true });
+  expect(urls).toEqual([
+    'https://acme.example.test/api/webhooks/stripe/tenant-1',
+    'https://acme.example.test/api/webhooks/stripe/tenant-1?mode=test',
+  ]);
+  const { removeStripeTestMode } = await import('./configure-stripe.js');
+  expect(await removeStripeTestMode({ identity: identity('owner') }, h.deps)).toEqual(ok({ removed: true }));
+  expect(deleted).toEqual(['we_2']);
+  expect(h.rows).toEqual(live);
 });

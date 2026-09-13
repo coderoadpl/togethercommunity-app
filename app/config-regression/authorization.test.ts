@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+import { ok, type Capability } from '../core/domain/index.js';
+import { authorizeTenant } from '../core/server/index.js';
+import { schedulerContext, snsWebhookContext } from '../apps/server/src/marketing-worker-context.js';
 import { collectPermissionInventory } from '../scripts/permission-inventory.js';
 import { collectRuntimeRoutes } from '../scripts/generate-route-table.mjs';
 import {
@@ -13,7 +16,13 @@ import {
 const appRoot = join(import.meta.dirname, '..');
 const useCasesRoot = join(appRoot, 'core', 'server', 'usecases');
 const internalAppPath = join(appRoot, 'apps', 'server', 'src', 'internal-app.ts');
+const compositionPath = join(appRoot, 'apps', 'server', 'src', 'composition.ts');
 const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*ctx:\s*Ctx\b/g;
+const SCHEDULED_STEP_CAPABILITIES: readonly Capability[] = [
+  'scheduler:dispatch',
+  'marketing:campaign:dispatch',
+  'marketing:message:send',
+];
 const repositoryAccess = /\bdeps(?:\.\w+)+\s*\(/;
 const AUTH_ONLY: Record<string, string> = {
   'community-access.ts#requireActor': 'caller-supplied capability authorization utility',
@@ -123,6 +132,19 @@ describe('authorization fail-closed probes', () => {
       })
       .map((route) => route.subject);
     expect(offenders).toEqual([]);
+  });
+
+  it('authorizes the wired marketing scheduler context for every scheduled step', () => {
+    const ctx = schedulerContext('tenant-1');
+    for (const capability of SCHEDULED_STEP_CAPABILITIES) {
+      expect(authorizeTenant(ctx, capability)).toEqual(ok('tenant-1'));
+    }
+    expect(authorizeTenant(snsWebhookContext('tenant-1'), 'webhook:process')).toEqual(ok('tenant-1'));
+    expect(authorizeTenant(snsWebhookContext('tenant-1'), 'scheduler:dispatch').ok).toBe(false);
+  });
+
+  it('builds marketing worker contexts only through the capability-carrying helpers', () => {
+    expect(readFileSync(compositionPath, 'utf8')).not.toMatch(/\bidentity:/);
   });
 
   it('covers every repository method with tenant scope or a justified platform exception', () => {

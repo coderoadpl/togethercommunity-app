@@ -4,9 +4,9 @@ import { basename } from 'node:path';
 import type { Command } from 'commander';
 import { z } from 'zod';
 
-import { parseMarketingImportCsv, mapMarketingImportCsv, renderMarketingContactCsv, marketingDirectoryContracts, MARKETING_IMPORT_ATTESTATION_VERSION, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT, type ApiClient } from '#core/client/index.js';
+import { parseMarketingImportCsv, mapMarketingImportCsv, renderMarketingContactCsv, marketingDirectoryContracts, marketingSignupContracts, MARKETING_IMPORT_ATTESTATION_VERSION, MARKETING_IMPORT_ATTESTATION_TEXT, MARKETING_DIRECTORY_ATTESTATION_TEXT, type ApiClient } from '#core/client/index.js';
 import { marketingImportMappingSchema } from '#core/contract/index.js';
-import { err, ok, validation, internal, type AppError, type Result, type MarketingContactView } from '#core/domain/index.js';
+import { err, ok, validation, internal, type AppError, type Result, type MarketingContactImport, type MarketingContactView } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 
@@ -24,6 +24,12 @@ const keyTransport = (name?: string): Result<{ apiKey?: string }, AppError> => {
   return key ? ok({ apiKey: key }) : err(validation(`API key environment variable ${name} is empty`));
 };
 const readJsonFile = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
+const previewPendingStatuses = ['preview_queued', 'previewing'] as const;
+const finalImportStatuses = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
+const isPreviewPending = (status: MarketingContactImport['status']): boolean => previewPendingStatuses.some((value) => value === status);
+const isFinalImportStatus = (status: MarketingContactImport['status']): boolean => finalImportStatuses.some((value) => value === status);
+const importStatusResult = (batch: MarketingContactImport): Result<{ import: MarketingContactImport }, AppError> =>
+  batch.status === 'failed' || batch.status === 'cancelled' ? err(validation(`Import ${batch.status}: ${batch.lastError ?? batch.id}`, { import: batch })) : ok({ import: batch });
 export const runMarketingCsvImport = async (ctx: MarketingCliContext, file: string, options: ImportOptions, kind: 'contacts' | 'suppressions'): Promise<Result<unknown, AppError>> => {
   const transport = keyTransport(options.apiKeyEnv);
   if (!transport.ok) return transport;
@@ -50,6 +56,20 @@ export const runMarketingCsvImport = async (ctx: MarketingCliContext, file: stri
   const importId = created.value.import.id;
   if (created.value.import.fileSha256 !== fileSha256 || created.value.import.kind !== kind) return err(validation('Resume file does not match the staged import'));
   let batch = created.value.import;
+  if (options.resume !== undefined && isPreviewPending(batch.status)) {
+    if (!options.wait) return ok({ import: batch });
+    while (isPreviewPending(batch.status)) {
+      process.stderr.write(`Import ${importId}: ${batch.status}\n`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const progress = await ctx.api.getMarketingContactImport({ importId }, transport.value);
+      if (!progress.ok) return progress;
+      batch = progress.value.import;
+    }
+    if (batch.status !== 'ready') {
+      if (isFinalImportStatus(batch.status)) return importStatusResult(batch);
+      return err(validation(`Import ${batch.status}: ${batch.lastError ?? importId}`, { import: batch }));
+    }
+  }
   if (options.dryRun && batch.status !== 'draft' && batch.status !== 'ready') return ok({ import: batch });
   if (batch.status === 'draft' || batch.status === 'ready') {
     for (let offset = 0; offset < mapped.value.rows.length; offset += 200) {
@@ -70,14 +90,14 @@ export const runMarketingCsvImport = async (ctx: MarketingCliContext, file: stri
     batch = retried.value.import;
   }
   if (!options.wait) return ok({ import: batch });
-  while (!['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(batch.status)) {
+  while (!isFinalImportStatus(batch.status)) {
     process.stderr.write(`Import ${importId}: ${batch.status}\n`);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const progress = await ctx.api.getMarketingContactImport({ importId }, transport.value);
     if (!progress.ok) return progress;
     batch = progress.value.import;
   }
-  return batch.status === 'failed' || batch.status === 'cancelled' ? err(validation(`Import ${batch.status}: ${batch.lastError ?? importId}`, { import: batch })) : ok({ import: batch });
+  return importStatusResult(batch);
 };
 const filtersSchema = z.object({ id: z.string().optional(), search: z.string().optional(), tag: z.array(z.string()).optional(), list: z.string().optional(), consentDefinition: z.string().optional(), consentState: z.enum(['none', 'pending_confirmation', 'active', 'withdrawn']).optional(), suppressed: z.enum(['true', 'false']).optional(), linkedMember: z.enum(['true', 'false']).optional(), archived: z.boolean().optional(), limit: z.coerce.number().int().min(1).max(100).default(50), cursor: z.string().optional(), out: z.string().optional(), spreadsheetSafe: z.boolean().default(false), apiKeyEnv: z.string().optional() });
 const filterInput = async (api: ApiClient, options: z.output<typeof filtersSchema>, transport: { apiKey?: string }) => {
@@ -122,6 +142,16 @@ export const registerMarketingCommands = (program: Command, context: () => Resul
     const rule: unknown = options.rule === undefined ? null : JSON.parse(options.rule);
     const input = marketingDirectoryContracts.createMarketingList.input.safeParse({ ...options, rule });
     return input.success ? ctx.api.createMarketingList(input.data) : Promise.resolve(err(validation('Invalid list rule', input.error.flatten())));
+  }));
+  const forms = marketing.command('forms').description('Manage public newsletter signup forms');
+  forms.command('list').action(run(z.tuple([z.object({})]), (ctx) => ctx.api.listMarketingSignupForms({})));
+  forms.command('show <slug>').action(run(z.tuple([z.string(), z.object({})]), (ctx, [slug]) => ctx.api.getMarketingSignupForm({ slug })));
+  forms.command('create').requiredOption('--input <json>', 'Signup form as JSON').action(run(z.tuple([z.object({ input: z.string() })]), (ctx, [options]) => {
+    let raw: unknown;
+    try { raw = JSON.parse(options.input); }
+    catch { return Promise.resolve(err(validation('Signup form input must be valid JSON'))); }
+    const parsed = marketingSignupContracts.createMarketingSignupForm.input.safeParse(raw);
+    return parsed.success ? ctx.api.createMarketingSignupForm(parsed.data) : Promise.resolve(err(validation('Invalid signup form', parsed.error.flatten())));
   }));
   lists.command('list').action(run(z.tuple([z.object({})]), (ctx) => ctx.api.listMarketingLists({})));
   for (const action of ['add', 'remove'] as const) {

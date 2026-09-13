@@ -1,6 +1,6 @@
 {
-  "hash": "2ac66b6db853f63f07a4ee5864c9445f5c624beeeb5b863abf6a626337ff4581",
-  "shortId": "2ac66b6db853",
+  "hash": "ce5f1430bdadafb84280d4377a9177069dcc367552185f23a785cb217f02b3f1",
+  "shortId": "ce5f1430bdad",
   "schema": {
     "constraints": [
       {
@@ -12,6 +12,11 @@
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
         "name": "marketing_lists_rule_check",
         "table": "marketing_lists"
+      },
+      {
+        "definition": "CHECK (((NOT imported) OR (NOT active)))",
+        "name": "product_prices_imported_inactive",
+        "table": "product_prices"
       },
       {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
@@ -50,6 +55,11 @@
       },
       {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
+        "name": "dm_messages_body_format_check",
+        "table": "dm_messages"
+      },
+      {
+        "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "posts_body_format_check",
         "table": "posts"
       },
@@ -64,14 +74,44 @@
         "table": "marketing_contacts"
       },
       {
+        "definition": "CHECK ((interval_count > 0))",
+        "name": "product_prices_interval_count_positive",
+        "table": "product_prices"
+      },
+      {
         "definition": "CHECK ((invoice_vat_mode = ANY (ARRAY['rate'::text, 'exempt'::text])))",
         "name": "tenants_invoice_vat_mode_check",
         "table": "tenants"
       },
       {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "member_subscriptions_mode_check",
+        "table": "member_subscriptions"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "orders_mode_check",
+        "table": "orders"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "product_grants_mode_check",
+        "table": "product_grants"
+      },
+      {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((revision > 0))",
+        "name": "marketing_signup_forms_revision_check",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
+        "name": "marketing_signup_forms_status_check",
+        "table": "marketing_signup_forms"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
@@ -122,6 +162,11 @@
         "definition": "FOREIGN KEY (consent_definition_id) REFERENCES consent_definitions(id) ON DELETE RESTRICT",
         "name": "campaigns_consent_definition_id_consent_definitions_id_fk",
         "table": "campaigns"
+      },
+      {
+        "definition": "FOREIGN KEY (consent_id) REFERENCES marketing_consents(id) ON DELETE SET NULL",
+        "name": "marketing_signup_submissions_consent_id_fkey",
+        "table": "marketing_signup_submissions"
       },
       {
         "definition": "FOREIGN KEY (consent_row_id) REFERENCES marketing_consents(id) ON DELETE SET NULL",
@@ -560,6 +605,16 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_signup_forms_tenant_id_fkey",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "marketing_signup_submissions_tenant_id_fkey",
+        "table": "marketing_signup_submissions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "marketing_sns_inbox_events_tenant_id_tenants_id_fk",
         "table": "marketing_sns_inbox_events"
       },
@@ -794,6 +849,11 @@
         "table": "marketing_campaign_audience_snapshots"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id) ON DELETE RESTRICT",
+        "name": "marketing_signup_form_definition_fk",
+        "table": "marketing_signup_forms"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id)",
         "name": "marketing_campaign_audience_snapshots_tenant_id_consent_definit",
         "table": "marketing_campaign_audience_snapshots"
@@ -824,6 +884,11 @@
         "table": "member_course_progress"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, form_id) REFERENCES marketing_signup_forms(tenant_id, id) ON DELETE CASCADE",
+        "name": "marketing_signup_submission_form_fk",
+        "table": "marketing_signup_submissions"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, import_id) REFERENCES marketing_contact_imports(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_import_row_batch_fk",
         "table": "marketing_contact_import_rows"
@@ -842,6 +907,11 @@
         "definition": "FOREIGN KEY (tenant_id, list_id) REFERENCES marketing_lists(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_membership_list_fk",
         "table": "marketing_list_memberships"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, list_id) REFERENCES marketing_lists(tenant_id, id)",
+        "name": "marketing_signup_form_list_fk",
+        "table": "marketing_signup_forms"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id) ON DELETE CASCADE",
@@ -1152,6 +1222,16 @@
         "definition": "PRIMARY KEY (id)",
         "name": "marketing_outbox_pkey",
         "table": "marketing_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_signup_forms_pkey",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "marketing_signup_submissions_pkey",
+        "table": "marketing_signup_submissions"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1499,6 +1579,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
+        "name": "project_marketing_signup_confirmation"
       }
     ],
     "indexes": [
@@ -1630,6 +1715,11 @@
       {
         "definition": "CREATE INDEX campaign_sends_contact_journal_idx ON campaign_sends USING btree (tenant_id, contact_id, created_at, id)",
         "name": "campaign_sends_contact_journal_idx",
+        "table": "campaign_sends"
+      },
+      {
+        "definition": "CREATE INDEX campaign_sends_run_id_idx ON campaign_sends USING btree (run_id)",
+        "name": "campaign_sends_run_id_idx",
         "table": "campaign_sends"
       },
       {
@@ -1893,6 +1983,11 @@
         "table": "marketing_outbox"
       },
       {
+        "definition": "CREATE INDEX marketing_signup_submissions_counts_idx ON marketing_signup_submissions USING btree (tenant_id, form_id, occurred_at)",
+        "name": "marketing_signup_submissions_counts_idx",
+        "table": "marketing_signup_submissions"
+      },
+      {
         "definition": "CREATE INDEX marketing_sns_inbox_events_tenant_idx ON marketing_sns_inbox_events USING btree (tenant_id, inbox_id)",
         "name": "marketing_sns_inbox_events_tenant_idx",
         "table": "marketing_sns_inbox_events"
@@ -2031,6 +2126,11 @@
         "definition": "CREATE INDEX scheduler_run_tenants_tenant_run_idx ON scheduler_run_tenants USING btree (tenant_id, run_id)",
         "name": "scheduler_run_tenants_tenant_run_idx",
         "table": "scheduler_run_tenants"
+      },
+      {
+        "definition": "CREATE INDEX scheduler_runs_kind_started_id_idx ON scheduler_runs USING btree (kind, started_at DESC NULLS LAST, id DESC NULLS LAST)",
+        "name": "scheduler_runs_kind_started_id_idx",
+        "table": "scheduler_runs"
       },
       {
         "definition": "CREATE INDEX scheduler_runs_started_id_idx ON scheduler_runs USING btree (started_at, id)",
@@ -2278,6 +2378,16 @@
         "table": "marketing_outbox"
       },
       {
+        "definition": "CREATE UNIQUE INDEX marketing_signup_forms_tenant_slug_uidx ON marketing_signup_forms USING btree (tenant_id, slug)",
+        "name": "marketing_signup_forms_tenant_slug_uidx",
+        "table": "marketing_signup_forms"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX marketing_signup_forms_tenant_token_uidx ON marketing_signup_forms USING btree (tenant_id, token)",
+        "name": "marketing_signup_forms_tenant_token_uidx",
+        "table": "marketing_signup_forms"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX marketing_sns_inbox_receipt_uidx ON marketing_sns_inbox USING btree (tenant_id, topic_arn, sns_message_id)",
         "name": "marketing_sns_inbox_receipt_uidx",
         "table": "marketing_sns_inbox"
@@ -2360,6 +2470,11 @@
       {
         "definition": "CREATE UNIQUE INDEX product_grants_tenant_legacy_uidx ON product_grants USING btree (tenant_id, legacy_id) WHERE (legacy_id IS NOT NULL)",
         "name": "product_grants_tenant_legacy_uidx",
+        "table": "product_grants"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX product_grants_tenant_member_product_mode_uidx ON product_grants USING btree (tenant_id, member_id, product_id, mode)",
+        "name": "product_grants_tenant_member_product_mode_uidx",
         "table": "product_grants"
       },
       {
@@ -2551,6 +2666,14 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "maintenance_attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "quota_daily",
             "notNull": true,
             "type": "integer"
@@ -2656,6 +2779,14 @@
             "generated": "",
             "identity": "",
             "name": "identity_verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "maintenance_retry_at",
             "notNull": false,
             "type": "timestamp with time zone"
           },
@@ -3418,6 +3549,14 @@
             "name": "plan",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": "'{\"text\": \"\", \"enabled\": false}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "sign_in_notice",
+            "notNull": true,
+            "type": "jsonb"
           },
           {
             "default": "1",
@@ -4274,6 +4413,365 @@
       {
         "columns": [
           {
+            "default": "'live'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'{}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "provider_object_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "discount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "billing",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "coupon_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "price_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "orders"
+      },
+      {
+        "columns": [
+          {
+            "default": "'live'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "coupon_discount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "cancel_at_period_end",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "coupon_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "coupon_recurring_duration",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "current_period_end",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "price_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_subscription_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "member_subscriptions"
+      },
+      {
+        "columns": [
+          {
+            "default": "'live'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "event_revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
+            "generated": "",
+            "identity": "",
+            "name": "starts_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "legacy_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
             "default": "'pending'::text",
             "generated": "",
             "identity": "",
@@ -4573,6 +5071,67 @@
           }
         ],
         "name": "posts"
+      },
+      {
+        "columns": [
+          {
+            "default": "'plain'::text",
+            "generated": "",
+            "identity": "",
+            "name": "body_format",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "body",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "conversation_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sender_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "dm_messages"
       },
       {
         "columns": [
@@ -5099,131 +5658,6 @@
           }
         ],
         "name": "invoice_events"
-      },
-      {
-        "columns": [
-          {
-            "default": "'{}'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "provider_object_ids",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "discount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "amount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "billing",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "coupon_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "price_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "orders"
       },
       {
         "columns": [
@@ -5875,216 +6309,6 @@
             "default": "0",
             "generated": "",
             "identity": "",
-            "name": "coupon_discount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "false",
-            "generated": "",
-            "identity": "",
-            "name": "cancel_at_period_end",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "coupon_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "coupon_recurring_duration",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "current_period_end",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "price_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider_subscription_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "updated_at",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "member_subscriptions"
-      },
-      {
-        "columns": [
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "event_revision",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": "to_char((now() AT TIME ZONE 'utc'::text), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'::text)",
-            "generated": "",
-            "identity": "",
-            "name": "starts_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "expires_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "legacy_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "source",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_grants"
-      },
-      {
-        "columns": [
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
             "name": "failed_verification_count",
             "notNull": false,
             "type": "integer"
@@ -6180,6 +6404,107 @@
       {
         "columns": [
           {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "interval_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "imported",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "true",
+            "generated": "",
+            "identity": "",
+            "name": "active",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "interval",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_price_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "product_prices"
+      },
+      {
+        "columns": [
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -6245,6 +6570,99 @@
           }
         ],
         "name": "user"
+      },
+      {
+        "columns": [
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "idle",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "duration_ms",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "finished_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "totals",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "trigger",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "scheduler_runs"
       },
       {
         "columns": [
@@ -6850,83 +7268,6 @@
           }
         ],
         "name": "session"
-      },
-      {
-        "columns": [
-          {
-            "default": "true",
-            "generated": "",
-            "identity": "",
-            "name": "active",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "amount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "interval",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_prices"
       },
       {
         "columns": [
@@ -7750,6 +8091,147 @@
           }
         ],
         "name": "ksef_number_allocations"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "allowed_origins",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "collect_name",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_definition_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_version",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "list_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "redirect_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "success_text",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tags",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "token",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_signup_forms"
       },
       {
         "columns": [
@@ -8754,59 +9236,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "body",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "conversation_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sender_user_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "dm_messages"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "body_html",
             "notNull": true,
             "type": "text"
@@ -9227,6 +9656,67 @@
           }
         ],
         "name": "marketing_idempotency_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "confirmed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "double_opt_in",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "form_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "marketing_signup_submissions"
       },
       {
         "columns": [
@@ -10872,91 +11362,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "duration_ms",
-            "notNull": false,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "error",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "finished_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "started_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "totals",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "trigger",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "scheduler_runs"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "email",
             "notNull": false,
             "type": "text"
@@ -11681,6 +12086,11 @@
         "definition": "CREATE TRIGGER marketing_member_directory_trigger AFTER INSERT OR UPDATE OF email, deleted_at ON members FOR EACH ROW EXECUTE FUNCTION marketing_member_directory_changed()",
         "name": "marketing_member_directory_trigger",
         "table": "members"
+      },
+      {
+        "definition": "CREATE TRIGGER marketing_signup_confirmation_projection AFTER INSERT ON marketing_consents FOR EACH ROW WHEN ((new.status = 'confirmed'::text)) EXECUTE FUNCTION project_marketing_signup_confirmation()",
+        "name": "marketing_signup_confirmation_projection",
+        "table": "marketing_consents"
       },
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",

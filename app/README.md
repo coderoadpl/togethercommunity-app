@@ -10,6 +10,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 ## Quickstart (local demo)
 
 For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+Payment setup and existing Stripe subscription adoption are covered in the
+[payments guide](docs/payments.md).
 
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
@@ -127,6 +129,8 @@ delivery events, and an English transactional outbox sample.
 
 ## CLI — the agent feedback loop
 
+For isolated staff purchases, see [Test mode for staff](docs/payments.md#test-mode-for-staff).
+
 See [CLI usage](docs/cli.md) for lesson preview controls and the parity inventory.
 
 ```bash
@@ -175,7 +179,7 @@ scripts/             gates, e2e drivers, operational tools     → verification 
 `eslint-plugin-boundaries` and `dependency-cruiser` enforce the configured
 import directions and external dependency allowlists. Clients cannot import
 `core/server` or database adapters. `@vercel/*` and `@neondatabase/*` are confined
-to adapters and the reviewed `apps/server/src/entry.vercel.ts` boundary.
+to adapters and the reviewed server platform boundary.
 Framework imports in core, `any`, and type assertions other than `as const`
 are prohibited.
 
@@ -198,7 +202,8 @@ pnpm run check
 pnpm run smoke
 ```
 
-In `.github/workflows/ci.yml`, `check` also runs the production dependency audit.
+In `.github/workflows/ci.yml`, `check` also runs the production dependency audit
+and the pull-request ruleset drift check after workflow changes.
 The `smoke` job runs `smoke` and `quickstart:probe`; the macOS `visual` job runs
 `visual`, which builds Storybook before comparing captures. The twelve e2e
 matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`, `public-authz`,
@@ -208,7 +213,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->443<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->473<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -316,40 +321,51 @@ pnpm --silent run cli --tenant studio storage configure --provider minio \
 ```
 
 `pnpm run e2e:storage` runs the probe and its failure paths against a throwaway
-MinIO container; point `STORAGE_E2E_*` at a real bucket to run the same
-verification against a provider account. Runtime probes reject loopback,
+MinIO container using the image pinned in `scripts/test-images.ts`; point
+`STORAGE_E2E_*` at a real bucket to run the same verification against a provider
+account. Runtime probes reject loopback,
 link-local and private-network endpoints by default. Self-hosted MinIO on a
 trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 
-## Stripe test mode
+## Stripe payments
 
 Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, open **Integrations →
-Stripe**, and save the tenant's `rk_test_…` restricted key. Together detects the
-mode from the prefix, registers the tenant webhook through Stripe, and stores
+Stripe**, and save the tenant's `rk_live_…` restricted key. The live card accepts
+only live keys. Together registers the tenant webhook through Stripe and stores
 the returned signing secret encrypted without adding either credential to an
 env file or Git. Headless deployments can perform the same setup through the
 CLI. Then verify the connection:
 
 ```bash
-pnpm --silent run cli --tenant studio stripe configure rk_test_…
+pnpm --silent run cli --tenant studio stripe configure rk_live_…
 pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
 The restricted key needs write access to Checkout Sessions, Coupons, Promotion
 Codes, Subscriptions, and Webhook Endpoints. Together enables the event set it
 handles when creating the endpoint. For localhost without a public callback,
-the Stripe CLI can still forward events:
+the Stripe CLI can still forward events, but by default it forwards sandbox
+(test-mode) events; point them at the [test slot](docs/payments.md#test-mode-for-staff)'s
+`?mode=test` endpoint with its own signing secret, or pass `--live` to forward
+against the live card instead:
 
 ```bash
-stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
+stripe listen --events checkout.session.completed --forward-to "http://localhost:48730/api/webhooks/stripe/<tenant-id>?mode=test"
 ```
 
-Open a published product's `/checkout/<product-slug-or-id>` page and pay with a Stripe
-test card. The browser return page only shows status; the signed webhook creates
-or renews access and sends the welcome magic link.
+Open a published product's `/checkout/<product-slug-or-id>` page and pay. The
+browser return page only shows status; the signed webhook creates or renews
+access and sends the welcome magic link. Stripe test cards belong to the
+sandbox card described below, never to the live key.
 
 Checkout supports one-time and recurring prices. Stripe subscription webhooks
 renew access, handle payment failures, and end grants when subscriptions are canceled.
+
+Staff can run a real purchase against the tenant's Stripe sandbox from a second
+key slot that keeps its orders, subscriptions and grants out of live data. A
+deployment whose live card still holds an `rk_test_…` key has to move that key
+to the sandbox card before checkout works again. Both are described in the
+[payments guide](docs/payments.md).
 
 ## Versioning
 

@@ -14,6 +14,7 @@ import {
   type TenantSecretMasked,
 } from '#core/domain/index.js';
 
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
@@ -92,6 +93,12 @@ export const setTenantSecret = async (
   if (!tenant.ok) return tenant;
   const parsed = setTenantSecretInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant secret', parsed.error.flatten()));
+  if (parsed.data.key === 'stripe.restrictedKey' || parsed.data.key === 'stripe.testRestrictedKey') {
+    const expected = parsed.data.key === 'stripe.testRestrictedKey' ? 'test' : 'live';
+    if (stripeModeFromKey(parsed.data.value) !== expected) {
+      return err(validation(`The Stripe ${expected} slot requires a ${expected} restricted key`));
+    }
+  }
   const encrypted = deps.secretCrypto.encrypt(parsed.data.value);
   const stored = await deps.tenantSecrets.upsert(tenant.value, {
     id: deps.ids.nextId(),
@@ -109,6 +116,7 @@ export interface TenantSecretsView {
   secrets: TenantSecretMasked[];
   stripeMode: StripeMode | null;
   stripeWebhookUrl: string;
+  stripeTestLastEventAt: string | null;
 }
 
 const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): StripeMode | null => {
@@ -119,20 +127,24 @@ const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): Strip
   return stripeModeFromKey(decrypted.value);
 };
 
-export const stripeWebhookUrl = (appBaseUrl: string, tenantId: string): string =>
-  `${appBaseUrl.replace(/\/$/, '')}/api/webhooks/stripe/${encodeURIComponent(tenantId)}`;
+export const stripeWebhookUrl = (
+  tenantSlug: string | null,
+  tenantId: string,
+  deps: TenantUrlDeps,
+): string => tenantUrl(tenantSlug, `/api/webhooks/stripe/${encodeURIComponent(tenantId)}`, deps);
 
 export const getTenantSecretsMasked = async (
   ctx: Ctx,
-  deps: TenantSecretDeps & { appBaseUrl: string },
+  deps: TenantSecretDeps & TenantUrlDeps,
 ): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
   const rows = await deps.tenantSecrets.listByTenant(tenant.value);
   return ok({
     secrets: rows.map(masked),
+    stripeTestLastEventAt: rows.find((row) => row.key === 'stripe.testLastEventAt')?.updatedAt ?? null,
     stripeMode: readStripeMode(rows, deps.secretCrypto),
-    stripeWebhookUrl: stripeWebhookUrl(deps.appBaseUrl, tenant.value),
+    stripeWebhookUrl: stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps),
   });
 };
 

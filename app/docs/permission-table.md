@@ -16,11 +16,11 @@ Staff acting on their own account share all member capabilities. Tenant identity
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
+`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 115. Route rows: 369. Exported `Ctx` use-case rows: 288.
+Closed capability count: 118. Route rows: 386. Exported `Ctx` use-case rows: 299.
 
 ## Human-readable diff
 
@@ -80,6 +80,10 @@ no changes
 | `POST /marketing/confirm/:token` | marketing:consent:write | token | token | yes | public route manifest |
 | `GET /legal/:slug` | legal:read | public | public | yes | public route manifest |
 | `GET /legal/:slug/v/:version` | legal:read | public | public | yes | public route manifest |
+| `GET /marketing/forms/:slug` | offer:read | public | public | yes | public route manifest |
+| `GET /marketing/forms/:slug/thanks` | offer:read | public | public | yes | public route manifest |
+| `OPTIONS /api/public/marketing/forms/:slug/submit` | offer:read | public | public | yes | public route manifest |
+| `POST /api/public/marketing/forms/:slug/submit` | marketing:consent:write | public | public | yes | public route manifest |
 | `POST /api/webhooks/stripe/:tenantId` | webhook:process | webhook | webhook | yes | public route manifest |
 | `POST /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `GET /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
@@ -88,6 +92,7 @@ no changes
 | `POST /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/reseed-acme` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/sanitize-staging-secrets` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `GET /api/internal/auth-send-log/latest` | scheduler:read | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/domain-check` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `POST /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/dispatch-ksef` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
@@ -102,6 +107,8 @@ no changes
 | `POST /api/dev/subscriptions/simulate-cycle` | development:mutate | public | public | yes | Local-development-only composition flag |
 | `POST /api/dev/subscriptions/simulate-failure` | development:mutate | public | public | yes | Local-development-only composition flag |
 | `POST /api/m2m/enroll` | enrollment:create | api-key | api-key | yes | Tenant API key |
+| `POST /api/m2m/subscriptions/adopt` | subscriptions:adopt | subscriptions-adopt-api-key | subscriptions-adopt-api-key | yes | Tenant API key |
+| `GET /api/m2m/subscriptions/stripe` | subscriptions:read | subscriptions-read-api-key | subscriptions-read-api-key | yes | Tenant API key |
 | `POST /api/m2m/transactional/messages` | transactional:message:send | transactional-api-key | transactional-api-key | yes | Tenant API key |
 | `GET /api/m2m/transactional/messages/:id` | transactional:message:read | transactional-api-key | transactional-api-key | yes | Tenant API key |
 | `POST /api/m2m/marketing/messages` | marketing:message:send | api-key | api-key | yes | Tenant API key |
@@ -152,6 +159,8 @@ no changes
 | `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -184,6 +193,10 @@ no changes
 | `POST /api/marketing/suppressions/import` | marketing:import:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/contact-imports/:id/process` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/contacts/sync` | scheduler:dispatch | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/forms` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/marketing/forms/:slug` | marketing:list:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/forms` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/marketing/forms/:slug` | marketing:list:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -262,6 +275,8 @@ no changes
 | `GET /api/members/:memberId/learning-summary` | member:learning:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/:memberId/progress-reset` | member:progress:manage | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/members/:memberId` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/subscriptions/adopt` | subscriptions:adopt | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/subscriptions/stripe` | subscriptions:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/grants` | member:grant:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/grants/:grantId` | member:grant:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/api-keys` | api-key:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -287,6 +302,8 @@ no changes
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/checkout/stripe-test-session` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/integrations/stripe/test-mode/remove` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ifirma/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ksef/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
@@ -407,6 +424,8 @@ no changes
 | `account-sessions.ts#listMyAccountSessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyAccountSession` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyOtherAccountSessions` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
+| `activity-reports.ts#getActivitySummary` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
+| `activity-reports.ts#getMemberActivity` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
 | `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
@@ -430,6 +449,7 @@ no changes
 | `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `configure-stripe.ts#configureStripe` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
+| `configure-stripe.ts#removeStripeTestMode` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
 | `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#restoreContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
@@ -527,6 +547,7 @@ no changes
 | `marketing-contact-imports.ts#createMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#appendMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#validateMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
+| `marketing-contact-imports.ts#processMarketingContactImportPreview` | scheduler:dispatch | owner, admin, operator-secret | owner, admin, operator-secret | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#commitMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#getMarketingContactImport` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
 | `marketing-contact-imports.ts#getMarketingContactImportRows` | marketing:import:write | owner, admin, api-key | owner, admin, api-key | yes | core/server/usecases/marketing-contact-imports.ts authorization call |
@@ -603,6 +624,10 @@ no changes
 | `marketing-ses-onboarding.ts#listSesIdentities` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
+| `marketing-signup-forms.ts#listMarketingSignupForms` | marketing:list:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#getMarketingSignupForm` | marketing:list:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#createMarketingSignupForm` | marketing:list:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
+| `marketing-signup-forms.ts#updateMarketingSignupForm` | marketing:list:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-signup-forms.ts authorization call |
 | `marketing-sns-inbox.ts#recordVerifiedMarketingSnsEnvelope` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
 | `marketing-sns-inbox.ts#processMarketingSnsInbox` | webhook:process | owner, admin, webhook | owner, admin, webhook | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
 | `marketing-sns-inbox.ts#retryMarketingSnsInbox` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-sns-inbox.ts authorization call |
@@ -676,6 +701,9 @@ no changes
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `storage-configuration.ts#probeStorageConnection` | integration:test | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
 | `storage-configuration.ts#configureStorageConnection` | tenant:secret:write | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
+| `stripe-subscription-adoption.ts#adoptStripeSubscription` | subscriptions:adopt | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
+| `stripe-subscription-adoption.ts#listStripeSubscriptions` | subscriptions:read | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
+| `stripe-test-session.ts#createStripeTestSession` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stripe-test-session.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
@@ -699,20 +727,23 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:10` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:173` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1068` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1070` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1578` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1578` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:15` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:183` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1160` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1162` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1184` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1198` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1711` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1711` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
-| api-key | `apps/server/src/marketing-routes.ts:99` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:110` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:112` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:118` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:586` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:100` | `identity: apiIdentity(tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:111` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
+| staff-role | `apps/server/src/public-app.ts:536` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -756,7 +787,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
 | staff-role | `core/server/usecases/progress.ts:113` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
-| staff-role | `core/server/usecases/resolve-identity.ts:91` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
+| staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
 
 ## Suspicious but preserved
 

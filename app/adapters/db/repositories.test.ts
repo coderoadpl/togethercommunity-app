@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -7,7 +7,6 @@ import {
   err,
   invoiceVatTreatmentsEqual,
   memberTombstone,
-  normalizeEmail,
   ok,
   validation,
   tenantSettingsSchema,
@@ -68,7 +67,6 @@ import {
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
-  createSignInMethodReader,
   createSpaceEventRepository,
   createSpaceEventRsvpRepository,
   createSpaceRepository,
@@ -124,7 +122,6 @@ import {
   members,
   memberErasureRequestEvents,
   orders,
-  passkey,
   postReportEvents,
   postReports,
   posts,
@@ -183,6 +180,7 @@ const price = (over: Partial<ProductPrice> & { id: string; tenantId: string; pro
 });
 
 const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; memberId: string; productId: string }): ProductGrant => ({
+  mode: 'live',
   source: 'stripe',
   startsAt: PAST,
   expiresAt: FUTURE,
@@ -192,6 +190,7 @@ const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; mem
 });
 
 const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: string; productId: string }): Order => ({
+  mode: 'live',
   priceId: null,
   kind: 'one_time',
   status: 'paid',
@@ -208,6 +207,7 @@ const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: 
 const subscription = (
   over: Partial<MemberSubscription> & { id: string; tenantId: string; memberId: string; productId: string; priceId: string },
 ): MemberSubscription => ({
+  mode: 'live',
   provider: 'stripe',
   providerSubscriptionId: 'psub-1',
   status: 'active',
@@ -1132,6 +1132,9 @@ describe('member subscription repository', () => {
     const repo = createMemberSubscriptionRepository(db);
     expect(await repo.findByProviderSubscriptionId(ACME, 'psub-acme')).toMatchObject({ id: 'sub-acme' });
     expect(await repo.findByProviderSubscriptionId(GLOBEX, 'psub-acme')).toBeNull();
+    expect(await repo.listKnownProviderSubscriptionIds(ACME, ['psub-acme', 'psub-unknown'])).toEqual(['psub-acme']);
+    expect(await repo.listKnownProviderSubscriptionIds(GLOBEX, ['psub-acme'])).toEqual([]);
+    expect(await repo.listKnownProviderSubscriptionIds(ACME, [])).toEqual([]);
     expect((await repo.listForMember(ACME, 'mem-acme')).map((s) => s.id)).toEqual(['sub-acme']);
     expect(await repo.countActive(ACME, NOW)).toBe(1);
     expect(await repo.countActive(GLOBEX, NOW)).toBe(0);
@@ -1232,6 +1235,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const updated = await repo.updateSettings(ACME, {
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
@@ -1258,6 +1262,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(updated).toMatchObject({
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       bunnyStreamCdnHostname: 'vz-acme.b-cdn.net',
@@ -1265,6 +1270,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       memberVideoAutoplayOverride: true,
     });
     expect(await repo.findSettings(ACME)).toMatchObject({
+      signInNotice: { enabled: true, text: 'Welcome back.\nUse your email.' },
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
@@ -1506,7 +1512,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const acmeAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000001.webp';
     const globexAvatar = '/api/public/assets/avatar/00000000-0000-4000-8000-000000000002.webp';
 
-    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).sort())
+    expect((await avatarTenants.listTenantIdsForUser('user-shared-avatar')).map((tenant) => tenant.id).sort())
       .toEqual([ACME, GLOBEX].sort());
     await avatars.setAvatar(ACME, 'user-shared-avatar', acmeAvatar);
     await avatars.setAvatar(GLOBEX, 'user-shared-avatar', globexAvatar);
@@ -1540,6 +1546,17 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await rateLimits.claim(ACME, { ...claim, windowStartedAt: '1998-07-22T00:01:00.000Z' })).toBe(true);
     await repo.revoke(ACME, 'key-acme', NOW);
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
+  });
+
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('round-trips explicit %s API key scopes within the tenant', async (scope) => {
+    const repo = createTenantApiKeyRepository(db);
+    const apiKey: TenantApiKey = {
+      id: `key-${scope}`, tenantId: ACME, name: 'Subscriptions', keyHash: `hash-${scope}`,
+      scopes: [scope], createdAt: NOW, expiresAt: null, revokedAt: null,
+    };
+    await repo.create(ACME, apiKey);
+    expect(await repo.findActiveByHash(ACME, apiKey.keyHash)).toEqual(apiKey);
+    expect(await repo.findActiveByHash(GLOBEX, apiKey.keyHash)).toBeNull();
   });
 
   it('counts public rate-limit windows and purges only the expired ones', async () => {
@@ -3121,6 +3138,7 @@ describe('direct message repositories', () => {
     conversationId: 'dm-conversation-1',
     senderUserId: 'user-acme-member',
     body: `Body ${id}`,
+    bodyFormat: 'plain',
     createdAt: NOW,
     ...over,
   });
@@ -4047,80 +4065,16 @@ describe('member erasure repository', () => {
   });
 });
 
-describe('createSignInMethodReader', () => {
-  const explainPredicate = async (
-    executor: Pick<Db, 'execute'>,
-    predicate: SQL,
-  ): Promise<string> => {
-    const result: unknown = await executor.execute(
-      sql`explain select 1 from ${user} where ${predicate}`,
-    );
-    if (
-      typeof result !== 'object'
-      || result === null
-      || !('rows' in result)
-      || !Array.isArray(result.rows)
-    ) {
-      throw new Error('explain did not return rows');
-    }
-    return JSON.stringify(result.rows);
-  };
-
-  beforeAll(async () => {
+describe('createAccountSecurityReader', () => {
+  it('projects password and verified two-factor state from the auth tables', async () => {
     await db.insert(account).values({
-      id: 'account-signin-lookup',
+      id: 'account-security-reader',
       accountId: 'owner-acme@together.dev',
       providerId: 'credential',
       userId: 'user-acme-owner',
       password: 'hashed-password',
       updatedAt: new Date(NOW),
     });
-    await db.insert(passkey).values({
-      id: 'passkey-signin-lookup',
-      publicKey: 'public-key',
-      userId: 'user-acme-member',
-      credentialID: 'credential-id',
-      counter: 0,
-      deviceType: 'singleDevice',
-      backedUp: false,
-      createdAt: new Date(NOW),
-    });
-  });
-
-  it('resolves a mixed-case identifier exactly like the stored address', async () => {
-    const reader = createSignInMethodReader(db);
-
-    expect(await reader.hasCredentialAccount(ACME, 'owner-acme@together.dev')).toBe(true);
-    expect(await reader.hasCredentialAccount(ACME, '  Owner-Acme@Together.DEV ')).toBe(true);
-    expect(await reader.hasCredentialAccount(ACME, 'buyer-acme@together.dev')).toBe(false);
-    expect(await reader.hasCredentialAccount(GLOBEX, 'owner-acme@together.dev')).toBe(false);
-  });
-
-  it('resolves a tenant-scoped passkey for the stored address', async () => {
-    const reader = createSignInMethodReader(db);
-
-    expect(await reader.hasPasskey(ACME, 'buyer-acme@together.dev')).toBe(true);
-    expect(await reader.hasPasskey(ACME, '  Buyer-Acme@Together.DEV ')).toBe(true);
-    expect(await reader.hasPasskey(ACME, 'owner-acme@together.dev')).toBe(false);
-    expect(await reader.hasPasskey(GLOBEX, 'buyer-acme@together.dev')).toBe(false);
-  });
-
-  it('keeps the identifier predicate on the unique e-mail index', async () => {
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`set local enable_seqscan = off`);
-
-      expect(
-        await explainPredicate(tx, eq(user.email, normalizeEmail('  Owner-Acme@Together.DEV '))),
-      ).toContain('Index Cond');
-      expect(
-        await explainPredicate(tx, sql`lower(btrim(${user.email})) = 'owner-acme@together.dev'`),
-      ).not.toContain('Index Cond');
-    });
-  });
-});
-
-describe('createAccountSecurityReader', () => {
-  it('projects password and verified two-factor state from the auth tables', async () => {
     await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, 'user-acme-owner'));
     await db.insert(twoFactor).values({
       id: 'two-factor-security-reader',
@@ -4141,4 +4095,78 @@ describe('createAccountSecurityReader', () => {
       twoFactorEnabled: false,
     });
   });
+});
+
+it('isolates test commerce in the database and keeps test grants out of member access', async () => {
+  const ordersRepo = createOrderRepository(db);
+  const grantsRepo = createProductGrantRepository(db);
+  const subscriptionsRepo = createMemberSubscriptionRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-2', tenantId: ACME, title: 'Acme Course 2' }));
+  const revenue = await ordersRepo.revenueSince(ACME, PAST);
+  const count = await ordersRepo.countSince(ACME, PAST);
+  const active = await subscriptionsRepo.countActive(ACME, NOW);
+  const liveGrant = await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme');
+  const pending = order({ id: 'order-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+    mode: 'test', status: 'pending', providerObjectIds: { checkoutSession: 'cs-mode-test' } });
+  await ordersRepo.create(ACME, pending);
+  expect(await ordersRepo.completeTestCheckout(GLOBEX, pending)).toBeNull();
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toMatchObject({ mode: 'test', status: 'paid' });
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toBeNull();
+  await grantsRepo.createGrant(ACME, grant({ id: 'grant-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2', mode: 'test' }));
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme')).toEqual(liveGrant);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme-2', 'test')).toMatchObject({ id: 'grant-mode-test', mode: 'test' });
+  expect((await grantsRepo.listActiveForMember(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(false);
+  expect((await grantsRepo.listForMemberWithProductNames(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(true);
+  const pricesRepo = createProductPriceRepository(db);
+  await pricesRepo.create(ACME, price({ id: 'price-mode-test', tenantId: ACME, productId: 'prod-acme-2', kind: 'recurring', interval: 'month' }));
+  await subscriptionsRepo.create(ACME, subscription({ id: 'sub-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2',
+    priceId: 'price-mode-test', providerSubscriptionId: 'stripe-sub-mode-test', mode: 'test' }));
+  expect(await subscriptionsRepo.countActive(ACME, NOW)).toBe(active);
+  expect(await ordersRepo.revenueSince(ACME, PAST)).toEqual(revenue);
+  expect(await ordersRepo.countSince(ACME, PAST)).toBe(count);
+  const testOrders = await ordersRepo.list(ACME, { mode: 'test', page: 1, pageSize: 100 });
+  expect(testOrders.orders.map((row) => row.id)).toContain(pending.id);
+  expect(testOrders.orders.every((row) => row.mode === 'test')).toBe(true);
+  expect((await ordersRepo.list(ACME, { mode: 'live', page: 1, pageSize: 100 })).orders.some((row) => row.id === pending.id)).toBe(false);
+});
+
+it('skips a test grant for a member+product that already has a live grant, without erroring', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-mode-collision-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test',
+  }))).resolves.toBe(false);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme', 'test')).toBeNull();
+});
+
+it('reclaims the row from a stray test grant when a live grant is created for the same member+product', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-2', tenantId: GLOBEX, title: 'Globex Course 2' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-stray-test', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'test',
+  }));
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toMatchObject({ id: 'grant-mode-collision-stray-test' });
+  await expect(grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-live', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toBeNull();
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2')).toMatchObject({ id: 'grant-mode-collision-live', mode: 'live' });
+});
+
+it('reclaiming a stray test grant does not delete another tenant grant that happens to share the same row id', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-shared-id', tenantId: ACME, title: 'Acme Shared Id' }));
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-shared-id', tenantId: GLOBEX, title: 'Globex Shared Id' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-shared-id', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-shared-id', mode: 'live',
+  }));
+  await grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'test',
+  }));
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id-live', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-shared-id')).toMatchObject({ id: 'grant-shared-id', mode: 'live' });
 });

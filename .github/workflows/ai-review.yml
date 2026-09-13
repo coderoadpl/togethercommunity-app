@@ -132,7 +132,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -153,7 +153,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 primary
         id: classify1p
@@ -190,6 +190,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1p
           REASON: ${{ steps.classify1p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 primary cold-start retry
@@ -197,7 +198,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -218,7 +219,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 primary cold-start retry
         id: classify1pr
@@ -255,6 +256,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1pr
           REASON: ${{ steps.classify1pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 fallback
@@ -262,7 +264,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -283,7 +285,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 fallback
         id: classify1f
@@ -320,6 +322,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1f
           REASON: ${{ steps.classify1f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 1 fallback cold-start retry
@@ -327,7 +330,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -348,7 +351,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 1 fallback cold-start retry
         id: classify1fr
@@ -385,6 +388,7 @@ jobs:
           SLOT: '1'
           ATTEMPT: try1fr
           REASON: ${{ steps.classify1fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 primary
@@ -392,7 +396,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -413,7 +417,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 primary
         id: classify2p
@@ -450,6 +454,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2p
           REASON: ${{ steps.classify2p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 primary cold-start retry
@@ -457,7 +462,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -478,7 +483,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 primary cold-start retry
         id: classify2pr
@@ -515,6 +520,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2pr
           REASON: ${{ steps.classify2pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 fallback
@@ -522,7 +528,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -543,7 +549,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 fallback
         id: classify2f
@@ -580,6 +586,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2f
           REASON: ${{ steps.classify2f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 2 fallback cold-start retry
@@ -587,7 +594,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -608,7 +615,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 2 fallback cold-start retry
         id: classify2fr
@@ -645,6 +652,7 @@ jobs:
           SLOT: '2'
           ATTEMPT: try2fr
           REASON: ${{ steps.classify2fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 primary
@@ -652,7 +660,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -673,7 +681,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 primary
         id: classify3p
@@ -710,6 +718,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3p
           REASON: ${{ steps.classify3p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 primary cold-start retry
@@ -717,7 +726,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -738,7 +747,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 primary cold-start retry
         id: classify3pr
@@ -775,6 +784,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3pr
           REASON: ${{ steps.classify3pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 fallback
@@ -782,7 +792,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -803,7 +813,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 fallback
         id: classify3f
@@ -840,6 +850,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3f
           REASON: ${{ steps.classify3f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: AI review — slot 3 fallback cold-start retry
@@ -847,7 +858,7 @@ jobs:
         if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@44423bdec74b97d67543eb16c110546762c110b2
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
         env:
           CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
           AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
@@ -868,7 +879,7 @@ jobs:
             --strict-mcp-config
             --mcp-config '{"mcpServers":{}}'
             --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
 
       - name: Classify slot 3 fallback cold-start retry
         id: classify3fr
@@ -905,6 +916,7 @@ jobs:
           SLOT: '3'
           ATTEMPT: try3fr
           REASON: ${{ steps.classify3fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
       - name: Revalidate the pinned target
@@ -921,7 +933,7 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/.github/scripts/prepare-review.sh"
 
       - name: Post the review verdict
-        if: ${{ always() && github.event_name == 'pull_request' && steps.current.outputs.current == 'true' && !cancelled() }}
+        if: ${{ always() && github.event_name == 'pull_request' && (steps.current.outputs.current == 'true' || steps.prepare.outputs.reason == 'base_moved') && !cancelled() }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -929,10 +941,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR: ${{ steps.target.outputs.pr }}
           CURRENT: ${{ steps.current.outputs.current }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
-          BASE_SHA: ${{ steps.prepare.outputs.base_sha }}
-          HEAD_SHA: ${{ steps.prepare.outputs.head_sha }}
+          PREPARE_REASON: ${{ steps.prepare.outputs.reason }}
+          BASE_SHA: ${{ steps.prepare.outputs.base_sha || steps.target.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.prepare.outputs.head_sha || steps.target.outputs.head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
           O_1P: ${{ steps.classify1p.outputs.outcome }}
           R_1P: ${{ steps.classify1p.outputs.reason }}
           RAW_1P: ${{ steps.try1p.outputs.structured_output }}
@@ -1004,6 +1017,7 @@ jobs:
         env:
           TRUSTED_INSTALLED: ${{ steps.trusted.outputs.installed }}
           PREPARED: ${{ steps.prepare.outputs.prepared }}
+          PREPARE_REASON: ${{ steps.prepare.outputs.reason }}
           CURRENT: ${{ steps.current.outputs.current }}
           DRAFT: ${{ steps.target.outputs.draft }}
           O_1P: ${{ steps.classify1p.outputs.outcome }}
@@ -1019,6 +1033,9 @@ jobs:
           O_3F: ${{ steps.classify3f.outputs.outcome }}
           O_3FR: ${{ steps.classify3fr.outputs.outcome }}
         run: |
+          if [ "$PREPARE_REASON" = base_moved ]; then
+            exec bash "$GITHUB_WORKSPACE/.github/scripts/gate-review.sh"
+          fi
           if [ "$TRUSTED_INSTALLED" != true ]; then
             echo "bootstrap-not-installed: trusted AI review gate is unavailable"
             exit 1

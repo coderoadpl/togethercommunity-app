@@ -139,7 +139,13 @@ export type InvoiceVatResolution =
   | { ok: true; treatment: InvoiceVatTreatment }
   | { ok: false; reason: 'unset' | 'exempt_basis_missing' };
 
+export const signInNoticeSchema = z.object({
+  enabled: z.boolean(),
+  text: z.string().trim().max(600),
+});
+
 export const tenantSettingsSchema = z.object({
+  signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
   defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).default([]),
@@ -199,6 +205,7 @@ const clearableText = (max: number) => z
 
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
+  signInNotice: signInNoticeSchema.optional(),
   name: tenantSchema.shape.name.optional(),
   defaultLanguage: languageSchema.optional(),
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),

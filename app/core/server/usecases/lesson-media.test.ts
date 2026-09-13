@@ -46,6 +46,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   email: 'member@together.dev',
   name: 'Member',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: 't1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -120,6 +121,7 @@ const pCourse: Product = {
 };
 
 const activeGrant: ProductGrant = {
+  mode: 'live',
   id: 'g1',
   tenantId: 't1',
   memberId: 'mem1',
@@ -207,6 +209,7 @@ const productsRepo: ProductRepository = {
 const tenantSettings: TenantSettings = {
   name: 'Acme',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: 'lib-77',
   bunnyStreamCdnHostname: null,

@@ -40,7 +40,8 @@ handler owns request-body consumption. Vercel provisions this as a project-level
 environment setting through the dashboard or CLI; its per-function
 `vercel.json` schema cannot express environment variables. The platform entry
 maps `VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
-attestation.
+attestation. Auth e-mail delivery for members is registered with the platform's
+`waitUntil` and drained before the function returns.
 
 A serverless function does not survive between requests, so the platform entry
 carries none of the in-process tickers that `entry.node.ts` runs. Every queue
@@ -110,6 +111,11 @@ additionally sets `APP_ENV=production`, `NODE_ENV=production`, secure cookies,
 real payments, production KSeF, and cron secrets. Preview and staging values
 must never reuse production credentials.
 
+The database client rewrites `sslmode=require`, `sslmode=prefer` and
+`sslmode=verify-ca` in `DATABASE_URL` to `sslmode=verify-full`, so a connection
+string copied from a provider console still validates the server hostname. An
+explicit `sslmode=disable` is left untouched for local development.
+
 Vercel sets `NODE_ENV=production` on Preview deployments as well, so `NODE_ENV`
 cannot decide the boot posture on its own. `APP_ENV` names the environment:
 `preview` and `staging` are the only values that relax the production
@@ -140,6 +146,16 @@ The command checks the health/database/SHA attestation, the public offer API
 using the tenant header, and the public web page. It does not mutate deployed
 data. No workflow currently invokes it or turns its result into an automated
 acceptance gate.
+
+The staging smoke also requests a magic-link sign-in for the seeded tenant
+member without reading or following the link, then polls an operator-secret-gated
+internal projection for up to 90 seconds. The `auth-mail-serverless` check passes
+only when the redacted platform auth send log created after that request settles
+as `sent`, proving that the deployed serverless runtime completed its off-request
+mail delivery work before returning. The projection needs the staging operator
+secret: without it the check is skipped with the name of the repository secret to
+create, and every other staging check still runs.
+
 Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
 environment.
 Project linkage, environment provisioning, and deployment require the

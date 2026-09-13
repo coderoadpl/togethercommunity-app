@@ -1,3 +1,8 @@
+import { setCookie, deleteCookie } from 'hono/cookie';
+import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
+import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
+import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions } from '#core/server/index.js';
+import { registerSessionMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
 import { setMarketingCampaignAudience, returnMarketingCampaignToDraft } from '#core/server/index.js';
 import { marketingSnsRetryInputSchema, API_ROUTES } from '#core/contract/index.js';
@@ -12,6 +17,8 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  authSendLogLatestOutputSchema,
+  authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
   contentVersionRestoreInputSchema,
   couponArchiveRequestSchema,
@@ -113,6 +120,7 @@ import {
   spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
+  stripeTestSessionInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
   studentLessonPlaybackOutputSchema,
@@ -134,6 +142,7 @@ import {
 import {
   devGrantInputSchema,
   apiKeyHasCapability,
+  appError,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
   err,
@@ -142,6 +151,7 @@ import {
   internal,
   memberExportFormatSchema,
   ok,
+  SMOKE_TENANT_MEMBER_EMAIL,
   tenantNotFound,
   unauthorized,
   validation,
@@ -180,6 +190,8 @@ import {
   avatarUrlFor,
   cancelCampaign,
   configureStripe,
+  removeStripeTestMode,
+  createStripeTestSession,
   createCampaign,
   createCoupon,
   createCourse,
@@ -419,6 +431,7 @@ import { impersonationDeps } from './impersonation-guard.js';
 import { checkoutConsentEvidence } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
+import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import {
   createNotificationEventStream,
@@ -477,6 +490,7 @@ const issueMagicLink = async (
   await deps.authPort.requestMagicLink({
     email: input.email,
     callbackURL: input.baseUrl,
+    tenantId: input.tenantId,
     tenantName: input.tenantName,
     language: input.language,
     baseUrl: input.baseUrl,
@@ -566,6 +580,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   name: user.name,
   emailVerified: user.emailVerified,
   image: null,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -584,6 +599,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   name: 'Checkout',
   emailVerified: false,
   image: null,
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -595,6 +611,30 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   memberLanguage: null,
   memberVideoAutoplay: false,
 });
+
+const apiKeyWindowStart = (now: string, durationMs: number): string =>
+  new Date(Math.floor(Date.parse(now) / durationMs) * durationMs).toISOString();
+
+const claimSubscriptionApiKeyRateLimit = async (
+  tenantId: string,
+  apiKeyId: string,
+  deps: Pick<AppDeps, 'apiKeyRateLimits' | 'clock'>,
+): Promise<Result<void, AppError>> => {
+  const now = deps.clock.nowIso();
+  const durationMs = 60_000;
+  const windowStartedAt = apiKeyWindowStart(now, durationMs);
+  const claimed = await deps.apiKeyRateLimits.claim(tenantId, {
+    apiKeyId,
+    period: 'minute',
+    windowStartedAt,
+    limit: 60,
+  });
+  if (claimed) return ok(undefined);
+  return err(appError('rate_limited', 'Subscription API rate limit exceeded', {
+    period: 'minute',
+    retryAfterSeconds: Math.max(1, Math.ceil((Date.parse(windowStartedAt) + durationMs - Date.parse(now)) / 1000)),
+  }));
+};
 
 const recordCheckoutConsents = async (
   deps: AppDeps,
@@ -648,11 +688,61 @@ const recordCheckoutConsents = async (
   }
 };
 
+type AuthSendLogLatestDeps = Pick<AppDeps, 'operatorSecret'> & {
+  tenants: Pick<AppDeps['tenants'], 'findBySlug'>;
+  marketing?: {
+    emailSends: Pick<NonNullable<AppDeps['marketing']>['emailSends'], 'listByEmailAcrossKinds'>;
+  } | undefined;
+};
+
+const AUTH_SEND_LOG_SOURCE_KIND = { 'magic-link': 'auth-magic-link' } as const;
+
+export const registerAuthSendLogLatestRoute = (
+  app: Hono<AppVars>,
+  deps: AuthSendLogLatestDeps,
+): void => {
+  app.get(API_PATHS.authSendLogLatest, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.operatorSecret)) {
+      return respond(err(unauthorized('Invalid operator secret')));
+    }
+    const parsed = authSendLogLatestQuerySchema.safeParse({
+      tenant: c.req.query('tenant'),
+      kind: c.req.query('kind'),
+      since: c.req.query('since'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid auth send-log query', parsed.error.flatten())));
+    }
+    const tenant = await deps.tenants.findBySlug(parsed.data.tenant);
+    if (tenant === null) return respond(err(tenantNotFound()));
+    if (deps.marketing === undefined) {
+      return respond(err(internal('E-mail send observability is not configured')));
+    }
+    const sourceKind = AUTH_SEND_LOG_SOURCE_KIND[parsed.data.kind];
+    const since = Date.parse(parsed.data.since);
+    const send = (await deps.marketing.emailSends.listByEmailAcrossKinds(
+      tenant.id,
+      SMOKE_TENANT_MEMBER_EMAIL,
+    )).find((candidate) =>
+      candidate.kind === 'transactional'
+      && candidate.sourceKind === sourceKind
+      && candidate.transport === 'platform'
+      && Date.parse(candidate.createdAt) >= since
+      && (candidate.status === 'queued' || candidate.status === 'sent' || candidate.status === 'failed'));
+    if (send === undefined) return respond(ok(null));
+    return respond(ok(authSendLogLatestOutputSchema.parse({
+      status: send.status,
+      kind: parsed.data.kind,
+      queuedAt: send.createdAt,
+      settledAt: send.status === 'sent' ? send.sentAt : null,
+    })));
+  });
+};
+
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
-    tenantDomains: deps.tenantDomains,
     routing: deps,
   });
   app.post(API_PATHS.emailDispatch, async (c) => {
@@ -708,6 +798,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     return respond(await sanitizeStagingSecrets(deps.sanitizeStagingSecrets));
   });
+  registerAuthSendLogLatestRoute(app, deps);
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.domainCheckSecret}`)) {
@@ -752,6 +843,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('includeIdle') === undefined ? {} : { includeIdle: c.req.query('includeIdle') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
@@ -769,7 +862,6 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
   });
 
-  // A freshly registered user has no member or staff grant, so tenant identity resolution would reject this session-authenticated route.
   app.post(API_PATHS.termsConsent, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
@@ -1084,10 +1176,40 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result);
   });
 
+
+  app.post(API_PATHS.m2mAdoptStripeSubscription, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (!tenant.value) return respond(err(tenantNotFound()));
+    const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
+    if (!authed.ok) return respond(authed);
+    if (!apiKeyHasCapability(authed.value, 'subscriptions:adopt')) return respond(err(forbidden('subscriptions:adopt is not permitted')));
+    const limited = await claimSubscriptionApiKeyRateLimit(tenant.value.tenant.id, authed.value.id, deps);
+    if (!limited.ok) return respond(limited);
+    const parsed = adoptStripeSubscriptionRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid subscription request')));
+    return respond(await m2mAdoptStripeSubscription(tenant.value.tenant.id, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.m2mListStripeSubscriptions, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (!tenant.value) return respond(err(tenantNotFound()));
+    const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);
+    if (!authed.ok) return respond(authed);
+    if (!apiKeyHasCapability(authed.value, 'subscriptions:read')) return respond(err(forbidden('subscriptions:read is not permitted')));
+    const limited = await claimSubscriptionApiKeyRateLimit(tenant.value.tenant.id, authed.value.id, deps);
+    if (!limited.ok) return respond(limited);
+    const parsed = listStripeSubscriptionsInputSchema.safeParse({ ...c.req.query(), ...(c.req.query('unadopted') === undefined ? {} : { unadopted: c.req.query('unadopted') === 'true' ? true : c.req.query('unadopted') === 'false' ? false : c.req.query('unadopted') }) });
+    if (!parsed.success) return respond(err(validation('Invalid subscription request')));
+    return respond(await m2mListStripeSubscriptions(tenant.value.tenant.id, parsed.data, deps));
+  });
+
   registerAuthenticatedMarketingRoutes(app, deps);
   registerM2mMarketingContactRoutes(app, deps);
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
+  registerReportRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -1122,7 +1244,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
-      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('includeIdle') === undefined ? {} : { includeIdle: c.req.query('includeIdle') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
@@ -1147,6 +1270,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   registerSessionMarketingContactRoutes(app, deps);
+  registerSessionMarketingSignupRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
@@ -1209,6 +1333,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       contactAudienceDeps: deps.marketing.contactAudienceDeps,
       campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
       definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
+      logger: deps.logger,
     });
     return respond(result.ok ? ok({ campaign: result.value }) : result);
   });
@@ -1414,6 +1539,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1427,6 +1553,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1443,6 +1570,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1456,6 +1584,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1469,6 +1598,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       controlPlane: deps.marketing.sesOnboarding.controlPlane,
       clock: deps.clock,
       webhookBaseUrl: sesWebhookBaseUrl,
+      logger: deps.logger,
     }));
   });
 
@@ -1491,6 +1621,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
+      ...(c.req.query('recipient') === undefined ? {} : { recipient: c.req.query('recipient') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     });
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends export query', parsed.error.flatten())));
@@ -1512,6 +1643,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
       ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
+      ...(c.req.query('recipient') === undefined ? {} : { recipient: c.req.query('recipient') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
@@ -1564,6 +1696,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       : { hasPassword: false, twoFactorEnabled: false };
     return respond(
       ok({
+        tenantAccess: identity.tenantAccess,
         userId: identity.userId,
         email: identity.email,
         name: identity.name,
@@ -2027,6 +2160,18 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await removeMember(ctxOf(c), parsed.data, deps));
   });
 
+  app.post(API_PATHS.adoptStripeSubscription, async (c) => {
+    const parsed = adoptStripeSubscriptionRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid subscription adoption payload')));
+    return respond(await adoptStripeSubscription(ctxOf(c), parsed.data, deps));
+  });
+
+  app.get(API_PATHS.listStripeSubscriptions, async (c) => {
+    const parsed = listStripeSubscriptionsInputSchema.safeParse({ ...c.req.query(), ...(c.req.query('unadopted') === undefined ? {} : { unadopted: c.req.query('unadopted') === 'true' ? true : c.req.query('unadopted') === 'false' ? false : c.req.query('unadopted') }) });
+    if (!parsed.success) return respond(err(validation('Invalid Stripe subscription query')));
+    return respond(await listStripeSubscriptions(ctxOf(c), parsed.data, deps));
+  });
+
   app.post(API_PATHS.grantsCreate, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     const parsed = grantCreateInputSchema.safeParse(body);
@@ -2147,6 +2292,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           controlPlane: sesOnboarding.controlPlane,
           clock: deps.clock,
           webhookBaseUrl: sesWebhookBaseUrl,
+          logger: deps.logger,
         }),
     }),
   };
@@ -2304,6 +2450,25 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     ));
   });
 
+  app.post(API_PATHS.stripeTestSession, async (c) => {
+    if (!(await probeCorsOrigins(c.req, deps)).includes(c.req.header('origin') ?? '')) return respond(err(forbidden()));
+    const parsed = stripeTestSessionInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid test session payload')));
+    const session = createStripeTestSession(ctxOf(c), deps);
+    if (!session.ok) return respond(session);
+    c.res = respond(ok({ enabled: parsed.data.enabled }));
+    if (parsed.data.enabled) {
+      setCookie(c, 'together_stripe_test', session.value, {
+        httpOnly: true, secure: deps.secureCookies, sameSite: 'Strict', path: '/', maxAge: 3600,
+      });
+    } else {
+      deleteCookie(c, 'together_stripe_test', { path: '/' });
+    }
+    return c.res;
+  });
+
+  app.post(API_PATHS.stripeTestRemove, async (c) => respond(await removeStripeTestMode(ctxOf(c), deps)));
+
   app.post(API_PATHS.stripeConfigure, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     const parsed = stripeConfigureInputSchema.safeParse(body);
@@ -2313,6 +2478,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       parsed.data,
       {
         appBaseUrl: deps.appBaseUrl,
+        baseDomain: deps.baseDomain,
+        singleTenantMode: deps.singleTenantMode,
         payment: deps.payment,
         tenantSecrets: deps.tenantSecrets,
         secretCrypto: deps.secretCrypto,

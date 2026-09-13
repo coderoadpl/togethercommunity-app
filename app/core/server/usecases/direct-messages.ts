@@ -30,6 +30,7 @@ import {
   type DmConversation,
   type Member,
   type Notification,
+  type PostBodyFormat,
   type Post,
   type PublicDmConversation,
   type PublicDmMessage,
@@ -37,6 +38,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { renderPostContent } from '../post-content.js';
 import type {
   AvatarSourceReader,
   Clock,
@@ -389,7 +391,7 @@ const notifyDmRecipient = async (
   tenantId: string,
   input: {
     conversationId: string;
-    message: { id: string; body: string; createdAt: string };
+    message: { id: string; body: string; bodyFormat: PostBodyFormat; createdAt: string };
     senderDisplay: string;
     senderAvatarUrl: string | null;
     recipient: Counterpart;
@@ -426,7 +428,7 @@ const notifyDmRecipient = async (
       lessonName: input.senderDisplay,
       authorDisplay: input.senderDisplay,
       authorAvatarUrl: input.senderAvatarUrl,
-      snippet: postSnippet(input.message.body),
+      snippet: postSnippet(renderPostContent(input.message.body, input.message.bodyFormat).plainText),
     },
     sourceKey: null,
     readAt: null,
@@ -493,6 +495,7 @@ export const sendDmMessage = async (
     conversationId: conversation.value.id,
     senderUserId: actor.value.userId,
     body: parsed.data.body.trim(),
+    bodyFormat: parsed.data.bodyFormat,
     createdAt: now,
   });
   if (!record.success) return err(validation('Invalid message payload', record.error.flatten()));
@@ -501,7 +504,7 @@ export const sendDmMessage = async (
     conversationId: created.conversationId,
     lastMessageId: created.id,
     lastMessageAt: created.createdAt,
-    lastMessageSnippet: postSnippet(created.body),
+    lastMessageSnippet: postSnippet(renderPostContent(created.body, created.bodyFormat).plainText),
     lastMessageSenderUserId: created.senderUserId,
   });
   await deps.dmConversationStates.markRead(actor.value.tenantId, {
@@ -523,7 +526,11 @@ export const sendDmMessage = async (
     { tenantName: ctx.identity.tenantName ?? 'Together', tenantSlug: ctx.identity.tenantSlug },
   );
   if (!notified.ok) return notified;
-  return ok(toPublicDmMessage(created, actor.value.userId));
+  return ok(toPublicDmMessage(
+    created,
+    actor.value.userId,
+    renderPostContent(created.body, created.bodyFormat).html,
+  ));
 };
 
 export const listDmConversations = async (
@@ -604,7 +611,11 @@ export const listDmMessages = async (
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
   return ok({
-    messages: listed.messages.map((message) => toPublicDmMessage(message, actor.value.userId)),
+    messages: listed.messages.map((message) => toPublicDmMessage(
+      message,
+      actor.value.userId,
+      renderPostContent(message.body, message.bodyFormat).html,
+    )),
     nextCursor: listed.nextCursor,
   });
 };

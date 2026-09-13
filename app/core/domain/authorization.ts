@@ -1,4 +1,5 @@
 export const CAPABILITIES = [
+  'report:read',
   'health:read',
   'auth:use',
   'tenant:create',
@@ -17,6 +18,8 @@ export const CAPABILITIES = [
   'development:mutate',
   'platform:data:reset',
   'enrollment:create',
+  'subscriptions:read',
+  'subscriptions:adopt',
   'product:read',
   'product:write',
   'product:publish',
@@ -124,8 +127,11 @@ export const PRINCIPALS = [
   'member',
   'authenticated',
   'platform-owner',
+  'report-api-key',
   'api-key',
   'transactional-api-key',
+  'subscriptions-read-api-key',
+  'subscriptions-adopt-api-key',
   'import-content-api-key',
   'import-users-api-key',
   'operator-secret',
@@ -180,6 +186,8 @@ const memberSelfCapabilities = [
 
 const sharedStaffCapabilities = [
   ...memberSelfCapabilities,
+  'subscriptions:read',
+  'subscriptions:adopt',
   'tenant:domain:read',
   'tenant:secret:read',
   'tenant:onboarding:read',
@@ -268,6 +276,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:message:read',
   ],
   'platform-owner': ['platform:data:reset'],
+  'report-api-key': ['report:read'],
   'api-key': [
     'marketing:contact:read',
     'marketing:contact:write',
@@ -283,6 +292,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:suppression:write',
     'enrollment:create',
   ],
+  'subscriptions-read-api-key': ['subscriptions:read'],
+  'subscriptions-adopt-api-key': ['subscriptions:adopt'],
   'transactional-api-key': [
     'transactional:message:read',
     'transactional:message:send',

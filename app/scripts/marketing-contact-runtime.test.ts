@@ -72,6 +72,7 @@ describe('marketing directory HTTP routes', () => {
     const app = application();
     const api = createApiClient({ baseUrl: 'https://courses.example.org', fetchImpl: async (url, init) => app.request(new Request(url, init)) });
     const preview = directoryValue(await api.uploadMarketingContactImport({ csv: 'email,name,lists\nhttp@example.test,HTTP Example,http-list\n', metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'contacts.csv', idempotencyKey: 'http-upload' } }));
+    if ('progress' in preview) throw new Error('Expected synchronous preview');
     expect(preview.canCommit).toBe(true);
     const committed = await app.request(`/api/marketing/contact-imports/${preview.import.id}/commit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ validationHash: preview.validationHash, attestation: { accepted: true, version: 'marketing-import-attestation/v1', locale: 'en', note: 'Synthetic directory import with authorization evidence.' } }) });
     expect(committed.status).toBe(202);
@@ -79,6 +80,42 @@ describe('marketing directory HTTP routes', () => {
     expect((await app.request('/api/internal/marketing/imports/tick', { headers: { authorization: 'Bearer test-worker-secret' } })).status).toBe(200);
     expect(directoryValue(await api.exportMarketingContacts({ search: 'http@example.test' })).contacts).toMatchObject([{ email: 'http@example.test' }]);
   });
+  it('creates and polls a large preview job through the HTTP routes', async () => {
+    const app = application();
+    const api = createApiClient({ baseUrl: 'https://courses.example.org', fetchImpl: async (url, init) => app.request(new Request(url, init)) });
+    const csv = ['email', ...Array.from({ length: 501 }, (_, index) => `route-preview-${index}@example.test`)].join('\n');
+    const started = directoryValue(await api.uploadMarketingContactImport({ csv, metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'large-route.csv', idempotencyKey: 'large-route-preview' } }));
+    expect(started).toMatchObject({ import: { status: 'preview_queued' }, progress: { validatedRows: 0, totalRows: 501 } });
+    const firstStatus = directoryValue(await api.getMarketingContactImport({ importId: started.import.id }));
+    expect(firstStatus).toMatchObject({ import: { status: 'preview_queued' }, previewProgress: { validatedRows: 0, totalRows: 501 } });
+    let status = firstStatus;
+    for (let index = 0; index < 4 && status.import.status !== 'ready'; index += 1) {
+      expect((await app.request('/api/internal/marketing/imports/tick', { headers: { authorization: 'Bearer test-worker-secret' } })).status).toBe(200);
+      status = directoryValue(await api.getMarketingContactImport({ importId: started.import.id }));
+    }
+    expect(status.import.status).toBe('ready');
+    const preview = directoryValue(await api.validateMarketingContactImport({ importId: started.import.id }));
+    expect(preview.counts).toMatchObject({ validRows: 501, rejectedRows: 0 });
+  });
+  it('parks a failing preview and still finishes the other imports in the same tick', async () => {
+    const app = application();
+    const api = createApiClient({ baseUrl: 'https://courses.example.org', fetchImpl: async (url, init) => app.request(new Request(url, init)) });
+    const csv = ['email', ...Array.from({ length: 501 }, (_, index) => `wedge-${index}@example.test`)].join('\n');
+    const wedged = directoryValue(await api.uploadMarketingContactImport({ csv, metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'wedge.csv', consentDefinitionId: 'newsletter', idempotencyKey: 'wedged-preview' } }));
+    const queued = directoryValue(await api.uploadMarketingContactImport({ csv: 'email\nunblocked@example.test\n', metadata: { kind: 'contacts', datasetVersion: 'together-marketing-contacts/v1', fileName: 'unblocked.csv', idempotencyKey: 'unblocked-import' } }));
+    if ('progress' in queued) throw new Error('Expected synchronous preview');
+    directoryValue(await api.commitMarketingContactImport({ importId: queued.import.id, validationHash: queued.validationHash, attestation: { accepted: true, version: 'marketing-import-attestation/v1', locale: 'en', note: 'Synthetic directory import with authorization evidence.' } }));
+    const definition = await fixture.deps.definitions.findById('directory-a', 'newsletter');
+    if (definition === null) throw new Error('Expected definition');
+    await fixture.deps.definitions.update('directory-a', { ...definition, status: 'archived' });
+    const failing = await app.request('/api/internal/marketing/imports/tick', { headers: { authorization: 'Bearer test-worker-secret' } });
+    await fixture.deps.definitions.update('directory-a', definition);
+    expect(failing.status).toBe(400);
+    expect(directoryValue(await api.getMarketingContactImport({ importId: wedged.import.id })).import).toMatchObject({ status: 'draft', lastError: 'Select an active optional marketing consent definition' });
+    expect(directoryValue(await api.getMarketingContactImport({ importId: queued.import.id })).import.status).toBe('completed');
+    expect((await app.request('/api/internal/marketing/imports/tick', { headers: { authorization: 'Bearer test-worker-secret' } })).status).toBe(200);
+  });
+
   it('preserves impersonation context so session directory writes remain read-only', async () => {
     const app = application('marketing', { id: 'impersonation', actorUserId: 'operator', actorEmail: 'operator@example.test', actorName: 'Operator', actorStaffRole: 'owner', subjectMemberId: 'subject', subjectName: 'Subject', expiresAt: '2026-09-08T11:00:00.000Z' });
     const response = await app.request('/api/marketing/contacts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'impersonated@example.test' }) });

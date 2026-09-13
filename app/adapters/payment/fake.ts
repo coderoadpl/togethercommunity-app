@@ -48,13 +48,13 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
         input.stripePromotionCodeId ?? `fake_promotion_${input.couponId}`,
     }),
   createCheckoutSession: async (input) => {
-    const key = await resolver.resolve(input.tenantId, 'stripe.restrictedKey');
+    const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
     if (!key.ok) return key;
     const sessionId = `cs_fake_${randomUUID()}`;
     return ok({ url: `https://fake.checkout.local/${sessionId}`, sessionId });
   },
   expireCheckoutSession: async (input) => {
-    const key = await resolver.resolve(input.tenantId, 'stripe.restrictedKey');
+    const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
     if (!key.ok) return key;
     return ok({ expired: true });
   },
@@ -76,6 +76,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
       seconds == null ? null : new Date(seconds * 1000).toISOString();
     return ok({
       id: event.data.id,
+      ...(event.data.livemode === undefined ? {} : { livemode: event.data.livemode }),
       type,
       objectId: object.id,
       createdAt: epochToIso(event.data.created),

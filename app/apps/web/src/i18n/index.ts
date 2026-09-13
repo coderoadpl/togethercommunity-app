@@ -1,5 +1,6 @@
 export { LanguageProvider, languageOptions, useLanguage, useTranslations } from './language.js';
 export {
+  adoptionRefusalOf,
   errorCodeOf,
   localizeError,
   localizeErrorCode,
@@ -7,7 +8,6 @@ export {
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
-  retryAfterSecondsOf,
   serverMessageOf,
 } from './errors.js';
 export type { Messages } from './messages.js';

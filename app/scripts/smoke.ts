@@ -9,6 +9,8 @@ import { z } from 'zod';
 
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, dropDatabase, migrateAndSeed } from './smoke-database.js';
 import {
+  activitySummarySchema,
+  memberActivitySchema,
   API_PATHS,
   deepHealthOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
@@ -576,10 +578,29 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const freeEmail = await waitForDevEmail('free-smoke@together.dev');
   assert(freeEmail.email !== null, 'free checkout did not send the account welcome email');
 
+  for (const [slot, key] of [
+    ['stripe.restrictedKey', 'rk_test_smoke_rejected'],
+    ['stripe.testRestrictedKey', 'rk_live_smoke_rejected'],
+  ] as const) {
+    expectError(
+      await cli(['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', slot, key], authedHome),
+      'stripe: refuse a key in the wrong mode slot', EXIT_CODE_BY_ERROR_CODE.validation, 'validation',
+    );
+  }
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'configure', 'rk_test_smoke_sandbox',
+  ], authedHome), 'stripe: configure sandbox endpoint');
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'status',
+  ], authedHome), 'stripe: sandbox status');
+  expectOk(await cli([
+    '--json', '--api-url', url, '--tenant', 'acme', 'stripe', 'test-mode', 'remove',
+  ], authedHome), 'stripe: remove sandbox endpoint');
+
   const webhookSecret = 'whsec_smoke_known_secret';
   expectOk(
     await cli(
-      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_restricted'],
+      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.restrictedKey', 'rk_live_smoke_restricted'],
       authedHome,
     ),
     'stripe: configure restricted key',
@@ -615,6 +636,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const event = JSON.stringify({
     id: `evt_${randomUUID()}`,
     type: 'checkout.session.completed',
+    livemode: true,
     data: {
       object: {
         id: sessionId,
@@ -1219,6 +1241,25 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
     courses.courses.some((item) => item.id === course.course.id),
     'the enrolled member should see the granted course in their course list',
   );
+
+  const reportKey = apiKeyCreateSchema.parse(expectOk(
+    await acme(['api-keys', 'create', 'CI report key', '--scope', 'report:read'], creatorHome),
+    'reports: create read-only key',
+  ));
+  const reportRange = ['--from', '1990-01-01T00:00:00Z', '--to', '2100-01-01T00:00:00Z'];
+  const report = (args: string[], secret = reportKey.secret, tenant = 'acme') => run(
+    tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, '--tenant', tenant, 'reports', ...args, ...reportRange],
+    { HOME: studentHome, TOGETHER_API_KEY: secret },
+  );
+  const summary = activitySummarySchema.parse(expectOk(await report(['activity-summary']), 'reports: activity summary'));
+  assert(summary.totals.membersActive > 0, 'reports: logged-in members should be active');
+  const activity = memberActivitySchema.parse(expectOk(await report(['member-activity', '--pivot', '1990-01-01T00:00:00Z']), 'reports: member activity'));
+  assert(!activity.members.some((row) => row.memberId === enrolled.memberId), 'reports: tenantless sign-in must not make the enrolled member active');
+  expectError(await report(['activity-summary'], key.secret), 'reports: write key forbidden', EXIT_CODE_BY_ERROR_CODE.forbidden, 'forbidden');
+  expectError(await report(['activity-summary'], reportKey.secret, 'studio'), 'reports: tenant isolation', EXIT_CODE_BY_ERROR_CODE.unauthorized, 'unauthorized');
+  expectOk(await acme(['api-keys', 'revoke', reportKey.apiKey.id], creatorHome), 'reports: revoke key');
+  expectError(await report(['activity-summary']), 'reports: revoked key', EXIT_CODE_BY_ERROR_CODE.unauthorized, 'unauthorized');
+
 };
 
 const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> => {
@@ -1818,7 +1859,7 @@ const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<
   );
 
   expectOk(
-    await studio(['tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_public'], creatorHome),
+    await studio(['tenant-secret', 'set', 'stripe.restrictedKey', 'rk_live_smoke_public'], creatorHome),
     'public: configure the studio restricted key',
   );
   expectOk(

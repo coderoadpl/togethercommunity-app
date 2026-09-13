@@ -43,6 +43,17 @@
           "pausedReason": null,
           "queued": 0,
           "replyTo": null,
+          "results": {
+            "bounced": 0,
+            "candidates": 0,
+            "complained": 0,
+            "delivered": 0,
+            "failed": 0,
+            "sent": 0,
+            "skipped": 0,
+            "unresolved": 0,
+            "waiting": 0
+          },
           "sendAt": null,
           "sent": 0,
           "skipped": 0,
@@ -87,6 +98,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -480,6 +495,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
@@ -676,6 +692,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

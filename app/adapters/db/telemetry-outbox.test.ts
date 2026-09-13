@@ -17,7 +17,7 @@ const event = (id: string, tenantId = 'tenant') => telemetryEventSchema.parse({ 
   occurredAt: at, ingestedAt: at, type: 'opened', bounceClassification: null, complaintType: null,
   linkId: null, destination: null, trackingPolicyVersion: '1', activityType: null, orderId: null });
 const connect = async (tenantId: string) => createTelemetrySettingsRepository(db).save(tenantId, { provider: 'mongodb', region: 'EU', connectedAt: at, lastProbeAt: at, lastProbeResult: 'ok', egressMode: 'unknown' });
-beforeAll(async () => { const database = await createTestDatabase('together_telemetry', 'postgres://together:together@localhost:48912/together'); db = database.db; close = database.close; });
+beforeAll(async () => { const database = await createTestDatabase('together_telemetry', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together'); db = database.db; close = database.close; });
 afterAll(async () => { await close?.(); });
 describe('transactional telemetry outbox', () => {
   it('ignores disconnected tenants and rolls back with the operational transaction', async () => {

@@ -480,6 +480,8 @@ const buildAuth = (options: {
   trustedOrigins?: string[];
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   platformTransportFails?: boolean;
+  platformSendBlocker?: Promise<void>;
+  keepAlive?(task: Promise<unknown>): void;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
   logger?: { warn(message: string): void };
 } = {}) => {
@@ -523,6 +525,7 @@ const buildAuth = (options: {
     emailSender: {
       send: async (message) => {
         platformSendAttempts += 1;
+        await options.platformSendBlocker;
         if (options.platformTransportFails === true) {
           return err(unavailable('Platform transport is throttling'));
         }
@@ -534,6 +537,7 @@ const buildAuth = (options: {
     ids: { nextId: () => crypto.randomUUID() },
     clock,
     dispatchEmail: () => undefined,
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
     defaultTenantName: 'Together',
     google: null,
     ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
@@ -1250,6 +1254,63 @@ describe('createAuthPort.requestMagicLink', () => {
       expect(serializedMeta).not.toContain('Studio');
       expect(serializedMeta).not.toContain(link?.token ?? 'missing-token');
     }
+  });
+
+  it('registers only tenant-bound auth sends for background lifetime extension', async () => {
+    const keepAlive = vi.fn<(task: Promise<unknown>) => void>();
+    let releaseTransport: () => void = () => undefined;
+    const transportSettled = new Promise<void>((resolve) => {
+      releaseTransport = resolve;
+    });
+    const { auth, authPort, db } = buildAuth({ keepAlive, platformSendBlocker: transportSettled });
+    const tenantId = `tenant-auth-keepalive-${crypto.randomUUID()}`;
+    const memberEmail = `magic-keepalive-member-${Date.now()}@together.dev`;
+    const strangerEmail = `magic-keepalive-stranger-${Date.now()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: `auth-keepalive-${Date.now()}`,
+      name: 'Auth keepalive',
+      createdAt: new Date().toISOString(),
+    });
+    await db.insert(members).values({
+      id: `member-auth-keepalive-${crypto.randomUUID()}`,
+      tenantId,
+      userId: `user-auth-keepalive-${crypto.randomUUID()}`,
+      email: memberEmail,
+      createdAt: new Date().toISOString(),
+    });
+
+    await authPort.requestMagicLink({
+      email: memberEmail,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantId,
+      tenantName: 'Auth keepalive',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    await authPort.requestMagicLink({
+      email: strangerEmail,
+      callbackURL: 'http://studio.localhost:48730/my',
+      tenantName: 'Auth keepalive',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    expect(keepAlive).toHaveBeenCalledOnce();
+    const registered = keepAlive.mock.calls[0]?.[0];
+    if (registered === undefined) throw new Error('keepAlive was not called');
+    expect(registered).toBeInstanceOf(Promise);
+    let settled = false;
+    void registered.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseTransport();
+    await expect(registered).resolves.toBeUndefined();
+    await auth.flushAuthEmails();
+    expect(settled).toBe(true);
   });
 
   it('retries a failing platform transport and answers the member as it answers a stranger', async () => {

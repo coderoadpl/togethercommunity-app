@@ -251,6 +251,11 @@ export default tseslint.config(
           pattern: 'apps/server/src/entry.vercel.ts',
           mode: 'full',
         },
+        {
+          type: 'platform-runtime',
+          pattern: 'apps/server/src/background-work.ts',
+          mode: 'full',
+        },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-story-module-test', pattern: 'apps/web/src/stories/stories.test.tsx', mode: 'full' },
         { type: 'visual-support', pattern: ['scripts/story-clock.ts', 'scripts/visual-request-policy.ts'], mode: 'full' },
@@ -369,6 +374,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'platform-runtime',
                 'app-server',
               ],
             },
@@ -567,7 +573,11 @@ export default tseslint.config(
             },
             {
               from: ['platform-entry'],
-              allow: ['@hono/node-server', 'node:http'],
+              allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
+            },
+            {
+              from: ['platform-runtime'],
+              allow: ['@vercel/functions'],
             },
             {
               from: ['app-server'],

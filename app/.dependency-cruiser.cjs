@@ -28,7 +28,7 @@ const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appCliTestExternal = 'node_modules/vitest(/|$)';
 const appServerExternal =
-  'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
+  'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|@vercel/functions|hono|vitest|zod)(/|$)';
 const webExternal =
   'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|poppins|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@tiptap/(extension-code-block|extension-image|extension-italic|extension-link|extension-placeholder|markdown|react|starter-kit)|@vitejs/plugin-react|dompurify|marked|msw|qrcode|react|react-dom|vite|vitest|zod)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
@@ -121,8 +121,8 @@ module.exports = {
     {
       name: 'vercel-and-neon-only-in-adapters',
       severity: 'error',
-      comment: 'Zero platform lock-in outside adapters and the reviewed platform entry',
-      from: { pathNot: '^(adapters|apps/server/src/entry\\.vercel\\.ts$)' },
+      comment: 'Zero platform lock-in outside adapters and the reviewed platform boundary',
+      from: { pathNot: '^(adapters|apps/server/src/(background-work|entry\\.vercel)\\.ts$)' },
       to: { path: 'node_modules/(@vercel|@neondatabase)' },
     },
     {

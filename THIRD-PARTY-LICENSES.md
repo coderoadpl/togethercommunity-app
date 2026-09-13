@@ -601,6 +601,10 @@ invoices can be checked locally.
 - [@unrs/resolver-binding-win32-arm64-msvc@1.12.2](https://github.com/unrs/unrs-resolver) - MIT
 - [@unrs/resolver-binding-win32-ia32-msvc@1.12.2](https://github.com/unrs/unrs-resolver) - MIT
 - [@unrs/resolver-binding-win32-x64-msvc@1.12.2](https://github.com/unrs/unrs-resolver) - MIT
+- [@vercel/cli-config@0.2.6](https://vercel.com/docs/projects/project-configuration/global-configuration) - Apache-2.0
+- [@vercel/cli-exec@1.0.1](https://vercel.com) - Apache-2.0
+- [@vercel/functions@3.9.7](https://vercel.com/docs/functions/functions-api-reference/vercel-functions-package) - Apache-2.0
+- [@vercel/oidc@3.8.7](https://vercel.com) - Apache-2.0
 - [@vitejs/plugin-react@4.7.0](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme) - MIT
 - [@vitest/coverage-v8@4.1.11](https://vitest.dev/guide/coverage) - MIT
 - [@vitest/expect@3.2.4](https://vitest.dev/api/expect) - MIT
@@ -757,6 +761,7 @@ invoices can be checked locally.
 - [estree-walker@2.0.2](https://github.com/Rich-Harris/estree-walker#readme) - MIT
 - [estree-walker@3.0.3](https://github.com/Rich-Harris/estree-walker#readme) - MIT
 - [esutils@2.0.3](https://github.com/estools/esutils) - BSD-2-Clause
+- [execa@5.1.1](https://github.com/sindresorhus/execa#readme) - MIT
 - [expect-type@1.4.0](https://github.com/mmkal/expect-type#readme) - Apache-2.0
 - [fast-deep-equal@3.1.3](https://github.com/epoberezkin/fast-deep-equal#readme) - MIT
 - [fast-equals@5.4.2](https://github.com/planttheidea/fast-equals#readme) - MIT
@@ -786,6 +791,7 @@ invoices can be checked locally.
 - [get-caller-file@2.0.5](https://github.com/stefanpenner/get-caller-file#readme) - ISC
 - [get-intrinsic@1.3.0](https://github.com/ljharb/get-intrinsic#readme) - MIT
 - [get-proto@1.0.1](https://github.com/ljharb/get-proto#readme) - MIT
+- [get-stream@6.0.1](https://github.com/sindresorhus/get-stream#readme) - MIT
 - [get-symbol-description@1.1.0](https://github.com/inspect-js/get-symbol-description#readme) - MIT
 - [get-tsconfig@4.14.0](https://github.com/privatenumber/get-tsconfig#readme) - MIT
 - [glob-parent@6.0.2](https://github.com/gulpjs/glob-parent#readme) - ISC
@@ -811,6 +817,7 @@ invoices can be checked locally.
 - [hono@4.13.7](https://hono.dev) - MIT
 - [html-encoding-sniffer@6.0.0](https://github.com/jsdom/html-encoding-sniffer#readme) - MIT
 - [html-escaper@2.0.2](https://github.com/WebReflection/html-escaper) - MIT
+- [human-signals@2.1.0](https://git.io/JeluP) - Apache-2.0
 - [ignore@5.3.2](https://github.com/kaelzhang/node-ignore#readme) - MIT
 - [ignore@7.0.5](https://github.com/kaelzhang/node-ignore#readme) - MIT
 - [ignore@7.0.6](https://github.com/kaelzhang/node-ignore#readme) - MIT
@@ -850,6 +857,7 @@ invoices can be checked locally.
 - [is-regex@1.2.1](https://github.com/inspect-js/is-regex) - MIT
 - [is-set@2.0.3](https://github.com/inspect-js/is-set#readme) - MIT
 - [is-shared-array-buffer@1.0.4](https://github.com/inspect-js/is-shared-array-buffer#readme) - MIT
+- [is-stream@2.0.1](https://github.com/sindresorhus/is-stream#readme) - MIT
 - [is-string@1.1.1](https://github.com/inspect-js/is-string#readme) - MIT
 - [is-symbol@1.1.1](https://github.com/inspect-js/is-symbol#readme) - MIT
 - [is-typed-array@1.1.15](https://github.com/inspect-js/is-typed-array#readme) - MIT
@@ -865,6 +873,7 @@ invoices can be checked locally.
 - [istanbul-reports@3.2.0](https://istanbul.js.org/) - BSD-3-Clause
 - [iterator.prototype@1.1.5](https://github.com/ljharb/Iterator.prototype#readme) - MIT
 - [jiti@2.7.0](https://github.com/unjs/jiti#readme) - MIT
+- [jose@5.10.0](https://github.com/panva/jose) - MIT
 - [jose@6.2.3](https://github.com/panva/jose) - MIT
 - [js-tokens@10.0.0](https://github.com/lydell/js-tokens#readme) - MIT
 - [js-tokens@4.0.0](https://github.com/lydell/js-tokens#readme) - MIT
@@ -903,7 +912,9 @@ invoices can be checked locally.
 - [mdn-data@2.27.1](https://developer.mozilla.org) - CC0-1.0
 - [memoize@10.2.0](https://github.com/sindresorhus/memoize#readme) - MIT
 - [memory-pager@1.5.0](https://github.com/mafintosh/memory-pager) - MIT
+- [merge-stream@2.0.0](https://github.com/grncdr/merge-stream#readme) - MIT
 - [micromatch@4.0.8](https://github.com/micromatch/micromatch) - MIT
+- [mimic-fn@2.1.0](https://github.com/sindresorhus/mimic-fn#readme) - MIT
 - [mimic-function@5.0.1](https://github.com/sindresorhus/mimic-function#readme) - MIT
 - [min-indent@1.0.1](https://github.com/thejameskyle/min-indent#readme) - MIT
 - [minimatch@10.2.5](https://github.com/isaacs/minimatch#readme) - BlueOak-1.0.0
@@ -923,6 +934,7 @@ invoices can be checked locally.
 - [node-exports-info@1.6.2](https://github.com/inspect-js/node-exports-info#readme) - MIT
 - [node-releases@2.0.50](https://github.com/chicoxyzzy/node-releases#readme) - MIT
 - [nodemailer@9.1.1](https://nodemailer.com/) - MIT-0
+- [npm-run-path@4.0.1](https://github.com/sindresorhus/npm-run-path#readme) - MIT
 - [object-assign@4.1.1](https://github.com/sindresorhus/object-assign#readme) - MIT
 - [object-inspect@1.13.4](https://github.com/inspect-js/object-inspect) - MIT
 - [object-keys@1.1.1](https://github.com/ljharb/object-keys#readme) - MIT
@@ -931,9 +943,11 @@ invoices can be checked locally.
 - [object.fromentries@2.0.8](https://github.com/es-shims/Object.fromEntries#readme) - MIT
 - [object.values@1.2.1](https://github.com/es-shims/Object.values#readme) - MIT
 - [obug@2.1.4](https://github.com/sxzz/obug#readme) - MIT
+- [onetime@5.1.2](https://github.com/sindresorhus/onetime#readme) - MIT
 - [open@10.2.0](https://github.com/sindresorhus/open#readme) - MIT
 - [optionator@0.9.4](https://github.com/gkz/optionator) - MIT
 - [orderedmap@2.1.1](https://github.com/marijnh/orderedmap#readme) - MIT
+- [os-paths@4.4.0](https://github.com/rivy/js.os-paths#readme) - MIT
 - [otplib@13.4.1](https://otplib.yeojz.dev) - MIT
 - [outvariant@1.4.3](https://github.com/open-draft/outvariant#readme) - MIT
 - [own-keys@1.0.1](https://github.com/ljharb/own-keys#readme) - MIT
@@ -1051,6 +1065,7 @@ invoices can be checked locally.
 - [side-channel-weakmap@1.0.2](https://github.com/ljharb/side-channel-weakmap#readme) - MIT
 - [side-channel@1.1.1](https://github.com/ljharb/side-channel#readme) - MIT
 - [siginfo@2.0.0](https://github.com/emilbayes/siginfo#readme) - ISC
+- [signal-exit@3.0.7](https://github.com/tapjs/signal-exit#readme) - ISC
 - [signal-exit@4.1.0](https://github.com/tapjs/signal-exit#readme) - ISC
 - [sisteransi@1.0.5](https://github.com/terkelg/sisteransi#readme) - MIT
 - [smol-toml@1.7.1](https://github.com/squirrelchat/smol-toml#readme) - BSD-3-Clause
@@ -1075,6 +1090,7 @@ invoices can be checked locally.
 - [string.prototype.trimstart@1.0.8](https://github.com/es-shims/String.prototype.trimStart#readme) - MIT
 - [strip-ansi@6.0.1](https://github.com/chalk/strip-ansi#readme) - MIT
 - [strip-bom@3.0.0](https://github.com/sindresorhus/strip-bom#readme) - MIT
+- [strip-final-newline@2.0.0](https://github.com/sindresorhus/strip-final-newline#readme) - MIT
 - [strip-indent@3.0.0](https://github.com/sindresorhus/strip-indent#readme) - MIT
 - [strip-indent@4.1.1](https://github.com/sindresorhus/strip-indent#readme) - MIT
 - [strip-json-comments@3.1.1](https://github.com/sindresorhus/strip-json-comments#readme) - MIT
@@ -1152,6 +1168,8 @@ invoices can be checked locally.
 - [wrap-ansi@7.0.0](https://github.com/chalk/wrap-ansi#readme) - MIT
 - [ws@8.21.1](https://github.com/websockets/ws) - MIT
 - [wsl-utils@0.1.0](https://github.com/sindresorhus/wsl-utils#readme) - MIT
+- [xdg-app-paths@5.5.1](https://github.com/rivy/js.xdg-app-paths#readme) - MIT
+- [xdg-portable@7.3.0](https://github.com/rivy/js.xdg-portable#readme) - MIT
 - [xml-name-validator@5.0.0](https://github.com/jsdom/xml-name-validator#readme) - Apache-2.0
 - [xmlchars@2.2.0](https://github.com/lddubeau/xmlchars#readme) - MIT
 - [xtend@4.0.2](https://github.com/Raynos/xtend) - MIT
@@ -1168,4 +1186,5 @@ invoices can be checked locally.
 - [zod-validation-error@3.5.4](https://github.com/causaly/zod-validation-error#readme) - MIT
 - [zod-validation-error@4.0.2](https://github.com/causaly/zod-validation-error#readme) - MIT
 - [zod@3.25.76](https://zod.dev) - MIT
+- [zod@4.1.11](https://zod.dev) - MIT
 - [zod@4.4.3](https://zod.dev) - MIT

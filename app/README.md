@@ -179,7 +179,7 @@ scripts/             gates, e2e drivers, operational tools     → verification 
 `eslint-plugin-boundaries` and `dependency-cruiser` enforce the configured
 import directions and external dependency allowlists. Clients cannot import
 `core/server` or database adapters. `@vercel/*` and `@neondatabase/*` are confined
-to adapters and the reviewed `apps/server/src/entry.vercel.ts` boundary.
+to adapters and the reviewed server platform boundary.
 Framework imports in core, `any`, and type assertions other than `as const`
 are prohibited.
 
@@ -213,7 +213,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->471<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->472<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

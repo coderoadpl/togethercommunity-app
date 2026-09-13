@@ -88,9 +88,10 @@ graph:
 - Adapters may depend inward on core and never outward on applications.
 - Web and CLI are clients. They cannot reach database, provisioning, or server
   internals.
-- `@vercel/*` and `@neondatabase/*` are confined to adapters and the reviewed
-  `app/apps/server/src/entry.vercel.ts` platform boundary, as configured in
-  ESLint and dependency-cruiser.
+- `@vercel/*` and `@neondatabase/*` are confined to adapters and the two
+  reviewed platform boundary files, `app/apps/server/src/entry.vercel.ts` and
+  `app/apps/server/src/background-work.ts`, as configured in ESLint and
+  dependency-cruiser.
 
 External dependencies are default-denied by ESLint boundaries and
 dependency-cruiser. Each layer has an explicit allowlist. Adding a package

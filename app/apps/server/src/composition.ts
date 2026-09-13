@@ -330,6 +330,7 @@ import { communityEventPath, communityPostPath, communitySpacePath, conversation
 import { createCoalescedRunner } from './coalesced-runner.js';
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
+import { keepAlive } from './background-work.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
 import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
@@ -393,6 +394,7 @@ export interface AppDeps {
     | 'clearResetPasswordDeliveryContext'
     | 'setEmailVerificationDeliveryContext'
     | 'clearEmailVerificationDeliveryContext'
+    | 'flushAuthEmails'
   >;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
@@ -1230,6 +1232,7 @@ export const createDeps = (env: Env, options: { clock?: Clock; db?: Db } = {}): 
     ids,
     clock,
     dispatchEmail,
+    keepAlive,
     defaultTenantName: 'Together',
     google,
     logger,

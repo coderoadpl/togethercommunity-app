@@ -1,4 +1,5 @@
 export const CAPABILITIES = [
+  'report:read',
   'health:read',
   'auth:use',
   'tenant:create',
@@ -126,6 +127,7 @@ export const PRINCIPALS = [
   'member',
   'authenticated',
   'platform-owner',
+  'report-api-key',
   'api-key',
   'transactional-api-key',
   'subscriptions-read-api-key',
@@ -274,6 +276,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:message:read',
   ],
   'platform-owner': ['platform:data:reset'],
+  'report-api-key': ['report:read'],
   'api-key': [
     'marketing:contact:read',
     'marketing:contact:write',

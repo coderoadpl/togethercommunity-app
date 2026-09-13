@@ -89,6 +89,15 @@ const waitForUnreadBadge = async (page: Page): Promise<void> => {
   await page.locator(UNREAD_BADGE_SELECTOR).waitFor(visible);
 };
 
+const waitForFixtureCall = async (page: Page, expected: string): Promise<void> => {
+  await page.waitForFunction((call) => {
+    const raw = document.documentElement.dataset['fixtureCalls'];
+    if (raw === undefined) return false;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.some((item) => typeof item === 'string' && item === call);
+  }, expected, { timeout: visible.timeout });
+};
+
 export interface AntialiasRepaint {
   waitForTarget: () => Promise<void>;
   setHidden: (hidden: boolean) => Promise<void>;
@@ -499,6 +508,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('reaction-post-community-hello-👍').waitFor(visible);
       await page.getByTestId('space-follow-toggle').waitFor(visible);
       await waitForUnreadBadge(page);
+      await waitForFixtureCall(page, 'markSpaceSeen:[{"spaceId":"space-studio-community"}]');
     },
   },
   {

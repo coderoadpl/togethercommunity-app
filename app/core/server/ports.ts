@@ -1,5 +1,6 @@
-import type { StripeSubscriptionSnapshot, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type {
+  ActivitySummary,
+  ActivitySummaryQuery,
   AppError,
   Course,
   CourseLesson,
@@ -129,6 +130,10 @@ import type {
   KsefEnvironment,
   KsefStatus,
   Language,
+  ListStripeSubscriptionsInput,
+  MemberActivity,
+  MemberActivityQuery,
+  StripeSubscriptionSnapshot,
   StripeMode,
   WipedTable,
 } from '#core/domain/index.js';
@@ -2400,6 +2405,11 @@ export interface IdGenerator {
 
 export interface Clock {
   nowIso(): string;
+}
+
+export interface ActivityReportRepository {
+  activitySummary(tenantId: string, query: ActivitySummaryQuery): Promise<ActivitySummary>;
+  memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
 }
 
 export interface SubscriptionAdoptionRepositories {

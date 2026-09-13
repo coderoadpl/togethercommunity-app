@@ -290,6 +290,8 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         course: event.payload.courseTitle ?? t.members.timelineUnavailableCourse,
         lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
       });
+    case 'sign-in':
+      return '';
     case 'email-sent':
       return t.members.timelineEmail({
         subject: isRedactedAuthEmailKind(event.payload.source)

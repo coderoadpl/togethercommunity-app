@@ -49,6 +49,7 @@ const staff = ['owner', 'admin'] as const;
 const owner = ['owner'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
+const reportApiKey = ['report-api-key'] as const;
 const transactionalApiKey = ['transactional-api-key'] as const;
 const importContentApiKey = ['import-content-api-key'] as const;
 const importUsersApiKey = ['import-users-api-key'] as const;
@@ -71,6 +72,8 @@ const effectiveAfter = (
 };
 
 const capabilityForRoute = (method: string, path: string): Capability | null => {
+  const declared = selfAuthenticatingRouteManifestEntry({ method, path })?.capability;
+  if (declared !== undefined) return declared;
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
@@ -265,6 +268,7 @@ const beforeForRoute = (
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
       if (path === '/api/m2m/subscriptions/adopt') return ['subscriptions-adopt-api-key'];
       if (path === '/api/m2m/subscriptions/stripe') return ['subscriptions-read-api-key'];
+      if (selfAuthenticatingEntry.capability !== undefined) return principalsForCapability(selfAuthenticatingEntry.capability);
       if (path === '/api/m2m/import/validate') return importApiKeys;
       if (
         path === '/api/m2m/import/members'
@@ -515,6 +519,7 @@ const beforeForUseCase = (
   capability: Capability,
 ): readonly Principal[] => {
   if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
+  if (file === 'activity-reports.ts') return reportApiKey;
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
@@ -572,7 +577,7 @@ const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory ? before : before === allHumans
+    const reachable = directory || before === reportApiKey ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner
@@ -696,7 +701,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
-    '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
+    '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
     '',
     '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',

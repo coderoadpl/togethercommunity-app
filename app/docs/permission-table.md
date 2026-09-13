@@ -16,11 +16,11 @@ Staff acting on their own account share all member capabilities. Tenant identity
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
+`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 117. Route rows: 383. Exported `Ctx` use-case rows: 297.
+Closed capability count: 118. Route rows: 385. Exported `Ctx` use-case rows: 299.
 
 ## Human-readable diff
 
@@ -158,6 +158,8 @@ no changes
 | `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -421,6 +423,8 @@ no changes
 | `account-sessions.ts#listMyAccountSessions` | account:session:self-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyAccountSession` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
 | `account-sessions.ts#revokeMyOtherAccountSessions` | account:session:self-revoke | owner, admin, member | owner, admin, member | yes | core/server/usecases/account-sessions.ts authorization call |
+| `activity-reports.ts#getActivitySummary` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
+| `activity-reports.ts#getMemberActivity` | report:read | report-api-key | report-api-key | yes | core/server/usecases/activity-reports.ts authorization call |
 | `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts authorization call |
 | `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts authorization call |
@@ -724,12 +728,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:15` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:180` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1104` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1106` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1128` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1142` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1654` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1654` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1105` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1107` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1129` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1143` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1656` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1656` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

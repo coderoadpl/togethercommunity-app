@@ -1,3 +1,4 @@
+import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
@@ -472,6 +473,10 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
   getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
   createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),

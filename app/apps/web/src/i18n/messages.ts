@@ -830,6 +830,8 @@ export interface Messages {
     tabStorage: string;
     tabVideo: string;
     tabInvoicing: string;
+    reportKeysScope: string;
+    reportKeysHint: string;
     tabApiKeys: string;
     stripeHeading: string;
     stripeDescription: string;

@@ -79,3 +79,36 @@ Run `pnpm run cli-parity` to list every method in the `core/client` API client
 method table and whether CLI code calls it, followed by missing methods grouped
 by API area. The report exits 0 when gaps exist. See the current count and
 inventory scope in [Architecture](architecture.md#cli-first-verification).
+
+## Activity reports
+
+Create a read-only key with your owner session:
+
+```bash
+pnpm --silent run cli --tenant studio api-keys create Reporting --scope report:read
+```
+
+`api-key` / `--scope` remain supported aliases. Report keys cannot include write
+scopes. Expiry is optional with `--expires-at <ISO>`; revoke with
+`api-keys revoke <id>`. Studio integrations also supports report keys.
+
+Supply the secret through an environment variable, using the same
+`--api-key-env <name>` mechanism as marketing commands. Reports default to
+`TOGETHER_API_KEY`. The selected tenant and API origin follow the usual CLI
+configuration. A stored bearer session does not grant report access.
+
+```bash
+pnpm --silent run cli --tenant studio reports activity-summary \
+  --from 2026-08-01T00:00:00Z --to 2026-09-01T00:00:00Z --json
+pnpm --silent run cli --tenant studio reports member-activity \
+  --from 2026-08-01T00:00:00Z --to 2026-09-01T00:00:00Z \
+  --pivot 2026-08-15T00:00:00Z --exclude '%@example.test' --exclude 'test_%' --csv
+```
+
+Member activity automatically follows all pages. `--json` produces one standard
+envelope; `--csv` writes a header and quoted CSV fields with CRLF row separators,
+escaping embedded quotes and preserving commas and newlines. These output flags
+are mutually exclusive. Null values become empty CSV fields. CSV preserves raw
+member text, including formula-like strings; import columns as text in spreadsheet
+software. Errors retain the normal CLI taxonomy and produce no partial CSV.
+See [report definitions and limitations](reports-api.md).

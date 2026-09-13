@@ -56,6 +56,7 @@ import {
   type CliOriginSource,
   type CliProfile,
 } from './config.js';
+import { registerReportCommands } from './report-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -369,7 +370,7 @@ const devGrantOptionsSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 const apiKeyCreateOptionsSchema = z.object({
-  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users'])).min(1).optional(),
+  scope: z.array(z.enum(['enrollment', 'marketing', 'transactional', 'subscriptions:read', 'subscriptions:adopt', 'import:content', 'import:users', 'report:read'])).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
 });
 const m2mEnrollOptionsSchema = z.object({
@@ -622,6 +623,7 @@ const cliCtx = (): Result<CliCtx, AppError> => {
 };
 
 registerMarketingCommands(program, cliCtx);
+registerReportCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -3248,7 +3250,7 @@ grant
     }),
   );
 
-const apiKey = program.command('api-key').description('Tenant API keys for M2M enrollment (owner only)');
+const apiKey = program.command('api-key').alias('api-keys').description('Tenant API keys (owner only)');
 
 apiKey.command('list').description('List API keys (no secrets)').action(
   withCtx(async (ctx) => {
@@ -3265,7 +3267,7 @@ apiKey.command('list').description('List API keys (no secrets)').action(
 apiKey
   .command('create <name...>')
   .description('Create an API key; the secret is shown once')
-  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users')
+  .option('--scope <scope...>', 'Key scopes: enrollment, marketing, transactional, subscriptions:read, subscriptions:adopt, import:content, import:users, report:read')
   .option('--expires-at <iso>', 'ISO datetime when the key expires')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), apiKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {

@@ -73,6 +73,7 @@ const product: Product = {
 };
 
 const purchase: OrderListItem = {
+  mode: 'live',
   id: 'order-1',
   tenantId: TENANT_ID,
   memberId: member.id,
@@ -94,6 +95,7 @@ const purchase: OrderListItem = {
 };
 
 const subscription = (status: MemberSubscription['status']): MemberSubscription => ({
+  mode: 'live',
   id: `subscription-${status}`,
   tenantId: TENANT_ID,
   memberId: member.id,
@@ -146,6 +148,7 @@ const subscriptions: MemberSubscriptionRepository = {
 };
 
 const orders = (queries: Array<[string, string]>): OrderRepository & MemberOrderListReader => ({
+  completeTestCheckout: async () => null,
   create: async () => undefined,
   list: async () => ({ orders: [purchase], total: 1 }),
   listForMember: async (tenantId, memberId) => {

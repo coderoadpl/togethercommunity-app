@@ -2515,7 +2515,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .from(members)
       .leftJoin(
         productGrants,
-        and(eq(productGrants.tenantId, members.tenantId), eq(productGrants.memberId, members.id)),
+        and(eq(productGrants.tenantId, members.tenantId), eq(productGrants.memberId, members.id), eq(productGrants.mode, 'live')),
       )
       .where(eq(members.tenantId, tenantId))
       .groupBy(
@@ -2880,6 +2880,31 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
     }),
 });
 
+// A legacy (tenant, member, product) unique index still predates the mode column and remains
+// until a separate, owner-reviewed migration retires it, so the two modes cannot both hold a row
+// for the same member+product. A live grant reclaims the row from stray test data; a test grant
+// yields to an existing live one instead of raising an unarbitrated unique_violation.
+const reclaimGrantRowForMode = async (
+  tx: Db,
+  tenantId: string,
+  memberId: string,
+  productId: string,
+  mode: 'live' | 'test',
+): Promise<'blocked' | 'clear'> => {
+  const otherMode = mode === 'live' ? 'test' : 'live';
+  const otherModeRow = and(
+    eq(productGrants.tenantId, tenantId),
+    eq(productGrants.memberId, memberId),
+    eq(productGrants.productId, productId),
+    eq(productGrants.mode, otherMode),
+  );
+  const [conflicting] = await tx.select({ id: productGrants.id }).from(productGrants).where(otherModeRow);
+  if (conflicting === undefined) return 'clear';
+  if (mode === 'test') return 'blocked';
+  await tx.delete(productGrants).where(otherModeRow);
+  return 'clear';
+};
+
 export const createProductGrantRepository = (db: Db): ProductGrantRepository => ({
   findById: async (tenantId, grantId) => {
     const rows = await db
@@ -2890,12 +2915,13 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     const row = rows[0];
     return row ? parseGrant(row) : null;
   },
-  findGrant: async (tenantId, memberId, productId) => {
+  findGrant: async (tenantId, memberId, productId, mode = 'live') => {
     const rows = await db
       .select()
       .from(productGrants)
       .where(
         and(
+          eq(productGrants.mode, mode),
           eq(productGrants.tenantId, tenantId),
           eq(productGrants.memberId, memberId),
           eq(productGrants.productId, productId),
@@ -2906,9 +2932,12 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     return row ? parseGrant(row) : null;
   },
   createGrant: async (tenantId, grant) => db.transaction(async (tx) => {
+    const reclaimed = await reclaimGrantRowForMode(tx, tenantId, grant.memberId, grant.productId, grant.mode);
+    if (reclaimed === 'blocked') return false;
     const rows = await tx
       .insert(productGrants)
       .values({
+        mode: grant.mode,
         id: grant.id,
         tenantId,
         memberId: grant.memberId,
@@ -2920,7 +2949,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         createdAt: grant.createdAt,
       })
       .onConflictDoNothing({
-        target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
+        target: [productGrants.tenantId, productGrants.memberId, productGrants.productId, productGrants.mode],
       })
       .returning();
     const row = rows[0];
@@ -2996,6 +3025,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     (
       await db
         .select({
+          mode: productGrants.mode,
           id: productGrants.id,
           productId: productGrants.productId,
           productName: products.title,
@@ -3016,7 +3046,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .from(productGrants)
         .where(
           and(
-            eq(productGrants.tenantId, tenantId),
+            eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'),
             eq(productGrants.memberId, memberId),
             sql`${productGrants.startsAt}::timestamptz <= ${now}::timestamptz`,
             sql`(${productGrants.expiresAt} is null or ${productGrants.expiresAt}::timestamptz >= ${now}::timestamptz)`,
@@ -3048,7 +3078,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           products,
           and(eq(productGrants.productId, products.id), eq(products.tenantId, tenantId)),
         )
-        .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, memberId)))
+        .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.memberId, memberId)))
         .orderBy(asc(productGrants.createdAt))
     ).map(parseProduct),
 });
@@ -3125,6 +3155,7 @@ export const createOrderRepository = (
 ): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
+    if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
     if (query.productId !== undefined) conditions.push(eq(orders.productId, query.productId));
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
@@ -3142,10 +3173,25 @@ export const createOrderRepository = (
   };
 
   return {
+    completeTestCheckout: async (tenantId, order) => db.transaction(async (tx) => {
+      const [row] = await tx.update(orders).set({
+        status: 'paid', providerObjectIds: order.providerObjectIds,
+      }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
+        eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
+      if (row === undefined) return null;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `purchase-paid:${row.id}`, tenantId, memberId: row.memberId, type: 'purchase',
+        payload: { orderId: row.id, productId: row.productId, kind: row.kind, status: row.status,
+          amountCents: row.amountCents, currency: row.currency, provider: row.provider },
+        occurredAt: row.createdAt,
+      }));
+      return parseOrder(row);
+    }),
     create: async (tenantId, order) => db.transaction(async (tx) => {
       const rows = await tx
         .insert(orders)
         .values({
+          mode: order.mode,
           id: order.id,
           tenantId,
           memberId: order.memberId,
@@ -3315,6 +3361,7 @@ export const createOrderRepository = (
         .where(
           and(
             eq(orders.tenantId, tenantId),
+            eq(orders.mode, 'live'),
             eq(orders.status, 'paid'),
             sql`${orders.createdAt}::timestamptz >= ${sinceIso}::timestamptz`,
           ),
@@ -3327,6 +3374,7 @@ export const createOrderRepository = (
         .where(
           and(
             eq(orders.tenantId, tenantId),
+            eq(orders.mode, 'live'),
             sql`${orders.createdAt}::timestamptz >= ${sinceIso}::timestamptz`,
           ),
         );
@@ -3354,6 +3402,7 @@ export const createOrderRepository = (
           .where(
             and(
               eq(orders.tenantId, tenantId),
+              eq(orders.mode, 'live'),
               eq(orders.status, 'paid'),
               sql`${orders.createdAt} <= ${query.paidBefore}`,
               notExists(
@@ -3365,6 +3414,7 @@ export const createOrderRepository = (
                       eq(productGrants.tenantId, orders.tenantId),
                       eq(productGrants.memberId, orders.memberId),
                       eq(productGrants.productId, orders.productId),
+                      eq(productGrants.mode, orders.mode),
                     ),
                   ),
               ),
@@ -3377,7 +3427,7 @@ export const createOrderRepository = (
 };
 
 export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
-  findOrderByProviderObjectIds: async (tenantId, providerObjectIds) => {
+  findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) => {
     const matches = Object.entries(providerObjectIds).map(
       ([key, value]) => sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
     );
@@ -3385,7 +3435,11 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
     const rows = await db
       .select()
       .from(orders)
-      .where(and(eq(orders.tenantId, tenantId), or(...matches)))
+      .where(and(
+        eq(orders.tenantId, tenantId),
+        ...(mode === undefined ? [] : [eq(orders.mode, mode)]),
+        or(...matches),
+      ))
       .orderBy(desc(orders.createdAt), desc(orders.id))
       .limit(1);
     const row = rows[0];
@@ -3455,6 +3509,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
 
 export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRepository => {
   const toRow = (tenantId: string, subscription: MemberSubscription) => ({
+    mode: subscription.mode,
     id: subscription.id,
     tenantId,
     memberId: subscription.memberId,
@@ -3578,6 +3633,7 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
         .where(
           and(
             eq(memberSubscriptions.tenantId, tenantId),
+            eq(memberSubscriptions.mode, 'live'),
             inArray(memberSubscriptions.status, ['active', 'past_due']),
             sql`${memberSubscriptions.currentPeriodEnd}::timestamptz >= ${graceCutoff}::timestamptz`,
           ),
@@ -3895,6 +3951,8 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
       const member = memberRows[0];
       if (!member) throw new Error('Member create/read failed inside purchase transaction');
 
+      await reclaimGrantRowForMode(tx, input.tenantId, member.id, input.productId, 'live');
+
       const grantRows = await tx
         .insert(productGrants)
         .values({
@@ -3909,7 +3967,7 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
           createdAt: input.createdAt,
         })
         .onConflictDoNothing({
-          target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
+          target: [productGrants.tenantId, productGrants.memberId, productGrants.productId, productGrants.mode],
         })
         .returning();
 

@@ -151,6 +151,7 @@ export const removeMember = async (
     const cancellation = await deps.payment.cancelSubscription({
       tenantId: tenant.value,
       providerSubscriptionId,
+      mode: subscription.mode,
       idempotencyKey: `member-removal-${subscription.id}`,
     });
     if (!cancellation.ok) {

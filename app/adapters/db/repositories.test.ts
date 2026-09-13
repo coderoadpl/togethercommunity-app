@@ -180,6 +180,7 @@ const price = (over: Partial<ProductPrice> & { id: string; tenantId: string; pro
 });
 
 const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; memberId: string; productId: string }): ProductGrant => ({
+  mode: 'live',
   source: 'stripe',
   startsAt: PAST,
   expiresAt: FUTURE,
@@ -189,6 +190,7 @@ const grant = (over: Partial<ProductGrant> & { id: string; tenantId: string; mem
 });
 
 const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: string; productId: string }): Order => ({
+  mode: 'live',
   priceId: null,
   kind: 'one_time',
   status: 'paid',
@@ -205,6 +207,7 @@ const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: 
 const subscription = (
   over: Partial<MemberSubscription> & { id: string; tenantId: string; memberId: string; productId: string; priceId: string },
 ): MemberSubscription => ({
+  mode: 'live',
   provider: 'stripe',
   providerSubscriptionId: 'psub-1',
   status: 'active',
@@ -4092,4 +4095,78 @@ describe('createAccountSecurityReader', () => {
       twoFactorEnabled: false,
     });
   });
+});
+
+it('isolates test commerce in the database and keeps test grants out of member access', async () => {
+  const ordersRepo = createOrderRepository(db);
+  const grantsRepo = createProductGrantRepository(db);
+  const subscriptionsRepo = createMemberSubscriptionRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-2', tenantId: ACME, title: 'Acme Course 2' }));
+  const revenue = await ordersRepo.revenueSince(ACME, PAST);
+  const count = await ordersRepo.countSince(ACME, PAST);
+  const active = await subscriptionsRepo.countActive(ACME, NOW);
+  const liveGrant = await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme');
+  const pending = order({ id: 'order-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme',
+    mode: 'test', status: 'pending', providerObjectIds: { checkoutSession: 'cs-mode-test' } });
+  await ordersRepo.create(ACME, pending);
+  expect(await ordersRepo.completeTestCheckout(GLOBEX, pending)).toBeNull();
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toMatchObject({ mode: 'test', status: 'paid' });
+  expect(await ordersRepo.completeTestCheckout(ACME, pending)).toBeNull();
+  await grantsRepo.createGrant(ACME, grant({ id: 'grant-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2', mode: 'test' }));
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme')).toEqual(liveGrant);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme-2', 'test')).toMatchObject({ id: 'grant-mode-test', mode: 'test' });
+  expect((await grantsRepo.listActiveForMember(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(false);
+  expect((await grantsRepo.listForMemberWithProductNames(ACME, 'mem-acme', NOW)).some((row) => row.mode === 'test')).toBe(true);
+  const pricesRepo = createProductPriceRepository(db);
+  await pricesRepo.create(ACME, price({ id: 'price-mode-test', tenantId: ACME, productId: 'prod-acme-2', kind: 'recurring', interval: 'month' }));
+  await subscriptionsRepo.create(ACME, subscription({ id: 'sub-mode-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-2',
+    priceId: 'price-mode-test', providerSubscriptionId: 'stripe-sub-mode-test', mode: 'test' }));
+  expect(await subscriptionsRepo.countActive(ACME, NOW)).toBe(active);
+  expect(await ordersRepo.revenueSince(ACME, PAST)).toEqual(revenue);
+  expect(await ordersRepo.countSince(ACME, PAST)).toBe(count);
+  const testOrders = await ordersRepo.list(ACME, { mode: 'test', page: 1, pageSize: 100 });
+  expect(testOrders.orders.map((row) => row.id)).toContain(pending.id);
+  expect(testOrders.orders.every((row) => row.mode === 'test')).toBe(true);
+  expect((await ordersRepo.list(ACME, { mode: 'live', page: 1, pageSize: 100 })).orders.some((row) => row.id === pending.id)).toBe(false);
+});
+
+it('skips a test grant for a member+product that already has a live grant, without erroring', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-mode-collision-test', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', mode: 'test',
+  }))).resolves.toBe(false);
+  expect(await grantsRepo.findGrant(ACME, 'mem-acme', 'prod-acme', 'test')).toBeNull();
+});
+
+it('reclaims the row from a stray test grant when a live grant is created for the same member+product', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-2', tenantId: GLOBEX, title: 'Globex Course 2' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-stray-test', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'test',
+  }));
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toMatchObject({ id: 'grant-mode-collision-stray-test' });
+  await expect(grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-mode-collision-live', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-2', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2', 'test')).toBeNull();
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-2')).toMatchObject({ id: 'grant-mode-collision-live', mode: 'live' });
+});
+
+it('reclaiming a stray test grant does not delete another tenant grant that happens to share the same row id', async () => {
+  const grantsRepo = createProductGrantRepository(db);
+  const productsRepo = createProductRepository(db);
+  await productsRepo.create(ACME, product({ id: 'prod-acme-shared-id', tenantId: ACME, title: 'Acme Shared Id' }));
+  await productsRepo.create(GLOBEX, product({ id: 'prod-globex-shared-id', tenantId: GLOBEX, title: 'Globex Shared Id' }));
+  await grantsRepo.createGrant(GLOBEX, grant({
+    id: 'grant-shared-id', tenantId: GLOBEX, memberId: 'mem-globex', productId: 'prod-globex-shared-id', mode: 'live',
+  }));
+  await grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'test',
+  }));
+  await expect(grantsRepo.createGrant(ACME, grant({
+    id: 'grant-shared-id-live', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'live',
+  }))).resolves.toBe(true);
+  expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-shared-id')).toMatchObject({ id: 'grant-shared-id', mode: 'live' });
 });

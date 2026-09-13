@@ -17,6 +17,7 @@
           "memberEmail": "student.active@together.dev",
           "memberId": "member-studio-active",
           "memberName": "Active Student",
+          "mode": "live",
           "priceId": "price-product-js-full",
           "productId": "product-js-full",
           "productTitle": "JavaScript Course - full access",

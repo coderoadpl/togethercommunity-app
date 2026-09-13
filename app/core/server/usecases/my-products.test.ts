@@ -43,6 +43,7 @@ const granted: Product = {
 };
 
 const memberGrant = (overrides: Partial<MemberGrant> = {}): MemberGrant => ({
+  mode: 'live',
   id: 'g1',
   productId: 'p1',
   productName: 'Granted Course',

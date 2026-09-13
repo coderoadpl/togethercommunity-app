@@ -522,6 +522,7 @@ export const requestInvoice = async (
   const tenant = authorizeTenant(ctx, 'invoice:write');
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
+  if (order?.mode === 'test') return err(validation('Test orders cannot be invoiced'));
   if (order === null) return err(notFound('Order was not found'));
   return issue(tenant.value, order, order.billing ?? null, deps);
 };
@@ -531,6 +532,7 @@ export const issueAutoInvoiceOnPayment = async (
   order: Order,
   deps: InvoiceDeps,
 ): Promise<void> => {
+  if (order.mode === 'test') return;
   const settings = await deps.tenants.findSettings(tenantId);
   if (settings?.autoIssueInvoices !== true) return;
   const skip = async (reason: string) => {

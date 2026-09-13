@@ -14,6 +14,7 @@ import { apiKeyCreateInputSchema } from '#core/contract/index.js';
 import type { StripeMode, TenantApiKeyPublic, TenantSecretMasked } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider } from '../panel-context.js';
@@ -42,10 +43,13 @@ const renderPanel = (
   secretsState: 'success' | 'pending' | 'error' = 'success',
   initialApiKeys: TenantApiKeyPublic[] = [],
   staffRole: 'owner' | 'admin' = 'owner',
+  initialTestLastEventAt: string | null = null,
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
   let stripeMode = initialStripeMode;
+  let stripeTestLastEventAt = initialTestLastEventAt;
+  const stripeTestRemovals: string[] = [];
   const testedProviders: string[] = [];
   const storageSubmissions: unknown[] = [];
   const stripeConfigurations: string[] = [];
@@ -107,6 +111,7 @@ const renderPanel = (
         data: {
           secrets,
           stripeMode,
+          stripeTestLastEventAt,
           stripeWebhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-123',
         },
       });
@@ -138,19 +143,32 @@ const renderPanel = (
         ? String(body.restrictedKey)
         : '';
       stripeConfigurations.push(restrictedKey);
-      stripeMode = restrictedKey.startsWith('rk_live_') ? 'live' : 'test';
+      const configuredMode = restrictedKey.startsWith('rk_live_') ? 'live' : 'test';
+      const slotKeys: TenantSecretMasked['key'][] = configuredMode === 'test'
+        ? ['stripe.testRestrictedKey', 'stripe.testWebhookSecret']
+        : ['stripe.restrictedKey', 'stripe.webhookSecret'];
+      if (configuredMode === 'live') stripeMode = 'live';
       secrets = [
-        ...secrets.filter((secret) => !secret.key.startsWith('stripe.')),
-        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
-        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+        ...secrets.filter((secret) => !slotKeys.includes(secret.key)),
+        ...slotKeys.map((key, index) => ({
+          key,
+          maskedPreview: index === 0 ? '••••2345' : '••••9876',
+          updatedAt: '1998-07-12T10:00:00.000Z',
+        })),
       ];
       return HttpResponse.json({
         ok: true,
         data: {
-          mode: stripeMode,
-          webhookUrl: 'https://app.example.test/api/webhooks/stripe/tenant-123',
+          mode: configuredMode,
+          webhookUrl: `https://app.example.test/api/webhooks/stripe/tenant-123${configuredMode === 'test' ? '?mode=test' : ''}`,
         },
       });
+    }),
+    http.post('/api/integrations/stripe/test-mode/remove', () => {
+      stripeTestRemovals.push('removed');
+      secrets = secrets.filter((secret) => !secret.key.startsWith('stripe.test'));
+      stripeTestLastEventAt = null;
+      return HttpResponse.json({ ok: true, data: { removed: true } });
     }),
     http.delete('/api/tenant-secrets/:key', ({ params }) => {
       secrets = secrets.filter((s) => s.key !== params.key);
@@ -293,6 +311,7 @@ const renderPanel = (
     router,
     storageSubmissions,
     stripeConfigurations,
+    stripeTestRemovals,
     testedProviders,
     apiKeySubmissions,
     settingsSubmissions,
@@ -531,6 +550,92 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(
       en.integrations.paymentAvailable,
     );
+  });
+
+  it('configures the sandbox slot and reports its endpoint and last event', async () => {
+    const { stripeConfigurations } = renderPanel(
+      [
+        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+      ],
+      defaultSettings,
+      'live',
+    );
+
+    expect(await screen.findByTestId('stripe-test-key-status')).toHaveTextContent(en.integrations.notConfigured);
+    expect(screen.queryByTestId('stripe-test-remove')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('stripe-test-restricted-key'), 'rk_test_secret2345');
+    await userEvent.click(screen.getByTestId('stripe-test-configure'));
+
+    expect(await screen.findByTestId('stripe-test-configured')).toHaveTextContent(en.integrations.stripeConfigured);
+    await waitFor(() => {
+      expect(screen.getByTestId('stripe-test-mode-badge')).toHaveTextContent(en.integrations.stripeTestMode);
+    });
+    expect(screen.getByText(en.integrations.stripeTestEndpointRegistered)).toBeInTheDocument();
+    expect(screen.getByTestId('stripe-mode-badge')).toHaveTextContent(en.integrations.stripeLiveMode);
+    expect(stripeConfigurations).toEqual(['rk_test_secret2345']);
+    await waitFor(() => {
+      expect(screen.getByTestId('stripe-test-webhook-url'))
+        .toHaveTextContent('https://app.example.test/base/api/webhooks/stripe/tenant-123?mode=test');
+    });
+  });
+
+  it('localizes the last sandbox event instead of printing the stored timestamp', async () => {
+    renderPanel(
+      [
+        { key: 'stripe.testRestrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.testWebhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+      ],
+      defaultSettings,
+      null,
+      'success',
+      [],
+      'owner',
+      '1998-07-12T10:00:00.000Z',
+    );
+
+    const label = await screen.findByText(
+      en.integrations.stripeTestLastEvent({ value: formatDateTime('1998-07-12T10:00:00.000Z', 'en') }),
+    );
+    expect(label).toBeInTheDocument();
+    expect(screen.queryByText(/1998-07-12T10:00:00.000Z/u)).not.toBeInTheDocument();
+  });
+
+  it('removes the sandbox slot through the dedicated endpoint and keeps the live slot', async () => {
+    const { stripeTestRemovals } = renderPanel(
+      [
+        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.testRestrictedKey', maskedPreview: '••••1111', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.testWebhookSecret', maskedPreview: '••••2222', updatedAt: '1998-07-12T10:00:00.000Z' },
+      ],
+      defaultSettings,
+      'live',
+    );
+
+    await userEvent.click(await screen.findByTestId('stripe-test-remove'));
+    await userEvent.click(await screen.findByTestId('stripe-test-remove-confirm'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stripe-test-key-status')).toHaveTextContent(en.integrations.notConfigured);
+    });
+    expect(stripeTestRemovals).toEqual(['removed']);
+    expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(en.integrations.configured);
+  });
+
+  it('warns when the live slot still stores a sandbox key', async () => {
+    renderPanel(
+      [
+        { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+        { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+      ],
+      defaultSettings,
+      'test',
+    );
+
+    expect(await screen.findByTestId('stripe-live-slot-test-key'))
+      .toHaveTextContent(en.integrations.stripeLiveSlotTestKey);
   });
 
   it('badges the mode a previously configured tenant stored', async () => {

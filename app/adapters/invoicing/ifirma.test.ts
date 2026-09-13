@@ -10,6 +10,7 @@ import {
 
 const input: Parameters<InvoicingPort['issueInvoice']>[0] = {
   order: {
+    mode: 'live',
     id: 'order-1',
     tenantId: 'tenant-1',
     memberId: 'member-1',

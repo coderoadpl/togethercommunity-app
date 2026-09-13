@@ -291,7 +291,7 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
       });
     case 'sign-in':
-      return t.members.timelineEventLabels['sign-in'];
+      return '';
     case 'email-sent':
       return t.members.timelineEmail({
         subject: isRedactedAuthEmailKind(event.payload.source)

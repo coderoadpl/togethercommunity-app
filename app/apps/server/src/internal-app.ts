@@ -1,3 +1,4 @@
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
 import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions } from '#core/server/index.js';
@@ -117,6 +118,7 @@ import {
   spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
+  stripeTestSessionInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
   studentLessonPlaybackOutputSchema,
@@ -185,6 +187,8 @@ import {
   avatarUrlFor,
   cancelCampaign,
   configureStripe,
+  removeStripeTestMode,
+  createStripeTestSession,
   createCampaign,
   createCoupon,
   createCourse,
@@ -573,6 +577,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   name: user.name,
   emailVerified: user.emailVerified,
   image: null,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -591,6 +596,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   name: 'Checkout',
   emailVerified: false,
   image: null,
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -801,7 +807,6 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
   });
 
-  // A freshly registered user has no member or staff grant, so tenant identity resolution would reject this session-authenticated route.
   app.post(API_PATHS.termsConsent, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
@@ -1636,6 +1641,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       : { hasPassword: false, twoFactorEnabled: false };
     return respond(
       ok({
+        tenantAccess: identity.tenantAccess,
         userId: identity.userId,
         email: identity.email,
         name: identity.name,
@@ -2388,6 +2394,25 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { ...deps, corsOrigins: await probeCorsOrigins(c.req, deps) },
     ));
   });
+
+  app.post(API_PATHS.stripeTestSession, async (c) => {
+    if (!(await probeCorsOrigins(c.req, deps)).includes(c.req.header('origin') ?? '')) return respond(err(forbidden()));
+    const parsed = stripeTestSessionInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid test session payload')));
+    const session = createStripeTestSession(ctxOf(c), deps);
+    if (!session.ok) return respond(session);
+    c.res = respond(ok({ enabled: parsed.data.enabled }));
+    if (parsed.data.enabled) {
+      setCookie(c, 'together_stripe_test', session.value, {
+        httpOnly: true, secure: deps.secureCookies, sameSite: 'Strict', path: '/', maxAge: 3600,
+      });
+    } else {
+      deleteCookie(c, 'together_stripe_test', { path: '/' });
+    }
+    return c.res;
+  });
+
+  app.post(API_PATHS.stripeTestRemove, async (c) => respond(await removeStripeTestMode(ctxOf(c), deps)));
 
   app.post(API_PATHS.stripeConfigure, async (c) => {
     const body: unknown = await readJson(c.req.raw);

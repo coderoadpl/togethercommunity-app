@@ -182,7 +182,8 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-composer-input')).toHaveAttribute('placeholder', en.discussion.composerPlaceholder);
+    expect((await screen.findByTestId('discussion-composer-input')).querySelector('p'))
+      .toHaveAttribute('data-placeholder', en.discussion.composerPlaceholder);
     expect(screen.getByTestId('discussion-composer-submit')).toBeDisabled();
     expect(screen.getByTestId('discussion-empty')).toHaveTextContent(en.discussion.empty);
   });
@@ -343,7 +344,7 @@ describe('DiscussionSection', () => {
 
     await waitFor(() =>
       expect(bodies).toEqual([
-        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply', bodyFormat: 'plain' },
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply', bodyFormat: 'markdown' },
       ]),
     );
 
@@ -402,7 +403,7 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('My reply');
     expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();
     expect(bodies).toEqual([
-      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply', bodyFormat: 'plain' },
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply', bodyFormat: 'markdown' },
     ]);
     expect(discussionReads).toBeGreaterThan(readsBefore);
   });

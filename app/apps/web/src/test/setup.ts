@@ -35,6 +35,13 @@ Object.defineProperty(Element.prototype, 'scrollIntoView', {
   value: () => undefined,
 });
 
+document.elementFromPoint = () => document.activeElement;
+Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
+Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+  configurable: true,
+  value: () => new DOMRect(),
+});
+
 /**
  * Start MSW at module scope, before any test file (and thus `api.ts`) is
  * imported: the Better Auth client grabs `globalThis.fetch` the moment its

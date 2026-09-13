@@ -27,6 +27,7 @@ const staffIdentity: Identity = {
   name: 'Owner',
   emailVerified: true,
   image: null,
+  tenantAccess: 'staff',
   tenantId: TENANT,
   tenantSlug: 'acme',
   tenantName: 'Acme',

@@ -155,6 +155,8 @@ export interface Messages {
     linkApply: string;
     linkRemove: string;
     sourceOnlyHint: string;
+    characterCount: (params: { used: number; limit: number }) => string;
+    overLimit: string;
   };
   pagination: {
     rowsPerPage: string;
@@ -302,6 +304,9 @@ export interface Messages {
     and: string;
   };
   tenant: {
+    visitorNotice: (params: { email: string }) => string;
+    visitorOwnCommunity: string;
+    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;
@@ -463,6 +468,8 @@ export interface Messages {
     diagnostics: string;
   };
   sales: {
+    mode: string;
+    testChip: string;
     loading: string;
     empty: string;
     emptyBody: string;
@@ -833,6 +840,11 @@ export interface Messages {
     stripeConfiguring: string;
     stripeConfigured: string;
     stripeTestMode: string;
+    stripeTestDescription: string;
+    stripeTestEndpointRegistered: string;
+    stripeTestLastEvent: (params: { value: string }) => string;
+    stripeTestNoEvents: string;
+    stripeLiveSlotTestKey: string;
     stripeLiveMode: string;
     stripeRestrictedPermissions: string;
     configured: string;
@@ -2143,6 +2155,12 @@ export interface Messages {
     mismatch: string;
   };
   checkout: {
+    stripeTestMode: string;
+    testPurchase: string;
+    testPurchaseBody: string;
+    testModeHint: string;
+    testModeCouponBlocked: string;
+    testModeUnavailable: string;
     loading: string;
     checkoutEyebrow: string;
     eyebrow: (params: { tenant: string }) => string;

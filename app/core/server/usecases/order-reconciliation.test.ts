@@ -10,6 +10,7 @@ const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
   email: 'owner@together.dev',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-a',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',
@@ -38,6 +39,7 @@ const row: PaidWithoutGrantRow = {
 };
 
 const orders = (rows: PaidWithoutGrantRow[]): OrderRepository => ({
+  completeTestCheckout: async () => null,
   create: async () => undefined,
   list: async () => ({ orders: [], total: 0 }),
   revenueSince: async () => [],

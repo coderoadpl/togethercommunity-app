@@ -66,6 +66,7 @@ const okMe = (
     staffRole?: 'owner' | 'admin' | null;
     banned?: boolean;
     tenant?: null;
+    tenantAccess?: 'none' | 'member' | 'staff';
     displayName?: string | null;
     impersonated?: boolean;
   } = {},
@@ -78,6 +79,7 @@ const okMe = (
         email: 'jan@example.com',
         emailVerified: true,
         name: 'John Member',
+        tenantAccess: overrides.tenantAccess ?? (overrides.staffRole ? 'staff' : 'member'),
         tenant: overrides.tenant === null
           ? null
           : {
@@ -281,6 +283,33 @@ const renderShell = async (
 afterEach(() => vi.unstubAllEnvs());
 
 describe('MemberShell', () => {
+  it('shows a non-blocking account notice in the foreign-tenant visitor shell', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    stubViewport(true);
+    server.use(okMe({ tenant: null, tenantAccess: 'none' }), okOffer(), okPublicNavigation());
+    await renderShell('/start', page(en.redirects.targetLesson), page(en.redirects.targetCourse), 'acme.localhost');
+    expect(await screen.findByTestId('foreign-tenant-notice')).toHaveTextContent(
+      en.tenant.visitorNotice({ email: 'jan@example.com' }),
+    );
+    expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', 'http://start.localhost:3000');
+    expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeEnabled();
+    expect(screen.getByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { host: 'a host whose tenant the user belongs to', baseDomain: 'localhost', hostname: 'acme.localhost', tenantAccess: 'member' as const },
+    { host: 'a deployment without tenant hosts', baseDomain: '', hostname: 'courses.example.test', tenantAccess: 'none' as const },
+  ])('hides the account notice on $host', async ({ baseDomain, hostname, tenantAccess }) => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', baseDomain);
+    stubViewport(true);
+    server.use(okMe({ tenant: null, tenantAccess }), okOffer(), okPublicNavigation());
+    await renderShell('/start', page(en.redirects.targetLesson), page(en.redirects.targetCourse), hostname);
+    expect(await screen.findByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryByTestId('foreign-tenant-notice')).not.toBeInTheDocument();
+  });
+
   it('redirects member routes on the platform host to the workspace picker', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
 
@@ -927,7 +956,6 @@ describe('MemberShell', () => {
     const Composer = () => (
       <PostComposer
         label="Question"
-        compact
         placeholder="Write a question"
         submitLabel="Send"
         pendingLabel="Sending"

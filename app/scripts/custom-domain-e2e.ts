@@ -28,8 +28,9 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
-const CUSTOM_HOST = 'course.acme.localhost';
-const TENANT_HOST = 'acme.localhost';
+const PLATFORM_BASE_DOMAIN = 'platform.localhost';
+const CUSTOM_HOST = `course.acme.${PLATFORM_BASE_DOMAIN}`;
+const TENANT_HOST = `acme.${PLATFORM_BASE_DOMAIN}`;
 const CREATOR_PASSWORD = 'demo-password-15';
 const PROTECTED_LESSON_PATH = '/my/courses/course-acme/lessons/lesson-acme-intro';
 
@@ -131,7 +132,7 @@ const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
 };
 
 const buildWeb = async (): Promise<void> => {
-  const build = await run(viteBin, ['build', '--config', 'apps/web/vite.config.ts'], {});
+  const build = await run(viteBin, ['build', '--config', 'apps/web/vite.config.ts'], { APP_BASE_DOMAIN: PLATFORM_BASE_DOMAIN });
   assert(build.code === 0, `Web build failed:\n${build.stdout}${build.stderr}`);
 };
 
@@ -284,6 +285,48 @@ const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string)
     await context.close();
   } finally {
     if (browser) await browser.close();
+  }
+};
+
+const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
+  const browser = await launchBrowser();
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    const cookies = await sessionCookies(context);
+    assert(cookies.some((cookie) => cookie.domain === `.${PLATFORM_BASE_DOMAIN}`), 'platform sign-in did not share its session cookie');
+    const foreignOrigin = new URL(tenantBaseUrl);
+    foreignOrigin.hostname = `studio.${PLATFORM_BASE_DOMAIN}`;
+    for (const path of ['/', '/panel']) {
+      await page.goto(new URL(path, foreignOrigin).href, { waitUntil: 'networkidle' });
+      await page.getByTestId('foreign-tenant-notice').waitFor({ state: 'visible', timeout: 20000 });
+      assert(new URL(page.url()).pathname === '/', 'foreign studio entry did not redirect home');
+      await page.getByRole('heading', { name: en.anon.homeTitle, exact: true }).waitFor({ state: 'visible' });
+      assert(await page.getByText(en.errors.messageForbidden, { exact: true }).count() === 0, 'visitor entry showed a permission error');
+      assert(await page.getByTestId('foreign-tenant-notice').textContent().then((text) => text?.includes(SMOKE_TENANT_CREATOR_EMAIL) === true), 'visitor notice omitted the signed-in account');
+      await page.getByRole('banner').getByRole('link', { name: en.auth.signInLink, exact: true }).waitFor({ state: 'visible' });
+      const me = await page.request.get(new URL(API_PATHS.me, foreignOrigin).href);
+      assert(me.status() === 200, 'foreign-host /api/me did not return 200');
+      const identity = z.object({ data: z.object({ tenantAccess: z.literal('none'), tenant: z.null() }) }).safeParse(await me.json());
+      assert(identity.success, 'foreign-host identity did not resolve as a visitor');
+    }
+    await page.getByRole('link', { name: en.tenant.visitorOwnCommunity }).click();
+    await page.getByRole('link', { name: /Acme Courses/u }).waitFor({ state: 'visible', timeout: 20000 });
+    await page.goto(foreignOrigin.href, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: en.tenant.visitorSwitchAccount }).click();
+    try {
+      await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
+    } catch (cause) {
+      throw new E2eFailure(`Account switch failed at ${page.url()}: ${await page.locator('body').innerText()}\n${String(cause)}`);
+    }
+    assert((await sessionCookies(context)).length === 0, 'switching accounts retained the shared session');
+    console.log('custom-domain-e2e: shared session falls back to a foreign-tenant visitor OK');
+    await context.close();
+  } finally {
+    await browser.close();
   }
 };
 
@@ -539,11 +582,11 @@ const runSelfServeAdd = async (input: {
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(`${input.tenantBaseUrl}/panel/settings#company`, { waitUntil: 'networkidle' });
 
-    await page.getByTestId('tenant-domain-input').fill('shop.acme.localhost');
+    await page.getByTestId('tenant-domain-input').fill(`shop.acme.${PLATFORM_BASE_DOMAIN}`);
     await page.getByTestId('tenant-domain-add').click();
     await page.locator('[data-testid^="toast-error-"]').first().waitFor({ state: 'visible', timeout: 20000 });
     assert(
-      await readDomainRow(input.databaseUrl, 'shop.acme.localhost') === null,
+      await readDomainRow(input.databaseUrl, `shop.acme.${PLATFORM_BASE_DOMAIN}`) === null,
       'the platform base domain was accepted as a custom domain',
     );
     console.log('custom-domain-e2e: self-serve add refused a platform subdomain OK');
@@ -642,13 +685,14 @@ try {
     env: {
       DATABASE_URL: e2eDatabaseUrl,
       APP_BASE_URL: tenantBaseUrl,
-      APP_BASE_DOMAIN: 'localhost',
+      APP_BASE_DOMAIN: PLATFORM_BASE_DOMAIN,
       WEB_DIST_DIR: 'dist/web',
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
       EMAIL_PROVIDER: 'dev',
       SIMULATED_PAYMENTS: 'true',
     },
   });
+  await runCrossTenantVisitor(tenantBaseUrl);
   await runCustomHostSignIn(customBaseUrl, tenantBaseUrl);
   await runCustomHostPasskey(customBaseUrl);
   await runCustomDomainMagicLink(connectUrl, tenantBaseUrl);

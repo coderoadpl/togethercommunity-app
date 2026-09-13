@@ -134,6 +134,7 @@ import type {
   MemberActivity,
   MemberActivityQuery,
   StripeSubscriptionSnapshot,
+  StripeMode,
   WipedTable,
 } from '#core/domain/index.js';
 
@@ -192,8 +193,21 @@ export interface AccountAvatarRepository {
   removeAvatar(tenantId: string, userId: string): Promise<void>;
 }
 
+export interface MemberTenantListing {
+  id: string;
+  slug: string;
+  name: string;
+  staffRole: null;
+  memberId: string;
+  displayName: string | null;
+  banned: boolean;
+  dmOptOut: boolean;
+  language: Language | null;
+  videoAutoplay: boolean | null;
+}
+
 export interface AccountAvatarTenantReader {
-  listTenantIdsForUser(userId: string): Promise<string[]>;
+  listTenantIdsForUser(userId: string): Promise<MemberTenantListing[]>;
 }
 
 export interface AvatarImageProcessor {
@@ -783,7 +797,7 @@ export interface MemberErasureRequestRepository {
 
 export interface ProductGrantRepository {
   findById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
-  findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
+  findGrant(tenantId: string, memberId: string, productId: string, mode?: 'live' | 'test'): Promise<ProductGrant | null>;
   createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
   setGrantWindow(
     tenantId: string,
@@ -970,6 +984,8 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  livemode?: boolean;
+  mode?: 'live' | 'test';
   id: string;
   type: string;
   objectId: string | null;
@@ -1032,6 +1048,7 @@ export interface PaymentProvider {
     webhookEndpointId: string;
   }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     productId: string;
     productName: string;
@@ -1059,10 +1076,12 @@ export interface PaymentProvider {
     stripePromotionCodeId: string | null;
   }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
   expireCheckoutSession(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     sessionId: string;
   }): Promise<Result<{ expired: true }, AppError>>;
   cancelSubscription(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     providerSubscriptionId: string;
     idempotencyKey: string;
@@ -1450,6 +1469,7 @@ export interface ProductPriceRepository {
 }
 
 export interface OrderListQuery {
+  mode?: 'live' | 'test';
   status?: OrderStatus;
   productId?: string;
   kind?: PriceKind;
@@ -1460,6 +1480,7 @@ export interface OrderListQuery {
 }
 
 export interface OrderRepository {
+  completeTestCheckout(tenantId: string, order: Order): Promise<Order | null>;
   create(tenantId: string, order: Order): Promise<void>;
   list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
   listForMember?(tenantId: string, memberId: string): Promise<Order[]>;
@@ -1497,6 +1518,7 @@ export interface PaymentRefundRepository {
   findOrderByProviderObjectIds(
     tenantId: string,
     providerObjectIds: Record<string, string>,
+    mode?: StripeMode,
   ): Promise<Order | null>;
   findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
   listAccessRetainingOrdersForMemberProduct(

@@ -19,24 +19,31 @@ import {
   Tabs,
   TextField,
 } from '@mui/material';
-import { useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 
 import { useTranslations } from '../../i18n/index.js';
 import { MarkdownEditorContent, MarkdownEditorToolbar, MarkdownSourceInput } from '../../theme.js';
 
 export interface MarkdownEditorHandle {
+  clear: () => void;
   focus: () => void;
 }
 
 export interface MarkdownEditorProps {
   value: string;
   onChange: (markdown: string) => void;
+  variant?: 'full' | 'compact';
   placeholder?: string;
   minRows?: number;
+  maxLength?: number;
+  autoFocus?: boolean;
   disabled?: boolean;
   testId?: string;
+  inputTestId?: string;
+  onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
   ref?: Ref<MarkdownEditorHandle>;
   'aria-label': string;
+  'aria-labelledby'?: string;
   'aria-describedby'?: string;
 }
 
@@ -202,12 +209,18 @@ const linkHref = (value: unknown): string => {
 export const MarkdownEditor = ({
   value,
   onChange,
+  variant = 'full',
   placeholder = '',
   minRows = 6,
+  maxLength,
+  autoFocus = false,
   disabled = false,
   testId,
+  inputTestId,
+  onKeyDown,
   ref,
   'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
   'aria-describedby': ariaDescribedBy,
 }: MarkdownEditorProps) => {
   const t = useTranslations();
@@ -217,8 +230,10 @@ export const MarkdownEditor = ({
   const [linkValue, setLinkValue] = useState('');
   const [linkAttempted, setLinkAttempted] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const acceptedValueRef = useRef(value);
   const sourceOnly = needsSourceOnlyEditing(value);
   const editor = useEditor({
+    autofocus: autoFocus ? 'end' : false,
     content: value,
     contentType: 'markdown',
     editable: !disabled,
@@ -229,19 +244,41 @@ export const MarkdownEditor = ({
         'aria-multiline': 'true',
         id: testId === undefined ? `${tabsId}-editor` : `${testId}-wysiwyg`,
         role: 'textbox',
+        ...(ariaLabelledBy === undefined ? {} : { 'aria-labelledby': ariaLabelledBy }),
         ...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy }),
         ...(disabled ? { 'aria-disabled': 'true' } : {}),
-        ...(testId === undefined ? {} : { 'data-testid': `${testId}-wysiwyg` }),
+        ...((inputTestId ?? testId) === undefined
+          ? {}
+          : { 'data-testid': inputTestId ?? `${testId}-wysiwyg` }),
       },
     },
-    onUpdate: ({ editor: current }) => onChange(current.getMarkdown()),
-  }, [ariaDescribedBy, ariaLabel, disabled, placeholder, tabsId, testId]);
+    onUpdate: ({ editor: current, transaction }) => {
+      const markdown = current.getMarkdown();
+      if (
+        maxLength !== undefined
+        && markdown.length > maxLength
+        && markdown.length >= acceptedValueRef.current.length
+      ) {
+        const caret = transaction.mapping.invert().map(current.state.selection.from);
+        current.commands.setContent(acceptedValueRef.current, { contentType: 'markdown', emitUpdate: false });
+        current.commands.setTextSelection(caret);
+        return;
+      }
+      acceptedValueRef.current = markdown;
+      onChange(markdown);
+    },
+  }, [ariaDescribedBy, ariaLabel, ariaLabelledBy, autoFocus, disabled, inputTestId, maxLength, placeholder, tabsId, testId]);
 
   // While the surface has focus its own keystrokes arrive back as a prop one render later; replaying them would rewind the caret.
   useEffect(() => {
     if (editor === null || sourceOnly || editor.isFocused || editor.getMarkdown() === value) return;
     editor.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
+    acceptedValueRef.current = value;
   }, [editor, mode, sourceOnly, value]);
+
+  useLayoutEffect(() => {
+    if (autoFocus && editor !== null && !disabled) editor.view.dom.focus();
+  }, [autoFocus, disabled, editor]);
 
   const toolbar = useEditorState({
     editor,
@@ -289,29 +326,104 @@ export const MarkdownEditor = ({
   };
 
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented) return;
     if (!disabled && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       openLinkDialog();
     }
   };
 
-  const editorDisabled = disabled || editor === null;
   const editorPanelId = `${tabsId}-editor-panel`;
   const markdownPanelId = `${tabsId}-markdown-panel`;
   const linkTitleId = `${tabsId}-link-title`;
   const activeMode = sourceOnly ? 'markdown' : mode;
+  const editorDisabled = disabled || editor === null || activeMode === 'markdown';
 
   useImperativeHandle(ref, () => ({
+    clear: () => {
+      acceptedValueRef.current = '';
+      editor?.commands.setContent('', { contentType: 'markdown', emitUpdate: false });
+    },
     focus: () => {
       if (activeMode === 'markdown' || editorDisabled) sourceRef.current?.focus();
       else editor?.commands.focus();
     },
   }), [activeMode, editor, editorDisabled]);
 
+  const compactToggle = (
+    <ActionButton
+      disabled={disabled || sourceOnly}
+      label={activeMode === 'editor' ? t.markdownEditor.markdownTab : t.markdownEditor.editorTab}
+      shortLabel={(
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M2.5 4.5h13M2.5 9h8M2.5 13.5h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="m12.5 7 2 2-2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+      onClick={() => setMode(activeMode === 'editor' ? 'markdown' : 'editor')}
+    />
+  );
+
+  const compactToolbar = (
+    <MarkdownEditorToolbar
+      direction="row"
+      useFlexGap
+      spacing="0.25rem"
+      role="toolbar"
+      aria-label={t.markdownEditor.toolbarAria}
+      sx={{ flexWrap: 'nowrap', overflow: 'hidden', p: '0.4rem' }}
+    >
+      <FormatButton active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
+      <FormatButton active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+      <FormatButton active={toolbar?.link ?? false} disabled={editorDisabled} label={t.markdownEditor.link} shortLabel="↗" onClick={openLinkDialog} />
+      <FormatButton active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />
+      <FormatButton active={toolbar?.code ?? false} disabled={editorDisabled} label={t.markdownEditor.inlineCode} shortLabel="&lt;/&gt;" onClick={() => editor?.chain().focus().toggleCode().run()} />
+      <Box sx={{ ml: 'auto' }}>{compactToggle}</Box>
+    </MarkdownEditorToolbar>
+  );
+
+  const visualContent = (
+    <MarkdownEditorContent onKeyDownCapture={keyDown} rows={minRows} data-disabled={disabled}>
+      <EditorContent editor={editor} />
+    </MarkdownEditorContent>
+  );
+
+  const sourceContent = (
+    <MarkdownSourceInput
+      fullWidth
+      multiline
+      minRows={minRows}
+      value={value}
+      readOnly={disabled}
+      placeholder={placeholder}
+      inputRef={sourceRef}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (
+          maxLength === undefined
+          || nextValue.length <= maxLength
+          || nextValue.length < acceptedValueRef.current.length
+        ) {
+          acceptedValueRef.current = nextValue;
+          onChange(nextValue);
+        }
+      }}
+      onKeyDown={onKeyDown}
+      inputProps={{
+        'aria-label': ariaLabel,
+        ...(ariaLabelledBy === undefined ? {} : { 'aria-labelledby': ariaLabelledBy }),
+        ...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy }),
+        'data-testid': inputTestId ?? (testId === undefined ? undefined : `${testId}-markdown`),
+        ...(maxLength === undefined ? {} : { maxLength }),
+      }}
+    />
+  );
+
   return (
     <Box data-testid={testId} sx={{ minWidth: 0 }}>
       {sourceOnly ? <Alert severity="info" sx={{ mb: '0.55rem' }}>{t.markdownEditor.sourceOnlyHint}</Alert> : null}
-      <Tabs
+      {variant === 'full' ? <Tabs
         value={activeMode}
         onChange={(_event, next: 'editor' | 'markdown') => setMode(next)}
         aria-label={t.markdownEditor.tabsAria}
@@ -320,8 +432,15 @@ export const MarkdownEditor = ({
       >
         <Tab id={`${tabsId}-editor-tab`} aria-controls={editorPanelId} value="editor" label={t.markdownEditor.editorTab} disabled={sourceOnly} sx={{ minHeight: '2.75rem' }} />
         <Tab id={`${tabsId}-markdown-tab`} aria-controls={markdownPanelId} value="markdown" label={t.markdownEditor.markdownTab} sx={{ minHeight: '2.75rem' }} />
-      </Tabs>
-      {activeMode === 'editor' ? (
+      </Tabs> : null}
+      {variant === 'compact' ? (
+        <Paper variant="outlined" sx={{ minWidth: 0, overflow: 'hidden' }}>
+          {compactToolbar}
+          {activeMode === 'editor' ? visualContent : (
+            <Box sx={{ p: '0.4rem' }}>{sourceContent}</Box>
+          )}
+        </Paper>
+      ) : activeMode === 'editor' ? (
         <Paper
           id={editorPanelId}
           role="tabpanel"
@@ -350,31 +469,11 @@ export const MarkdownEditor = ({
             <ActionButton disabled={editorDisabled || !(toolbar?.canUndo ?? false)} label={t.markdownEditor.undo} shortLabel="↶" onClick={() => editor?.chain().focus().undo().run()} />
             <ActionButton disabled={editorDisabled || !(toolbar?.canRedo ?? false)} label={t.markdownEditor.redo} shortLabel="↷" onClick={() => editor?.chain().focus().redo().run()} />
           </MarkdownEditorToolbar>
-          <MarkdownEditorContent
-            onKeyDownCapture={keyDown}
-            rows={minRows}
-            data-disabled={disabled}
-          >
-            <EditorContent editor={editor} />
-          </MarkdownEditorContent>
+          {visualContent}
         </Paper>
       ) : (
         <Box id={markdownPanelId} role="tabpanel" aria-labelledby={`${tabsId}-markdown-tab`} sx={{ pt: '0.55rem' }}>
-          <MarkdownSourceInput
-            fullWidth
-            multiline
-            minRows={minRows}
-            value={value}
-            readOnly={disabled}
-            placeholder={placeholder}
-            inputRef={sourceRef}
-            onChange={(event) => onChange(event.target.value)}
-            inputProps={{
-              'aria-label': ariaLabel,
-              ...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy }),
-              'data-testid': testId === undefined ? undefined : `${testId}-markdown`,
-            }}
-          />
+          {sourceContent}
         </Box>
       )}
       <Dialog open={linkOpen} onClose={closeLinkDialog} fullWidth maxWidth="xs" aria-labelledby={linkTitleId}>

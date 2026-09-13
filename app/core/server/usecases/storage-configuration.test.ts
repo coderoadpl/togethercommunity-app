@@ -34,6 +34,7 @@ const ctx = (role: 'owner' | 'admin'): Ctx => ({
     email: 'owner@together.dev',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: 'staff',
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

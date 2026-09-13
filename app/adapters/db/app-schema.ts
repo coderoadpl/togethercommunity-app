@@ -474,6 +474,7 @@ export const couponEvents = pgTable(
 export const orders = pgTable(
   'orders',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
@@ -866,6 +867,7 @@ export const productPriceHistory = pgTable(
 export const memberSubscriptions = pgTable(
   'member_subscriptions',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
@@ -910,6 +912,7 @@ export const memberSubscriptions = pgTable(
 export const productGrants = pgTable(
   'product_grants',
   {
+    mode: text('mode', { enum: ['live', 'test'] }).notNull().default('live'),
     id: text('id').notNull(),
     tenantId: text('tenant_id')
       .notNull()
@@ -939,6 +942,13 @@ export const productGrants = pgTable(
     }).onDelete('cascade'),
     index('product_grants_tenantId_idx').on(table.tenantId),
     index('product_grants_memberId_idx').on(table.memberId),
+    uniqueIndex('product_grants_tenant_member_product_mode_uidx').on(
+      table.tenantId,
+      table.memberId,
+      table.productId,
+      table.mode,
+    ),
+    // Predates the mode column; a follow-up, owner-reviewed contraction migration retires it.
     uniqueIndex('product_grants_tenant_member_product_uidx').on(
       table.tenantId,
       table.memberId,
@@ -1613,6 +1623,7 @@ export const dmMessages = pgTable(
       .references(() => dmConversations.id, { onDelete: 'cascade' }),
     senderUserId: text('sender_user_id').notNull(),
     body: text('body').notNull(),
+    bodyFormat: text('body_format', { enum: ['plain', 'markdown'] }).notNull().default('plain'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

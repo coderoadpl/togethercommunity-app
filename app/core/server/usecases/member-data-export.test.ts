@@ -61,6 +61,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     email: 'member@example.com',
     name: 'Member',
     emailVerified: true,
+    tenantAccess: role,
     tenantId: role === 'none' ? null : 'tenant-1',
     tenantSlug: role === 'none' ? null : 'acme',
     tenantName: role === 'none' ? null : 'Acme',
@@ -111,6 +112,7 @@ const deps = (
     countActive: async () => 0,
   },
   orders: {
+    completeTestCheckout: async () => null,
     create: async () => undefined,
     list: async () => ({ orders: [], total: 0 }),
     listForMember: async () => [],
@@ -212,7 +214,7 @@ describe('exportMyData', () => {
 
   it('requires a tenant', async () => {
     const result = await exportMyData(context('none'), deps());
-    expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('does not export a tombstoned member', async () => {

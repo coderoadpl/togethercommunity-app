@@ -433,7 +433,7 @@ describe('community pages', () => {
     await user.click(screen.getByTestId('space-composer-submit'));
 
     await waitFor(() =>
-      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'My new post', bodyFormat: 'plain' }]),
+      expect(bodies).toEqual([{ contextKind: 'space', contextId: 's1', body: 'My new post', bodyFormat: 'markdown' }]),
     );
   });
 
@@ -541,7 +541,7 @@ describe('community pages', () => {
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
     const prompt = await screen.findByTestId('space-composer-input');
-    expect(prompt).toHaveAttribute('placeholder', en.community.composerPlaceholder);
+    expect(prompt.querySelector('p')).toHaveAttribute('data-placeholder', en.community.composerPlaceholder);
     expect(screen.getByTestId('space-composer-submit')).toBeDisabled();
 
     await user.click(prompt);
@@ -625,7 +625,7 @@ describe('community pages', () => {
         data: { feed: { spaceId: 's1', items: [item], nextCursor: null, isFollowing: false } } })),
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
-        expect(input.bodyFormat).toBeUndefined();
+        expect(input.bodyFormat).toBe('markdown');
         item = {
           ...item,
           body: input.body,
@@ -639,7 +639,7 @@ describe('community pages', () => {
     await userEvent.click(await screen.findByTestId('post-menu-p1'));
     await userEvent.click(screen.getByTestId('edit-button-p1'));
     const input = screen.getByTestId('edit-composer-p1-input');
-    expect(input).toHaveValue(item.body);
+    expect(input).toHaveTextContent(item.body);
     await userEvent.clear(input);
     await userEvent.type(input, 'Updated post');
     await userEvent.click(screen.getByTestId('edit-composer-p1-submit'));

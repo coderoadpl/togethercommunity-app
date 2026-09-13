@@ -604,11 +604,16 @@ describe('login two-factor challenge', () => {
 
 describe('stripe configure', () => {
   it('registers the webhook through the same API used by the integrations panel', async () => {
-    await run('stripe', 'configure', 'rk_test_private');
+    h.configureStripe.mockResolvedValue(ok({
+      mode: 'live',
+      webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+    }));
 
-    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_test_private' });
+    await run('stripe', 'configure', 'rk_live_private');
+
+    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_live_private' });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith(
-      'configured Stripe in test mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
+      'configured Stripe in live mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
     );
   });
 });

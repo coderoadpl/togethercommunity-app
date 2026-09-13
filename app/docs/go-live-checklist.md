@@ -90,21 +90,26 @@ fake adapter remains available outside production for local and staging use.
 **OWNER ACTION:** Set `PAYMENT_PROVIDER=stripe` for the Production environment
 in the Vercel project settings.
 
-Open **Integrations → Stripe** and save an `rk_test_…` or `rk_live_…` restricted
-key with write access to Checkout Sessions, Coupons, Promotion Codes,
-Subscriptions, and Webhook Endpoints. Alternatively, configure a headless
-deployment with the CLI. Together registers the webhook, stores its signing
-secret, and derives the mode from the stored key prefix. The webhook URL is on
-the tenant platform host:
+Open **Integrations → Stripe** and save an `rk_live_…` restricted key with write
+access to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, and
+Webhook Endpoints. The live card refuses `rk_test_…` keys; a sandbox key belongs
+to the separate test-mode card described in the
+[payments guide](payments.md). Alternatively, configure a headless deployment
+with the CLI. Together registers the webhook and stores its signing secret. The
+webhook URL is on the tenant platform host:
 `https://<slug>.<APP_BASE_DOMAIN>/api/webhooks/stripe/<tenantId>`. In
 single-tenant deployments it stays on `APP_BASE_URL`. If a webhook was
 registered manually with another URL, update it in the Stripe Dashboard before
 accepting payments. Then run:
 
 ```sh
-pnpm --silent run cli --tenant <slug> stripe configure rk_test_…
+pnpm --silent run cli --tenant <slug> stripe configure rk_live_…
 pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
+
+A deployment that already stores an `rk_test_…` key in the live slot keeps
+serving Studio but cannot start a checkout. Move that key to the test-mode card
+and save a live key here before accepting payments.
 
 Complete item 11 before accepting payments.
 
@@ -297,9 +302,22 @@ requires verifying it before a browser on that domain can read the lookup.
 
 **STATUS:** pre-launch-verify
 
-Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Run this procedure
-against a Stripe test-mode account on staging with `PAYMENT_PROVIDER=stripe`.
-Repeat the signature and refund checks once in live mode with a 1 PLN product.
+Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Steps a-i below use
+Stripe test clocks and test cards, which only exist against a Stripe test-mode
+account; run them with `PAYMENT_PROVIDER=stripe` on staging through the
+[test-mode card](payments.md#test-mode-for-staff) (an `rk_test_…` key) and its
+`?mode=test` endpoint. Because a test-mode purchase does not unlock member
+access, does not send a fulfillment e-mail, and is excluded from sales lists,
+exports and invoicing, adjust each step's expectation accordingly — the
+lettered steps verify Stripe signature handling, event correlation and
+subscription-lifecycle mechanics, not the live money path.
+
+Afterward, repeat step a (a real purchase) and step d (a refund) once more
+against **production** with an `rk_live_…` key saved in the **live** card and a
+1 PLN product — the live card refuses an `rk_test_…` key, so this repeat is
+the only way to confirm the actual member, grant, paid order and fulfillment
+e-mail. Steps b, c, e, f and g depend on Stripe test clocks and decline/dispute
+test cards that do not exist in live mode, so they are not repeated live.
 
 Save the restricted key through **Integrations → Stripe** or `stripe configure`.
 Confirm that the panel shows the expected test/live badge and that Stripe

@@ -18,11 +18,11 @@ const isActive = (grant: ProductGrant, now: string): boolean =>
 
 export const createOrRenewGrant = async (
   tenantId: string,
-  input: { memberId: string; productId: string; expiresAt: string | null; source?: GrantSource },
+  input: { mode?: 'live' | 'test'; memberId: string; productId: string; expiresAt: string | null; source?: GrantSource },
   deps: GrantWindowDeps,
 ): Promise<GrantWindowResult> => {
   const now = deps.clock.nowIso();
-  const existing = await deps.grants.findGrant(tenantId, input.memberId, input.productId);
+  const existing = await deps.grants.findGrant(tenantId, input.memberId, input.productId, input.mode);
 
   if (existing && isActive(existing, now)) {
     await deps.grants.setGrantWindow(tenantId, existing.id, {
@@ -43,6 +43,7 @@ export const createOrRenewGrant = async (
   }
 
   const grant: ProductGrant = {
+    mode: input.mode ?? 'live',
     id: deps.ids.nextId(),
     tenantId,
     memberId: input.memberId,

@@ -71,7 +71,7 @@ const existingPrice = (): ProductPrice => ({ id: 'local-price', tenantId: 't1', 
   active: false, imported: true, providerPriceId: 'price_existing', createdAt: now });
 
 const existingGrant = (expiresAt: string | null): ProductGrant => ({ id: 'grant-1', tenantId: 't1',
-  memberId: input.memberId, productId: input.productId, source: 'manual', startsAt: now,
+  memberId: input.memberId, productId: input.productId, source: 'manual', mode: 'live', startsAt: now,
   expiresAt, legacyId: null, createdAt: now });
 
 describe('Stripe subscription adoption', () => {

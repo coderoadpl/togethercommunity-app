@@ -37,10 +37,12 @@ const report: DmReportReceipt = {
   createdAt: '2026-08-17T10:00:00.000Z',
 };
 
-const message = (input: { id: string; body: string; own?: boolean; at?: string }): PublicDmMessage => ({
+const message = (input: { id: string; body: string; bodyHtml?: string; own?: boolean; at?: string }): PublicDmMessage => ({
   id: input.id,
   conversationId: 'c1',
   body: input.body,
+  bodyFormat: 'markdown',
+  bodyHtml: input.bodyHtml ?? `<p>${input.body}</p>`,
   createdAt: input.at ?? '2026-08-17T09:00:00.000Z',
   isOwn: input.own ?? false,
 });
@@ -91,6 +93,24 @@ const renderPage = async () => {
 };
 
 describe('ConversationPage', () => {
+  it('renders the sanitized Markdown projection instead of raw message source', async () => {
+    server.use(
+      okThread([message({
+        id: 'm1',
+        body: '**Bold** <script>alert(1)</script>',
+        bodyHtml: '<p><strong>Bold</strong> &lt;script&gt;alert(1)&lt;/script&gt;</p>',
+      })]),
+      okRead(),
+    );
+
+    await renderPage();
+
+    const row = await screen.findByTestId('message-m1');
+    expect(row.querySelector('strong')).toHaveTextContent('Bold');
+    expect(row.querySelector('script')).toBeNull();
+    expect(row).not.toHaveTextContent('**Bold**');
+  });
+
   it('renders the thread oldest first and marks it read on mount', async () => {
     let readBody: unknown;
     server.use(
@@ -137,8 +157,8 @@ describe('ConversationPage', () => {
     await userEvent.type(input, 'Reply');
     await userEvent.click(screen.getByTestId('message-composer-submit'));
 
-    await waitFor(() => expect(sendBody).toEqual({ conversationId: 'c1', body: 'Reply' }));
-    await waitFor(() => expect(input).toHaveValue(''));
+    await waitFor(() => expect(sendBody).toEqual({ conversationId: 'c1', body: 'Reply', bodyFormat: 'markdown' }));
+    await waitFor(() => expect(input.textContent).toBe(''));
   });
 
   it('translates a rate-limited send into the throttling notice', async () => {

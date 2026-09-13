@@ -3,10 +3,12 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import pg from 'pg';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import type { ZodTypeAny, output } from 'zod';
 
 import { DM_REPORT_SNAPSHOT_SIZE } from '#core/domain/index.js';
+
+import { en } from '../apps/web/src/i18n/en.js';
 
 import {
   API_PATHS,
@@ -20,6 +22,7 @@ import {
   notificationsListOutputSchema,
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
+  postOutputSchema,
 } from '#core/contract/index.js';
 
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
@@ -345,13 +348,84 @@ const runEventJourney = async (
   console.log('member-activity-e2e: live event, notification, RSVP, ICS, and public boundary OK');
 };
 
+const pressRepeatedly = async (page: Page, key: string, times: number): Promise<void> => {
+  for (let index = 0; index < times; index += 1) await page.keyboard.press(key);
+};
+
+const authorWithToolbar = async (page: Page, composer: Locator, suffix: string): Promise<void> => {
+  const bold = `Bold ${suffix}`;
+  const label = 'safe link';
+  const fullText = `${bold} <script>alert(1)</script> with a ${label}`;
+  await composer.getByTestId('space-composer-input').click();
+  await page.keyboard.type(fullText);
+
+  // Formatting a range re-renders it, which makes Home/End navigation over that range
+  // unreliable afterwards, so the link (applied to the trailing text) runs before the bold
+  // (applied to the leading text) — each selection is made on text no prior step has touched.
+  await page.keyboard.press('End');
+  await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
+  await composer.getByRole('button', { name: en.markdownEditor.link }).click();
+  await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');
+  await page.getByRole('button', { name: en.markdownEditor.linkApply }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached', timeout: 15000 });
+
+  await page.keyboard.press('Home');
+  await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
+  await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
+  await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
+};
+
+const createMarkdownPost = async (
+  page: Page,
+  baseUrl: string,
+  locale: 'en' | 'pl',
+): Promise<void> => {
+  await page.evaluate((language) => window.localStorage.setItem('together-language', language), locale);
+  await page.goto(`${baseUrl}/community/${studioSpaceId}`, { waitUntil: 'domcontentloaded' });
+  const composer = page.getByTestId('space-composer');
+  await composer.getByTestId('space-composer-input').waitFor({ state: 'visible', timeout: 15000 });
+  const suffix = locale === 'en' ? 'English locale' : 'Polish locale';
+  if (locale === 'en') await authorWithToolbar(page, composer, suffix);
+  else {
+    await composer.getByRole('button', { name: 'Markdown' }).click();
+    await composer.getByTestId('space-composer-input').fill(
+      `**Bold ${suffix}** with a [safe link](https://example.com/community) <script>alert(1)</script>`,
+    );
+  }
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === API_ROUTES.postsCreate.method
+      && new URL(response.url()).pathname === API_PATHS.postsCreate,
+    { timeout: 15000 },
+  );
+  await composer.getByTestId('space-composer-submit').click();
+  const response = await responsePromise;
+  const raw = await response.text();
+  assert(response.ok(), `Markdown post in ${locale} returned HTTP ${String(response.status())}.\n${raw}`);
+  const created = parseOkData(raw, `Markdown post in ${locale}`, postOutputSchema).post;
+  assert(created.bodyFormat === 'markdown', `Markdown post in ${locale} was stored as ${created.bodyFormat}`);
+  assert(created.bodyHtml.includes(`<strong>Bold ${suffix}</strong>`), `Markdown post in ${locale} did not render bold text`);
+  assert(created.bodyHtml.includes('rel="noopener noreferrer nofollow ugc"'), `Markdown post in ${locale} did not render the safe link policy`);
+  assert(created.bodyHtml.includes('href="https://example.com/community"'), `Markdown post in ${locale} did not render the authored link destination`);
+  assert(!created.bodyHtml.includes('<script>'), `Markdown post in ${locale} retained raw script HTML`);
+  const rendered = page.getByTestId(`post-body-${created.id}`);
+  await rendered.locator('strong').getByText(`Bold ${suffix}`, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+  assert(await rendered.locator('script').count() === 0, `Markdown post in ${locale} rendered a script element`);
+};
+
+const runMarkdownPostJourney = async (memberPage: Page, baseUrl: string): Promise<void> => {
+  await createMarkdownPost(memberPage, baseUrl, 'en');
+  await createMarkdownPost(memberPage, baseUrl, 'pl');
+  console.log('member-activity-e2e: Markdown posts rendered safely in both locales OK');
+};
+
 const sendMessage = async (page: Page, body: string): Promise<void> => {
   const input = page.getByTestId('message-composer-input');
   await input.fill(body);
   await page.getByTestId('message-composer-submit').click();
   await page.getByText(body, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
   await pollUntil(async () => {
-    assert(await input.inputValue() === '', `Composer did not reset after sending "${body}"`);
+    assert(await input.textContent() === '', `Composer did not reset after sending "${body}"`);
   }, `send message "${body}"`);
 };
 
@@ -626,6 +700,7 @@ try {
     notificationsReadAllOutputSchema,
     { method: 'POST' },
   );
+  await runMarkdownPostJourney(memberAPage, studioBaseUrl);
   const created = await createLiveEvent(creatorPage);
   await runEventJourney(memberAPage, anonymousPage, studioBaseUrl, created);
   const conversationId = await runDirectMessageJourney(memberAPage, memberBPage, studioBaseUrl);

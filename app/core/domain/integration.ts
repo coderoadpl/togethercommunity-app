@@ -18,7 +18,15 @@ export const stripeModeFromKey = (restrictedKey: string): StripeMode | null => {
   return null;
 };
 
+// A stored key may carry no recognisable prefix, so only a positively
+// identified opposite mode counts as a conflict when the key is read back.
+export const stripeKeyModeConflicts = (restrictedKey: string, mode: StripeMode): boolean => {
+  const detected = stripeModeFromKey(restrictedKey);
+  return detected !== null && detected !== mode;
+};
+
 export const configureStripeInputSchema = z.object({
+  mode: stripeModeSchema.default('live'),
   restrictedKey: z.string().trim().min(1),
 });
 
@@ -39,3 +47,6 @@ export const providerDiagnosticSchema = z.object({
 });
 
 export type ProviderDiagnostic = z.infer<typeof providerDiagnosticSchema>;
+
+export const stripeTestSessionEncryptedSchema = z.object({ ciphertext: z.string(), iv: z.string(), authTag: z.string() });
+export const stripeTestSessionPayloadSchema = z.object({ userId: z.string(), tenantId: z.string(), expiresAt: z.number() });

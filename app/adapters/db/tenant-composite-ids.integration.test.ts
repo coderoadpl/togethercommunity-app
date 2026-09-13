@@ -70,6 +70,7 @@ const tenantFixture = (slug: string): Tenant => {
         email: 'api-key@invalid.test',
         name: 'Migration API',
         emailVerified: true,
+        tenantAccess: 'member',
         tenantId: id,
         tenantSlug: slug,
         tenantName: slug,

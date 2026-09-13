@@ -7,7 +7,15 @@ import { en } from '../../i18n/en.js';
 import { LanguageProvider } from '../../i18n/index.js';
 import { MarkdownEditor } from './MarkdownEditor.js';
 
-const ControlledEditor = ({ initialValue = '' }: { initialValue?: string }) => {
+const ControlledEditor = ({
+  initialValue = '',
+  variant = 'full',
+  maxLength,
+}: {
+  initialValue?: string;
+  variant?: 'full' | 'compact';
+  maxLength?: number;
+}) => {
   const [value, setValue] = useState(initialValue);
   return (
     <LanguageProvider>
@@ -16,6 +24,8 @@ const ControlledEditor = ({ initialValue = '' }: { initialValue?: string }) => {
         onChange={setValue}
         placeholder="Write something"
         minRows={5}
+        variant={variant}
+        {...(maxLength === undefined ? {} : { maxLength })}
         testId="markdown-editor"
         aria-label="Article body"
       />
@@ -177,6 +187,29 @@ describe('MarkdownEditor', () => {
 
     await user.click(screen.getByRole('tab', { name: en.markdownEditor.markdownTab }));
     expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(source);
+  });
+
+  it('rejects visual edits past the character limit', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" maxLength={5} />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    await user.keyboard('abcdefg');
+
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe('abcde'));
+    expect(visualEditor).toHaveTextContent('abcde');
+  });
+
+  it('offers the Markdown source without an orphan tabpanel in the compact variant', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" initialValue="Notes" />);
+
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: en.markdownEditor.markdownTab }));
+
+    expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue('Notes');
+    expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
   });
 
   it('validates link protocols in the link dialog', async () => {

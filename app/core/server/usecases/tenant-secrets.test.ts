@@ -22,6 +22,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     email: 'owner@together.dev',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
     tenantId,
     tenantSlug: tenantId ? 'acme' : null,
     tenantName: tenantId ? 'Acme' : null,
@@ -224,4 +225,14 @@ describe('deleteTenantSecret', () => {
     const result = await deleteTenantSecret(ctx('admin'), 'stripe.restrictedKey', h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+});
+
+it.each([
+  ['stripe.restrictedKey', 'rk_test_wrong'],
+  ['stripe.testRestrictedKey', 'rk_live_wrong'],
+] as const)('rejects cross-mode keys through the generic secret API: %s', async (key, value) => {
+  const h = harness();
+  expect(await setTenantSecret(ctx('owner'), { key, value }, h.deps))
+    .toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(await h.deps.tenantSecrets.findByKey('tenant-1', key)).toBeNull();
 });

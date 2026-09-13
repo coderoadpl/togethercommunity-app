@@ -14,8 +14,17 @@ while a verified custom domain gets host-only cookies and its own relying
 party and therefore remains a separate credential world. A `localhost` base
 domain and single-tenant deployments keep host-only cookies and the configured
 host as the relying party. Non-local authentication origins are HTTPS-only. HTTP origins are composed only
-for `localhost`, and boot rejects an HTTP `APP_BASE_URL` outside local
-development.
+for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
+outside local development.
+
+A signed-in account visiting another platform tenant without a staff grant or
+membership receives a successful `/api/me` response with `tenantAccess: "none"`
+and null tenant fields. The web shell presents that tenant’s public visitor
+experience with an account notice, a workspace-picker link, and an account-switch
+action; studio routes redirect to the visitor home. The picker includes both staff
+workspaces and member communities. Tenant membership and staff grants remain
+mandatory for tenant-scoped capabilities. Custom-domain cookies remain host-scoped,
+and visiting a tenant never creates a membership.
 
 Magic-link, password-reset, e-mail-verification and marketing-confirmation
 links are built from the resolved tenant, never from the request `Host` or a

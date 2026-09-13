@@ -38,6 +38,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   email: 'member@example.com',
   name: 'Member One',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: 'tenant-1',
   tenantSlug: 'tenant',
   tenantName: 'Tenant',
@@ -661,6 +662,7 @@ const dmMessage = (id: string, senderUserId: string, createdAt: string): DmMessa
   conversationId: 'conversation-1',
   senderUserId,
   body: `Content ${id}`,
+  bodyFormat: 'plain',
   createdAt,
 });
 

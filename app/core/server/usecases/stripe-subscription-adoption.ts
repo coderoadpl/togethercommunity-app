@@ -76,7 +76,7 @@ const reconcileGrant = async (
   if (grant === null) {
     const grantId = deps.ids.nextId();
     await deps.grants.createGrant(tenantId, {
-      id: grantId, tenantId, memberId, productId, source: 'stripe',
+      id: grantId, tenantId, memberId, productId, source: 'stripe', mode: 'live',
       startsAt: now, expiresAt: periodEnd, legacyId: null, createdAt: now,
     });
     return { grantId, grantCreated: true, grantExtended: false };
@@ -164,7 +164,7 @@ const saveAdoption = async (
   const subscription: MemberSubscription = {
     id: deps.ids.nextId(), tenantId, memberId: member.value.id, productId: product.id,
     priceId: resolved.value.price.id, provider: 'stripe', providerSubscriptionId: remote.id,
-    status: remote.status, currentPeriodEnd: remote.currentPeriodEnd,
+    status: remote.status, currentPeriodEnd: remote.currentPeriodEnd, mode: 'live',
     cancelAtPeriodEnd: remote.cancelAtPeriodEnd, couponId: null,
     couponDiscountCents: 0, couponRecurringDuration: null, createdAt: now, updatedAt: now,
   };

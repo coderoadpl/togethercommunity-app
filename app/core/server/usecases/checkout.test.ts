@@ -5,6 +5,7 @@ import {
   integrationUnavailable,
   ok,
   type Coupon,
+  type Order,
   type Product,
   type ProductPrice,
   type Tenant,
@@ -371,6 +372,7 @@ describe('createCheckoutSession', () => {
     expect(calls).toEqual([
       {
         tenantId: 'tenant-a',
+        mode: 'live',
         productId: 'product-1',
         productName: 'Course One',
         priceCents: 4900,
@@ -494,4 +496,22 @@ it('allows direct paid checkout for an unlisted product', async () => {
   );
   expect(result).toMatchObject({ ok: true, value: { free: false } });
   expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ productId: product.id, priceCents: product.priceCents }));
+});
+
+it('records the sandbox session as a pending test order before returning its URL', async () => {
+  const base = checkoutDeps();
+  const recorded: Order[] = [];
+  const create = vi.fn(base.payment.createCheckoutSession);
+  const { startCheckoutSession } = await import('./checkout.js');
+  const result = await startCheckoutSession(tenant, 'https://alpha.example.com',
+    { productId: product.id, email: 'staff@example.test' }, { product, price: null }, {
+      ...base, payment: { ...base.payment, createCheckoutSession: create },
+      ids: { nextId: () => 'order-test' }, clock: { nowIso: () => '2026-09-12T12:00:00.000Z' },
+      orders: { create: async (_tenantId, order) => { recorded.push(order); }, completeTestCheckout: async () => null,
+        list: async () => ({ orders: [], total: 0 }), revenueSince: async () => [], countSince: async () => 0, listPaidWithoutGrant: async () => [] },
+    }, undefined, { mode: 'test', memberId: 'staff-member' });
+  expect(result).toMatchObject({ ok: true });
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'test', customerEmail: 'staff@example.test',
+    successUrl: expect.stringContaining('test_purchase=1') }));
+  expect(recorded).toMatchObject([{ mode: 'test', status: 'pending', memberId: 'staff-member', providerObjectIds: { checkoutSession: 'default' } }]);
 });

@@ -146,6 +146,16 @@ The command checks the health/database/SHA attestation, the public offer API
 using the tenant header, and the public web page. It does not mutate deployed
 data. No workflow currently invokes it or turns its result into an automated
 acceptance gate.
+
+The staging smoke also requests a magic-link sign-in for the seeded tenant
+member without reading or following the link, then polls an operator-secret-gated
+internal projection for up to 90 seconds. The `auth-mail-serverless` check passes
+only when the redacted platform auth send log created after that request settles
+as `sent`, proving that the deployed serverless runtime completed its off-request
+mail delivery work before returning. The projection needs the staging operator
+secret: without it the check is skipped with the name of the repository secret to
+create, and every other staging check still runs.
+
 Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
 environment.
 Project linkage, environment provisioning, and deployment require the

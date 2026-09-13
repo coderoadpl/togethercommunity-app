@@ -289,6 +289,15 @@ Checks, in order:
 9. `student-courses` — the seeded smoke member sees `Acme Course` and has an accessible lesson.
 10. `lesson-playback` — the seeded lesson loads with HTTP 200 and a valid student lesson envelope, and resolves a playable Bunny Stream URL.
 11. `studio-tenant-settings` — skipped for the same API-key scope reason as production smoke.
+12. `auth-mail-serverless` — requests a magic link for the seeded member and waits up to 90 seconds for its redacted platform send-log row to settle as `sent`. Skipped, not failed, when the workflow carries no operator secret.
+
+The evidence behind check 12 comes from `GET /api/internal/auth-send-log/latest`,
+an operator-secret-gated read that reports the latest send-log row of the
+**seeded smoke member** on the requested tenant — the recipient is fixed to that
+seed constant, so the route answers for no other address. It returns only
+`status`, `kind`, `queuedAt` and `settledAt`: never an address, a subject, a
+provider message id or a link. `settledAt` carries the delivery timestamp of a
+`sent` row and is null for every other status.
 
 A staging deployment wired to the production database therefore fails within a
 deploy instead of within days. The fingerprint is asserted against both ends:
@@ -380,7 +389,7 @@ through the gate and, when it may page, sends one SMS through
 | `PRODUCTION_DATABASE_FINGERPRINT` | variable | The fingerprint staging must **not** answer with. Unset → the workflow falls back to the recorded production value. |
 | `STAGING_DATABASE_FINGERPRINT` | variable | The fingerprint staging must answer with. Unset → the run passes green and prints the value to pin, without an SMS. |
 | `STAGING_HOST` | variable | Host the smoke targets, without a scheme. Unset → `acme.staging.togethercommunity.app`. |
-| `OPERATOR_SECRET_STAGING` | secret | The staging deployment's `OPERATOR_SECRET`, used to call the secret sanitize before the checks. Falls back to the deprecated `STAGING_OPERATOR_SECRET` repository secret. Unset → the sanitize is skipped with a notice. |
+| `OPERATOR_SECRET_STAGING` | secret | The staging deployment's `OPERATOR_SECRET`, used to sanitize secrets and read redacted auth-mail evidence. Falls back to the deprecated `STAGING_OPERATOR_SECRET` repository secret. Unset → the sanitize and the `auth-mail-serverless` check are skipped with a notice, the remaining checks still run. |
 
 Obtain the bypass secret in Vercel → Settings → Deployment Protection →
 Protection Bypass for Automation, then copy it into Settings → Secrets and

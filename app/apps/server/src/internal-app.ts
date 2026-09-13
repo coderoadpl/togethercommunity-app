@@ -20,6 +20,8 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
+  authSendLogLatestOutputSchema,
+  authSendLogLatestQuerySchema,
   bunnyVideosInputSchema,
   contentVersionRestoreInputSchema,
   couponArchiveRequestSchema,
@@ -152,6 +154,7 @@ import {
   internal,
   memberExportFormatSchema,
   ok,
+  SMOKE_TENANT_MEMBER_EMAIL,
   tenantNotFound,
   unauthorized,
   validation,
@@ -688,6 +691,57 @@ const recordCheckoutConsents = async (
   }
 };
 
+type AuthSendLogLatestDeps = Pick<AppDeps, 'operatorSecret'> & {
+  tenants: Pick<AppDeps['tenants'], 'findBySlug'>;
+  marketing?: {
+    emailSends: Pick<NonNullable<AppDeps['marketing']>['emailSends'], 'listByEmailAcrossKinds'>;
+  } | undefined;
+};
+
+const AUTH_SEND_LOG_SOURCE_KIND = { 'magic-link': 'auth-magic-link' } as const;
+
+export const registerAuthSendLogLatestRoute = (
+  app: Hono<AppVars>,
+  deps: AuthSendLogLatestDeps,
+): void => {
+  app.get(API_PATHS.authSendLogLatest, async (c) => {
+    if (!secretEquals(c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER), deps.operatorSecret)) {
+      return respond(err(unauthorized('Invalid operator secret')));
+    }
+    const parsed = authSendLogLatestQuerySchema.safeParse({
+      tenant: c.req.query('tenant'),
+      kind: c.req.query('kind'),
+      since: c.req.query('since'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid auth send-log query', parsed.error.flatten())));
+    }
+    const tenant = await deps.tenants.findBySlug(parsed.data.tenant);
+    if (tenant === null) return respond(err(tenantNotFound()));
+    if (deps.marketing === undefined) {
+      return respond(err(internal('E-mail send observability is not configured')));
+    }
+    const sourceKind = AUTH_SEND_LOG_SOURCE_KIND[parsed.data.kind];
+    const since = Date.parse(parsed.data.since);
+    const send = (await deps.marketing.emailSends.listByEmailAcrossKinds(
+      tenant.id,
+      SMOKE_TENANT_MEMBER_EMAIL,
+    )).find((candidate) =>
+      candidate.kind === 'transactional'
+      && candidate.sourceKind === sourceKind
+      && candidate.transport === 'platform'
+      && Date.parse(candidate.createdAt) >= since
+      && (candidate.status === 'queued' || candidate.status === 'sent' || candidate.status === 'failed'));
+    if (send === undefined) return respond(ok(null));
+    return respond(ok(authSendLogLatestOutputSchema.parse({
+      status: send.status,
+      kind: parsed.data.kind,
+      queuedAt: send.createdAt,
+      settledAt: send.status === 'sent' ? send.sentAt : null,
+    })));
+  });
+};
+
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
@@ -747,6 +801,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     return respond(await sanitizeStagingSecrets(deps.sanitizeStagingSecrets));
   });
+  registerAuthSendLogLatestRoute(app, deps);
 
   app.get(API_PATHS.tenantDomainDispatch, async (c) => {
     if (!secretEquals(c.req.header('authorization'), `Bearer ${deps.domainCheckSecret}`)) {

@@ -46,6 +46,7 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: API_PATHS.ksefDispatch, methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.smokeTenantReseed, methods: ['POST'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.sanitizeStagingSecrets, methods: ['POST'], mechanism: 'Scheduler operator secret' },
+  { path: API_PATHS.authSendLogLatest, methods: ['GET'], mechanism: 'Scheduler operator secret', capability: 'scheduler:read' },
   { path: API_PATHS.tenantDomainDispatch, methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.globalSchedulerRuns, methods: ['GET'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.globalSchedulerRun, methods: ['GET'], mechanism: 'Scheduler operator secret' },

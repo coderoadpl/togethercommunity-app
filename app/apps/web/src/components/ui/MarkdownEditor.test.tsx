@@ -92,6 +92,51 @@ describe('MarkdownEditor', () => {
     expect(screen.getByTestId('markdown-value').textContent).toBe(value);
   });
 
+  it('keeps strike syntax literal in the compact editor', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    await user.keyboard('~~x~~');
+
+    const markdown = '\\~\\~x\\~\\~';
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe(markdown));
+    expect(visualEditor.querySelector('del')).toBeNull();
+    expect(visualEditor).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: en.markdownEditor.markdownTab }));
+    expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(markdown);
+  });
+
+  it('ignores the strike shortcut in the compact editor', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" initialValue="x" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    await user.keyboard('{Control>}a{/Control}{Control>}{Shift>}s{/Shift}{/Control}');
+
+    expect(visualEditor.querySelector('del')).toBeNull();
+    expect(screen.getByTestId('markdown-value').textContent).toBe('x');
+  });
+
+  it('keeps image syntax literal in the compact editor', async () => {
+    const value = '![illustration](https://example.com/picture.png)';
+    const markdown = '!\\[illustration\\](https://example.com/picture.png)';
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    await user.keyboard('![[illustration](https://example.com/picture.png)');
+    expect(visualEditor.querySelector('img')).toBeNull();
+    expect(visualEditor).toHaveTextContent(value);
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe(markdown));
+    expect(visualEditor).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: en.markdownEditor.markdownTab }));
+    expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(markdown);
+  });
+
   it('keeps tables and raw HTML on the Markdown tab instead of dropping them', async () => {
     const value = [
       '| Plan | Price |',

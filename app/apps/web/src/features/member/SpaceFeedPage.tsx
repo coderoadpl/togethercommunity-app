@@ -103,7 +103,7 @@ const FeedPost = ({
                 focusOnMount
                 busy={update.isPending}
                 disabled={writeDisabled}
-                onSubmit={(body) => update.mutate({ id: item.id, body, bodyFormat: 'markdown' }, { onSuccess: () => setEditing(false) })}
+                onSubmit={(body, bodyFormat) => update.mutate({ id: item.id, body, bodyFormat }, { onSuccess: () => setEditing(false) })}
                 onCancel={() => setEditing(false)}
                 testId={`edit-composer-${item.id}`}
               />
@@ -378,8 +378,8 @@ const MemberSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           busy={create.isPending}
           disabled={banned}
           surface
-          onSubmit={(body, reset) =>
-            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat: 'markdown' }, { onSuccess: () => reset() })
+          onSubmit={(body, bodyFormat, reset) =>
+            create.mutate({ contextKind: 'space', contextId: spaceId, body, bodyFormat }, { onSuccess: () => reset() })
           }
           testId="space-composer"
         />

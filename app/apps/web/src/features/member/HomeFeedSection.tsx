@@ -91,7 +91,7 @@ const HomeFeedCard = ({ item }: { item: MemberHomeFeedItem }) => {
               focusOnMount
               busy={update.isPending}
               disabled={writeDisabled}
-              onSubmit={(body) => update.mutate({ id: item.id, body, bodyFormat: 'markdown' }, { onSuccess: () => setEditing(false) })}
+              onSubmit={(body, bodyFormat) => update.mutate({ id: item.id, body, bodyFormat }, { onSuccess: () => setEditing(false) })}
               onCancel={() => setEditing(false)}
               testId={`edit-composer-${item.id}`}
             />

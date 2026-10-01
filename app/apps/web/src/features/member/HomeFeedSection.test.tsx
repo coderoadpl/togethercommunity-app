@@ -164,7 +164,7 @@ describe('HomeFeedSection', () => {
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
         expect(input.id).toBe('p1');
-        expect(input.bodyFormat).toBe('markdown');
+        expect(input.bodyFormat).toBe('plain');
         post = {
           ...post,
           body: input.body,

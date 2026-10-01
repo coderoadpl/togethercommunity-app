@@ -25,7 +25,6 @@ import {
 import { PostContent } from '../../components/ui/PostContent.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../../components/ui/MarkdownEditor.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
-import { escapePlainTextForMarkdown } from '../../lib/markdown.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
 import { TombstonePostMenu } from './TombstonePostMenu.js';
@@ -111,15 +110,13 @@ export const PostComposer = ({
   surface?: boolean;
   busy: boolean;
   disabled?: boolean;
-  onSubmit: (body: string, reset: () => void) => void;
+  onSubmit: (body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
 }) => {
   const t = useTranslations();
   const impersonating = useImpersonation() !== null;
-  const [body, setBody] = useState(() =>
-    initialFormat === 'plain' ? escapePlainTextForMarkdown(initialValue) : initialValue,
-  );
+  const [body, setBody] = useState(initialValue);
   const inputRef = useRef<MarkdownEditorHandle | null>(null);
   const labelId = useId();
   const overLimit = body.length > POST_BODY_MAX_LENGTH;
@@ -133,7 +130,7 @@ export const PostComposer = ({
     event.preventDefault();
     const trimmed = body.trim();
     if (trimmed.length === 0) return;
-    onSubmit(trimmed, () => {
+    onSubmit(trimmed, initialFormat, () => {
       setBody('');
       inputRef.current?.clear();
     });
@@ -163,6 +160,7 @@ export const PostComposer = ({
         ref={inputRef}
         aria-label={label}
         {...(placeholder === undefined ? { 'aria-labelledby': labelId } : { placeholder })}
+        format={initialFormat}
         variant="compact"
         minRows={2}
         maxLength={POST_BODY_MAX_LENGTH}
@@ -215,8 +213,8 @@ interface ThreadActions {
   setReplyingTo: (id: string | null) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
-  submitReply: (parent: DiscussionPost, body: string, reset: () => void) => void;
-  submitEdit: (post: DiscussionPost, body: string, reset: () => void) => void;
+  submitReply: (parent: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
+  submitEdit: (post: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   requestDelete: (post: DiscussionPost) => void;
   openSubthread: (id: string) => void;
   replyBusy: boolean;
@@ -271,7 +269,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.editBusy}
             disabled={a.writeDisabled}
-            onSubmit={(body, reset) => a.submitEdit(post, body, reset)}
+            onSubmit={(body, bodyFormat, reset) => a.submitEdit(post, body, bodyFormat, reset)}
             onCancel={() => a.setEditingId(null)}
             testId={`edit-composer-${post.id}`}
           />
@@ -342,7 +340,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.replyBusy}
             disabled={a.writeDisabled}
-            onSubmit={(body, reset) => a.submitReply(post, body, reset)}
+            onSubmit={(body, bodyFormat, reset) => a.submitReply(post, body, bodyFormat, reset)}
             onCancel={() => a.setReplyingTo(null)}
             testId={`reply-composer-${post.id}`}
           />
@@ -523,9 +521,9 @@ export const ThreadDiscussion = ({
     setReplyingTo,
     editingId,
     setEditingId,
-    submitReply: (parent, body, reset) => {
+    submitReply: (parent, body, bodyFormat, reset) => {
       create.mutate(
-        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat: 'markdown' },
+        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat },
         {
           onSuccess: () => {
             reset();
@@ -534,9 +532,9 @@ export const ThreadDiscussion = ({
         },
       );
     },
-    submitEdit: (post, body, reset) => {
+    submitEdit: (post, body, bodyFormat, reset) => {
       update.mutate(
-        { id: post.id, body, bodyFormat: 'markdown' },
+        { id: post.id, body, bodyFormat },
         {
           onSuccess: () => {
             reset();
@@ -651,9 +649,9 @@ export const ThreadDiscussion = ({
               busy={create.isPending}
               disabled={banned}
               surface
-              onSubmit={(body, reset) => {
+              onSubmit={(body, bodyFormat, reset) => {
                 create.mutate(
-                  { contextKind: context.contextKind, contextId: context.contextId, body, bodyFormat: 'markdown' },
+                  { contextKind: context.contextKind, contextId: context.contextId, body, bodyFormat },
                   { onSuccess: () => reset() },
                 );
               }}

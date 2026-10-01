@@ -625,7 +625,7 @@ describe('community pages', () => {
         data: { feed: { spaceId: 's1', items: [item], nextCursor: null, isFollowing: false } } })),
       http.post('/api/posts/update', async ({ request }) => {
         const input = updatePostInputSchema.parse(await request.json());
-        expect(input.bodyFormat).toBe('markdown');
+        expect(input.bodyFormat).toBe('plain');
         item = {
           ...item,
           body: input.body,

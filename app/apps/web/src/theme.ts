@@ -4054,9 +4054,10 @@ export const MarkdownEditorContent = styled(Box, {
   '&[data-disabled=true]': { backgroundColor: theme.palette.action.disabledBackground, color: theme.palette.text.disabled },
 }));
 
-export const MarkdownSourceInput = styled(OutlinedInput)({
+export const MarkdownSourceInput = styled(OutlinedInput)(({ theme }) => ({
   '& textarea': { fontFamily: FONT_MONO, lineHeight: 1.5 },
-});
+  '&[data-format="plain"] textarea': { fontFamily: theme.typography.fontFamily },
+}));
 
 export const OutlineEmptyStateIcon = styled(EmptyStateIcon)({ fill: 'none' });
 export const OutlineStatTileIcon = styled(StatTileIcon)({ fill: 'none' });

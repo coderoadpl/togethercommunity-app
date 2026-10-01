@@ -174,5 +174,6 @@ for existing and suppressed addresses. Submission responses have a minimum
 usefulness of timing differences without promising constant database latency.
 The hosted success URL contains no recipient information. Redirect targets
 must use HTTPS without embedded credentials; users cannot override them in a
-submission. Suppression lifting, consent, contact changes, list membership,
-submission history, and mail enqueueing share a transaction.
+submission. Consent, submission history, and mail enqueueing share the submission
+transaction; deferred contact and list effects commit in the confirmation
+transaction. Public submissions never lift a suppression.

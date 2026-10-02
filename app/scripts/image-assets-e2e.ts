@@ -29,7 +29,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
-import { MINIO_IMAGE } from './test-images.js';
+import { ensureMinioImage, MINIO_IMAGE } from './test-images.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -114,6 +114,7 @@ interface MinioRuntime {
 }
 
 const startMinio = async (port: number, studioOrigin: string): Promise<MinioRuntime> => {
+  await ensureMinioImage();
   const endpoint = `https://127.0.0.1:${String(port)}`;
   minioCertificateDirectory = mkdtempSync(join(rootDir, '.image-assets-tls-'));
   const certificatePath = join(minioCertificateDirectory, 'public.crt');

@@ -33,8 +33,7 @@ FROM node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581e
 
 COPY --from=downloader /out/minio /usr/local/bin/minio
 COPY --from=downloader /out/mc /usr/local/bin/mc
-RUN mkdir -p /data && chown node:node /data
-USER node
+RUN mkdir -p /data
 WORKDIR /data
 EXPOSE 9000
 ENTRYPOINT ["minio"]

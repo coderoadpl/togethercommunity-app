@@ -10,6 +10,7 @@ export interface MarketingContactRepository {
   lockAddress(tenantId: string, email: string): Promise<void>;
   findById(tenantId: string, contactId: string): Promise<MarketingContact | null>;
   findByEmail(tenantId: string, email: string): Promise<MarketingContact | null>;
+  findByEmailForUpdate(tenantId: string, email: string): Promise<MarketingContact | null>;
   listPage(tenantId: string, query: MarketingContactListQuery, asOf?: string): Promise<MarketingContactPage>;
   upsertByEmail(tenantId: string, input: MarketingContactUpsert): Promise<MarketingContactUpsertResult>;
   update(tenantId: string, contactId: string, input: Omit<MarketingContactUpsert, 'email'>): Promise<MarketingContact | null>;

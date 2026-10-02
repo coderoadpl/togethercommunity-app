@@ -68,6 +68,10 @@ export const createMarketingContactRepository = (db: Db, deps: DirectoryReposito
     const [row] = await db.select().from(contacts).where(and(eq(contacts.tenantId, tenantId), or(eq(contacts.email, email), eq(contacts.emailHmac, deps.hmac.compute(tenantId, email)))));
     return row === undefined ? null : marketingContactSchema.parse(row);
   },
+  findByEmailForUpdate: async (tenantId, email) => {
+    const [row] = await db.select().from(contacts).where(and(eq(contacts.tenantId, tenantId), or(eq(contacts.email, email), eq(contacts.emailHmac, deps.hmac.compute(tenantId, email))))).for('update');
+    return row === undefined ? null : marketingContactSchema.parse(row);
+  },
   listPage: async (tenantId, query, asOf = deps.clock.nowIso()) => {
     const filters = await contactFilters(db, tenantId, query, asOf);
     if (query.cursor !== undefined) filters.push(sql`${contacts.id} COLLATE "C" > ${query.cursor.slice(query.cursor.indexOf(':') + 1)} COLLATE "C"`);

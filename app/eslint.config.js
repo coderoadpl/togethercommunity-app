@@ -862,7 +862,7 @@ export default tseslint.config(
   },
   {
     files: ['adapters/telemetry/**/*.test.{ts,tsx}'],
-    rules: { 'boundaries/external': ['error', { default: 'disallow', rules: [{ from: ['adapter-telemetry'], allow: ['mongodb', 'mongodb-memory-server', 'node:crypto', 'node:dns', 'node:net', 'vitest'] }] }] },
+    rules: { 'boundaries/external': ['error', { default: 'disallow', rules: [{ from: ['adapter-telemetry'], allow: ['mongodb', 'node:crypto', 'node:dns', 'node:net', 'vitest'] }] }] },
   },
   {
     files: ['adapters/storage/**/*.test.{ts,tsx}'],

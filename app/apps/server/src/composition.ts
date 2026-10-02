@@ -6,7 +6,7 @@ import { createTelemetryEgressProbe } from './telemetry-egress.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
-import type { MarketingSignupDeps } from '#core/server/index.js';
+import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
 import { createMarketingContactAudienceRepository } from '#adapters/db/marketing-contact-audience.js';
 import { createMarketingContactCampaignTransaction } from '#adapters/db/marketing-contact-campaign-transactions.js';
 import type { MarketingContactAudienceDeps } from '#core/server/index.js';
@@ -543,6 +543,7 @@ export interface AppDeps {
 }
 
 export interface MarketingAppDeps {
+  confirmationTransaction: MarketingSignupTransaction;
   contactAudienceDeps?: MarketingContactAudienceDeps | undefined;
   htmlToText: HtmlToText;
   delivery: MarketingDeliveryTransaction;
@@ -1478,6 +1479,7 @@ export const createDeps = (
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,
     marketing: {
+      confirmationTransaction: createMarketingSignupTransaction(db, directoryDeps),
       contactAudienceDeps,
       marketingOutbox: deliveryRepos.marketingOutbox, snsInbox: deliveryRepos.snsInbox, delivery, waiter,
       htmlToText: createHtmlToText(),

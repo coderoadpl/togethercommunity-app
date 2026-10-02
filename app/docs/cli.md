@@ -108,7 +108,8 @@ pnpm --silent run cli --tenant studio reports member-activity \
 Member activity automatically follows all pages. `--json` produces one standard
 envelope; `--csv` writes a header and quoted CSV fields with CRLF row separators,
 escaping embedded quotes and preserving commas and newlines. These output flags
-are mutually exclusive. Null values become empty CSV fields. CSV preserves raw
-member text, including formula-like strings; import columns as text in spreadsheet
-software. Errors retain the normal CLI taxonomy and produce no partial CSV.
+are mutually exclusive. Null values become empty CSV fields. Formula-looking
+string cells are neutralised with a leading apostrophe, like the member export;
+numeric values are unchanged. Errors retain the normal CLI taxonomy and produce
+no partial CSV.
 See [report definitions and limitations](reports-api.md).

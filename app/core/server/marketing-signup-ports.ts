@@ -4,6 +4,7 @@ import type { MarketingImportTransactionRepos } from './marketing-contact-ports.
 import type { Clock, IdGenerator, TokenGenerator, EmailHmac, ConsentConfirmationTokenRepository, EmailOutboxRepository } from './ports.js';
 
 export interface MarketingSignupFormRepository {
+  findById(tenantId: string, formId: string): Promise<MarketingSignupForm | null>;
   findBySlug(tenantId: string, slug: string): Promise<MarketingSignupForm | null>;
   findBySlugForUpdate(tenantId: string, slug: string): Promise<MarketingSignupForm | null>;
   list(tenantId: string): Promise<MarketingSignupForm[]>;

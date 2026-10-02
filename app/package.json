@@ -127,7 +127,7 @@
     "hono": "~4.13.5",
     "marked": "^18.0.7",
     "mongodb": "7.5.0",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "^10.0.13",
     "parse5": "8.0.1",
     "pg": "^8.16.3",
     "qrcode": "1.5.4",
@@ -135,7 +135,7 @@
     "react-dom": "^19.2.8",
     "sharp": "^0.35.4",
     "stripe": "^18.5.0",
-    "undici": "^7.28.0",
+    "undici": "^7.30.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -147,7 +147,6 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.0.14",
-    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.15.4",
     "@types/qrcode": "1.5.6",
     "@types/react": "^19.1.8",
@@ -189,7 +188,7 @@
       "smol-toml": "1.7.1",
       "unbash": "4.0.4",
       "yoctocolors": "2.2.0",
-      "undici@<7.29.0": "7.29.0",
+      "undici@<7.30.0": "7.30.0",
       "nanoid@<3.3.18": "3.3.18",
       "qs@<6.16.0": "6.16.0"
     }

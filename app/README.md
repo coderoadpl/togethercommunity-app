@@ -213,7 +213,8 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->482<!--/count-->test files across the Node and browser suites.
+The Vitest projects currently discover <!--count:test-files-->481<!--/count-->
+test files across the Node and browser suites.
 
 ## Tenant resolution
 
@@ -320,11 +321,13 @@ pnpm --silent run cli --tenant studio storage configure --provider minio \
 ```
 
 `pnpm run e2e:storage` runs the probe and its failure paths against a throwaway
-MinIO container using the image pinned in `scripts/test-images.ts`; point
+image built in-repository from the vendor's signed MinIO release binaries and
+verified against pinned vendor checksums in `scripts/test-images.ts`. The
+open-source MinIO server and client projects are archived upstream. Point
 `STORAGE_E2E_*` at a real bucket to run the same verification against a provider
-account. Runtime probes reject loopback,
-link-local and private-network endpoints by default. Self-hosted MinIO on a
-trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
+account. Runtime probes reject loopback, link-local and private-network endpoints
+by default. Self-hosted MinIO on a trusted private network requires
+`STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 
 ## Stripe payments
 

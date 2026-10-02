@@ -86,15 +86,25 @@ export const submitMarketingSignupForm = async (tenantId: string, slug: string, 
     }
     if (parsed.data.token !== form.token) return err(validation('Invalid form token'));
     await repos.contacts.lockAddress(tenantId, parsed.data.email);
+    const suppression = await repos.suppressions.findActive(tenantId, deps.hmac.compute(tenantId, parsed.data.email));
+    if (suppression !== null) return ok({ status, form });
+    const existing = await repos.contacts.findByEmailForUpdate(tenantId, parsed.data.email);
+    if (existing?.source === 'erasure') return ok({ status, form });
     const now = deps.clock.nowIso();
     const source = `form:${form.slug}`;
-    const { contact } = await repos.contacts.upsertByEmail(tenantId, {
-      email: parsed.data.email, ...(form.collectName && parsed.data.displayName ? { displayName: parsed.data.displayName } : {}), source, tags: form.tags,
-    });
-    if (contact.source === 'erasure') return ok({ status, form });
-    if (contact.archivedAt !== null) await repos.contacts.archive(tenantId, { contactId: contact.id, archivedAt: null });
     const previous = deriveConsentState(await repos.consents.listByEmail(tenantId, parsed.data.email, definition.id), definition);
     const alreadyConfirmed = previous.active && definition.doubleOptIn;
+    const applyEffects = existing === null || !definition.doubleOptIn || alreadyConfirmed;
+    const contact = existing === null
+      ? (await repos.contacts.upsertByEmail(tenantId, {
+        email: parsed.data.email, ...(form.collectName && parsed.data.displayName ? { displayName: parsed.data.displayName } : {}), source, tags: form.tags,
+      })).contact
+      : existing;
+    if (applyEffects) {
+      if (existing !== null) await repos.contacts.update(tenantId, contact.id, { tags: [...new Set([...contact.tags, ...form.tags])] });
+      if (contact.archivedAt !== null) await repos.contacts.archive(tenantId, { contactId: contact.id, archivedAt: null });
+      if (form.listId !== null) await repos.lists.addMembers(tenantId, { listId: form.listId, contactIds: [contact.id] });
+    }
     const consent: MarketingConsent = {
       id: deps.ids.nextId(), tenantId, memberId: contact.memberId, email: parsed.data.email,
       definitionId: definition.id, definitionVersion: version.version, wordingSnapshot: version.label,
@@ -102,15 +112,8 @@ export const submitMarketingSignupForm = async (tenantId: string, slug: string, 
       evidence: { collectedAt: now, proofRef: source, source, ipHash: evidence.ipHash, userAgent: evidence.userAgent || 'unknown', formId: form.id, formRevision: form.revision }, occurredAt: now,
     };
     await repos.consents.record(tenantId, consent);
-    const suppression = await repos.suppressions.findActive(tenantId, deps.hmac.compute(tenantId, parsed.data.email));
-    const lift = suppression !== null && (suppression.reason === 'manual' || suppression.reason === 'unsubscribe_global');
-    if (lift && suppression !== null) {
-      await repos.suppressions.lift(tenantId, { ...suppression, liftedAt: now, liftedBy: source });
-      await repos.directoryEvents.append(tenantId, { id: deps.ids.nextId(), tenantId, subjectKind: 'contact', subjectId: contact.id, type: 'suppression_lifted', actor: source, importId: null, payload: { suppressionId: suppression.id, consentId: consent.id }, occurredAt: now, createdAt: now });
-    }
-    if (form.listId !== null) await repos.lists.addMembers(tenantId, { listId: form.listId, contactIds: [contact.id] });
     await repos.forms.recordSubmission(tenantId, { id: deps.ids.nextId(), formId: form.id, consentId: consent.id, doubleOptIn: definition.doubleOptIn && !alreadyConfirmed, occurredAt: now });
-    if (definition.doubleOptIn && !alreadyConfirmed && (suppression === null || lift)) {
+    if (definition.doubleOptIn && !alreadyConfirmed) {
       const token = deps.tokens.nextToken();
       await repos.confirmations.create(tenantId, { id: deps.ids.nextId(), tenantId, token, marketingConsentRowId: consent.id, createdAt: now, expiresAt: new Date(Date.parse(now) + 86_400_000).toISOString(), usedAt: null });
       const queued = await repos.outbox.enqueue({ id: deps.ids.nextId(), tenantId, to: consent.email, now, payload: { kind: 'marketing-consent-confirmation', language: evidence.language, wording: consent.wordingSnapshot, confirmationUrl: `${evidence.confirmationBaseUrl}/${token}` } });

@@ -27,6 +27,7 @@ import {
   memberGrantSchema,
   memberSubscriptionSchema,
   normalizeEmail,
+  tenantSchema,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -4332,10 +4333,24 @@ export const createTenantRepository = (
   },
   createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
       if (options?.requireEmpty === true) {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
         const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
         if (existing.length > 0) return null;
+      }
+      if (options?.idempotentOwner === true) {
+        const verifiedOwner = await tx.select({ id: user.id }).from(user)
+          .where(and(eq(user.id, input.ownerGrant.userId), eq(user.emailVerified, true))).for('share');
+        if (verifiedOwner.length !== 1) return null;
+        const existing = await tx.select().from(tenants).where(eq(tenants.slug, input.tenant.slug)).limit(1);
+        const tenant = existing[0];
+        if (tenant !== undefined) {
+          const owners = await tx.select({ userId: tenantAdmins.userId }).from(tenantAdmins)
+            .where(and(eq(tenantAdmins.tenantId, tenant.id), eq(tenantAdmins.role, 'owner')));
+          return owners.length === 1 && owners[0]?.userId === input.ownerGrant.userId
+            ? tenantSchema.parse(tenant)
+            : null;
+        }
       }
       const rows = await tx
         .insert(tenants)
@@ -4356,6 +4371,9 @@ export const createTenantRepository = (
         userId: input.ownerGrant.userId,
         role: input.ownerGrant.staffRole,
       });
+      if (input.provisionAudit !== undefined) {
+        await tx.insert(tenantAuditEvents).values(input.provisionAudit);
+      }
       return tenant;
     }),
   hasAny: async () => {

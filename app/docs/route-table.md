@@ -62,6 +62,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/marketing/forms/:slug/submit` | public | read | Form-specific allow-listed JSON submission preflight |
 | `POST /api/public/marketing/forms/:slug/submit` | public | mutating | Rate-limited public signup recording contacts, consent evidence and confirmation mail requests |
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
+| `POST /api/internal/tenants/provision` | self-authenticating | mutating | operator tenant provision |
+| `GET /api/internal/tenants/:slug/readiness` | self-authenticating | read | operator tenant readiness |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |

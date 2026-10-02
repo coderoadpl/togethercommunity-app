@@ -13,13 +13,28 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(386);
-    expect(inventory.useCases).toHaveLength(299);
+    expect(inventory.routes).toHaveLength(388);
+    expect(inventory.useCases).toHaveLength(301);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('keeps tenant provisioning and readiness operator-only at both boundaries', () => {
+    const inventory = collectPermissionInventory();
+    for (const [route, useCase, capability] of [
+      ['POST /api/internal/tenants/provision', 'provision-tenant.ts#provisionTenant', 'tenant:provision'],
+      ['GET /api/internal/tenants/:slug/readiness', 'operator-tenant-readiness.ts#getOperatorTenantReadiness', 'tenant:readiness'],
+    ]) {
+      for (const row of [
+        inventory.routes.find((entry) => entry.subject === route),
+        inventory.useCases.find((entry) => entry.subject === useCase),
+      ]) {
+        expect(row).toMatchObject({ capability, before: ['operator-secret'], after: ['operator-secret'] });
+      }
+    }
   });
 
   it('classifies report routes through the tenant API-key manifest', () => {

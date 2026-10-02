@@ -115,6 +115,7 @@ const harness = (options: {
     getAuthenticatedUser: async () => null,
     listSessions: async () => [],
     revokeSessions: async () => undefined,
+    findUserByEmail: async () => null,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
     createEnrollmentMagicLink: async ({ email, callbackURL, baseUrl }) => {

@@ -1,3 +1,5 @@
+import { API_PATHS } from '#core/contract/index.js';
+import { operatorTenantSecretGuard } from './operator-tenant-routes.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
@@ -115,6 +117,8 @@ export const buildApp = (deps: AppDeps) => {
     }
     await next();
   });
+  app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
+  app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));
   app.use('*', impersonationGuard(deps));
   app.onError((error) => {
     if (error instanceof HTTPException) return error.getResponse();

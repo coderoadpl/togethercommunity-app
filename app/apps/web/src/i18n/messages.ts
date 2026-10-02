@@ -17,6 +17,34 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  operatorTenant: {
+    operatorTitle: string;
+    operatorTenantTitle: string;
+    provisionDescription: string;
+    readinessDescription: string;
+    slugLabel: string;
+    nameLabel: string;
+    ownerEmailLabel: string;
+    languageLabel: string;
+    secretRequired: string;
+    invalidPayload: string;
+    invalidSlug: string;
+    reservedSlug: string;
+    ownerUnavailable: string;
+    ownerConflict: string;
+    requestFailed: string;
+    created: string;
+    workspaceExists: string;
+    ownerGrantPresent: string;
+    storageConfigured: string;
+    lastProbeOk: string;
+    lastProbeAt: string;
+    stripeConfigured: string;
+    mode: string;
+    webhookRegistered: string;
+    legalUrlsSet: string;
+    publishedProducts: string;
+  };
   signupForms: {
     noList: string;
     title: string;

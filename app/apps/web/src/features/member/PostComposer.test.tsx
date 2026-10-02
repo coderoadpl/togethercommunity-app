@@ -58,35 +58,64 @@ describe('PostComposer', () => {
     await userEvent.click(screen.getByTestId('post-composer-submit'));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    expect(onSubmit.mock.calls[0]?.[0]).toBe('**Bold**');
+    expect(onSubmit).toHaveBeenCalledWith('**Bold**', 'markdown', expect.any(Function));
   });
 
-  it('escapes a legacy plain post before saving it as Markdown', async () => {
-    const onSubmit = renderComposer({
-      initialValue: '# Heading\n*literal*\n> quote\n_underline_\n1) ordered',
-      initialFormat: 'plain',
-    });
-    const input = await screen.findByTestId('post-composer-input');
-
-    expect(input).toHaveTextContent('# Heading *literal* > quote _underline_ 1) ordered');
-    expect(input.querySelector('h1')).toBeNull();
+  it('saves a Markdown post edit as Markdown', async () => {
+    const onSubmit = renderComposer({ initialValue: 'Before', initialFormat: 'markdown' });
+    await screen.findByTestId('post-composer-input');
+    await userEvent.click(screen.getByRole('button', { name: en.markdownEditor.markdownTab }));
+    const input = screen.getByTestId('post-composer-input');
+    fireEvent.change(input, { target: { value: '**After**' } });
     await userEvent.click(screen.getByTestId('post-composer-submit'));
 
-    expect(onSubmit.mock.calls[0]?.[0]).toBe('\\# Heading\n\\*literal\\*\n\\> quote\n\\_underline\\_\n1\\) ordered');
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit).toHaveBeenCalledWith('**After**', 'markdown', expect.any(Function));
   });
 
-  it('keeps legacy separators, indentation and urls literal in the editor', async () => {
-    const initialValue = 'Para 2\n---\nUnder\n===\n\n    indented\nSee https://example.com/a_b_c';
+  it('submits an unchanged legacy plain body byte-for-byte as plain text', async () => {
+    const initialValue = [
+      '# Welcome',
+      'Notes',
+      '---',
+      'more',
+      '2024. was a great year',
+      'before',
+      '===',
+      'See (www.example.com/docs) and [www.example.com/a]',
+    ].join('\n');
     const onSubmit = renderComposer({ initialValue, initialFormat: 'plain' });
     const input = await screen.findByTestId('post-composer-input');
 
-    expect(input.querySelector('h1, h2, pre')).toBeNull();
-    expect(input).toHaveTextContent('Para 2 --- Under === indented See https://example.com/a_b_c');
+    expect(input).toHaveValue(initialValue);
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('post-composer-submit'));
 
-    expect(onSubmit.mock.calls[0]?.[0]).toBe(
-      'Para 2\n\\---\nUnder\n\\===\n\n\u00a0   indented\nSee https://example.com/a_b_c',
-    );
+    expect(onSubmit).toHaveBeenCalledWith(initialValue, 'plain', expect.any(Function));
+  });
+
+  it.each([
+    ['a 5,000-character body', 'x'.repeat(POST_BODY_MAX_LENGTH)],
+    ['an ampersand near the limit', `${'x'.repeat(POST_BODY_MAX_LENGTH - 3)}&`],
+  ])('keeps %s saveable as plain text', async (_name, initialValue) => {
+    const onSubmit = renderComposer({ initialValue, initialFormat: 'plain' });
+    const input = await screen.findByTestId('post-composer-input');
+
+    expect(input).toHaveValue(initialValue);
+    expect(screen.getByTestId('post-composer-submit')).toBeEnabled();
+    await userEvent.click(screen.getByTestId('post-composer-submit'));
+
+    expect(onSubmit).toHaveBeenCalledWith(initialValue, 'plain', expect.any(Function));
+  });
+
+  it('saves changes to a legacy plain body as plain text', async () => {
+    const onSubmit = renderComposer({ initialValue: '# Original', initialFormat: 'plain' });
+    const input = await screen.findByTestId('post-composer-input');
+    fireEvent.change(input, { target: { value: '# Changed\nStill literal' } });
+    await userEvent.click(screen.getByTestId('post-composer-submit'));
+
+    expect(onSubmit).toHaveBeenCalledWith('# Changed\nStill literal', 'plain', expect.any(Function));
   });
 
   it('labels the editor with a visible caption when it has no placeholder', async () => {
@@ -95,14 +124,6 @@ describe('PostComposer', () => {
 
     expect(screen.getByText('Post body')).toBeInTheDocument();
     expect(screen.getByLabelText('Post body')).toBe(input);
-  });
-
-  it('explains that a converted legacy body no longer fits the limit', async () => {
-    renderComposer({ initialValue: '*'.repeat(POST_BODY_MAX_LENGTH), initialFormat: 'plain' });
-    await screen.findByTestId('post-composer-input');
-
-    expect(screen.getByTestId('post-composer-over-limit')).toHaveTextContent(en.markdownEditor.overLimit);
-    expect(screen.getByTestId('post-composer-submit')).toBeDisabled();
   });
 
   it('counts and enforces the Markdown source limit', async () => {

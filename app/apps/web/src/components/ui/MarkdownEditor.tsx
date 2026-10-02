@@ -32,6 +32,7 @@ export interface MarkdownEditorHandle {
 export interface MarkdownEditorProps {
   value: string;
   onChange: (markdown: string) => void;
+  format?: 'markdown' | 'plain';
   variant?: 'full' | 'compact';
   placeholder?: string;
   minRows?: number;
@@ -97,39 +98,43 @@ const autolinks = /<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>@]+>/gu;
 const tableDelimiterRow = /^ {0,3}\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)+\|?[ \t]*$/mu;
 const taskListItem = /^ {0,7}[-*+] \[[ xX]\](?:\s|$)/mu;
 const htmlTag = /<\/?[a-zA-Z][^>]*>/u;
+const strikethrough = /~~(?=\S)(?:[^~]|~(?!~))*\S~~/u;
 const linkOrImageDestination = /(!?)\[[^\]\n]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/gu;
 
-const hasUnrepresentableLinkOrImage = (prose: string): boolean => {
+const hasUnrepresentableLinkOrImage = (prose: string, variant: 'full' | 'compact'): boolean => {
   for (const match of prose.matchAll(linkOrImageDestination)) {
     const isImage = match[1] === '!';
     const destination = match[2] ?? '';
+    if (isImage && variant === 'compact') return true;
     const accepted = isImage ? httpsImage(destination) : authoredLink(destination);
     if (accepted === null) return true;
   }
   return false;
 };
 
-const needsSourceOnlyEditing = (value: string): boolean => {
+const needsSourceOnlyEditing = (value: string, variant: 'full' | 'compact'): boolean => {
   const prose = value.replace(codeSpans, '').replace(autolinks, '');
   return (
     tableDelimiterRow.test(prose) ||
     taskListItem.test(prose) ||
     htmlTag.test(prose) ||
-    hasUnrepresentableLinkOrImage(prose)
+    (variant === 'compact' && strikethrough.test(prose)) ||
+    hasUnrepresentableLinkOrImage(prose, variant)
   );
 };
 
-const editorExtensions = (placeholder: string) => [
+const editorExtensions = (placeholder: string, variant: 'full' | 'compact') => [
   StarterKit.configure({
     codeBlock: false,
     heading: { levels: [1, 2, 3] },
     italic: false,
     link: false,
+    strike: variant === 'compact' ? false : {},
     trailingNode: false,
     underline: false,
   }),
   CodeBlock,
-  SafeImage.configure({ inline: true }),
+  ...(variant === 'full' ? [SafeImage.configure({ inline: true })] : []),
   UnderscoreItalic,
   SafeLink.configure({
     autolink: true,
@@ -209,6 +214,7 @@ const linkHref = (value: unknown): string => {
 export const MarkdownEditor = ({
   value,
   onChange,
+  format = 'markdown',
   variant = 'full',
   placeholder = '',
   minRows = 6,
@@ -231,13 +237,13 @@ export const MarkdownEditor = ({
   const [linkAttempted, setLinkAttempted] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const acceptedValueRef = useRef(value);
-  const sourceOnly = needsSourceOnlyEditing(value);
+  const sourceOnly = format === 'plain' || needsSourceOnlyEditing(value, variant);
   const editor = useEditor({
-    autofocus: autoFocus ? 'end' : false,
-    content: value,
+    autofocus: autoFocus && format === 'markdown' ? 'end' : false,
+    content: format === 'markdown' ? value : '',
     contentType: 'markdown',
-    editable: !disabled,
-    extensions: editorExtensions(placeholder),
+    editable: format === 'markdown' && !disabled,
+    extensions: editorExtensions(placeholder, variant),
     editorProps: {
       attributes: {
         'aria-label': ariaLabel,
@@ -267,18 +273,18 @@ export const MarkdownEditor = ({
       acceptedValueRef.current = markdown;
       onChange(markdown);
     },
-  }, [ariaDescribedBy, ariaLabel, ariaLabelledBy, autoFocus, disabled, inputTestId, maxLength, placeholder, tabsId, testId]);
+  }, [ariaDescribedBy, ariaLabel, ariaLabelledBy, autoFocus, disabled, format, inputTestId, maxLength, placeholder, tabsId, testId, variant]);
 
   // While the surface has focus its own keystrokes arrive back as a prop one render later; replaying them would rewind the caret.
   useEffect(() => {
-    if (editor === null || sourceOnly || editor.isFocused || editor.getMarkdown() === value) return;
+    if (editor === null || format === 'plain' || sourceOnly || editor.isFocused || editor.getMarkdown() === value) return;
     editor.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
     acceptedValueRef.current = value;
-  }, [editor, mode, sourceOnly, value]);
+  }, [editor, format, mode, sourceOnly, value]);
 
   useLayoutEffect(() => {
-    if (autoFocus && editor !== null && !disabled) editor.view.dom.focus();
-  }, [autoFocus, disabled, editor]);
+    if (autoFocus && format === 'markdown' && editor !== null && !disabled) editor.view.dom.focus();
+  }, [autoFocus, disabled, editor, format]);
 
   const toolbar = useEditorState({
     editor,
@@ -394,6 +400,7 @@ export const MarkdownEditor = ({
       fullWidth
       multiline
       minRows={minRows}
+      data-format={format}
       value={value}
       readOnly={disabled}
       placeholder={placeholder}
@@ -422,8 +429,8 @@ export const MarkdownEditor = ({
 
   return (
     <Box data-testid={testId} sx={{ minWidth: 0 }}>
-      {sourceOnly ? <Alert severity="info" sx={{ mb: '0.55rem' }}>{t.markdownEditor.sourceOnlyHint}</Alert> : null}
-      {variant === 'full' ? <Tabs
+      {format === 'markdown' && sourceOnly ? <Alert severity="info" sx={{ mb: '0.55rem' }}>{t.markdownEditor.sourceOnlyHint}</Alert> : null}
+      {format === 'markdown' && variant === 'full' ? <Tabs
         value={activeMode}
         onChange={(_event, next: 'editor' | 'markdown') => setMode(next)}
         aria-label={t.markdownEditor.tabsAria}
@@ -433,7 +440,7 @@ export const MarkdownEditor = ({
         <Tab id={`${tabsId}-editor-tab`} aria-controls={editorPanelId} value="editor" label={t.markdownEditor.editorTab} disabled={sourceOnly} sx={{ minHeight: '2.75rem' }} />
         <Tab id={`${tabsId}-markdown-tab`} aria-controls={markdownPanelId} value="markdown" label={t.markdownEditor.markdownTab} sx={{ minHeight: '2.75rem' }} />
       </Tabs> : null}
-      {variant === 'compact' ? (
+      {format === 'plain' ? sourceContent : variant === 'compact' ? (
         <Paper variant="outlined" sx={{ minWidth: 0, overflow: 'hidden' }}>
           {compactToolbar}
           {activeMode === 'editor' ? visualContent : (
@@ -476,7 +483,7 @@ export const MarkdownEditor = ({
           {sourceContent}
         </Box>
       )}
-      <Dialog open={linkOpen} onClose={closeLinkDialog} fullWidth maxWidth="xs" aria-labelledby={linkTitleId}>
+      {format === 'markdown' ? <Dialog open={linkOpen} onClose={closeLinkDialog} fullWidth maxWidth="xs" aria-labelledby={linkTitleId}>
         <DialogTitle id={linkTitleId}>{t.markdownEditor.linkDialogTitle}</DialogTitle>
         <DialogContent>
           <TextField
@@ -500,7 +507,7 @@ export const MarkdownEditor = ({
           <Button type="button" onClick={closeLinkDialog}>{t.common.cancel}</Button>
           <Button type="button" variant="contained" onClick={applyLink}>{t.markdownEditor.linkApply}</Button>
         </DialogActions>
-      </Dialog>
+      </Dialog> : null}
     </Box>
   );
 };

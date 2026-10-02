@@ -89,6 +89,7 @@ export const fulfillEnrollment = async (
           language,
           tenantName: tenant.name,
           actionUrl: created.url,
+          productType: product.type,
           ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
         },
         now: deps.clock.nowIso(),

@@ -66,6 +66,20 @@ describe('renderEmailOutboxPayload', () => {
     if (rendered.success) expect(rendered.data.html).toContain('studio.test/sign-in');
   });
 
+  it('defaults old welcome-sign-in payloads to the course action', () => {
+    const rendered = renderEmailOutboxPayload({
+      kind: 'welcome-sign-in',
+      language: 'en',
+      tenantName: 'Studio',
+      actionUrl: 'https://studio.test/sign-in?token=abc',
+    });
+    expect(rendered.success).toBe(true);
+    if (rendered.success) {
+      expect(rendered.payload).toMatchObject({ kind: 'welcome-sign-in', productType: 'course' });
+      expect(rendered.data.text).toContain('Sign in and open your course: https://studio.test/sign-in?token=abc');
+    }
+  });
+
   it('renders a magic-link payload without branding', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'magic-link',

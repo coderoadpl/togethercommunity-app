@@ -7,6 +7,7 @@ import {
   err,
   internal,
   ok,
+  renderEmailOutboxPayload,
   validation,
   type Member,
   type TermsConsent,
@@ -37,7 +38,7 @@ const tenantA = {
   id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active', plan: 'hosted', contentVersion: 1,
 } as const;
 
-const product = (tenantId: string): Product => ({
+const product = (tenantId: string, overrides: Partial<Product> = {}): Product => ({
   id: 'product-1',
   tenantId,
   type: 'course',
@@ -52,6 +53,7 @@ const product = (tenantId: string): Product => ({
   accessItems: [],
   legacyId: null,
   createdAt: now,
+  ...overrides,
 });
 
 const monthlyPrice = (tenantId: string): ProductPrice => ({
@@ -174,7 +176,7 @@ const subscriptionEvent = (input: {
 });
 
 const harness = (
-  options: { prices?: ProductPrice[]; rejectPaymentCommit?: boolean } = {},
+  options: { prices?: ProductPrice[]; productType?: Product['type']; rejectPaymentCommit?: boolean } = {},
 ) => {
   const members = new Map<string, Member>();
   const grants = new Map<string, ProductGrant>();
@@ -190,6 +192,7 @@ const harness = (
   const subscriptions = new Map<string, MemberSubscription>();
   const prices = options.prices ?? [];
   const sent: string[] = [];
+  const enrollmentEmails: { to: string; payload: EmailOutboxPayload }[] = [];
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
   const consents: TermsConsent[] = [];
@@ -243,7 +246,8 @@ const harness = (
     products: {
       listByTenant: async () => [],
       listPublishedByTenant: async () => [],
-      findById: async (tenantId, productId) => (productId === 'product-1' ? product(tenantId) : null),
+      findById: async (tenantId, productId) =>
+        (productId === 'product-1' ? product(tenantId, { type: options.productType ?? 'course' }) : null),
       create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
@@ -435,6 +439,7 @@ const harness = (
         const orderSnapshot = [...orders];
         const subscriptionSnapshot = new Map(subscriptions);
         const sentSnapshot = [...sent];
+        const enrollmentEmailSnapshot = [...enrollmentEmails];
         const queuedSnapshot = [...queued];
         const autoInvoiceJobsSnapshot = [...autoInvoiceJobs];
         const refundSnapshot = refundTransitions;
@@ -498,6 +503,7 @@ const harness = (
         subscriptions.clear();
         subscriptionSnapshot.forEach((value, key) => subscriptions.set(key, value));
         sent.splice(0, sent.length, ...sentSnapshot);
+        enrollmentEmails.splice(0, enrollmentEmails.length, ...enrollmentEmailSnapshot);
         queued.splice(0, queued.length, ...queuedSnapshot);
         autoInvoiceJobs.splice(0, autoInvoiceJobs.length, ...autoInvoiceJobsSnapshot);
         refundTransitions = refundSnapshot;
@@ -515,6 +521,7 @@ const harness = (
         emailOutbox: {
           enqueue: async (message) => {
             sent.push(message.to);
+            enrollmentEmails.push({ to: message.to, payload: message.payload });
             return ok({ id: message.id });
           },
           claimBatch: async () => ok([]),
@@ -563,6 +570,7 @@ const harness = (
     orders,
     subscriptions,
     sent,
+    enrollmentEmails,
     queued,
     autoInvoiceJobs,
     providerCancellations,
@@ -1259,6 +1267,29 @@ describe('fulfillStripeWebhook', () => {
       provider: 'stripe',
       providerObjectIds: { checkoutSession: 'cs-1' },
     });
+  });
+
+  it('queues the digital download welcome action for digital download purchases', async () => {
+    const h = harness({ productType: 'digital_download' });
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+      kind: 'welcome-sign-in',
+      productType: 'digital_download',
+    });
+    const payload = h.enrollmentEmails[0]?.payload;
+    const rendered = renderEmailOutboxPayload(
+      payload?.kind === 'welcome-sign-in' ? { ...payload, language: 'en' } : payload,
+    );
+    expect(rendered.success).toBe(true);
+    if (rendered.success) {
+      expect(rendered.data.text).toContain('Sign in and download your files: https://alpha.example.com/magic/buyer@example.com');
+    }
   });
 
   it('leaves no payment projections or claim when the transaction commit is rejected', async () => {

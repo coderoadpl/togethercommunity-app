@@ -106,6 +106,7 @@ describe('configureStripe', () => {
     expect(h.rows.map(({ key, ciphertext, maskedPreview }) => ({ key, ciphertext, maskedPreview }))).toEqual([
       { key: 'stripe.webhookSecret', ciphertext: 'encrypted:whsec_created', maskedPreview: '••••ated' },
       { key: 'stripe.restrictedKey', ciphertext: 'encrypted:rk_live_private', maskedPreview: '••••vate' },
+      { key: 'stripe.webhookEndpointId', ciphertext: 'encrypted:we_created', maskedPreview: '••••ated' },
     ]);
   });
 
@@ -162,7 +163,7 @@ describe('configureStripe', () => {
     )).resolves.toMatchObject({ ok: true, value: { mode } });
     expect(h.rows.map((row) => row.key)).toEqual(mode === 'test'
       ? ['stripe.testWebhookSecret', 'stripe.testRestrictedKey', 'stripe.testWebhookEndpointId']
-      : ['stripe.webhookSecret', 'stripe.restrictedKey']);
+      : ['stripe.webhookSecret', 'stripe.restrictedKey', 'stripe.webhookEndpointId']);
   });
 
   it.each(['sk_test_private', 'rk_unknown_private'])(

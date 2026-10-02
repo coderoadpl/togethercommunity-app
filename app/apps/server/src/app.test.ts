@@ -1,3 +1,6 @@
+import { Hono } from 'hono';
+import { registerPublicRoutes } from './public-app.js';
+import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
@@ -196,6 +199,7 @@ const deps = (input: {
       }),
       listSessions: async () => [],
       revokeSessions: async () => undefined,
+      findUserByEmail: async () => null,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -7945,7 +7949,10 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const response = await app.request(path, { method: route.method, headers: impersonated });
+      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+        ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
+        : impersonated;
+      const response = await app.request(path, { method: route.method, headers: requestHeaders });
       expect(response.status, `${route.method} ${path}`).toBe(403);
       expect(await response.json(), `${route.method} ${path}`).toMatchObject({
         error: { code: 'impersonation_read_only' },
@@ -8543,4 +8550,42 @@ describe('Stripe subscription adoption authorization', () => {
     expect((await app.request(API_PATHS.adoptStripeSubscription, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(403);
     expect((await app.request(API_PATHS.listStripeSubscriptions, { headers })).status).toBe(403);
   });
+});
+
+
+describe('operator provisioning public-surface regression', () => {
+  it('mounts operator routes only on the internal surface and excludes public manifests', async () => {
+    const base = deps();
+    const publicApp = new Hono<AppVars>();
+    registerPublicRoutes(publicApp, base);
+    for (const route of [API_ROUTES.operatorTenantProvision, API_ROUTES.operatorTenantReadiness]) {
+      expect(publicRouteManifestEntry(route)).toBeUndefined();
+      expect(publicApp.routes.some((candidate) => candidate.path === route.path)).toBe(false);
+      expect(selfAuthenticatingRouteManifestEntry(route)?.mechanism).toBe('Operator secret');
+      expect(collectRuntimeRoutes().some((candidate) => candidate.path === route.path && candidate.method === route.method)).toBe(true);
+    }
+    const app = buildApp(base);
+    expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', body: '{}' })).status).toBe(401);
+    expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'))).status).toBe(401);
+  });
+});
+
+
+it.each([undefined, 'wrong-operator-secret'])('rejects operator authentication before resolving an impersonation cookie', async (secret) => {
+  const base = deps();
+  const getAuthenticatedUser = vi.fn(base.authPort.getAuthenticatedUser);
+  const findBySlug = vi.fn(base.tenants.findBySlug);
+  const app = buildApp({
+    ...base,
+    authPort: { ...base.authPort, getAuthenticatedUser },
+    tenants: { ...base.tenants, findBySlug },
+  });
+  const headers = {
+    cookie: `${impersonationCookieName(base.secureCookies)}=untrusted-view-cookie`,
+    ...(secret === undefined ? {} : { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }),
+  };
+  expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', headers, body: '{}' })).status).toBe(401);
+  expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).toBe(401);
+  expect(getAuthenticatedUser).not.toHaveBeenCalled();
+  expect(findBySlug).not.toHaveBeenCalled();
 });

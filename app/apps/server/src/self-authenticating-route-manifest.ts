@@ -11,6 +11,8 @@ type SelfAuthenticatingRouteManifestEntry = {
 };
 
 export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRouteManifestEntry[] = [
+  { path: API_PATHS.operatorTenantProvision, methods: ['POST'], mechanism: 'Operator secret', capability: 'tenant:provision' },
+  { path: API_PATHS.operatorTenantReadiness, methods: ['GET'], mechanism: 'Operator secret', capability: 'tenant:readiness' },
   { path: API_PATHS.activitySummary, methods: ['GET'], mechanism: 'Tenant API key', capability: 'report:read' },
   { path: API_PATHS.memberActivity, methods: ['GET'], mechanism: 'Tenant API key', capability: 'report:read' },
   { path: API_PATHS.m2mListMarketingContacts, methods: ['GET'], mechanism: 'Tenant API key' },

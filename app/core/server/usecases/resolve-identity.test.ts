@@ -84,6 +84,7 @@ const deps = (
 ) => ({
   authPort: {
     getAuthenticatedUser: async () => user,
+    findUserByEmail: async () => null,
     ensureUser: vi.fn(async () => ({ userId: user.userId, created: false })),
     listSessions: async () => [],
     revokeSessions: async () => undefined,

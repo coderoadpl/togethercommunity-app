@@ -64,7 +64,7 @@ export const configureStripe = async (
     for (const secret of [
       { key: mode === 'test' ? 'stripe.testWebhookSecret' as const : 'stripe.webhookSecret' as const, value: configured.value.webhookSecret },
       { key: mode === 'test' ? 'stripe.testRestrictedKey' as const : 'stripe.restrictedKey' as const, value: parsed.data.restrictedKey },
-      ...(mode === 'test' ? [{ key: 'stripe.testWebhookEndpointId' as const, value: configured.value.webhookEndpointId }] : []),
+      { key: mode === 'test' ? 'stripe.testWebhookEndpointId' as const : 'stripe.webhookEndpointId' as const, value: configured.value.webhookEndpointId },
     ]) {
       const stored = await setTenantSecret(ctx, secret, deps);
       if (!stored.ok) {

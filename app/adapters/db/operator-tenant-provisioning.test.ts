@@ -20,7 +20,7 @@ const input = (id: string, slug: string, owner = 'owner-1', auditId = id) => ({
 const options = { requireEmpty: false, idempotentOwner: true };
 
 beforeAll(async () => {
-  database = await createTestDatabase('together_operator_tenant_test', 'postgres://together:together@localhost:48912/together');
+  database = await createTestDatabase('together_operator_tenant_test', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   await database.db.insert(user).values([
     { id: 'owner-1', name: 'Owner', email: 'owner@example.test', emailVerified: true },
     { id: 'owner-2', name: 'Another owner', email: 'another@example.test', emailVerified: true },

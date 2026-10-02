@@ -1,6 +1,5 @@
 import {
   err,
-  forbidden,
   ok,
   unauthorized,
   type AppError,
@@ -50,6 +49,7 @@ export const resolveIdentity = async (
     name: user.name,
     emailVerified: user.emailVerified,
     image: null,
+    tenantAccess: 'none',
     tenantId: null,
     tenantSlug: null,
     tenantName: null,
@@ -79,11 +79,12 @@ export const resolveIdentity = async (
   }
 
   if (!staffGrant && !member) {
-    return err(forbidden('You do not have access to this tenant'));
+    return ok(base);
   }
 
   return ok({
     ...base,
+    tenantAccess: staffGrant ? 'staff' : 'member',
     image: member?.avatarUrl ?? null,
     tenantId: tenant.value.tenant.id,
     tenantSlug: tenant.value.tenant.slug,

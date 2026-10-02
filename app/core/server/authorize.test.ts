@@ -9,6 +9,7 @@ const identity = (tenantId: string | null): Identity => ({
   email: 'person@example.test',
   name: 'Person',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'staff',
   tenantId,
   tenantSlug: tenantId === null ? null : 'tenant',
   tenantName: tenantId === null ? null : 'Tenant',
@@ -29,6 +30,17 @@ describe('authorize', () => {
       code: 'forbidden',
       message: 'integration:test is not permitted',
     });
+  });
+
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('grants %s only to staff and explicit capability contexts', (capability) => {
+    const staffIdentity = identity('tenant-1');
+    expect(authorize({ identity: staffIdentity }, capability)).toBeNull();
+    expect(authorize({ identity: { ...staffIdentity, staffRole: 'admin' } }, capability)).toBeNull();
+    expect(authorize({ identity: { ...staffIdentity, staffRole: null, memberId: 'member-1' } }, capability))
+      .toMatchObject({ code: 'forbidden' });
+    expect(authorize({ identity: staffIdentity, capabilities: ['member:commerce:read', 'member:grant:write'] }, capability))
+      .toMatchObject({ code: 'forbidden' });
+    expect(authorize({ identity: staffIdentity, capabilities: [capability] }, capability)).toBeNull();
   });
 
   it('allows only a capability declared on the context', () => {
@@ -65,18 +77,16 @@ describe('authorize', () => {
 });
 
 describe('authorizeTenant', () => {
+  it('denies tenant capabilities to a signed-in visitor', () => {
+    expect(authorizeTenant({ identity: { ...identity(null), staffRole: null, tenantAccess: 'none' } }, 'product:read'))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('returns the tenant id after authorization', () => {
     expect(authorizeTenant(
       { identity: identity('tenant-1'), capabilities: ['product:read'] },
       'product:read',
     )).toEqual({ ok: true, value: 'tenant-1' });
-  });
-
-  it('preserves tenant scoping before capability denial', () => {
-    expect(authorizeTenant({ identity: identity(null), capabilities: [] }, 'product:read')).toMatchObject({
-      ok: false,
-      error: { code: 'tenant_not_found' },
-    });
   });
 
   it('returns tenant_not_found for a permitted tenantless context', () => {
@@ -111,6 +121,11 @@ const impersonation: ImpersonationPrincipal = {
 };
 
 describe('authorize under impersonation', () => {
+  it.each(['subscriptions:read', 'subscriptions:adopt'] as const)('blocks %s while impersonating a member', (capability) => {
+    expect(authorize({ identity: subjectIdentity, impersonation }, capability))
+      .toMatchObject({ code: 'impersonation_read_only' });
+  });
+
   it('passes allowlisted reads through the ordinary subject checks', () => {
     expect(authorize({ identity: subjectIdentity, impersonation }, 'community:read')).toBeNull();
     expect(authorize({ identity: subjectIdentity, impersonation }, 'lesson:play')).toBeNull();

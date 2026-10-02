@@ -52,7 +52,7 @@ export const simulatePurchase = async (
     if (!price || price.productId !== product.id) {
       return err(notFound(`No price "${input.priceId}" for this product`));
     }
-    if (!price.active) return err(validation('This price is no longer active'));
+    if (!price.active || price.imported === true) return err(validation('This price is no longer active'));
   }
 
   if (product.type === 'membership' && price?.kind !== 'recurring') {

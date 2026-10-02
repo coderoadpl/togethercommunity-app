@@ -64,6 +64,7 @@ export const dispatchEmailBatch = async (
     finishedAt: null,
     durationMs: null,
     status: 'running',
+    idle: false,
     error: null,
     totals: emptyTotals,
     createdAt: startedAt,
@@ -179,6 +180,7 @@ export const dispatchEmailBatch = async (
       finishedAt,
       durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
       status: error === null ? 'completed' : 'failed',
+      idle: attemptsMade === 0 && sentCount === 0 && failedCount === 0 && error === null,
       error,
       totals: {
         campaignsTouched: 0,

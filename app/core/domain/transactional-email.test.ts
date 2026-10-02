@@ -501,7 +501,12 @@ describe('transactional message catalogue', () => {
   ];
 
   it('holds a rendering for every outbox payload kind built from a template', () => {
-    const kindsWithoutTemplate = new Set<string>(['m2m-transactional']);
+    const kindsWithoutTemplate = new Set<string>([
+      'auth-magic-link',
+      'auth-password-reset',
+      'auth-email-verification',
+      'm2m-transactional',
+    ]);
     const catalogued = catalogue.map(([kind]) => kind);
     for (const option of emailOutboxPayloadSchema.options) {
       const kind: string = option.shape.kind.value;

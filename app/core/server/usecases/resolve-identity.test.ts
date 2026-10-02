@@ -57,6 +57,7 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   hasAny: async () => tenantList.length > 0,
   findSettings: async () => ({
     name: 'Acme', socialLinks: [],
+    signInNotice: { enabled: false, text: '' },
     billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
     accentColor: null,
     accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -128,7 +129,7 @@ describe('resolveIdentity', () => {
     const request = { host: 'acme.localhost:48730', tenantHeader: null };
     const first = await resolveIdentity(user, request, dependencies);
     const second = await resolveIdentity(user, request, dependencies);
-    expect(first).toMatchObject({ ok: true, value: { userId: user.userId, staffRole, memberId: 'staff-member' } });
+    expect(first).toMatchObject({ ok: true, value: { tenantAccess: 'staff', userId: user.userId, staffRole, memberId: 'staff-member' } });
     expect(second).toEqual(first);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tenantId: acme.tenant.id, userId: user.userId, email: user.email });
@@ -185,7 +186,7 @@ describe('resolveIdentity', () => {
     expect(result).toMatchObject({ ok: true, value: { tenantId: 't-acme' } });
   });
 
-  it('resolves tenant from a custom domain and requires membership', async () => {
+  it('resolves custom-domain membership or falls back to a visitor', async () => {
     const domain: TenantDomain = tenantDomainFixture({
       id: 'd1',
       tenantId: 't-acme',
@@ -205,7 +206,7 @@ describe('resolveIdentity', () => {
       { host: 'todo.example.com', tenantHeader: null },
       deps([], [domain]),
     );
-    expect(denied).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(denied).toMatchObject({ ok: true, value: { tenantAccess: 'none', tenantId: null } });
   });
 
   it('resolves member-only identity without staff enumeration rights', async () => {
@@ -216,7 +217,7 @@ describe('resolveIdentity', () => {
     );
     expect(result).toMatchObject({
       ok: true,
-      value: { tenantId: 't-acme', staffRole: null, memberId: 'member-acme' },
+      value: { tenantAccess: 'member', tenantId: 't-acme', staffRole: null, memberId: 'member-acme' },
     });
   });
 
@@ -292,10 +293,11 @@ describe('resolveIdentity', () => {
       },
     });
     expect(inaccessible).toMatchObject({
-      ok: false,
-      error: {
-        code: 'forbidden',
-        message: 'You do not have access to this tenant',
+      ok: true,
+      value: {
+        userId: user.userId, email: user.email, tenantAccess: 'none',
+        tenantId: null, tenantSlug: null, tenantName: null,
+        staffRole: null, memberId: null, image: null,
       },
     });
   });

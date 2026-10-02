@@ -16,6 +16,7 @@ export interface Identity {
   name: string;
   emailVerified: boolean;
   image: string | null;
+  tenantAccess: 'none' | 'member' | 'staff';
   tenantId: string | null;
   tenantSlug: string | null;
   tenantName: string | null;

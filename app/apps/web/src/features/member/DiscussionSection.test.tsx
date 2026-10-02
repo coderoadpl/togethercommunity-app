@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { createPostInputSchema, type DiscussionPost, type PublicPost } from '#core/domain/index.js';
+import { createPostInputSchema, updatePostInputSchema, type DiscussionPost, type PublicPost } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -182,9 +182,45 @@ describe('DiscussionSection', () => {
 
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-composer-input')).toHaveAttribute('placeholder', en.discussion.composerPlaceholder);
+    expect((await screen.findByTestId('discussion-composer-input')).querySelector('p'))
+      .toHaveAttribute('data-placeholder', en.discussion.composerPlaceholder);
     expect(screen.getByTestId('discussion-composer-submit')).toBeDisabled();
     expect(screen.getByTestId('discussion-empty')).toHaveTextContent(en.discussion.empty);
+  });
+
+  it('saves a plain thread edit as plain text', async () => {
+    const root = asThread(post({ id: 'r1', isOwn: true, body: '# Original', bodyFormat: 'plain' }));
+    let submittedFormat: string | undefined;
+    server.use(
+      okMe(),
+      okDiscussion([root]),
+      http.post('/api/posts/update', async ({ request }) => {
+        const input = updatePostInputSchema.parse(await request.json());
+        submittedFormat = input.bodyFormat;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            post: {
+              ...root,
+              body: input.body,
+              bodyHtml: input.body,
+              bodyPlainText: input.body,
+              editedAt: '2026-10-02T10:00:00.000Z',
+            },
+          },
+        });
+      }),
+    );
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    await userEvent.click(await screen.findByTestId('edit-button-r1'));
+    const input = screen.getByTestId('edit-composer-r1-input');
+    expect(input).toHaveValue('# Original');
+    await userEvent.clear(input);
+    await userEvent.type(input, '# Changed');
+    await userEvent.click(screen.getByTestId('edit-composer-r1-submit'));
+
+    await waitFor(() => expect(submittedFormat).toBe('plain'));
   });
 
   it('keeps the lesson input and send button visible before focus and after blur', async () => {
@@ -343,7 +379,7 @@ describe('DiscussionSection', () => {
 
     await waitFor(() =>
       expect(bodies).toEqual([
-        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply', bodyFormat: 'plain' },
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Deeper reply', bodyFormat: 'markdown' },
       ]),
     );
 
@@ -402,7 +438,7 @@ describe('DiscussionSection', () => {
     expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('My reply');
     expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();
     expect(bodies).toEqual([
-      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply', bodyFormat: 'plain' },
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'My reply', bodyFormat: 'markdown' },
     ]);
     expect(discussionReads).toBeGreaterThan(readsBefore);
   });

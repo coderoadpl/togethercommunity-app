@@ -46,6 +46,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   email: 'member@example.test',
   name: 'Member',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -118,6 +119,7 @@ const product: Product = {
 };
 
 const grant: ProductGrant = {
+  mode: 'live',
   id: 'grant-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',

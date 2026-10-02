@@ -30,6 +30,7 @@ const staff = (tenantId: string | null): Ctx => ({
     email: 'owner@together.dev',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: tenantId === null ? 'none' : 'staff',
     tenantId,
     tenantSlug: tenantId ? 'acme' : null,
     tenantName: tenantId ? 'Acme' : null,
@@ -50,6 +51,7 @@ const plainMember = (tenantId: string): Ctx => ({
     email: 'buyer@together.dev',
     name: 'Buyer',
     emailVerified: true,
+    tenantAccess: 'member',
     tenantId,
     tenantSlug: 'acme',
     tenantName: 'Acme',
@@ -99,6 +101,7 @@ const product = (id: string, tenantId: string): Product => ({
 });
 
 const grantRow = (overrides: Partial<ProductGrant> & { id: string }): ProductGrant => ({
+  mode: 'live',
   tenantId: 't-acme',
   memberId: 'm1',
   productId: 'p1',
@@ -169,6 +172,7 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
       grants
         .filter((g) => g.tenantId === tenantId && g.memberId === memberId)
         .map((g) => ({
+          mode: g.mode,
           id: g.id,
           productId: g.productId,
           productName: products.find((p) => p.id === g.productId)?.title ?? 'unknown',

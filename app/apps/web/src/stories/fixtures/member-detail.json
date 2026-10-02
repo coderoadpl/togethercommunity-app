@@ -30,6 +30,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -55,6 +59,7 @@
             "active": true,
             "expiresAt": null,
             "id": "grant-studio-active",
+            "mode": "live",
             "productId": "product-js-full",
             "productName": "JavaScript Course - full access",
             "source": "manual",
@@ -64,6 +69,7 @@
             "active": true,
             "expiresAt": null,
             "id": "grant-studio-active-workbook",
+            "mode": "live",
             "productId": "product-download-workbook",
             "productName": "Creator Workbook",
             "source": "manual",
@@ -73,6 +79,7 @@
             "active": true,
             "expiresAt": "2026-08-10T12:00:00.000Z",
             "id": "grant-studio-active-club",
+            "mode": "live",
             "productId": "product-club",
             "productName": "Studio Club - subscription",
             "source": "manual",
@@ -483,6 +490,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
@@ -500,6 +508,7 @@
             "currentPeriodEnd": "2026-07-11T12:00:00.000Z",
             "id": "subscription-studio-active-club",
             "memberId": "member-studio-active",
+            "mode": "live",
             "priceId": "price-club-monthly",
             "productId": "product-club",
             "productTitle": "Studio Club - subscription",
@@ -524,6 +533,7 @@
             "memberEmail": "student.active@together.dev",
             "memberId": "member-studio-active",
             "memberName": "Active Student",
+            "mode": "live",
             "priceId": "price-club-monthly",
             "productId": "product-club",
             "productTitle": "Studio Club - subscription",
@@ -548,6 +558,7 @@
             "memberEmail": "student.active@together.dev",
             "memberId": "member-studio-active",
             "memberName": "Active Student",
+            "mode": "live",
             "priceId": "price-product-js-full",
             "productId": "product-js-full",
             "productTitle": "JavaScript Course - full access",
@@ -840,6 +851,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

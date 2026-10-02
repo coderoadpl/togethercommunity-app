@@ -4,6 +4,11 @@ set -euo pipefail
 exec_log="${EXEC_LOG:-}"
 label="model=${MODEL:-unreported} slot=${SLOT:-unknown} attempt=${ATTEMPT:-unknown} reason=${REASON:-unknown}"
 
+if [ "${REASON:-}" = turn_limit ]; then
+  printf '  | %s: Reviewer exceeded AI_REVIEW_MAX_TURNS=%s; raise the variable or split the pull request\n' "$label" "${MAX_TURNS:-unknown}"
+  exit 0
+fi
+
 if [ -z "$exec_log" ] || [ ! -s "$exec_log" ]; then
   printf '  | %s: no execution log\n' "$label"
   exit 0

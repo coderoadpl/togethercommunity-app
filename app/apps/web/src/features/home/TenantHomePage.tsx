@@ -23,20 +23,21 @@ import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
+import { useToast } from '../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { hasConfiguredBaseDomain, isTenantHost, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
 
 /**
- * `anonymousHome` is injected by the route: the anonymous surface lives in the
+ * `renderAnonymousHome` is injected by the route: the anonymous surface lives in the
  * member feature, which this feature may not import directly.
  */
 export const TenantHomePage = ({
-  anonymousHome,
+  renderAnonymousHome,
   hostname = window.location.hostname,
   openTenant = (url) => { window.location.assign(url); },
-}: { anonymousHome?: ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
+}: { renderAnonymousHome?: (visitorEmail: string | null) => ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
   const me = useQuery(actions.me);
@@ -45,8 +46,10 @@ export const TenantHomePage = ({
   const tenant = me.data?.tenant ?? null;
   const staff = tenant !== null && tenant.staffRole !== null;
   const memberOnly = tenant !== null && tenant.staffRole === null;
+  const visitorEmail = me.data?.tenantAccess === 'none' ? me.data.email : null;
   const anonymousTenantHome =
-    unauthorized && anonymousHome !== undefined && isTenantHost(hostname);
+    (unauthorized || visitorEmail !== null)
+    && tenant === null && renderAnonymousHome !== undefined && isTenantHost(hostname);
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
@@ -56,7 +59,9 @@ export const TenantHomePage = ({
   if (me.isPending) {
     return <BrandLoader caption={t.tenant.openingWorkspace} />;
   }
-  if (anonymousTenantHome) return <>{anonymousHome}</>;
+  if (anonymousTenantHome && renderAnonymousHome !== undefined) {
+    return <>{renderAnonymousHome(visitorEmail)}</>;
+  }
   if (unauthorized || staff || memberOnly) return null;
   if (me.isError) {
     return (
@@ -84,6 +89,7 @@ const PickTenant = ({
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const toast = useToast();
   const tenants = useQuery(actions.tenants);
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -100,7 +106,15 @@ const PickTenant = ({
       }
     },
   });
-  const resendVerification = useMutation(actions.sendVerificationEmail);
+  const resendVerification = useMutation({
+    ...actions.sendVerificationEmail,
+    onSuccess: () => {
+      toast.success(t.emailVerification.sent);
+    },
+    onError: () => {
+      toast.error(t.emailVerification.providerError);
+    },
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -128,12 +142,12 @@ const PickTenant = ({
         ) : null}
         {tenants.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(tenants.error, t), retry: { label: t.common.retry, onRetry: () => void tenants.refetch() } }} /> : null}
         <List sx={{ mt: '1.2rem' }} disablePadding>
-          {tenants.data?.tenants.map((m) => (
-            <ListItem key={m.tenant.id} disablePadding>
-              <ListItemButton component="a" href={tenantUrl(m.tenant.slug)} sx={{ px: '0.3rem' }}>
+          {[...(tenants.data?.tenants.map(({ tenant }) => tenant) ?? []), ...(tenants.data?.memberTenants ?? [])].map((community) => (
+            <ListItem key={community.id} disablePadding>
+              <ListItemButton component="a" href={tenantUrl(community.slug)} sx={{ px: '0.3rem' }}>
                 <TenantListItemText
-                  primary={m.tenant.name}
-                  secondary={tenantUrl(m.tenant.slug)}
+                  primary={community.name}
+                  secondary={tenantUrl(community.slug)}
                   slotProps={{ secondary: { variant: 'caption' } }}
                 />
               </ListItemButton>
@@ -146,8 +160,6 @@ const PickTenant = ({
               email={account.email}
               emailVerified={false}
               resendPending={resendVerification.isPending}
-              resendSent={resendVerification.isSuccess}
-              resendError={resendVerification.isError}
               onResend={() => resendVerification.mutate({
                 email: account.email,
                 callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),

@@ -4,9 +4,7 @@ import { Alert, Box } from '@mui/material';
 import { ApiError } from '#core/client/index.js';
 
 import { localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
-
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === 'string');
+import { fieldErrorEntries, isStringArray } from '../../../lib/validation-details.js';
 
 interface ValidationField {
   name: string;
@@ -14,16 +12,8 @@ interface ValidationField {
   label: string;
 }
 
-const invalidFieldNames = (details: unknown): string[] => {
-  if (details === null || typeof details !== 'object') return [];
-  const fields: string[] = [];
-  if ('fieldErrors' in details && details.fieldErrors !== null && typeof details.fieldErrors === 'object') {
-    for (const [name, value] of Object.entries(details.fieldErrors)) {
-      if (isStringArray(value) && value.length > 0) fields.push(name);
-    }
-  }
-  return fields;
-};
+const invalidFieldNames = (details: unknown): string[] =>
+  fieldErrorEntries(details).map(([name]) => name);
 
 const hasFormErrors = (details: unknown): boolean =>
   details !== null &&

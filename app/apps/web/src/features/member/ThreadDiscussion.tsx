@@ -3,7 +3,7 @@ import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '#core/client/index.js';
-import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#core/domain/index.js';
+import { POST_BODY_MAX_LENGTH, type DiscussionPost, type PostBodyFormat, type PostContextKind, type ThreadSubscriptionState } from '#core/domain/index.js';
 
 import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
@@ -12,7 +12,6 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
-  ComposerInput,
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
@@ -24,6 +23,7 @@ import {
   ReplyIndent,
 } from '../../theme.js';
 import { PostContent } from '../../components/ui/PostContent.js';
+import { MarkdownEditor, type MarkdownEditorHandle } from '../../components/ui/MarkdownEditor.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
@@ -87,10 +87,10 @@ interface Viewer {
 export const PostComposer = ({
   label,
   placeholder,
-  compact = false,
   submitLabel,
   pendingLabel,
   initialValue = '',
+  initialFormat = 'markdown',
   focusOnMount = false,
   surface = false,
   busy,
@@ -101,39 +101,39 @@ export const PostComposer = ({
 }: {
   label: string;
   placeholder?: string;
-  compact?: boolean;
   submitLabel: string;
   pendingLabel: string;
   initialValue?: string;
+  initialFormat?: PostBodyFormat;
   focusOnMount?: boolean;
   /** Wrap the composer in its own card, which disappears together with the composer. */
   surface?: boolean;
   busy: boolean;
   disabled?: boolean;
-  onSubmit: (body: string, reset: () => void) => void;
+  onSubmit: (body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
 }) => {
   const t = useTranslations();
   const impersonating = useImpersonation() !== null;
   const [body, setBody] = useState(initialValue);
-  const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const expanded = !compact || open || body.trim().length > 0;
+  const inputRef = useRef<MarkdownEditorHandle | null>(null);
+  const labelId = useId();
+  const overLimit = body.length > POST_BODY_MAX_LENGTH;
+  const nearLimit = body.length >= POST_BODY_MAX_LENGTH * 0.9;
 
   useEffect(() => {
     if (focusOnMount) inputRef.current?.focus();
   }, [focusOnMount]);
 
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = body.trim();
     if (trimmed.length === 0) return;
-    onSubmit(trimmed, () => setBody(''));
+    onSubmit(trimmed, initialFormat, () => {
+      setBody('');
+      inputRef.current?.clear();
+    });
   };
 
   if (impersonating) return null;
@@ -147,31 +147,40 @@ export const PostComposer = ({
       useFlexGap
       spacing="0.75rem"
       onSubmit={handleSubmit}
-      onFocus={() => setOpen(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
       data-testid={testId}
       data-mobile-keyboard-anchor
       sx={{ scrollMarginBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
     >
-      <ComposerInput
-        label={label}
-        placeholder={placeholder}
-        multiline
-        minRows={expanded ? 3 : 1}
+      {placeholder === undefined ? (
+        <Typography variant="caption" color="text.secondary" component="span" id={labelId}>
+          {label}
+        </Typography>
+      ) : null}
+      <MarkdownEditor
+        ref={inputRef}
+        aria-label={label}
+        {...(placeholder === undefined ? { 'aria-labelledby': labelId } : { placeholder })}
+        format={initialFormat}
+        variant="compact"
+        minRows={2}
+        maxLength={POST_BODY_MAX_LENGTH}
+        autoFocus={focusOnMount}
         value={body}
         disabled={disabled}
-        inputRef={inputRef}
-        onChange={(event) => setBody(event.target.value)}
-        slotProps={{ htmlInput: { 'data-testid': `${testId}-input` } }}
+        onChange={setBody}
+        inputTestId={`${testId}-input`}
       />
-      <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem' }}>
+      {overLimit ? (
+        <Typography variant="caption" color="error" component="p" data-testid={`${testId}-over-limit`}>
+          {t.markdownEditor.overLimit}
+        </Typography>
+      ) : null}
+      <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', alignItems: 'center' }}>
         <Button
           type="submit"
           variant="contained"
           sx={{ minHeight: 44, minWidth: 44 }}
-          disabled={disabled || busy || body.trim().length === 0}
+          disabled={disabled || busy || body.trim().length === 0 || body.length > POST_BODY_MAX_LENGTH}
           data-testid={`${testId}-submit`}
         >
           {busy ? pendingLabel : submitLabel}
@@ -181,6 +190,17 @@ export const PostComposer = ({
             {t.common.cancel}
           </Button>
         )}
+        <Typography
+          variant="caption"
+          color={overLimit ? 'error' : 'text.secondary'}
+          role="status"
+          aria-live={nearLimit ? 'polite' : 'off'}
+          aria-label={t.markdownEditor.characterCount({ used: body.length, limit: POST_BODY_MAX_LENGTH })}
+          data-testid={`${testId}-counter`}
+          sx={{ ml: 'auto' }}
+        >
+          {body.length} / {POST_BODY_MAX_LENGTH}
+        </Typography>
       </Stack>
     </Stack>,
   );
@@ -193,8 +213,8 @@ interface ThreadActions {
   setReplyingTo: (id: string | null) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
-  submitReply: (parent: DiscussionPost, body: string, reset: () => void) => void;
-  submitEdit: (post: DiscussionPost, body: string, reset: () => void) => void;
+  submitReply: (parent: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
+  submitEdit: (post: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   requestDelete: (post: DiscussionPost) => void;
   openSubthread: (id: string) => void;
   replyBusy: boolean;
@@ -245,10 +265,11 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             submitLabel={t.common.save}
             pendingLabel={t.discussion.saving}
             initialValue={post.body}
+            initialFormat={post.bodyFormat}
             focusOnMount
             busy={a.editBusy}
             disabled={a.writeDisabled}
-            onSubmit={(body, reset) => a.submitEdit(post, body, reset)}
+            onSubmit={(body, bodyFormat, reset) => a.submitEdit(post, body, bodyFormat, reset)}
             onCancel={() => a.setEditingId(null)}
             testId={`edit-composer-${post.id}`}
           />
@@ -319,7 +340,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.replyBusy}
             disabled={a.writeDisabled}
-            onSubmit={(body, reset) => a.submitReply(post, body, reset)}
+            onSubmit={(body, bodyFormat, reset) => a.submitReply(post, body, bodyFormat, reset)}
             onCancel={() => a.setReplyingTo(null)}
             testId={`reply-composer-${post.id}`}
           />
@@ -500,9 +521,9 @@ export const ThreadDiscussion = ({
     setReplyingTo,
     editingId,
     setEditingId,
-    submitReply: (parent, body, reset) => {
+    submitReply: (parent, body, bodyFormat, reset) => {
       create.mutate(
-        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat: 'plain' },
+        { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat },
         {
           onSuccess: () => {
             reset();
@@ -511,9 +532,9 @@ export const ThreadDiscussion = ({
         },
       );
     },
-    submitEdit: (post, body, reset) => {
+    submitEdit: (post, body, bodyFormat, reset) => {
       update.mutate(
-        { id: post.id, body },
+        { id: post.id, body, bodyFormat },
         {
           onSuccess: () => {
             reset();
@@ -623,15 +644,14 @@ export const ThreadDiscussion = ({
             <PostComposer
               label={t.discussion.composerLabel}
               placeholder={t.discussion.composerPlaceholder}
-              compact
               submitLabel={t.discussion.post}
               pendingLabel={t.discussion.posting}
               busy={create.isPending}
               disabled={banned}
               surface
-              onSubmit={(body, reset) => {
+              onSubmit={(body, bodyFormat, reset) => {
                 create.mutate(
-                  { contextKind: context.contextKind, contextId: context.contextId, body, bodyFormat: 'plain' },
+                  { contextKind: context.contextKind, contextId: context.contextId, body, bodyFormat },
                   { onSuccess: () => reset() },
                 );
               }}

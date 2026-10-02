@@ -4,6 +4,7 @@ import type {
   LessonBlockType,
   MemberEventType,
   SnsWebhookDeliveryOutcome,
+  StripeAdoptionRefusal,
   TenantAuditEventKind,
   VersionPreviewFieldName,
 } from '#core/domain/index.js';
@@ -16,6 +17,49 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  signupForms: {
+    noList: string;
+    title: string;
+    description: string;
+    create: string;
+    edit: string;
+    empty: string;
+    slug: string;
+    consent: string;
+    chooseConsent: string;
+    singleOptIn: string;
+    doubleOptIn: string;
+    list: string;
+    listHelp: string;
+    tags: string;
+    collectName: string;
+    successEn: string;
+    successPl: string;
+    defaultSuccessEn: string;
+    defaultSuccessPl: string;
+    redirect: string;
+    redirectHelp: string;
+    origins: string;
+    originsHelp: string;
+    invalid: string;
+    embed: string;
+    embedHelp: string;
+    hostedLink: string;
+    htmlEmbed: string;
+    jsonExample: string;
+    labelLanguage: string;
+    email: string;
+    displayName: string;
+    submit: string;
+    last24h: string;
+    last7d: string;
+    total: string;
+    confirmed: string;
+    pending: string;
+    actions: string;
+    editorHelp: string;
+    suppressionLifted: string;
+  };
   deletedContent: { member: string; post: string };
   common: {
     appName: string;
@@ -86,6 +130,34 @@ export interface Messages {
     placeholderList: string;
     placeholderCode: string;
   };
+  markdownEditor: {
+    tabsAria: string;
+    editorTab: string;
+    markdownTab: string;
+    toolbarAria: string;
+    bold: string;
+    boldShort: string;
+    italic: string;
+    italicShort: string;
+    heading2: string;
+    heading3: string;
+    bulletList: string;
+    orderedList: string;
+    blockquote: string;
+    inlineCode: string;
+    codeBlock: string;
+    link: string;
+    undo: string;
+    redo: string;
+    linkDialogTitle: string;
+    linkUrlLabel: string;
+    linkInvalid: string;
+    linkApply: string;
+    linkRemove: string;
+    sourceOnlyHint: string;
+    characterCount: (params: { used: number; limit: number }) => string;
+    overLimit: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;
@@ -138,7 +210,18 @@ export interface Messages {
     validationField: (params: { field: string }) => string;
     validationForm: string;
   };
+  signInNoticeSettings: {
+    save: string;
+    heading: string;
+    enabled: string;
+    label: string;
+    helper: string;
+    counter: (params: { count: number }) => string;
+  };
   auth: {
+    signInNoticeLabel: string;
+    invalidCredentials: string;
+    signInRateLimited: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -159,8 +242,6 @@ export interface Messages {
     changeIdentifier: string;
     changeIdentifierShort: string;
     signInMethodsUnavailable: string;
-    signInMethodsRateLimited: string;
-    signInMethodsRateLimitedRetryAfter: (params: { seconds: number }) => string;
     signInMethodsChoosePrompt: string;
     signInMethodsChooseMagicLink: string;
     signInMethodsChoosePassword: string;
@@ -170,10 +251,8 @@ export interface Messages {
     methodMagicLinkBody: string;
     methodPasswordTitle: string;
     methodPasswordBody: string;
-    methodPasswordDisabledTooltip: string;
     methodPasskeyTitle: string;
     methodPasskeyBody: string;
-    methodPasskeyDisabledTooltip: string;
     passkeyLink: string;
     passkeyPending: string;
     twoFactorTitle: string;
@@ -225,6 +304,9 @@ export interface Messages {
     and: string;
   };
   tenant: {
+    visitorNotice: (params: { email: string }) => string;
+    visitorOwnCommunity: string;
+    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;
@@ -269,6 +351,7 @@ export interface Messages {
     marketingActivity: string;
     marketingSends: string;
     marketingContacts: string;
+    marketingForms: string;
     marketingLists: string;
     marketingCampaigns: string;
     marketingConsents: string;
@@ -385,6 +468,8 @@ export interface Messages {
     diagnostics: string;
   };
   sales: {
+    mode: string;
+    testChip: string;
     loading: string;
     empty: string;
     emptyBody: string;
@@ -745,6 +830,8 @@ export interface Messages {
     tabStorage: string;
     tabVideo: string;
     tabInvoicing: string;
+    reportKeysScope: string;
+    reportKeysHint: string;
     tabApiKeys: string;
     stripeHeading: string;
     stripeDescription: string;
@@ -753,6 +840,11 @@ export interface Messages {
     stripeConfiguring: string;
     stripeConfigured: string;
     stripeTestMode: string;
+    stripeTestDescription: string;
+    stripeTestEndpointRegistered: string;
+    stripeTestLastEvent: (params: { value: string }) => string;
+    stripeTestNoEvents: string;
+    stripeLiveSlotTestKey: string;
     stripeLiveMode: string;
     stripeRestrictedPermissions: string;
     configured: string;
@@ -971,6 +1063,8 @@ export interface Messages {
     oneTime: string;
     recurring: string;
     intervalLabel: string;
+    importedPrice: string;
+    importedPeriod: (params: { interval: 'day' | 'week' | 'month' | 'year'; count: number }) => string;
     month: string;
     year: string;
     active: string;
@@ -1292,6 +1386,12 @@ export interface Messages {
     subscriptionWillCancel: string;
     subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
     providerLabels: Record<'stripe' | 'simulated', string>;
+    adoptSubscription: string;
+    adoptionHint: string;
+    subscriptionIdLabel: string;
+    adoptingSubscription: string;
+    adoptionRefusals: Record<StripeAdoptionRefusal, string>;
+    timelineAdoption: (params: { product: string }) => string;
     timelineHeading: string;
     timelineLoading: string;
     timelineEmpty: string;
@@ -2055,6 +2155,12 @@ export interface Messages {
     mismatch: string;
   };
   checkout: {
+    stripeTestMode: string;
+    testPurchase: string;
+    testPurchaseBody: string;
+    testModeHint: string;
+    testModeCouponBlocked: string;
+    testModeUnavailable: string;
     loading: string;
     checkoutEyebrow: string;
     eyebrow: (params: { tenant: string }) => string;
@@ -2271,6 +2377,8 @@ export interface Messages {
     version: string;
     totalRows: string;
     draft: string;
+    preview_queued: string;
+    previewing: string;
     ready: string;
     queued: string;
     processing: string;
@@ -2280,6 +2388,8 @@ export interface Messages {
     cancelled: string;
     statusGuidance: {
       draft: string;
+      preview_queued: string;
+      previewing: string;
       ready: string;
       queued: string;
       processing: string;
@@ -2296,6 +2406,10 @@ export interface Messages {
     defaultSource: string;
     defaultReason: string;
     defaultAt: string;
+    defaultAtUtc: (input: { value: string }) => string;
+    previewProgress: (input: { validated: number; total: number }) => string;
+    previewProgressLabel: string;
+    previewIssuesLimited: (input: { count: number }) => string;
     unsubscribe: string;
     bounce: string;
     complaint: string;
@@ -2320,11 +2434,15 @@ export interface Messages {
   };
   marketing: {
     contactProgress: (input: { candidates: number; skipped: number; queued: number; unresolved: number }) => string;
+    campaignProgress: (input: { candidates: number; sent: number; waiting: number; skipped: number; failed: number }) => string;
     contactAudience: string;
     frozenAudience: string;
     audienceEstimateHint: string;
     includeLists: string;
     excludeLists: string;
+    listAlreadyExcluded: string;
+    listAlreadyIncluded: string;
+    listAudienceOverlap: string;
     includeConsentedMembers: string;
     excludeProductGrants: string;
     excludeProductGrantsHint: string;
@@ -2351,6 +2469,30 @@ export interface Messages {
     kind: string;
     kindTransactional: string;
     kindMarketing: string;
+    messageKind: string;
+    authContentRedacted: string;
+    sourceKindLabels: {
+      authMagicLink: string;
+      authPasswordReset: string;
+      authEmailVerification: string;
+      welcomeSignIn: string;
+      resetPassword: string;
+      verifyEmail: string;
+      magicLink: string;
+      threadReply: string;
+      lessonQuestion: string;
+      spacePost: string;
+      directMessage: string;
+      spaceEvent: string;
+      subscriptionPaymentFailed: string;
+      subscriptionEnded: string;
+      supportMessage: string;
+      memberErasureRequest: string;
+      reputationAlert: string;
+      marketingConsentConfirmation: string;
+      m2mTransactional: string;
+      marketingCampaign: string;
+    };
     statusLabel: string;
     deliveryStatusLabel: string;
     transportLabel: string;
@@ -2420,6 +2562,8 @@ export interface Messages {
       duration: string;
       tenantCounts: string;
       details: string;
+      runDetails: (params: { startedAt: string }) => string;
+      idle: string;
       allRuns: string;
       breakdown: string;
       campaignsTouched: string;
@@ -2434,6 +2578,12 @@ export interface Messages {
       runNotFoundTitle: string;
       runNotFoundBody: string;
       backToRuns: string;
+      campaignsInProgress: string;
+      noCampaignsInProgress: string;
+      openCampaignReport: string;
+      showIdleRuns: string;
+      campaignProgress: (params: { sent: number; candidates: number }) => string;
+      campaignProgressLabel: (params: { name: string }) => string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
       purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
@@ -2454,7 +2604,18 @@ export interface Messages {
     compactClicks: (params: { unique: number; total: number }) => string;
     compactOpensUnavailable: string;
     compactClicksUnavailable: string;
+    listSent: (params: { sent: number; candidates: number }) => string;
+    compactResults: (params: { delivered: number; bounced: number; complained: number }) => string;
+    resultsDelivered: string;
+    resultsBounced: string;
+    resultsComplained: string;
+    resultsFailed: string;
+    resultsWaiting: string;
+    percentageOfSent: (params: { percentage: string }) => string;
+    unresolvedAcceptance: (params: { count: number }) => string;
     trackingDisabledCampaignMetrics: string;
+    trackingDisabledCampaignForm: string;
+    trackingSettingsLink: string;
     createdTimeValue: (params: { date: string }) => string;
     scheduledTimeValue: (params: { date: string }) => string;
     newCampaign: string;
@@ -2463,6 +2624,8 @@ export interface Messages {
     nameLabel: string;
     subjectLabel: string;
     bodyLabel: string;
+    bodyPlaceholder: string;
+    bodyRequired: string;
     consentScopeLabel: string;
     productFilterLabel: string;
     allProducts: string;
@@ -2471,15 +2634,27 @@ export interface Messages {
     rawHtmlMode: string;
     rawHtmlHint: string;
     livePreview: string;
+    reportAudienceTitle: string;
+    reportMessageTitle: string;
+    expandMessage: string;
+    noIncludedLists: string;
+    noConsentDefinition: string;
+    noExcludedLists: string;
+    noExcludedProducts: string;
+    consentedMembersChip: string;
+    campaignRunsTitle: string;
+    campaignRunsEmpty: string;
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;
+    audiencePreviewFailed: string;
     audienceCount: (params: { count: number }) => string;
     create: string;
     creating: string;
     save: string;
     saving: string;
     schedule: string;
+    campaignScheduleFailed: string;
     scheduling: string;
     sendAtLabel: string;
     pause: string;
@@ -2549,6 +2724,8 @@ export interface Messages {
     slugLabel: string;
     titleLabel: string;
     markdownLabel: string;
+    documentMarkdownPlaceholder: string;
+    documentMarkdownRequired: string;
     createDocumentAction: string;
     saveDocumentAction: string;
     publish: string;

@@ -9,9 +9,9 @@ import { createSchedulerRunRepository } from './scheduler-runs.js';
 
 export const createContactCampaignFixture = async () => {
   const fixture = await createDeliveryFixture();
-  const infrastructure = { clock: fixture.deps.clock, ids: fixture.deps.ids, hmac: fixture.deps.hmac, contentHash: createContentHash() };
+  const infrastructure = { clock: fixture.deps.clock, ids: fixture.deps.ids, hmac: fixture.deps.hmac, contentHash: createContentHash(), logger: { warn: () => undefined } };
   const directory = { ...createMarketingImportTransactionRepos(fixture.db, infrastructure), ...infrastructure, transaction: createMarketingImportTransaction(fixture.db, infrastructure) };
   const contactAudienceDeps = { directory, clock: infrastructure.clock, contactAudience: createMarketingContactAudienceRepository(fixture.db, infrastructure), contactCampaigns: createMarketingContactCampaignTransaction(fixture.db, infrastructure) };
-  const deps = { ...fixture.deps, contactAudienceDeps, contactAudience: contactAudienceDeps.contactAudience, contacts: directory.contacts, audience: createMarketingAudienceRepository(fixture.db), scheduler: createCronMarketingScheduler(), runs: createSchedulerRunRepository(fixture.db) };
+  const deps = { ...fixture.deps, logger: infrastructure.logger, contactAudienceDeps, contactAudience: contactAudienceDeps.contactAudience, contacts: directory.contacts, audience: createMarketingAudienceRepository(fixture.db), scheduler: createCronMarketingScheduler(), runs: createSchedulerRunRepository(fixture.db) };
   return { ...fixture, directory, deps };
 };

@@ -25,6 +25,15 @@ describe('Vercel platform entry boundary', () => {
     expect(eslintSource).toContain("pattern: 'apps/server/src/entry.vercel.ts'");
   });
 
+  it('keeps the platform entry itself out of every import allowlist', () => {
+    expect(eslintSource).not.toMatch(/^\s+'platform-entry',$/mu);
+  });
+
+  it('does not expose a separate platform runtime helper element', () => {
+    expect(eslintSource).not.toContain("type: 'platform-runtime'");
+    expect(eslintSource).not.toContain("pattern: 'apps/server/src/background-work.ts'");
+  });
+
   it('is the only app path exempted by the vendor containment rule', () => {
     const rule = depcruise.forbidden.find(
       ({ name }) => name === 'vercel-and-neon-only-in-adapters',

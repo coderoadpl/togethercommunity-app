@@ -84,6 +84,14 @@ describe('AI review classifiers', () => {
     expect(result.outputs).toContain('reason=invalid_output');
   });
 
+  it('treats tldr as optional but typed', () => {
+    expect(classify(JSON.stringify({ ...JSON.parse(validPass), tldr: 'Short recap.' })).outputs)
+      .toContain('outcome=pass');
+    expect(classify(validPass).outputs).toContain('outcome=pass');
+    expect(classify(JSON.stringify({ ...JSON.parse(validPass), tldr: 7 })).outputs)
+      .toContain('reason=invalid_output');
+  });
+
   it('distinguishes skipped and cancelled attempts', () => {
     expect(classify('', 'skipped').outputs).toContain('reason=not_attempted');
     expect(classify('', 'cancelled').outputs).toContain('reason=cancelled');
@@ -113,6 +121,7 @@ describe('AI review classifiers', () => {
     [{ type: 'result', is_error: true, total_cost_usd: 0, result: 'insufficient credits' }, 'usage_limit'],
     [{ type: 'error', status: 404, error: { message: 'model claude-x not found' } }, 'model_unavailable'],
     [{ type: 'result', is_error: true, result: 'process timed out' }, 'timeout'],
+    [{ type: 'result', is_error: true, result: 'Claude reported a successful result after 121 turns, exceeding the configured maximum of 120' }, 'turn_limit'],
   ])('classifies provider failures without treating them as cold starts', (event, reason) => {
     const result = classify('', 'failure', 'staging', event);
     expect(result.outputs).toContain(`reason=${reason}`);
@@ -210,6 +219,21 @@ describe('AI review gate and diagnostics', () => {
     expect(gate({ O_1P: 'pass' }, { PREPARED: 'false' }).status).toBe(1);
   });
 
+  it('summarizes a moved base from the dedicated preparation reason', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ai-review-gate-summary-'));
+    const summary = join(directory, 'summary.md');
+    const result = execute('gate-review.sh', {
+      PREPARED: 'false',
+      CURRENT: 'false',
+      DRAFT: 'false',
+      PREPARE_REASON: 'base_moved',
+      GITHUB_STEP_SUMMARY: summary,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+    expect(readFileSync(summary, 'utf8')).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+  });
+
   it('prefixes every diagnostic line and redacts credential-shaped text', () => {
     const directory = mkdtempSync(join(tmpdir(), 'ai-review-reason-'));
     const log = join(directory, 'log.json');
@@ -235,6 +259,18 @@ describe('AI review gate and diagnostics', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toMatch(/diagnostic/);
     }
+  });
+
+  it('renders the turn-limit diagnostic as an actionable budget message', () => {
+    const result = execute('failure-reason.sh', {
+      REASON: 'turn_limit',
+      MAX_TURNS: '120',
+      MODEL: 'claude-opus-5',
+      SLOT: '1',
+      ATTEMPT: 'try1p',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
   });
 });
 
@@ -325,6 +361,17 @@ describe('AI review attempt ladder', () => {
     });
     expect(calls).toEqual([
       { id: 'try1p', model: 'primary', reason: 'auth_rejected' },
+      { id: 'try1f', model: 'fallback', reason: 'pass' },
+    ]);
+  });
+
+  it('keeps turn-limit attempts on the fallback ladder', () => {
+    const calls = simulateLadder([true, true, false], {
+      try1p: { outcome: 'infra', reason: 'turn_limit' },
+      try1f: { outcome: 'pass' },
+    });
+    expect(calls).toEqual([
+      { id: 'try1p', model: 'primary', reason: 'turn_limit' },
       { id: 'try1f', model: 'fallback', reason: 'pass' },
     ]);
   });
@@ -477,7 +524,6 @@ const runPost = (environment: NodeJS.ProcessEnv, comments: string) => {
     EVENT_NAME: 'pull_request',
     CURRENT: 'true',
     PR: '42',
-    REVIEW_MODE: 'staging',
     BASE_SHA: 'a'.repeat(40),
     HEAD_SHA: 'b'.repeat(40),
     RUN_URL: 'https://github.com/coderoadpl/togethercommunity-app/actions/runs/1',
@@ -489,6 +535,21 @@ const runPost = (environment: NodeJS.ProcessEnv, comments: string) => {
     body: existsSync(body) ? readFileSync(body, 'utf8') : '',
   };
 };
+
+const expectOrder = (body: string, markers: string[]) => {
+  const positions = markers.map((marker) => {
+    const index = body.indexOf(marker);
+    expect(index, `missing rendered section: ${marker}`).toBeGreaterThan(-1);
+    return index;
+  });
+  expect(positions).toEqual([...positions].sort((left, right) => left - right));
+};
+
+const headedSummary = [
+  '### Blast radius', 'Shared auth surface.', '',
+  '### Coverage', 'Covered by tests.', '',
+  '### Confidence', 'Confidence: HIGH',
+].join('\n');
 
 describe('AI review comment publication', () => {
   it('selects the latest paginated marker comment from github-actions[bot]', () => {
@@ -551,6 +612,60 @@ describe('AI review comment publication', () => {
     expect(gate.status).toBe(0);
   });
 
+  it('renders a headed PASS as verdict, TL;DR, then one collapsed block per heading', () => {
+    const raw = JSON.stringify({
+      ...JSON.parse(validPass),
+      summary: headedSummary,
+      tldr: 'Safe to merge. Auth paths were re-checked. Nothing irreversible.',
+    });
+    const result = runPost({ O_1P: 'pass', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expectOrder(result.body, [
+      '<!-- ai-review-gate -->',
+      '<sub>Base `',
+      '## AI review: PASS',
+      '**Safe to merge:** yes · **Blast radius:** isolated',
+      '**TL;DR:** Safe to merge. Auth paths were re-checked. Nothing irreversible.',
+      '<summary>Blast radius</summary>',
+      '<summary>Coverage</summary>',
+      '<summary>Confidence</summary>',
+      '<summary>Run details</summary>',
+    ]);
+    expect(result.body).not.toContain('### Blast radius');
+    expect(result.body).not.toContain('### Blocking issues');
+    expect(result.body).not.toContain('<summary>Full report</summary>');
+  });
+
+  it('keeps blocking issues expanded above an unheaded report and the run footer', () => {
+    const raw = JSON.stringify({ ...JSON.parse(validFail), tldr: 'One blocker remains.' });
+    const result = runPost({ O_1P: 'fail', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expectOrder(result.body, [
+      '## AI review: FAIL',
+      '**Safe to merge:** no',
+      '**TL;DR:** One blocker remains.',
+      '### Blocking issues',
+      '- app/x.ts:1 violates the rule.',
+      '<summary>Full report</summary>',
+      'Blocked.',
+      '<summary>Run details</summary>',
+      'Verdict produced by:',
+    ]);
+    expect(result.body).not.toContain('<summary>Blocking issues</summary>');
+  });
+
+  it('falls back to the first summary paragraph when a producer omits tldr', () => {
+    const raw = JSON.stringify({ ...JSON.parse(validPass), summary: headedSummary });
+    const result = runPost({ O_1P: 'pass', RAW_1P: raw, MODEL_1P: 'model' }, '[]');
+    expect(result.status).toBe(0);
+    expect(result.body).toContain('**TL;DR:** Shared auth surface.');
+    expectOrder(result.body, [
+      '**TL;DR:** Shared auth surface.',
+      '<summary>Blast radius</summary>',
+      '<summary>Run details</summary>',
+    ]);
+  });
+
   it('surfaces comment-list API failures and renders all no-verdict reasons', () => {
     const failed = runPost({ GH_FAIL_GET: 'true' }, '[]');
     expect(failed.status).not.toBe(0);
@@ -559,6 +674,22 @@ describe('AI review comment publication', () => {
     expect(noVerdict.body).toContain('- try1p: usage_limit');
     expect(noVerdict.body).toContain('- try1f: auth_rejected');
     expect(noVerdict.body).toContain('Producer: none');
+  });
+
+  it('renders base-moved and turn-limit no-verdict messages', () => {
+    const baseMoved = runPost({
+      CURRENT: 'false',
+      PREPARE_REASON: 'base_moved',
+    }, '[]');
+    expect(baseMoved.status).toBe(0);
+    expect(baseMoved.body).toContain('Base branch moved — update the pull request branch (gh pr update-branch) and the review will re-run');
+
+    const turnLimit = runPost({
+      R_1P: 'turn_limit',
+      MAX_TURNS: '120',
+    }, '[]');
+    expect(turnLimit.status).toBe(0);
+    expect(turnLimit.body).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
   });
 });
 
@@ -891,6 +1022,18 @@ describe('AI review preparation', () => {
     const changed = runPreparation(fixture, pullMetadata(fixture), { expectedHead: fixture.baseSha });
     expect(changed.status).not.toBe(0);
     expect(changed.stderr).toContain('PR head SHA changed before preparation');
+    expect(outputValue(changed.output, 'reason')).toBe('base_moved');
+
+    const baseMovedFixture = createPreparationFixture('staging');
+    runGit(baseMovedFixture.repository, 'checkout', 'staging');
+    writeFixtureFile(baseMovedFixture.repository, 'base-advanced.txt', 'base advanced\n');
+    runGit(baseMovedFixture.repository, 'add', '-A');
+    runGit(baseMovedFixture.repository, 'commit', '-m', 'Advance base');
+    const baseMoved = runPreparation(baseMovedFixture, pullMetadata(baseMovedFixture));
+    expect(baseMoved.status).not.toBe(0);
+    expect(baseMoved.stderr).toContain('Fetched refs do not match pinned PR metadata');
+    expect(outputValue(baseMoved.output, 'prepared')).toBe('false');
+    expect(outputValue(baseMoved.output, 'reason')).toBe('base_moved');
 
     const revalidated = runPreparation(
       fixture,

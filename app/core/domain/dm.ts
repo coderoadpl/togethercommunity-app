@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { postBodyFormatSchema } from './community.js';
+
 export const DM_BODY_MAX_LENGTH = 5000;
 
 export const DM_MESSAGE_RATE_LIMIT = { maxMessages: 20, windowSeconds: 60 } as const;
@@ -27,6 +29,7 @@ export const dmMessageSchema = z.object({
   conversationId: z.string().min(1),
   senderUserId: z.string().min(1),
   body: z.string().min(1).max(DM_BODY_MAX_LENGTH),
+  bodyFormat: postBodyFormatSchema.default('plain'),
   createdAt: z.string().datetime(),
 });
 
@@ -87,6 +90,8 @@ export const publicDmMessageSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
   body: z.string().min(1).max(DM_BODY_MAX_LENGTH),
+  bodyFormat: postBodyFormatSchema.default('plain'),
+  bodyHtml: z.string(),
   createdAt: z.string().datetime(),
   isOwn: z.boolean(),
 });
@@ -103,6 +108,7 @@ export const startDmConversationInputSchema = z.object({
 export const sendDmMessageInputSchema = z.object({
   conversationId: z.string().min(1),
   body: z.string().min(1).max(DM_BODY_MAX_LENGTH),
+  bodyFormat: postBodyFormatSchema.default('plain'),
 });
 
 const dmCursorSchema = z.string().min(1).superRefine((value, ctx) => {
@@ -148,10 +154,16 @@ export const otherDmParticipant = (conversation: DmConversation, viewerUserId: s
     ? conversation.participantHighUserId
     : conversation.participantLowUserId;
 
-export const toPublicDmMessage = (message: DmMessage, viewerUserId: string): PublicDmMessage => ({
+export const toPublicDmMessage = (
+  message: DmMessage,
+  viewerUserId: string,
+  bodyHtml: string,
+): PublicDmMessage => ({
   id: message.id,
   conversationId: message.conversationId,
   body: message.body,
+  bodyFormat: message.bodyFormat,
+  bodyHtml,
   createdAt: message.createdAt,
   isOwn: message.senderUserId === viewerUserId,
 });

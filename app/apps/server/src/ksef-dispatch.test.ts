@@ -30,7 +30,7 @@ describe('dispatchKsefInBackground', () => {
 
     await vi.waitFor(() => {
       expect(error).toHaveBeenCalledWith(
-        '[ksef] payment fulfilment dispatch rejected: Error: pool exhausted',
+        '[ksef] payment fulfilment dispatch rejected: pool exhausted',
       );
     });
   });

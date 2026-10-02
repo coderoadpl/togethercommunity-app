@@ -13,6 +13,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     email: 'owner@together.dev',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: tenantId === null ? 'none' : staffRole === null ? 'member' : 'staff',
     tenantId,
     tenantSlug: tenantId ? 'acme' : null,
     tenantName: tenantId ? 'Acme' : null,
@@ -51,6 +52,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
     options.settings === undefined
       ? {
           name: 'Acme', socialLinks: [],
+          signInNotice: { enabled: false, text: '' },
           billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
           accentColor: null,
           accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -109,6 +111,7 @@ describe('listBunnyVideos', () => {
   it('reports integration_not_configured when no library id is set, without calling Bunny', async () => {
     const h = harness({ settings: {
       name: 'Acme', socialLinks: [],
+      signInNotice: { enabled: false, text: '' },
       billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null, logoUrl: null, logoDarkUrl: null,
       accentColor: null,
       accentLight: null, faviconUrl: null, ogTitle: null, ogDescription: null,

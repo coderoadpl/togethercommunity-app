@@ -34,6 +34,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   email: staffRole === null ? 'buyer@example.test' : 'owner@example.test',
   name: staffRole === null ? 'Buyer' : 'Owner',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -68,6 +69,7 @@ const product: Product = {
 };
 
 const grant: ProductGrant = {
+  mode: 'live',
   id: 'grant-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',

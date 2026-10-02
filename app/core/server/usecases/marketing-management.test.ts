@@ -37,7 +37,7 @@ const NOW = '2026-07-22T10:00:00.000Z';
 const snsDeliveries = new InMemorySnsWebhookDeliveryRepository();
 
 const ctx: Ctx = { identity: {
-  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantId: 'tenant-1',
+  userId: 'staff-1', email: 'staff@example.test', name: 'Staff', emailVerified: true, tenantAccess: 'staff', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
 image: null,
 memberDisplayName: null,

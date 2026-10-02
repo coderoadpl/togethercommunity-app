@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone, ok } from '#core/domain/index.js';
 import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
 import {
   createImportAuthGateway,
@@ -214,6 +214,8 @@ beforeAll(async () => {
     secureCookies: false,
     exposeMagicLinks: false,
     emailOutbox: createEmailOutboxRepository(db),
+    emailSender: { send: async () => ok({ messageId: 'importer-auth-email', transport: 'platform' }) },
+    authSendLog: { queue: async () => ok(undefined), settle: async () => ok(undefined) },
     ids: { nextId: () => crypto.randomUUID() },
     clock: { nowIso },
     dispatchEmail: () => undefined,

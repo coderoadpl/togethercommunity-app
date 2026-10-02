@@ -44,11 +44,6 @@ export const isTenantScopedOrigin = async (
   return domain !== null && domain.kind === 'custom' && domain.verified;
 };
 
-/**
- * Sign-in method discovery answers a per-identifier signal, so its response must
- * stay unreadable to pages the platform does not serve; the allow-list is the
- * tenant subdomain, its verified custom domains and the platform host.
- */
 export const registerTenantScopedCors = <E extends HonoEnv>(
   app: Hono<E>,
   path: string,

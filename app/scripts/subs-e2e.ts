@@ -185,7 +185,7 @@ interface WebhookObject {
 }
 
 const webhookPayload = (eventId: string, type: string, object: WebhookObject): string =>
-  JSON.stringify({ id: eventId, type, data: { object } });
+  JSON.stringify({ id: eventId, type, livemode: true, data: { object } });
 
 const driveScenario = async (port: number, homes: string[]): Promise<number> => {
   let steps = 0;

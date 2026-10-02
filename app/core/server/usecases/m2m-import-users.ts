@@ -277,6 +277,7 @@ const prepareGrant = async (
       tenantId,
       memberId: memberId.value,
       productId: productId.value,
+      mode: 'live',
       source: 'import',
       startsAt: record.startsAt,
       expiresAt: record.expiresAt,

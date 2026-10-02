@@ -1,6 +1,7 @@
 export * from './context.js';
 export * from './authorize.js';
 export * from './ports.js';
+export * from './marketing-retention.js';
 export * from './post-content.js';
 export * from './realtime.js';
 export * from './tenant-url.js';
@@ -121,3 +122,9 @@ export { recordVerifiedMarketingSnsEnvelope, processMarketingSnsInbox, retryMark
 export * from './marketing-audience-ports.js';
 export * from './usecases/marketing-contact-audience.js';
 export * from './usecases/marketing-contact-campaigns.js';
+
+export * from './usecases/activity-reports.js';
+export { createStripeTestSession, hasStripeTestSession } from './usecases/stripe-test-session.js';
+export * from './usecases/stripe-subscription-adoption.js';
+export * from './marketing-signup-ports.js';
+export * from './usecases/marketing-signup-forms.js';

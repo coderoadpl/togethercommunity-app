@@ -30,6 +30,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -63,9 +67,12 @@
             "createdAt": "2026-07-01T12:00:57.000Z",
             "currency": "PLN",
             "id": "price-product-studio-workshop",
+            "imported": false,
             "interval": null,
+            "intervalCount": 1,
             "kind": "one_time",
             "productId": "product-studio-workshop",
+            "providerPriceId": null,
             "tenantId": "tenant-studio"
           }
         ]
@@ -392,6 +399,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
@@ -564,6 +572,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

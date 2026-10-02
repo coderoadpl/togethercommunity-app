@@ -148,7 +148,7 @@ export const useToast = (): ToastApi => {
   return useContext(ToastContext);
 };
 
-export const useToastSuccess = (success: boolean, message: string | null) => {
+const useToastSuccess = (success: boolean, message: string | null) => {
   const toast = useToast();
 
   useEffect(() => {

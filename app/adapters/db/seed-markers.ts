@@ -6,12 +6,14 @@ import {
   SMOKE_TENANT_MEMBER_EMAIL,
 } from '#core/domain/index.js';
 
+import { normalizeDatabaseConnectionString } from './client.js';
+
 interface SeedMarkerRow {
   present: boolean;
 }
 
 export const seedMarkersPresent = async (connectionString: string): Promise<boolean> => {
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({ connectionString: normalizeDatabaseConnectionString(connectionString) });
   try {
     const result = await pool.query<SeedMarkerRow>(
       `

@@ -1,4 +1,6 @@
 import type {
+  ActivitySummary,
+  ActivitySummaryQuery,
   AppError,
   Course,
   CourseLesson,
@@ -23,6 +25,7 @@ import type {
   EmailSendProjection,
   TransactionalEmailTransport,
   EmailOutboxPayload,
+  RedactedAuthEmailKind,
   Member,
   MemberBanEvent,
   MemberBlock,
@@ -86,6 +89,7 @@ import type {
   AutomationIdempotencyKey,
   Campaign,
   CampaignEngagementStats,
+  CampaignResults,
   CampaignSend,
   CheckoutConsentCapture,
   Coupon,
@@ -126,6 +130,11 @@ import type {
   KsefEnvironment,
   KsefStatus,
   Language,
+  ListStripeSubscriptionsInput,
+  MemberActivity,
+  MemberActivityQuery,
+  StripeSubscriptionSnapshot,
+  StripeMode,
   WipedTable,
 } from '#core/domain/index.js';
 
@@ -184,8 +193,21 @@ export interface AccountAvatarRepository {
   removeAvatar(tenantId: string, userId: string): Promise<void>;
 }
 
+export interface MemberTenantListing {
+  id: string;
+  slug: string;
+  name: string;
+  staffRole: null;
+  memberId: string;
+  displayName: string | null;
+  banned: boolean;
+  dmOptOut: boolean;
+  language: Language | null;
+  videoAutoplay: boolean | null;
+}
+
 export interface AccountAvatarTenantReader {
-  listTenantIdsForUser(userId: string): Promise<string[]>;
+  listTenantIdsForUser(userId: string): Promise<MemberTenantListing[]>;
 }
 
 export interface AvatarImageProcessor {
@@ -775,7 +797,7 @@ export interface MemberErasureRequestRepository {
 
 export interface ProductGrantRepository {
   findById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
-  findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
+  findGrant(tenantId: string, memberId: string, productId: string, mode?: 'live' | 'test'): Promise<ProductGrant | null>;
   createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
   setGrantWindow(
     tenantId: string,
@@ -962,6 +984,8 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  livemode?: boolean;
+  mode?: 'live' | 'test';
   id: string;
   type: string;
   objectId: string | null;
@@ -1012,6 +1036,8 @@ export interface PaymentWebhookEvent {
 }
 
 export interface PaymentProvider {
+  retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
+  listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {
     tenantId: string;
     restrictedKey: string;
@@ -1022,6 +1048,7 @@ export interface PaymentProvider {
     webhookEndpointId: string;
   }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     productId: string;
     productName: string;
@@ -1049,10 +1076,12 @@ export interface PaymentProvider {
     stripePromotionCodeId: string | null;
   }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
   expireCheckoutSession(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     sessionId: string;
   }): Promise<Result<{ expired: true }, AppError>>;
   cancelSubscription(input: {
+    mode?: 'live' | 'test';
     tenantId: string;
     providerSubscriptionId: string;
     idempotencyKey: string;
@@ -1440,6 +1469,7 @@ export interface ProductPriceRepository {
 }
 
 export interface OrderListQuery {
+  mode?: 'live' | 'test';
   status?: OrderStatus;
   productId?: string;
   kind?: PriceKind;
@@ -1450,6 +1480,7 @@ export interface OrderListQuery {
 }
 
 export interface OrderRepository {
+  completeTestCheckout(tenantId: string, order: Order): Promise<Order | null>;
   create(tenantId: string, order: Order): Promise<void>;
   list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
   listForMember?(tenantId: string, memberId: string): Promise<Order[]>;
@@ -1487,6 +1518,7 @@ export interface PaymentRefundRepository {
   findOrderByProviderObjectIds(
     tenantId: string,
     providerObjectIds: Record<string, string>,
+    mode?: StripeMode,
   ): Promise<Order | null>;
   findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
   listAccessRetainingOrdersForMemberProduct(
@@ -1504,6 +1536,10 @@ export interface MemberSubscriptionRepository {
     tenantId: string,
     providerSubscriptionId: string,
   ): Promise<MemberSubscription | null>;
+  listKnownProviderSubscriptionIds(
+    tenantId: string,
+    providerSubscriptionIds: readonly string[],
+  ): Promise<string[]>;
   listForMember(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
   create(tenantId: string, subscription: MemberSubscription): Promise<void>;
   update(tenantId: string, subscription: MemberSubscription): Promise<MemberSubscription | null>;
@@ -1567,6 +1603,8 @@ export interface TransactionalEmailSender {
     messageId?: string;
     tenantTransportRequired?: boolean;
     forcePlatformTransport?: boolean;
+    /** Sign-in mail must keep working after the lifetime starter pool is spent, so it is never charged to it. */
+    unmeteredPlatformSend?: boolean;
   } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
 }
 
@@ -1637,6 +1675,16 @@ export interface EmailOutboxRepository {
     event: EmailEvent;
   }): Promise<Result<void, AppError>>;
   hasPendingForTenant?(tenantId: string): Promise<boolean>;
+}
+
+export interface PlatformAuthSendLog {
+  queue(input: { id: string; tenantId: string; to: string; kind: RedactedAuthEmailKind; now: string }): Promise<Result<void, AppError>>;
+  settle(input: {
+    id: string;
+    tenantId: string;
+    at: string;
+    outcome: Result<{ messageId: string }, AppError>;
+  }): Promise<Result<void, AppError>>;
 }
 
 export interface EnrollmentTransactionPort {
@@ -1935,8 +1983,14 @@ export interface CampaignRepository {
 export interface MarketingJobRepository {
   listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
   listRetentionTenantIds(): Promise<string[]>;
-  listSesIdentityRefreshTenantIds(checkedBefore: string): Promise<string[]>;
-  listSesTenantIds(checkedBefore: string): Promise<string[]>;
+  listSesIdentityRefreshTenantIds(checkedBefore: string, retryableAt: string): Promise<string[]>;
+  listSesTenantIds(checkedBefore: string, retryableAt: string): Promise<string[]>;
+}
+
+export interface SesMaintenanceBackoffRepository {
+  countAttempts(tenantId: string): Promise<number>;
+  defer(tenantId: string, input: { attempts: number; retryAt: string }): Promise<void>;
+  clear(tenantId: string): Promise<void>;
 }
 
 export interface EmailLayoutRepository {
@@ -1947,6 +2001,7 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
+  results(tenantId: string, campaignIds: string[]): Promise<Map<string, CampaignResults>>;
   progressStats(tenantId: string, campaignIds: string[]): Promise<Map<string, { queued: number; unresolved: number }>>;
   claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
@@ -2078,11 +2133,14 @@ export interface SesOnboardingControlPlane {
     credentials: SesMarketingCredentials,
     input: { topicArn: string; endpoint: string },
   ): Promise<Result<{ confirmed: boolean; arn: string | null; endpoint: string }, AppError>>;
-  /** SNS rejects Unsubscribe for pending subscriptions; those are reported as not removed. */
-  removeSubscription(
+  listSubscriptions(
     credentials: SesMarketingCredentials,
-    input: { topicArn: string; endpoint: string },
-  ): Promise<Result<{ removed: boolean }, AppError>>;
+    topicArn: string,
+  ): Promise<Result<Array<{ arn: string | null; endpoint: string }>, AppError>>;
+  unsubscribe(
+    credentials: SesMarketingCredentials,
+    subscriptionArn: string,
+  ): Promise<Result<void, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
     input: {
@@ -2164,6 +2222,7 @@ export interface SchedulerRunRepository {
     finishedAt: string;
     durationMs: number;
     status: 'completed' | 'failed';
+    idle: boolean;
     error: string | null;
     totals: SchedulerRunTotals;
     tenants: SchedulerRunTenant[];
@@ -2180,6 +2239,10 @@ export interface SchedulerRunRepository {
   }>;
   summarizeForTenant(tenantId: string, since: string): Promise<SchedulerRunTenantSummary>;
   failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
+  purge(
+    input: { runsBefore: string; idleRunsBefore: string },
+    options: { batchSize: number; timeoutMs: number },
+  ): Promise<{ purged: number; cancelled: boolean }>;
 }
 
 export interface EmailHmac {
@@ -2208,15 +2271,6 @@ export interface TenantAccessReader {
   ): Promise<Array<{ userId: string; email: string; staffRole: StaffRole; language: Language | null }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(tenantId: string, userId: string): Promise<Member | null>;
-}
-
-/**
- * `email` arrives exactly as the caller typed it: the adapter owns the single
- * normalisation step, so callers must not pre-normalise and split the contract.
- */
-export interface SignInMethodReader {
-  hasCredentialAccount(tenantId: string, email: string): Promise<boolean>;
-  hasPasskey(tenantId: string, email: string): Promise<boolean>;
 }
 
 export interface AccountSecurityReader {
@@ -2257,6 +2311,7 @@ export interface AuthPort {
   requestMagicLink(input: {
     email: string;
     callbackURL: string;
+    tenantId?: string;
     tenantName?: string;
     language?: string;
     /** Host-derived base URL so the verify link lands on the requesting tenant domain. */
@@ -2350,4 +2405,22 @@ export interface IdGenerator {
 
 export interface Clock {
   nowIso(): string;
+}
+
+export interface ActivityReportRepository {
+  activitySummary(tenantId: string, query: ActivitySummaryQuery): Promise<ActivitySummary>;
+  memberActivity(tenantId: string, query: MemberActivityQuery): Promise<MemberActivity>;
+}
+
+export interface SubscriptionAdoptionRepositories {
+  members: Pick<MemberRepository, 'findById' | 'findByEmail'>;
+  products: Pick<ProductRepository, 'findById'>;
+  prices: Pick<ProductPriceRepository, 'listByProduct' | 'findById' | 'create'>;
+  subscriptions: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId' | 'create' | 'update'>;
+  grants: Pick<ProductGrantRepository, 'findGrant' | 'createGrant' | 'setGrantWindow'>;
+  memberEvents: Pick<MemberEventRepository, 'append'>;
+}
+
+export interface SubscriptionAdoptionTransaction {
+  run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }

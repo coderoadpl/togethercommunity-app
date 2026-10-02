@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ok, type ContactAudiencePreview, type ContactCampaignAudience } from '#core/domain/index.js';
+import { CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE, ok, type ContactAudiencePreview, type ContactCampaignAudience } from '#core/domain/index.js';
 import type { MarketingContactAudienceDeps } from '../marketing-audience-ports.js';
 import { marketingContactCtx, marketingContactDeps } from '../testing/marketing-contact-fakes.js';
 import { previewMarketingContactAudience } from './marketing-contact-audience.js';
@@ -20,6 +20,17 @@ describe('contact audience preview authorization and synchronization', () => {
   });
   it('keeps empty selection empty without touching member synchronization', async () => {
     expect(await previewMarketingContactAudience(marketingContactCtx(), { audience, consentDefinitionId: 'consent' }, fixture())).toEqual(ok(empty));
+  });
+  it('rejects audiences that include and exclude the same list before resolving an estimate', async () => {
+    const deps = fixture();
+    expect(await previewMarketingContactAudience(marketingContactCtx(), { audience: { ...audience, includeLists: ['list'], excludeLists: ['list'] }, consentDefinitionId: 'consent' }, deps)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        details: { fieldErrors: { includeLists: [CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE], excludeLists: [CONTACT_AUDIENCE_LIST_OVERLAP_MESSAGE] } },
+      },
+    });
+    expect(deps.contactAudience.preview).not.toHaveBeenCalled();
   });
   it('rejects missing and archived lists before resolving an estimate', async () => {
     const deps = fixture();

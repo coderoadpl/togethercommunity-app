@@ -45,6 +45,7 @@ const ctx = (key: TenantApiKey): Ctx => ({
     email: 'api-key@together.invalid',
     name: 'Automation API',
     emailVerified: true,
+    tenantAccess: 'member',
     tenantId: 'tenant-1',
     tenantSlug: 'alpha',
     tenantName: 'Alpha',

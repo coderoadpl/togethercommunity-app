@@ -1,3 +1,5 @@
+import { getCookie, deleteCookie } from 'hono/cookie';
+import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
@@ -35,6 +37,7 @@ import {
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
   normalizeEmail,
+  notFound,
   ok,
   resolveEmailLanguage,
   tenantNotFound,
@@ -45,12 +48,14 @@ import {
   type EmailBranding,
   type Identity,
   type Language,
+  type Member,
   type Result
 } from '#core/domain/index.js';
 import {
   authLinkBaseUrl,
   fulfillStripeWebhook,
   getPaymentConfig,
+  testCheckoutRejection,
   getPlayableLesson,
   getPublicCourseStructure,
   getPublicImageAssetUrl,
@@ -64,6 +69,8 @@ import {
   resolveSignInMethods,
   resolveTenant,
   startCheckoutSession,
+  hasStripeTestSession,
+  ensureMember,
   validateCheckoutSelection,
   validateCouponForCheckout,
   validateTermsConsent,
@@ -151,16 +158,13 @@ const EMAIL_MAX_LENGTH = 254;
 const authEmailBodySchema = z.object({ email: z.string().email().max(EMAIL_MAX_LENGTH) });
 
 const authEmailLanguage = async (
-  email: string,
+  member: Member | null,
   resolved: ResolvedTenant | null,
   requested: Language | null,
   deps: AppDeps,
 ): Promise<Language> => {
   if (resolved === null) return requested ?? DEFAULT_LANGUAGE;
-  const [member, settings] = await Promise.all([
-    deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email)),
-    deps.tenants.findSettings(resolved.tenant.id),
-  ]);
+  const settings = await deps.tenants.findSettings(resolved.tenant.id);
   return resolveEmailLanguage(member?.language, requested, settings?.defaultLanguage);
 };
 
@@ -178,6 +182,7 @@ const withAuthDeliveryContext = async (
   setContext: (input: {
     email: string;
     resolved: ResolvedTenant | null;
+    tenantId?: string;
     baseUrl: string;
     language: Language;
   }) => Promise<void> | void,
@@ -200,14 +205,18 @@ const withAuthDeliveryContext = async (
       deps,
     );
     const resolved = tenant.ok ? tenant.value : null;
+    const member = resolved === null
+      ? null
+      : await deps.members.findByEmail(resolved.tenant.id, normalizeEmail(email));
     const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
     await setContext({
       email,
       resolved,
+      ...(resolved !== null && member !== null ? { tenantId: resolved.tenant.id } : {}),
       baseUrl: platformAuthBaseUrl(c.req.header('host') ?? '', deps)
         ?? await authLinkBaseUrl(resolved, deps),
       language: await authEmailLanguage(
-        email,
+        member,
         resolved,
         headerLanguage.success ? headerLanguage.data : null,
         deps,
@@ -233,6 +242,7 @@ const anonymousIdentity = (
   email: `${actor.toLowerCase()}@invalid.test`,
   name: actor,
   emailVerified: true,
+  tenantAccess: 'none',
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -245,6 +255,17 @@ const anonymousIdentity = (
   memberLanguage: null,
   memberVideoAutoplay: false,
 });
+
+const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
+  if (c.get('impersonation') !== undefined) return null;
+  if (!c.req.header('cookie') && !c.req.header('authorization') && c.get('actorAuth') === undefined) return null;
+  const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+  if (user === null) return null;
+  const identity = await resolveIdentity(user, {
+    host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null,
+  }, deps);
+  return identity.ok ? identity.value : null;
+};
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
@@ -488,7 +509,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         if (identity.error.code === 'internal' || identity.error.code === 'unavailable') {
           return respondPublic(identity);
         }
-      } else {
+      } else if (identity.value.tenantAccess !== 'none') {
         authenticated = true;
         ctx = impersonation === undefined || impersonationIdentity === undefined
           ? { identity: identity.value }
@@ -497,7 +518,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     }
     const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
     if (!result.ok) {
-      return respondPublic(user === null && result.error.code === 'forbidden'
+      return respondPublic(!authenticated && result.error.code === 'forbidden'
         ? err(unauthorized())
         : result);
     }
@@ -511,10 +532,14 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const identity = await checkoutIdentity(c, deps);
+    const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
+    const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
+        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+          testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );
   });
@@ -570,6 +595,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const identity = await checkoutIdentity(c, deps);
+    const testMode = identity?.tenantId === tenant.value.tenant.id &&
+      hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const body: unknown = await readJson(c.req.raw);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
@@ -581,29 +609,38 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.tenants,
     );
     if (!consent.ok) return respondPublic(consent);
+    if (testMode) {
+      const rejected = testCheckoutRejection(parsed.data, selection.value);
+      if (rejected !== null) return respondPublic(err(rejected));
+    }
+    const staffMember = testMode && identity !== null ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
+    if (staffMember !== null && !staffMember.ok) return respondPublic(staffMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
-    const checkoutConsent = {
-      termsAccepted: parsed.data.termsAccepted === true,
-      selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-      attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
-      collectedAt: deps.clock.nowIso(),
-      confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
-      ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
-      ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
-    };
     const checkoutConsentCaptureId = deps.ids.nextId();
-    await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
-      id: checkoutConsentCaptureId,
-      capture: checkoutConsent,
-      createdAt: checkoutConsent.collectedAt,
-    });
+    if (!testMode) {
+      const checkoutConsent = {
+        termsAccepted: parsed.data.termsAccepted === true,
+        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        collectedAt: deps.clock.nowIso(),
+        confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+        ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
+        ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
+      };
+      await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
+        id: checkoutConsentCaptureId,
+        capture: checkoutConsent,
+        createdAt: checkoutConsent.collectedAt,
+      });
+    }
     const session = await startCheckoutSession(
       tenant.value.tenant,
       baseUrl,
-      parsed.data,
+      testMode && identity !== null ? { ...parsed.data, email: identity.email } : parsed.data,
       selection.value,
       deps,
-      checkoutConsentCaptureId,
+      testMode ? undefined : checkoutConsentCaptureId,
+      staffMember?.ok === true ? { mode: 'test', memberId: staffMember.value.id } : undefined,
     );
     if (
       session.ok &&
@@ -642,7 +679,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       );
       if (!fulfilled.ok) return respondPublic(fulfilled);
     }
-    return respondPublic(session);
+    c.res = respondPublic(session);
+    if (session.ok && testMode) deleteCookie(c, 'together_stripe_test', { path: '/' });
+    return c.res;
   });
 
   app.get(API_PATHS.authConfig, async (c) => {
@@ -667,22 +706,19 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid sign-in lookup payload', parsed.error.flatten())));
     }
-    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
-    if (!tenant.ok) return respondPublic(tenant);
-    return respondPublic(
-      await resolveSignInMethods(tenant.value?.tenant.id ?? null, parsed.data, deps),
-    );
+    return respondPublic(resolveSignInMethods());
   });
 
   app.post(BETTER_AUTH_MAGIC_LINK_PATH, (c) =>
     withAuthDeliveryContext(
       c,
       deps,
-      async ({ email, resolved, baseUrl, language }) => {
+      async ({ email, resolved, tenantId, baseUrl, language }) => {
         const branding = resolved
           ? await emailBranding(deps, resolved.tenant.id, baseUrl)
           : undefined;
         deps.auth.setMagicLinkDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
           ...(resolved ? { tenantName: resolved.tenant.name } : {}),
           language,
           mode: 'email',
@@ -697,8 +733,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     withAuthDeliveryContext(
       c,
       deps,
-      ({ email, baseUrl, language }) => {
-        deps.auth.setResetPasswordDeliveryContext(email, { language, baseUrl });
+      ({ email, tenantId, baseUrl, language }) => {
+        deps.auth.setResetPasswordDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
+          language,
+          baseUrl,
+        });
       },
       (email) => { deps.auth.clearResetPasswordDeliveryContext(email); },
     ));
@@ -707,8 +747,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     withAuthDeliveryContext(
       c,
       deps,
-      ({ email, baseUrl, language }) => {
-        deps.auth.setEmailVerificationDeliveryContext(email, { language, baseUrl });
+      ({ email, tenantId, baseUrl, language }) => {
+        deps.auth.setEmailVerificationDeliveryContext(email, {
+          ...(tenantId === undefined ? {} : { tenantId }),
+          language,
+          baseUrl,
+        });
       },
       (email) => { deps.auth.clearEmailVerificationDeliveryContext(email); },
     ));
@@ -718,6 +762,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   );
 
   registerPublicMarketingRoutes(app, deps);
+  registerPublicMarketingSignupRoutes(app, deps);
 
   app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
     const tenantId = c.req.param('tenantId');
@@ -726,9 +771,10 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps.logger.error(
         `[stripe-webhook] ignored tenant=${tenantId} status=${tenant?.status ?? 'unknown'}`,
       );
-      return respond(ok({ received: true as const, processed: false }));
+      return respond(err(notFound()));
     }
-    const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
+    const mode = c.req.query('mode') === 'test' ? 'test' : 'live';
+    const webhookSecret = await deps.secretResolver.resolve(tenantId, mode === 'test' ? 'stripe.testWebhookSecret' : 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);
     const payloadRaw = await c.req.text();
     const event = await deps.payment.verifyWebhookEvent({
@@ -737,7 +783,14 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       webhookSecret: webhookSecret.value,
     });
     if (!event.ok) return respond(event);
-    const fulfilled = await fulfillStripeWebhook(tenant, event.value, {
+    if (mode === 'test' && event.value.livemode === false) {
+      const now = deps.clock.nowIso();
+      await deps.tenantSecrets.upsert(tenantId, {
+        id: deps.ids.nextId(), tenantId, key: 'stripe.testLastEventAt',
+        ...deps.secretCrypto.encrypt(now), maskedPreview: '', updatedAt: now,
+      });
+    }
+    const fulfilled = await fulfillStripeWebhook(tenant, { ...event.value, mode }, {
       ...deps,
       exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
     });

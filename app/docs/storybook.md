@@ -101,7 +101,9 @@ Auth page stories render the production AuthShell. The default build reproduces
 the committed goldens' unconfigured base-domain fallback. Run
 `APP_BASE_DOMAIN=localhost pnpm run storybook` to inspect the tenant public
 navigation and footer on `studio.localhost:9009`. Login's Method Cards story
-resolves the seeded creator's sign-in methods before rendering the choices.
+renders the same sign-in choices for every email address. Tenant login stories
+include short and long notices, English and Polish UI, light and dark schemes,
+and desktop and mobile viewports.
 Registration is available at both viewport sizes without a committed golden.
 
 For serial full-gate verification, use `TOGETHER_TEST_SERIAL=1 pnpm run check`.
@@ -123,10 +125,11 @@ production auth pages read those values from the browser location.
 
 The server catalogue renders the production public-page functions in fullscreen
 `iframe srcDoc` elements, without the web theme decorator. The capture path waits
-for the nested document and its fonts before comparing the four inventory pages
-at desktop and mobile sizes: hosted legal document, marketing preferences, and
-confirmation success and expired states. All eight captures use the application
-goldens and the shared comparator, with zero counted pixels required.
+for the nested document and its fonts before comparing the six inventory pages
+at desktop and mobile sizes: hosted legal document, marketing preferences,
+confirmation success and expired states, hosted signup form, and hosted signup
+thanks. All twelve captures use the application goldens and the shared
+comparator, with zero counted pixels required.
 
 The recorder reads the brand, unsubscribe token, consent definitions, versions,
 consent history and confirmation state from the isolated seed database. It also

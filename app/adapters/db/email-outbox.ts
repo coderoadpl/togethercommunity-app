@@ -1,7 +1,8 @@
-import { and, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 
-import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
-import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '#core/server/index.js';
+import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, REDACTED_AUTH_EMAIL_KINDS, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
+import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformAuthSendLog, PlatformTransactionalPool } from '#core/server/index.js';
+import { safeErrorMessage } from '#core/server/log-safety.js';
 
 import type { Db } from './client.js';
 import { appendEmailSentMemberEvents } from './member-events.js';
@@ -54,6 +55,92 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
   },
 });
 
+/** Redacted rows keep no renderable body, so the worker could only resend an empty message. */
+const dispatchableKinds = notInArray(emailOutbox.kind, [...REDACTED_AUTH_EMAIL_KINDS]);
+
+export const createPlatformAuthSendLog = (db: Db): PlatformAuthSendLog => ({
+  queue: async (input) => {
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(emailOutbox).values({
+          id: input.id,
+          tenantId: input.tenantId,
+          kind: input.kind,
+          to: input.to,
+          payload: emailOutboxPayloadSchema.parse({ kind: input.kind }),
+          status: 'queued',
+          attempts: 1,
+          nextAttemptAt: input.now,
+          transport: 'platform',
+          createdAt: input.now,
+        });
+        await tx.insert(emailEvents).values(emailEventSchema.parse({
+          id: `${input.id}:queued`,
+          tenantId: input.tenantId,
+          mailKind: 'transactional',
+          refId: input.id,
+          type: 'queued',
+          occurredAt: input.now,
+          meta: null,
+          createdAt: input.now,
+        }));
+      });
+      return ok(undefined);
+    } catch (cause) {
+      return { ok: false, error: internal(`Could not queue platform auth email: ${safeErrorMessage(cause)}`) };
+    }
+  },
+  settle: async (input) => {
+    try {
+      await db.transaction(async (tx) => {
+        const [row] = await tx.update(emailOutbox).set(input.outcome.ok
+          ? {
+              status: 'sent',
+              sentAt: input.at,
+              sesMessageId: input.outcome.value.messageId,
+            }
+          : {
+              status: 'failed',
+              lastErrorCode: input.outcome.error.code,
+            })
+          .where(and(eq(emailOutbox.tenantId, input.tenantId), eq(emailOutbox.id, input.id)))
+          .returning({
+            tenantId: emailOutbox.tenantId,
+            recipient: emailOutbox.to,
+            kind: emailOutbox.kind,
+          });
+        if (row === undefined || row.tenantId === null) return;
+        await tx.insert(emailEvents).values(emailEventSchema.parse({
+          id: input.outcome.ok ? `${input.id}:accepted` : `${input.id}:failed`,
+          tenantId: row.tenantId,
+          mailKind: 'transactional',
+          refId: input.id,
+          type: input.outcome.ok ? 'accepted' : 'failed',
+          occurredAt: input.at,
+          meta: input.outcome.ok
+            ? { sesMessageId: input.outcome.value.messageId, transport: 'platform' }
+            : { error: 'Platform transport failed', errorCode: input.outcome.error.code, transport: 'platform' },
+          createdAt: input.at,
+        }));
+        if (!input.outcome.ok) return;
+        await appendEmailSentMemberEvents(tx, {
+          tenantId: row.tenantId,
+          recipient: row.recipient,
+          sendId: input.id,
+          mailKind: 'transactional',
+          subject: row.kind,
+          source: row.kind,
+          transport: 'platform',
+          occurredAt: input.at,
+        });
+      });
+      return ok(undefined);
+    } catch (cause) {
+      return { ok: false, error: internal(`Could not settle platform auth email: ${safeErrorMessage(cause)}`) };
+    }
+  },
+});
+
 export const createEmailOutboxRepository = (
   db: Db,
   attemptsCap = 5,
@@ -88,7 +175,7 @@ export const createEmailOutboxRepository = (
       });
       return ok({ id: input.id });
     } catch (cause) {
-      return { ok: false, error: internal(`Could not enqueue email: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not enqueue email: ${safeErrorMessage(cause)}`) };
     }
   },
   claimBatch: async (input) => {
@@ -127,6 +214,7 @@ export const createEmailOutboxRepository = (
               or(eq(emailOutbox.status, 'queued'), eq(emailOutbox.status, 'failed')),
               lt(emailOutbox.attempts, input.attemptsCap),
               lte(emailOutbox.nextAttemptAt, input.now),
+              dispatchableKinds,
             ),
           )
           .orderBy(emailOutbox.nextAttemptAt, emailOutbox.createdAt)
@@ -174,7 +262,7 @@ export const createEmailOutboxRepository = (
       }));
       return ok(items);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not claim email outbox batch: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not claim email outbox batch: ${safeErrorMessage(cause)}`) };
     }
   },
   markSent: async (input) => {
@@ -220,7 +308,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not mark email sent: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not mark email sent: ${safeErrorMessage(cause)}`) };
     }
   },
   markFailed: async (input) => {
@@ -255,7 +343,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not mark email failed: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not mark email failed: ${safeErrorMessage(cause)}`) };
     }
   },
   correlateBySesMessageId: async (tenantId, sesMessageId) => {
@@ -293,7 +381,7 @@ export const createEmailOutboxRepository = (
       });
       return ok(undefined);
     } catch (cause) {
-      return { ok: false, error: internal(`Could not record email delivery: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not record email delivery: ${safeErrorMessage(cause)}`) };
     }
   },
   hasPendingForTenant: async (tenantId) => {
@@ -307,6 +395,7 @@ export const createEmailOutboxRepository = (
           eq(emailOutbox.status, 'sending'),
           and(eq(emailOutbox.status, 'failed'), lt(emailOutbox.attempts, attemptsCap)),
         ),
+        dispatchableKinds,
       ))
       .limit(1);
     return rows.length > 0;
@@ -331,7 +420,7 @@ export const createEnrollmentTransactionPort = (db: Db): EnrollmentTransactionPo
       });
     } catch (cause) {
       if (rejected !== null) return rejected;
-      return { ok: false, error: internal(`Could not complete enrollment transaction: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not complete enrollment transaction: ${safeErrorMessage(cause)}`) };
     }
   },
 });

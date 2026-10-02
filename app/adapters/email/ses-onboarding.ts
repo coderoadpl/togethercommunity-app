@@ -356,17 +356,22 @@ export const createSesOnboardingControlPlane = (
       return failed('Could not subscribe the Together webhook to SNS', cause);
     }
   },
-  removeSubscription: async (credentials, input) => {
+  listSubscriptions: async (credentials, topicArn) => {
     try {
       const sns = factory(credentials).sns;
-      const existing = findHttpsSubscription(
-        await subscriptions.list(sns, input.topicArn),
-        [input.endpoint],
-      );
-      const arn = subscriptionArnState(existing?.SubscriptionArn).arn;
-      if (arn === null) return ok({ removed: false });
-      await subscriptions.unsubscribe(sns, arn);
-      return ok({ removed: true });
+      return ok((await subscriptions.list(sns, topicArn)).flatMap((subscription) =>
+        subscription.Protocol === 'https' && subscription.Endpoint !== undefined
+          ? [{ arn: subscriptionArnState(subscription.SubscriptionArn).arn, endpoint: subscription.Endpoint }]
+          : []
+      ));
+    } catch (cause) {
+      return failed('Could not list the SNS topic subscriptions', cause);
+    }
+  },
+  unsubscribe: async (credentials, subscriptionArn) => {
+    try {
+      await subscriptions.unsubscribe(factory(credentials).sns, subscriptionArn);
+      return ok(undefined);
     } catch (cause) {
       return failed('Could not unsubscribe the previous Together webhook from SNS', cause);
     }

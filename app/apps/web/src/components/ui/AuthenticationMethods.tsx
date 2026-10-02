@@ -22,7 +22,6 @@ import { AccountDialog } from './AccountDialog.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { EmbeddedTwoFactorCard } from './EmbeddedTwoFactorCard.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
-import { useToastError, useToastOutcome } from './Toast.js';
 
 import type { AuthenticationMethodsProps } from './authentication-methods-types.js';
 export type { AuthenticationMethodsProps } from './authentication-methods-types.js';
@@ -95,38 +94,6 @@ export const AuthenticationMethods = ({
       )
     ? []
     : regenerateBackupCodes.data ?? enableTwoFactor.data?.backupCodes ?? [];
-
-  useToastOutcome(
-    requestPasswordSetup.success,
-    t.security.resetSent,
-    requestPasswordSetup.error === null ? null : localizeError(requestPasswordSetup.error, t),
-  );
-  useToastOutcome(
-    registerPasskey.success,
-    t.security.passkeyAdded,
-    registerPasskey.error === null ? null : localizeError(registerPasskey.error, t),
-  );
-  useToastOutcome(
-    removePasskey.success,
-    t.security.passkeyRemoved,
-    removePasskey.error === null ? null : localizeError(removePasskey.error, t),
-  );
-  useToastError(enableTwoFactor.error === null ? null : localizeError(enableTwoFactor.error, t));
-  useToastOutcome(
-    verifyTotp.success,
-    t.security.twoFactorOn,
-    verifyTotp.error === null ? null : localizeError(verifyTotp.error, t),
-  );
-  useToastOutcome(
-    disableTwoFactor.success,
-    t.security.twoFactorOff,
-    disableTwoFactor.error === null ? null : localizeError(disableTwoFactor.error, t),
-  );
-  useToastOutcome(
-    regenerateBackupCodes.success,
-    t.security.backupCodesRegenerated,
-    regenerateBackupCodes.error === null ? null : localizeError(regenerateBackupCodes.error, t),
-  );
 
   const passkeyForm = (
 <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>

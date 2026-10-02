@@ -40,6 +40,7 @@ const member: MemberWithProductIds = {
 
 const grants: MemberGrant[] = [
   {
+    mode: 'live',
     id: 'grant-active',
     productId: 'p1',
     productName: 'Full Course',
@@ -49,6 +50,7 @@ const grants: MemberGrant[] = [
     active: true,
   },
   {
+    mode: 'live',
     id: 'grant-expired',
     productId: 'p2',
     productName: 'Old Bundle',
@@ -84,6 +86,7 @@ const emailSends: EmailSendProjection[] = [
     tenantId: 't1',
     kind: 'marketing',
     recipient: member.email,
+    sourceKind: 'marketing-campaign',
     subject: 'July news',
     source: 'broadcast',
     sourceApp: null,
@@ -105,6 +108,7 @@ const emailSends: EmailSendProjection[] = [
     tenantId: 't1',
     kind: 'transactional',
     recipient: member.email,
+    sourceKind: 'welcome-sign-in',
     subject: 'Welcome',
     source: 'welcome-sign-in',
     sourceApp: null,
@@ -256,6 +260,36 @@ const renderMemberDetail = (value: MemberWithProductIds = member) => {
 };
 
 describe('MemberDetail', () => {
+  it('localizes a redacted auth send in the timeline and leaves look-alike subjects alone', async () => {
+    setup();
+    const emailEvent = (id: string, source: string, subject: string) => ({
+      id,
+      tenantId: 't1',
+      memberId: member.id,
+      type: 'email-sent',
+      payload: { sendId: id, mailKind: 'transactional', subject, source, transport: 'platform' },
+      occurredAt: '1998-07-08T10:00:00.000Z',
+    });
+    server.use(
+      http.get('/api/members/:memberId/timeline', () => HttpResponse.json({
+        ok: true,
+        data: {
+          events: [
+            emailEvent('redacted', 'auth-magic-link', 'auth-magic-link'),
+            emailEvent('campaign', 'broadcast', 'auth-magic-link'),
+          ],
+        },
+      })),
+    );
+    renderMemberDetail();
+
+    const rows = await screen.findAllByTestId('member-timeline-row');
+    expect(rows[0]).toHaveTextContent(
+      en.members.timelineEmail({ subject: en.marketing.sourceKindLabels.authMagicLink }),
+    );
+    expect(rows[1]).toHaveTextContent(en.members.timelineEmail({ subject: 'auth-magic-link' }));
+  });
+
   it('shows the complete 360 overview from account through commerce and domain events', async () => {
     setup();
     renderMemberDetail();
@@ -320,6 +354,36 @@ describe('MemberDetail', () => {
     expect(screen.getByText(/1999/)).toBeInTheDocument();
   });
 
+  it('chips the sandbox grant, drops its renewal and filters by payment mode', async () => {
+    const user = userEvent.setup();
+    setup();
+    server.use(
+      http.get('/api/members/:memberId/grants', () => HttpResponse.json({
+        ok: true,
+        data: {
+          grants: [
+            grants[0],
+            { ...grants[0], id: 'grant-sandbox', mode: 'test', productName: 'Sandbox Course' },
+          ],
+        },
+      })),
+    );
+    renderMemberDetail();
+
+    expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
+    const sandbox = screen.getAllByTestId('grant-row')[1];
+    expect(sandbox).toHaveTextContent(en.sales.testChip);
+    expect(within(sandbox ?? document.body).queryByRole('button', { name: en.members.renew }))
+      .not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(en.sales.mode));
+    await user.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
+
+    await waitFor(() => expect(screen.getAllByTestId('grant-row')).toHaveLength(1));
+    expect(screen.getByTestId('grant-row')).toHaveTextContent('Sandbox Course');
+    expect(screen.queryByTestId('member-purchase-row')).not.toBeInTheDocument();
+  });
+
   it('labels every grant source', async () => {
     setup();
     const sources: GrantSource[] = ['manual', 'simulated', 'stripe', 'import'];
@@ -328,6 +392,7 @@ describe('MemberDetail', () => {
         ok: true,
         data: {
           grants: sources.map((source, index): MemberGrant => ({
+            mode: 'live',
             id: `grant-${source}`,
             productId: `p-${source}`,
             productName: `Product ${index}`,
@@ -404,8 +469,50 @@ describe('MemberDetail', () => {
     const transactionalRow = rows[1];
     if (marketingRow === undefined || transactionalRow === undefined) return;
     expect(within(marketingRow).getByText('July news')).toBeInTheDocument();
-    expect(within(transactionalRow).getByText('Welcome')).toBeInTheDocument();
+    expect(within(transactionalRow).getAllByText(en.marketing.sourceKindLabels.welcomeSignIn).length).toBeGreaterThan(0);
     expect(within(marketingRow).getByRole('link', { name: en.marketing.sendDetails }))
       .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });
+});
+
+
+it('adopts a Stripe subscription from the member access dialog and refreshes commerce', async () => {
+  setup();
+  const bodies: unknown[] = [];
+  server.use(http.post('/api/subscriptions/adopt', async ({ request }) => {
+    bodies.push(await request.json());
+    return HttpResponse.json({ ok: true, data: {
+      subscription: { id: 'local-sub', tenantId: 't1', memberId: member.id, productId: 'p3', priceId: 'imported-price', provider: 'stripe', providerSubscriptionId: 'sub_existing', status: 'active', currentPeriodEnd: '1998-09-01T00:00:00.000Z', cancelAtPeriodEnd: false, couponId: null, couponDiscountCents: 0, couponRecurringDuration: null, createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z' },
+      price: { id: 'imported-price', tenantId: 't1', productId: 'p3', kind: 'recurring', interval: 'month', amountCents: 3500, currency: 'EUR', active: false, imported: true, providerPriceId: 'price_existing', createdAt: '1998-07-01T00:00:00.000Z' },
+      subscriptionCreated: true, priceCreated: true, grantId: 'grant-adopted', grantCreated: true, grantExtended: false,
+    } });
+  }));
+  const user = userEvent.setup();
+  renderMemberDetail();
+  await user.click(await screen.findByRole('button', { name: en.members.adoptSubscription }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('button', { name: en.members.adoptSubscription })).toBeDisabled();
+  await user.type(within(dialog).getByLabelText(en.members.subscriptionIdLabel), 'sub_existing');
+  await user.click(within(dialog).getByRole('combobox', { name: en.members.colProduct }));
+  await user.click(await screen.findByRole('option', { name: 'New Workshop' }));
+  await user.click(within(dialog).getByRole('button', { name: en.members.adoptSubscription }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(bodies).toEqual([{ memberId: member.id, subscriptionId: 'sub_existing', productId: 'p3' }]);
+});
+
+it('explains a refused Stripe adoption in the operator language', async () => {
+  setup();
+  server.use(http.post('/api/subscriptions/adopt', () => HttpResponse.json({ ok: false, error: {
+    code: 'validation', message: 'Stripe customer email does not match the member',
+    details: { adoptionRefusal: 'email-mismatch' },
+  } }, { status: 400 })));
+  const user = userEvent.setup();
+  renderMemberDetail();
+  await user.click(await screen.findByRole('button', { name: en.members.adoptSubscription }));
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByLabelText(en.members.subscriptionIdLabel), 'sub_existing');
+  await user.click(within(dialog).getByRole('combobox', { name: en.members.colProduct }));
+  await user.click(await screen.findByRole('option', { name: 'New Workshop' }));
+  await user.click(within(dialog).getByRole('button', { name: en.members.adoptSubscription }));
+  expect(await within(dialog).findByText(en.members.adoptionRefusals['email-mismatch'])).toBeInTheDocument();
 });

@@ -1,4 +1,4 @@
-import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
+import { ERROR_CODES, STRIPE_ADOPTION_REFUSALS, type ErrorCode, type StripeAdoptionRefusal } from '#core/domain/index.js';
 
 import type { Messages } from './messages.js';
 
@@ -37,13 +37,16 @@ const stringDetailOf = (error: unknown, key: string): string | null => {
 
 export const providerCodeOf = (error: unknown): string | null => stringDetailOf(error, 'providerCode');
 
+const isAdoptionRefusal = (value: string): value is StripeAdoptionRefusal =>
+  STRIPE_ADOPTION_REFUSALS.some((candidate) => candidate === value);
+
+export const adoptionRefusalOf = (error: unknown): StripeAdoptionRefusal | null => {
+  const refusal = stringDetailOf(error, 'adoptionRefusal');
+  return refusal !== null && isAdoptionRefusal(refusal) ? refusal : null;
+};
+
 export const rejectedCorsOriginOf = (error: unknown): string | null =>
   stringDetailOf(error, 'corsOrigin');
-
-export const retryAfterSecondsOf = (error: unknown): number | null => {
-  const value = errorDetailOf(error, 'retryAfterSeconds');
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
-};
 
 export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {

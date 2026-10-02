@@ -24,7 +24,7 @@
 | --- | --- |
 | Weekly/manual advisory Scorecard workflow | Retains the SARIF artifact for 30 days and attempts an advisory Security-tab upload. The upload is unavailable for private repositories without GitHub Advanced Security. It publishes no public result and blocks no pull request. A score is evidence, not a verdict. |
 | Pull-request/weekly advisory CodeQL workflow | Analyzes JavaScript and TypeScript and uploads SARIF to the Security tab. CodeQL for a private repository requires GitHub Advanced Security; without it, record the unavailable upload or run rather than claiming scanner evidence. The status is not required, and findings require reachability and severity triage. |
-| GitHub Actions workflow files | Reviewable evidence for declared triggers, permissions, action pins, checkout credential persistence, advisory steps, and repository guards. Files cannot prove the live ruleset or secret configuration. |
+| GitHub Actions workflow files | Reviewable evidence for declared triggers, permissions, action pins, checkout credential persistence, advisory steps, and repository guards. The ruleset drift monitor compares live required-check contexts with workflow-derived contexts, but files cannot prove other live ruleset settings or secret configuration. |
 | `pnpm audit --prod --audit-level=moderate` | Blocking production-tree advisory check in CI; accepted findings remain governed by the [security posture](../security.md). |
 | `pnpm run lock-lint` and `pnpm run license-lint` | Check lockfile and license policy encoded in the repository. They do not assess workflow trust boundaries. |
 

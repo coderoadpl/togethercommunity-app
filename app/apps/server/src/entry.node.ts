@@ -1,6 +1,8 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 
+import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
+
 import { buildApp } from './app.js';
 import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 import { createDeps } from './composition.js';
@@ -40,14 +42,14 @@ if (env.NODE_ENV !== 'test' && deps.devSinkPurge !== undefined) {
       `[dev-sink] purged ${String(purged.magicLinks)} magic links, ${String(purged.emails)} emails\n`,
     );
   } catch (error) {
-    process.stderr.write(`[dev-sink] purge failed: ${String(error)}\n`);
+    process.stderr.write(`[dev-sink] purge failed: ${safeErrorMessage(error)}\n`);
   }
 }
 
 if (env.NODE_ENV !== 'test') {
   setInterval(() => {
     void deps.dispatchEmails('cron').then((result) => {
-      if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${result.error.message}\n`);
+      if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
     });
   }, env.EMAIL_DISPATCH_INTERVAL_MS).unref();
   setInterval(() => {
@@ -55,7 +57,7 @@ if (env.NODE_ENV !== 'test') {
   }, env.KSEF_DISPATCH_INTERVAL_MS).unref();
   setInterval(() => {
     void deps.dispatchAutoInvoices().then((result) => {
-      if (!result.ok) process.stderr.write(`[auto-invoice] ticker dispatch failed: ${result.error.message}\n`);
+      if (!result.ok) process.stderr.write(`[auto-invoice] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
     });
   }, env.KSEF_DISPATCH_INTERVAL_MS).unref();
 }

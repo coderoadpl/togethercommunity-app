@@ -18,6 +18,19 @@ Each model/slot pair receives one immediate retry only when the execution log pr
 
 The workflow uses a read-only GitHub token for preparation and a pull-request-write token only for its deterministic sticky comment. The model receives one OAuth credential at a time, no GitHub token, no shell, no network tools, no write tools, no plugins, and no repository or user configuration. Its reads are confined to the prepared runner-temporary input directory.
 
+## Failure Reasons
+
+| Reason | Meaning | Operator action |
+| --- | --- | --- |
+| `base_moved` | The pinned pull-request metadata no longer matches the fetched base or head ref. | Update the pull request branch with `gh pr update-branch`; the `pull_request` `synchronize` event starts a new review. |
+| `turn_limit` | The reviewer exceeded `AI_REVIEW_MAX_TURNS` before producing an accepted verdict. | Raise `AI_REVIEW_MAX_TURNS` or split the pull request. |
+| `auth_rejected` | The OAuth token was rejected by the provider. | Rotate or replace the affected token slot. |
+| `usage_limit` | The provider reported a quota, rate-limit, or credit-capacity failure. | Wait for capacity or use another available slot. |
+| `model_unavailable` | The configured model was unavailable or inaccessible. | Correct the model variable or provider access. |
+| `timeout` | The action or provider hit a time limit. | Re-run after checking capacity, or reduce the pull-request scope. |
+| `cold_start` | The action failed before calling the model. | The workflow retries that model/slot pair once automatically. |
+| `empty_output` / `invalid_output` / `action_failure` | The action returned no accepted structured verdict. | Inspect the attempt diagnostics in the workflow log. |
+
 ## Owner setup
 
 Land the workflow, scripts, prompts, tests, and this document on `staging`, then promote them to `main` under the existing controls before making `ai-review` required. The introducing pull request is expected to be red because its trusted base does not contain the gate yet.
@@ -56,4 +69,6 @@ Fork and Dependabot pull requests do not receive OAuth secrets and remain blocke
 
 The sticky `<!-- ai-review-gate -->` comment names the reviewed base and head SHAs and links to the workflow run. `PASS` means the model found no blocker in the evidence it reviewed; it does not replace deterministic checks or the owner's production approval. `FAIL` lists blocking issues with a path or symbol, violated rule, consequence, and smallest correction. `NO VERDICT — infrastructure failure` means no model decision was accepted and lists the classified reason for each attempted pair.
 
-The footer identifies the observed model, token slot, and attempt that produced the verdict. If the runtime does not report its model, the configured model is labeled as requested. Requested and observed models are both shown when they differ. Turns, input tokens including cache inputs, output tokens, and API-equivalent cost appear only when present; the cost is not an OAuth billing statement.
+Below the verdict line the comment shows a `TL;DR` of at most three sentences, taken from the model's `tldr` field and falling back to the first paragraph of its summary. Blocking issues stay expanded. The rest of the summary is collapsed: one `<details>` block per `### ` heading it contains, or a single `Full report` block when it has none.
+
+The collapsed `Run details` footer identifies the observed model, token slot, and attempt that produced the verdict. If the runtime does not report its model, the configured model is labeled as requested. Requested and observed models are both shown when they differ. Turns, input tokens including cache inputs, output tokens, and API-equivalent cost appear only when present; the cost is not an OAuth billing statement.

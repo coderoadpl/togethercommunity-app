@@ -66,6 +66,10 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "socialLinks": [],
           "supportConfigured": false,
           "supportEmail": null,
@@ -153,6 +157,7 @@
           "staffRole": "owner",
           "videoAutoplay": null
         },
+        "tenantAccess": "staff",
         "twoFactorEnabled": false,
         "userId": "fixture-user-f9e5468247b51d08"
       }
@@ -325,6 +330,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {

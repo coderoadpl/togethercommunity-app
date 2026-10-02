@@ -16,12 +16,28 @@ import { withPage } from '../page-decorators.js';
 import { en } from '../../i18n/en.js';
 
 const meta = { title: 'Pages/PanelMarketingContactImport', id: 'panel-marketing-contact-import', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
+const progress = {
+  ...queued,
+  calls: {
+    ...queued.calls,
+    'listMarketingConsentDefinitions:[]': preview.calls['listMarketingConsentDefinitions:[]'],
+    'getMarketingContactImport:[{"importId":"import-contacts"}]': {
+      ok: true,
+      value: {
+        import: { ...queued.calls['getMarketingContactImport:[{"importId":"import-contacts"}]'].value.import, status: 'previewing', rowCount: 3647, validationHash: null },
+        previewProgress: { validatedRows: 1500, totalRows: 3647 },
+      },
+    },
+  },
+};
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'panel-marketing-contact-import--shadcn--desktop', viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };
 export const ShadcnMobile: Story = { parameters: { __id: 'panel-marketing-contact-import--shadcn--mobile', viewport: { defaultViewport: 'mobile' } }, globals: { viewport: { value: 'mobile' } } };
 export const English: Story = { parameters: { locale: 'en' } };
+export const Polish: Story = { parameters: { locale: 'pl' } };
 export const MappingWithWarnings: Story = { parameters: { fixture: preview } };
+export const LargePreviewProgress: Story = { parameters: { fixture: progress } };
 export const Attestation: Story = { parameters: { fixture: preview }, play: async ({ canvasElement }) => {
   const canvas = within(canvasElement);
   await canvas.findAllByText(/Invalid email/);

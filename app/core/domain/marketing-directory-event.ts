@@ -7,8 +7,9 @@ export const importActorSchema = z.discriminatedUnion('kind', [
 export type ImportActor = z.output<typeof importActorSchema>;
 export const marketingDirectoryEventSchema = z.object({
   id: z.string().min(1), tenantId: z.string().min(1),
-  subjectKind: z.enum(['contact', 'list', 'membership', 'import']), subjectId: z.string().min(1),
+  subjectKind: z.enum(['contact', 'list', 'membership', 'import', 'signup_form']), subjectId: z.string().min(1),
   sequence: z.number().int().positive(), type: z.enum([
+    'suppression_lifted', 'signup_form_created', 'signup_form_updated', 'signup_form_archived',
     'contact_created', 'contact_updated', 'contact_archived', 'contact_restored', 'contact_erased',
     'member_linked', 'member_unlinked', 'list_created', 'list_updated', 'list_archived',
     'membership_added', 'membership_removed', 'import_validated', 'import_attested', 'import_started',

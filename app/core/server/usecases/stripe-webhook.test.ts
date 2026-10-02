@@ -1,3 +1,5 @@
+import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
+import { memberSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -256,6 +258,13 @@ const harness = (
       setActive: async () => null,
     },
     orders: {
+      completeTestCheckout: async (tenantId, order) => {
+        const index = orders.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === order.id && candidate.mode === 'test' && candidate.status === 'pending');
+        if (index < 0) return null;
+        const completed: Order = { ...order, status: 'paid' };
+        orders[index] = completed;
+        return completed;
+      },
       create: async (_tenantId, order) => {
         orders.push(order);
       },
@@ -265,10 +274,11 @@ const harness = (
       listPaidWithoutGrant: async () => [],
     },
     paymentRefunds: {
-      findOrderByProviderObjectIds: async (tenantId, providerObjectIds) =>
+      findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) =>
         orders.find(
           (order) =>
             order.tenantId === tenantId &&
+            (mode === undefined || order.mode === mode) &&
             Object.entries(providerObjectIds).some(
               ([key, value]) => order.providerObjectIds[key] === value,
             ),
@@ -330,6 +340,7 @@ const harness = (
             subscription.tenantId === tenantId &&
             subscription.providerSubscriptionId === providerSubscriptionId,
         ) ?? null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async (tenantId, memberId) =>
         Array.from(subscriptions.values()).filter(
           (subscription) => subscription.tenantId === tenantId && subscription.memberId === memberId,
@@ -345,9 +356,9 @@ const harness = (
     },
     grants: {
       findById: async (tenantId, grantId) => grants.get(`${tenantId}:${grantId}`) ?? null,
-      findGrant: async (tenantId, memberId, productId) =>
+      findGrant: async (tenantId, memberId, productId, mode = 'live') =>
         Array.from(grants.values()).find(
-          (grant) => grant.tenantId === tenantId && grant.memberId === memberId && grant.productId === productId,
+          (grant) => grant.tenantId === tenantId && grant.memberId === memberId && grant.productId === productId && grant.mode === mode,
         ) ?? null,
       createGrant: async (tenantId, grant) => {
         grants.set(`${tenantId}:${grant.id}`, grant);
@@ -676,7 +687,7 @@ const couponHarness = (
 const consentHarness = async () => {
   const h = harness({ prices: [monthlyPrice(tenantA.id)] });
   h.deps.tenants.findSettings = async () => ({
-    name: 'Acme', socialLinks: [], billingPortalUrl: null,
+    name: 'Acme', socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null,
     bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
     logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null, faviconUrl: null,
     ogTitle: null, ogDescription: null, ogImageUrl: null,
@@ -1902,6 +1913,7 @@ describe('fulfillStripeWebhook', () => {
       {
         tenantId: tenantA.id,
         providerSubscriptionId: 'sub-1',
+        mode: 'live',
         idempotencyKey: `payment-adjustment-evt-refund-recurring-${h.subscription.id}`,
       },
     ]);
@@ -2187,4 +2199,175 @@ describe('simulated subscription lifecycle', () => {
       h.subscription.currentPeriodEnd,
     );
   });
+});
+
+const testCheckout = async (recurring = false) => {
+  const h = harness({ prices: recurring ? [monthlyPrice(tenantA.id)] : [] });
+  await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+  const liveOrder = h.orders[0];
+  if (liveOrder === undefined) throw new Error('Missing live order fixture');
+  h.orders.push({ ...liveOrder, id: 'test-order', mode: 'test', status: 'pending',
+    priceId: recurring ? 'price-monthly' : null, kind: recurring ? 'recurring' : 'one_time',
+    providerObjectIds: { checkoutSession: 'cs-test' } });
+  const event: PaymentWebhookEvent = { ...completedEvent({ id: 'evt-test', objectId: 'cs-test', paymentIntentId: 'pi-test',
+    ...(recurring ? { priceId: 'price-monthly', subscriptionId: 'sub-test' } : {}) }), mode: 'test', livemode: false };
+  return { h, event, liveOrder };
+};
+
+describe('Stripe payment mode isolation', () => {
+  it.each([
+    ['test', false, 'cs-1'],
+    ['live', true, 'cs-test'],
+    ['test', true, 'cs-test'],
+    ['live', false, 'cs-1'],
+    ['test', false, 'cs-unknown'],
+  ] as const)('ignores mode=%s livemode=%s checkout=%s without effects', async (mode, livemode, objectId) => {
+    const { h } = await testCheckout();
+    const ordersBefore = structuredClone(h.orders);
+    const grantsBefore = structuredClone([...h.grants.values()]);
+    const eventsBefore = h.events.size;
+    const result = await fulfillStripeWebhook(tenantA, {
+      ...completedEvent({ id: 'evt-isolation', objectId }), mode, livemode,
+    }, h.deps);
+    expect(result).toEqual(ok({ processed: false }));
+    expect(h.orders).toEqual(ordersBefore);
+    expect([...h.grants.values()]).toEqual(grantsBefore);
+    expect(h.events.size).toBe(eventsBefore);
+    expect(h.sent).toHaveLength(1);
+    expect(h.warnings.some((message) => message.includes('ignored'))).toBe(true);
+  });
+
+  it('fulfills a recorded test checkout with an isolated grant, no email, consent or invoice', async () => {
+    const { h, event, liveOrder } = await testCheckout();
+    const liveGrant = structuredClone([...h.grants.values()][0]);
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(2);
+    expect(h.orders[0]).toEqual(liveOrder);
+    expect(h.orders[1]).toMatchObject({ mode: 'test', status: 'paid' });
+    expect([...h.grants.values()].filter((grant) => grant.mode === 'live')).toEqual([liveGrant]);
+    expect([...h.grants.values()].filter((grant) => grant.mode === 'test')).toHaveLength(1);
+    expect(h.sent).toHaveLength(1);
+    expect(h.queued).toEqual([]);
+    expect(h.consents).toEqual([]);
+    expect(h.autoInvoiceJobs).toHaveLength(1);
+    expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-test-repeat' }, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toHaveLength(2);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  it('rejects a test checkout with a live payment identifier even when its session matches', async () => {
+    const { h, event } = await testCheckout();
+    const liveOrder = h.orders[0];
+    if (liveOrder === undefined || event.checkoutSession === null) throw new Error('Missing fixtures');
+    liveOrder.providerObjectIds['paymentIntent'] = 'pi-live';
+    expect(await fulfillStripeWebhook(tenantA, { ...event,
+      checkoutSession: { ...event.checkoutSession, paymentIntentId: 'pi-live' },
+    }, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders[1]?.status).toBe('pending');
+  });
+
+  it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
+    'isolates subscription event %s in both directions', async (type) => {
+      const { h, event } = await testCheckout(true);
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+      const subscription = [...h.subscriptions.values()][0];
+      if (subscription === undefined) throw new Error('Missing test subscription');
+      expect(subscription.mode).toBe('test');
+      const next: PaymentWebhookEvent = { id: `evt-${type}`, type,
+        objectId: type.startsWith('invoice.') ? 'in-test' : 'sub-test', checkoutSession: null,
+        invoice: type.startsWith('invoice.') ? { subscriptionId: 'sub-test', amountCents: 2900, currency: 'PLN', periodEnd: null } : null,
+        subscription: type.startsWith('customer.') ? { id: 'sub-test', status: 'active', cancelAtPeriodEnd: false, currentPeriodEnd: null, endedAt: null } : null,
+        mode: 'live', livemode: true };
+      expect(await fulfillStripeWebhook(tenantA, next, h.deps)).toEqual(ok({ processed: false }));
+      h.subscriptions.set(subscription.id, { ...subscription, mode: 'live' });
+      expect(await fulfillStripeWebhook(tenantA, { ...next, mode: 'test', livemode: false }, h.deps)).toEqual(ok({ processed: false }));
+      h.subscriptions.set(subscription.id, subscription);
+      expect(await fulfillStripeWebhook(tenantA, { ...next, mode: 'test', livemode: false }, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders.filter((order) => order.id !== h.orders[0]?.id).every((order) => order.mode === 'test')).toBe(true);
+      expect(h.sent).toHaveLength(1);
+      expect(h.queued).toEqual([]);
+    },
+  );
+
+  it.each(['charge.refunded', 'charge.dispute.created'])('isolates %s and never revokes live access', async (type) => {
+    const { h, event } = await testCheckout();
+    if (event.checkoutSession === null) throw new Error('Missing checkout');
+    await fulfillStripeWebhook(tenantA, { ...event, checkoutSession: { ...event.checkoutSession, paymentIntentId: 'pi-test' } }, h.deps);
+    const liveGrant = structuredClone([...h.grants.values()].find((grant) => grant.mode === 'live'));
+    const adjustment: PaymentWebhookEvent = { id: 'evt-refund-test', type, objectId: 'ch-test', checkoutSession: null,
+      adjustment: { chargeId: 'ch-test', paymentIntentId: 'pi-test', invoiceId: null }, mode: 'live', livemode: true };
+    expect(await fulfillStripeWebhook(tenantA, adjustment, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, { ...adjustment, mode: 'test', livemode: false }, h.deps)).toEqual(ok({ processed: true }));
+    expect([...h.grants.values()].find((grant) => grant.mode === 'live')).toEqual(liveGrant);
+    expect(h.orders[1]?.status).toBe('refunded');
+  });
+});
+
+it('rechecks the selected adjustment order at the mutation boundary', async () => {
+  const { h, event, liveOrder } = await testCheckout();
+  await fulfillStripeWebhook(tenantA, event, h.deps);
+  const find = h.deps.paymentRefunds.findOrderByProviderObjectIds;
+  h.deps.paymentRefunds.findOrderByProviderObjectIds = async (tenantId, ids, mode) =>
+    Object.keys(ids).length > 1 && mode === undefined ? liveOrder : find(tenantId, ids, mode);
+  expect(await fulfillStripeWebhook(tenantA, {
+    id: 'evt-adjustment-race', type: 'charge.refunded', objectId: 'ch-race', checkoutSession: null,
+    adjustment: { chargeId: 'ch-race', paymentIntentId: 'pi-test', invoiceId: null }, mode: 'test', livemode: false,
+  }, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.orders[0]).toEqual(liveOrder);
+  expect(h.orders[0]?.status).toBe('paid');
+});
+
+it('rechecks the selected subscription before applying a lifecycle update', async () => {
+  const { h, event } = await testCheckout(true);
+  await fulfillStripeWebhook(tenantA, event, h.deps);
+  const subscription = [...h.subscriptions.values()][0];
+  if (subscription === undefined) throw new Error('Missing subscription');
+  let calls = 0;
+  h.deps.subscriptions.findByProviderSubscriptionId = async () => {
+    calls += 1;
+    return calls === 1 ? subscription : { ...subscription, mode: 'live' };
+  };
+  expect(await fulfillStripeWebhook(tenantA, {
+    ...subscriptionEvent({ id: 'evt-subscription-race', type: 'customer.subscription.deleted', subscriptionId: 'sub-test' }),
+    mode: 'test', livemode: false,
+  }, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.subscriptions.get(subscription.id)).toEqual(subscription);
+  expect(h.queued).toEqual([]);
+});
+
+it.each(['live', 'test'] as const)('ignores a signed %s endpoint event without livemode', async (mode) => {
+  const { h } = await testCheckout();
+  expect(await fulfillStripeWebhook(tenantA, { ...completedEvent({ objectId: mode === 'test' ? 'cs-test' : 'cs-1' }), mode }, h.deps))
+    .toEqual(ok({ processed: false }));
+  expect(h.orders[1]?.status).toBe('pending');
+  expect(h.warnings.at(-1)).toContain('livemode mismatch');
+});
+
+it('renews and cancels an adopted subscription without Together checkout metadata', async () => {
+  const price = { ...monthlyPrice(tenantA.id), providerPriceId: 'price_existing', imported: true, active: false };
+  const h = harness({ prices: [price] });
+  const member = memberSchema.parse({ id: 'member-adopted', tenantId: tenantA.id, userId: 'user-adopted',
+    email: 'buyer@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: now, deletedAt: null });
+  h.members.set(member.id, member);
+  const adopted = await m2mAdoptStripeSubscription(tenantA.id, { subscriptionId: 'sub_existing', email: member.email, productId: price.productId }, {
+    clock: h.deps.clock, ids: h.deps.ids,
+    payment: { retrieveStripeSubscription: async () => ok({ id: 'sub_existing', status: 'active',
+      customerEmail: member.email, currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false,
+      price: { id: 'price_existing', amountCents: price.amountCents, currency: price.currency, interval: 'month', intervalCount: 1 } }) },
+    subscriptionAdoptionTransaction: { run: async (_tenantId, operation) => operation({ ...h.deps, memberEvents: { append: async () => undefined } }) },
+  });
+  expect(adopted.ok).toBe(true);
+  if (!adopted.ok) throw new Error('Adoption failed');
+  expect(h.orders).toHaveLength(0);
+  const paid = invoiceEvent({ id: 'evt-adopted-paid', type: 'invoice.paid', invoiceId: 'in-existing', subscriptionId: 'sub_existing', periodEnd: '1998-09-14T10:00:00.000Z' });
+  expect(await fulfillStripeWebhook(tenantA, paid, h.deps)).toEqual(ok({ processed: true }));
+  expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
+  expect(h.orders).toHaveLength(1);
+  expect(await fulfillStripeWebhook(tenantA, invoiceEvent({ id: 'evt-adopted-failed', type: 'invoice.payment_failed', invoiceId: 'in-failed', subscriptionId: 'sub_existing' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('past_due');
+  expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-updated', type: 'customer.subscription.updated', subscriptionId: 'sub_existing', cancelAtPeriodEnd: true, currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.cancelAtPeriodEnd).toBe(true);
+  expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-deleted', type: 'customer.subscription.deleted', subscriptionId: 'sub_existing', status: 'canceled', currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
+  expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('canceled');
+  expect(h.errors).toEqual([]);
 });

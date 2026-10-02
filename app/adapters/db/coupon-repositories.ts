@@ -152,6 +152,7 @@ export const createCouponRedemptionRepository = (db: Db): CouponRedemptionReposi
   },
   createOrderAndClaim: async (tenantId, input) =>
     db.transaction(async (tx) => {
+      if (input.order.mode === 'test') return false;
       await tx.execute(
         sql`select id from ${coupons} where ${coupons.tenantId} = ${tenantId} and ${coupons.id} = ${input.redemption.couponId} for update`,
       );
@@ -311,6 +312,7 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
             eq(orders.tenantId, couponCheckoutSessions.tenantId),
             eq(orders.couponId, couponCheckoutSessions.couponId),
             eq(orders.status, 'paid'),
+            eq(orders.mode, 'live'),
             sql`${orders.providerObjectIds}->>'checkoutSession' = coalesce(
               ${couponCheckoutSessions.providerSessionId},
               'free_' || ${couponCheckoutSessions.id}
@@ -339,6 +341,7 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
             eq(orders.tenantId, tenantId),
             inArray(orders.couponId, ids),
             eq(orders.status, 'paid'),
+            eq(orders.mode, 'live'),
             sql`${orders.createdAt}::timestamptz >= ${query.since}::timestamptz`,
             sql`${orders.createdAt}::timestamptz <= ${query.through}::timestamptz`,
           ),
@@ -359,6 +362,7 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
             eq(orders.tenantId, tenantId),
             inArray(orders.couponId, ids),
             eq(orders.status, 'paid'),
+            eq(orders.mode, 'live'),
             sql`${orders.createdAt}::timestamptz >= ${query.since}::timestamptz`,
             sql`${orders.createdAt}::timestamptz <= ${query.through}::timestamptz`,
           ),

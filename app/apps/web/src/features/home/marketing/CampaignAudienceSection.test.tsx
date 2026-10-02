@@ -14,11 +14,20 @@ const Interactive = () => {
   const [audience, setAudience] = useState(empty);
   return <CampaignAudienceSection audience={audience} onChange={setAudience} consentDefinitionId="consent" disabled={false} frozen={false} />;
 };
+const WithExcludedList = () => {
+  const [audience, setAudience] = useState<ContactCampaignAudience>({ ...empty, excludeLists: ['list'] });
+  return <CampaignAudienceSection audience={audience} onChange={setAudience} consentDefinitionId="consent" disabled={false} frozen={false} />;
+};
+const WithOverlappingLists = () => {
+  const [audience, setAudience] = useState<ContactCampaignAudience>({ ...empty, includeLists: ['list'], excludeLists: ['list'] });
+  return <CampaignAudienceSection audience={audience} onChange={setAudience} consentDefinitionId="consent" disabled={false} frozen={false} />;
+};
 const list = { id: 'list', tenantId: 'tenant-studio', key: 'newsletter', name: 'Newsletter', kind: 'static', rule: null, revision: 1, createdAt: '2026-09-09T10:00:00.000Z', updatedAt: '2026-09-09T10:00:00.000Z', archivedAt: null };
 const install = () => server.use(http.get('/api/marketing/lists', () => HttpResponse.json({ ok: true, data: { lists: [list], nextCursor: null } })), http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })));
 describe('campaign audience controls', () => {
-  it('starts empty, previews eligible contacts and sends include and exclude lists independently', async () => {
+  it('starts empty, previews eligible contacts and disables conflicting include and exclude list options', async () => {
     install();
+    const user = userEvent.setup();
     const requests: unknown[] = [];
     server.use(http.post('/api/marketing/audience-preview', async ({ request }) => {
       requests.push(await request.json());
@@ -28,14 +37,50 @@ describe('campaign audience controls', () => {
     expect(await screen.findByRole('checkbox', { name: en.marketing.includeConsentedMembers })).not.toBeChecked();
     expect(await screen.findByText('eligible@example.test')).toBeInTheDocument();
     expect(requests[0]).toMatchObject({ audience: empty });
-    await userEvent.click(screen.getByRole('combobox', { name: en.marketing.includeLists }));
-    await userEvent.click(await screen.findByRole('option', { name: 'Newsletter (newsletter)' }));
-    await userEvent.keyboard('{Escape}');
+    await user.click(screen.getByRole('combobox', { name: en.marketing.includeLists }));
+    await user.click(await screen.findByRole('option', { name: 'Newsletter (newsletter)' }));
+    await user.keyboard('{Escape}');
     await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: [] } }));
-    await userEvent.click(screen.getByRole('combobox', { name: en.marketing.excludeLists }));
-    await userEvent.click(await screen.findByRole('option', { name: 'Newsletter (newsletter)' }));
-    await userEvent.keyboard('{Escape}');
-    await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: ['list'] } }));
+    await user.click(screen.getByRole('combobox', { name: en.marketing.excludeLists }));
+    const excludedOption = await screen.findByRole('option', { name: 'Newsletter (newsletter)' });
+    expect(excludedOption).toHaveAttribute('aria-disabled', 'true');
+    await user.click(excludedOption);
+    expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: [] } });
+  });
+  it('explains an already excluded list on the include selector and refuses to select it', async () => {
+    install();
+    const user = userEvent.setup();
+    const requests: unknown[] = [];
+    server.use(http.post('/api/marketing/audience-preview', async ({ request }) => {
+      requests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 1, excludedCount: 1, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: '2026-09-09T10:00:00.000Z', audienceHash: 'hash' } });
+    }));
+    await renderDirectory(WithExcludedList, '/panel/marketing/campaigns/new');
+    await screen.findByRole('checkbox', { name: en.marketing.includeConsentedMembers });
+    await user.click(screen.getByRole('combobox', { name: en.marketing.includeLists }));
+    const includedOption = await screen.findByRole('option', { name: 'Newsletter (newsletter)' });
+    expect(includedOption).toHaveAttribute('aria-disabled', 'true');
+    expect(includedOption).toHaveAttribute('tabindex', '-1');
+    await user.hover(includedOption);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(en.marketing.listAlreadyExcluded);
+    await user.click(includedOption);
+    await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: [], excludeLists: ['list'] } }));
+  });
+  it('lets a stored overlapping audience be repaired from either selector', async () => {
+    install();
+    const user = userEvent.setup();
+    const requests: unknown[] = [];
+    server.use(http.post('/api/marketing/audience-preview', async ({ request }) => {
+      requests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { count: 0, candidateCount: 1, excludedCount: 1, skipped: { suppressed: 0, withdrawn: 0, pendingConfirmation: 0, noConsent: 0 }, sample: [], computedAt: '2026-09-09T10:00:00.000Z', audienceHash: 'hash' } });
+    }));
+    await renderDirectory(WithOverlappingLists, '/panel/marketing/campaigns/new');
+    await screen.findByRole('checkbox', { name: en.marketing.includeConsentedMembers });
+    await user.click(screen.getByRole('combobox', { name: en.marketing.excludeLists }));
+    const selectedOption = await screen.findByRole('option', { name: 'Newsletter (newsletter)' });
+    expect(selectedOption).not.toHaveAttribute('aria-disabled');
+    await user.click(selectedOption);
+    await waitFor(() => expect(requests.at(-1)).toMatchObject({ audience: { includeLists: ['list'], excludeLists: [] } }));
   });
   it('disables changes and clearly labels a frozen audience without recomputing it', async () => {
     install();

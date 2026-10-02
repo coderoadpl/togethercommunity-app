@@ -66,6 +66,8 @@ export * from './marketing-contact.js';
 
 export * from './marketing-list.js';
 
+export * from './marketing-signup-form.js';
+
 export * from './marketing-contact-import.js';
 
 export * from './marketing-import-csv.js';
@@ -75,3 +77,6 @@ export * from './marketing-directory-event.js';
 export { marketingBodyTextSchema, marketingReplyToSchema } from './marketing-email.js';
 
 export * from './marketing-audience.js';
+
+export * from './activity-report.js';
+export * from './stripe-subscription.js';

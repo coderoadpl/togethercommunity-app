@@ -11,7 +11,7 @@ import { useLanguage, useTranslations, type Messages } from '../../../i18n/index
 import { formatDateTime } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { DirectoryError, DirectoryPagination } from './DirectoryFields.js';
-import { deliveryStatusColor, deliveryStatusLabel, sendStatusLabel } from './EmailSendSummary.js';
+import { deliveryStatusColor, deliveryStatusLabel, sendStatusLabel, sendSubjectLabel, sourceKindLabel } from './EmailSendSummary.js';
 
 const localizedSkipReasons = [
   'suppressed',
@@ -32,12 +32,12 @@ const skipReasonLabel = (reason: string, t: Messages): string => {
 const sendHistoryDate = (send: EmailSendProjection, language: string): string =>
   formatDateTime(send.sentAt ?? send.createdAt, language);
 
-export const ContactSendsSection = ({ contactId }: { contactId: string }) => {
+export const ContactSendsSection = ({ contactId, email }: { contactId: string; email: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const { tenant } = usePanelContext();
   const [cursor, setCursor] = useState<string | undefined>();
-  const sends = useQuery(actions.directory.contactSends(tenant.id, { contactId, kind: 'marketing', ...(cursor ? { cursor } : {}) }));
+  const sends = useQuery(actions.directory.contactSends(tenant.id, { contactId, recipient: email, ...(cursor ? { cursor } : {}) }));
   return <SectionCard title={t.marketing.contactSends}>
     <DirectoryError error={sends.error} />
     {sends.isPending ? <StatusView state={{ kind: 'loading', label: t.directory.loading }} /> : null}
@@ -53,11 +53,12 @@ export const ContactSendsSection = ({ contactId }: { contactId: string }) => {
         sx={{ alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}
       >
         <Box sx={{ flex: '1 1 12rem', minWidth: 0 }}>
-          <Link to="/panel/marketing/sends/$kind/$sendId" params={{ kind: 'marketing', sendId: send.id }}>{send.subject}</Link>
+          <Link to="/panel/marketing/sends/$kind/$sendId" params={{ kind: send.kind, sendId: send.id }}>{sendSubjectLabel(send, t)}</Link>
         </Box>
         {send.deliveryStatus === null
           ? <Chip size="small" variant="outlined" label={sendStatusLabel(send.status, t)} />
           : <Chip size="small" color={deliveryStatusColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} />}
+        <Chip size="small" variant="outlined" label={sourceKindLabel(send.sourceKind, t)} />
         <Typography variant="body2" color="text.secondary">{sendHistoryDate(send, language)}</Typography>
         {send.skipReason === null ? null : <Chip size="small" variant="outlined" label={`${t.marketing.skipReason}: ${skipReasonLabel(send.skipReason, t)}`} />}
       </Stack>)}

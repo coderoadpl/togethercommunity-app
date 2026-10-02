@@ -1689,6 +1689,7 @@ const runSpotChecks = async (
           email: memberRow.email,
           name: memberRow.displayName ?? memberRow.email,
           emailVerified: true,
+          tenantAccess: 'member' as const,
           tenantId,
           tenantSlug,
           tenantName,

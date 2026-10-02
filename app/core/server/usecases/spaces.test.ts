@@ -64,6 +64,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   email: 'u1@example.com',
   name: 'User One',
   emailVerified: true,
+  tenantAccess: 'member',
   tenantId: 't1',
   tenantSlug: 'tenant',
   tenantName: 'Tenant',
@@ -113,6 +114,7 @@ const product = (id: string): Product => ({
 });
 
 const grant = (memberId: string, productId: string, expiresAt: string | null = null): ProductGrant => ({
+  mode: 'live',
   id: `grant-${memberId}-${productId}`,
   tenantId: 't1',
   memberId,
@@ -637,6 +639,7 @@ const productRepo = (contentVersionBumps: string[], products: Product[]): Produc
 const tenantSettings = (defaultHomeSpaceId: string | null): TenantSettings => ({
   name: 'Tenant',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,

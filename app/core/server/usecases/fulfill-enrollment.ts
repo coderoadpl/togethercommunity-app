@@ -41,6 +41,7 @@ export interface FulfillEnrollmentResult {
 export const fulfillEnrollment = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   input: {
+    mode?: 'live' | 'test';
     email: string;
     productId: string;
     expiresAt: string | null;
@@ -61,10 +62,10 @@ export const fulfillEnrollment = async (
     if (!member.ok) return member;
     const grant = await createOrRenewGrant(
       tenant.id,
-      { memberId: member.value.id, productId: input.productId, expiresAt: input.expiresAt, source: input.source },
+      { mode: input.mode ?? 'live', memberId: member.value.id, productId: input.productId, expiresAt: input.expiresAt, source: input.source },
       { ...deps, grants: transaction.grants },
     );
-    if (input.sendEmail) {
+    if (input.sendEmail && input.mode !== 'test') {
       const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
       const settings = await deps.tenants.findSettings(tenant.id);
       const language = resolveEmailLanguage(
@@ -97,8 +98,8 @@ export const fulfillEnrollment = async (
     return ok({ member: member.value, grant });
   });
   if (!completed.ok) return completed;
-  if (input.sendEmail) deps.dispatchEmail();
-  const magicLink = input.sendEmail && deps.exposeMagicLinks
+  if (input.sendEmail && input.mode !== 'test') deps.dispatchEmail();
+  const magicLink = input.sendEmail && input.mode !== 'test' && deps.exposeMagicLinks
     ? await deps.devMagicLinks.findByEmail(completed.value.member.email)
     : null;
   return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink });

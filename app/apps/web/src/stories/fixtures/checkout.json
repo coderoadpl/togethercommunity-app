@@ -48,6 +48,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {
@@ -224,6 +228,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {
@@ -235,8 +243,11 @@
     "publicPaymentConfig:[]": {
       "ok": true,
       "value": {
+        "canTest": false,
         "simulatedPaymentsEnabled": true,
-        "stripeConfigured": false
+        "stripeConfigured": false,
+        "testConfigured": false,
+        "testEnabled": false
       }
     }
   },

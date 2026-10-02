@@ -245,6 +245,10 @@
             "termsUrl": null
           },
           "name": "Studio Demo",
+          "signInNotice": {
+            "enabled": false,
+            "text": ""
+          },
           "slug": "studio",
           "socialLinks": [],
           "support": {
@@ -258,6 +262,7 @@
       "value": {
         "methods": [
           "password",
+          "passkey",
           "magic-link"
         ]
       }

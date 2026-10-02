@@ -42,8 +42,8 @@ export const Passwordless: Story = {
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
     await canvas.findByTestId('send-magic-link');
-    await expect(canvas.getByTestId('use-password')).toHaveAttribute('aria-disabled', 'true');
-    await expect(canvas.getByTestId('signin-passkey')).toHaveAttribute('aria-disabled', 'true');
+    await expect(canvas.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
+    await expect(canvas.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
   },
 };
 
@@ -71,7 +71,7 @@ export const PasswordOnly: Story = {
     await userEvent.click(canvas.getByTestId('login-continue'));
     await canvas.findByTestId('login-password');
     await expect(canvas.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
-    await expect(canvas.getByTestId('signin-passkey')).toHaveAttribute('aria-disabled', 'true');
+    await expect(canvas.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
   },
 };
 
@@ -98,7 +98,7 @@ export const PasskeyOnly: Story = {
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
     await canvas.findByTestId('send-magic-link');
-    await expect(canvas.getByTestId('use-password')).toHaveAttribute('aria-disabled', 'true');
+    await expect(canvas.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
     await expect(canvas.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
   },
 };

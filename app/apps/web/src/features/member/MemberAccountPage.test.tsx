@@ -2,7 +2,7 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
@@ -66,12 +66,12 @@ const stubErasureRequest = () =>
     HttpResponse.json({ ok: true, data: { request: null } }),
   );
 
-const renderAccount = async (initialEntry = '/account') => {
+const renderAccount = async (initialEntry = '/account', passkeys: unknown[] = []) => {
   server.use(
     stubErasureRequest(),
     http.get('*', ({ request }) =>
       new URL(request.url).pathname.endsWith('/passkey/list-user-passkeys')
-        ? HttpResponse.json([])
+        ? HttpResponse.json(passkeys)
         : undefined),
   );
   const rootRoute = createRootRoute({ component: MemberAccountPage });
@@ -92,6 +92,47 @@ const renderAccount = async (initialEntry = '/account') => {
 const findToast = async (kind: 'success' | 'error') =>
   screen.findByTestId(new RegExp(`^toast-${kind}-`));
 
+const successToasts = () => screen.queryAllByTestId(/^toast-success-/);
+
+const errorToasts = () => screen.queryAllByTestId(/^toast-error-/);
+
+const dismissToasts = async () => {
+  for (
+    let [button] = screen.queryAllByTestId(/^toast-dismiss-/);
+    button !== undefined;
+    [button] = screen.queryAllByTestId(/^toast-dismiss-/)
+  ) {
+    await userEvent.click(button);
+  }
+};
+
+const attestation = new Uint8Array([1, 2, 3, 4]).buffer;
+
+const stubWebAuthnRegistration = () => {
+  Object.defineProperty(window, 'PublicKeyCredential', {
+    configurable: true,
+    value: () => undefined,
+  });
+  Object.defineProperty(navigator, 'credentials', {
+    configurable: true,
+    value: {
+      create: () => Promise.resolve({
+        id: 'credential-1',
+        rawId: attestation,
+        type: 'public-key',
+        authenticatorAttachment: 'platform',
+        response: { attestationObject: attestation, clientDataJSON: attestation },
+        getClientExtensionResults: () => ({}),
+      }),
+    },
+  });
+};
+
+afterEach(() => {
+  Reflect.deleteProperty(window, 'PublicKeyCredential');
+  Reflect.deleteProperty(navigator, 'credentials');
+});
+
 describe('MemberAccountPage', () => {
   it('mounts passkey and two-factor management on the member surface', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
@@ -107,6 +148,156 @@ describe('MemberAccountPage', () => {
     expect(screen.getByTestId('enable-2fa-open')).toBeInTheDocument();
     expect(screen.queryByTestId('two-factor-manage')).not.toBeInTheDocument();
     expect(screen.queryByTestId('enable-2fa-password')).not.toBeInTheDocument();
+  });
+
+  it('does not replay the two-factor success toast after switching account tabs', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', async ({ request }) => {
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/two-factor/enable')) {
+          return HttpResponse.json({
+            totpURI: 'otpauth://totp/Together:member@example.com?secret=DEMO&issuer=Together',
+            backupCodes: ['demo-code'],
+          });
+        }
+        if (path.endsWith('/two-factor/verify-totp')) return HttpResponse.json({ token: null });
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('enable-2fa-open'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    await userEvent.type(screen.getByTestId('verify-totp-code'), '123456');
+
+    expect(await findToast('success')).toHaveTextContent(en.security.twoFactorOn);
+    expect(successToasts()).toHaveLength(1);
+    await userEvent.click(screen.getByLabelText(en.security.backupCodesSaved));
+    await userEvent.click(screen.getByTestId('two-factor-finish'));
+    await userEvent.click(screen.getByTestId('two-factor-done-close'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await dismissToasts();
+
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.profile }));
+    expect(screen.queryByTestId('account-security-methods')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.security }));
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.notifications }));
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.security }));
+    expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
+
+    expect(successToasts()).toHaveLength(0);
+  });
+
+  it('keeps the verification and two-factor failure toasts from replaying on a tab switch', async () => {
+    server.use(
+      stubMe(false),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/two-factor/enable')
+          ? HttpResponse.json({ message: 'Invalid password' }, { status: 401 })
+          : HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('resend-verification-email'));
+    expect(await findToast('success')).toHaveTextContent(en.emailVerification.sent);
+
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'wrong-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    expect(await findToast('error')).toBeInTheDocument();
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await dismissToasts();
+
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.profile }));
+    expect(screen.queryByTestId('account-security-methods')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.security }));
+    expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
+
+    expect(successToasts()).toHaveLength(0);
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('adds a passkey and confirms it with a toast', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.get('*/passkey/generate-register-options', () => HttpResponse.json({
+        challenge: 'Y2hhbGxlbmdl',
+        rp: { id: 'localhost', name: 'Together' },
+        user: { id: 'dXNlci0x', name: 'member@together.dev', displayName: 'Member' },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+      })),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    stubWebAuthnRegistration();
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('add-passkey-open'));
+    await userEvent.type(screen.getByTestId('passkey-proof-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('add-passkey'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.passkeyAdded);
+  });
+
+  it('confirms a removed passkey with a toast', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security', [
+      { id: 'passkey-1', name: 'Laptop', createdAt: '2026-08-01T00:00:00.000Z' },
+    ]);
+
+    await userEvent.click(await screen.findByRole('button', { name: en.security.removePasskey }));
+    await userEvent.type(screen.getByTestId('remove-passkey-proof-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.passkeyRemoved);
+  });
+
+  it('confirms regenerated backup codes with a toast', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { twoFactorEnabled: true }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ backupCodes: ['fresh-code'] })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('regenerate-backup-codes'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes-confirm'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.backupCodesRegenerated);
+  });
+
+  it('confirms a two-factor disable with a toast', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { twoFactorEnabled: true }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('disable-2fa-open'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('disable-2fa'));
+
+    expect(await findToast('success')).toHaveTextContent(en.security.twoFactorOff);
   });
 
   it('renders accessible tabs and keeps profile as the default deep-link target', async () => {

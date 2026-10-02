@@ -10,6 +10,7 @@ const identity: Identity = {
   name: 'Owner',
   emailVerified: true,
   image: null,
+  tenantAccess: 'none',
   tenantId: null,
   tenantSlug: null,
   tenantName: null,

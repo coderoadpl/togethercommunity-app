@@ -24,6 +24,7 @@ const identity = (tenantId: string | null): Identity => ({
   email: 'owner@example.test',
   name: 'Owner',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'staff',
   tenantId,
   tenantSlug: tenantId === null ? null : 'acme',
   tenantName: tenantId === null ? null : 'Acme',
@@ -81,6 +82,15 @@ const lessonEvent: MemberEvent = {
     lessonId: 'lesson-1',
   },
   occurredAt: '2026-08-03T10:00:00.000Z',
+};
+
+const signInEvent: MemberEvent = {
+  id: 'sign-in:session-1',
+  tenantId: 'tenant-1',
+  memberId: member.id,
+  type: 'sign-in',
+  payload: {},
+  occurredAt: '2026-08-04T10:00:00.000Z',
 };
 
 const product: Product = {
@@ -233,6 +243,18 @@ describe('listMemberTimeline', () => {
         ...entry, payload: { ...entry.payload, productTitle: product.title },
       })),
     });
+  });
+
+  it('returns recorded sign-in entries to a timeline reader', async () => {
+    const result = await listMemberTimeline(
+      { identity: identity(member.tenantId) },
+      { memberId: member.id },
+      {
+        members, products, courses, lessons,
+        memberEvents: { append: async () => undefined, listForMember: async () => [signInEvent] },
+      },
+    );
+    expect(result).toEqual({ ok: true, value: [signInEvent] });
   });
 
   it('does not query another tenant or an unknown member', async () => {

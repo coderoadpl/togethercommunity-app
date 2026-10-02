@@ -1,5 +1,6 @@
 import { internal, normalizeEmail, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { Clock, EmailPort } from '#core/server/index.js';
+import { safeErrorMessage } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
 import { devEmails } from '#adapters/db/schema.js';
 
@@ -39,7 +40,7 @@ export const createDevEmailPort = (
         });
       return ok({ messageId });
     } catch (cause) {
-      return { ok: false, error: internal(`Could not store dev email: ${String(cause)}`) };
+      return { ok: false, error: internal(`Could not store dev email: ${safeErrorMessage(cause)}`) };
     }
   },
 });

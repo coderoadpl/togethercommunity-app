@@ -9,6 +9,7 @@ import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from
 const settings: TenantSettings = {
   name: 'Alpha',
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,
@@ -58,6 +59,7 @@ const identity = (staffRole: 'admin' | null): Identity => ({
   email: 'user@example.com',
   name: 'User',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',

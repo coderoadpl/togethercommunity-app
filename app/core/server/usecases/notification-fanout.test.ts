@@ -269,6 +269,7 @@ const tenantSettings = (defaultLanguage: Language | undefined): TenantSettings =
   name: 'Tenant',
   defaultLanguage,
   socialLinks: [],
+  signInNotice: { enabled: false, text: '' },
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   bunnyStreamCdnHostname: null,

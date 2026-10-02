@@ -11,7 +11,7 @@ import { createTenantRepository } from './repositories.js';
 
 export const DELIVERY_NOW = '2026-09-09T10:00:00.000Z';
 export const deliveryCtx = (tenantId = 'delivery-a'): Ctx => ({
-  identity: { userId: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantId,
+  identity: { userId: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true, image: null, tenantAccess: 'staff', tenantId,
     tenantSlug: tenantId, tenantName: 'Example', staffRole: 'owner', memberId: null, memberDisplayName: null, memberBannedAt: null,
     memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false },
 });

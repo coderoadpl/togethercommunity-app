@@ -567,7 +567,7 @@ export default tseslint.config(
             },
             {
               from: ['platform-entry'],
-              allow: ['@hono/node-server', 'node:http'],
+              allow: ['@hono/node-server', '@vercel/functions', 'node:http'],
             },
             {
               from: ['app-server'],
@@ -644,6 +644,14 @@ export default tseslint.config(
               from: ['web-ui'],
               allow: [
                 '@mui/material',
+                '@tiptap/extension-code-block',
+                '@tiptap/extension-image',
+                '@tiptap/extension-italic',
+                '@tiptap/extension-link',
+                '@tiptap/extension-placeholder',
+                '@tiptap/markdown',
+                '@tiptap/react',
+                '@tiptap/starter-kit',
                 '@testing-library/react',
                 '@testing-library/user-event',
                 'dompurify',

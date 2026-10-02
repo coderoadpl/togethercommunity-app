@@ -3,12 +3,14 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { EmailEvent, EmailSendProjection } from '#core/domain/index.js';
+import { EMAIL_SEND_SOURCE_KINDS, type EmailEvent, type EmailSendProjection } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
+import { pl } from '../../../i18n/pl.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { sourceKindLabel } from './EmailSendSummary.js';
 import { SendDetailPage, SendsPanel, validateSendsSearch } from './SendsPanel.js';
 
 const baseSend: EmailSendProjection = {
@@ -17,6 +19,7 @@ const baseSend: EmailSendProjection = {
   kind: 'marketing',
   recipient: 'contact@example.test',
   subject: 'Campaign update',
+  sourceKind: 'marketing-campaign',
   source: 'campaign',
   sourceApp: null,
   status: 'sent',
@@ -153,6 +156,7 @@ describe('sends panel delivery rendering', () => {
     const table = await screen.findByRole('table', { name: en.marketing.sendsTitle });
     expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       en.marketing.recipient,
+      en.marketing.messageKind,
       en.marketing.subject,
       en.marketing.deliveryStatusLabel,
       en.marketing.campaignLabel,
@@ -160,11 +164,13 @@ describe('sends panel delivery rendering', () => {
       '',
     ]);
     expect(within(table).queryByRole('columnheader', { name: en.marketing.transportLabel })).not.toBeInTheDocument();
+    expect(within(table).queryByRole('columnheader', { name: en.marketing.kind })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: en.marketing.showSendLogDetails }));
 
     expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       en.marketing.recipient,
+      en.marketing.messageKind,
       en.marketing.subject,
       en.marketing.deliveryStatusLabel,
       en.marketing.campaignLabel,
@@ -177,6 +183,8 @@ describe('sends panel delivery rendering', () => {
     ]);
     expect(within(table).getByRole('columnheader', { name: en.marketing.transportLabel })).toBeInTheDocument();
     expect(within(table).getByRole('columnheader', { name: en.marketing.sourceApp })).toBeInTheDocument();
+    expect(within(table).getAllByText(en.marketing.sourceKindLabels.marketingCampaign).length).toBeGreaterThan(0);
+    expect(within(table).getAllByText(en.marketing.kindMarketing).length).toBeGreaterThan(0);
   });
 
   it('truncates long subjects in the log while keeping the full title', async () => {
@@ -236,5 +244,40 @@ describe('sends panel delivery rendering', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     const deliveredChip = (await screen.findAllByText(en.marketing.deliveryDelivered))[0]?.closest('.MuiChip-root');
     expect(deliveredChip).toHaveClass('MuiChip-colorSuccess');
+  });
+
+  it('renders platform auth detail as localized redacted metadata', async () => {
+    const authSend: EmailSendProjection = {
+      ...baseSend,
+      id: 'auth-send',
+      kind: 'transactional',
+      sourceKind: 'auth-password-reset',
+      source: 'auth-password-reset',
+      subject: 'auth-password-reset',
+      campaignId: null,
+      campaignName: null,
+      contactId: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      transport: 'platform',
+    };
+    server.use(
+      http.get('/api/marketing/sends/:kind/:id', () =>
+        HttpResponse.json({ ok: true, data: { send: authSend, events: [] } })),
+    );
+
+    await renderSendsPanel('/panel/marketing/sends/transactional/auth-send');
+
+    expect(await screen.findByRole('heading', { name: en.marketing.sourceKindLabels.authPasswordReset })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.marketing.authContentRedacted);
+    expect(screen.getAllByText(en.marketing.sourceKindLabels.authPasswordReset).length).toBeGreaterThan(0);
+    expect(screen.getByText(en.marketing.transportPlatform)).toBeInTheDocument();
+  });
+
+  it.each([['pl', pl], ['en', en]] as const)('labels every send source kind distinctly in %s', (_language, messages) => {
+    const labels = EMAIL_SEND_SOURCE_KINDS.map((sourceKind) => sourceKindLabel(sourceKind, messages));
+
+    expect(labels.filter((label) => label.trim() === '')).toEqual([]);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

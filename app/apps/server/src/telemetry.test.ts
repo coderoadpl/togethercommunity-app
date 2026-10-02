@@ -1,3 +1,6 @@
+import { createHash, createHmac, hkdfSync } from 'node:crypto';
+import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH } from '#adapters/auth/create-auth.js';
+import { signInTimingMiddleware } from './sign-in-timing.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import {
   InMemorySpanExporter,
@@ -20,6 +23,7 @@ const identity: Identity = {
   email: 'creator@together.dev',
   name: 'Demo',
   emailVerified: true,
+  tenantAccess: 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',
@@ -46,6 +50,7 @@ const buildProbeApp = () => {
     c.set('identity', identity);
     return c.json({ ok: true, data: { products: [] } });
   });
+  app.get('/api/reports/member-activity', (c) => c.json({ members: [{ email: 'report-member@example.test' }] }));
   app.get('/api/boom', () => {
     throw new Error('kaboom');
   });
@@ -80,6 +85,16 @@ afterAll(async () => {
 });
 
 describe('telemetryMiddleware', () => {
+  it('keeps report response emails, exclusion filters and API keys out of telemetry', async () => {
+    const response = await buildProbeApp().request('/api/reports/member-activity?excludeEmailPatterns=private@example.test', { headers: { 'x-api-key': 'report-secret' } });
+    expect(response.status).toBe(200);
+    const span = await soleSpan();
+    const logged = JSON.stringify({ attributes: span.attributes, events: span.events, status: span.status, name: span.name });
+    expect(logged).not.toContain('example.test');
+    expect(logged).not.toContain('report-secret');
+    expect(logged).not.toContain('excludeEmailPatterns');
+  });
+
   it('emits exactly one wide event per request with the expected attributes', async () => {
     const response = await buildProbeApp().request('/api/products');
     expect(response.status).toBe(200);
@@ -144,4 +159,29 @@ describe('telemetryMiddleware', () => {
     expect(span.attributes['http.route']).toBeUndefined();
     expect(span.name).not.toContain('live-');
   });
+});
+
+
+it('records only an email hash and uniform sign-in outcome codes', async () => {
+  const app = new Hono();
+  app.use('*', telemetryMiddleware);
+  app.use('*', signInTimingMiddleware('test-sign-in-telemetry-secret'));
+  app.post(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, (c) => c.json({ error: 'invalid_credentials' }, 401));
+  await app.request(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: '  Member@Example.com  ', password: 'secret-password', callbackURL: 'https://example.com/private-link' }),
+  });
+  const span = await soleSpan();
+  expect(span.attributes['auth.email_hash']).toBe(
+    createHmac('sha256', Buffer.from(hkdfSync('sha256', 'test-sign-in-telemetry-secret', '', 'together:sign-in-telemetry:email-hash:v1', 32))).update('member@example.com').digest('hex'),
+  );
+  expect(span.attributes['auth.email_hash']).not.toBe(createHash('sha256').update('member@example.com').digest('hex'));
+  expect(span.attributes['auth.email_hash']).not.toBe(createHmac('sha256', 'test-sign-in-telemetry-secret').update('member@example.com').digest('hex'));
+  expect(span.attributes['auth.outcome']).toBe('rejected');
+  expect(span.attributes['auth.reason']).toBe('invalid_credentials');
+  const serialized = JSON.stringify(span.attributes);
+  expect(serialized).not.toContain('Member@Example.com');
+  expect(serialized).not.toContain('secret-password');
+  expect(serialized).not.toContain('private-link');
 });

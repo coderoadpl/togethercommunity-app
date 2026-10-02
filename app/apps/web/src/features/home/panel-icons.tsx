@@ -145,3 +145,9 @@ export const MarketingListsIcon = () => (
     <path d="M3 4h4v4H3V4zm6 1h12v2H9V5zM3 10h4v4H3v-4zm6 1h12v2H9v-2zM3 16h4v4H3v-4zm6 1h12v2H9v-2z" />
   </SvgIcon>
 );
+
+export const MarketingFormsIcon = () => (
+  <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
+    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-2h3v2zm0-4H7v-2h3v2zm0-4H7V7h3v2zm7 8h-5v-2h5v2zm0-4h-5v-2h5v2zm0-4h-5V7h5v2z" />
+  </SvgIcon>
+);

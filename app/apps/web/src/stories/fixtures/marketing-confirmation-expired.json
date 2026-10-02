@@ -27,6 +27,10 @@
       "ogImageUrl": null,
       "ogTitle": null,
       "privacyUrl": null,
+      "signInNotice": {
+        "enabled": false,
+        "text": ""
+      },
       "socialLinks": [],
       "supportEmail": null,
       "supportUrl": null,

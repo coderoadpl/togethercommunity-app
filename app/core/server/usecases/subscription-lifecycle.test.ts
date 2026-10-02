@@ -27,6 +27,7 @@ const price = (over: Partial<ProductPrice> = {}): ProductPrice => ({
 });
 
 const subscription = (over: Partial<MemberSubscription> = {}): MemberSubscription => ({
+  mode: 'live',
   id: 'sub-1',
   tenantId: 't1',
   memberId: 'mem-1',
@@ -59,6 +60,7 @@ const harness = (prices: ProductPrice[] = []) => {
       setActive: async () => null,
     },
     orders: {
+      completeTestCheckout: async () => null,
       create: async (_t, order) => {
         orders.push(order);
       },
@@ -70,6 +72,7 @@ const harness = (prices: ProductPrice[] = []) => {
     subscriptions: {
       findById: async (_t, id) => subs.get(id) ?? null,
       findByProviderSubscriptionId: async () => null,
+      listKnownProviderSubscriptionIds: async () => [],
       listForMember: async () => [],
       create: async (_t, sub) => {
         subs.set(sub.id, sub);

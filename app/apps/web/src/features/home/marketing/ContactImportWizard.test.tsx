@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { MARKETING_IMPORT_ATTESTATION_TEXT, marketingDirectoryContracts } from '#core/client/index.js';
-import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, marketingImportRowSchema } from '#core/domain/index.js';
+import { MARKETING_IMPORT_EMAIL_INVALID, MARKETING_IMPORT_EMAIL_MISSING, MARKETING_IMPORT_LIMITS, marketingImportRowSchema } from '#core/domain/index.js';
 import { directoryTestFixtures } from './directory-test-data.js';
 import { en } from '../../../i18n/en.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { fixtureValue, installDirectoryFixture, renderDirectory } from './directory-test-helpers.js';
 import { server } from '../../../test/server.js';
 import { ContactImportWizard } from './ContactImportWizard.js';
@@ -77,6 +78,13 @@ describe('contact import wizard', () => {
     await screen.findByText(/Evidence conflict/);
     await userEvent.click(screen.getByRole('checkbox', { name: en.directory.skipInvalid }));
     expect(screen.getByRole('button', { name: en.directory.next })).toBeDisabled();
+  });
+
+  it('shows the preview issue limit only when the response reports truncation', async () => {
+    installDirectoryFixture(previewFixture);
+    server.use(http.post('/api/marketing/contact-imports/:id/validate', () => HttpResponse.json({ ok: true, data: { ...preview, previewIssuesLimited: true } })));
+    await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', previewFixture.route);
+    expect(await screen.findByText(en.directory.previewIssuesLimited({ count: MARKETING_IMPORT_LIMITS.previewIssues }))).toBeInTheDocument();
   });
 
 
@@ -164,10 +172,10 @@ describe('contact import wizard', () => {
     expect(screen.getByRole('link', { name: en.directory.downloadSample })).toHaveAttribute('download', 'contacts-import-sample.csv');
     const file = csvFile('email,name\nperson@example.org,Example Person', 'dropped.csv');
     fireEvent.drop(screen.getByRole('group', { name: en.directory.dropFile }), { dataTransfer: { files: [file] } });
-    expect(await screen.findByText('dropped.csv')).toHaveClass('MuiChip-label');
+    expect(await screen.findByText(/^dropped\.csv · /)).toHaveClass('MuiChip-label');
     expect(screen.getByRole('button', { name: en.directory.next })).toBeEnabled();
     fireEvent.drop(screen.getByRole('group', { name: en.directory.dropFile }), { dataTransfer: { files: [] } });
-    expect(screen.getByText('dropped.csv')).toBeInTheDocument();
+    expect(screen.getByText(/^dropped\.csv · /)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.directory.next })).toBeEnabled();
   });
 
@@ -184,6 +192,7 @@ describe('contact import wizard', () => {
     server.use(http.post('/api/marketing/contact-imports/:id/validate', () => HttpResponse.json({ ok: true, data: coded })));
     await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', previewFixture.route);
     expect(await screen.findByText(en.directory.previewHint)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.directory.downloadErrors })).toBeInTheDocument();
     expect(screen.getAllByText(en.directory.importErrors.emailMissing).length).toBeGreaterThan(0);
     expect(screen.getByText(new RegExp(en.directory.importErrors.emailInvalid))).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`${en.directory.importErrors.emailInvalid}; consentAt: Invalid datetime`))).toBeInTheDocument();
@@ -203,5 +212,65 @@ describe('contact import wizard', () => {
     await userEvent.click(screen.getByRole('combobox', { name: en.directory.consentDefinition }));
     await userEvent.click(screen.getByRole('option', { name: 'directory-news' }));
     expect(screen.queryByText(en.directory.doiHint)).not.toBeInTheDocument();
+  });
+
+  it('polls a large preview from progress to the validated table', async () => {
+    installDirectoryFixture(previewFixture);
+    let polls = 0;
+    const pendingImport = { ...preview.import, status: 'previewing', validationHash: null, rowCount: 3647 };
+    server.use(
+      http.get('/api/marketing/contact-imports/:id', () => {
+        polls += 1;
+        return HttpResponse.json({ ok: true, data: polls === 1 ? { import: pendingImport, previewProgress: { validatedRows: 500, totalRows: 3647 } } : { import: preview.import } });
+      }),
+      http.post('/api/marketing/contact-imports/:id/validate', () => HttpResponse.json({ ok: true, data: preview })),
+    );
+    await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', previewFixture.route);
+    expect(await screen.findByText(en.directory.previewProgress({ validated: 500, total: 3647 }))).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: en.directory.previewProgressLabel })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(en.directory.previewing);
+    expect(screen.getByText(en.directory.statusGuidance.previewing)).toBeInTheDocument();
+    expect(await screen.findByText(en.directory.previewHint, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(polls).toBeGreaterThanOrEqual(2);
+  });
+
+  it('sends the suppression defaults as UTC evidence with the upload', async () => {
+    installDirectoryFixture(uploadFixture);
+    let metadata: string | undefined;
+    const append = FormData.prototype.append;
+    const appendSpy = vi.spyOn(FormData.prototype, 'append').mockImplementation(function (this: FormData, name, value, fileName) {
+      if (name === 'metadata' && typeof value === 'string') metadata = value;
+      if (fileName === undefined) return append.call(this, name, value);
+      return append.call(this, name, value, fileName);
+    });
+    try {
+      server.use(http.post('*/api/marketing/contact-imports/upload', () => HttpResponse.json({ ok: true, data: preview })));
+      await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', '/panel/marketing/contacts/import?kind=suppressions');
+      uploadFile('email\nblocked@example.org');
+      await userEvent.click(screen.getByRole('button', { name: en.directory.next }));
+      await userEvent.click(screen.getByRole('combobox', { name: en.directory.defaultReason }));
+      await userEvent.click(screen.getByRole('option', { name: en.directory.unsubscribe }));
+      fireEvent.change(screen.getByLabelText(en.directory.defaultAt), { target: { value: '2026-01-15T12:00' } });
+      const utc = new Date('2026-01-15T12:00').toISOString();
+      expect(screen.getByText(en.directory.defaultAtUtc({ value: utc }))).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: en.directory.validate }));
+      await waitFor(() => expect(metadata ?? '').toContain('"reason":"unsubscribe"'));
+      expect(metadata).toContain(`"at":"${utc}"`);
+    } finally {
+      appendSpy.mockRestore();
+    }
+  });
+
+  it('uses suppression defaults and renders suppression evidence columns', async () => {
+    const suppressionFixture = directoryTestFixtures['panel-marketing-suppression-preview'];
+    installDirectoryFixture(suppressionFixture);
+    await renderDirectory(ContactImportWizard, '/panel/marketing/contacts/import', suppressionFixture.route);
+    expect(await screen.findByRole('columnheader', { name: en.directory.reason })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: en.directory.at })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: en.directory.name })).not.toBeInTheDocument();
+    expect(screen.getByText(en.directory.unsubscribe)).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2026-07-01T12:00:00.000Z', 'en'))).toBeInTheDocument();
+    expect(screen.getByLabelText(en.directory.defaultReason)).toBeInTheDocument();
+    expect(screen.getByLabelText(en.directory.defaultAt)).toHaveAttribute('type', 'datetime-local');
   });
 });

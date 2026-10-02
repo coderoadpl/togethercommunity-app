@@ -43,6 +43,7 @@ const ctx: Ctx = {
     email: 'api-key@invalid.test',
     name: 'Migration API',
     emailVerified: true,
+    tenantAccess: 'member',
     tenantId: TENANT_ID,
     tenantSlug: 'tenant',
     tenantName: 'Tenant',

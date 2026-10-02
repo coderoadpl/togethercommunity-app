@@ -14,8 +14,15 @@ import {
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/password.js';
 
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
+import type { Messages } from '../../i18n/index.js';
 import { AccountDialog } from './AccountDialog.js';
-import { useToastError, useToastSuccess } from './Toast.js';
+
+export const localizeChangePasswordError = (error: unknown, t: Messages): string => {
+  const providerCode = providerCodeOf(error);
+  if (providerCode === 'INVALID_PASSWORD') return t.changePassword.invalidCurrentPassword;
+  if (providerCode === 'CREDENTIAL_ACCOUNT_NOT_FOUND') return t.changePassword.credentialAccountMissing;
+  return localizeError(error, t);
+};
 
 interface ChangePasswordFormProps {
   showHeading?: boolean;
@@ -76,17 +83,7 @@ export const ChangePasswordForm = ({
     onSubmit({ currentPassword, newPassword, revokeOtherSessions });
   };
 
-  const providerCode = providerCodeOf(error);
-  const remoteError = providerCode === 'INVALID_PASSWORD'
-    ? t.changePassword.invalidCurrentPassword
-    : providerCode === 'CREDENTIAL_ACCOUNT_NOT_FOUND'
-      ? t.changePassword.credentialAccountMissing
-      : error !== null
-        ? localizeError(error, t)
-        : null;
-
-  useToastSuccess(success, t.changePassword.success);
-  useToastError(remoteError);
+  const remoteError = error === null ? null : localizeChangePasswordError(error, t);
 
   const form = (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>

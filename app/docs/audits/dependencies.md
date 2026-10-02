@@ -51,3 +51,13 @@ authorizes the Renovate GitHub App.
    absent provenance record as a gap, not Build L1 evidence.
 7. Record advisory-database coverage, private packages, and unbuilt deployment
    paths as blind spots.
+
+## MinIO test-image provenance — 2026-10-02
+
+The unaffiliated prebuilt MinIO test image was replaced with an image built in
+the repository from checksum-pinned vendor server release
+`RELEASE.2025-09-07T16-13-09Z` and client release
+`RELEASE.2025-08-13T08-35-41Z`, the newest client release not later than the
+server release. The open-source MinIO server and client projects are archived
+upstream; the dependency maintainer owns future release and checksum reviews,
+with no open due date.

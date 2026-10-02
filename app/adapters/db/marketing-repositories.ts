@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 
 import {
   automationIdempotencyKeySchema,
   campaignSchema,
+  campaignResultsSchema,
   campaignSendSchema,
   consentConfirmationTokenSchema,
   consentDefinitionSchema,
@@ -20,6 +21,7 @@ import {
   unsubscribeTokenSchema,
   type Campaign,
   type CampaignEngagementStats,
+  type CampaignResults,
   type CampaignSend,
 } from '#core/domain/index.js';
 import type {
@@ -33,6 +35,7 @@ import type {
   MarketingConsentRepository,
   MarketingJobRepository,
   MarketingThrottleRepository,
+  SesMaintenanceBackoffRepository,
   SnsWebhookDeliveryRepository,
   SuppressionRepository,
   TenantDocumentRepository,
@@ -349,6 +352,26 @@ export const createCampaignRepository = (db: Db): CampaignRepository => ({
   },
 });
 
+const listSesMaintenanceTenantIds = async (db: Db, checkedBefore: string, retryableAt: string) =>
+  (
+    await db
+      .select({ tenantId: tenantSesSettings.tenantId })
+      .from(tenantSesSettings)
+      .where(
+        and(
+          or(
+            isNull(tenantSesSettings.identityCheckedAt),
+            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
+          ),
+          or(
+            isNull(tenantSesSettings.maintenanceRetryAt),
+            lte(tenantSesSettings.maintenanceRetryAt, retryableAt),
+          ),
+        ),
+      )
+      .orderBy(asc(tenantSesSettings.tenantId))
+  ).map((row) => row.tenantId);
+
 export const createMarketingJobRepository = (db: Db): MarketingJobRepository => ({
   listRunnableCampaigns: async (now) => (await db.select({
     tenantId: campaigns.tenantId,
@@ -365,32 +388,34 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
     ]);
     return [...new Set([...consentTenants, ...sendTenants, ...idempotencyTenants].map((row) => row.tenantId))].sort();
   },
-  listSesIdentityRefreshTenantIds: async (checkedBefore) =>
-    (
-      await db
-        .select({ tenantId: tenantSesSettings.tenantId })
-        .from(tenantSesSettings)
-        .where(
-          or(
-            isNull(tenantSesSettings.identityCheckedAt),
-            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
-          ),
-        )
-        .orderBy(asc(tenantSesSettings.tenantId))
-    ).map((row) => row.tenantId),
-  listSesTenantIds: async (checkedBefore) =>
-    (
-      await db
-        .select({ tenantId: tenantSesSettings.tenantId })
-        .from(tenantSesSettings)
-        .where(
-          or(
-            isNull(tenantSesSettings.identityCheckedAt),
-            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
-          ),
-        )
-        .orderBy(asc(tenantSesSettings.tenantId))
-    ).map((row) => row.tenantId),
+  listSesIdentityRefreshTenantIds: async (checkedBefore, retryableAt) =>
+    listSesMaintenanceTenantIds(db, checkedBefore, retryableAt),
+  listSesTenantIds: async (checkedBefore, retryableAt) =>
+    listSesMaintenanceTenantIds(db, checkedBefore, retryableAt),
+});
+
+export const createSesMaintenanceBackoffRepository = (db: Db): SesMaintenanceBackoffRepository => ({
+  countAttempts: async (tenantId) => {
+    const [row] = await db
+      .select({ attempts: tenantSesSettings.maintenanceAttempts })
+      .from(tenantSesSettings)
+      .where(eq(tenantSesSettings.tenantId, tenantId))
+      .limit(1);
+    return row?.attempts ?? 0;
+  },
+  defer: async (tenantId, input) => {
+    await db.update(tenantSesSettings)
+      .set({ maintenanceAttempts: input.attempts, maintenanceRetryAt: input.retryAt })
+      .where(eq(tenantSesSettings.tenantId, tenantId));
+  },
+  clear: async (tenantId) => {
+    await db.update(tenantSesSettings)
+      .set({ maintenanceAttempts: 0, maintenanceRetryAt: null })
+      .where(and(
+        eq(tenantSesSettings.tenantId, tenantId),
+        or(ne(tenantSesSettings.maintenanceAttempts, 0), isNotNull(tenantSesSettings.maintenanceRetryAt)),
+      ));
+  },
 });
 
 export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepository => ({
@@ -422,13 +447,46 @@ export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepo
 const sendValues = (tenantId: string, send: CampaignSend): CampaignSend => campaignSendSchema.parse({ ...send, tenantId });
 
 export const createCampaignSendRepository = (db: Db): CampaignSendRepository => ({
+  results: async (tenantId, campaignIds) => {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      candidates: sql<number>`count(*)::int`,
+      waiting: sql<number>`count(*) filter (where ${campaignSends.status} in ('pending', 'sending') and ${marketingOutbox.status} is distinct from 'uncertain')::int`,
+      sent: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent')::int`,
+      failed: sql<number>`count(*) filter (where ${campaignSends.status} = 'failed')::int`,
+      skipped: sql<number>`count(*) filter (where ${campaignSends.status} = 'skipped')::int`,
+      delivered: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'delivered')::int`,
+      bounced: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'bounced')::int`,
+      complained: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} = 'complained')::int`,
+      unresolved: sql<number>`count(*) filter (where ${campaignSends.status} = 'sent' and ${campaignSends.deliveryStatus} is null)::int`,
+    }).from(campaignSends).leftJoin(marketingOutbox, and(
+      eq(marketingOutbox.tenantId, campaignSends.tenantId),
+      eq(marketingOutbox.campaignSendId, campaignSends.id),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, CampaignResults]> =>
+      row.campaignId === null ? [] : [[row.campaignId, campaignResultsSchema.parse(row)]]
+    ));
+  },
   progressStats: async (tenantId, campaignIds) => {
     if (campaignIds.length === 0) return new Map();
-    const rows = await db.select({ campaignId: campaignSends.campaignId,
-      queued: sql<number>`count(*) FILTER (WHERE ${campaignSends.status} IN ('pending', 'sending') AND ${marketingOutbox.status} IS DISTINCT FROM 'uncertain')::int`,
-      unresolved: sql<number>`count(*) FILTER (WHERE ${marketingOutbox.status} = 'uncertain')::int`,
-    }).from(campaignSends).leftJoin(marketingOutbox, and(eq(marketingOutbox.tenantId, campaignSends.tenantId), eq(marketingOutbox.campaignSendId, campaignSends.id))).where(and(eq(campaignSends.tenantId, tenantId), inArray(campaignSends.campaignId, campaignIds))).groupBy(campaignSends.campaignId);
-    return new Map(rows.flatMap((row): Array<[string, { queued: number; unresolved: number }]> => row.campaignId === null ? [] : [[row.campaignId, { queued: row.queued, unresolved: row.unresolved }]]));
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      queued: sql<number>`count(*) filter (where ${campaignSends.status} in ('pending', 'sending') and ${marketingOutbox.status} is distinct from 'uncertain')::int`,
+      unresolved: sql<number>`count(*) filter (where ${marketingOutbox.status} = 'uncertain')::int`,
+    }).from(campaignSends).leftJoin(marketingOutbox, and(
+      eq(marketingOutbox.tenantId, campaignSends.tenantId),
+      eq(marketingOutbox.campaignSendId, campaignSends.id),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, { queued: number; unresolved: number }]> =>
+      row.campaignId === null ? [] : [[row.campaignId, { queued: row.queued, unresolved: row.unresolved }]]
+    ));
   },
   claimRecipient: async (tenantId, send, events = []) => {
     try {
@@ -657,14 +715,14 @@ export const createMarketingAudienceRepository = (db: Db): MarketingAudienceRepo
     if (input.afterMemberId !== null) filters.push(gt(members.id, input.afterMemberId));
     if (input.maxMemberId !== undefined) filters.push(lte(members.id, input.maxMemberId));
     if (input.productIds.length > 0) filters.push(inArray(members.id, db.select({ memberId: productGrants.memberId }).from(productGrants).where(and(
-      eq(productGrants.tenantId, tenantId), inArray(productGrants.productId, input.productIds),
+      eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), inArray(productGrants.productId, input.productIds),
       or(isNull(productGrants.expiresAt), gt(productGrants.expiresAt, new Date().toISOString())),
     ))));
     filters.push(sql`exists (select 1 from ${marketingConsents} mc where mc.tenant_id = ${tenantId} and mc.email = lower(trim(${members.email})) and mc.definition_id = ${input.definitionId})`);
     const candidates = await db.select({ id: members.id, email: members.email, displayName: members.displayName }).from(members).where(and(...filters)).orderBy(asc(members.id)).limit(input.limit === undefined ? 100000 : Math.max(input.limit * 4, input.limit));
     const output = [];
     for (const member of candidates) {
-      const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, member.id)));
+      const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.mode, 'live'), eq(productGrants.memberId, member.id)));
       output.push({ memberId: member.id, email: normalizeEmail(member.email), displayName: member.displayName, productIds: grants.map((grant) => grant.productId) });
       if (input.limit !== undefined && output.length >= input.limit) break;
     }

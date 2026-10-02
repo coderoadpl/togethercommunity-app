@@ -2,7 +2,7 @@ import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, toEnvelope, marketingDirectoryContracts } from '#core/contract/index.js';
-import { marketingImportUploadSchema, marketingImportRemapSchema, err, validation, internal, ok, capabilitiesForPrincipal, type AppError, type Result, type ImportActor } from '#core/domain/index.js';
+import { marketingImportUploadSchema, marketingImportRemapSchema, err, validation, internal, ok, capabilitiesForPrincipal, MARKETING_IMPORT_LIMITS, type AppError, type Result, type ImportActor } from '#core/domain/index.js';
 import {
   listMarketingContacts,
   exportMarketingContacts,
@@ -29,6 +29,7 @@ import {
   cancelMarketingContactImport,
   importMarketingSuppressions,
   processMarketingContactImport,
+  processMarketingContactImportPreview,
   syncMarketingMemberContacts,
   uploadMarketingContactImport, previewMarketingContactImport,
   type Ctx, type MarketingContactDeps,
@@ -147,26 +148,38 @@ export const registerMarketingImportWorkerRoute = (app: Hono<Vars>, deps: Pick<D
     const deadlineAt = new Date(Date.parse(deps.clock.nowIso()) + 20_000).toISOString();
     const workerId = deps.ids.nextId();
     let processed = 0;
+    let failure: AppError | null = null;
     for (const tenantId of await deps.marketingDirectoryJobs.tenantIds()) {
       if (deps.clock.nowIso() >= deadlineAt) break;
       const ctx: Ctx = { identity: {
         userId: 'marketing-import-worker', email: 'worker@together.invalid', name: 'Marketing import worker', emailVerified: true, image: null,
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+        tenantAccess: 'none', tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
       }, capabilities: capabilitiesForPrincipal('operator-secret') };
       const synced = await syncMarketingMemberContacts(ctx, { deadlineAt, maxJobs: 100 }, directory);
-      if (!synced.ok) return respond(synced);
+      if (!synced.ok) failure ??= synced.error;
       for (const importId of await directory.imports.runnable(tenantId, deps.clock.nowIso())) {
         if (deps.clock.nowIso() >= deadlineAt) break;
         try {
-          const result = await processMarketingContactImport(ctx, { importId, workerId, deadlineAt, maxRows: 200 }, directory);
+          const batch = await directory.imports.findById(tenantId, importId);
+          let result = batch !== null && ['preview_queued', 'previewing'].includes(batch.status)
+            ? await processMarketingContactImportPreview(ctx, { importId, workerId, maxRows: MARKETING_IMPORT_LIMITS.previewChunkRows }, directory)
+            : await processMarketingContactImport(ctx, { importId, workerId, deadlineAt, maxRows: 200 }, directory);
           if (result.ok) processed += result.value.processed;
-          else if (result.error.code !== 'conflict') return respond(result);
+          else if (result.error.code !== 'conflict') failure ??= result.error;
+          while (result.ok && ['preview_queued', 'previewing'].includes(result.value.import.status) && deps.clock.nowIso() < deadlineAt) {
+            result = await processMarketingContactImportPreview(ctx, { importId, workerId, maxRows: MARKETING_IMPORT_LIMITS.previewChunkRows }, directory);
+            if (result.ok) processed += result.value.processed;
+            else if (result.error.code !== 'conflict') failure ??= result.error;
+          }
         } catch (error) {
           await directory.transaction.run(tenantId, async (repos) => {
             await repos.imports.lock(tenantId, importId);
             const batch = await repos.imports.findById(tenantId, importId);
-            if (batch !== null && batch.lockedBy === workerId) {
-              batch.status = 'failed'; batch.lastError = 'Infrastructure failure; unfinished rows will be retried'; batch.lockedBy = null; batch.lockedUntil = null;
+            const previewing = batch !== null && ['preview_queued', 'previewing'].includes(batch.status);
+            if (batch !== null && (previewing || batch.lockedBy === workerId)) {
+              batch.status = previewing ? 'draft' : 'failed';
+              batch.lastError = previewing ? 'Infrastructure failure; validate this file again' : 'Infrastructure failure; unfinished rows will be retried';
+              batch.lockedBy = null; batch.lockedUntil = null;
               batch.nextAttemptAt = new Date(Date.parse(deps.clock.nowIso()) + 60_000).toISOString();
               await repos.imports.save(tenantId, batch);
               await repos.directoryEvents.append(tenantId, { id: deps.ids.nextId(), tenantId, subjectKind: 'import', subjectId: batch.id, type: 'import_failed', actor: workerId, importId, payload: {}, occurredAt: deps.clock.nowIso(), createdAt: deps.clock.nowIso() });
@@ -178,6 +191,6 @@ export const registerMarketingImportWorkerRoute = (app: Hono<Vars>, deps: Pick<D
       }
       if (deps.clock.nowIso() < deadlineAt) await directory.imports.purgeStaging(tenantId, deps.clock.nowIso());
     }
-    return respond(ok({ processed }));
+    return failure === null ? respond(ok({ processed })) : respond(err(failure));
   });
 };

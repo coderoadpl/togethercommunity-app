@@ -32,6 +32,7 @@ const billing = {
 };
 
 const order = (billingSnapshot: OrderListItem['billing'] = billing): OrderListItem => ({
+  mode: 'live',
   id: 'order-1',
   tenantId: 'tenant-1',
   memberId: 'member-1',
@@ -153,6 +154,7 @@ const harness = (options: {
       findSettings: async () => ({
         name: 'Acme',
         socialLinks: [],
+        signInNotice: { enabled: false, text: '' },
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         bunnyStreamCdnHostname: null,
@@ -269,6 +271,7 @@ const ctx = {
     email: 'owner@example.com',
     name: 'Owner',
     emailVerified: true,
+    tenantAccess: 'staff' as const,
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',
@@ -727,7 +730,7 @@ describe('dispatchAutoInvoiceJobs', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(rescheduled).toEqual([{
       nextAttemptAt: '2026-07-27T10:01:00.000Z',
-      error: 'Error: database unavailable',
+      error: 'database unavailable',
     }]);
   });
 });

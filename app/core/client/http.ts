@@ -1,3 +1,6 @@
+import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
+import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
+import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
 import type { MarketingCampaignAudienceInput } from '#core/contract/index.js';
 import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketingWorkerOutputSchema } from '#core/contract/index.js';
 import { type z } from 'zod';
@@ -5,6 +8,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   marketingDirectoryContracts,
+  marketingSignupContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -170,6 +174,8 @@ import {
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
+  stripeTestSessionOutputSchema,
+  stripeTestRemoveOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
@@ -467,6 +473,14 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
+    request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
+  getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
+  createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),
+  updateMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.updateMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.updateMarketingSignupForm.output, input, signal),
   uploadMarketingContactImport: (input: z.input<typeof marketingDirectoryContracts.uploadMarketingContactImport.input>, signal?: AbortSignal) => {
     const form = new FormData();
     form.append('file', new Blob([input.csv], { type: 'text/csv' }), input.metadata.fileName);
@@ -694,6 +708,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
+    if (input.recipient !== undefined) params.set('recipient', input.recipient);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -711,6 +726,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams();
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.includeIdle !== undefined) params.set('includeIdle', String(input.includeIdle));
     if (input.since !== undefined) params.set('since', input.since);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -737,6 +754,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     const params = new URLSearchParams();
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.since !== undefined) params.set('since', input.since);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -782,6 +800,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
+    if (input.recipient !== undefined) params.set('recipient', input.recipient);
     if (input.search !== undefined) params.set('search', input.search);
     return request(
       options,
@@ -904,6 +923,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  removeStripeTestMode: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.stripeTestRemove.method, API_ROUTES.stripeTestRemove.path, stripeTestRemoveOutputSchema, {}, signal),
+  setStripeTestSession: (input: { enabled: boolean }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.stripeTestSession.method, API_ROUTES.stripeTestSession.path,
+      stripeTestSessionOutputSchema, input, signal),
   createCheckoutSession: (input: CheckoutSessionRequest, signal?: AbortSignal) =>
     request(
       options,
@@ -1097,6 +1121,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   listOrders: (input: OrdersListQueryInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
+    if (input.mode !== undefined) params.set('mode', input.mode);
     if (input.status !== undefined) params.set('status', input.status);
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
@@ -2362,6 +2387,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  adoptStripeSubscription: (input: AdoptStripeSubscriptionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.adoptStripeSubscription.method, API_ROUTES.adoptStripeSubscription.path, adoptStripeSubscriptionOutputSchema, input, signal),
+  m2mAdoptStripeSubscription: (input: AdoptStripeSubscriptionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.m2mAdoptStripeSubscription.method, API_ROUTES.m2mAdoptStripeSubscription.path, adoptStripeSubscriptionOutputSchema, input, signal),
+  listStripeSubscriptions: (input: ListStripeSubscriptionsInput = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (input.status !== undefined) query.set('status', input.status);
+    if (input.unadopted !== undefined) query.set('unadopted', String(input.unadopted));
+    if (input.startingAfter !== undefined) query.set('startingAfter', input.startingAfter);
+    return request(options, API_ROUTES.listStripeSubscriptions.method, `${API_ROUTES.listStripeSubscriptions.path}?${query}`, listStripeSubscriptionsOutputSchema, undefined, signal);
+  },
+  m2mListStripeSubscriptions: (input: ListStripeSubscriptionsInput = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (input.status !== undefined) query.set('status', input.status);
+    if (input.unadopted !== undefined) query.set('unadopted', String(input.unadopted));
+    if (input.startingAfter !== undefined) query.set('startingAfter', input.startingAfter);
+    return request(options, API_ROUTES.m2mListStripeSubscriptions.method, `${API_ROUTES.m2mListStripeSubscriptions.path}?${query}`, listStripeSubscriptionsOutputSchema, undefined, signal);
+  },
   m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>
     request(options, API_ROUTES.m2mEnroll.method, API_ROUTES.m2mEnroll.path, m2mEnrollOutputSchema, input, signal),
   sendM2mTransactionalMessage: (input: M2mTransactionalMessageRequest, signal?: AbortSignal) =>

@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Button, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
+import { Alert, Box, Button, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
 import { alpha, styled, type CSSObject, type PaletteMode, type Theme } from '@mui/material/styles';
 
 const GLOW_OPACITY: Record<PaletteMode, number> = { light: 0.5, dark: 0.22 };
@@ -189,12 +189,11 @@ export const AuthMethodList = styled('ul')({
 });
 
 export const AuthMethodCard = styled('li', {
-  shouldForwardProp: (prop) => prop !== 'featured' && prop !== 'unavailable',
-})<{ featured?: boolean; unavailable?: boolean }>(({ theme, featured, unavailable }) => ({
+  shouldForwardProp: (prop) => prop !== 'featured',
+})<{ featured?: boolean }>(({ theme, featured }) => ({
   borderRadius: 14,
   backgroundColor: theme.palette.background.paper,
   border: `1px solid ${featured === true ? authRing(theme) : theme.borderInput ?? theme.palette.divider}`,
-  ...(unavailable === true ? { opacity: 0.58 } : {}),
 }));
 
 const methodHead: CSSObject = {
@@ -340,3 +339,8 @@ export const AuthPasskeyLink = styled(Button)(({ theme }) => ({
   fontWeight: 600,
   '& .MuiSvgIcon-root': { fontSize: '1.25rem' },
 }));
+
+export const AuthNotice = styled(Alert)({
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+});

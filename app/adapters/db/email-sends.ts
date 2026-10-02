@@ -56,6 +56,7 @@ const transactionalProjection = (
     kind: 'transactional',
     recipient: row.to,
     subject: rendered.data.subject,
+    sourceKind: rendered.payload.kind,
     source: row.kind,
     sourceApp: row.sourceApp,
     status: row.status,
@@ -83,6 +84,7 @@ const marketingProjection = (
   kind: 'marketing',
   recipient: send.email,
   subject: send.subject,
+  sourceKind: 'marketing-campaign',
   source: send.source,
   sourceApp: null,
   status: send.status,
@@ -108,7 +110,8 @@ const transactionalRows = async (
   cursor: Cursor | undefined,
   sendId?: string,
 ): Promise<EmailSendProjection[]> => {
-  if (query.kind === 'marketing' || (query.status !== undefined && !transactionalStatus(query.status)) || query.campaignId !== undefined || query.contactId !== undefined) return [];
+  if (query.kind === 'marketing' || (query.status !== undefined && !transactionalStatus(query.status)) || query.campaignId !== undefined) return [];
+  if (query.contactId !== undefined && query.recipient === undefined) return [];
   const filters: SQL[] = [eq(emailOutbox.tenantId, tenantId)];
   if (sendId !== undefined) filters.push(eq(emailOutbox.id, sendId));
   if (query.status !== undefined) filters.push(eq(emailOutbox.status, query.status));
@@ -122,6 +125,7 @@ const transactionalRows = async (
       and ${emailEvents.refId} = ${emailOutbox.id}
       and ${emailEvents.meta}->>'runId' = ${query.runId}
   )`);
+  if (query.recipient !== undefined) filters.push(sql`lower(btrim(${emailOutbox.to})) = ${query.recipient}`);
   if (query.search !== undefined) filters.push(ilike(emailOutbox.to, `%${query.search}%`));
   if (cursor !== undefined) filters.push(beforeCursor(emailOutbox.createdAt, emailOutbox.id, 'transactional', cursor));
   const rows = await db.select().from(emailOutbox)
@@ -151,6 +155,7 @@ const marketingRows = async (
   if (query.contactId !== undefined) filters.push(eq(campaignSends.contactId, query.contactId));
   if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));
   if (query.runId !== undefined) filters.push(eq(campaignSends.runId, query.runId));
+  if (query.recipient !== undefined && query.contactId === undefined) filters.push(eq(campaignSends.email, query.recipient));
   if (query.search !== undefined) filters.push(ilike(campaignSends.email, `%${normalizeEmail(query.search)}%`));
   if (cursor !== undefined) filters.push(beforeCursor(campaignSends.createdAt, campaignSends.id, 'marketing', cursor));
   const rows = await db.select({ send: campaignSends, campaignName: campaigns.name })

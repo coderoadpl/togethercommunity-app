@@ -88,6 +88,7 @@ const requireMarketing = (deps: AppDeps): Result<MarketingAppDeps, AppError> => 
 const apiIdentity = (tenant: Tenant): Identity => ({
   userId: 'api-key', email: 'api-key@together.invalid', name: 'Automation API', emailVerified: true,
   image: null,
+  tenantAccess: 'none',
   tenantId: tenant.id, tenantSlug: tenant.slug, tenantName: tenant.name,
   staffRole: null, memberId: null, memberDisplayName: null, memberBannedAt: null,
   memberDmOptOutAt: null,
@@ -733,18 +734,18 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
-    const result = await confirmMarketingConsent(tokenCtx(resolved.value.tenant), {
+    const tenant = resolved.value.tenant;
+    const result = await marketing.value.confirmationTransaction.run(tenant.id, (repos) => confirmMarketingConsent(tokenCtx(tenant), {
       token,
       evidence: {
         collectedAt: deps.clock.nowIso(),
         ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
       },
     }, {
-      confirmations: marketing.value.confirmations,
-      consents: marketing.value.marketingConsents,
+      ...repos,
       ids: deps.ids,
       clock: deps.clock,
-    });
+    }));
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     return html(renderConfirmationPage({
       nonce: pageNonce(c),

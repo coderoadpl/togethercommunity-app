@@ -40,9 +40,11 @@ derives the same number, on any machine, in any checkout order.
 
 ## Where the number surfaces
 
-`vercel-build` derives the version and writes it into that build's copy of
-`app/package.json` before migrating and building. The manifest is already the
-single version source every surface reads, so nothing else has to be rewired:
+On the first `vercel-build` invocation per deployment, the version is derived
+and written into that build's copy of `app/package.json` before migrations and
+the build run. Later invocations reuse the artifact only after verifying its
+entry hash and derived manifest version. The manifest is already the single
+version source every surface reads, so nothing else has to be rewired:
 
 - `/api/health` version and the OpenTelemetry service version;
 - the browser build stamp `vX.Y.Z (<sha>)` in the footer and on the login

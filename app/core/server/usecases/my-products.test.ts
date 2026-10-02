@@ -11,6 +11,7 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
   email: 'buyer@together.dev',
   name: 'Buyer',
   emailVerified: true,
+  tenantAccess: tenantId === null ? 'none' : 'member',
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme' : null,
@@ -42,6 +43,7 @@ const granted: Product = {
 };
 
 const memberGrant = (overrides: Partial<MemberGrant> = {}): MemberGrant => ({
+  mode: 'live',
   id: 'g1',
   productId: 'p1',
   productName: 'Granted Course',
@@ -57,6 +59,7 @@ const clock: Clock = { nowIso: () => '2026-07-15T00:00:00.000Z' };
 const subscriptions = {
   findById: async () => null,
   findByProviderSubscriptionId: async () => null,
+  listKnownProviderSubscriptionIds: async () => [],
   listForMember: async () => [],
   create: async () => undefined,
   update: async () => null,
@@ -208,6 +211,6 @@ describe('listMyProducts', () => {
       downloadAssets,
       prices,
     });
-    expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

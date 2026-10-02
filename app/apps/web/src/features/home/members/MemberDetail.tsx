@@ -5,6 +5,7 @@ import {
   Chip,
   FormControl,
   FormLabel,
+  InputLabel,
   LinearProgress,
   Link as MuiLink,
   MenuItem,
@@ -24,13 +25,16 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type {
-  GrantSource,
-  MemberCourseLearningSummary,
-  MemberTimelineEvent,
-  MemberGrant,
-  MemberWithProductIds,
+import {
+  isRedactedAuthEmailKind,
+  type GrantSource,
+  type MemberCourseLearningSummary,
+  type MemberTimelineEvent,
+  type MemberGrant,
+  type MemberWithProductIds,
 } from '#core/domain/index.js';
+
+import { AdoptStripeSubscriptionDialog } from './AdoptStripeSubscriptionDialog.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -38,7 +42,7 @@ import { localizePanelError, useLanguage, useTranslations, type Messages } from 
 import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
-import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
+import { EmailSendSummary, sourceKindLabel } from '../marketing/EmailSendSummary.js';
 import { MessageMemberButton } from './MessageMemberButton.js';
 import { ViewAsMemberButton } from './ViewAsMemberButton.js';
 import { PanelBackLink } from '../PanelBackLink.js';
@@ -159,7 +163,7 @@ const AccountSummary = ({ member }: { member: MemberWithProductIds }) => {
   );
 };
 
-const CommerceSummary = ({ memberId }: { memberId: string }) => {
+const CommerceSummary = ({ memberId, mode }: { memberId: string; mode: 'all' | 'live' | 'test' }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const commerce = useQuery(actions.memberCommerce(memberId));
@@ -190,7 +194,7 @@ const CommerceSummary = ({ memberId }: { memberId: string }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {commerce.data.purchases.map((purchase) => (
+                {commerce.data.purchases.filter((purchase) => mode === 'all' || purchase.mode === mode).map((purchase) => (
                   <TableRow key={purchase.id} data-testid="member-purchase-row">
                     <TableCell>
                       <MuiLink
@@ -200,7 +204,7 @@ const CommerceSummary = ({ memberId }: { memberId: string }) => {
                         {formatDateTime(purchase.createdAt, language)}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{purchase.productTitle}</TableCell>
+                    <TableCell>{purchase.productTitle} {purchase.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                     <TableCell>{formatPrice(purchase.amountCents, purchase.currency, language)}</TableCell>
                     <TableCell>{t.sales[purchase.status]}</TableCell>
                   </TableRow>
@@ -229,9 +233,9 @@ const CommerceSummary = ({ memberId }: { memberId: string }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {commerce.data.activeSubscriptions.map((subscription) => (
+                {commerce.data.activeSubscriptions.filter((subscription) => mode === 'all' || subscription.mode === mode).map((subscription) => (
                   <TableRow key={subscription.id} data-testid="member-subscription-row">
-                    <TableCell>{subscription.productTitle}</TableCell>
+                    <TableCell>{subscription.productTitle} {subscription.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                     <TableCell>
                       <Stack useFlexGap spacing="0.25rem">
                         <Chip
@@ -269,6 +273,8 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         amount: formatPrice(event.payload.amountCents, event.payload.currency, language),
         status: t.sales[event.payload.status],
       });
+    case 'subscription-adopted':
+      return t.members.timelineAdoption({ product });
     case 'subscription-change':
       return t.members.timelineSubscription({
         product,
@@ -284,8 +290,14 @@ const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl'
         course: event.payload.courseTitle ?? t.members.timelineUnavailableCourse,
         lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
       });
+    case 'sign-in':
+      return '';
     case 'email-sent':
-      return t.members.timelineEmail({ subject: event.payload.subject });
+      return t.members.timelineEmail({
+        subject: isRedactedAuthEmailKind(event.payload.source)
+          ? sourceKindLabel(event.payload.source, t)
+          : event.payload.subject,
+      });
     case 'banned':
       return t.members.timelineBan({ reason: event.payload.reason ?? '—' });
     case 'unbanned':
@@ -518,6 +530,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const grants = useQuery(actions.memberGrants(member.id));
+  const [mode, setMode] = useState<'all' | 'live' | 'test'>('all');
   const [tab, setTab] = useState<'overview' | 'emails'>('overview');
   const emails = useQuery({
     ...actions.memberEmailSends(member.id),
@@ -592,7 +605,17 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
       ) : (
         <>
           <AccountSummary member={member} />
-          <CommerceSummary memberId={member.id} />
+          <FormControl size="small" sx={{ alignSelf: 'flex-start', minWidth: '12rem' }}>
+            <InputLabel id="member-payment-mode-label">{t.sales.mode}</InputLabel>
+            <Select labelId="member-payment-mode-label" label={t.sales.mode} value={mode} onChange={(event) => {
+              const value = event.target.value; setMode(value === 'live' || value === 'test' ? value : 'all');
+            }}>
+              <MenuItem value="all">{t.sales.all}</MenuItem>
+              <MenuItem value="live">{t.integrations.stripeLiveMode}</MenuItem>
+              <MenuItem value="test">{t.integrations.stripeTestMode}</MenuItem>
+            </Select>
+          </FormControl>
+          <CommerceSummary mode={mode} memberId={member.id} />
           <MemberTimeline memberId={member.id} />
           {member.deletedAt === null ? (
             <SectionCard title={t.members.moderationHeading}>
@@ -623,7 +646,10 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           <LearningSummary memberId={member.id} />
 
           {member.deletedAt === null ? (
-            <GrantForm memberId={member.id} onGranted={refresh} />
+            <>
+              <GrantForm memberId={member.id} onGranted={refresh} />
+              <AdoptStripeSubscriptionDialog memberId={member.id} onAdopted={refresh} />
+            </>
           ) : (
             <StatusView
               state={{ kind: 'empty', title: t.members.tombstoneNotice }}
@@ -654,9 +680,9 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {grants.data.grants.map((grant) => (
+                    {grants.data.grants.filter((grant) => mode === 'all' || grant.mode === mode).map((grant) => (
                       <TableRow key={grant.id} data-testid="grant-row">
-                        <TableCell>{grant.productName}</TableCell>
+                        <TableCell>{grant.productName} {grant.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                         <TableCell>
                           {formatDate(grant.startsAt, language)} –{' '}
                           {grant.expiresAt === null
@@ -678,7 +704,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
                             spacing="0.4rem"
                             sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
                           >
-                            {member.deletedAt === null ? (
+                            {member.deletedAt === null && grant.mode === 'live' ? (
                               <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
                             ) : null}
                             <Button

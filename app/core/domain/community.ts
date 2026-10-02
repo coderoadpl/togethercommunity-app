@@ -11,6 +11,8 @@ export const postBodyFormatSchema = z.enum(['plain', 'markdown']);
 
 export type PostBodyFormat = z.output<typeof postBodyFormatSchema>;
 
+export const POST_BODY_MAX_LENGTH = 5000;
+
 export const postSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
@@ -22,7 +24,7 @@ export const postSchema = z.object({
   authorDisplay: z.string().trim().min(1),
   // Default keeps rows persisted before this field existed parseable.
   authorIsStaff: z.boolean().default(false),
-  body: z.string().min(1).max(5000),
+  body: z.string().min(1).max(POST_BODY_MAX_LENGTH),
   bodyFormat: postBodyFormatSchema.default('plain'),
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
@@ -52,13 +54,13 @@ export const createPostInputSchema = z.object({
   contextKind: postContextKindSchema,
   contextId: z.string().min(1),
   parentPostId: z.string().min(1).optional(),
-  body: z.string().min(1).max(5000),
+  body: z.string().min(1).max(POST_BODY_MAX_LENGTH),
   bodyFormat: postBodyFormatSchema.default('plain'),
 });
 
 export const updatePostInputSchema = z.object({
   id: z.string().min(1),
-  body: z.string().min(1).max(5000),
+  body: z.string().min(1).max(POST_BODY_MAX_LENGTH),
   bodyFormat: postBodyFormatSchema.optional(),
 });
 

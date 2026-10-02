@@ -54,6 +54,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: pnpm install --frozen-lockfile
+      - name: Check branch ruleset drift after workflow changes
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git -C .. fetch --no-tags --depth=1 origin "$BASE_SHA"
+          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"
+          if [ -n "$changed" ]; then
+            pnpm run rulesets-drift -- --mode=pull-request
+          else
+            echo "No workflow changes; ruleset drift check skipped"
+          fi
       - run: pnpm run db:migrate
       - run: TOGETHER_TEST_SERIAL=1 pnpm run check
       - name: pnpm audit --prod --audit-level=moderate
@@ -158,7 +172,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -195,12 +209,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - if: matrix.suite == 'auth' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain'
+      - if: matrix.suite == 'auth' || matrix.suite == 'marketing' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain'
         id: setup-chrome
         uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
-      - if: matrix.suite == 'auth' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain'
+      - if: matrix.suite == 'auth' || matrix.suite == 'marketing' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain'
         run: '"$CHROME_PATH" --version'
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}

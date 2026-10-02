@@ -30,6 +30,7 @@ const context = (overrides: Partial<Ctx['identity']> = {}): Ctx => ({
     email: member.email,
     name: 'Member',
     emailVerified: true,
+    tenantAccess: 'member',
     tenantId: 'tenant-1',
     tenantSlug: 'acme',
     tenantName: 'Acme',

@@ -84,6 +84,7 @@ export const listMyProducts = async (
 
   const bestGrantByProduct = new Map<string, MemberGrant>();
   for (const grant of grants) {
+    if (grant.mode === 'test') continue;
     const current = bestGrantByProduct.get(grant.productId);
     bestGrantByProduct.set(
       grant.productId,
@@ -93,6 +94,7 @@ export const listMyProducts = async (
 
   const subscriptionByProduct = new Map<string, MemberSubscription>();
   for (const subscription of subscriptions) {
+    if (subscription.mode === 'test') continue;
     const current = subscriptionByProduct.get(subscription.productId);
     if (!current || subscription.updatedAt >= current.updatedAt) {
       subscriptionByProduct.set(subscription.productId, subscription);

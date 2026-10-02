@@ -16,6 +16,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
   email: 'staff@example.test',
   name: 'Staff',
   emailVerified: true,
+  tenantAccess: staffRole === null ? 'member' : 'staff',
   tenantId: 'tenant-1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',
@@ -35,6 +36,7 @@ const sends: EmailSendProjection[] = [
     tenantId: 'tenant-1',
     kind: 'marketing',
     recipient: '=member@example.test',
+    sourceKind: 'marketing-campaign',
     subject: 'Launch, today',
     source: 'broadcast',
     sourceApp: null,
@@ -56,6 +58,7 @@ const sends: EmailSendProjection[] = [
     tenantId: 'tenant-1',
     kind: 'transactional',
     recipient: 'member@example.test',
+    sourceKind: 'welcome-sign-in',
     subject: 'Welcome',
     source: 'welcome-sign-in',
     sourceApp: 'orders-app',
@@ -71,6 +74,28 @@ const sends: EmailSendProjection[] = [
     sesMessageId: 'ses-2',
     createdAt: '2026-07-24T10:00:00.000Z',
     sentAt: '2026-07-24T10:01:00.000Z',
+  },
+  {
+    id: 'auth-1',
+    tenantId: 'tenant-1',
+    kind: 'transactional',
+    recipient: 'member@example.test',
+    sourceKind: 'auth-magic-link',
+    subject: 'auth-magic-link',
+    source: 'auth-magic-link',
+    sourceApp: null,
+    status: 'sent',
+    skipReason: null,
+    failureCode: null,
+    failureMessage: null,
+    deliveryStatus: null,
+    deliveryOccurredAt: null,
+    transport: 'platform',
+    campaignId: null,
+    campaignName: null,
+    sesMessageId: 'ses-auth-1',
+    createdAt: '2026-07-23T10:00:00.000Z',
+    sentAt: '2026-07-23T10:00:02.000Z',
   },
 ];
 
@@ -102,7 +127,7 @@ describe('email send observability use-cases', () => {
     const listed = await listEmailSends(identity(), { kind: 'marketing', limit: 25 }, { sends: repository });
     expect(listed.ok).toBe(true);
     if (!listed.ok) return;
-    expect(listed.value.sends.map((send) => send.id)).toEqual(['marketing-1', 'transactional-1']);
+    expect(listed.value.sends.map((send) => send.id)).toEqual(['marketing-1', 'transactional-1', 'auth-1']);
     expect(queries).toEqual([{ kind: 'marketing', limit: 25 }]);
 
     const detail = await getEmailSend(identity(), { kind: 'marketing', id: 'marketing-1' }, {
@@ -169,10 +194,11 @@ describe('email send observability use-cases', () => {
     if (!result.ok) return;
     expect(queries.at(-1)).toMatchObject({ runId: 'scheduler-run-1' });
     expect(result.value.content.split('\n')[0]).toBe(
-      'kind,recipient,subject,status,delivery_status,transport,campaign,source,source_app,sent_at,created_at',
+      'kind,source_kind,recipient,subject,status,delivery_status,transport,campaign,source,source_app,sent_at,created_at',
     );
     expect(result.value.content).toContain('"\'=member@example.test"');
     expect(result.value.content).toContain('"Launch, today"');
     expect(result.value.content).toContain('"orders-app"');
+    expect(result.value.content).toContain('"transactional","auth-magic-link","member@example.test","","sent"');
   });
 });

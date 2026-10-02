@@ -43,6 +43,7 @@ interface Hoisted {
   getTenantRouting: ReturnType<typeof vi.fn>;
   getTenantRedirects: ReturnType<typeof vi.fn>;
   createTenantRedirect: ReturnType<typeof vi.fn>;
+  updateTenantRedirect: ReturnType<typeof vi.fn>;
   purgePost: ReturnType<typeof vi.fn>;
   deleteTenantRedirect: ReturnType<typeof vi.fn>;
 }
@@ -88,6 +89,7 @@ const h = vi.hoisted(
     getTenantRouting: vi.fn(),
     getTenantRedirects: vi.fn(),
     createTenantRedirect: vi.fn(),
+    updateTenantRedirect: vi.fn(),
     deleteTenantRedirect: vi.fn(),
     purgePost: vi.fn(),
   }),
@@ -156,6 +158,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getTenantRouting: h.getTenantRouting,
     getTenantRedirects: h.getTenantRedirects,
     createTenantRedirect: h.createTenantRedirect,
+    updateTenantRedirect: h.updateTenantRedirect,
     deleteTenantRedirect: h.deleteTenantRedirect,
     purgePost: h.purgePost,
   }),
@@ -179,7 +182,11 @@ const redirectFixture = {
   targetKind: 'course' as const,
   targetId: 'course-js',
   targetPath: '/my/courses/course-js',
+  targetAnchor: null,
   permanent: true,
+  locked: false,
+  hitCount: 0,
+  lastHitAt: null,
   origin: 'import' as const,
   createdBy: null,
   createdAt: '1998-08-14T10:00:00.000Z',
@@ -255,6 +262,8 @@ beforeEach(() => {
   h.getTenantRedirects.mockResolvedValue(ok({ redirects: [redirectFixture], total: 1 }));
   h.createTenantRedirect.mockReset();
   h.createTenantRedirect.mockResolvedValue(ok({ redirect: redirectFixture }));
+  h.updateTenantRedirect.mockReset();
+  h.updateTenantRedirect.mockResolvedValue(ok({ redirect: redirectFixture }));
   h.purgePost.mockReset().mockResolvedValue(ok({ id: 'post-1' }));
   h.deleteTenantRedirect.mockReset();
   h.deleteTenantRedirect.mockResolvedValue(ok({ id: redirectFixture.id }));
@@ -640,6 +649,7 @@ describe('redirect commands', () => {
       fromPath: '/legacy/one',
       target: { kind: 'lesson', courseId: 'course-js', lessonId: 'lesson-1' },
       permanent: true,
+      locked: false,
     });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith(
       'created redirect /legacy/one -> /my/courses/course-js (redirect-legacy)',
@@ -653,6 +663,27 @@ describe('redirect commands', () => {
       fromPath: '/legacy/two',
       target: { kind: 'path', path: '/my' },
       permanent: false,
+      locked: false,
+    });
+    expect(soleJson()).toMatchObject({ ok: true, data: { redirect: { id: 'redirect-legacy' } } });
+  });
+
+  it('retargets a locked redirect to a lesson anchor', async () => {
+    await run(
+      '--json', 'redirect', 'update', 'redirect-legacy',
+      '--course', 'course-js', '--lesson', 'lesson-1', '--anchor', 'wiring', '--locked',
+    );
+
+    expect(h.updateTenantRedirect).toHaveBeenCalledExactlyOnceWith({
+      id: 'redirect-legacy',
+      target: {
+        kind: 'lesson',
+        courseId: 'course-js',
+        lessonId: 'lesson-1',
+        anchor: 'wiring',
+      },
+      permanent: true,
+      locked: true,
     });
     expect(soleJson()).toMatchObject({ ok: true, data: { redirect: { id: 'redirect-legacy' } } });
   });

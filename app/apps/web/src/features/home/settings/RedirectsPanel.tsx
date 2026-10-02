@@ -24,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   normalizeRedirectPath,
+  headingIds,
   TENANT_REDIRECT_PAGE_SIZE,
   type CourseModule,
   type TenantRedirect,
@@ -40,7 +41,9 @@ import {
 } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useToast } from '../../../components/ui/Toast.js';
-import { localizePanelError, useTranslations } from '../../../i18n/index.js';
+import { lessonHeadingDocument } from '../../../components/ui/lesson-heading-document.js';
+import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { PathText } from '../../../theme.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
@@ -62,8 +65,24 @@ const courseLessonIds = (modules: CourseModule[], courseId: string): Set<string>
   return ids;
 };
 
-const AddRedirectForm = ({ onCreated, onCancel }: {
-  onCreated: (fromPath: string) => void;
+const existingTargetKind = (redirect: TenantRedirect | null): TargetKind =>
+  redirect?.targetKind === 'lesson'
+    ? 'lesson'
+    : redirect?.targetKind === 'course' || redirect?.targetKind === 'module-as-course'
+      ? 'course'
+      : 'path';
+
+const existingCourseId = (redirect: TenantRedirect | null): string => {
+  if (redirect === null || redirect.targetKind === 'path') {
+    return '';
+  }
+  const [, , , courseId] = redirect.targetPath.split('/');
+  return courseId === undefined ? '' : decodeURIComponent(courseId);
+};
+
+const RedirectForm = ({ existing, onSaved, onCancel }: {
+  existing: TenantRedirect | null;
+  onSaved: (fromPath: string) => void;
   onCancel: () => void;
 }) => {
   const t = useTranslations();
@@ -73,12 +92,15 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
   const create = useMutation(actions.createTenantRedirect);
-  const [fromPath, setFromPath] = useState('');
-  const [targetKind, setTargetKind] = useState<TargetKind>('course');
-  const [courseId, setCourseId] = useState('');
-  const [lessonId, setLessonId] = useState('');
-  const [targetPath, setTargetPath] = useState('');
-  const [permanent, setPermanent] = useState(false);
+  const update = useMutation(actions.updateTenantRedirect);
+  const [fromPath, setFromPath] = useState(existing?.fromPath ?? '');
+  const [targetKind, setTargetKind] = useState<TargetKind>(existingTargetKind(existing));
+  const [courseId, setCourseId] = useState(existingCourseId(existing));
+  const [lessonId, setLessonId] = useState(existing?.targetKind === 'lesson' ? existing.targetId ?? '' : '');
+  const [targetPath, setTargetPath] = useState(existingTargetKind(existing) === 'path' ? existing?.targetPath ?? '' : '');
+  const [anchor, setAnchor] = useState(existing?.targetAnchor ?? '');
+  const [permanent, setPermanent] = useState(existing?.permanent ?? false);
+  const [locked, setLocked] = useState(existing?.locked ?? false);
 
   const courseOptions = courses.data?.courses ?? [];
   const lessonOptions = useMemo(() => {
@@ -86,13 +108,27 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
     const ids = courseLessonIds(modules.data.modules, courseId);
     return lessons.data.lessons.filter((lesson) => ids.has(lesson.id));
   }, [modules.data, lessons.data, courseId]);
+  const anchorOptions = useMemo(() => {
+    const selected = lessons.data?.lessons.find((lesson) => lesson.id === lessonId);
+    if (selected === undefined) return [];
+    return lessonHeadingDocument(
+      selected.contents.flatMap((content) => content.type === 'html' ? [content.html] : []),
+      headingIds,
+    ).headings;
+  }, [lessons.data, lessonId]);
+  const storedAnchorMissing = anchor !== '' && !anchorOptions.some((option) => option.id === anchor);
 
   const preview = fromPath.trim().length === 0 ? null : normalizeRedirectPath(fromPath);
 
   const target = () => {
     if (targetKind === 'path') return { kind: 'path' as const, path: targetPath.trim() };
     if (targetKind === 'course') return { kind: 'course' as const, courseId };
-    return { kind: 'lesson' as const, courseId, lessonId };
+    return {
+      kind: 'lesson' as const,
+      courseId,
+      lessonId,
+      ...(anchor === '' ? {} : { anchor }),
+    };
   };
 
   const ready = preview !== null
@@ -105,12 +141,11 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
-      const created = await create.mutateAsync({ fromPath, target: target(), permanent });
+      const saved = existing === null
+        ? await create.mutateAsync({ fromPath, target: target(), permanent, locked })
+        : await update.mutateAsync({ id: existing.id, target: target(), permanent, locked });
       await queryClient.invalidateQueries(actions.tenantRedirectsInvalidates());
-      setFromPath('');
-      setTargetPath('');
-      setLessonId('');
-      onCreated(created.redirect.fromPath);
+      onSaved(saved.redirect.fromPath);
     } catch (cause) {
       toast.error(localizePanelError(cause, t));
     }
@@ -118,16 +153,18 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
 
   return (
     <SectionCard
-      title={t.redirects.addHeading}
+      title={existing === null ? t.redirects.addHeading : t.redirects.editHeading}
       onSubmit={(event) => void submit(event)}
-      data-testid="redirect-add"
+      data-testid={existing === null ? 'redirect-add' : 'redirect-edit'}
       actions={(
         <>
-          <Button type="button" onClick={onCancel} disabled={create.isPending}>
+          <Button type="button" onClick={onCancel} disabled={create.isPending || update.isPending}>
             {t.common.cancel}
           </Button>
-          <Button type="submit" variant="contained" disabled={!ready || create.isPending}>
-            {create.isPending ? t.redirects.submitting : t.redirects.submit}
+          <Button type="submit" variant="contained" disabled={!ready || create.isPending || update.isPending}>
+            {create.isPending || update.isPending
+              ? t.redirects.submitting
+              : existing === null ? t.redirects.submit : t.redirects.save}
           </Button>
         </>
       )}
@@ -138,6 +175,7 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
         onChange={(event) => setFromPath(event.target.value)}
         helperText={t.redirects.addSourceHint}
         slotProps={{ htmlInput: { 'data-testid': 'redirect-from-path' } }}
+        disabled={existing !== null}
         fullWidth
       />
       {preview === null ? null : (
@@ -181,6 +219,7 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
               onChange={(event) => {
                 setCourseId(event.target.value);
                 setLessonId('');
+                setAnchor('');
               }}
             >
               {courseOptions.map((course) => (
@@ -200,7 +239,10 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
                   label={t.redirects.targetLessonLabel}
                   value={lessonId}
                   data-testid="redirect-target-lesson"
-                  onChange={(event) => setLessonId(event.target.value)}
+                  onChange={(event) => {
+                    setLessonId(event.target.value);
+                    setAnchor('');
+                  }}
                 >
                   {lessonOptions.map((lesson) => (
                     <MenuItem key={lesson.id} value={lesson.id}>{lesson.name}</MenuItem>
@@ -209,6 +251,26 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
               </FormControl>
               {courseId !== '' && lessonOptions.length === 0 && lessons.isSuccess ? (
                 <Typography variant="body2">{t.redirects.lessonsEmpty}</Typography>
+              ) : null}
+              {lessonId !== '' ? (
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="redirect-anchor-label">{t.redirects.anchorLabel}</InputLabel>
+                  <Select
+                    labelId="redirect-anchor-label"
+                    label={t.redirects.anchorLabel}
+                    value={anchor}
+                    data-testid="redirect-target-anchor"
+                    onChange={(event) => setAnchor(event.target.value)}
+                  >
+                    <MenuItem value="">{t.redirects.anchorNone}</MenuItem>
+                    {storedAnchorMissing ? <MenuItem value={anchor}>{`#${anchor}`}</MenuItem> : null}
+                    {anchorOptions.map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.text === '' ? option.id : `${option.text} (#${option.id})`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               ) : null}
             </>
           ) : null}
@@ -226,17 +288,31 @@ const AddRedirectForm = ({ onCreated, onCancel }: {
         label={t.redirects.permanentLabel}
       />
       <Typography variant="caption" color="text.secondary">{t.redirects.permanentHint}</Typography>
+      <FormControlLabel
+        control={(
+          <Switch
+            checked={locked}
+            onChange={(event) => setLocked(event.target.checked)}
+            slotProps={{ input: { 'aria-label': t.redirects.lockedLabel } }}
+            data-testid="redirect-locked"
+          />
+        )}
+        label={t.redirects.lockedLabel}
+      />
+      <Typography variant="caption" color="text.secondary">{t.redirects.lockedHint}</Typography>
     </SectionCard>
   );
 };
 
 export const RedirectsPanel = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<TenantRedirect | null>(null);
   const [pending, setPending] = useState<TenantRedirect | null>(null);
   const debouncedSearch = useDebouncedValue(search);
   const remove = useMutation(actions.deleteTenantRedirect);
@@ -270,14 +346,21 @@ export const RedirectsPanel = () => {
       description={t.redirects.description}
       backTo={<PanelBackLink to="/panel/settings">{t.redirects.backToSettings}</PanelBackLink>}
     >
-      {adding ? (
-        <AddRedirectForm
-          onCreated={(fromPath) => {
-            toast.success(t.redirects.created({ fromPath }));
+      {adding || editing !== null ? (
+        <RedirectForm
+          existing={editing}
+          onSaved={(fromPath) => {
+            toast.success(editing === null
+              ? t.redirects.created({ fromPath })
+              : t.redirects.updated({ fromPath }));
             setPage(0);
             setAdding(false);
+            setEditing(null);
           }}
-          onCancel={() => setAdding(false)}
+          onCancel={() => {
+            setAdding(false);
+            setEditing(null);
+          }}
         />
       ) : (
         <Button variant="contained" onClick={() => setAdding(true)} sx={{ alignSelf: 'flex-start' }}>
@@ -339,6 +422,8 @@ export const RedirectsPanel = () => {
                   <TableCell>{t.redirects.columnSource}</TableCell>
                   <TableCell>{t.redirects.columnTarget}</TableCell>
                   <TableCell>{t.redirects.columnStatus}</TableCell>
+                  <TableCell>{t.redirects.columnHits}</TableCell>
+                  <TableCell>{t.redirects.columnLastHit}</TableCell>
                   <TableCell>{t.redirects.columnOrigin}</TableCell>
                   <TableCell />
                 </TableRow>
@@ -346,13 +431,26 @@ export const RedirectsPanel = () => {
               <TableBody>
                 {rows.map((redirect) => (
                   <TableRow key={redirect.id} data-testid={`redirect-row-${redirect.id}`}>
-                    <TableCell><PathText>{redirect.fromPath}</PathText></TableCell>
-                    <TableCell><PathText>{redirect.targetPath}</PathText></TableCell>
+                    <TableCell>
+                      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+                        <PathText>{redirect.fromPath}</PathText>
+                        {redirect.locked ? <Chip size="small" label={t.redirects.locked} /> : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <PathText>{redirect.targetPath}{redirect.targetAnchor === null ? '' : `#${redirect.targetAnchor}`}</PathText>
+                    </TableCell>
                     <TableCell>
                       <Chip
                         size="small"
                         label={redirect.permanent ? t.redirects.permanent : t.redirects.temporary}
                       />
+                    </TableCell>
+                    <TableCell>{redirect.hitCount}</TableCell>
+                    <TableCell>
+                      {redirect.lastHitAt === null
+                        ? t.redirects.neverHit
+                        : formatDateTime(redirect.lastHitAt, language)}
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -366,8 +464,19 @@ export const RedirectsPanel = () => {
                     <TableCell align="right">
                       <Button
                         size="small"
+                        data-testid={`redirect-edit-${redirect.id}`}
+                        onClick={() => {
+                          setAdding(false);
+                          setEditing(redirect);
+                        }}
+                      >
+                        {t.redirects.edit}
+                      </Button>
+                      <Button
+                        size="small"
                         color="error"
                         data-testid={`redirect-delete-${redirect.id}`}
+                        disabled={redirect.locked}
                         onClick={() => {
                           setPending(redirect);
                         }}

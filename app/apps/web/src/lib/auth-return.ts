@@ -15,8 +15,10 @@ export const safeReturnTo = (value: string | null): string | null => {
 export const returnToFromSearch = (search: string): string | null =>
   safeReturnTo(new URLSearchParams(search).get('returnTo'));
 
-export const pathWithSearch = (location: { pathname: string; searchStr: string }): string =>
-  `${location.pathname}${location.searchStr}`;
+export const pathWithSearch = (location: { pathname: string; searchStr: string; hash?: string }): string =>
+  `${location.pathname}${location.searchStr}${location.hash === undefined || location.hash === ''
+    ? ''
+    : location.hash.startsWith('#') ? location.hash : `#${location.hash}`}`;
 
 export const loginPathWithReturnTo = (returnTo: string): string => {
   const safe = safeReturnTo(returnTo);

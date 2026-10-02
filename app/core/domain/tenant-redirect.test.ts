@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { MEMBER_ROUTE_PATHS } from './member-routes.js';
-import { isReservedRedirectPath, normalizeRedirectPath } from './tenant-redirect.js';
+import {
+  isReservedRedirectPath,
+  normalizeRedirectPath,
+  tenantRedirectCreateInputSchema,
+} from './tenant-redirect.js';
 
 const spaRoutePaths = (): string[] => {
   const source = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'main.tsx'), 'utf8');
@@ -55,5 +59,21 @@ describe('isReservedRedirectPath', () => {
 
     expect(paths.length).toBeGreaterThan(15);
     expect(paths.filter((path) => !isReservedRedirectPath(path))).toEqual([]);
+  });
+});
+
+describe('redirect lesson anchors', () => {
+  it.each(['section', 'part-2', 'a'.repeat(80)])('accepts %s', (anchor) => {
+    expect(tenantRedirectCreateInputSchema.safeParse({
+      fromPath: '/printed',
+      target: { kind: 'lesson', courseId: 'course', lessonId: 'lesson', anchor },
+    }).success).toBe(true);
+  });
+
+  it.each(['', 'Section', 'section_name', 'za\u017c\u00f3\u0142\u0107', 'a'.repeat(81)])('rejects %s', (anchor) => {
+    expect(tenantRedirectCreateInputSchema.safeParse({
+      fromPath: '/printed',
+      target: { kind: 'lesson', courseId: 'course', lessonId: 'lesson', anchor },
+    }).success).toBe(false);
   });
 });

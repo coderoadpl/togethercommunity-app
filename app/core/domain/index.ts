@@ -39,6 +39,7 @@ export * from './space.js';
 export * from './custom-domain.js';
 export * from './member-routes.js';
 export * from './tenant-redirect.js';
+export * from './heading-id.js';
 export * from './tenant.js';
 export * from './tenant-creation.js';
 export * from './support.js';

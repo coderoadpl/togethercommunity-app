@@ -14,6 +14,7 @@ import {
   createTenantRedirect,
   deleteTenantRedirect,
   listTenantRedirects,
+  updateTenantRedirect,
   type TenantRedirectWriteDeps,
 } from './tenant-redirects.js';
 
@@ -89,7 +90,11 @@ const redirectFixture = (overrides: Partial<TenantRedirect> = {}): TenantRedirec
   targetKind: 'path',
   targetId: null,
   targetPath: '/my',
+  targetAnchor: null,
   permanent: true,
+  locked: false,
+  hitCount: 0,
+  lastHitAt: null,
   origin: 'import',
   createdBy: null,
   createdAt: NOW,
@@ -124,7 +129,13 @@ const harness = (seed: TenantRedirect[] = []) => {
         redirects.set(redirect.id, redirect);
         return 'saved';
       },
+      update: async (_tenantId, redirect) => {
+        if (!redirects.has(redirect.id)) return null;
+        redirects.set(redirect.id, redirect);
+        return redirect;
+      },
       deleteById: async (_tenantId, id) => redirects.delete(id),
+      incrementHit: async () => undefined,
     },
     courses: { findById: async (_tenantId, id) => id === course.id ? course : null },
     modules: { list: async () => [courseModule] },
@@ -173,7 +184,7 @@ describe('tenant redirect management', () => {
       ctx,
       {
         fromPath: '/course/javascript/intro',
-        target: { kind: 'lesson', courseId: course.id, lessonId: lesson.id },
+        target: { kind: 'lesson', courseId: course.id, lessonId: lesson.id, anchor: 'wiring' },
         permanent: false,
       },
       h.deps,
@@ -181,8 +192,93 @@ describe('tenant redirect management', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      value: { targetKind: 'lesson', targetPath: `/my/courses/${course.id}/lessons/${lesson.id}` },
+      value: {
+        targetKind: 'lesson',
+        targetPath: `/my/courses/${course.id}/lessons/${lesson.id}`,
+        targetAnchor: 'wiring',
+      },
     });
+  });
+
+  it('retargets in place while keeping identity, source, counts, and creation time', async () => {
+    const original = redirectFixture({
+      id: 'redirect-print',
+      fromPath: '/link/electrics',
+      hitCount: 27,
+      lastHitAt: '2026-10-01T10:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const h = harness([original]);
+
+    const result = await updateTenantRedirect(ctx, {
+      id: original.id,
+      target: { kind: 'lesson', courseId: course.id, lessonId: lesson.id, anchor: 'safety' },
+      permanent: false,
+      locked: true,
+    }, h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        id: original.id,
+        fromPath: original.fromPath,
+        hitCount: 27,
+        lastHitAt: original.lastHitAt,
+        createdAt: original.createdAt,
+        targetAnchor: 'safety',
+        permanent: false,
+        locked: true,
+      },
+    });
+    expect(h.audit).toMatchObject([{
+      kind: 'redirect_updated',
+      reason: '/my to /my/courses/course-js/lessons/lesson-intro#safety',
+    }]);
+  });
+
+  it('keeps an imported module target when its resolved course does not change', async () => {
+    const original = redirectFixture({
+      targetKind: 'module-as-course',
+      targetId: courseModule.id,
+      targetPath: `/my/courses/${course.id}`,
+    });
+    const h = harness([original]);
+
+    expect(await updateTenantRedirect(ctx, {
+      id: original.id,
+      target: { kind: 'course', courseId: course.id },
+      permanent: false,
+      locked: false,
+    }, h.deps)).toMatchObject({
+      ok: true,
+      value: { targetKind: 'module-as-course', targetId: courseModule.id },
+    });
+  });
+
+  it('refuses to delete a locked redirect but lets the owner unlock it', async () => {
+    const locked = redirectFixture({ locked: true });
+    const h = harness([locked]);
+
+    expect(await deleteTenantRedirect(ctx, { id: locked.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', message: 'Locked redirects cannot be deleted' } });
+    expect(await updateTenantRedirect(ctx, {
+      id: locked.id,
+      target: { kind: 'path', path: '/new-target' },
+      permanent: true,
+      locked: false,
+    }, h.deps)).toMatchObject({ ok: true, value: { locked: false } });
+  });
+
+  it('requires the tenant settings write capability for updates', async () => {
+    const redirect = redirectFixture();
+    const h = harness([redirect]);
+
+    expect(await updateTenantRedirect(adminCtx, {
+      id: redirect.id,
+      target: { kind: 'path', path: '/new-target' },
+      permanent: true,
+      locked: true,
+    }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('refuses a lesson that belongs to no module of the chosen course', async () => {

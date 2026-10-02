@@ -1,4 +1,4 @@
-import { and, count, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   importAuditEventSchema,
@@ -16,7 +16,11 @@ const FROM_PATH_CONSTRAINT = 'tenant_redirects_tenant_from_path_uidx';
 type RedirectRow = typeof tenantRedirects.$inferSelect;
 
 const toRedirect = (row: RedirectRow): TenantRedirect =>
-  tenantRedirectSchema.parse({ ...row, createdAt: new Date(row.createdAt).toISOString() });
+  tenantRedirectSchema.parse({
+    ...row,
+    createdAt: new Date(row.createdAt).toISOString(),
+    lastHitAt: row.lastHitAt === null ? null : new Date(row.lastHitAt).toISOString(),
+  });
 
 const containsPattern = (value: string): string => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
 
@@ -99,12 +103,36 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
         throw cause;
       }
     },
+    update: async (tenantId, redirect) => {
+      const [row] = await db
+        .update(tenantRedirects)
+        .set({
+          targetKind: redirect.targetKind,
+          targetId: redirect.targetId,
+          targetPath: redirect.targetPath,
+          targetAnchor: redirect.targetAnchor,
+          permanent: redirect.permanent,
+          locked: redirect.locked,
+        })
+        .where(and(eq(tenantRedirects.tenantId, tenantId), eq(tenantRedirects.id, redirect.id)))
+        .returning();
+      return row === undefined ? null : toRedirect(row);
+    },
     deleteById: async (tenantId, redirectId) => {
       const rows = await db
         .delete(tenantRedirects)
         .where(and(eq(tenantRedirects.tenantId, tenantId), eq(tenantRedirects.id, redirectId)))
         .returning({ id: tenantRedirects.id });
       return rows.length === 1;
+    },
+    incrementHit: async (tenantId, redirectId) => {
+      await db
+        .update(tenantRedirects)
+        .set({
+          hitCount: sql`${tenantRedirects.hitCount} + 1`,
+          lastHitAt: sql`now()`,
+        })
+        .where(and(eq(tenantRedirects.tenantId, tenantId), eq(tenantRedirects.id, redirectId)));
     },
     commit: async (tenantId, mutation) => {
       const redirect = tenantRedirectSchema.parse(mutation.resource);
@@ -121,6 +149,7 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
                 targetKind: redirect.targetKind,
                 targetId: redirect.targetId,
                 targetPath: redirect.targetPath,
+                targetAnchor: redirect.targetAnchor,
                 permanent: redirect.permanent,
                 createdAt: redirect.createdAt,
               })
@@ -128,6 +157,7 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
                 eq(tenantRedirects.tenantId, tenantId),
                 eq(tenantRedirects.id, redirect.id),
                 eq(tenantRedirects.origin, 'import'),
+                eq(tenantRedirects.locked, false),
               ))
               .returning({ id: tenantRedirects.id });
             if (rows.length !== 1) return 'conflict';

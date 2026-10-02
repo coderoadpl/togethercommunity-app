@@ -322,6 +322,7 @@ import {
   type TenantRedirectsQueryInput,
   type TenantRedirectCreateBody,
   type TenantRedirectDeleteBody,
+  type TenantRedirectUpdateBody,
   type TenantSettingsUpdateInput,
   type TermsConsentRequest,
   type WriteMethod,
@@ -2535,6 +2536,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.tenantRedirectCreate.method,
       API_ROUTES.tenantRedirectCreate.path,
+      tenantRedirectOutputSchema,
+      input,
+      signal,
+    ),
+  updateTenantRedirect: (input: TenantRedirectUpdateBody, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantRedirectUpdate.method,
+      API_ROUTES.tenantRedirectUpdate.path,
       tenantRedirectOutputSchema,
       input,
       signal,

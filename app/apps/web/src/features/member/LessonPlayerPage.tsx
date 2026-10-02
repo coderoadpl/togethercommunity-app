@@ -17,6 +17,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 import {
   groupLessonBlocks,
+  headingIds,
   resolveVideoAutoplay,
   withVideoAutoplay,
   type LessonContentGroup,
@@ -29,6 +30,7 @@ import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
+import { lessonHeadingDocument } from '../../components/ui/lesson-heading-document.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
@@ -105,7 +107,7 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated }: { l
   return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
 };
 
-const BlockBody = ({ block, autoplay, lessonId, authenticated }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean }) => {
+const BlockBody = ({ block, autoplay, lessonId, authenticated, html }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -166,13 +168,13 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated }: { block: Render
     return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
-  return <RichTextContent html={block.html} data-testid="lesson-html" />;
+  return <RichTextContent html={html ?? block.html} data-testid="lesson-html" />;
 };
 
-const GroupBody = ({ group, autoplay, lessonId, authenticated }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean }) => {
+const GroupBody = ({ group, autoplay, lessonId, authenticated, html }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} />;
+      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -378,6 +380,34 @@ export const LessonPlayerPage = ({
     if (unauthorized) void redirectToLogin();
   }, [redirectToLogin, unauthorized]);
 
+  const groups = useMemo(
+    () => lesson.data === undefined ? [] : groupLessonBlocks(lesson.data.lesson.contents),
+    [lesson.data],
+  );
+  const headingDocument = useMemo(
+    () => lessonHeadingDocument(
+      groups.flatMap((group) => group.kind === 'block' && group.block.type === 'html'
+        ? [group.block.html]
+        : []),
+      headingIds,
+    ),
+    [groups],
+  );
+  const headingIdKey = headingDocument.headings.map((heading) => heading.id).join('\n');
+  useEffect(() => {
+    const scrollToHash = () => {
+      const hash = window.location.hash.slice(1);
+      if (!/^[a-z0-9-]{1,80}$/.test(hash)) return;
+      const heading = document.getElementById(hash);
+      if (heading === null) return;
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      heading.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    };
+    scrollToHash();
+    window.addEventListener('hashchange', scrollToHash);
+    return () => window.removeEventListener('hashchange', scrollToHash);
+  }, [lessonId, headingIdKey]);
+
   const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {
     if (nextLesson !== null) {
@@ -434,7 +464,6 @@ export const LessonPlayerPage = ({
     return <CourseLoading />;
   }
 
-  const groups = groupLessonBlocks(lesson.data.lesson.contents);
   const videoAutoplay = tenantSettings.data === undefined
     ? false
     : resolveVideoAutoplay(
@@ -450,6 +479,7 @@ export const LessonPlayerPage = ({
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
     : lesson.data.lesson.name;
+  let htmlIndex = 0;
 
   const continueToNext = () => {
     setContinuing(true);
@@ -501,7 +531,11 @@ export const LessonPlayerPage = ({
               data-testid="lesson-empty-state"
             />
           ) : (
-            groups.map((group, index) => (
+            groups.map((group, index) => {
+              const html = group.kind === 'block' && group.block.type === 'html'
+                ? headingDocument.htmlBlocks[htmlIndex++]
+                : undefined;
+              return (
               <Paper
                 key={index}
                 elevation={1}
@@ -516,9 +550,10 @@ export const LessonPlayerPage = ({
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} />
+                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} />
               </Paper>
-            ))
+              );
+            })
           )}
         </Stack>
 

@@ -5,7 +5,7 @@ import type { ImportRedirectMutation } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { createTenantRedirectRepository } from './redirects.js';
 import { createTestDatabase } from './test-database-name.js';
-import { tenantApiKeys, tenants } from './schema.js';
+import { tenantApiKeys, tenantRedirects, tenants } from './schema.js';
 
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -60,7 +60,11 @@ const mutation = (
     targetKind: 'course',
     targetId: 'course-js',
     targetPath: '/my/courses/course-js',
+    targetAnchor: null,
     permanent: true,
+    locked: false,
+    hitCount: 0,
+    lastHitAt: null,
     origin: 'import',
     createdBy: null,
     createdAt: NOW,
@@ -149,6 +153,48 @@ describe('tenant redirect repository', () => {
       .toEqual({ total: 4, redirects: [] });
   });
 
+  it('uses safe defaults for rows written without the new fields', async () => {
+    const repository = createTenantRedirectRepository(db);
+    await db.insert(tenantRedirects).values({
+      id: 'redirect-defaults',
+      tenantId: TENANT_ID,
+      fromPath: '/printed/defaults',
+      targetKind: 'path',
+      targetId: null,
+      targetPath: '/my',
+      permanent: false,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: NOW,
+    });
+
+    expect(await repository.findById(TENANT_ID, 'redirect-defaults')).toMatchObject({
+      targetAnchor: null,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
+    });
+  });
+
+  it('increments the hit counter atomically under concurrent requests', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const redirectId = 'redirect-concurrent-hits';
+    expect(await repository.create(TENANT_ID, mutation({
+      id: redirectId,
+      fromPath: '/printed/concurrent',
+    }).resource)).toBe('saved');
+
+    await Promise.all([
+      repository.incrementHit(TENANT_ID, redirectId),
+      repository.incrementHit(TENANT_ID, redirectId),
+    ]);
+
+    expect(await repository.findById(TENANT_ID, redirectId)).toMatchObject({
+      hitCount: 2,
+      lastHitAt: expect.any(String),
+    });
+  });
+
   it('refuses to let an import update a manual row', async () => {
     const repository = createTenantRedirectRepository(db);
     const manual = {
@@ -164,5 +210,26 @@ describe('tenant redirect repository', () => {
     )).toBe('conflict');
     expect(await repository.findById(TENANT_ID, 'redirect-owned'))
       .toMatchObject({ origin: 'manual', targetPath: '/my/courses/course-js', createdBy: 'user-owner' });
+  });
+
+  it('refuses to let an import update a locked imported row', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const redirectId = 'redirect-import-locked';
+
+    expect(await repository.commit(TENANT_ID, mutation({
+      id: redirectId,
+      fromPath: '/printed/locked',
+      locked: true,
+    }))).toBe('saved');
+    expect(await repository.commit(TENANT_ID, mutation({
+      id: redirectId,
+      fromPath: '/printed/locked',
+      targetPath: '/my/changed',
+      locked: false,
+    }, 'updated'))).toBe('conflict');
+    expect(await repository.findById(TENANT_ID, redirectId)).toMatchObject({
+      targetPath: '/my/courses/course-js',
+      locked: true,
+    });
   });
 });

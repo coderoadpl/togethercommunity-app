@@ -630,7 +630,9 @@ const deps = (input: {
       findByFromPath: async () => null,
       listPage: async () => ({ redirects: [], total: 0 }),
       create: async () => 'saved' as const,
+      update: async () => null,
       deleteById: async () => false,
+      incrementHit: async () => undefined,
       commit: async () => 'saved' as const,
     },
     attachments: {
@@ -5091,7 +5093,11 @@ describe('tenant redirects', () => {
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5103,7 +5109,11 @@ describe('tenant redirects', () => {
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
+      targetAnchor: null,
       permanent: false,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5115,7 +5125,11 @@ describe('tenant redirects', () => {
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5127,14 +5141,38 @@ describe('tenant redirects', () => {
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
+    {
+      id: 'redirect-print-link',
+      tenantId: acme.id,
+      fromPath: '/link/electrics',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: 'wiring-safety',
+      permanent: false,
+      locked: true,
+      hitCount: 12,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
   ];
 
-  const redirectApp = (owner: Tenant = acme) => {
+  const redirectApp = (owner: Tenant = acme, tracking?: {
+    increments?: string[];
+    warnings?: string[];
+    failIncrement?: boolean;
+  }) => {
     const base = deps({
       domains: [tenantDomainFixture({
         id: 'domain-acme',
@@ -5143,6 +5181,7 @@ describe('tenant redirects', () => {
         kind: 'custom',
         verified: true,
       })],
+      logger: { error: () => undefined, warn: (message) => tracking?.warnings?.push(message) },
     });
     const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
     return buildApp({
@@ -5152,6 +5191,10 @@ describe('tenant redirects', () => {
         findByFromPath: async (tenantId, fromPath) =>
           owned.find((redirect) =>
             redirect.tenantId === tenantId && redirect.fromPath === fromPath) ?? null,
+        incrementHit: async (_tenantId, redirectId) => {
+          tracking?.increments?.push(redirectId);
+          if (tracking?.failIncrement === true) throw new Error('counter unavailable');
+        },
       },
     });
   };
@@ -5209,6 +5252,55 @@ describe('tenant redirects', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
+  });
+
+  it('increments once and places the lesson anchor after the preserved query string', async () => {
+    const increments: string[] = [];
+    const response = await redirectApp(acme, { increments }).request(
+      '/link/electrics?edition=print',
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}?edition=print#wiring-safety`);
+    expect(increments).toEqual(['redirect-print-link']);
+  });
+
+  it('does not update a counter when no redirect matches', async () => {
+    const increments: string[] = [];
+
+    await redirectApp(acme, { increments }).request('/course/python', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(increments).toEqual([]);
+  });
+
+  it('warns and still redirects when the hit increment fails', async () => {
+    const warnings: string[] = [];
+    const response = await redirectApp(acme, { warnings, failIncrement: true }).request(
+      '/link/electrics',
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#wiring-safety`);
+    expect(warnings).toEqual([
+      '[tenant-redirect] hit increment failed for t-acme/redirect-print-link',
+    ]);
+  });
+
+  it('does not count a HEAD request', async () => {
+    const increments: string[] = [];
+
+    const response = await redirectApp(acme, { increments }).request('/link/electrics', {
+      method: 'HEAD',
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#wiring-safety`);
+    expect(increments).toEqual([]);
   });
 
   it.each([

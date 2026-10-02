@@ -9,12 +9,12 @@ import {
 } from '../../lib/auth-return.js';
 
 describe('auth return routing', () => {
-  it('builds the login guard target with the original path and query encoded', () => {
-    expect(loginPathWithReturnTo('/my/courses/course-1/lessons/lesson-1?thread=t1')).toBe(
-      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+  it('builds the login guard target with the original path, query, and hash encoded', () => {
+    expect(loginPathWithReturnTo('/my/courses/course-1/lessons/lesson-1?thread=t1#wiring')).toBe(
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
-    expect(pathWithSearch({ pathname: '/my/courses/course-1/lessons/lesson-1', searchStr: '?thread=t1' })).toBe(
-      '/my/courses/course-1/lessons/lesson-1?thread=t1',
+    expect(pathWithSearch({ pathname: '/my/courses/course-1/lessons/lesson-1', searchStr: '?thread=t1', hash: '#wiring' })).toBe(
+      '/my/courses/course-1/lessons/lesson-1?thread=t1#wiring',
     );
   });
 
@@ -31,7 +31,7 @@ describe('auth return routing', () => {
   });
 
   it('reads only safe path-only returnTo values from login search', () => {
-    expect(returnToFromSearch('?returnTo=%2Fmy%2Fcourses%2Fc1%3Fthread%3Dt1')).toBe('/my/courses/c1?thread=t1');
+    expect(returnToFromSearch('?returnTo=%2Fmy%2Fcourses%2Fc1%3Fthread%3Dt1%23wiring')).toBe('/my/courses/c1?thread=t1#wiring');
     expect(returnToFromSearch('?returnTo=https%3A%2F%2Fevil.example%2Fmy')).toBeNull();
     expect(returnToFromSearch('?returnTo=%2F%2Fevil.example%2Fmy')).toBeNull();
   });

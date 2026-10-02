@@ -392,7 +392,7 @@ describe('LoginPage', () => {
 
     const { router } = await renderLoginPage(
       false,
-      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
     await continueWithEmail();
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
@@ -400,6 +400,7 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
     expect(router.state.location.searchStr).toBe('?thread=t1');
+    expect(router.state.location.hash).toBe('wiring');
   });
 
   it('returns passkey sign-in to the safe returnTo path', async () => {

@@ -165,7 +165,11 @@ A redirect answers before the web app sees the path, so never map a path the pla
 
 Every row an import writes is marked `import`; a row a member of staff adds in the studio is marked `manual`. The import owns only the rows it created, keyed by `importKey`, and never rewrites a manual row: when an incoming record normalises to a path a manual row already answers, that record fails with `conflict` and the manual row is left as it is. Delete the manual row in the studio to hand the path back to the import. A row the studio deletes is recreated by the next import that carries its `importKey`.
 
-The studio counts a tenant's redirects under Settings → Addresses and manages them on its own page: search, pages of fifty, add, and delete.
+The studio counts a workspace's redirects under Settings → Addresses and
+manages them on its own page: search, pages of fifty, add, retarget, lock, and
+delete. Imported redirects are never created locked and cannot overwrite a
+locked manual redirect. The list shows aggregate hits and the latest hit time;
+the counter stores no visitor data.
 
 ### Order
 

@@ -21,6 +21,10 @@ const isAssetRequest = (path: string): boolean => {
 
 export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void => {
   app.get('*', async (c, next) => {
+    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      await next();
+      return;
+    }
     if (isAssetRequest(c.req.path)) {
       await next();
       return;
@@ -42,8 +46,15 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
       await next();
       return;
     }
+    if (c.req.method === 'GET') {
+      try {
+        await deps.redirects.incrementHit(tenant.value.tenant.id, redirect.id);
+      } catch {
+        deps.logger.warn(`[tenant-redirect] hit increment failed for ${tenant.value.tenant.id}/${redirect.id}`);
+      }
+    }
     return c.redirect(
-      `${redirect.targetPath}${new URL(c.req.url).search}`,
+      `${redirect.targetPath}${new URL(c.req.url).search}${redirect.targetAnchor === null ? '' : `#${redirect.targetAnchor}`}`,
       redirect.permanent ? 301 : 302,
     );
   });

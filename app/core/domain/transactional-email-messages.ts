@@ -10,6 +10,7 @@ interface RenderedTextParts {
 }
 
 export type NotificationFooterKind = 'thread' | 'space' | 'direct';
+export type WelcomeSignInProductType = 'course' | 'digital_download' | 'membership' | 'unknown';
 
 type ReputationStatus = 'warn' | 'critical';
 
@@ -24,12 +25,13 @@ export interface TransactionalEmailMessages {
     hints: Record<NotificationFooterKind, string>;
   };
   welcomeSignIn: {
-    actionLabel: string;
+    actionLabels: Record<WelcomeSignInProductType, string>;
     render: (input: BrandedInput & {
       tenantName: string;
       tenantNameHtml: string;
       actionUrl: string;
       actionLink: string;
+      actionLabel: string;
     }) => TransactionalEmailMessageContent;
   };
   resetPassword: {

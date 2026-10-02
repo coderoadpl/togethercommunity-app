@@ -54,7 +54,7 @@ const setup = async ({
 
 const authUrl = 'https://auth.example.test/verify?token=global-auth-bearer';
 const authPayloads = [
-  { kind: 'welcome-sign-in', language: 'en', tenantName: 'Example', actionUrl: authUrl },
+  { kind: 'welcome-sign-in', language: 'en', tenantName: 'Example', actionUrl: authUrl, productType: 'course' },
   { kind: 'reset-password', language: 'en', actionUrl: authUrl },
   { kind: 'verify-email', language: 'en', actionUrl: authUrl },
   { kind: 'magic-link', language: 'en', tenantName: 'Example', url: authUrl },

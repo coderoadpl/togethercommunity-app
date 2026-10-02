@@ -10,11 +10,16 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     },
   },
   welcomeSignIn: {
-    actionLabel: 'Zaloguj się i otwórz kurs',
-    render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, socialLinks }) => ({
+    actionLabels: {
+      course: 'Zaloguj się i otwórz kurs',
+      digital_download: 'Zaloguj się i pobierz pliki',
+      membership: 'Zaloguj się na swoje konto',
+      unknown: 'Zaloguj się na swoje konto',
+    },
+    render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, actionLabel, socialLinks }) => ({
       subject: `Twoje konto na platformie ${tenantName} jest gotowe`,
       html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantNameHtml} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p>${actionLink}</p>${socialLinks.html}`,
-      text: `Cześć!\n\nTwoje konto na platformie ${tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.\n\nZaloguj się i otwórz kurs: ${actionUrl}${socialLinks.text}`,
+      text: `Cześć!\n\nTwoje konto na platformie ${tenantName} jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.\n\n${actionLabel}: ${actionUrl}${socialLinks.text}`,
     }),
   },
   resetPassword: {

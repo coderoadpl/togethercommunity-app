@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import { telemetryStoreSettingsSchema } from './telemetry.js';
-
 import {
   domainDnsRecordStatusSchema,
   type DomainDnsRecord,
@@ -147,7 +145,6 @@ export const signInNoticeSchema = z.object({
 });
 
 export const tenantSettingsSchema = z.object({
-  telemetryStore: telemetryStoreSettingsSchema.optional(),
   signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
   defaultLanguage: languageSchema.optional(),

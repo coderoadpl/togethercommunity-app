@@ -42,7 +42,7 @@ const screen = (
 });
 
 const telemetryScreens: ScreenSpec[] = [{
-  name: 'telemetry-overview', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 2000, fullPage: true,
+  name: 'telemetry-overview', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true,
   ready: async (page) => { await page.getByTestId('telemetry-overview').waitFor(visible); },
 }];
 

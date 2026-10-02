@@ -26,6 +26,7 @@ requires `tenant:settings:write`, probes before activation and removes credentia
 on disconnect; reading the panel payload requires `tenant:secret:read` because it
 exposes outbound addressing and buffer internals. A disconnected store retains its
 independently owned copies.
+The general tenant settings response never includes telemetry store configuration.
 
 Tenant-supplied hosts are validated before the driver connects: scheme, dedicated
 database, scoped credentials, an allowlist of connection options, and a rejection

@@ -103,6 +103,25 @@ describe('getTenantSettings', () => {
       value: { ...settings, supportConfigured: true },
     });
   });
+
+  it('omits telemetry store settings for members and staff', async () => {
+    const depsWithTelemetry = {
+      ...deps,
+      telemetryStore: {
+        settings: {
+          get: async () => {
+            throw new Error('tenant settings must not read telemetry configuration');
+          },
+        },
+      },
+    };
+
+    const memberResult = await getTenantSettings({ identity: identity(null) }, depsWithTelemetry);
+    const adminResult = await getTenantSettings({ identity: identity('admin') }, depsWithTelemetry);
+
+    expect(memberResult).not.toHaveProperty('value.telemetryStore');
+    expect(adminResult).not.toHaveProperty('value.telemetryStore');
+  });
 });
 
 describe('updateTenantSettings', () => {

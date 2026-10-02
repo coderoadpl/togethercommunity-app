@@ -1801,6 +1801,8 @@ export const authSendLogLatestOutputSchema = z.object({
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
+  operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
@@ -2099,6 +2101,8 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
+  operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
   activitySummary: API_ROUTES.activitySummary.path,
   memberActivity: API_ROUTES.memberActivity.path,
   listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,

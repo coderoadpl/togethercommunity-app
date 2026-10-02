@@ -1,6 +1,7 @@
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
+import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
@@ -744,6 +745,7 @@ export const registerAuthSendLogLatestRoute = (
 
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
+  registerOperatorTenantRoutes(app, deps);
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
     routing: deps,

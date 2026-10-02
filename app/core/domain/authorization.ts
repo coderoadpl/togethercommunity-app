@@ -2,6 +2,8 @@ export const CAPABILITIES = [
   'report:read',
   'health:read',
   'auth:use',
+  'tenant:provision',
+  'tenant:readiness',
   'tenant:create',
   'tenant:list-own',
   'tenant:settings:read',
@@ -301,6 +303,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
   'import-content-api-key': ['import:content-write', 'import:validate'],
   'import-users-api-key': ['import:users-write', 'import:validate'],
   'operator-secret': [
+    'tenant:provision',
+    'tenant:readiness',
     'scheduler:read',
     'scheduler:dispatch',
     'marketing:campaign:send',

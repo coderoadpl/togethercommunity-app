@@ -529,6 +529,7 @@ const beforeForUseCase = (
   if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts' || file === 'm2m-import-redirects.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
+  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts') return operatorSecret;
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
@@ -580,7 +581,7 @@ const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory || before === reportApiKey ? before : before === allHumans
+    const reachable = directory || before === reportApiKey || before === operatorSecret ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner

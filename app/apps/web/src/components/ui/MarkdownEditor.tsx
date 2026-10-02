@@ -98,25 +98,28 @@ const autolinks = /<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>@]+>/gu;
 const tableDelimiterRow = /^ {0,3}\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)+\|?[ \t]*$/mu;
 const taskListItem = /^ {0,7}[-*+] \[[ xX]\](?:\s|$)/mu;
 const htmlTag = /<\/?[a-zA-Z][^>]*>/u;
+const strikethrough = /~~(?=\S)(?:[^~]|~(?!~))*\S~~/u;
 const linkOrImageDestination = /(!?)\[[^\]\n]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/gu;
 
-const hasUnrepresentableLinkOrImage = (prose: string): boolean => {
+const hasUnrepresentableLinkOrImage = (prose: string, variant: 'full' | 'compact'): boolean => {
   for (const match of prose.matchAll(linkOrImageDestination)) {
     const isImage = match[1] === '!';
     const destination = match[2] ?? '';
+    if (isImage && variant === 'compact') return true;
     const accepted = isImage ? httpsImage(destination) : authoredLink(destination);
     if (accepted === null) return true;
   }
   return false;
 };
 
-const needsSourceOnlyEditing = (value: string): boolean => {
+const needsSourceOnlyEditing = (value: string, variant: 'full' | 'compact'): boolean => {
   const prose = value.replace(codeSpans, '').replace(autolinks, '');
   return (
     tableDelimiterRow.test(prose) ||
     taskListItem.test(prose) ||
     htmlTag.test(prose) ||
-    hasUnrepresentableLinkOrImage(prose)
+    (variant === 'compact' && strikethrough.test(prose)) ||
+    hasUnrepresentableLinkOrImage(prose, variant)
   );
 };
 
@@ -234,7 +237,7 @@ export const MarkdownEditor = ({
   const [linkAttempted, setLinkAttempted] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const acceptedValueRef = useRef(value);
-  const sourceOnly = format === 'plain' || needsSourceOnlyEditing(value);
+  const sourceOnly = format === 'plain' || needsSourceOnlyEditing(value, variant);
   const editor = useEditor({
     autofocus: autoFocus && format === 'markdown' ? 'end' : false,
     content: format === 'markdown' ? value : '',

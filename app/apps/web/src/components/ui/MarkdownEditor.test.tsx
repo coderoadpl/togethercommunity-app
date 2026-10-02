@@ -137,6 +137,20 @@ describe('MarkdownEditor', () => {
     expect(screen.getByTestId('markdown-editor-markdown')).toHaveValue(markdown);
   });
 
+  it('preserves existing image and strike syntax in the compact source editor', async () => {
+    const value = '![illustration](https://example.com/picture.png)\n\n~~Withdrawn clause~~';
+    const user = userEvent.setup();
+    render(<ControlledEditor variant="compact" initialValue={value} />);
+
+    const source = await screen.findByTestId('markdown-editor-markdown');
+    expect(screen.queryByTestId('markdown-editor-wysiwyg')).not.toBeInTheDocument();
+    source.focus();
+    await user.keyboard('{End}x{Backspace}');
+
+    expect(screen.getByTestId('markdown-value').textContent).toBe(value);
+    expect(source).toHaveValue(value);
+  });
+
   it('keeps tables and raw HTML on the Markdown tab instead of dropping them', async () => {
     const value = [
       '| Plan | Price |',

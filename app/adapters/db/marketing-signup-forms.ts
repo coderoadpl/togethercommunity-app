@@ -11,6 +11,10 @@ import { createConsentConfirmationTokenRepository } from './marketing-repositori
 import { createEmailOutboxRepository } from './email-outbox.js';
 
 export const createMarketingSignupFormRepository = (db: Db, deps: DirectoryRepositoryDeps): MarketingSignupFormRepository => ({
+  findById: async (tenantId, formId) => {
+    const [row] = await db.select().from(forms).where(and(eq(forms.tenantId, tenantId), eq(forms.id, formId)));
+    return row === undefined ? null : marketingSignupFormSchema.parse(row);
+  },
   findBySlug: async (tenantId, slug) => {
     const [row] = await db.select().from(forms).where(and(eq(forms.tenantId, tenantId), eq(forms.slug, slug)));
     return row === undefined ? null : marketingSignupFormSchema.parse(row);

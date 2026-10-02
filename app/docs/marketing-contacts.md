@@ -242,14 +242,15 @@ the current consent wording. The public form token rotates only when the consent
 definition or wording version changes; replace existing embed snippets after
 those edits.
 
-The consent definition determines single or double opt-in. A submission upserts
-a contact with source `form:<slug>`, merges tags, adds static list membership,
-and records immutable consent evidence with wording, document reference,
-submission time, tenant-keyed IP hash, user agent, form revision, and source.
-Double opt-in queues the existing confirmation email in the same transaction.
-Bounce, complaint, and erasure suppressions remain in force and prevent that
-email. Explicit signup lifts unsubscribe and manual suppressions, with a
-contact event linking the suppression and new consent evidence.
+The consent definition determines single or double opt-in. A submission creates
+new contacts with source `form:<slug>` and records immutable consent evidence
+with wording, document reference, submission time, tenant-keyed IP hash, user
+agent, form revision, and source. Tags, static list membership, and unarchiving
+are deferred until confirmation for existing contacts with unconfirmed double
+opt-in consent. Double opt-in queues the existing confirmation email in the same
+transaction. A public submission never lifts a suppression or changes an existing
+contact's name or source; suppressed addresses are handled by staff and submissions
+for them produce no changes or confirmation email.
 
 The Embed panel supplies a hosted link, an ordinary HTML form, and a JSON fetch
 example. Hosted pages are `/marketing/forms/:slug` and

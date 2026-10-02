@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 118. Route rows: 387. Exported `Ctx` use-case rows: 300.
+Closed capability count: 120. Route rows: 389. Exported `Ctx` use-case rows: 302.
 
 ## Human-readable diff
 
@@ -85,6 +85,8 @@ no changes
 | `OPTIONS /api/public/marketing/forms/:slug/submit` | offer:read | public | public | yes | public route manifest |
 | `POST /api/public/marketing/forms/:slug/submit` | marketing:consent:write | public | public | yes | public route manifest |
 | `POST /api/webhooks/stripe/:tenantId` | webhook:process | webhook | webhook | yes | public route manifest |
+| `POST /api/internal/tenants/provision` | tenant:provision | operator-secret | operator-secret | yes | Operator secret |
+| `GET /api/internal/tenants/:slug/readiness` | tenant:readiness | operator-secret | operator-secret | yes | Operator secret |
 | `POST /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `GET /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `POST /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
@@ -659,6 +661,7 @@ no changes
 | `my-products.ts#listMyProducts` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/my-products.ts authorization call |
 | `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
+| `operator-tenant-readiness.ts#getOperatorTenantReadiness` | tenant:readiness | operator-secret | operator-secret | yes | core/server/usecases/operator-tenant-readiness.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
 | `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
@@ -685,6 +688,7 @@ no changes
 | `progress.ts#updateLastViewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#getProgress` | member:progress:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
+| `provision-tenant.ts#provisionTenant` | tenant:provision | operator-secret | operator-secret | yes | core/server/usecases/provision-tenant.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -729,7 +733,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:15` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:16` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:184` | `authenticateApiKey,` |
 | api-key | `apps/server/src/internal-app.ts:1162` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
 | api-key | `apps/server/src/internal-app.ts:1164` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |

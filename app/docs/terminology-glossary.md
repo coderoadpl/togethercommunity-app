@@ -11,6 +11,9 @@ add it here before using it in either dictionary.
 
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
+| Instance operator | operator instancji | instance operator | Authenticated with the operator secret, independently of workspace roles. |
+| Operator workspace creation | utworzenie obszaru roboczego przez operatora | operator workspace provisioning | Creates the workspace and grants ownership to an existing verified account. |
+| Workspace readiness | gotowość obszaru roboczego | workspace readiness | A read-only checklist of persisted configuration evidence. |
 | Person with access | uczestnik | member | Use across courses, community, the panel, and email; avoid course-only labels. Do not use kursant or członek in user-facing copy. Seed data display names may keep legacy Kursant fixtures. |
 | Person running a workspace | twórca | creator | A persona word, never a permission label. |
 | Workspace owner role | właściciel | owner | Use in role labels and permission descriptions. |
@@ -36,6 +39,7 @@ add it here before using it in either dictionary.
 | Adopting an existing provider subscription | Podłącz subskrypcję Stripe | Adopt Stripe subscription | Action label for connecting an existing Stripe subscription to a member. Progress copy uses Podłączanie subskrypcji… / Adopting subscription…; hints explain that billing continues unchanged; refusal and timeline copy use the same adoption concept. |
 | Imported price | cena zaimportowana | imported price | Compact price label is Zaimportowana / Imported. Imported recurring periods use localized interval copy from the importedPeriod dictionary key and must not imply the price is active for new checkout. |
 | Free sample content | bezpłatna lekcja próbna | free preview lesson | Use consistently across sample content. |
+| Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure
 

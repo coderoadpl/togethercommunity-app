@@ -177,3 +177,28 @@ must use HTTPS without embedded credentials; users cannot override them in a
 submission. Consent, submission history, and mail enqueueing share the submission
 transaction; deferred contact and list effects commit in the confirmation
 transaction. Public submissions never lift a suppression.
+
+
+## Operator tenant provisioning
+
+- `POST /api/internal/tenants/provision` requires the operator secret and the
+  `tenant:provision` capability. It creates a tenant, the existing verified owner's
+  grant, and an audit event atomically, with retries deduplicated by slug and owner.
+- `GET /api/internal/tenants/:slug/readiness` requires the same secret and
+  `tenant:readiness`. It returns only configuration booleans, a probe timestamp,
+  the Stripe mode and the published-product count.
+
+Both routes compare `x-scheduler-operator-secret` with `deps.operatorSecret`
+using `secretEquals` before parsing input or accessing repositories. An early
+route-specific guard also rejects invalid secrets before the global impersonation
+middleware can resolve a session cookie. They are
+registered on the internal app and excluded from public manifests. Session roles
+have neither capability. Like neighboring operator routes, they have no separate
+rate limiter. Public `TENANT_CREATION` policy is unchanged.
+
+The provisioning body rejects unknown fields, including storage and Stripe
+credentials. The owner configures those integrations in the panel or with the
+existing owner CLI commands after creation. Operator CLI commands read the secret
+only from `OPERATOR_SECRET`, never a flag, and redact transport exceptions.
+See [operator tenant provisioning](tenant-provisioning.md) for the procedure,
+readiness evidence limits and recovery behavior.

@@ -81,3 +81,5 @@ export * from './marketing-audience.js';
 
 export * from './activity-report.js';
 export * from './stripe-subscription.js';
+
+export * from './operator-tenant.js';

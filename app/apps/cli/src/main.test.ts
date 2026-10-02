@@ -11,6 +11,8 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  provisionOperatorTenant: ReturnType<typeof vi.fn>;
+  getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
@@ -50,6 +52,8 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    provisionOperatorTenant: vi.fn(),
+    getOperatorTenantReadiness: vi.fn(),
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
@@ -137,6 +141,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    provisionOperatorTenant: h.provisionOperatorTenant,
+    getOperatorTenantReadiness: h.getOperatorTenantReadiness,
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
@@ -1086,5 +1092,69 @@ describe('marketing signup form commands', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(logSpy.mock.calls[0]?.[0]).not.toContain('private-input');
     expect(process.exitCode).toBe(2);
+  });
+});
+
+
+const operatorReadiness = {
+  tenantExists: true, ownerGrantPresent: true, storageConfigured: false, lastProbeOk: false,
+  lastProbeAt: null, stripeConfigured: false, mode: null, webhookEndpointRegistered: false,
+  legalUrlsSet: false, publishedProducts: 0,
+};
+const operatorProvisionArgs = ['operator', 'tenant', 'provision', '--slug', 'acme', '--name', 'Acme', '--owner-email', 'owner@example.test'];
+
+describe('operator tenant commands', () => {
+  beforeEach(() => {
+    h.provisionOperatorTenant.mockReset().mockResolvedValue(ok({
+      tenant: { id: 'tenant-1', slug: 'acme', name: 'Acme' }, created: true, ownerUserId: 'owner-1', readiness: operatorReadiness,
+    }));
+    h.getOperatorTenantReadiness.mockReset().mockResolvedValue(ok(operatorReadiness));
+    vi.stubEnv('OPERATOR_SECRET', 'hidden-operator-secret');
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('takes its secret from the environment and emits one JSON envelope', async () => {
+    await run('--json', ...operatorProvisionArgs, '--language', 'pl');
+    expect(h.provisionOperatorTenant).toHaveBeenCalledExactlyOnceWith({
+      slug: 'acme', name: 'Acme', ownerEmail: 'owner@example.test', defaultLanguage: 'pl',
+    }, 'hidden-operator-secret');
+    expect(soleJson()).toMatchObject({ ok: true, data: { created: true, readiness: operatorReadiness } });
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-operator-secret');
+    expect(h.signIn).not.toHaveBeenCalled();
+  });
+
+  it('prints the readiness checklist', async () => {
+    await run('operator', 'tenant', 'readiness', '--slug', 'acme');
+    expect(h.getOperatorTenantReadiness).toHaveBeenCalledExactlyOnceWith('acme', 'hidden-operator-secret');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ownerGrantPresent=true\nstorageConfigured=false'));
+  });
+
+  it('refuses missing credentials before calling the client', async () => {
+    vi.stubEnv('OPERATOR_SECRET', '');
+    await run('--json', ...operatorProvisionArgs);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'OPERATOR_SECRET is required' } });
+    expect(h.provisionOperatorTenant).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('rejects a secret flag', async () => {
+    await run('--json', ...operatorProvisionArgs, '--secret', 'hidden-operator-secret');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.provisionOperatorTenant).not.toHaveBeenCalled();
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain('hidden-operator-secret');
+  });
+
+  it('preserves unauthorized exit code 3', async () => {
+    h.provisionOperatorTenant.mockResolvedValue(err(appError('unauthorized', 'Invalid operator secret')));
+    await run('--json', ...operatorProvisionArgs);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+    expect(process.exitCode).toBe(3);
+  });
+
+  it('redacts unexpected exception details', async () => {
+    h.provisionOperatorTenant.mockRejectedValue(new Error('hidden-operator-secret'));
+    await run('--json', ...operatorProvisionArgs);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'internal', message: 'Operator request failed' } });
+    expect(process.exitCode).toBe(10);
   });
 });

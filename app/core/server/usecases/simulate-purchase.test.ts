@@ -107,6 +107,7 @@ const fakeAuth = (): AuthPort => ({
   getAuthenticatedUser: async () => null,
   listSessions: async () => [],
   revokeSessions: async () => undefined,
+  findUserByEmail: async () => null,
   ensureUser: async () => ({ userId: 'user-1', created: true }),
   requestMagicLink: async () => undefined,
   createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),

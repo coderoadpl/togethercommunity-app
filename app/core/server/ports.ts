@@ -1876,14 +1876,15 @@ export interface TenantRepository {
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
   createTenantWithOwnerGrant(
     input: {
-      tenant: { id: string; slug: string; name: string; createdAt: string };
+      tenant: { id: string; slug: string; name: string; createdAt: string; defaultLanguage?: Language };
+      provisionAudit?: TenantAuditEventInput;
       ownerGrant: {
         id: string;
         userId: string;
         staffRole: Extract<StaffRole, 'owner'>;
       };
     },
-    options?: { requireEmpty: boolean },
+    options?: { requireEmpty: boolean; idempotentOwner?: boolean },
   ): Promise<Tenant | null>;
   hasAny(): Promise<boolean>;
 }
@@ -2301,6 +2302,7 @@ export interface AccountSession {
 }
 
 export interface AuthPort {
+  findUserByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;
   /** Unexpired sessions of one account, in provider order. */

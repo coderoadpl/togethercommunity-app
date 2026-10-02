@@ -10,11 +10,16 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     },
   },
   welcomeSignIn: {
-    actionLabel: 'Sign in and open your course',
-    render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, socialLinks }) => ({
+    actionLabels: {
+      course: 'Sign in and open your course',
+      digital_download: 'Sign in and download your files',
+      membership: 'Sign in to your account',
+      unknown: 'Sign in to your account',
+    },
+    render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, actionLabel, socialLinks }) => ({
       subject: `Hello, your ${tenantName} account is ready`,
       html: `${header}<p>Hello!</p><p>Your account on ${tenantNameHtml} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.</p><p>${actionLink}</p>${socialLinks.html}`,
-      text: `Hello!\n\nYour account on ${tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.\n\nSign in and open your course: ${actionUrl}${socialLinks.text}`,
+      text: `Hello!\n\nYour account on ${tenantName} is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.\n\n${actionLabel}: ${actionUrl}${socialLinks.text}`,
     }),
   },
   resetPassword: {

@@ -1,1 +1,1 @@
-export const MINIO_IMAGE = 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z';
+export const MINIO_IMAGE = 'docker.io/tobi312/minio:RELEASE.2025-09-07T16-13-09Z@sha256:e2226dea4b9aef896db02f7396102d48eb58cd339d930332e3d8bdac80012a78';

@@ -321,9 +321,10 @@ pnpm --silent run cli --tenant studio storage configure --provider minio \
 ```
 
 `pnpm run e2e:storage` runs the probe and its failure paths against a throwaway
-MinIO container using the image pinned in `scripts/test-images.ts`; point
-`STORAGE_E2E_*` at a real bucket to run the same verification against a provider
-account. Runtime probes reject loopback,
+container from the `tobi312/minio` mirror of MinIO release
+`RELEASE.2025-09-07T16-13-09Z`, pinned by tag and digest in
+`scripts/test-images.ts`; point `STORAGE_E2E_*` at a real bucket to run the same
+verification against a provider account. Runtime probes reject loopback,
 link-local and private-network endpoints by default. Self-hosted MinIO on a
 trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 

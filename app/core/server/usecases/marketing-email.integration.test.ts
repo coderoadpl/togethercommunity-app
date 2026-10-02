@@ -1158,6 +1158,40 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
   });
 
+  it.each([undefined, '1998-07-01T00:00:00.000Z'])('purges engagement only with an explicit cutoff (%s) and always scrubs payloads', async (engagementOlderThan) => {
+    const deps = await setup([]);
+    for (const [id, type, occurredAt] of [
+      ['old-open', 'opened', '1998-06-01T00:00:00.000Z'],
+      ['old-click', 'clicked', '1998-06-01T00:00:00.000Z'],
+      ['old-delivery', 'delivered', '1998-06-01T00:00:00.000Z'],
+      ['boundary-open', 'opened', '1998-07-01T00:00:00.000Z'],
+    ]) {
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id, tenantId: 'tenant-1', mailKind: 'marketing', refId: 'retention-send',
+        type, occurredAt, createdAt: occurredAt, meta: {
+          rawProviderPayload: { retained: true },
+          ...(type === 'clicked' ? { linkUrl: 'https://example.test/offer' } : {}),
+        },
+      }));
+    }
+    const purge = vi.spyOn(deps.events, 'purgeEngagement');
+    const result = await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW, renderedBodiesOlderThan: NOW, rawSnsInboxOlderThan: NOW, idempotencyNow: NOW,
+      ...(engagementOlderThan === undefined ? {} : { engagementOlderThan }),
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
+    expect(result).toMatchObject({ ok: true, value: {
+      engagementEventsPurged: engagementOlderThan === undefined ? 0 : 2,
+      engagementPayloadsScrubbed: 3,
+    } });
+    if (engagementOlderThan === undefined) expect(purge).not.toHaveBeenCalled();
+    else expect(purge).toHaveBeenCalledWith('tenant-1', engagementOlderThan);
+    const retained = await deps.events.listByRef('tenant-1', 'marketing', 'retention-send');
+    expect(retained.map((row) => row.id)).toEqual(engagementOlderThan === undefined
+      ? ['old-open', 'old-click', 'old-delivery', 'boundary-open'] : ['old-delivery', 'boundary-open']);
+    expect(retained.filter((row) => row.type === 'opened' || row.type === 'clicked')
+      .every((row) => !Object.hasOwn(row.meta ?? {}, 'rawProviderPayload'))).toBe(true);
+  });
+
   it('applies each marketing retention boundary to its own data class', async () => {
     const deps = await setup([]);
     const pending = vi.spyOn(deps.consents, 'purgeStalePending').mockResolvedValue(0);
@@ -1268,7 +1302,7 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.consents.listByEmail('tenant-1', 'future@example.test')).toEqual([]);
   });
 
-  it('scans all due campaign work and runs retention for every marketing tenant', async () => {
+  it.each([undefined, '1998-06-22T10:00:00.000Z'])('scans all due campaign work and forwards the optional engagement cutoff (%s)', async (engagementOlderThan) => {
     const dispatched: string[] = [];
     const retained: string[] = [];
     const refreshed: string[] = [];
@@ -1276,6 +1310,7 @@ describe('marketing e-mail use-case integration', () => {
     const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
+      ...(engagementOlderThan === undefined ? {} : { engagementOlderThan }),
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1301,7 +1336,8 @@ describe('marketing e-mail use-case integration', () => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
       },
-      runRetention: async (tenantId) => {
+      runRetention: async (tenantId, input) => {
+        expect(input.engagementOlderThan).toBe(engagementOlderThan);
         retained.push(tenantId);
         return ok(undefined);
       },

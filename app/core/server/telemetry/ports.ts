@@ -5,6 +5,10 @@ import type {
   TelemetryEvent, TelemetryStoreSettings, TelemetryStoreView,
 } from '#core/domain/telemetry.js';
 
+export interface TelemetryTenantDirectory {
+  listTenantIds(): Promise<string[]>;
+}
+
 export interface TelemetryWriter {
   appendBatch(tenantId: string, events: TelemetryEvent[]): Promise<void>;
 }

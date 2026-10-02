@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 
 import { emailEventSchema, normalizeEmail, type EmailEvent } from '#core/domain/index.js';
 import type { EmailEventRepository } from '#core/server/index.js';
@@ -20,6 +20,14 @@ const orderedEvents = (db: Db) => db.select().from(emailEvents)
 export const createEmailEventRepository = (db: Db): EmailEventRepository => ({
   append: async (tenantId, event) => {
     await db.transaction((tx) => appendEmailEvents(tx, [emailEventSchema.parse({ ...event, tenantId })]));
+  },
+  purgeEngagement: async (tenantId, olderThan) => {
+    const rows = await db.delete(emailEvents).where(and(
+      eq(emailEvents.tenantId, tenantId),
+      inArray(emailEvents.type, ['opened', 'clicked']),
+      lt(emailEvents.occurredAt, olderThan),
+    )).returning({ id: emailEvents.id });
+    return rows.length;
   },
   scrubEngagementPayloads: async (tenantId, limit) => {
     const rows = await db.update(emailEvents).set({

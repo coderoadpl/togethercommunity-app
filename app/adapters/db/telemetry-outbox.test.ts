@@ -6,7 +6,7 @@ import { TELEMETRY_LIMITS, telemetryEventSchema } from '#core/domain/telemetry.j
 
 import type { Db } from './client.js';
 import { createTestDatabase } from './test-database-name.js';
-import { appendTelemetry, createTelemetryOutbox, createTelemetrySettingsRepository, eraseTelemetrySubject } from './telemetry-outbox.js';
+import { appendTelemetry, createTelemetryOutbox, createTelemetrySettingsRepository, createTelemetryTenantDirectory, eraseTelemetrySubject } from './telemetry-outbox.js';
 import { telemetryAccounting, telemetryOutbox } from './telemetry-schema.js';
 
 let db: Db;
@@ -69,6 +69,11 @@ describe('transactional telemetry outbox', () => {
     await outbox.discard('tenant');
     expect(await outbox.pending('tenant', at, 100)).toEqual([]);
     expect(await outbox.status('tenant', at)).toMatchObject({ pendingBytes: 0, admissionPaused: false });
+  });
+  it('discovers only tenants with a connected MongoDB store', async () => {
+    const settings = createTelemetrySettingsRepository(db);
+    await settings.save('disconnected', { ...await settings.get('disconnected'), provider: null });
+    expect((await createTelemetryTenantDirectory(db).listTenantIds()).sort()).toEqual(['second', 'tenant']);
   });
   it('drops queued rows for an erased subject', async () => {
     await db.transaction((tx) => appendTelemetry(tx, event('erased')));

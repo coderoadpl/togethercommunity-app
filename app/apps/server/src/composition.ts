@@ -1,6 +1,7 @@
-import { createTelemetrySettingsRepository, createTelemetryOutbox, listTelemetryTenants } from '#adapters/db/telemetry-outbox.js';
+import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
 import { drainTelemetry } from '#core/server/telemetry/drain.js';
+import type { TelemetryTenantDirectory } from '#core/server/telemetry/ports.js';
 import type { TelemetryStoreDeps } from '#core/server/usecases/telemetry-store.js';
 import { createTelemetryEgressProbe } from './telemetry-egress.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
@@ -388,6 +389,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  telemetryTenantDirectory: TelemetryTenantDirectory;
   telemetryStore?: TelemetryStoreDeps;
   telemetry: AppErrorTelemetry;
   auth: Pick<
@@ -1110,6 +1112,9 @@ export const createDeps = (
     }
     const marketing = await runScheduledMarketingJobs({
       now,
+      ...(env.MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS === undefined ? {} : {
+        engagementOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS),
+      }),
       pendingOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_PENDING_CONSENTS_DAYS),
       renderedBodiesOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RENDERED_BODIES_DAYS),
       rawSnsInboxOlderThan: marketingRetentionCutoff(now, env.MARKETING_RETENTION_RAW_SNS_INBOX_DAYS),
@@ -1179,7 +1184,7 @@ export const createDeps = (
           { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
         )
       : ok({ purged: 0, tenantsProcessed: 0 });
-    for (const tenantId of await listTelemetryTenants(db)) {
+    for (const tenantId of await deps.telemetryTenantDirectory.listTenantIds()) {
       if (Date.parse(clock.nowIso()) + 5000 >= Date.parse(deadlineAt)) break;
       await drainTelemetry(tenantId, { ...telemetryStore, random: Math.random, deadlineAt });
     }
@@ -1319,6 +1324,7 @@ export const createDeps = (
   });
 
   const deps: AppDeps = {
+    telemetryTenantDirectory: createTelemetryTenantDirectory(db),
     telemetry: { recordAppError },
     auth,
     authPort: createAuthPort(auth),

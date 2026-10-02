@@ -261,6 +261,14 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     this.rows.push(structuredClone(event));
   }
 
+  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
+    const before = this.rows.length;
+    this.rows = this.rows.filter((row) => !(row.tenantId === tenantId
+      && (row.type === 'opened' || row.type === 'clicked')
+      && Date.parse(row.occurredAt) < Date.parse(olderThan)));
+    return before - this.rows.length;
+  }
+
   async scrubEngagementPayloads(tenantId: string, limit: number): Promise<number> {
     let changed = 0;
     for (const row of this.rows) {

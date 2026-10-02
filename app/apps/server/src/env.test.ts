@@ -845,12 +845,19 @@ describe('visual clock policy', () => {
 
 describe('marketing retention windows', () => {
   const keys = [
+    'MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS',
     'MARKETING_RETENTION_RAW_SNS_INBOX_DAYS',
     'MARKETING_RETENTION_RENDERED_BODIES_DAYS',
     'MARKETING_RETENTION_PENDING_CONSENTS_DAYS',
     'MARKETING_RETENTION_SCHEDULER_RUNS_DAYS',
     'MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS',
   ] as const;
+
+  it('keeps engagement purging disabled unless the operator sets a retention window', () => {
+    expect(envSchema.parse({}).MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS).toBeUndefined();
+    expect(envSchema.parse({ MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: '3650' })
+      .MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS).toBe(3650);
+  });
 
   it('uses the bounded defaults', () => {
     expect(envSchema.parse({})).toMatchObject({

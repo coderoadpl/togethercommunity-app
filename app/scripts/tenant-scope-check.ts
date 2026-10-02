@@ -29,6 +29,7 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
+  'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
   'AccountAvatarTenantReader.listTenantIdsForUser': "Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary, and GET /api/tenants via tenants.ts lists the caller's member communities.",

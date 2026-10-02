@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 
 import { TELEMETRY_LIMITS, telemetryEventSchema, telemetryStoreSettingsSchema, telemetrySyncSchema, type TelemetryEvent } from '#core/domain/telemetry.js';
-import type { TelemetryOutbox, TelemetrySettingsRepository } from '#core/server/telemetry/ports.js';
+import type { TelemetryOutbox, TelemetrySettingsRepository, TelemetryTenantDirectory } from '#core/server/telemetry/ports.js';
 
 import type { Db } from './client.js';
 import { telemetryAccounting, telemetryConnections, telemetryOutbox } from './telemetry-schema.js';
@@ -120,4 +120,6 @@ export const createTelemetryOutbox = (db: Db): TelemetryOutbox => ({
   },
 });
 
-export const listTelemetryTenants = async (db: Db): Promise<string[]> => (await db.select({ tenantId: telemetryConnections.tenantId }).from(telemetryConnections).where(sql`${telemetryConnections.settings}->>'provider' = 'mongodb'`)).map((row) => row.tenantId);
+export const createTelemetryTenantDirectory = (db: Db): TelemetryTenantDirectory => ({
+  listTenantIds: async () => (await db.select({ tenantId: telemetryConnections.tenantId }).from(telemetryConnections).where(sql`${telemetryConnections.settings}->>'provider' = 'mongodb'`)).map((row) => row.tenantId),
+});

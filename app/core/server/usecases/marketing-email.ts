@@ -1709,6 +1709,7 @@ export const runMarketingRetentionJobs = async (
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     rawSnsInboxOlderThan: string;
+    engagementOlderThan?: string;
     idempotencyNow: string;
   },
   deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
@@ -1722,6 +1723,7 @@ export const runMarketingRetentionJobs = async (
   pendingConsentsPurged: number;
   renderedBodiesPurged: number;
   engagementPayloadsScrubbed: number;
+  engagementEventsPurged: number;
   idempotencyKeysPurged: number;
 }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'scheduler:dispatch');
@@ -1733,8 +1735,11 @@ export const runMarketingRetentionJobs = async (
   await deps.marketingOutbox?.purge(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.snsInbox?.purge(tenantId.value, input.rawSnsInboxOlderThan);
   const engagementPayloadsScrubbed = await deps.events.scrubEngagementPayloads(tenantId.value, ENGAGEMENT_PAYLOAD_SCRUB_BATCH);
+  const engagementEventsPurged = input.engagementOlderThan === undefined
+    ? 0
+    : await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementPayloadsScrubbed, idempotencyKeysPurged });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementPayloadsScrubbed, engagementEventsPurged, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1793,6 +1798,7 @@ export const runScheduledMarketingJobs = async (
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     rawSnsInboxOlderThan: string;
+    engagementOlderThan?: string;
     schedulerRunsOlderThan: string;
     schedulerIdleRunsOlderThan: string;
     sesIdentityRefreshIntervalMs: number;
@@ -1810,6 +1816,7 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: string;
       renderedBodiesOlderThan: string;
       rawSnsInboxOlderThan: string;
+      engagementOlderThan?: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
     refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
@@ -1875,6 +1882,7 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
       rawSnsInboxOlderThan: input.rawSnsInboxOlderThan,
+      ...(input.engagementOlderThan === undefined ? {} : { engagementOlderThan: input.engagementOlderThan }),
       idempotencyNow: input.now,
     });
     if (!retained.ok && firstError === null) firstError = retained.error;

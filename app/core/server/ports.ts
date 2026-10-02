@@ -1625,6 +1625,7 @@ export interface PlatformTransactionalPool {
 
 export interface EmailEventRepository {
   append(tenantId: string, event: EmailEvent): Promise<void>;
+  purgeEngagement(tenantId: string, olderThan: string): Promise<number>;
   scrubEngagementPayloads(tenantId: string, limit: number): Promise<number>;
   listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
   listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;

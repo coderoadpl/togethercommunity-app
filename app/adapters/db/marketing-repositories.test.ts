@@ -72,6 +72,26 @@ const campaign = (tenantId: string): Campaign => ({
 });
 
 describe('marketing database repositories', () => {
+  it('purges only engagement older than the cutoff in the requested tenant', async () => {
+    const repository = createEmailEventRepository(db);
+    const rows = [
+      { id: 'purge-open-a', tenantId: 'tenant-a', type: 'opened', occurredAt: '1998-06-01T00:00:00.000Z' },
+      { id: 'purge-click-a', tenantId: 'tenant-a', type: 'clicked', occurredAt: '1998-06-01T00:00:00.000Z' },
+      { id: 'purge-delivery-a', tenantId: 'tenant-a', type: 'delivered', occurredAt: '1998-06-01T00:00:00.000Z' },
+      { id: 'purge-boundary-a', tenantId: 'tenant-a', type: 'opened', occurredAt: NOW },
+      { id: 'purge-open-b', tenantId: 'tenant-b', type: 'opened', occurredAt: '1998-06-01T00:00:00.000Z' },
+    ].map((row) => emailEventSchema.parse({
+      ...row, mailKind: 'marketing', refId: 'purge-send', createdAt: row.occurredAt,
+      meta: row.type === 'clicked' ? { linkUrl: 'https://example.test/offer' } : {},
+    }));
+    for (const row of rows) await repository.append(row.tenantId, row);
+    expect(await repository.purgeEngagement('tenant-a', NOW)).toBe(2);
+    expect((await repository.listByRef('tenant-a', 'marketing', 'purge-send')).map((row) => row.id))
+      .toEqual(['purge-delivery-a', 'purge-boundary-a']);
+    expect((await repository.listByRef('tenant-b', 'marketing', 'purge-send')).map((row) => row.id))
+      .toEqual(['purge-open-b']);
+  });
+
   it('scrubs engagement payloads in bounded tenant-scoped batches without deleting history', async () => {
     const repository = createEmailEventRepository(db);
     const rows = [

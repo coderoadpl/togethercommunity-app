@@ -140,6 +140,7 @@ export const envSchema = z
     MARKETING_SEND_SECONDS: z.coerce.number().min(1).max(50).default(50),
     MARKETING_BATCH_CAP: z.coerce.number().int().min(1).max(10000).default(1000),
     MARKETING_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).default(60000),
+    MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: z.coerce.number().int().positive().optional(),
     MARKETING_RETENTION_RAW_SNS_INBOX_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.rawSnsInboxDays),
     MARKETING_RETENTION_RENDERED_BODIES_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.renderedBodiesDays),
     MARKETING_RETENTION_PENDING_CONSENTS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.pendingConsentsDays),

@@ -97,9 +97,12 @@ including their link metadata, over the API as well as the panel. Delivery statu
 failures and the send export stay available: they are operational delivery records
 rather than engagement analytics. The panel renders a localized unavailable state.
 Connected tenants still read campaign reports from Postgres in this slice.
-Existing Postgres engagement is retained indefinitely while those reports depend
-on it, independently of telemetry connectivity. These rows are kept without the
-provider payload; the retention job removes payloads from existing rows.
+Existing Postgres engagement is retained indefinitely by default while those reports
+depend on it, independently of telemetry connectivity (owner decision, 2026-09-13).
+`MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS` is optional with no default: unset keeps
+engagement events indefinitely; an explicit value N opts into purging them after N days.
+These rows are kept without the provider payload; the retention job removes payloads
+from existing rows regardless of whether age-based engagement purging is enabled.
 No history purge is authorized
 by the outbox cap or a successful destination probe.
 

@@ -479,7 +479,11 @@ export const LessonPlayerPage = ({
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
     : lesson.data.lesson.name;
-  let htmlIndex = 0;
+  const htmlByGroupIndex = new Map(
+    groups
+      .flatMap((group, index) => group.kind === 'block' && group.block.type === 'html' ? [index] : [])
+      .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
+  );
 
   const continueToNext = () => {
     setContinuing(true);
@@ -532,9 +536,7 @@ export const LessonPlayerPage = ({
             />
           ) : (
             groups.map((group, index) => {
-              const html = group.kind === 'block' && group.block.type === 'html'
-                ? headingDocument.htmlBlocks[htmlIndex++]
-                : undefined;
+              const html = htmlByGroupIndex.get(index);
               return (
               <Paper
                 key={index}

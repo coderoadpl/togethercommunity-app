@@ -5155,13 +5155,13 @@ describe('tenant redirects', () => {
       createdAt: '1998-07-12T00:00:00.000Z',
     },
     {
-      id: 'redirect-print-link',
+      id: 'redirect-printed-guide',
       tenantId: acme.id,
-      fromPath: '/link/electrics',
+      fromPath: '/printed/guide',
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
-      targetAnchor: 'wiring-safety',
+      targetAnchor: 'installation-notes',
       permanent: false,
       locked: true,
       hitCount: 12,
@@ -5261,13 +5261,13 @@ describe('tenant redirects', () => {
   it('increments once and places the lesson anchor after the preserved query string', async () => {
     const increments: string[] = [];
     const response = await redirectApp(acme, { increments }).request(
-      '/link/electrics?edition=print',
+      '/printed/guide?edition=print',
       { headers: { host: 'acme.localhost:48730' } },
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${lessonPagePath}?edition=print#wiring-safety`);
-    expect(increments).toEqual(['redirect-print-link']);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}?edition=print#installation-notes`);
+    expect(increments).toEqual(['redirect-printed-guide']);
   });
 
   it('does not update a counter when no redirect matches', async () => {
@@ -5283,27 +5283,27 @@ describe('tenant redirects', () => {
   it('warns and still redirects when the hit increment fails', async () => {
     const warnings: string[] = [];
     const response = await redirectApp(acme, { warnings, failIncrement: true }).request(
-      '/link/electrics',
+      '/printed/guide',
       { headers: { host: 'acme.localhost:48730' } },
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${lessonPagePath}#wiring-safety`);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
     expect(warnings).toEqual([
-      '[tenant-redirect] hit increment failed for t-acme/redirect-print-link',
+      '[tenant-redirect] hit increment failed for t-acme/redirect-printed-guide',
     ]);
   });
 
   it('does not count a HEAD request', async () => {
     const increments: string[] = [];
 
-    const response = await redirectApp(acme, { increments }).request('/link/electrics', {
+    const response = await redirectApp(acme, { increments }).request('/printed/guide', {
       method: 'HEAD',
       headers: { host: 'acme.localhost:48730' },
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${lessonPagePath}#wiring-safety`);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
     expect(increments).toEqual([]);
   });
 

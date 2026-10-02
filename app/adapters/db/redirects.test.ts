@@ -202,6 +202,27 @@ describe('tenant redirect repository', () => {
     });
   });
 
+  it('scopes updates and hit increments to the owning tenant', async () => {
+    const repository = createTenantRedirectRepository(db);
+    const redirect = mutation({
+      id: 'redirect-tenant-boundary',
+      fromPath: '/printed/tenant-boundary',
+    }).resource;
+    expect(await repository.create(TENANT_ID, redirect)).toBe('saved');
+
+    expect(await repository.update(OTHER_TENANT_ID, {
+      ...redirect,
+      targetPath: '/my/changed',
+    })).toBeNull();
+    await repository.incrementHit(OTHER_TENANT_ID, redirect.id);
+
+    expect(await repository.findById(TENANT_ID, redirect.id)).toMatchObject({
+      targetPath: redirect.targetPath,
+      hitCount: 0,
+      lastHitAt: null,
+    });
+  });
+
   it('refuses to let an import update a manual row', async () => {
     const repository = createTenantRedirectRepository(db);
     const manual = {

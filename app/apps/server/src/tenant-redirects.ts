@@ -21,10 +21,6 @@ const isAssetRequest = (path: string): boolean => {
 
 export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void => {
   app.get('*', async (c, next) => {
-    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
-      await next();
-      return;
-    }
     if (isAssetRequest(c.req.path)) {
       await next();
       return;

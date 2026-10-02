@@ -203,7 +203,7 @@ describe('tenant redirect management', () => {
   it('retargets in place while keeping identity, source, counts, and creation time', async () => {
     const original = redirectFixture({
       id: 'redirect-print',
-      fromPath: '/link/electrics',
+      fromPath: '/printed/guide',
       hitCount: 27,
       lastHitAt: '2026-10-01T10:00:00.000Z',
       createdAt: '2026-01-01T00:00:00.000Z',

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoClient } from 'mongodb';
 
 import { telemetryEventSchema } from '#core/domain/telemetry.js';
 import type { TelemetryWriter, TelemetryReader, TelemetryStoreProbe, TelemetryErasure, TelemetryStore } from '#core/server/telemetry/ports.js';
@@ -19,7 +20,16 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => { await store?.close('tenant'); await server?.stop(); });
 describe('MongoDB telemetry', () => {
-  it('probes round trip and required indexes', async () => { const probe: TelemetryStoreProbe = store; expect(await probe.probe('tenant')).toEqual({ ok: true, value: undefined }); });
+  it('probes round trip and required indexes', async () => {
+    const probe: TelemetryStoreProbe = store;
+    expect(await probe.probe('tenant')).toEqual({ ok: true, value: undefined });
+    const client = new MongoClient(server.getUri('telemetry_test'));
+    try {
+      expect(await client.db().collection('telemetry_probe').countDocuments()).toBe(0);
+    } finally {
+      await client.close();
+    }
+  });
   it('deduplicates replay without collapsing repeated engagement', async () => {
     const batch = [event('1'), event('2'), event('3', 'clicked'), event('4', 'opened', 'second'), event('5', 'bounced')];
     const writer: TelemetryWriter = store;

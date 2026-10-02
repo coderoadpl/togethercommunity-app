@@ -179,6 +179,7 @@ describe('run reputation alerts', () => {
       listByRef: async () => [],
       listByEmailAcrossKinds: async () => [],
       reputationCounts: async () => counts,
+      scrubEngagementPayloads: async () => 0,
     };
     const settings = new InMemoryTenantSesSettingsRepository([sesSettings()]);
     const emailOutbox = new InMemoryEmailOutboxRepository();

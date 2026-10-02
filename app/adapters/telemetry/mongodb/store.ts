@@ -145,11 +145,13 @@ export const createMongoTelemetryFactory = (options: { localTesting?: boolean } 
       probe: async (tenantId) => {
         const probes = database.collection<{ _id: string; tenantId: string }>('telemetry_probe');
         const id = randomUUID();
+        let insertAttempted = false;
         try {
           await guard(tenantId);
           await client.connect();
           await events.createIndexes([...indexes]);
           await sends.createIndex({ tenantId: 1, contactId: 1 });
+          insertAttempted = true;
           await probes.insertOne({ _id: id, tenantId });
           if (await probes.findOne({ _id: id, tenantId }) === null) return err(validation('Telemetry probe failed'));
           if ((await probes.deleteOne({ _id: id, tenantId })).deletedCount !== 1) return err(validation('Telemetry probe failed'));
@@ -159,7 +161,7 @@ export const createMongoTelemetryFactory = (options: { localTesting?: boolean } 
         } catch {
           return err(validation('Telemetry probe failed'));
         } finally {
-          await probes.deleteOne({ _id: id, tenantId }).catch(() => undefined);
+          if (insertAttempted) await probes.deleteOne({ _id: id, tenantId }).catch(() => undefined);
         }
       },
       close: (tenantId) => { scope(tenantId); return client.close(); },

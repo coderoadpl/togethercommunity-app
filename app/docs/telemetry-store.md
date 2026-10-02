@@ -29,8 +29,10 @@ independently owned copies.
 
 Tenant-supplied hosts are validated before the driver connects: scheme, dedicated
 database, scoped credentials, an allowlist of connection options, and a rejection
-of loopback and private address ranges, resolved through DNS (including discovery
-records) exactly as tenant-supplied storage endpoints are handled.
+of loopback and private address ranges. Hosts in the connection string and its
+discovery records are resolved and checked once before the first operation.
+Unlike the storage probe, the connection is not pinned to the checked address,
+and replica-set members announced by the server are not checked.
 
 `PLATFORM_EGRESS_IP` is an optional operator declaration of a stable outbound
 address. Without that declaration, `PLATFORM_EGRESS_ECHO_URL` can name an HTTPS
@@ -95,7 +97,9 @@ failures and the send export stay available: they are operational delivery recor
 rather than engagement analytics. The panel renders a localized unavailable state.
 Connected tenants still read campaign reports from Postgres in this slice.
 Existing Postgres engagement is retained indefinitely while those reports depend
-on it, independently of telemetry connectivity. No history purge is authorized
+on it, independently of telemetry connectivity. These rows are kept without the
+provider payload; the retention job removes payloads from existing rows.
+No history purge is authorized
 by the outbox cap or a successful destination probe.
 
 Slice 2 owns report read switching, coverage and watermark presentation,

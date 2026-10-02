@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -24,7 +24,7 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { campaignSends, consents, emailOutbox, marketingConsents, marketingOutbox, members, schedulerRuns, schedulerRunTenants, tenantSesSettings, tenants } from './schema.js';
+import { campaignSends, consents, emailEvents, emailOutbox, marketingConsents, marketingOutbox, members, schedulerRuns, schedulerRunTenants, tenantSesSettings, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -72,6 +72,46 @@ const campaign = (tenantId: string): Campaign => ({
 });
 
 describe('marketing database repositories', () => {
+  it('scrubs engagement payloads in bounded tenant-scoped batches without deleting history', async () => {
+    const repository = createEmailEventRepository(db);
+    const rows = [
+      { id: 'scrub-open-a-1', tenantId: 'tenant-a', type: 'opened', meta: { rawProviderPayload: { ipAddress: '192.0.2.1' }, retained: true } },
+      { id: 'scrub-open-a-2', tenantId: 'tenant-a', type: 'opened', meta: { rawProviderPayload: { ipAddress: '192.0.2.2' } } },
+      { id: 'scrub-click-a', tenantId: 'tenant-a', type: 'clicked', meta: { rawProviderPayload: { ipAddress: '192.0.2.3' }, linkUrl: 'https://example.test/offer' } },
+      { id: 'scrub-bounce-a', tenantId: 'tenant-a', type: 'bounced', meta: { rawProviderPayload: { ipAddress: '192.0.2.4' }, classification: 'hard' } },
+      { id: 'scrub-open-b', tenantId: 'tenant-b', type: 'opened', meta: { rawProviderPayload: { ipAddress: '192.0.2.5' } } },
+    ].map((row) => emailEventSchema.parse({
+      ...row, mailKind: 'marketing', refId: 'scrub-send', occurredAt: NOW, createdAt: NOW,
+    }));
+    for (const row of rows) await repository.append(row.tenantId, row);
+    const readRows = () => db.select().from(emailEvents)
+      .where(inArray(emailEvents.id, rows.map((row) => row.id))).orderBy(emailEvents.id);
+    const before = await readRows();
+
+    expect(await repository.scrubEngagementPayloads('tenant-a', 1)).toBe(1);
+    expect(await repository.scrubEngagementPayloads('tenant-a', 1000)).toBe(2);
+    expect(await repository.scrubEngagementPayloads('tenant-a', 1000)).toBe(0);
+
+    const after = await readRows();
+    expect(after).toHaveLength(before.length);
+    for (const row of after) {
+      const original = before.find((entry) => entry.id === row.id);
+      if (row.tenantId === 'tenant-a' && (row.type === 'opened' || row.type === 'clicked')) {
+        expect(row.meta).not.toHaveProperty('rawProviderPayload');
+        const meta = { ...original?.meta };
+        delete meta['rawProviderPayload'];
+        expect(row).toEqual({ ...original, meta });
+      } else {
+        expect(JSON.stringify(row)).toBe(JSON.stringify(original));
+      }
+    }
+    const events = await repository.listByRef('tenant-a', 'marketing', 'scrub-send');
+    const clicked = events.find((row) => row.id === 'scrub-click-a');
+    expect(clicked?.meta).toEqual({ linkUrl: 'https://example.test/offer' });
+    expect(emailEventSchema.parse(clicked).type).toBe('clicked');
+    expect(events).toHaveLength(4);
+  });
+
   it('selects SES identities that have never been checked or exceeded the cadence', async () => {
     await db.insert(tenantSesSettings).values([
       {

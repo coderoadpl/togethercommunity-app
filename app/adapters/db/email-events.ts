@@ -21,6 +21,19 @@ export const createEmailEventRepository = (db: Db): EmailEventRepository => ({
   append: async (tenantId, event) => {
     await db.transaction((tx) => appendEmailEvents(tx, [emailEventSchema.parse({ ...event, tenantId })]));
   },
+  scrubEngagementPayloads: async (tenantId, limit) => {
+    const rows = await db.update(emailEvents).set({
+      meta: sql`${emailEvents.meta} - 'rawProviderPayload'`,
+    }).where(and(
+      eq(emailEvents.tenantId, tenantId),
+      inArray(emailEvents.id, db.select({ id: emailEvents.id }).from(emailEvents).where(and(
+        eq(emailEvents.tenantId, tenantId),
+        inArray(emailEvents.type, ['opened', 'clicked']),
+        sql`jsonb_exists(${emailEvents.meta}, 'rawProviderPayload')`,
+      )).limit(limit)),
+    )).returning({ id: emailEvents.id });
+    return rows.length;
+  },
   listByRef: async (tenantId, mailKind, refId) =>
     (await orderedEvents(db).where(and(
       eq(emailEvents.tenantId, tenantId),

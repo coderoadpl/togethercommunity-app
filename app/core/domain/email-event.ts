@@ -43,7 +43,7 @@ export const emailEventSchema = z.discriminatedUnion('type', [
     type: z.literal('clicked'),
     meta: z.object({
       linkUrl: z.string().min(1),
-      rawProviderPayload: z.unknown(),
+      rawProviderPayload: z.unknown().optional(),
     }).passthrough(),
   }),
   baseEmailEventSchema.extend({

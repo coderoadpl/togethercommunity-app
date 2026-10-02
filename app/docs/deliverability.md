@@ -143,6 +143,7 @@ cannot run every minute need an external scheduler or a standalone worker. The e
 | `MARKETING_BATCH_CAP` | 1000 | Maximum recipients allocated to a batch |
 | `MARKETING_WORKER_INTERVAL_MS` | 60000 | Standalone worker interval; hosted cadence is set in `vercel.json` |
 | `MARKETING_RETENTION_RAW_SNS_INBOX_DAYS` | 7 | Raw SNS payload retention after processing or ignoring |
+| Open and click provider payloads | — | Not stored on engagement events; the retention job removes payloads from existing rows while keeping the rows |
 | `MARKETING_RETENTION_RENDERED_BODIES_DAYS` | 14 | Rendered campaign body and marketing outbox payload retention |
 | `MARKETING_RETENTION_PENDING_CONSENTS_DAYS` | 30 | Unconfirmed double opt-in consent retention |
 | `MARKETING_RETENTION_SCHEDULER_RUNS_DAYS` | 14 | Non-idle scheduler run retention |

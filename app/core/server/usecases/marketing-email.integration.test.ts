@@ -889,25 +889,22 @@ describe('marketing e-mail use-case integration', () => {
     const topicArn = settings.snsTopicArn ?? '';
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'fake-ses-message', kind: 'open',
-      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1', userAgent: 'Engagement test agent' } },
     }, deps)).toEqual(ok({ kind: 'applied' }));
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'fake-ses-message', kind: 'click',
       linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
-      raw: { click: { link: 'https://tenant.test/offer' } },
+      raw: { click: { link: 'https://tenant.test/offer', ipAddress: '192.0.2.1', userAgent: 'Engagement test agent' } },
     }, deps)).toEqual(ok({ kind: 'applied' }));
     const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
-    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2))
-      .toMatchObject([
-        { type: 'opened', meta: { rawProviderPayload: { open: { ipAddress: '192.0.2.1' } } } },
-        {
-          type: 'clicked',
-          meta: {
-            linkUrl: 'https://tenant.test/offer',
-            rawProviderPayload: { click: { link: 'https://tenant.test/offer' } },
-          },
-        },
-      ]);
+    const engagement = (await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2);
+    expect(engagement.map(({ type, meta }) => ({ type, meta }))).toEqual([
+      { type: 'opened', meta: {} },
+      { type: 'clicked', meta: { linkUrl: 'https://tenant.test/offer' } },
+    ]);
+    expect(engagement[0]?.meta).not.toHaveProperty('rawProviderPayload');
+    expect(JSON.stringify(engagement)).not.toContain('192.0.2.1');
+    expect(JSON.stringify(engagement)).not.toContain('Engagement test agent');
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'unknown', kind: 'open', occurredAt: NOW, raw: {},
     }, deps)).toEqual(ok({ kind: 'awaiting_correlation' }));
@@ -1690,10 +1687,20 @@ describe('marketing e-mail use-case integration', () => {
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
     expect(retention).toMatchObject({
       ok: true,
-      value: { renderedBodiesPurged: 0 },
+      value: { renderedBodiesPurged: 0, engagementPayloadsScrubbed: 1 },
     });
-    expect((await deps.events.listByRef('tenant-1', 'marketing', 'send-old')).map((event) => event.type))
-      .toEqual(['opened', 'delivered']);
+    const retained = await deps.events.listByRef('tenant-1', 'marketing', 'send-old');
+    expect(retained.map((event) => event.id)).toEqual(['old-open', 'old-delivery']);
+    expect(retained[0]?.meta).not.toHaveProperty('rawProviderPayload');
+    expect(retained[1]?.meta).toEqual({ rawProviderPayload: {} });
+    expect(await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW,
+      renderedBodiesOlderThan: NOW,
+      rawSnsInboxOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
+      ok: true, value: { engagementPayloadsScrubbed: 0 },
+    });
   });
 
   it('requires campaign write capability to delete a campaign', async () => {

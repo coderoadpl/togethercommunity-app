@@ -49,6 +49,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeRequiredTenant } from '../authorize.js';
+import { ENGAGEMENT_PAYLOAD_SCRUB_BATCH } from '../marketing-retention.js';
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -1628,8 +1629,8 @@ export const applyVerifiedSesEvent = async (
           send.id,
           event.kind === 'open' ? 'opened' : 'clicked',
           event.kind === 'open'
-            ? { rawProviderPayload: event.raw }
-            : { linkUrl: event.linkUrl, rawProviderPayload: event.raw },
+            ? {}
+            : { linkUrl: event.linkUrl },
           event.occurredAt,
         ),
       );
@@ -1720,6 +1721,7 @@ export const runMarketingRetentionJobs = async (
 ): Promise<Result<{
   pendingConsentsPurged: number;
   renderedBodiesPurged: number;
+  engagementPayloadsScrubbed: number;
   idempotencyKeysPurged: number;
 }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'scheduler:dispatch');
@@ -1730,8 +1732,9 @@ export const runMarketingRetentionJobs = async (
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.marketingOutbox?.purge(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.snsInbox?.purge(tenantId.value, input.rawSnsInboxOlderThan);
+  const engagementPayloadsScrubbed = await deps.events.scrubEngagementPayloads(tenantId.value, ENGAGEMENT_PAYLOAD_SCRUB_BATCH);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementPayloadsScrubbed, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (

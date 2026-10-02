@@ -261,6 +261,18 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     this.rows.push(structuredClone(event));
   }
 
+  async scrubEngagementPayloads(tenantId: string, limit: number): Promise<number> {
+    let changed = 0;
+    for (const row of this.rows) {
+      if (changed >= limit) break;
+      if (row.tenantId !== tenantId || (row.type !== 'opened' && row.type !== 'clicked')
+        || row.meta === null || !Object.hasOwn(row.meta, 'rawProviderPayload')) continue;
+      delete row.meta['rawProviderPayload'];
+      changed += 1;
+    }
+    return changed;
+  }
+
   async listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]> {
     return this.ordered(this.rows.filter((row) =>
       row.tenantId === tenantId && row.mailKind === mailKind && row.refId === refId

@@ -2,6 +2,7 @@ import type { ContactCampaignAudience } from '#core/domain/marketing-audience.js
 import type { MarketingContactAudienceDeps, MarketingContactAudienceRepository } from '../marketing-audience-ports.js';
 import { scheduleMarketingContactCampaign } from './marketing-contact-campaigns.js';
 import { prepareMarketingContactAudience } from './marketing-contact-audience.js';
+import type { MarketingSignupRepos } from '../marketing-signup-ports.js';
 import type { MarketingContactRepository } from '../marketing-contact-ports.js';
 import { dispatchMarketingOutbox, marketingSendBudget } from './marketing-dispatch.js';
 import type { SesEventApplication, VerifiedSesEvent } from '#core/domain/marketing-sns-inbox.js';
@@ -267,7 +268,7 @@ export const recordCheckoutMarketingConsents = async (
 export const confirmMarketingConsent = async (
   ctx: Ctx,
   input: { token: string; evidence: ConsentEvidence },
-  deps: Pick<ConsentDeps, 'confirmations' | 'consents' | 'ids' | 'clock'>,
+  deps: Pick<ConsentDeps, 'confirmations' | 'consents' | 'ids' | 'clock'> & Pick<MarketingSignupRepos, 'forms' | 'contacts' | 'lists'>,
 ): Promise<Result<{ consent: MarketingConsent }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
@@ -290,6 +291,18 @@ export const confirmMarketingConsent = async (
     evidence: input.evidence, occurredAt: now,
   };
   await deps.consents.record(tenantId.value, confirmed);
+  if (granted.source === 'signup_form' && typeof granted.evidence['formId'] === 'string') {
+    const form = await deps.forms.findById(tenantId.value, granted.evidence['formId']);
+    if (form !== null) {
+      await deps.contacts.lockAddress(tenantId.value, granted.email);
+      const contact = await deps.contacts.findByEmail(tenantId.value, granted.email);
+      if (contact !== null && contact.source !== 'erasure') {
+        await deps.contacts.update(tenantId.value, contact.id, { tags: [...new Set([...contact.tags, ...form.tags])] });
+        if (form.listId !== null) await deps.lists.addMembers(tenantId.value, { listId: form.listId, contactIds: [contact.id] });
+        if (contact.archivedAt !== null) await deps.contacts.archive(tenantId.value, { contactId: contact.id, archivedAt: null });
+      }
+    }
+  }
   return ok({ consent: confirmed });
 };
 

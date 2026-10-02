@@ -1,3 +1,5 @@
+import { marketingContactDeps } from '../testing/marketing-contact-fakes.js';
+import { InMemoryMarketingSignupFormRepository } from '../testing/marketing-signup-fakes.js';
 import { dispatchMarketingOutbox } from './marketing-dispatch.js';
 import { createInMemoryMarketingDelivery } from '../testing/marketing-delivery-fakes.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -192,7 +194,9 @@ const setup = async (emails = ['member@example.test'], tenantDefault?: Language)
   let quotaReader: SesMarketingQuotaReader | undefined;
   for (const email of emails) await consents.record('tenant-1', consent(email));
   const events = new InMemoryEmailEventRepository();
+  const directory = marketingContactDeps();
   const deps = {
+    contacts: directory.contacts, lists: directory.lists, forms: new InMemoryMarketingSignupFormRepository(),
     htmlToText: { convert: (html: string) => html },
     batchCap: 10,
     waiter: { wait: async () => undefined },

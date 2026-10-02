@@ -1,3 +1,4 @@
+import { neutralizeFormula, quoteCsv } from '#core/domain/csv.js';
 import type { Command } from 'commander';
 import { z } from 'zod';
 import type { ApiClient } from '#core/client/index.js';
@@ -13,7 +14,7 @@ const memberOptionsSchema = z.object({
 
 export const renderMemberActivityCsv = (members: MemberActivity['members']): string => {
   const fields = ['memberId', 'displayName', 'email', 'signInsBefore', 'signInsAfter', 'firstSignIn', 'lastSignIn', 'progressBefore', 'progressAfter', 'coursesTouched', 'lessonsCompletedTotal', 'lastProgress', 'completionsBefore', 'completionsAfter'] as const;
-  const escape = (value: string | number | null): string => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const escape = (value: string | number | null): string => quoteCsv(typeof value === 'string' ? neutralizeFormula(value) : String(value ?? ''));
   return [fields.map(escape).join(','), ...members.map((member) => fields.map((field) => escape(member[field])).join(','))].join('\r\n') + '\r\n';
 };
 

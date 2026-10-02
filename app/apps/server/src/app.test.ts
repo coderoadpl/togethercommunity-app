@@ -1,3 +1,5 @@
+import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
+import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -1038,6 +1040,7 @@ const scopedApp = (
 
 const marketingDeps = (): MarketingAppDeps => {
  const base: Omit<MarketingAppDeps, 'delivery' | 'marketingOutbox' | 'snsInbox'> = {
+  confirmationTransaction: { run: async (_, operation) => operation({ ...marketingContactDeps(), forms: new InMemoryMarketingSignupFormRepository(), confirmations: base.confirmations, consents: base.marketingConsents, outbox: new InMemoryEmailOutboxRepository() }) },
  htmlToText: createHtmlToText(), waiter: { wait: async () => undefined },
   runs: new InMemorySchedulerRunRepository(),
   events: new InMemoryEmailEventRepository(),

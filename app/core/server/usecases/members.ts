@@ -1,3 +1,4 @@
+import { neutralizeFormula, quoteCsv } from '#core/domain/csv.js';
 import {
   DELETED_MEMBER_DISPLAY,
   err,
@@ -55,11 +56,6 @@ interface MemberSubscriptionCancellation {
   outcome: 'canceled' | 'already_canceled' | 'skipped' | 'failed';
   message: string | null;
 }
-
-const neutralizeFormula = (value: string): string =>
-  /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-
-const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 
 const serializeRecord = (value: Record<string, boolean> | Record<string, string>): string =>
   JSON.stringify(value);

@@ -129,9 +129,9 @@ const okProgress = (completedLessonIds: string[] = []) =>
     HttpResponse.json({ ok: true, data: { progress: progress(completedLessonIds) } }),
   );
 
-const stubDesktopViewport = () => {
+const stubDesktopViewport = (reducedMotion = false) => {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('min-width'),
+    matches: query.includes('min-width') || reducedMotion && query.includes('prefers-reduced-motion'),
     media: query,
     onchange: null,
     addListener: () => undefined,
@@ -796,6 +796,30 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => expect(reads).toBeGreaterThan(readsBeforeRefetch));
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses automatic hash scrolling when reduced motion is preferred', async () => {
+    stubDesktopViewport(true);
+    window.history.replaceState(null, '', '/#accessible-section');
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () => HttpResponse.json({
+        ok: true,
+        data: {
+          lesson: {
+            ...lesson([{ type: 'html', html: '<h2>Accessible section</h2>' }]),
+            isPreview: true,
+          },
+          authenticated: false,
+        },
+      })),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const heading = await screen.findByRole('heading', { name: 'Accessible section' });
+    await waitFor(() => expect(scrollIntoView.mock.instances).toContain(heading));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
 
   it('uses a signed Bunny embed url returned by the lesson endpoint', async () => {

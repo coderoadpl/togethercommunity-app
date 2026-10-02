@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 
 import type { ImportRedirectMutation } from '#core/server/index.js';
 
@@ -125,6 +126,12 @@ describe('tenant redirect repository', () => {
     expect(await repository.deleteById(OTHER_TENANT_ID, 'redirect-manual')).toBe(false);
     expect(await repository.deleteById(TENANT_ID, 'redirect-manual')).toBe(true);
     expect(await repository.findById(TENANT_ID, 'redirect-manual')).toBeNull();
+
+    const locked = { ...manual, id: 'redirect-locked', fromPath: '/locked', locked: true };
+    expect(await repository.create(TENANT_ID, locked)).toBe('saved');
+    expect(await repository.deleteById(TENANT_ID, locked.id)).toBe(false);
+    expect(await repository.findById(TENANT_ID, locked.id)).toMatchObject({ locked: true });
+    await db.delete(tenantRedirects).where(eq(tenantRedirects.id, locked.id));
   });
 
   it('pages and searches over both paths, ordered by source path', async () => {

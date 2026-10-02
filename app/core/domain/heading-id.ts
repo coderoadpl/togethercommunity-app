@@ -2,13 +2,14 @@ const MAX_HEADING_ID_LENGTH = 80;
 
 export const headingIdBase = (text: string): string => {
   const normalized = text
-    .replace(/[łŁ]/g, (letter) => letter === 'Ł' ? 'L' : 'l')
+    .replace(/[\u0142\u0141]/g, (letter) => letter === '\u0141' ? 'L' : 'l')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return (normalized === '' ? 'section' : normalized).slice(0, MAX_HEADING_ID_LENGTH);
+  const truncated = normalized.slice(0, MAX_HEADING_ID_LENGTH).replace(/-+$/g, '');
+  return truncated === '' ? 'section' : truncated;
 };
 
 export const headingIds = (headings: readonly string[]): string[] => {

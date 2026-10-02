@@ -677,7 +677,7 @@ describe('redirect commands', () => {
   it('retargets a locked redirect to a lesson anchor', async () => {
     await run(
       '--json', 'redirect', 'update', 'redirect-legacy',
-      '--course', 'course-js', '--lesson', 'lesson-1', '--anchor', 'wiring', '--locked',
+      '--course', 'course-js', '--lesson', 'lesson-1', '--anchor', 'wiring', '--permanent', '--locked',
     );
 
     expect(h.updateTenantRedirect).toHaveBeenCalledExactlyOnceWith({
@@ -692,6 +692,33 @@ describe('redirect commands', () => {
       locked: true,
     });
     expect(soleJson()).toMatchObject({ ok: true, data: { redirect: { id: 'redirect-legacy' } } });
+  });
+
+  it('requires an explicit redirect status when updating a target', async () => {
+    await run('--json', 'redirect', 'update', 'redirect-legacy', '--path', '/my', '--locked');
+
+    expect(h.updateTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects both redirect status flags on update', async () => {
+    await run(
+      '--json', 'redirect', 'update', 'redirect-legacy', '--path', '/my',
+      '--permanent', '--temporary', '--locked',
+    );
+
+    expect(h.updateTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects both redirect lock flags on update', async () => {
+    await run(
+      '--json', 'redirect', 'update', 'redirect-legacy', '--path', '/my',
+      '--temporary', '--locked', '--unlocked',
+    );
+
+    expect(h.updateTenantRedirect).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('emits one validation envelope when no target is given', async () => {

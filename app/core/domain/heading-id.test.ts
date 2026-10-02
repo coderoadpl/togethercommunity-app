@@ -33,4 +33,8 @@ describe('lesson heading ids', () => {
       `${'a'.repeat(78)}-2`,
     ]);
   });
+
+  it('removes a trailing separator introduced by truncation', () => {
+    expect(headingIdBase(`${'a'.repeat(79)} b`)).toBe('a'.repeat(79));
+  });
 });

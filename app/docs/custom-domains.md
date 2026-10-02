@@ -170,14 +170,23 @@ incoming query string and appends the anchor after it. Lesson headings receive
 stable lowercase identifiers with diacritics removed and duplicate headings
 numbered in document order.
 
+Browsers cache permanent (`301`) redirects. A returning visitor may therefore
+bypass both a later retarget and the hit counter. Use a temporary (`302`)
+redirect for a retargetable or locked address printed on paper. The CLI requires
+exactly one of `--permanent` or `--temporary` and exactly one of `--locked` or
+`--unlocked` when updating a redirect.
+
 A source path can be locked when it is created or edited. A locked source
 cannot be deleted, but its destination, anchor, and redirect status remain
 editable. Locking and unlocking require the workspace settings permission.
 
-The import owns the rows it wrote and never creates locked rows, overwrites a
-locked row, or overwrites a manual row: an incoming record whose path a manual
-row already answers is reported as a conflict for that record. Deleting an
-unlocked manual row hands the path back to the import.
+The import owns the rows it wrote and never creates locked rows, overwrites any
+locked row regardless of origin, or overwrites a manual row. An incoming record
+whose path a manual row already answers is reported as a conflict for that
+record. Deleting an unlocked manual row hands the path back to the import.
+
+Retargeting an unlocked imported row in the studio preserves its `import`
+origin. The next import overwrites the studio edit when its payload differs.
 Deleting an imported row is safe — the next import carrying its `importKey`
 writes it again.
 

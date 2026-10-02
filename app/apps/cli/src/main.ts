@@ -293,10 +293,15 @@ const redirectCreateOptionsSchema = z.object({
   locked: z.boolean().optional(),
 });
 const redirectUpdateOptionsSchema = redirectCreateOptionsSchema.omit({ from: true }).extend({
+  permanent: z.boolean().optional(),
   unlocked: z.boolean().optional(),
-}).refine((options) => options.locked === true || options.unlocked === true, {
-  message: 'Pass --locked or --unlocked',
-});
+})
+  .refine((options) => options.permanent === true !== (options.temporary === true), {
+    message: 'Pass exactly one of --permanent or --temporary',
+  })
+  .refine((options) => options.locked === true !== (options.unlocked === true), {
+    message: 'Pass exactly one of --locked or --unlocked',
+  });
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
@@ -1078,7 +1083,8 @@ redirect
   .option('--lesson <id>', 'redirect to a lesson, requires --course')
   .option('--anchor <anchor>', 'lesson section anchor, requires --lesson')
   .option('--path <path>', 'redirect to a path in this workspace')
-  .option('--temporary', 'answer 302 instead of 301')
+  .option('--permanent', 'answer 301; browsers may cache and bypass later retargeting and hit counting')
+  .option('--temporary', 'answer 302 (retargetable links)')
   .option('--locked', 'prevent deletion of the source path')
   .option('--unlocked', 'allow deletion of the source path')
   .action(
@@ -1091,7 +1097,7 @@ redirect
       const input: TenantRedirectUpdateBody = {
         id,
         target: target.value,
-        permanent: options.temporary !== true,
+        permanent: options.permanent === true,
         locked: options.locked === true,
       };
       emit(

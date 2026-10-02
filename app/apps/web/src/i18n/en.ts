@@ -2438,7 +2438,7 @@ export const en: Messages = {
     targetPathLabel: 'Target path',
     targetPathHint: 'A path inside this workspace, for example /my.',
     permanentLabel: 'Permanent redirect (301)',
-    permanentHint: 'Browsers cache permanent (301) redirects. Changing or removing one later may not take effect immediately for visitors.',
+    permanentHint: 'Browsers cache permanent (301) redirects, so returning visitors can bypass later retargeting and the hit counter. Use a temporary (302) redirect for retargetable or locked print links.',
     submit: 'Add redirect',
     submitting: 'Adding…',
     created: ({ fromPath }) => format('{fromPath} now redirects.', { fromPath }),

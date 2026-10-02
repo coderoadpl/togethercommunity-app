@@ -121,7 +121,11 @@ export const createTenantRedirectRepository = (db: Db): ImportRedirectRepository
     deleteById: async (tenantId, redirectId) => {
       const rows = await db
         .delete(tenantRedirects)
-        .where(and(eq(tenantRedirects.tenantId, tenantId), eq(tenantRedirects.id, redirectId)))
+        .where(and(
+          eq(tenantRedirects.tenantId, tenantId),
+          eq(tenantRedirects.id, redirectId),
+          eq(tenantRedirects.locked, false),
+        ))
         .returning({ id: tenantRedirects.id });
       return rows.length === 1;
     },

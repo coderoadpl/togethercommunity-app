@@ -2462,7 +2462,7 @@ export const pl: Messages = {
     targetPathLabel: 'Ścieżka docelowa',
     targetPathHint: 'Ścieżka w tym warsztacie, na przykład /my.',
     permanentLabel: 'Przekierowanie stałe (301)',
-    permanentHint: 'Przeglądarki zapamiętują stałe przekierowania (301). Późniejsza zmiana lub usunięcie przekierowania może nie zadziałać od razu u odwiedzających.',
+    permanentHint: 'Przeglądarki zapisują w pamięci podręcznej stałe przekierowania (301), dlatego powracające osoby mogą ominąć późniejszą zmianę celu i licznik użyć. W przypadku drukowanych odnośników, których cel może się zmieniać lub których ścieżka jest zablokowana, użyj przekierowania tymczasowego (302).',
     submit: 'Dodaj przekierowanie',
     submitting: 'Dodaję…',
     created: ({ fromPath }) => format('Przekierowanie {fromPath} zostało dodane.', { fromPath }),

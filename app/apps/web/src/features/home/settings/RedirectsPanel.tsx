@@ -348,6 +348,7 @@ export const RedirectsPanel = () => {
     >
       {adding || editing !== null ? (
         <RedirectForm
+          key={editing?.id ?? 'new'}
           existing={editing}
           onSaved={(fromPath) => {
             toast.success(editing === null

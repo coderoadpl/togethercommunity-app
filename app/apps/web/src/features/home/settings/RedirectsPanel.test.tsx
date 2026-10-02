@@ -382,6 +382,34 @@ describe('RedirectsPanel', () => {
       .toHaveTextContent(en.redirects.updated({ fromPath: '/legacy/one' }));
   });
 
+  it('resets the edit form when switching from one row to another', async () => {
+    const backend = installBackend([
+      redirect({ id: 'redirect-a', fromPath: '/legacy/a', targetPath: '/target-a', permanent: true, locked: true }),
+      redirect({ id: 'redirect-b', fromPath: '/legacy/b', targetPath: '/target-b', permanent: false, locked: false }),
+    ]);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId('redirect-edit-redirect-a'));
+    expect(screen.getByTestId('redirect-target-path')).toHaveValue('/target-a');
+    expect(within(screen.getByTestId('redirect-permanent')).getByRole('switch')).toBeChecked();
+    expect(within(screen.getByTestId('redirect-locked')).getByRole('switch')).toBeChecked();
+
+    await userEvent.click(screen.getByTestId('redirect-edit-redirect-b'));
+    expect(screen.getByTestId('redirect-target-path')).toHaveValue('/target-b');
+    expect(within(screen.getByTestId('redirect-permanent')).getByRole('switch')).not.toBeChecked();
+    expect(within(screen.getByTestId('redirect-locked')).getByRole('switch')).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: en.redirects.save }));
+
+    await waitFor(() => {
+      expect(backend.updated).toEqual([{
+        id: 'redirect-b',
+        target: { kind: 'path', path: '/target-b' },
+        permanent: false,
+        locked: false,
+      }]);
+    });
+  });
+
   it('opens an imported module target as its resolved course', async () => {
     const backend = installBackend([redirect({
       targetKind: 'module-as-course',

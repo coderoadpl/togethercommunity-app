@@ -20,11 +20,15 @@ const setup = async (doubleOptIn = false, reason?: Suppression['reason'], stored
   const forms = new InMemoryMarketingSignupFormRepository();
   const submissions = vi.spyOn(forms, 'recordSubmission');
   if (stored !== undefined) contacts.push({ id: 'contact', tenantId: 'tenant-a', email: 'reader@example.org', emailHmac: 'reader@example.org', displayName: 'Real Name', firstName: null, lastName: null, source: 'import', tags: ['existing'], memberId: null, createdAt: now, updatedAt: now, archivedAt: now, ...stored });
+  const findContact = async (tenantId: string, email: string) => contacts.find((contact) => contact.tenantId === tenantId && contact.emailHmac === email) ?? null;
+  const findByEmail = vi.fn(findContact);
+  const findByEmailForUpdate = vi.fn(findContact);
   const addMembers = vi.fn(async () => ({ changed: 1 }));
   const events = vi.fn(async () => undefined);
   const repos: MarketingSignupRepos = { ...directory, forms, definitions, consents, suppressions, outbox, confirmations,
     contacts: { ...directory.contacts, lockAddress: vi.fn(async () => undefined),
-      findByEmail: vi.fn(async (tenantId, email) => contacts.find((contact) => contact.tenantId === tenantId && contact.emailHmac === email) ?? null),
+      findByEmail,
+      findByEmailForUpdate,
       update: vi.fn(async (tenantId, contactId, input) => {
         const contact = contacts.find((row) => row.tenantId === tenantId && row.id === contactId);
         if (contact === undefined) return null;
@@ -52,7 +56,7 @@ const setup = async (doubleOptIn = false, reason?: Suppression['reason'], stored
   if (!created.ok) throw new Error(created.error.message);
   const form = created.value.form;
   const submit = (extra = {}, tenantId = 'tenant-a') => submitMarketingSignupForm(tenantId, form.slug, { email: ' Reader@Example.org ', displayName: 'Reader', token: form.token, ...extra }, { ipHash: 'hashed-ip', userAgent: 'test-browser', language: 'en', confirmationBaseUrl: 'https://acme.example.org/marketing/confirm' }, deps);
-  return { deps, repos, form, input, submit, contacts, consents, suppressions, outbox, submissions, addMembers, events, confirmations };
+  return { deps, repos, form, input, submit, contacts, consents, suppressions, outbox, submissions, addMembers, events, confirmations, findByEmailForUpdate };
 };
 describe('public signup consent workflow', () => {
   it.each([false, true])('records explicit evidence, tags and membership with double opt-in=%s', async (doubleOptIn) => {
@@ -131,12 +135,35 @@ describe('public signup consent workflow', () => {
     await confirmMarketingConsent(marketingContactCtx(), { token, evidence: { collectedAt: now } }, { ...fixture.repos, ...fixture.deps });
     expect(fixture.addMembers).toHaveBeenCalledOnce();
   });
+  it('merges confirmation tags from the contact row read under lock', async () => {
+    const fixture = await setup(true, undefined, {});
+    expect(await fixture.submit()).toMatchObject({ ok: true, value: { status: 'pending' } });
+    const token = fixture.confirmations.rows[0]?.token;
+    if (token === undefined) throw new Error('Missing confirmation');
+    fixture.findByEmailForUpdate.mockImplementationOnce(async (tenantId: string, email: string) => {
+      const contact = fixture.contacts.find((row) => row.tenantId === tenantId && row.emailHmac === email) ?? null;
+      if (contact !== null) contact.tags = [...contact.tags, 'staff'];
+      return contact;
+    });
+    expect(await confirmMarketingConsent(marketingContactCtx(), { token, evidence: { collectedAt: now } }, { ...fixture.repos, ...fixture.deps })).toMatchObject({ ok: true });
+    expect(fixture.contacts[0]?.tags).toEqual(['existing', 'staff', 'newsletter']);
+  });
   it('merges single opt-in effects without changing an existing name or source', async () => {
     const fixture = await setup(false, undefined, {});
     expect(await fixture.submit({ displayName: 'Fake' })).toMatchObject({ ok: true, value: { status: 'subscribed' } });
     expect(fixture.contacts[0]).toMatchObject({ displayName: 'Real Name', source: 'import', archivedAt: null, tags: ['existing', 'newsletter'] });
     expect(fixture.addMembers).toHaveBeenCalledWith('tenant-a', { listId: 'list', contactIds: ['contact'] });
     expect(fixture.outbox.items).toHaveLength(0);
+  });
+  it('merges signup tags from the contact row read under lock', async () => {
+    const fixture = await setup(false, undefined, {});
+    fixture.findByEmailForUpdate.mockImplementationOnce(async (tenantId: string, email: string) => {
+      const contact = fixture.contacts.find((row) => row.tenantId === tenantId && row.emailHmac === email) ?? null;
+      if (contact !== null) contact.tags = [...contact.tags, 'staff'];
+      return contact;
+    });
+    expect(await fixture.submit({ displayName: 'Fake' })).toMatchObject({ ok: true, value: { status: 'subscribed' } });
+    expect(fixture.contacts[0]?.tags).toEqual(['existing', 'staff', 'newsletter']);
   });
   it('keeps a confirmed double opt-in subscriber confirmed when the address is submitted again', async () => {
     const fixture = await setup(true);

@@ -295,7 +295,7 @@ export const confirmMarketingConsent = async (
     const form = await deps.forms.findById(tenantId.value, granted.evidence['formId']);
     if (form !== null) {
       await deps.contacts.lockAddress(tenantId.value, granted.email);
-      const contact = await deps.contacts.findByEmail(tenantId.value, granted.email);
+      const contact = await deps.contacts.findByEmailForUpdate(tenantId.value, granted.email);
       if (contact !== null && contact.source !== 'erasure') {
         await deps.contacts.update(tenantId.value, contact.id, { tags: [...new Set([...contact.tags, ...form.tags])] });
         if (form.listId !== null) await deps.lists.addMembers(tenantId.value, { listId: form.listId, contactIds: [contact.id] });

@@ -5,6 +5,7 @@ import { appError, err } from '#core/domain/index.js';
 import { upsertMarketingContact, listMarketingContacts, createMarketingList, addMarketingListContacts, removeMarketingListContacts, previewMarketingList, archiveMarketingContact, updateMarketingList, syncMarketingMemberContacts } from '#core/server/index.js';
 
 import { createDirectoryFixture, directoryCtx, directoryValue, directoryWorkerCtx, DIRECTORY_NOW } from './marketing-contact-test-fixture.js';
+import { createMarketingContactRepository } from './marketing-contact-repositories.js';
 
 let fixture: Awaited<ReturnType<typeof createDirectoryFixture>>;
 beforeAll(async () => { fixture = await createDirectoryFixture(); }, 60_000);
@@ -74,6 +75,32 @@ describe('contact and list repositories', () => {
       return err(appError('conflict', 'Abort transaction'));
     });
     expect(result.ok).toBe(false); expect(await fixture.deps.contacts.findByEmail('directory-a', 'rollback@example.test')).toBeNull();
+  });
+  it('holds a contact row lock from findByEmailForUpdate until transaction commit', async () => {
+    const contact = directoryValue(await upsertMarketingContact(directoryCtx(), { email: 'locked@example.test', tags: ['existing'] }, fixture.deps)).contact;
+    let releaseLock: (() => void) | undefined;
+    let resolveLockAcquired: (() => void) | undefined;
+    const lockAcquired = new Promise<void>((resolve) => { resolveLockAcquired = resolve; });
+    const holding = fixture.db.transaction(async (tx) => {
+      const repo = createMarketingContactRepository(tx, fixture.deps);
+      const locked = await repo.findByEmailForUpdate('directory-a', 'locked@example.test');
+      expect(locked?.id).toBe(contact.id);
+      resolveLockAcquired?.();
+      await new Promise<void>((resolve) => { releaseLock = resolve; });
+    });
+    await lockAcquired;
+    const update = fixture.deps.contacts.update('directory-a', contact.id, { tags: ['staff'] });
+    try {
+      await expect(Promise.race([
+        update.then(() => 'updated'),
+        new Promise<string>((resolve) => { setTimeout(() => resolve('blocked'), 50); }),
+      ])).resolves.toBe('blocked');
+    } finally {
+      if (releaseLock === undefined) throw new Error('Missing lock release');
+      releaseLock();
+      await holding;
+    }
+    await expect(update).resolves.toMatchObject({ tags: ['staff'] });
   });
   it('binds keyset cursors to filters and omits HMAC from public data', async () => {
     await upsertMarketingContact(directoryCtx(), { email: 'page@example.test' }, fixture.deps);

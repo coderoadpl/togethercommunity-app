@@ -88,7 +88,7 @@ export const submitMarketingSignupForm = async (tenantId: string, slug: string, 
     await repos.contacts.lockAddress(tenantId, parsed.data.email);
     const suppression = await repos.suppressions.findActive(tenantId, deps.hmac.compute(tenantId, parsed.data.email));
     if (suppression !== null) return ok({ status, form });
-    const existing = await repos.contacts.findByEmail(tenantId, parsed.data.email);
+    const existing = await repos.contacts.findByEmailForUpdate(tenantId, parsed.data.email);
     if (existing?.source === 'erasure') return ok({ status, form });
     const now = deps.clock.nowIso();
     const source = `form:${form.slug}`;

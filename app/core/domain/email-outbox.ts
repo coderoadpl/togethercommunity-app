@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DEFAULT_LANGUAGE } from './language.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -52,7 +52,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('auth-magic-link') }).strict(),
   z.object({ kind: z.literal('auth-password-reset') }).strict(),
   z.object({ kind: z.literal('auth-email-verification') }).strict(),
-  z.object({ kind: z.literal('welcome-sign-in'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('welcome-sign-in'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), productType: welcomeSignInProductTypeSchema.default('course'), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('verify-email'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('magic-link'), language: z.string(), tenantName: z.string(), url: z.string().url(), branding: brandingSchema.optional() }),
@@ -138,7 +138,7 @@ const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
     };
   }
   const message = value.kind === 'welcome-sign-in'
-    ? welcomeSignIn(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
+    ? welcomeSignIn(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, productType: value.productType, ...(value.branding === undefined ? {} : { branding: value.branding }) })
     : value.kind === 'reset-password'
       ? resetPassword(value.language, { actionUrl: value.actionUrl })
       : value.kind === 'verify-email'

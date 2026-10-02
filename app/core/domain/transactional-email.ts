@@ -5,9 +5,10 @@ import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
+import { productTypeSchema } from './product.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
-import type { NotificationFooterKind, TransactionalEmailMessages } from './transactional-email-messages.js';
+import type { NotificationFooterKind, TransactionalEmailMessages, WelcomeSignInProductType } from './transactional-email-messages.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 
 export const transactionalLanguageSchema = languageSchema;
@@ -21,6 +22,8 @@ export const emailMessageSchema = z.object({
 });
 
 export type EmailMessage = z.output<typeof emailMessageSchema>;
+
+export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
 
 const escapeHtmlCharacter = (character: string): string => {
   switch (character) {
@@ -118,18 +121,21 @@ const brandSocialLinks = (
 
 export const welcomeSignIn = (
   language: string,
-  input: { tenantName: string; actionUrl: string; branding?: EmailBranding },
+  input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType },
 ): EmailMessage => {
   const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
-  const actionLink = link(input.actionUrl, messages.welcomeSignIn.actionLabel);
+  const productType = input.productType ?? 'course';
+  const actionLabel = messages.welcomeSignIn.actionLabels[productType];
+  const actionLink = link(input.actionUrl, actionLabel);
   return emailMessageSchema.parse(messages.welcomeSignIn.render({
     tenantName: input.tenantName,
     tenantNameHtml: tenantName,
     actionUrl: input.actionUrl,
     actionLink,
+    actionLabel,
     header,
     socialLinks,
   }));

@@ -21,7 +21,12 @@ const safeHeadingIds = (ids: readonly string[]): string[] => {
   return ids.map((id) => {
     let attempt = 0;
     let candidate = id;
-    while (used.has(candidate) || !sanitizeRichText(`<h1 id="${candidate}">x</h1>`).includes(`id="${candidate}"`)) {
+    for (;;) {
+      const heading = document.createElement('h1');
+      heading.id = candidate;
+      heading.textContent = 'x';
+      const sanitized = headingNodes(sanitizeRichText(heading.outerHTML)).nodes[0];
+      if (!used.has(candidate) && sanitized?.id === candidate) break;
       attempt += 1;
       const suffix = attempt === 1 ? '-section' : `-section-${String(attempt)}`;
       candidate = `${id.slice(0, 80 - suffix.length).replace(/-+$/g, '')}${suffix}`;

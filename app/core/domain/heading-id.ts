@@ -1,6 +1,6 @@
 const MAX_HEADING_ID_LENGTH = 80;
 
-export const headingIdBase = (text: string): string => {
+const headingIdBase = (text: string): string => {
   const normalized = text
     .replace(/[\u0142\u0141]/g, (letter) => letter === '\u0141' ? 'L' : 'l')
     .normalize('NFD')

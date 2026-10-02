@@ -30,7 +30,7 @@ export const loginPathWithReturnTo = (returnTo: string): string => {
 export const loginCallbackUrl = (returnTo: string | null): string => {
   const url = new URL('/login?verification=verified', window.location.origin);
   const safe = safeReturnTo(returnTo);
-  if (safe !== null) url.searchParams.set('returnTo', safe);
+  if (safe !== null) url.searchParams.set('returnTo', encodeURIComponent(safe));
   return url.toString();
 };
 

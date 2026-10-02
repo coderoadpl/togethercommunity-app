@@ -67,6 +67,20 @@ describe('production posture detection', () => {
   });
 });
 
+describe('redirect hit rate limit configuration', () => {
+  it('accepts a non-negative per-IP override and rejects invalid counts', () => {
+    expect(envSchema.parse({
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '60',
+    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE).toBe(60);
+    expect(envSchema.parse({
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '0',
+    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE).toBe(0);
+    expect(envSchema.safeParse({
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '-1',
+    }).success).toBe(false);
+  });
+});
+
 describe('local development detection', () => {
   it('accepts an unset or development APP_ENV outside a production NODE_ENV', () => {
     expect(isLocalDevelopmentEnvironment({})).toBe(true);

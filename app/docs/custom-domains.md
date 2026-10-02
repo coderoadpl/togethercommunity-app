@@ -149,7 +149,10 @@ wrote, `Manual` for one added here. It also shows how many matching `GET`
 requests used the redirect. The counter stores only the aggregate hit count and
 the time of the latest hit: it stores no IP address, user agent, referrer, member
 identifier, or other visitor data. Requests that match no redirect perform no
-counter update, and a counter failure never prevents the redirect response.
+counter update. Hit updates are limited to 60 per minute per IP in production
+by default; exhausting that bucket or a counter failure never prevents the
+redirect response. `PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE`
+overrides the limit, and zero disables the bucket.
 Adding, editing, and deleting need the same permission as editing the workspace
 settings and custom domains, and each change is recorded in the team audit log.
 

@@ -37,8 +37,8 @@ describe('auth return routing', () => {
   });
 
   it('adds the safe returnTo to the post-verification callback URL', () => {
-    expect(loginCallbackUrl('/my/courses/c1?thread=t1')).toBe(
-      'http://localhost:3000/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fc1%3Fthread%3Dt1',
+    expect(loginCallbackUrl('/my/courses/c1?thread=t1#wiring')).toBe(
+      'http://localhost:3000/login?verification=verified&returnTo=%252Fmy%252Fcourses%252Fc1%253Fthread%253Dt1%2523wiring',
     );
   });
 });

@@ -92,6 +92,13 @@ email's HMAC-SHA-256 digest keyed with `BETTER_AUTH_SECRET`, outcome and reason
 codes. Provider logging retains errors while suppressing warnings and lower
 levels. Magic links use the existing `auth-link:email` bucket without a second
 sign-in email counter.
+
+Anonymous tenant redirects increment only an aggregate hit counter after a
+per-IP minute bucket accepts the request. The production default is 60 and
+`PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE` overrides it. Exhausting
+the bucket skips the counter update without blocking the redirect. The IP is a
+rate-limit key only and is not stored with the redirect hit data.
+
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls
 back to anonymous public capabilities, which reach lessons flagged as free

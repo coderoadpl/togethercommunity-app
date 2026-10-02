@@ -495,7 +495,7 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
     await waitFor(() => expect(submitted).toMatchObject({
-      callbackURL: 'http://localhost:3000/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      callbackURL: 'http://localhost:3000/login?verification=verified&returnTo=%252Fmy%252Fcourses%252Fcourse-1%252Flessons%252Flesson-1%253Fthread%253Dt1',
     }));
   });
 

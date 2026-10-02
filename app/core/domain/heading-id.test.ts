@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { headingIdBase, headingIds } from './heading-id.js';
+import { headingIds } from './heading-id.js';
 
 describe('lesson heading ids', () => {
   it('normalizes case, punctuation, diacritics, and Polish stroke letters', () => {
-    expect(headingIdBase('  \u017b\u00f3\u0142\u0107 & \u0141\u0104KA!  ')).toBe('zolc-laka');
+    expect(headingIds(['  \u017b\u00f3\u0142\u0107 & \u0141\u0104KA!  '])).toEqual(['zolc-laka']);
   });
 
   it('deduplicates normalized headings in document order', () => {
@@ -35,6 +35,6 @@ describe('lesson heading ids', () => {
   });
 
   it('removes a trailing separator introduced by truncation', () => {
-    expect(headingIdBase(`${'a'.repeat(79)} b`)).toBe('a'.repeat(79));
+    expect(headingIds([`${'a'.repeat(79)} b`])).toEqual(['a'.repeat(79)]);
   });
 });

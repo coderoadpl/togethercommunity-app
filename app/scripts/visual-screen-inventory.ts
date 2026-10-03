@@ -643,11 +643,11 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-product-downloads',
     auth: 'creator',
     path: '/panel/products/product-download-workbook',
-    ready: (page) => page.getByTestId('product-download-assets').waitFor(visible),
+    ready: (page) => page.getByRole('link', { name: 'member-studio-active', exact: true }).waitFor(visible),
     settled: async (page) => {
-      await page.getByTestId('product-download-assets').evaluate((element) =>
-        element.scrollIntoView({ block: 'start' }),
-      );
+      await page.getByTestId('download-copy-lookup').evaluate((element) => {
+        window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 72);
+      });
     },
   },
   {

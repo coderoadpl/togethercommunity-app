@@ -1,3 +1,4 @@
+import { copyIdentifierSchema, downloadCopyQuerySchema } from './product-download.js';
 import { describe, expect, it } from 'vitest';
 
 import { productDownloadAssetSchema, productDownloadCompleteInputSchema, productDownloadUploadInputSchema } from './product-download.js';
@@ -15,4 +16,22 @@ describe('download version schemas', () => {
     expect(productDownloadAssetSchema.parse(row)).toMatchObject({ versionNumber: 1, versionNote: null, supersededAt: null });
     for (const versionNumber of [0, -1, 1.5]) expect(productDownloadAssetSchema.safeParse({ ...row, versionNumber }).success).toBe(false);
   });
+});
+
+it('validates copy entropy encoding and requires a scoped registry lookup', () => {
+  expect(copyIdentifierSchema.safeParse('copy_AAAAAAAAAAAAAAAAAAAAAAAAAA').success).toBe(true);
+  expect(copyIdentifierSchema.safeParse('copy_AAAAAAAAAAAAAAAAAAAAAAAAAB').success).toBe(false);
+  expect(copyIdentifierSchema.safeParse('copy_123').success).toBe(false);
+  expect(downloadCopyQuerySchema.safeParse({}).success).toBe(false);
+  expect(downloadCopyQuerySchema.safeParse({ productId: 'product' }).success).toBe(false);
+  expect(downloadCopyQuerySchema.safeParse({ orderId: 'order' }).success).toBe(true);
+});
+
+it('validates and decodes copy history cursors', () => {
+  const createdAt = '2026-10-01T12:00:00.000Z';
+  expect(downloadCopyQuerySchema.parse({ memberId: 'member', cursor: `${createdAt}~copy%7E1` }))
+    .toMatchObject({ cursor: { createdAt, id: 'copy~1' } });
+  for (const cursor of ['', 'invalid~id', `${createdAt}~`, `${createdAt}~id~extra`, `${createdAt}~%`]) {
+    expect(downloadCopyQuerySchema.safeParse({ memberId: 'member', cursor }).success).toBe(false);
+  }
 });

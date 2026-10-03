@@ -199,6 +199,7 @@ const storageFor = (
   deletions: string[],
   deleteResult: Result<{ deleted: true }, AppError> = ok({ deleted: true }),
 ): StorageProvider => ({
+  getObject: async () => ok(new Uint8Array()),
   objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
   probe: async () => ok({ code: 'storage.available', message: 'ok' }),
   probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),

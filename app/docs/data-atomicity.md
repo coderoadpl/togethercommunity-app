@@ -2,7 +2,7 @@
 
 Together currently requires `DB_DRIVER=node-postgres` in every environment. This
 is a boot-time invariant, not a deployment recommendation. The repository uses
-interactive Drizzle transactions in eight runtime adapters, including invoice,
+interactive Drizzle transactions in runtime adapters, including invoice,
 coupon, KSeF, purchase, enrollment, and e-mail outbox paths. The stateless Neon
 HTTP driver cannot provide the same interactive transaction guarantee.
 
@@ -60,6 +60,9 @@ at all.
   reservations, and events consistent.
 - Scheduler telemetry: `SchedulerRunRepository.finalize` writes the terminal
   run and per-tenant results together.
+- Download copies: `DownloadCopyRepository.create` locks the member row with
+  `FOR UPDATE`, checks that the member is not erased, and inserts the registry
+  row in one transaction to serialize issuance with member erasure.
 
 <!-- MUST-ATOMIC:end -->
 

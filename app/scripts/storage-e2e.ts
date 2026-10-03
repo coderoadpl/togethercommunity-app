@@ -172,6 +172,12 @@ const verifyAttachmentRoundtrip = async (): Promise<void> => {
     `The attachment metadata reported ${String(metadata.value.sizeBytes)} bytes instead of ${String(Buffer.byteLength(body))}`,
   );
 
+  const boundedCredentials = { url: objectUrl, accessKeyId: configuration.accessKeyId, secretAccessKey: configuration.secretAccessKey, region: configuration.region };
+  const bounded = await storage.getObject(boundedCredentials, { maxBytes: Buffer.byteLength(body) });
+  assert(bounded.ok && new TextDecoder().decode(bounded.value) === body, 'Bounded object read must preserve the file');
+  const oversized = await storage.getObject(boundedCredentials, { maxBytes: Buffer.byteLength(body) - 1 });
+  assert(!oversized.ok, 'Bounded object read must reject objects over the ceiling');
+
   const unsigned = await fetch(objectUrl);
   assert(!unsigned.ok, `The uploaded attachment is publicly readable (HTTP ${String(unsigned.status)})`);
 

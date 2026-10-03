@@ -111,6 +111,7 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    PERSONALISATION_MAX_BYTES: z.coerce.number().int().positive().max(1024 * 1024 * 1024).default(20 * 1024 * 1024),
     PLAYBACK_TOKEN_TTL_SECONDS: z.coerce.number().int().min(300).max(86_400).default(21_600),
     TOGETHER_VISUAL_CLOCK: z.string().datetime({ offset: true }).optional(),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),

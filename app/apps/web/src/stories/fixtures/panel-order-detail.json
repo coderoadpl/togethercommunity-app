@@ -81,6 +81,12 @@
         "reports": []
       }
     },
+    "listDownloadCopies:[{\"orderId\":\"order-studio-active-js\"}]": {
+      "ok": true,
+      "value": {
+        "copies": []
+      }
+    },
     "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
       "ok": true,
       "value": {

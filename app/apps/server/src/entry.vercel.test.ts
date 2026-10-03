@@ -18,7 +18,7 @@ const harness = vi.hoisted(() => {
     buildApp: vi.fn(() => app),
     createDeps: vi.fn(() => deps),
     getRequestListener: vi.fn(() => listener),
-    loadEnv: vi.fn(() => ({ marker: 'env' })),
+    loadEnv: vi.fn(() => ({ marker: 'env', PERSONALISATION_MAX_BYTES: 20 * 1024 * 1024 })),
     startServerObservability: vi.fn(() => flush),
   };
 });
@@ -56,7 +56,15 @@ describe('entry.vercel composition', () => {
     const entry = await importEntry();
 
     expect(harness.createDeps).toHaveBeenCalledOnce();
-    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env' }, { keepAlive: entry.keepAlive });
+    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env', PERSONALISATION_MAX_BYTES: 4 * 1024 * 1024 }, { keepAlive: entry.keepAlive });
+  });
+
+  it('preserves a configured ceiling below the platform cap', async () => {
+    harness.loadEnv.mockReturnValueOnce({ marker: 'env', PERSONALISATION_MAX_BYTES: 1024 });
+    await importEntry();
+    expect(harness.createDeps).toHaveBeenCalledWith(
+      { marker: 'env', PERSONALISATION_MAX_BYTES: 1024 }, expect.anything(),
+    );
   });
 
   it('does not throw when keepAlive runs outside a Vercel request context', async () => {

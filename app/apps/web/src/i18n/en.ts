@@ -1223,6 +1223,8 @@ export const en: Messages = {
     downloadsHeading: 'Download files',
     downloadsDescription: 'Add files buyers can download while their product access is active.',
     downloadsEmpty: 'This product has no download files yet.',
+    downloadNoCopyIdentifier: ({ limit }) =>
+      `Copies of this file are delivered without a copy identifier because it is larger than the ${limit} limit.`,
     downloadFileInput: 'Choose a product file',
     uploadDownload: 'Add file',
     uploadingDownload: 'Uploading file…',
@@ -1841,6 +1843,8 @@ export const en: Messages = {
       'Already have a product? Check its access status in your products — if it has expired, you can renew it there.',
     downloadsHeading: 'Downloads',
     downloadFile: ({ name }) => `Download ${name}`,
+    downloadNoCopyIdentifier:
+      'Copies of this file are delivered without a copy identifier because it is larger than the limit.',
   },
   downloadCopies: {
     showMore: 'Show more copies',

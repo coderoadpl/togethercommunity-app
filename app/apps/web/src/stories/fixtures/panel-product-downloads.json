@@ -3,6 +3,7 @@
     "getTenantSettings:[]": {
       "ok": true,
       "value": {
+        "personalisationMaxBytes": 20971520,
         "settings": {
           "accentColor": null,
           "accentLight": null,
@@ -649,6 +650,7 @@
             "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook",
             "lineageId": "download-asset-workbook",
+            "personalisationSizeExceeded": false,
             "productId": "product-download-workbook",
             "sizeBytes": 2416640,
             "status": "ready",
@@ -662,6 +664,7 @@
             "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook-v2",
             "lineageId": "download-asset-workbook",
+            "personalisationSizeExceeded": false,
             "productId": "product-download-workbook",
             "sizeBytes": 2426880,
             "status": "ready",
@@ -669,7 +672,8 @@
             "versionNote": "Corrected the diagram in chapter 4.",
             "versionNumber": 2
           }
-        ]
+        ],
+        "personalisationMaxBytes": 20971520
       }
     },
     "listProductPrices:[\"product-download-workbook\"]": {

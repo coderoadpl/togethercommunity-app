@@ -2,7 +2,6 @@ import {
   PRODUCT_DOWNLOAD_MAX_BYTES,
   err,
   forbidden,
-  impersonationReadOnly,
   notFound,
   ok,
   productDownloadUploadInputSchema,
@@ -201,7 +200,6 @@ export const getProductDownload = async (
 ): Promise<Result<{ kind: 'redirect'; url: string } | { kind: 'file'; bytes: Uint8Array; contentType: string; fileName: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:product:read');
   if (!tenant.ok) return tenant;
-  if (ctx.impersonation !== undefined) return err(impersonationReadOnly());
   if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));
   const grants = await deps.grants.listActiveForMember(
     tenant.value,
@@ -217,13 +215,21 @@ export const getProductDownload = async (
   }
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
-  const copyIdentifier = deps.downloadCopyCrypto.identifier();
   const target = deps.storage.objectUrl(configuration.value, asset.storageKey);
   const credentials = {
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
   };
+  target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
+  target.searchParams.set('response-content-type', asset.contentType);
+  if (ctx.impersonation !== undefined) {
+    const signed = deps.storage.presignGet({
+      ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+    });
+    return signed.ok ? ok({ kind: 'redirect', url: signed.value }) : signed;
+  }
+  const copyIdentifier = deps.downloadCopyCrypto.identifier();
   const release = asset.sizeBytes <= deps.personalisationMaxBytes &&
     (asset.contentType === 'application/pdf' || asset.contentType === 'application/epub+zip')
     ? deps.personalisationSlots.acquire() : null;
@@ -239,8 +245,6 @@ export const getProductDownload = async (
         if (personalised.ok && personalised.value.bytes.byteLength <= deps.personalisationMaxBytes) file = personalised.value;
       }
     }
-    target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
-    target.searchParams.set('response-content-type', asset.contentType);
     const response = file === null ? deps.storage.presignGet({
       ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
     }) : ok(file);

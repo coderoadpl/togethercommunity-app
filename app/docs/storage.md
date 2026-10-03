@@ -53,17 +53,18 @@ an already completed upload do not create another version.
 
 ## Copy identifiers
 
-Downloads during member impersonation are refused with `impersonation_read_only`
-before storage access, personalisation or registry issuance. This prevents an
-operator's download from being attributed to the member.
+Downloads during member impersonation serve the unchanged original through a
+signed link after the member, active-grant and ready-asset checks. They do not
+read or personalise the object and do not issue a copy registry row.
 
-Each authorised download issues a fresh opaque identifier (`copy_` followed by
+Each ordinary member download issues a fresh opaque identifier (`copy_` followed by
 26 base32 characters encoding 16 cryptographically random bytes). PDF copies
 carry it in the Info dictionary under `together:copy` and Keywords, and in XMP
 under `together:copy` and `pdf:Keywords`. Info and XMP Keywords stay synchronized.
-PDF saving rewrites the file: digital signatures are invalidated and PDF/A
+PDF saving rewrites the file. Signed or certified PDFs are therefore delivered
+unchanged through the signed link and recorded as not personalised. PDF/A
 conformance is not preserved, including the custom XMP namespace without a
-PDF/A extension schema. Use the original stored file when these properties matter.
+PDF/A extension schema. Use the original stored file when conformance matters.
 EPUB copies carry an OPF `dc:identifier` with `opf:scheme="together-copy"` and a
 `meta` element with `property="together:copy"`. Existing publication identifiers
 remain intact. This deliberately retains both metadata forms required by the

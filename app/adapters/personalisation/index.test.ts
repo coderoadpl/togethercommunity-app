@@ -1,4 +1,4 @@
-import { PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { strToU8, unzipSync, zipSync, Zip, ZipDeflate } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
@@ -63,6 +63,74 @@ describe('download personalisation', () => {
     await expect(PDFDocument.load(bytes)).rejects.toThrow(/encrypted/);
     expect(await adapter.personalise({ contentType: 'application/pdf', bytes, copyIdentifier, context })).toMatchObject({ ok: false });
     expect(bytes).toEqual(before);
+  });
+
+  it.each(['signature flags and field', 'signature field', 'permissions'])(
+    'falls back for PDFs with structural %s markers', async (marker) => {
+      const original = await PDFDocument.create();
+      original.addPage();
+      if (marker !== 'permissions') {
+        const signatureValue = original.context.obj({ Type: 'Sig' });
+        const signatureField = original.context.obj({ FT: 'Sig', V: original.context.register(signatureValue) });
+        const parentField = original.context.obj({ Kids: [original.context.register(signatureField)] });
+        const acroForm = original.context.obj({
+          ...(marker === 'signature flags and field' ? { SigFlags: 1 } : {}),
+          Fields: [original.context.register(parentField)],
+        });
+        original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+      } else {
+        const permissions = original.context.obj({ DocMDP: original.context.register(original.context.obj({ Type: 'Sig' })) });
+        original.catalog.set(PDFName.of('Perms'), original.context.register(permissions));
+      }
+
+      expect(await adapter.personalise({
+        contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+      })).toMatchObject({ ok: false });
+    },
+  );
+
+  it.each([
+    [
+      'inherited signature field type',
+      (document: PDFDocument) => {
+        const signatureValue = document.context.register(document.context.obj({ Type: PDFName.of('Sig') }));
+        const childField = document.context.register(document.context.obj({ V: signatureValue }));
+        return [document.context.register(document.context.obj({ FT: PDFName.of('Sig'), Kids: [childField] }))];
+      },
+    ],
+    [
+      'inherited signature value',
+      (document: PDFDocument) => {
+        const signatureValue = document.context.register(document.context.obj({ Type: PDFName.of('Sig') }));
+        const childField = document.context.register(document.context.obj({ FT: PDFName.of('Sig') }));
+        return [document.context.register(document.context.obj({ V: signatureValue, Kids: [childField] }))];
+      },
+    ],
+  ])('falls back for PDFs with %s and no signature flags', async (_name, createFields) => {
+    const original = await PDFDocument.create();
+    original.addPage();
+    const acroForm = original.context.obj({ SigFlags: 0, Fields: createFields(original) });
+    original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+
+    expect(await adapter.personalise({
+      contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+    })).toMatchObject({ ok: false });
+  });
+
+  it('personalises unsigned PDFs with valued text fields and no signature flags', async () => {
+    const original = await PDFDocument.create();
+    original.addPage();
+    const textField = original.context.register(original.context.obj({ FT: PDFName.of('Tx'), V: PDFHexString.fromText('Filled text') }));
+    const acroForm = original.context.obj({ SigFlags: 0, Fields: [textField] });
+    original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+
+    const result = await adapter.personalise({
+      contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    const document = await PDFDocument.load(result.value.bytes);
+    const info = document.context.lookup(document.context.trailerInfo.Info, PDFDict);
+    expect(info.has(PDFName.of('together:copy'))).toBe(true);
   });
 
   it.each([false, true])('only replaces EPUB metadata with data descriptors=%s and normalizes deflated mimetype', async (descriptors) => {

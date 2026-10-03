@@ -1,13 +1,48 @@
-import { PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 
 import { parseXml, serializeXml } from './xml.js';
 
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const PDF = 'http://ns.adobe.com/pdf/1.3/';
 const COPY = 'https://togethercommunity.app/ns/copy/1.0/';
+const SIGNATURE_FIELD_MAX_DEPTH = 100;
+
+const hasSignatureField = (
+  fields: PDFArray,
+  visited: Set<PDFDict>,
+  depth: number,
+  inheritedFt: PDFName | undefined,
+  inheritedHasV: boolean,
+): boolean => {
+  if (depth > SIGNATURE_FIELD_MAX_DEPTH) return true;
+  for (let index = 0; index < fields.size(); index++) {
+    const field = fields.lookupMaybe(index, PDFDict);
+    if (field === undefined) continue;
+    if (visited.has(field)) return true;
+    visited.add(field);
+    const ownFieldType = field.lookupMaybe(PDFName.of('FT'), PDFName);
+    const effectiveFieldType = ownFieldType ?? inheritedFt;
+    const effectiveHasValue = field.has(PDFName.of('V')) || inheritedHasV;
+    if (effectiveFieldType?.asString() === '/Sig' && effectiveHasValue) return true;
+    const kids = field.lookupMaybe(PDFName.of('Kids'), PDFArray);
+    if (kids !== undefined && hasSignatureField(kids, visited, depth + 1, effectiveFieldType, effectiveHasValue)) return true;
+  }
+  return false;
+};
+
+const isSignedOrCertified = (document: PDFDocument): boolean => {
+  if (document.catalog.has(PDFName.of('Perms'))) return true;
+  const acroForm = document.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
+  if (acroForm === undefined) return false;
+  const signatureFlags = acroForm.lookupMaybe(PDFName.of('SigFlags'), PDFNumber);
+  if (signatureFlags !== undefined && (signatureFlags.asNumber() & 1) !== 0) return true;
+  const fields = acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray);
+  return fields !== undefined && hasSignatureField(fields, new Set(), 0, undefined, false);
+};
 
 export const personalisePdf = async (bytes: Uint8Array, copyIdentifier: string, maxBytes: number): Promise<Uint8Array> => {
   const document = await PDFDocument.load(bytes, { updateMetadata: false });
+  if (isSignedOrCertified(document)) throw new Error('Signed or certified PDFs cannot be personalised');
   const existingInfo = document.context.lookup(document.context.trailerInfo.Info);
   const info = existingInfo instanceof PDFDict ? existingInfo : document.context.obj({});
   if (!(existingInfo instanceof PDFDict)) {

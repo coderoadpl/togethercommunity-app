@@ -389,13 +389,16 @@ describe('file version use cases', () => {
 
 describe('issued download copies', () => {
   it.each(['application/pdf', 'application/epub+zip', 'image/png'])(
-    'refuses %s downloads during impersonation without issuing a copy', async (contentType) => {
+    'redirects %s downloads to the unchanged original during impersonation without issuing a copy', async (contentType) => {
       const { deps, downloadAssets, copies, signed } = testDeps();
       downloadAssets.rows.push(storedAsset({ contentType }));
       const read = vi.spyOn(deps.storage, 'getObject');
       const personalise = vi.spyOn(deps.downloadPersonaliser, 'personalise').mockResolvedValue(
         ok({ bytes: new Uint8Array([1, 2, 3]), contentType }),
       );
+      const acquire = vi.spyOn(deps.personalisationSlots, 'acquire');
+      const identify = vi.spyOn(deps.downloadCopyCrypto, 'identifier');
+      const findOrder = vi.spyOn(deps.downloadCopyOrders, 'findLatestPaidOrderId');
       const issue = vi.spyOn(deps.downloadCopies, 'create');
       const ctx: Ctx = {
         ...memberCtx,
@@ -407,15 +410,42 @@ describe('issued download copies', () => {
       };
 
       expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({
-        ok: false, error: { code: 'impersonation_read_only' },
+        ok: true, value: { kind: 'redirect' },
       });
       expect(read).not.toHaveBeenCalled();
       expect(personalise).not.toHaveBeenCalled();
+      expect(acquire).not.toHaveBeenCalled();
+      expect(identify).not.toHaveBeenCalled();
+      expect(findOrder).not.toHaveBeenCalled();
       expect(issue).not.toHaveBeenCalled();
       expect(copies).toEqual([]);
-      expect(signed).toEqual([]);
+      expect(signed).toEqual([expect.objectContaining({
+        method: 'GET',
+        expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+      })]);
+      expect(signed[0]?.url).toContain('response-content-disposition=attachment');
+      expect(signed[0]?.url).toContain('response-content-type=');
     },
   );
+
+  it('forbids an impersonated download without an active grant', async () => {
+    const { deps, downloadAssets, copies, signed } = testDeps(false);
+    downloadAssets.rows.push(storedAsset());
+    const ctx: Ctx = {
+      ...memberCtx,
+      impersonation: {
+        id: 'impersonation-1', actorUserId: 'owner-user', actorEmail: 'owner@example.test',
+        actorName: 'Owner', actorStaffRole: 'owner', subjectMemberId: 'member-1',
+        subjectName: 'Buyer', expiresAt: '2026-08-03T13:00:00.000Z',
+      },
+    };
+
+    expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({
+      ok: false, error: { code: 'forbidden' },
+    });
+    expect(copies).toEqual([]);
+    expect(signed).toEqual([]);
+  });
 
   it('records the exact member, paid order, asset lineage and output hash before returning bytes', async () => {
     const { deps, downloadAssets, copies, signed } = testDeps();

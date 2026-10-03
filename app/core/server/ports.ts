@@ -919,7 +919,9 @@ export interface TenantRedirectReader {
 
 export interface TenantRedirectRepository extends TenantRedirectReader {
   create(tenantId: string, redirect: TenantRedirect): Promise<'saved' | 'path_taken'>;
+  update(tenantId: string, redirect: TenantRedirect): Promise<TenantRedirect | null>;
   deleteById(tenantId: string, redirectId: string): Promise<boolean>;
+  incrementHit(tenantId: string, redirectId: string): Promise<void>;
 }
 
 export type ImportRedirectMutation = {

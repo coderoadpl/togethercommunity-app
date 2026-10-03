@@ -1,7 +1,7 @@
 import type { ConsentDefinitionVersion } from '#core/domain/index.js';
 import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
@@ -1871,7 +1871,11 @@ export const tenantRedirects = pgTable(
     }).notNull(),
     targetId: text('target_id'),
     targetPath: text('target_path').notNull(),
+    targetAnchor: text('target_anchor'),
     permanent: boolean('permanent').notNull().default(false),
+    locked: boolean('locked').notNull().default(false),
+    hitCount: bigint('hit_count', { mode: 'number' }).notNull().default(0),
+    lastHitAt: timestamp('last_hit_at', { withTimezone: true, mode: 'string' }),
     origin: text('origin', { enum: ['import', 'manual'] }).notNull().default('import'),
     createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
@@ -2259,6 +2263,7 @@ export const tenantAuditEvents = pgTable(
         'impersonation_ended',
         'content_version_restored',
         'redirect_created',
+        'redirect_updated',
         'redirect_deleted',
         'post_purged',
         'tenant_provisioned',

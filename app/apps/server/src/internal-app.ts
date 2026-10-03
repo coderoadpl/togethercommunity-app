@@ -134,6 +134,7 @@ import {
   tenantRedirectsQuerySchema,
   tenantRedirectCreateSchema,
   tenantRedirectDeleteSchema,
+  tenantRedirectUpdateSchema,
   tenantSettingsUpdateInputSchema,
   impersonationStartRequestSchema,
   tenantAuditEventsQuerySchema,
@@ -284,6 +285,7 @@ import {
   getTenantSettings,
   listTenantRedirects,
   createTenantRedirect,
+  updateTenantRedirect,
   deleteTenantRedirect,
   getTenantSetupReadiness,
   toRenderedPublicPost,
@@ -2344,6 +2346,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = tenantRedirectCreateSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
     const result = await createTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
+    return respond(result.ok ? ok({ redirect: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantRedirectUpdate, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = tenantRedirectUpdateSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
+    const result = await updateTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
     return respond(result.ok ? ok({ redirect: result.value }) : result);
   });
 

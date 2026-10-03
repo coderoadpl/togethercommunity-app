@@ -50,6 +50,7 @@ export const tenantAuditEventSchema = z.object({
     'impersonation_ended',
     'content_version_restored',
     'redirect_created',
+    'redirect_updated',
     'redirect_deleted',
     'post_purged',
     'tenant_provisioned',

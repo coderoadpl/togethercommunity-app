@@ -68,7 +68,7 @@ describe('download version transactions', () => {
     try {
       await client.query('CREATE TEMP TABLE product_download_assets (id text PRIMARY KEY, tenant_id text NOT NULL, storage_key text NOT NULL, status text NOT NULL)');
       await client.query("INSERT INTO product_download_assets VALUES ('legacy', 'tenant', 'original-object', 'ready')");
-      await client.query(readFileSync('drizzle/0128_product_download_versions.sql', 'utf8'));
+      await client.query(readFileSync('drizzle/0129_product_download_versions.sql', 'utf8'));
       const result = await client.query('SELECT * FROM product_download_assets');
       expect(result.rows).toEqual([{
         id: 'legacy', tenant_id: 'tenant', storage_key: 'original-object', status: 'ready',

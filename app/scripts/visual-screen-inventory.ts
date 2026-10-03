@@ -589,6 +589,13 @@ export const SCREENS: readonly ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-settings-redirects-edit',
+    auth: 'creator',
+    path: '/panel/settings/redirects',
+    fixtureName: 'panel-settings-redirects',
+    ready: (page) => page.getByRole('heading', { name: en.redirects.editHeading }).waitFor(visible),
+  },
+  {
     name: 'panel-storage-wizard',
     auth: 'creator',
     path: '/panel/integrations#storage',

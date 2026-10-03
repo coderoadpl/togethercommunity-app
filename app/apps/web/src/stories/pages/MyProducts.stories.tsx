@@ -37,3 +37,7 @@ export const ExpiredAccessPolish: Story = {
   ...ExpiredAccess,
   parameters: { ...ExpiredAccess.parameters, locale: 'pl' },
 };
+
+export const VersionsDarkDesktop: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
+export const VersionsDarkMobile: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
+export const VersionsPolish: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };

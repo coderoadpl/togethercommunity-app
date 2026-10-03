@@ -83,6 +83,11 @@ const grant: ProductGrant = {
 
 const storedAsset = (overrides: Partial<ProductDownloadAsset> = {}): ProductDownloadAsset => ({
   id: 'asset-1',
+  lineageId: 'asset-1',
+  versionNumber: 1,
+  versionNote: null,
+  supersededAt: null,
+  replacesAssetId: null,
   tenantId: 'tenant-1',
   productId: product.id,
   fileName: 'workbook.pdf',
@@ -108,18 +113,30 @@ const assetRepository = (): ProductDownloadAssetRepository & { rows: ProductDown
     listReadyByProduct: async (tenantId, productId) =>
       rows.filter((asset) =>
         asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
-    markReady: async (tenantId, assetId, sizeBytes) => {
+    markReady: async (tenantId, assetId, sizeBytes, version) => {
       const index = rows.findIndex((asset) => asset.tenantId === tenantId && asset.id === assetId);
       const current = rows[index];
       if (current === undefined) return null;
-      const ready: ProductDownloadAsset = { ...current, status: 'ready', sizeBytes };
+      const target = rows.find((row) => row.id === version.replacesAssetId && row.tenantId === tenantId);
+      const history = rows.filter((row) => row.tenantId === tenantId && row.lineageId === target?.lineageId);
+      for (const row of history) if (row.supersededAt === null) row.supersededAt = version.now;
+      const ready: ProductDownloadAsset = {
+        ...current, status: 'ready', sizeBytes, versionNote: version.versionNote,
+        lineageId: target?.lineageId ?? current.id,
+        versionNumber: target ? Math.max(...history.map((row) => row.versionNumber)) + 1 : 1,
+      };
       rows[index] = ready;
       return ready;
     },
     delete: async (tenantId, assetId) => {
       const index = rows.findIndex((asset) => asset.tenantId === tenantId && asset.id === assetId);
       if (index < 0) return false;
-      rows.splice(index, 1);
+      const [deleted] = rows.splice(index, 1);
+      if (deleted?.status === 'ready' && deleted.supersededAt === null) {
+        const latest = rows.filter((row) => row.tenantId === tenantId && row.lineageId === deleted.lineageId && row.status === 'ready')
+          .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+        if (latest) latest.supersededAt = null;
+      }
       return true;
     },
   };
@@ -315,5 +332,48 @@ describe('product downloads', () => {
       deleteProductDownloadAsset(memberCtx, product.id, 'asset-1', deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(downloadAssets.rows).toHaveLength(1);
+  });
+});
+
+
+describe('file version use cases', () => {
+  it('joins the lineage on completion without deleting older storage objects', async () => {
+    const { deps, downloadAssets, removed } = testDeps();
+    deps.ids = { nextId: () => 'asset-2' };
+    downloadAssets.rows.push(storedAsset());
+    await beginProductDownloadUpload(ownerCtx, product.id, {
+      fileName: 'errata.pdf', contentType: 'application/pdf', sizeBytes: 100, replacesAssetId: 'asset-1',
+    }, deps);
+    expect(downloadAssets.rows[0]?.supersededAt).toBeNull();
+    const result = await completeProductDownloadUpload(ownerCtx, product.id, 'asset-2', deps, { versionNote: '  Fixed diagram  ' });
+    expect(result).toMatchObject({ ok: true, value: { lineageId: 'asset-1', versionNumber: 2, versionNote: 'Fixed diagram' } });
+    expect(downloadAssets.rows[0]?.supersededAt).toBe(NOW);
+    expect(removed).toEqual([]);
+    await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-2', deps);
+    expect(downloadAssets.rows[0]?.supersededAt).toBeNull();
+    expect(removed).toEqual(['https://storage.example.test/creator-files/product-downloads/download-1/asset-2/errata.pdf']);
+  });
+
+  it.each([
+    { override: { productId: 'other-product' }, code: 'not_found' },
+    { override: { tenantId: 'other-tenant' }, code: 'not_found' },
+    { override: { status: 'pending' as const }, code: 'validation' },
+  ])('rejects invalid replacements at begin and completion: $code $override', async ({ override, code }) => {
+    const { deps, downloadAssets } = testDeps();
+    downloadAssets.rows.push(storedAsset(override), storedAsset({ id: 'pending', lineageId: 'pending', status: 'pending' }));
+    const input = { fileName: 'new.pdf', contentType: 'application/pdf', sizeBytes: 100, replacesAssetId: 'asset-1' };
+    expect(await beginProductDownloadUpload(ownerCtx, product.id, input, deps)).toMatchObject({ ok: false, error: { code } });
+    expect(await completeProductDownloadUpload(ownerCtx, product.id, 'pending', deps, input)).toMatchObject({ ok: false, error: { code } });
+  });
+
+  it('allows old versions only with active member access and preserves the TTL', async () => {
+    const { deps, downloadAssets, signed } = testDeps();
+    downloadAssets.rows.push(storedAsset({ supersededAt: NOW }));
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true });
+    expect(signed[0]?.expiresInSeconds).toBe(PRODUCT_DOWNLOAD_TTL_SECONDS);
+    deps.grants = grants(false);
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getProductDownload(ownerCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(signed).toHaveLength(1);
   });
 });

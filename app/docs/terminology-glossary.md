@@ -39,6 +39,8 @@ add it here before using it in either dictionary.
 | Adopting an existing provider subscription | Podłącz subskrypcję Stripe | Adopt Stripe subscription | Action label for connecting an existing Stripe subscription to a member. Progress copy uses Podłączanie subskrypcji… / Adopting subscription…; hints explain that billing continues unchanged; refusal and timeline copy use the same adoption concept. |
 | Imported price | cena zaimportowana | imported price | Compact price label is Zaimportowana / Imported. Imported recurring periods use localized interval copy from the importedPeriod dictionary key and must not imply the price is active for new checkout. |
 | Free sample content | bezpłatna lekcja próbna | free preview lesson | Use consistently across sample content. |
+| File version | wersja pliku | file version | A numbered revision of a downloadable file. |
+| Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure

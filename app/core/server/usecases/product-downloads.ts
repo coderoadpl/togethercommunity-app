@@ -5,6 +5,8 @@ import {
   notFound,
   ok,
   productDownloadUploadInputSchema,
+  productDownloadCompleteInputSchema,
+  type ProductDownloadCompleteInput,
   validation,
   type AppError,
   type Product,
@@ -56,6 +58,18 @@ const requireDigitalProduct = async (
     : err(validation('Files can only be attached to digital-download products'));
 };
 
+const validateReplacement = async (
+  tenantId: string,
+  productId: string,
+  assetId: string | undefined,
+  repository: ProductDownloadAssetRepository,
+): Promise<Result<void, AppError>> => {
+  if (assetId === undefined) return ok(undefined);
+  const asset = await repository.findById(tenantId, assetId);
+  if (asset === null || asset.productId !== productId) return err(notFound('Replacement file not found'));
+  return asset.status === 'ready' ? ok(undefined) : err(validation('Only ready files can be replaced'));
+};
+
 export const beginProductDownloadUpload = async (
   ctx: Ctx,
   productId: string,
@@ -68,6 +82,8 @@ export const beginProductDownloadUpload = async (
   if (!parsed.success) return err(validation('Invalid download asset', parsed.error.flatten()));
   const product = await requireDigitalProduct(tenant.value, productId, deps.products);
   if (!product.ok) return product;
+  const replacement = await validateReplacement(tenant.value, productId, parsed.data.replacesAssetId, deps.downloadAssets);
+  if (!replacement.ok) return replacement;
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
 
@@ -84,6 +100,11 @@ export const beginProductDownloadUpload = async (
   const createdAt = deps.clock.nowIso();
   const asset: ProductDownloadAsset = {
     id,
+    lineageId: id,
+    versionNumber: 1,
+    versionNote: parsed.data.versionNote ?? null,
+    supersededAt: null,
+    replacesAssetId: parsed.data.replacesAssetId ?? null,
     tenantId: tenant.value,
     productId,
     fileName: parsed.data.fileName,
@@ -105,7 +126,8 @@ export const completeProductDownloadUpload = async (
   ctx: Ctx,
   productId: string,
   assetId: string,
-  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'secretResolver' | 'storage'>,
+  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'secretResolver' | 'storage' | 'clock'>,
+  input: ProductDownloadCompleteInput = {},
 ): Promise<Result<ProductDownloadAsset, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
@@ -113,7 +135,13 @@ export const completeProductDownloadUpload = async (
   if (asset === null || asset.productId !== productId) {
     return err(notFound(`No download asset "${assetId}" on this product`));
   }
+  const parsed = productDownloadCompleteInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid version details', parsed.error.flatten()));
   if (asset.status === 'ready') return ok(asset);
+  const replacesAssetId = parsed.data.replacesAssetId ?? asset.replacesAssetId ?? undefined;
+  if (replacesAssetId === asset.id) return err(validation('A file cannot replace itself'));
+  const replacement = await validateReplacement(tenant.value, productId, replacesAssetId, deps.downloadAssets);
+  if (!replacement.ok) return replacement;
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const storedObject = await deps.storage.head({
@@ -133,7 +161,11 @@ export const completeProductDownloadUpload = async (
     if (!removed.ok) return removed;
     return err(validation(`Uploaded file must be between 1 and ${String(PRODUCT_DOWNLOAD_MAX_BYTES)} bytes`));
   }
-  const ready = await deps.downloadAssets.markReady(tenant.value, assetId, storedObject.value.sizeBytes);
+  const ready = await deps.downloadAssets.markReady(tenant.value, assetId, storedObject.value.sizeBytes, {
+    replacesAssetId,
+    versionNote: parsed.data.versionNote ?? asset.versionNote,
+    now: deps.clock.nowIso(),
+  });
   return ready === null
     ? err(notFound(`No download asset "${assetId}" on this product`))
     : ok(ready);

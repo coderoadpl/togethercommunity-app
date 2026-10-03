@@ -208,6 +208,8 @@ The provisioning body rejects unknown fields, including storage and Stripe
 credentials. The owner configures those integrations in the panel or with the
 existing owner CLI commands after creation. Operator CLI commands read the secret
 only from `OPERATOR_SECRET`, never a flag, and redact transport exceptions.
+Requests carrying the operator secret refuse redirects, preventing the header
+from being forwarded to another origin.
 See [operator tenant provisioning](tenant-provisioning.md) for the procedure,
 readiness evidence limits and recovery behavior.
 

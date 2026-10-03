@@ -61,6 +61,7 @@ const harness = (probeFails = false, corsOrigins?: string[]) => {
       rows.push(secret);
       return secret;
     },
+    upsertMany: async (_tenantId, secrets) => [...secrets],
     delete: async () => false,
   };
   const storage: StorageProvider = {

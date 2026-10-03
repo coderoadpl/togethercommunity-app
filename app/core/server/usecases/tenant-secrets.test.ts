@@ -53,6 +53,9 @@ const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecre
       else store.push(stored);
       return stored;
     },
+    upsertMany: async (tenantId, secrets) => Promise.all(
+      secrets.map((secret) => tenantSecrets.upsert(tenantId, secret)),
+    ),
     delete: async (tenantId, key) => {
       const index = store.findIndex((r) => r.tenantId === tenantId && r.key === key);
       if (index < 0) return false;

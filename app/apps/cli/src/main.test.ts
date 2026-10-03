@@ -1184,4 +1184,17 @@ describe('operator tenant commands', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'internal', message: 'Operator request failed' } });
     expect(process.exitCode).toBe(10);
   });
+
+  it('reports redirect refusal as a clear operator request failure', async () => {
+    h.provisionOperatorTenant.mockResolvedValue(err(appError(
+      'internal',
+      'Operator request refused a redirect',
+    )));
+    await run('--json', ...operatorProvisionArgs);
+    expect(soleJson()).toMatchObject({
+      ok: false,
+      error: { code: 'internal', message: 'Operator request refused a redirect' },
+    });
+    expect(process.exitCode).toBe(10);
+  });
 });

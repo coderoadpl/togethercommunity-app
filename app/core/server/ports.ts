@@ -968,6 +968,7 @@ export interface TenantSecretRepository {
   listByTenant(tenantId: string): Promise<TenantSecret[]>;
   findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;
   upsert(tenantId: string, secret: TenantSecret): Promise<TenantSecret>;
+  upsertMany(tenantId: string, secrets: readonly TenantSecret[]): Promise<TenantSecret[]>;
   delete(tenantId: string, key: TenantSecretKey): Promise<boolean>;
 }
 

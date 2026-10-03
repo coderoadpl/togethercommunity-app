@@ -85,6 +85,8 @@ manually modify the database to make the checklist green.
 `GET /api/internal/tenants/:slug/readiness` require the same
 `x-scheduler-operator-secret` header and constant-time comparison as neighboring
 operator routes. Authentication happens before body parsing or database access.
+Clients sending the operator secret refuse redirects so the header cannot be
+forwarded to another origin.
 Session owners, admins and members cannot obtain either operator capability.
 These routes are absent from the public app and public route manifests. Like the
 neighboring operator routes, they have no separate request-rate limiter.

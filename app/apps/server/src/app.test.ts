@@ -5302,9 +5302,10 @@ describe('tenant redirects', () => {
     increments?: string[];
     warnings?: string[];
     failIncrement?: boolean;
-    exhaustHitBucket?: boolean;
+    hitLimit?: number;
     hitClaims?: Array<{ scope: string; key: string; limit: number }>;
   }) => {
+    let hitClaimCount = 0;
     const base = deps({
       domains: [tenantDomainFixture({
         id: 'domain-acme',
@@ -5317,9 +5318,10 @@ describe('tenant redirects', () => {
       ...(tracking === undefined ? {} : {
         rateLimitBuckets: {
           claim: async (input) => {
-            if (input.scope === 'redirect-hit:ip') {
+            if (input.scope === 'redirect-hit') {
               tracking.hitClaims?.push({ scope: input.scope, key: input.key, limit: input.limit });
-              return tracking.exhaustHitBucket !== true;
+              hitClaimCount += 1;
+              return hitClaimCount <= input.limit;
             }
             return true;
           },
@@ -5330,6 +5332,13 @@ describe('tenant redirects', () => {
     const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
     return buildApp({
       ...base,
+      publicRateLimitPolicies: {
+        ...base.publicRateLimitPolicies,
+        redirectHitsPerRedirect: {
+          ...base.publicRateLimitPolicies.redirectHitsPerRedirect,
+          limit: tracking?.hitLimit ?? base.publicRateLimitPolicies.redirectHitsPerRedirect.limit,
+        },
+      },
       redirects: {
         ...base.redirects,
         findByFromPath: async (tenantId, fromPath) =>
@@ -5412,33 +5421,55 @@ describe('tenant redirects', () => {
 
   it('does not update a counter when no redirect matches', async () => {
     const increments: string[] = [];
+    const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
 
-    await redirectApp(acme, { increments }).request('/course/python', {
+    await redirectApp(acme, { increments, hitClaims }).request('/course/python', {
       headers: { host: 'acme.localhost:48730' },
     });
 
     expect(increments).toEqual([]);
+    expect(hitClaims).toEqual([]);
   });
 
-  it('still redirects without incrementing when the per-IP hit bucket is exhausted', async () => {
+  it('counts 61 matched requests from one address', async () => {
+    const increments: string[] = [];
+    const app = redirectApp(acme, { increments });
+
+    const responses = await Promise.all(Array.from({ length: 61 }, () => app.request(
+      '/printed/guide',
+      { headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' } },
+    )));
+
+    expect(responses.every((response) => response.status === 302)).toBe(true);
+    expect(increments).toHaveLength(61);
+  });
+
+  it('still redirects without incrementing when the per-redirect hit bucket is exhausted', async () => {
     const increments: string[] = [];
     const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
-    const response = await redirectApp(acme, {
+    const app = redirectApp(acme, {
       increments,
-      exhaustHitBucket: true,
+      hitLimit: 2,
       hitClaims,
-    }).request('/printed/guide', {
+    });
+    const first = await app.request('/printed/guide', {
+      headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' },
+    });
+    const second = await app.request('/printed/guide', {
+      headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' },
+    });
+    const third = await app.request('/printed/guide', {
       headers: { host: 'acme.localhost:48730' },
     });
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
-    expect(increments).toEqual([]);
-    expect(hitClaims).toEqual([{
-      scope: 'redirect-hit:ip',
-      key: 'unattributed',
-      limit: 6_000,
-    }]);
+    expect([first.status, second.status, third.status]).toEqual([302, 302, 302]);
+    expect(third.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
+    expect(increments).toEqual(['redirect-printed-guide', 'redirect-printed-guide']);
+    expect(hitClaims).toEqual(Array.from({ length: 3 }, () => ({
+      scope: 'redirect-hit',
+      key: 't-acme:redirect-printed-guide',
+      limit: 2,
+    })));
   });
 
   it('warns and still redirects when the hit increment fails', async () => {

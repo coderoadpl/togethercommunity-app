@@ -153,7 +153,7 @@ export const envSchema = z
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
     EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
-    PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: optionalCount,
+    PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE: optionalCount,

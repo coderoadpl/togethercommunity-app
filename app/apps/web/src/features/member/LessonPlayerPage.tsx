@@ -394,7 +394,9 @@ export const LessonPlayerPage = ({
     [groups],
   );
   const headingIdKey = headingDocument.headings.map((heading) => heading.id).join('\n');
+  const contentMounted = lesson.data !== undefined && !(authenticated && tenantSettings.isPending);
   useEffect(() => {
+    if (!contentMounted) return;
     const scrollToHash = () => {
       const hash = window.location.hash.slice(1);
       if (!/^[a-z0-9-]{1,80}$/.test(hash)) return;
@@ -406,7 +408,7 @@ export const LessonPlayerPage = ({
     scrollToHash();
     window.addEventListener('hashchange', scrollToHash);
     return () => window.removeEventListener('hashchange', scrollToHash);
-  }, [lessonId, headingIdKey]);
+  }, [lessonId, headingIdKey, contentMounted]);
 
   const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {

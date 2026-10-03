@@ -11,8 +11,9 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import type { TenantRedirect } from '#core/domain/index.js';
+import { headingIds, type TenantRedirect } from '#core/domain/index.js';
 
+import { lessonHeadingDocument } from '../../../components/ui/lesson-heading-document.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -21,6 +22,7 @@ import { RedirectsPanel } from './RedirectsPanel.js';
 
 const COURSE_ID = 'course-js';
 const LESSON_ID = 'lesson-intro';
+const LESSON_HTML = '<h2>Safety first</h2><h2>Safety first</h2><h2>Forms</h2><h2>Cookie</h2>';
 
 const redirect = (overrides: Partial<TenantRedirect> = {}): TenantRedirect => ({
   id: 'redirect-1',
@@ -101,7 +103,7 @@ const installBackend = (seed: TenantRedirect[], createResult?: 'conflict'): Back
           tenantId: 'tenant-1',
           name: 'Introduction to JS',
           isPreview: false,
-          contents: [{ type: 'html', html: '<h2>Safety first</h2><h2>Safety first</h2>' }],
+          contents: [{ type: 'html', html: LESSON_HTML }],
           legacyId: null,
           createdAt: '2026-01-01T00:00:00.000Z',
         }],
@@ -288,8 +290,16 @@ describe('RedirectsPanel', () => {
     expect(backend.queries.at(-1)?.get('limit')).toBe('50');
   });
 
-  it('previews the normalised source path and creates a lesson redirect', async () => {
+  it('creates a lesson redirect with the heading id rendered by the player', async () => {
     const backend = installBackend([]);
+    const headingDocument = lessonHeadingDocument([LESSON_HTML], headingIds);
+    const formsHeading = headingDocument.headings.find((heading) => heading.text === 'Forms');
+    if (formsHeading === undefined) throw new Error('missing Forms heading');
+    const playerDocument = document.createElement('template');
+    playerDocument.innerHTML = headingDocument.htmlBlocks[0] ?? '';
+    const renderedFormsHeading = [...playerDocument.content.querySelectorAll('h2')]
+      .find((heading) => heading.textContent === 'Forms');
+    if (renderedFormsHeading === undefined) throw new Error('missing rendered Forms heading');
 
     renderPage();
     await screen.findByText(en.redirects.empty);
@@ -305,7 +315,9 @@ describe('RedirectsPanel', () => {
     await userEvent.click(await screen.findByLabelText(en.redirects.targetLessonLabel));
     await userEvent.click(await screen.findByRole('option', { name: 'Introduction to JS' }));
     await userEvent.click(await screen.findByLabelText(en.redirects.anchorLabel));
-    await userEvent.click(await screen.findByRole('option', { name: 'Safety first (#safety-first-2)' }));
+    await userEvent.click(await screen.findByRole('option', {
+      name: `Forms (#${formsHeading.id})`,
+    }));
     await userEvent.click(screen.getByTestId('redirect-permanent'));
     await userEvent.click(screen.getByTestId('redirect-locked'));
     await userEvent.click(screen.getByRole('button', { name: en.redirects.submit }));
@@ -317,12 +329,14 @@ describe('RedirectsPanel', () => {
           kind: 'lesson',
           courseId: COURSE_ID,
           lessonId: LESSON_ID,
-          anchor: 'safety-first-2',
+          anchor: renderedFormsHeading.id,
         },
         permanent: true,
         locked: true,
       }]);
     });
+    expect(formsHeading.id).toBe('forms-section');
+    expect(renderedFormsHeading.id).toBe(formsHeading.id);
     expect(await findToast('success'))
       .toHaveTextContent(en.redirects.created({ fromPath: '/course/javascript' }));
   });

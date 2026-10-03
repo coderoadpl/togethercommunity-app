@@ -112,23 +112,35 @@ results. Together keeps a redirect table per workspace and answers it on every
 tenant host — custom domains and workspace subdomains alike — so those links
 keep landing on the right page instead of a not-found screen.
 
-On Vercel, the edge forwards `/courses/` and `/link/` to the server; other stored paths answer only when the edge routes them to the server.
+The deployment's edge serves the web app directly for most paths and forwards
+only `/api/`, `/u/`, `/marketing/`, `/legal/`, `/courses/`, `/link/` and crawler
+requests to the server (`app/vercel.json`). A stored redirect answers only under
+a forwarded prefix on ordinary browser requests. `/link/` is the platform's
+short-link prefix: every workspace may store `/link/<key>` entries for printed
+material and QR codes. A stored path outside the forwarded prefixes never
+answers on an ordinary browser request on this deployment; the web app shows
+its not-found screen. This is a deployment limitation.
 
-These forwarding rules do not interpret individual source paths from a previous
-site. Each entry is one source path with one destination. Entries arrive two
+The platform knows nothing about the URL shapes of the site a workspace came
+from. Each entry is one source path with one destination. Entries arrive two
 ways: in bulk through the `redirect` kind of the [import API](import-api.md),
 where the tool that reads the previous site decides which paths exist and what
 they mean, and one at a time from Settings → Addresses → Redirects.
 
 | Entry | Redirected to | Status |
 |---|---|---|
-| a source path marked permanent | its destination | `301` |
-| a source path left temporary | its destination | `302` |
-| a path with no entry | unchanged — the web app serves it | — |
-| a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) | unchanged — the web build serves it | — |
+| a source path under a forwarded prefix marked permanent | its destination | `301` |
+| a source path under a forwarded prefix left temporary | its destination | `302` |
+| a `/link/<key>` with no entry | the workspace home (`/`) | `302` |
+| a path with no entry outside the forwarded prefixes | unchanged — the web app serves it | — |
+| a path with no entry under `/courses/` | the server's not-found answer | `404` |
+| a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) — under a forwarded prefix too | never redirected; under a forwarded prefix the server answers `404`, elsewhere the web build serves it | — |
+
+An unknown short link counts no hit.
 
 Document extensions are not static file paths: the `.html` and `.php` links a
-previous site minted by the thousand redirect like any other source path.
+previous site minted by the thousand redirect like any other source path under
+a forwarded prefix.
 
 A destination that keeps its identity across the move (a course or lesson page)
 is usually imported as permanent. A destination that is derived and may change
@@ -142,6 +154,9 @@ one workspace, so a path configured elsewhere never resolves on this host, and
 the platform host — which resolves to no workspace — never redirects at all.
 
 ## Managing redirects
+
+A short link for print is a redirect whose source path is `/link/<key>`; choose
+a short, lowercase key (case is ignored on lookup).
 
 Settings → Addresses counts the workspace's redirects and links to their page.
 The page lists them ordered by source path, fifty at a time, with a search over

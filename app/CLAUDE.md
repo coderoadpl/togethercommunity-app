@@ -88,6 +88,12 @@ GitHub repository variables and secrets, or in import datasets produced by
 tooling the owner keeps privately. A tenant's legacy URLs reach the platform as
 `redirect` import records, never as code that knows their shape.
 
+The platform reserves two forwarded prefixes for its own redirect surface:
+`/courses/` (course and lesson destinations) and `/link/` (short links for
+printed material and QR codes). They are platform features available to every
+workspace; the keys under them stay workspace data. `app/docs/custom-domains.md`
+documents these prefixes.
+
 `pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
 patterns across every tracked file. An exception needs a line in
 `.tenant-neutral-allow` with a written justification.

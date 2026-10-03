@@ -5522,15 +5522,17 @@ describe('tenant redirects', () => {
     },
   );
 
-  it('leaves a path configured for another tenant unchanged', async () => {
+  it('sends a short link configured for another tenant to the workspace home without counting a hit', async () => {
     const increments: string[] = [];
-    const response = await redirectApp(globex, { increments }).request('/link/guide', {
+    const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+    const response = await redirectApp(globex, { increments, hitClaims }).request('/link/guide', {
       headers: { host: 'acme.localhost:48730' },
     });
 
-    expect(response.status).toBe(404);
-    expect(response.headers.get('location')).toBeNull();
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/');
     expect(increments).toEqual([]);
+    expect(hitClaims).toEqual([]);
   });
 
   it.each(['/link/guide', '/link/missing'])(
@@ -5547,7 +5549,24 @@ describe('tenant redirects', () => {
     },
   );
 
-  it.each(['/course/python', '/link', '/link/', '/link/missing?edition=print', '/link/missing.js?edition=print', '/LINK/missing.js?edition=print', '/link-other/missing'])(
+  it.each(['/link', '/link/', '/link/missing?edition=print', '/LINK/Missing?edition=print'])(
+    'sends the unknown short link %s to the workspace home without counting a hit',
+    async (path) => {
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/');
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+    },
+  );
+
+  it.each(['/course/python', '/link/missing.js?edition=print', '/LINK/missing.js?edition=print', '/link-other/missing'])(
     'leaves an unmatched path %s unchanged without counting a hit',
     async (path) => {
       const increments: string[] = [];

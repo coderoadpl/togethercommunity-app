@@ -7,6 +7,10 @@ import { claimRateLimitWindow, resolveTenant } from '#core/server/index.js';
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 
+const platformShortLinkPrefix = '/link';
+const isPlatformShortLinkPath = (path: string): boolean =>
+  path === platformShortLinkPrefix || path.startsWith(`${platformShortLinkPrefix}/`);
+
 const staticAssetExtensions = new Set([
   'avif', 'css', 'eot', 'gif', 'ico', 'jpeg', 'jpg', 'js', 'json', 'map', 'mjs', 'otf', 'png',
   'svg', 'ttf', 'txt', 'webmanifest', 'webp', 'woff', 'woff2', 'xml',
@@ -50,11 +54,13 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
       await next();
       return;
     }
+    const requestPath = normalizeRedirectPath(c.req.path);
     const redirect = await deps.redirects.findByFromPath(
       tenant.value.tenant.id,
-      normalizeRedirectPath(c.req.path),
+      requestPath,
     );
     if (redirect === null) {
+      if (isPlatformShortLinkPath(requestPath)) return c.redirect('/', 302);
       await next();
       return;
     }

@@ -1,6 +1,6 @@
 {
-  "hash": "5d2366642d7b205009fe4fa83f0d684c95da6e5d119a8896f7f7bafb953ff0db",
-  "shortId": "5d2366642d7b",
+  "hash": "ed54f2b0caeabb5b730e9bc1eebadf28a07cdf90718208812f6cde4f5cd40db9",
+  "shortId": "ed54f2b0caea",
   "schema": {
     "constraints": [
       {
@@ -1584,6 +1584,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION product_download_assets_default_lineage() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN NEW.lineage_id := COALESCE(NEW.lineage_id, NEW.id); NEW.version_number := COALESCE(NEW.version_number, 1); RETURN NEW; END; $function$",
+        "name": "product_download_assets_default_lineage"
       },
       {
         "arguments": "",
@@ -12178,6 +12183,11 @@
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
         "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER product_download_assets_default_lineage BEFORE INSERT ON product_download_assets FOR EACH ROW EXECUTE FUNCTION product_download_assets_default_lineage()",
+        "name": "product_download_assets_default_lineage",
+        "table": "product_download_assets"
       },
       {
         "definition": "CREATE TRIGGER product_prices_history_after_write AFTER INSERT OR UPDATE OF amount_cents ON product_prices FOR EACH ROW EXECUTE FUNCTION append_product_price_history()",

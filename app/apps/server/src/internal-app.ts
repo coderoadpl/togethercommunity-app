@@ -2304,14 +2304,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.get(API_PATHS.tenantSettings, async (c) => {
-    const ctx = ctxOf(c);
-    const result = await getTenantSettings(ctx, deps);
-    return respond(result.ok
-      ? ok({
-          settings: result.value,
-          personalisationMaxBytes: ctx.identity.staffRole === null ? null : deps.personalisationMaxBytes,
-        })
-      : result);
+    const result = await getTenantSettings(ctxOf(c), deps);
+    return respond(result.ok ? ok(result.value) : result);
   });
 
   const tenantRoutingDeps = {

@@ -134,6 +134,7 @@ const renderProductsPanel = async (
             sizeBytes: 7,
             status: 'pending',
             createdAt: '2026-07-12T12:00:00.000Z',
+            personalisationSizeExceeded: false,
           },
           upload: {
             url: 'https://storage.example.test/product-download',
@@ -160,6 +161,7 @@ const renderProductsPanel = async (
         sizeBytes: 7,
         status: 'ready',
         createdAt: '2026-07-12T12:00:00.000Z',
+        personalisationSizeExceeded: false,
       };
       assets = [asset];
       return HttpResponse.json({ ok: true, data: { asset } });
@@ -397,6 +399,7 @@ describe('ProductsPanel', () => {
       sizeBytes: 7,
       status: 'ready',
       createdAt: '2026-07-12T12:00:00.000Z',
+      personalisationSizeExceeded: false,
     };
     await renderProductsPanel([], '/panel/products/download-1', [download], [], [asset]);
 
@@ -441,15 +444,15 @@ describe('ProductsPanel', () => {
       sizeBytes: 20 * 1024 * 1024,
       personalisationSizeExceeded: false,
     };
-    const missingFlagAsset: ProductDownloadAssetMetadata = {
+    const regularAsset: ProductDownloadAssetMetadata = {
       ...largeAsset,
       id: 'asset-3',
       lineageId: 'asset-3',
       fileName: 'regular-workbook.pdf',
       sizeBytes: 1024,
+      personalisationSizeExceeded: false,
     };
-    delete missingFlagAsset.personalisationSizeExceeded;
-    await renderProductsPanel([], '/panel/products/download-1', [download], [], [largeAsset, equalLimitAsset, missingFlagAsset]);
+    await renderProductsPanel([], '/panel/products/download-1', [download], [], [largeAsset, equalLimitAsset, regularAsset]);
 
     expect(await screen.findByText('large-workbook.pdf')).toBeInTheDocument();
     expect(screen.getByText('equal-limit-workbook.pdf')).toBeInTheDocument();
@@ -498,6 +501,7 @@ describe('ProductsPanel', () => {
       sizeBytes: 7,
       status: 'ready',
       createdAt: '2026-07-12T12:00:00.000Z',
+      personalisationSizeExceeded: false,
     };
     await renderProductsPanel([], '/panel/products', [product], [price], [asset]);
 
@@ -652,7 +656,7 @@ it('reuses the upload control with replacement details and hides earlier version
   const latest: ProductDownloadAssetMetadata = {
     id: 'asset-2', lineageId: 'asset-1', versionNumber: 2, versionNote: 'Second edition', supersededAt: null,
     productId: 'download-1', fileName: 'book.pdf', contentType: 'application/pdf', sizeBytes: 1024,
-    status: 'ready', createdAt: '2026-07-12T12:00:00.000Z',
+    status: 'ready', createdAt: '2026-07-12T12:00:00.000Z', personalisationSizeExceeded: false,
   };
   await renderProductsPanel([], '/panel/products/download-1', [{ ...base, id: 'download-1', type: 'digital_download' }], [], [
     latest, { ...latest, id: 'asset-1', versionNumber: 1, versionNote: 'First edition', supersededAt: latest.createdAt },

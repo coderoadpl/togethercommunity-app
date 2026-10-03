@@ -957,7 +957,7 @@ export const downloadCopiesOutputSchema = z.object({ copies: z.array(downloadCop
 
 export const productDownloadAssetsOutputSchema = z.object({
   assets: z.array(productDownloadAssetMetadataSchema),
-  personalisationMaxBytes: z.number().int().positive(),
+  personalisationMaxBytes: z.number().int().positive().nullable().default(null),
 });
 
 export const productDownloadDeleteOutputSchema = z.object({

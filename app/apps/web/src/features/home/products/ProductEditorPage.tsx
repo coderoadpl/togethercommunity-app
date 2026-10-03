@@ -455,14 +455,14 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
     versions.push(asset);
     lineages.set(key, versions);
   }
-  const assetRow = (asset: ProductDownloadAssetMetadata, personalisationMaxBytes: number) => (
+  const assetRow = (asset: ProductDownloadAssetMetadata, personalisationMaxBytes: number | null) => (
     <Stack key={asset.id} spacing="0.5rem" sx={{ py: 1 }}>
       <Typography>{asset.fileName}</Typography>
       <Typography variant="body2" color="text.secondary">
         {t.products.fileVersion({ number: asset.versionNumber })}
         {' · '}{formatFileSize(asset.sizeBytes, language)}{' · '}{formatDate(asset.createdAt, language)}
       </Typography>
-      {asset.personalisationSizeExceeded ? (
+      {asset.personalisationSizeExceeded && personalisationMaxBytes !== null ? (
         <Typography variant="body2" color="text.secondary">
           {t.products.downloadNoCopyIdentifier({
             limit: formatFileSize(personalisationMaxBytes, language),

@@ -174,8 +174,10 @@ afterward. The probe creates the adapter's indexes. Loopback connections use the
 adapter's local-testing mode; external connections retain the production
 credential, TLS and public-host guards. The `telemetry-mongodb` CI job provides
 the server through its GitHub Actions service container and passes
-`MONGODB_TEST_URL` only to that integration test command. The static gate remains
-free of any MongoDB download or test-process server startup; no provider CLI or
-deployed environment is required.
+`MONGODB_TEST_URL` only to that integration test command. The job is
+informational and marked `continue-on-error`, so read the job's own result
+instead of the overall workflow conclusion to see a real adapter failure. The
+static gate remains free of any MongoDB download or test-process server startup;
+no provider CLI or deployed environment is required.
 The CI image is pinned to the current MongoDB 8.0 patch line because 8.0 is the
 long-supported series for the adapter compatibility check.

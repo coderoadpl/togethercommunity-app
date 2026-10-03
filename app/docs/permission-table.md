@@ -753,7 +753,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/internal-app.ts:1216` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
 | staff-role | `apps/server/src/internal-app.ts:1736` | `(identity.staffRole \|\| identity.memberId)` |
 | member-scope | `apps/server/src/internal-app.ts:1736` | `(identity.staffRole \|\| identity.memberId)` |
-| staff-role | `apps/server/src/internal-app.ts:2312` | `personalisationMaxBytes: ctx.identity.staffRole === null ? null : deps.personalisationMaxBytes,` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -39,6 +39,7 @@
     "getTenantSettings:[]": {
       "ok": true,
       "value": {
+        "personalisationMaxBytes": 20971520,
         "settings": {
           "accentColor": null,
           "accentLight": null,

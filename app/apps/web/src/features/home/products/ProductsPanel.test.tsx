@@ -113,7 +113,7 @@ const renderProductsPanel = async (
       HttpResponse.json({ ok: true, data: { prices } }),
     ),
     http.get('/api/products/:productId/downloads', () =>
-      HttpResponse.json({ ok: true, data: { assets } }),
+      HttpResponse.json({ ok: true, data: { assets, personalisationMaxBytes: 20 * 1024 * 1024 } }),
     ),
     http.get('/api/spaces/staff', () =>
       HttpResponse.json({ ok: true, data: { spaces: seededSpaces } }),
@@ -407,6 +407,54 @@ describe('ProductsPanel', () => {
     await userEvent.click(screen.getByTestId('product-download-delete-confirm'));
 
     await waitFor(() => expect(screen.queryByText(asset.fileName)).not.toBeInTheDocument());
+  });
+
+  it('shows when a download file is above the copy identifier size limit', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const download: Product = {
+      ...baseProduct,
+      id: 'download-1',
+      type: 'digital_download',
+      slug: 'creator-workbook',
+      title: 'Creator workbook',
+    };
+    const largeAsset: ProductDownloadAssetMetadata = {
+      id: 'asset-1',
+      lineageId: 'asset-1',
+      versionNumber: 1,
+      versionNote: null,
+      supersededAt: null,
+      productId: download.id,
+      fileName: 'large-workbook.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 21 * 1024 * 1024,
+      status: 'ready',
+      createdAt: '2026-07-12T12:00:00.000Z',
+      personalisationSizeExceeded: true,
+    };
+    const equalLimitAsset: ProductDownloadAssetMetadata = {
+      ...largeAsset,
+      id: 'asset-2',
+      lineageId: 'asset-2',
+      fileName: 'equal-limit-workbook.pdf',
+      sizeBytes: 20 * 1024 * 1024,
+      personalisationSizeExceeded: false,
+    };
+    const missingFlagAsset: ProductDownloadAssetMetadata = {
+      ...largeAsset,
+      id: 'asset-3',
+      lineageId: 'asset-3',
+      fileName: 'regular-workbook.pdf',
+      sizeBytes: 1024,
+    };
+    delete missingFlagAsset.personalisationSizeExceeded;
+    await renderProductsPanel([], '/panel/products/download-1', [download], [], [largeAsset, equalLimitAsset, missingFlagAsset]);
+
+    expect(await screen.findByText('large-workbook.pdf')).toBeInTheDocument();
+    expect(screen.getByText('equal-limit-workbook.pdf')).toBeInTheDocument();
+    expect(screen.getByText('regular-workbook.pdf')).toBeInTheDocument();
+    expect(screen.getAllByText(en.products.downloadNoCopyIdentifier({ limit: '20 MB' }))).toHaveLength(1);
   });
 
   it('shows the product type of every listed product', async () => {

@@ -161,7 +161,8 @@ mapping, aggregation pipelines and idempotent upsert planning run as unit tests
 without a MongoDB server.
 
 MongoDB integration tests are skipped unless `MONGODB_TEST_URL` is set. To run
-them against a developer-run server, provide a dedicated test database:
+them locally, start a developer-owned MongoDB server and provide a dedicated
+test database:
 
 ```bash
 MONGODB_TEST_URL='mongodb://127.0.0.1:27017/telemetry_test' \
@@ -171,5 +172,10 @@ MONGODB_TEST_URL='mongodb://127.0.0.1:27017/telemetry_test' \
 The tests use a unique tenant identifier and remove their own events and summaries
 afterward. The probe creates the adapter's indexes. Loopback connections use the
 adapter's local-testing mode; external connections retain the production
-credential, TLS and public-host guards. Provisioning the server is external to the
-gate; no provider CLI or deployed environment is required.
+credential, TLS and public-host guards. The `telemetry-mongodb` CI job provides
+the server through its GitHub Actions service container and passes
+`MONGODB_TEST_URL` only to that integration test command. The static gate remains
+free of any MongoDB download or test-process server startup; no provider CLI or
+deployed environment is required.
+The CI image is pinned to the current MongoDB 8.0 patch line because 8.0 is the
+long-supported series for the adapter compatibility check.

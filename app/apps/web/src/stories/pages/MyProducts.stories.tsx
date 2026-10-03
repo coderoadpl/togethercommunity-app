@@ -41,3 +41,32 @@ export const ExpiredAccessPolish: Story = {
 export const VersionsDarkDesktop: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
 export const VersionsDarkMobile: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
 export const VersionsPolish: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+
+const sizeNoticeFixture = {
+  ...fixture,
+  calls: {
+    ...fixture.calls,
+    'myProducts:[]': {
+      ok: true,
+      value: {
+        products: fixture.calls['myProducts:[]'].value.products.map((product) => ({
+          ...product,
+          downloads: product.downloads.map((download) =>
+            download.id === 'download-asset-workbook-v2'
+              ? { ...download, sizeBytes: 26214400, personalisationSizeExceeded: true }
+              : download),
+        })),
+      },
+    },
+  },
+};
+
+const sizeNoticeStory = (colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile'): Story => ({
+  parameters: { fixture: sizeNoticeFixture, colorScheme, viewport: { defaultViewport: viewport } },
+  globals: { viewport: { value: viewport } },
+});
+
+export const SizeNoticeLightDesktop1440: Story = sizeNoticeStory('light', 'desktop');
+export const SizeNoticeLightMobile390: Story = sizeNoticeStory('light', 'mobile');
+export const SizeNoticeDarkDesktop1440: Story = sizeNoticeStory('dark', 'desktop');
+export const SizeNoticeDarkMobile390: Story = sizeNoticeStory('dark', 'mobile');

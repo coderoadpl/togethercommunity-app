@@ -1136,6 +1136,7 @@ export interface Messages {
     downloadsHeading: string;
     downloadsDescription: string;
     downloadsEmpty: string;
+    downloadNoCopyIdentifier: (params: { limit: string }) => string;
     downloadFileInput: string;
     uploadDownload: string;
     uploadingDownload: string;
@@ -1629,6 +1630,7 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadsHeading: string;
     downloadFile: (params: { name: string }) => string;
+    downloadNoCopyIdentifier: string;
   };
   downloadCopies: {
     showMore: string;

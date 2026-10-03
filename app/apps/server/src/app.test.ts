@@ -4155,6 +4155,33 @@ describe('purchased product download route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('serializes the product download limit and size threshold for staff downloads', async () => {
+    const base = deps();
+    const limit = 4096;
+    const equalLimit = { ...asset, id: 'equal-limit', lineageId: 'equal-limit', sizeBytes: limit };
+    const aboveLimit = { ...asset, id: 'above-limit', lineageId: 'above-limit', sizeBytes: limit + 1 };
+    const app = scopedApp('owner', { overrides: {
+      personalisationMaxBytes: limit,
+      products: { ...base.products, findById: async () => downloadProduct },
+      downloadAssets: { ...base.downloadAssets, listByProduct: async () => [equalLimit, aboveLimit] },
+    } });
+    const response = await app.request(API_PATHS.productDownloadAssets.replace(':productId', downloadProduct.id), {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        personalisationMaxBytes: limit,
+        assets: [
+          { id: 'equal-limit', personalisationSizeExceeded: false },
+          { id: 'above-limit', personalisationSizeExceeded: true },
+        ],
+      },
+    });
+  });
+
   it('returns 403 for an unentitled member', async () => {
     const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4175,11 +4202,13 @@ describe('purchased product download route', () => {
     expect(malformed.status).toBe(400);
   });
 
-  it('serializes buyer history with separate protected paths and no storage keys', async () => {
+  it('serializes buyer history with protected paths, size threshold flags and no storage keys', async () => {
     const base = deps();
-    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z' };
-    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata' };
+    const limit = 4096;
+    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z', sizeBytes: limit };
+    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata', sizeBytes: limit + 1 };
     const app = scopedApp('member', { overrides: {
+      personalisationMaxBytes: limit,
       grants: {
         ...base.grants,
         listGrantedProducts: async () => [downloadProduct],
@@ -4195,11 +4224,31 @@ describe('purchased product download route', () => {
     const body: unknown = await response.json();
     expect(body).toMatchObject({ ok: true, data: { products: [{ downloads: [{
       id: latest.id, lineageId: asset.lineageId, versionNumber: 2, versionNote: 'Errata',
+      personalisationSizeExceeded: true,
       downloadPath: '/api/my/products/digital-download/downloads/download-v2',
-      previousVersions: [{ id: asset.id, downloadPath: path, supersededAt: previous.supersededAt }],
+      previousVersions: [{
+        id: asset.id,
+        downloadPath: path,
+        supersededAt: previous.supersededAt,
+        personalisationSizeExceeded: false,
+      }],
     }] }] } });
     expect(JSON.stringify(body)).not.toContain('storageKey');
     expect(JSON.stringify(body)).not.toContain('replacesAssetId');
+  });
+
+  it('returns the personalisation limit only for staff tenant settings readers', async () => {
+    const limit = 12_345;
+    const settingsPath = API_PATHS.tenantSettings;
+    const member = await scopedApp('member', { overrides: { personalisationMaxBytes: limit } })
+      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
+    const staff = await scopedApp('staff', { overrides: { personalisationMaxBytes: limit } })
+      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(member.status).toBe(200);
+    expect(await member.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: null } });
+    expect(staff.status).toBe(200);
+    expect(await staff.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: limit } });
   });
 
 });

@@ -3,6 +3,7 @@
     "getTenantSettings:[]": {
       "ok": true,
       "value": {
+        "personalisationMaxBytes": null,
         "settings": {
           "accentColor": null,
           "accentLight": null,
@@ -180,6 +181,7 @@
                 "fileName": "workbook-creator.pdf",
                 "id": "download-asset-workbook-v2",
                 "lineageId": "download-asset-workbook",
+                "personalisationSizeExceeded": false,
                 "previousVersions": [
                   {
                     "contentType": "application/pdf",
@@ -188,6 +190,7 @@
                     "fileName": "workbook-creator.pdf",
                     "id": "download-asset-workbook",
                     "lineageId": "download-asset-workbook",
+                    "personalisationSizeExceeded": false,
                     "productId": "product-download-workbook",
                     "sizeBytes": 2416640,
                     "status": "ready",

@@ -79,6 +79,8 @@ entry point hard-clamps the effective ceiling to 4 MiB, even when configuration
 requests more, to stay below the [4.5 MB Function response limit](https://vercel.com/docs/functions/limitations#request-body-size).
 The clamp applies to recorded size, storage reads and final personalised output,
 so oversized copies use the signed-link fallback before any response is committed.
+Download lists show a note when a file is above the configured ceiling and copies
+are therefore delivered without an embedded copy identifier.
 The recorded asset size and
 supported content type are checked before fetching. At most two personalisations
 run concurrently per composed server instance through an injected slot adapter;

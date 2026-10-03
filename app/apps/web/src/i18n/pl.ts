@@ -1233,6 +1233,8 @@ export const pl: Messages = {
     downloadsHeading: 'Pliki do pobrania',
     downloadsDescription: 'Dodaj pliki, które kupujący pobiorą po uzyskaniu aktywnego dostępu.',
     downloadsEmpty: 'Ten produkt nie ma jeszcze plików do pobrania.',
+    downloadNoCopyIdentifier: ({ limit }) =>
+      `Kopie tego pliku są dostarczane bez identyfikatora kopii, ponieważ plik przekracza limit ${limit}.`,
     downloadFileInput: 'Wybierz plik produktu',
     uploadDownload: 'Dodaj plik',
     uploadingDownload: 'Przesyłanie pliku…',
@@ -1862,6 +1864,8 @@ export const pl: Messages = {
       'Masz już produkt? Sprawdź status dostępu w sekcji „Moje produkty” — jeśli wygasł, możesz go tam odnowić.',
     downloadsHeading: 'Pliki do pobrania',
     downloadFile: ({ name }) => `Pobierz ${name}`,
+    downloadNoCopyIdentifier:
+      'Kopie tego pliku są dostarczane bez identyfikatora kopii, ponieważ plik przekracza limit.',
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

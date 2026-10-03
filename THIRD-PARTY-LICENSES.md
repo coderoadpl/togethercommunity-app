@@ -775,7 +775,7 @@ invoices can be checked locally.
 - [fast-wrap-ansi@0.2.2](https://github.com/43081j/fast-wrap-ansi#readme) - MIT
 - [fd-package-json@2.0.0](https://github.com/es-tooling/fd-package-json#readme) - MIT
 - [fdir@6.5.0](https://github.com/thecodrr/fdir#readme) - MIT
-- [fflate@0.8.2](https://101arrowz.github.io/fflate) - MIT
+- [fflate@0.8.3](https://101arrowz.github.io/fflate) - MIT
 - [file-entry-cache@8.0.0](https://github.com/jaredwray/file-entry-cache#readme) - MIT
 - [fill-range@7.1.1](https://github.com/jonschlinkert/fill-range) - MIT
 - [find-root@1.1.0](https://github.com/js-n/find-root#readme) - MIT

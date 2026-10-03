@@ -65,6 +65,30 @@ describe('download personalisation', () => {
     expect(bytes).toEqual(before);
   });
 
+  it.each(['signature flags and field', 'signature field', 'permissions'])(
+    'falls back for PDFs with structural %s markers', async (marker) => {
+      const original = await PDFDocument.create();
+      original.addPage();
+      if (marker !== 'permissions') {
+        const signatureValue = original.context.obj({ Type: 'Sig' });
+        const signatureField = original.context.obj({ FT: 'Sig', V: original.context.register(signatureValue) });
+        const parentField = original.context.obj({ Kids: [original.context.register(signatureField)] });
+        const acroForm = original.context.obj({
+          ...(marker === 'signature flags and field' ? { SigFlags: 1 } : {}),
+          Fields: [original.context.register(parentField)],
+        });
+        original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+      } else {
+        const permissions = original.context.obj({ DocMDP: original.context.register(original.context.obj({ Type: 'Sig' })) });
+        original.catalog.set(PDFName.of('Perms'), original.context.register(permissions));
+      }
+
+      expect(await adapter.personalise({
+        contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+      })).toMatchObject({ ok: false });
+    },
+  );
+
   it.each([false, true])('only replaces EPUB metadata with data descriptors=%s and normalizes deflated mimetype', async (descriptors) => {
     const files = {
       mimetype: strToU8('application/epub+zip'),

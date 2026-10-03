@@ -141,8 +141,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
   const search = useSearch({ strict: false });
-  const returnTo = safeReturnTo(typeof search.returnTo === 'string' ? search.returnTo : null);
+  const rawReturnTo = typeof search.returnTo === 'string' ? search.returnTo : null;
   const postVerification = search.verification === 'verified';
+  const returnTo = safeReturnTo(
+    postVerification && rawReturnTo !== null && !rawReturnTo.includes('#') && window.location.hash !== ''
+      ? `${rawReturnTo}${window.location.hash}`
+      : rawReturnTo,
+  );
   const postLoginTarget =
     returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
   const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();

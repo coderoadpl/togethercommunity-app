@@ -150,7 +150,7 @@ Together holds no knowledge of the URL shapes of the platform a tenant came from
 
 `fromPath` is the path the previous platform served, starting with `/` and carrying no query string or fragment. A path whose first character after the leading slash is another slash or a backslash is rejected with `validation`, because a browser reads those as another origin. It is normalised before it is stored and before every lookup: case is ignored, repeated slashes collapse, and a trailing slash is dropped, so `/Course/JavaScript/` and `/course/javascript` are the same entry. One path answers once per tenant; a second redirect for the same path under another `importKey` fails with `conflict`, in a write and in a validation call alike.
 
-Paths that end in a document extension are answered — `/kurs/lekcja-1.html` and `/artykul.php` redirect like any other row. Paths under `/assets/` and paths ending in a static file extension (`.js`, `.css`, `.png`, `.svg`, `.ico`, `.txt`, `.xml`, fonts and the rest) are served by the web build instead, so a redirect stored for one never answers.
+Paths that end in a document extension are answered — `/kurs/lekcja-1.html` and `/artykul.php` redirect like any other row on a deployment whose edge forwards the path. Paths under `/assets/` and paths ending in a static file extension (`.js`, `.css`, `.png`, `.svg`, `.ico`, `.txt`, `.xml`, fonts and the rest) are served by the web build instead, so a redirect stored for one never answers.
 
 `target` names the destination:
 

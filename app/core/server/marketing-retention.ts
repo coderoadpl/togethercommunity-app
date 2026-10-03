@@ -1,7 +1,8 @@
+export const ENGAGEMENT_PAYLOAD_SCRUB_BATCH = 1000;
+
 export const MARKETING_RETENTION_DAYS = {
   rawSnsInboxDays: 7,
   renderedBodiesDays: 14,
-  engagementEventsDays: 30,
   pendingConsentsDays: 30,
   schedulerRunsDays: 14,
   schedulerIdleRunsDays: 2,

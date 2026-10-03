@@ -3,6 +3,8 @@ import { and, asc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import { emailEventSchema, normalizeEmail, type EmailEvent } from '#core/domain/index.js';
 import type { EmailEventRepository } from '#core/server/index.js';
 
+import { appendEmailEvents } from './telemetry-events.js';
+
 import type { Db } from './client.js';
 import { campaignSends, emailEvents, emailOutbox } from './schema.js';
 
@@ -17,7 +19,28 @@ const orderedEvents = (db: Db) => db.select().from(emailEvents)
 
 export const createEmailEventRepository = (db: Db): EmailEventRepository => ({
   append: async (tenantId, event) => {
-    await db.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+    await db.transaction((tx) => appendEmailEvents(tx, [emailEventSchema.parse({ ...event, tenantId })]));
+  },
+  purgeEngagement: async (tenantId, olderThan) => {
+    const rows = await db.delete(emailEvents).where(and(
+      eq(emailEvents.tenantId, tenantId),
+      inArray(emailEvents.type, ['opened', 'clicked']),
+      lt(emailEvents.occurredAt, olderThan),
+    )).returning({ id: emailEvents.id });
+    return rows.length;
+  },
+  scrubEngagementPayloads: async (tenantId, limit) => {
+    const rows = await db.update(emailEvents).set({
+      meta: sql`${emailEvents.meta} - 'rawProviderPayload'`,
+    }).where(and(
+      eq(emailEvents.tenantId, tenantId),
+      inArray(emailEvents.id, db.select({ id: emailEvents.id }).from(emailEvents).where(and(
+        eq(emailEvents.tenantId, tenantId),
+        inArray(emailEvents.type, ['opened', 'clicked']),
+        sql`jsonb_exists(${emailEvents.meta}, 'rawProviderPayload')`,
+      )).limit(limit)),
+    )).returning({ id: emailEvents.id });
+    return rows.length;
   },
   listByRef: async (tenantId, mailKind, refId) =>
     (await orderedEvents(db).where(and(
@@ -44,11 +67,6 @@ export const createEmailEventRepository = (db: Db): EmailEventRepository => ({
         ))
       )`,
     ))).map(parseEvent),
-  purgeEngagement: async (tenantId, olderThan) => (await db.delete(emailEvents).where(and(
-    eq(emailEvents.tenantId, tenantId),
-    inArray(emailEvents.type, ['opened', 'clicked']),
-    lt(emailEvents.occurredAt, olderThan),
-  )).returning({ id: emailEvents.id })).length,
   reputationCounts: async (tenantId, window) => {
     const [[sendCounts], [eventCounts]] = await Promise.all([
       db.select({

@@ -439,17 +439,14 @@ The `200` response contains the send projection and its immutable event history:
         "id": "event_01J3W4",
         "type": "opened",
         "occurredAt": "2026-07-22T09:03:00.000Z",
-        "meta": {
-          "rawProviderPayload": {}
-        }
+        "meta": {}
       },
       {
         "id": "event_01J3W5",
         "type": "clicked",
         "occurredAt": "2026-07-22T09:04:00.000Z",
         "meta": {
-          "linkUrl": "https://acme.example/offers/summer",
-          "rawProviderPayload": {}
+          "linkUrl": "https://acme.example/offers/summer"
         }
       }
     ]

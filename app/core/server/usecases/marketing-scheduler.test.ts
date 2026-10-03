@@ -14,7 +14,6 @@ const logger = { warn: (message: string) => { warnings.push(message); } };
 const retentionBoundaries = {
   pendingOlderThan: NOW,
   renderedBodiesOlderThan: NOW,
-  engagementOlderThan: NOW,
   rawSnsInboxOlderThan: NOW,
   schedulerRunsOlderThan: NOW,
   schedulerIdleRunsOlderThan: NOW,

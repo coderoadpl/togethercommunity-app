@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(390);
-    expect(inventory.useCases).toHaveLength(303);
+    expect(inventory.routes).toHaveLength(394);
+    expect(inventory.useCases).toHaveLength(309);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/download-copies'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),

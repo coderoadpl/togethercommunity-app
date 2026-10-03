@@ -17,6 +17,29 @@ const event = (overrides: Record<string, unknown> = {}): EmailEvent => emailEven
 });
 
 describe('in-memory email event repository', () => {
+  it('scrubs only bounded engagement payloads in the requested tenant', async () => {
+    const repository = new InMemoryEmailEventRepository();
+    const rows = [
+      event({ id: 'open', type: 'opened', meta: { rawProviderPayload: null, retained: true } }),
+      event({ id: 'click', type: 'clicked', meta: { linkUrl: 'https://example.test/offer', rawProviderPayload: {} } }),
+      event({ id: 'clean', type: 'opened', meta: {} }),
+      event({ id: 'empty', type: 'opened', meta: null }),
+      event({ id: 'delivery', type: 'delivered', meta: { rawProviderPayload: {} } }),
+      event({ id: 'other-tenant', tenantId: 'tenant-2', type: 'opened', meta: { rawProviderPayload: {} } }),
+    ];
+    for (const row of rows) await repository.append(row.tenantId, row);
+    expect(await repository.scrubEngagementPayloads('tenant-1', 0)).toBe(0);
+    expect(await repository.scrubEngagementPayloads('tenant-1', 1)).toBe(1);
+    expect(await repository.scrubEngagementPayloads('tenant-1', 1000)).toBe(1);
+    expect(await repository.scrubEngagementPayloads('tenant-1', 1000)).toBe(0);
+    expect(await repository.listByRef('tenant-1', 'marketing', 'send-1')).toEqual([
+      { ...rows[0], meta: { retained: true } },
+      { ...rows[1], meta: { linkUrl: 'https://example.test/offer' } },
+      ...rows.slice(2, 5),
+    ]);
+    expect(await repository.listByRef('tenant-2', 'marketing', 'send-1')).toEqual([rows[5]]);
+  });
+
   it('only appends and returns stable chronological history', async () => {
     const repository = new InMemoryEmailEventRepository();
     await repository.append('tenant-1', event({ id: 'later', type: 'accepted', occurredAt: '2026-07-26T10:00:02.000Z', meta: { sesMessageId: 'ses-1' } }));

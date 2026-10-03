@@ -2006,6 +2006,21 @@ export const adoptStripeSubscriptionMutation = (api: ApiClient) =>
     call: (input: AdoptStripeSubscriptionInput) => api.adoptStripeSubscription(input),
   });
 
+export const telemetryStoreQuery = (api: ApiClient) => defineQuery({
+  queryKey: ['telemetry-store'], call: ({ signal }) => api.telemetryStore(signal),
+});
+export const connectTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'connect'], call: (input: { connectionString: string; region: string }) => api.connectTelemetry(input),
+});
+export const probeTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'probe'], call: () => api.probeTelemetry(),
+});
+export const disconnectTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'disconnect'], call: () => api.disconnectTelemetry(),
+});
+
+export const telemetryStoreInvalidates = () => ({ queryKey: ['telemetry-store'] });
+
 export const downloadCopiesQuery = (api: ApiClient, query: Parameters<ApiClient['listDownloadCopies']>[0]) =>
   defineCursorQuery({
     queryKey: ['download-copies', query] as const,

@@ -68,4 +68,12 @@ describe('email event domain', () => {
       meta: { linkUrl: '' },
     }).success).toBe(false);
   });
+
+  it.each([
+    { linkUrl: 'https://tenant.test/offer' },
+    { linkUrl: 'https://tenant.test/offer', rawProviderPayload: { click: true } },
+  ])('parses clicked metadata with or without the historical payload: %j', (meta) => {
+    const clicked = { ...event, type: 'clicked', meta: { ...meta, retained: true } };
+    expect(emailEventSchema.parse(clicked)).toEqual(clicked);
+  });
 });

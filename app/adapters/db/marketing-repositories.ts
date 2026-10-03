@@ -1,3 +1,4 @@
+import { appendEmailEvents } from './telemetry-events.js';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 
 import {
@@ -493,9 +494,7 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
       await db.transaction(async (tx) => {
         await tx.insert(campaignSends).values(sendValues(tenantId, send));
         if (events.length > 0) {
-          await tx.insert(emailEvents).values(events.map((event) =>
-            emailEventSchema.parse({ ...event, tenantId })
-          ));
+          await appendEmailEvents(tx, events.map((event) => emailEventSchema.parse({ ...event, tenantId })));
         }
       });
       return true;
@@ -512,9 +511,7 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
     return db.transaction(async (tx) => {
       const [row] = await tx.update(campaignSends).set(sendValues(tenantId, send)).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, send.id))).returning();
       if (row !== undefined && events.length > 0) {
-        await tx.insert(emailEvents).values(events.map((event) =>
-          emailEventSchema.parse({ ...event, tenantId })
-        ));
+        await appendEmailEvents(tx, events.map((event) => emailEventSchema.parse({ ...event, tenantId })));
       }
       if (row?.status === 'sent' && row.sentAt !== null) {
         await appendEmailSentMemberEvents(tx, {
@@ -604,7 +601,7 @@ export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
         : [];
       if (inserted === undefined && upgraded === undefined) return false;
       if (event !== undefined) {
-        await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+        await appendEmailEvents(tx, [emailEventSchema.parse({ ...event, tenantId })]);
       }
       return true;
     });
@@ -642,7 +639,7 @@ export const createUnsubscribeTokenRepository = (db: Db): UnsubscribeTokenReposi
     const [changed] = await db.transaction(async (tx) => {
       const rows = await tx.update(unsubscribeTokens).set({ usedAt }).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token), isNull(unsubscribeTokens.usedAt))).returning();
       if (rows[0] !== undefined && event !== undefined) {
-        await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+        await appendEmailEvents(tx, [emailEventSchema.parse({ ...event, tenantId })]);
       }
       return rows;
     });

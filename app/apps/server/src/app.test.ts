@@ -852,6 +852,7 @@ const deps = (input: {
         contentVersion: 1,
       }),
     },
+    telemetryTenantDirectory: { listTenantIds: async () => [] },
     tenantDirectory: {
       listAll: async () => tenants,
     },

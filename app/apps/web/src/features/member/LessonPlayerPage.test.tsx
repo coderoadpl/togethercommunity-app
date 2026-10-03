@@ -759,6 +759,50 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => expect(scrollIntoView.mock.instances).toContain(next));
   });
 
+  it('scrolls to the hash after authenticated lesson content mounts', async () => {
+    stubDesktopViewport();
+    window.history.replaceState(null, '', '/#late-section');
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    let settingsRequested = false;
+    let releaseSettings: () => void = () => undefined;
+    const settingsGate = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
+    });
+    server.use(
+      http.get('/api/tenant/settings', async () => {
+        settingsRequested = true;
+        await settingsGate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              name: 'Acme',
+              socialLinks: [],
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        });
+      }),
+      okStructure(),
+      okProgress(),
+      okLesson([{ type: 'html', html: '<h2>Late section</h2>' }]),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await waitFor(() => expect(settingsRequested).toBe(true));
+    expect(screen.queryByRole('heading', { name: 'Late section' })).not.toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    await act(async () => releaseSettings());
+    await screen.findByRole('heading', { name: 'Late section' });
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(scrollIntoView.mock.instances[0]).toHaveAttribute('id', 'late-section');
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+  });
+
   it('does not scroll back to the same heading after lesson data refetches', async () => {
     stubDesktopViewport();
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');

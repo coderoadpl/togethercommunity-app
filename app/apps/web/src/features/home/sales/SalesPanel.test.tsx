@@ -17,6 +17,10 @@ import { SalesPanel } from './SalesPanel.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
 
 const renderOrderDetail = async () => {
+  server.use(http.get('/api/download-copies', ({ request }) => {
+    expect(new URL(request.url).searchParams.get('orderId')).toBe('o1');
+    return HttpResponse.json({ ok: true, data: { copies: [] } });
+  }));
   const rootRoute = createRootRoute();
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -246,6 +250,7 @@ describe('OrderDetailPage', () => {
 
     expect(await screen.findByText('PARTNER20')).toBeInTheDocument();
     expect(screen.getByText(en.sales.discount).parentElement).toHaveTextContent('PLN 9.80');
+    expect(await screen.findByText(en.downloadCopies.empty)).toBeInTheDocument();
   });
 
   it('uses the authenticated app download route and exposes status refresh', async () => {

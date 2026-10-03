@@ -215,6 +215,9 @@ readiness evidence limits and recovery behavior.
 The copy registry is tenant-scoped and requires `order:read`. Public and member
 read models do not expose identifiers, hashes, order links or registry rows.
 The member download path retains its active-grant and ready-asset checks. It
+rejects member impersonation with `impersonation_read_only` before storage access,
+personalisation or registry issuance, so operator downloads cannot be attributed
+to the member. For ordinary member requests, it
 checks recorded size before fetching, enforces the storage Content-Length
 ceiling before reading a body, and writes the registry before sending a file
 or signed redirect. Personalised files are private, `no-store` responses.

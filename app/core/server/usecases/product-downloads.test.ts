@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PRODUCT_DOWNLOAD_MAX_BYTES,
@@ -388,6 +388,35 @@ describe('file version use cases', () => {
 });
 
 describe('issued download copies', () => {
+  it.each(['application/pdf', 'application/epub+zip', 'image/png'])(
+    'refuses %s downloads during impersonation without issuing a copy', async (contentType) => {
+      const { deps, downloadAssets, copies, signed } = testDeps();
+      downloadAssets.rows.push(storedAsset({ contentType }));
+      const read = vi.spyOn(deps.storage, 'getObject');
+      const personalise = vi.spyOn(deps.downloadPersonaliser, 'personalise').mockResolvedValue(
+        ok({ bytes: new Uint8Array([1, 2, 3]), contentType }),
+      );
+      const issue = vi.spyOn(deps.downloadCopies, 'create');
+      const ctx: Ctx = {
+        ...memberCtx,
+        impersonation: {
+          id: 'impersonation-1', actorUserId: 'owner-user', actorEmail: 'owner@example.test',
+          actorName: 'Owner', actorStaffRole: 'owner', subjectMemberId: 'member-1',
+          subjectName: 'Buyer', expiresAt: '2026-08-03T13:00:00.000Z',
+        },
+      };
+
+      expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({
+        ok: false, error: { code: 'impersonation_read_only' },
+      });
+      expect(read).not.toHaveBeenCalled();
+      expect(personalise).not.toHaveBeenCalled();
+      expect(issue).not.toHaveBeenCalled();
+      expect(copies).toEqual([]);
+      expect(signed).toEqual([]);
+    },
+  );
+
   it('records the exact member, paid order, asset lineage and output hash before returning bytes', async () => {
     const { deps, downloadAssets, copies, signed } = testDeps();
     downloadAssets.rows.push(storedAsset({ lineageId: 'first-edition', versionNumber: 3 }));

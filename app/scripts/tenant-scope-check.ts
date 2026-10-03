@@ -147,7 +147,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   SmtpTransport: 'External SMTP delivery boundary.',
   SnsSubscriptionOperations: 'External SNS subscription boundary.',
   SnsVerifier: 'External SNS verification boundary.',
-  StorageProvider: 'Object-storage URL-signing boundary with no persistence access.',
+  StorageProvider: 'Object-storage signing and I/O boundary; callers resolve tenant credentials and object keys.',
   StorageProviderOptions: 'Object-storage adapter callbacks and probe configuration with no persistence access.',
   StorageResponse: 'External object-storage response boundary.',
   StripePaymentProviderConfig: 'External Stripe client configuration and factory callback.',

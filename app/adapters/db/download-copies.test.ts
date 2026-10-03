@@ -8,6 +8,7 @@ import { members, orders, products, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const NOW = '2026-10-01T12:00:00.000Z';
+const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 const copy = (id: string, tenantId = 'copies'): DownloadCopy => ({
   id, tenantId, copyIdentifier: 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA', memberId: `${tenantId}-member`,
@@ -21,7 +22,7 @@ const order = (id: string, overrides: Partial<Order> = {}): Order => ({
 });
 
 beforeAll(async () => {
-  database = await createTestDatabase('together_download_copies', 'postgres://together:together@localhost:48912/together');
+  database = await createTestDatabase('together_download_copies', baseDatabaseUrl);
   for (const tenantId of ['copies', 'other']) {
     await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Copies', createdAt: NOW });
     await database.db.insert(members).values({ id: `${tenantId}-member`, tenantId, userId: `${tenantId}-user`, email: `${tenantId}@example.test`, createdAt: NOW });

@@ -2,6 +2,7 @@ import {
   PRODUCT_DOWNLOAD_MAX_BYTES,
   err,
   forbidden,
+  impersonationReadOnly,
   notFound,
   ok,
   productDownloadUploadInputSchema,
@@ -200,6 +201,7 @@ export const getProductDownload = async (
 ): Promise<Result<{ kind: 'redirect'; url: string } | { kind: 'file'; bytes: Uint8Array; contentType: string; fileName: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:product:read');
   if (!tenant.ok) return tenant;
+  if (ctx.impersonation !== undefined) return err(impersonationReadOnly());
   if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));
   const grants = await deps.grants.listActiveForMember(
     tenant.value,
@@ -239,10 +241,10 @@ export const getProductDownload = async (
     }
     target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
     target.searchParams.set('response-content-type', asset.contentType);
-    const signed = file === null ? deps.storage.presignGet({
+    const response = file === null ? deps.storage.presignGet({
       ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
-    }) : null;
-    if (signed !== null && !signed.ok) return signed;
+    }) : ok(file);
+    if (!response.ok) return response;
     const orderId = await deps.downloadCopyOrders.findLatestPaidOrderId(tenant.value, ctx.identity.memberId, productId);
     const recorded = await deps.downloadCopies.create(tenant.value, {
       id: deps.ids.nextId(), tenantId: tenant.value, copyIdentifier, memberId: ctx.identity.memberId,
@@ -252,9 +254,9 @@ export const getProductDownload = async (
       bytes: file?.bytes.byteLength ?? null, createdAt: deps.clock.nowIso(),
     });
     if (!recorded) return err(forbidden('This member has been erased'));
-    if (file !== null) return ok({ kind: 'file', ...file, fileName: asset.fileName });
-    if (signed?.ok) return ok({ kind: 'redirect', url: signed.value });
-    throw new Error('Missing download response');
+    return ok(typeof response.value === 'string'
+      ? { kind: 'redirect', url: response.value }
+      : { kind: 'file', ...response.value, fileName: asset.fileName });
   } finally {
     release?.();
   }

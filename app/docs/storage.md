@@ -53,6 +53,10 @@ an already completed upload do not create another version.
 
 ## Copy identifiers
 
+Downloads during member impersonation are refused with `impersonation_read_only`
+before storage access, personalisation or registry issuance. This prevents an
+operator's download from being attributed to the member.
+
 Each authorised download issues a fresh opaque identifier (`copy_` followed by
 26 base32 characters encoding 16 cryptographically random bytes). PDF copies
 carry it in the Info dictionary under `together:copy` and Keywords, and in XMP

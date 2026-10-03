@@ -399,4 +399,4 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
-| `GET /*` | public | mutating | Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only |
+| `GET /*` | public | mutating | Tenant redirects increment a rate-limited aggregate hit counter; unknown /link/ paths return home; social previews remain read-only |

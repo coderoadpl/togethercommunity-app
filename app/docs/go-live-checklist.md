@@ -15,7 +15,7 @@ means `NODE_ENV` other than `production` with `APP_ENV` unset or `development`
 (`apps/server/src/env.ts:38-43`), so staging and preview refuse to boot with the
 flag on. In local development the auth adapter writes links to `dev_magic_links`
 (`adapters/auth/create-auth.ts:467-475`) and the sign-in response exposes them
-(`apps/server/src/internal-app.ts:882`).
+(`apps/server/src/internal-app.ts:1121`).
 
 Verify the deployed environment has `AUTH_DEV_EXPOSE_MAGIC_LINKS` unset or set
 to `false`.
@@ -33,7 +33,7 @@ whenever the process is not a local development one, so no `/api/dev/*` route is
 registered on production, staging or preview. The resulting flag gates the
 complete `/api/dev/*` block, including purchase, grant, magic-link, e-mail, and
 subscription-cycle simulation endpoints
-(`apps/server/src/internal-app.ts:686-932`).
+(`apps/server/src/internal-app.ts:915-1171`).
 
 Verify the deployed environment has `SIMULATED_PAYMENTS` unset or set to
 `false`.

@@ -271,6 +271,7 @@ describe('member pages', () => {
               createdAt: '1998-07-12T00:00:00.000Z',
               downloadPath: '/api/my/products/download-1/downloads/asset-3',
               previousVersions: [],
+              personalisationSizeExceeded: false,
             }],
           }],
         },

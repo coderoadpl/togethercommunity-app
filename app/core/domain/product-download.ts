@@ -37,7 +37,7 @@ export const productDownloadAssetMetadataSchema = productDownloadAssetSchema.omi
   storageKey: true,
   replacesAssetId: true,
 }).extend({
-  personalisationSizeExceeded: z.boolean().optional(),
+  personalisationSizeExceeded: z.boolean(),
 });
 
 export type ProductDownloadAssetMetadata = z.infer<typeof productDownloadAssetMetadataSchema>;

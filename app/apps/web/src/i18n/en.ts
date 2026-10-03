@@ -1224,7 +1224,7 @@ export const en: Messages = {
     downloadsDescription: 'Add files buyers can download while their product access is active.',
     downloadsEmpty: 'This product has no download files yet.',
     downloadNoCopyIdentifier: ({ limit }) =>
-      `Copies of this file are delivered without a copy identifier because it is larger than the ${limit} limit.`,
+      `Copies of this file are delivered without an embedded copy identifier because it is larger than the ${limit} limit.`,
     downloadFileInput: 'Choose a product file',
     uploadDownload: 'Add file',
     uploadingDownload: 'Uploading file…',
@@ -1844,7 +1844,7 @@ export const en: Messages = {
     downloadsHeading: 'Downloads',
     downloadFile: ({ name }) => `Download ${name}`,
     downloadNoCopyIdentifier:
-      'Copies of this file are delivered without a copy identifier because it is larger than the limit.',
+      'Copies of this file are delivered without an embedded copy identifier because it is larger than the limit.',
   },
   downloadCopies: {
     showMore: 'Show more copies',

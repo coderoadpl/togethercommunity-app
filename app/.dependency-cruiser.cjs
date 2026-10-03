@@ -40,6 +40,12 @@ const scriptsTestExternal =
 module.exports = {
   forbidden: [
     {
+      name: 'adapter-personalisation-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/personalisation' },
+      to: { path: external, pathNot: 'node_modules/(pdf-lib|fflate|@xmldom/xmldom|vitest)(/|$)' },
+    },
+    {
       name: 'visual-support-only-client-contract',
       severity: 'error',
       from: { path: '^scripts/(story-clock|visual-request-policy)\\.ts$' },

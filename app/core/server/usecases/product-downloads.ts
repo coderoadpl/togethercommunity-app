@@ -15,6 +15,8 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
+import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadPersonaliser, DownloadCopyCrypto, PersonalisationSlots } from '../download-copy-ports.js';
+
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type {
@@ -36,6 +38,12 @@ const PRODUCT_DOWNLOAD_UPLOAD_TTL_SECONDS = 15 * 60;
 export const PRODUCT_DOWNLOAD_TTL_SECONDS = 60 * 60;
 
 export interface ProductDownloadDeps {
+  downloadCopies: DownloadCopyRepository;
+  downloadCopyOrders: DownloadCopyOrderReader;
+  downloadPersonaliser: DownloadPersonaliser;
+  downloadCopyCrypto: DownloadCopyCrypto;
+  personalisationMaxBytes: number;
+  personalisationSlots: PersonalisationSlots;
   downloadAssets: ProductDownloadAssetRepository;
   products: ProductRepository;
   grants: ProductGrantRepository;
@@ -188,8 +196,8 @@ export const getProductDownload = async (
   ctx: Ctx,
   productId: string,
   assetId: string,
-  deps: Pick<ProductDownloadDeps, 'clock' | 'downloadAssets' | 'grants' | 'secretResolver' | 'storage'>,
-): Promise<Result<string, AppError>> => {
+  deps: Pick<ProductDownloadDeps, 'clock' | 'downloadAssets' | 'grants' | 'secretResolver' | 'storage' | 'downloadCopies' | 'downloadCopyOrders' | 'downloadPersonaliser' | 'downloadCopyCrypto' | 'personalisationMaxBytes' | 'personalisationSlots' | 'ids'>,
+): Promise<Result<{ kind: 'redirect'; url: string } | { kind: 'file'; bytes: Uint8Array; contentType: string; fileName: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:product:read');
   if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));
@@ -207,19 +215,49 @@ export const getProductDownload = async (
   }
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
+  const copyIdentifier = deps.downloadCopyCrypto.identifier();
   const target = deps.storage.objectUrl(configuration.value, asset.storageKey);
-  target.searchParams.set(
-    'response-content-disposition',
-    `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`,
-  );
-  target.searchParams.set('response-content-type', asset.contentType);
-  return deps.storage.presignGet({
-    url: target.toString(),
+  const credentials = {
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
-    expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
-  });
+  };
+  const release = asset.sizeBytes <= deps.personalisationMaxBytes &&
+    (asset.contentType === 'application/pdf' || asset.contentType === 'application/epub+zip')
+    ? deps.personalisationSlots.acquire() : null;
+  try {
+    let file: { bytes: Uint8Array; contentType: string } | null = null;
+    if (release !== null) {
+      const stored = await deps.storage.getObject({ ...credentials, url: target.toString() }, { maxBytes: deps.personalisationMaxBytes });
+      if (stored.ok) {
+        const personalised = await deps.downloadPersonaliser.personalise({
+          contentType: asset.contentType, bytes: stored.value, copyIdentifier,
+          context: { maxBytes: deps.personalisationMaxBytes },
+        });
+        if (personalised.ok && personalised.value.bytes.byteLength <= deps.personalisationMaxBytes) file = personalised.value;
+      }
+    }
+    target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
+    target.searchParams.set('response-content-type', asset.contentType);
+    const signed = file === null ? deps.storage.presignGet({
+      ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+    }) : null;
+    if (signed !== null && !signed.ok) return signed;
+    const orderId = await deps.downloadCopyOrders.findLatestPaidOrderId(tenant.value, ctx.identity.memberId, productId);
+    const recorded = await deps.downloadCopies.create(tenant.value, {
+      id: deps.ids.nextId(), tenantId: tenant.value, copyIdentifier, memberId: ctx.identity.memberId,
+      orderId, productId, assetId, lineageId: asset.lineageId, versionNumber: asset.versionNumber,
+      fileName: asset.fileName, personalised: file !== null,
+      contentHash: file === null ? null : deps.downloadCopyCrypto.hash(file.bytes),
+      bytes: file?.bytes.byteLength ?? null, createdAt: deps.clock.nowIso(),
+    });
+    if (!recorded) return err(forbidden('This member has been erased'));
+    if (file !== null) return ok({ kind: 'file', ...file, fileName: asset.fileName });
+    if (signed?.ok) return ok({ kind: 'redirect', url: signed.value });
+    throw new Error('Missing download response');
+  } finally {
+    release?.();
+  }
 };
 
 export const deleteProductDownloadAsset = async (

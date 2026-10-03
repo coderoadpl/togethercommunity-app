@@ -1,3 +1,4 @@
+import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
@@ -81,6 +82,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
+      <DownloadCopies query={{ orderId }} />
       {order.billing == null ? null : (
         <SectionCard title={t.sales.billingDetails}>
           <Stack useFlexGap spacing="0.25rem">

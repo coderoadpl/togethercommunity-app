@@ -1114,6 +1114,7 @@ describe('marketing e-mail use-case integration', () => {
       },
       secretResolver: { resolve: async () => err(notFound('Storage is not configured')) },
       storage: {
+        getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
         probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),

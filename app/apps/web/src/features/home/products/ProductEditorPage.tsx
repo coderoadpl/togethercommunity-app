@@ -1,3 +1,4 @@
+import { DownloadCopyLookup } from '../downloads/DownloadCopies.js';
 import { useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -551,7 +552,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />
       </Box>
-      {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
+      {product.type === 'digital_download' ? <><DownloadAssetsSection productId={product.id} /><DownloadCopyLookup productId={product.id} /></> : null}
       <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>
         <ProductAccessEditor product={product} />

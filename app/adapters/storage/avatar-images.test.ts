@@ -16,6 +16,7 @@ const configuration: StorageConfiguration = {
 };
 
 const storage: StorageProvider = {
+  getObject: async () => ok(new Uint8Array()),
   objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
   probe: async () => ok({ code: 'storage.available', message: 'ok' }),
   probeCors: async () => [],

@@ -252,6 +252,7 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
   return {
     calls,
     signer: {
+      getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
@@ -437,6 +438,7 @@ describe('getPlayableLesson', () => {
 
   it('keeps the original url when the signer fails', async () => {
     const failing: StorageProvider = {
+      getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => err(validation('bad url')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'blocked' })),

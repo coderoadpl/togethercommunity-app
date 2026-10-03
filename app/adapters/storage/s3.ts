@@ -60,7 +60,14 @@ interface StorageResponse {
   ok: boolean;
   status: number;
   headers: { get(name: string): string | null };
-  body: { cancel(): Promise<void> } | null;
+  body: {
+    cancel(): Promise<void>;
+    getReader?(): {
+      read(): Promise<{ done: boolean; value?: Uint8Array }>;
+      cancel(): Promise<void>;
+      releaseLock(): void;
+    };
+  } | null;
   text(): Promise<string>;
 }
 
@@ -591,6 +598,49 @@ export const createS3StorageProvider = (
         return err(integrationUnavailable('S3 returned invalid object size metadata.'));
       }
       return ok({ sizeBytes: Number(contentLength) });
+    },
+    getObject: async (input, { maxBytes }) => {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return err(validation('Invalid object byte ceiling'));
+      const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
+      if (!signed.ok) return signed;
+      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed.value, {
+          method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'Accept-Encoding': 'identity' },
+        });
+        const length = response.headers.get('content-length');
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
+          (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        }
+        const reader = response.body.getReader();
+        try {
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            if (chunk.value === undefined || offset + chunk.value.byteLength > size) {
+              await reader.cancel();
+              return err(integrationUnavailable('Object exceeds its declared size'));
+            }
+            bytes.set(chunk.value, offset);
+            offset += chunk.value.byteLength;
+          }
+          return offset === size ? ok(bytes) : err(integrationUnavailable('Object size does not match its metadata'));
+        } finally {
+          reader.releaseLock();
+        }
+      } catch {
+        return err(integrationUnavailable('Could not read the bounded storage object'));
+      } finally {
+        await dispatcher.destroy();
+      }
     },
     healthcheck: ({ tenantId }) => checkCredentials(resolver, tenantId),
     test: async ({ tenantId, corsOrigins }) => {

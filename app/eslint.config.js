@@ -245,6 +245,7 @@ export default tseslint.config(
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
+        { type: 'adapter-personalisation', pattern: 'adapters/personalisation/**', mode: 'full' },
         { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         {
           type: 'platform-entry',
@@ -336,6 +337,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-personalisation',
               ],
               allow: [
                 'core-domain',
@@ -349,6 +351,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-personalisation',
               ],
             },
             {
@@ -369,6 +372,7 @@ export default tseslint.config(
                 'adapter-payment',
                 'adapter-video',
                 'adapter-storage',
+                'adapter-personalisation',
                 'app-server',
               ],
             },
@@ -561,6 +565,7 @@ export default tseslint.config(
               from: ['adapter-video'],
               allow: ['zod'],
             },
+            { from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom', 'vitest'] },
             {
               from: ['adapter-storage'],
               allow: ['node:crypto', 'node:dns', 'node:net', 'sharp', 'undici'],

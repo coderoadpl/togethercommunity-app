@@ -318,6 +318,7 @@ import {
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductDownloadAssets,
+  listDownloadCopies,
   listProductPrices,
   listDmReports,
   listReports,
@@ -2099,6 +2100,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
   });
 
+  app.get(API_PATHS.downloadCopies, async (c) => respond(await listDownloadCopies(ctxOf(c), c.req.query(), deps)));
+
   app.get(API_PATHS.memberProductDownload, async (c) => {
     const result = await getProductDownload(
       ctxOf(c),
@@ -2108,7 +2111,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
     if (!result.ok) return respond(result);
     c.header('Cache-Control', 'no-store');
-    return c.redirect(result.value, 302);
+    if (result.value.kind === 'redirect') return c.redirect(result.value.url, 302);
+    return new Response(new Uint8Array(result.value.bytes), {
+      headers: {
+        'Content-Type': result.value.contentType,
+        'Content-Disposition': `attachment; filename="${result.value.fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(result.value.fileName).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`,
+        'Content-Length': String(result.value.bytes.byteLength),
+        'Cache-Control': 'no-store',
+      },
+    });
   });
 
   app.get(API_PATHS.members, async (c) => {

@@ -145,9 +145,16 @@ Settings → Addresses counts the workspace's redirects and links to their page.
 The page lists them ordered by source path, fifty at a time, with a search over
 both the source and the destination. Each row carries its status — permanent
 (`301`) or temporary (`302`) — and its origin: `Import` for a row the import API
-wrote, `Manual` for one added here. Adding and deleting need the same permission
-as editing the workspace settings and custom domains, and both are recorded in
-the team audit log.
+wrote, `Manual` for one added here. It also shows how many matching `GET`
+requests used the redirect. The counter stores only the aggregate hit count and
+the time of the latest hit: it stores no IP address, user agent, referrer, member
+identifier, or other visitor data. Requests that match no redirect perform no
+counter update. Hit updates are limited to 60 per minute per IP in production
+by default; exhausting that bucket or a counter failure never prevents the
+redirect response. `PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE`
+overrides the limit, and zero disables the bucket.
+Adding, editing, and deleting need the same permission as editing the workspace
+settings and custom domains, and each change is recorded in the team audit log.
 
 Adding a redirect takes a source path, which is normalised as it is typed and
 shown in its stored form before it is saved, and a destination: a course, a
@@ -159,9 +166,30 @@ refused too: the workspace root `/`, and `/api`, `/panel`, `/my`, `/login`,
 `/notifications`, `/search`, `/start`, `/assets`, `/forgot-password` and
 `/reset-password`, each with everything below it.
 
-The import owns the rows it wrote and never overwrites a manual row: an incoming
-record whose path a manual row already answers is reported as a conflict for
-that record. Deleting the manual row hands the path back to the import.
+Editing retargets the existing row in place. Its identifier, source path,
+creation time, and hit history do not change. A lesson destination may include a
+section anchor selected from the lesson headings. The redirect preserves the
+incoming query string and appends the anchor after it. Lesson headings receive
+stable lowercase identifiers with diacritics removed and duplicate headings
+numbered in document order.
+
+Browsers cache permanent (`301`) redirects. A returning visitor may therefore
+bypass both a later retarget and the hit counter. Use a temporary (`302`)
+redirect for a retargetable or locked address printed on paper. The CLI requires
+exactly one of `--permanent` or `--temporary` and exactly one of `--locked` or
+`--unlocked` when updating a redirect.
+
+A source path can be locked when it is created or edited. A locked source
+cannot be deleted, but its destination, anchor, and redirect status remain
+editable. Locking and unlocking require the workspace settings permission.
+
+The import owns the rows it wrote and never creates locked rows, overwrites any
+locked row regardless of origin, or overwrites a manual row. An incoming record
+whose path a manual row already answers is reported as a conflict for that
+record. Deleting an unlocked manual row hands the path back to the import.
+
+Retargeting an unlocked imported row in the studio preserves its `import`
+origin. The next import overwrites the studio edit when its payload differs.
 Deleting an imported row is safe — the next import carrying its `importKey`
 writes it again.
 

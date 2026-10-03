@@ -12,6 +12,7 @@ import {
   API_KEY_HEADER,
   TENANT_HEADER,
   type TenantRedirectCreateBody,
+  type TenantRedirectUpdateBody,
 } from '#core/contract/index.js';
 import {
   accessItemSchema,
@@ -287,8 +288,20 @@ const redirectCreateOptionsSchema = z.object({
   course: z.string().min(1).optional(),
   lesson: z.string().min(1).optional(),
   path: z.string().min(1).optional(),
+  anchor: z.string().regex(/^[a-z0-9-]{1,80}$/).optional(),
   temporary: z.boolean().optional(),
+  locked: z.boolean().optional(),
 });
+const redirectUpdateOptionsSchema = redirectCreateOptionsSchema.omit({ from: true }).extend({
+  permanent: z.boolean().optional(),
+  unlocked: z.boolean().optional(),
+})
+  .refine((options) => options.permanent === true !== (options.temporary === true), {
+    message: 'Pass exactly one of --permanent or --temporary',
+  })
+  .refine((options) => options.locked === true !== (options.unlocked === true), {
+    message: 'Pass exactly one of --locked or --unlocked',
+  });
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
@@ -961,9 +974,10 @@ tenant
   );
 
 type RedirectCreateOptions = z.output<typeof redirectCreateOptionsSchema>;
+type RedirectTargetOptions = Omit<RedirectCreateOptions, 'from'>;
 
 const redirectTarget = (
-  options: RedirectCreateOptions,
+  options: RedirectTargetOptions,
 ): Result<TenantRedirectCreateBody['target'], AppError> => {
   if (options.path !== undefined && (options.course !== undefined || options.lesson !== undefined)) {
     return err(validation('Pass --path <path> or --course <id>, never both'));
@@ -971,8 +985,14 @@ const redirectTarget = (
   if (options.lesson !== undefined) {
     return options.course === undefined
       ? err(validation('Pass --course <id> together with --lesson <id>'))
-      : ok({ kind: 'lesson', courseId: options.course, lessonId: options.lesson });
+      : ok({
+          kind: 'lesson',
+          courseId: options.course,
+          lessonId: options.lesson,
+          ...(options.anchor === undefined ? {} : { anchor: options.anchor }),
+        });
   }
+  if (options.anchor !== undefined) return err(validation('Pass --anchor only with --lesson'));
   if (options.course !== undefined) return ok({ kind: 'course', courseId: options.course });
   return options.path === undefined
     ? err(validation('Pass --course <id>, --course <id> --lesson <id>, or --path <path>'))
@@ -1019,7 +1039,7 @@ redirect
             : [
                 `${String(data.total)} redirect(s)`,
                 ...data.redirects.map((entry) =>
-                  `${entry.fromPath}\t${entry.targetPath}\t${entry.permanent ? '301' : '302'}\t${entry.origin}\t(${entry.id})`,
+                  `${entry.fromPath}\t${entry.targetPath}${entry.targetAnchor === null ? '' : `#${entry.targetAnchor}`}\t${entry.permanent ? '301' : '302'}\t${entry.origin}\t${String(entry.hitCount)} hit(s)\tlast hit ${entry.lastHitAt ?? 'never'}\t${entry.locked ? 'locked' : 'unlocked'}\t(${entry.id})`,
                 ),
               ].join('\n'),
       );
@@ -1032,8 +1052,10 @@ redirect
   .requiredOption('--from <path>', 'source path the previous site served')
   .option('--course <id>', 'redirect to a course page')
   .option('--lesson <id>', 'redirect to a lesson, requires --course')
+  .option('--anchor <anchor>', 'lesson section anchor, requires --lesson')
   .option('--path <path>', 'redirect to a path in this workspace')
   .option('--temporary', 'answer 302 instead of 301')
+  .option('--locked', 'prevent deletion of the source path')
   .action(
     withInput(z.tuple([redirectCreateOptionsSchema]), async (ctx, [options]) => {
       const target = redirectTarget(options);
@@ -1046,9 +1068,42 @@ redirect
           fromPath: options.from,
           target: target.value,
           permanent: options.temporary !== true,
+          locked: options.locked === true,
         }),
         ctx.json,
         (data) => `created redirect ${data.redirect.fromPath} -> ${data.redirect.targetPath} (${data.redirect.id})`,
+      );
+    }),
+  );
+
+redirect
+  .command('update <id>')
+  .description('Retarget a redirect without changing its source path')
+  .option('--course <id>', 'redirect to a course page')
+  .option('--lesson <id>', 'redirect to a lesson, requires --course')
+  .option('--anchor <anchor>', 'lesson section anchor, requires --lesson')
+  .option('--path <path>', 'redirect to a path in this workspace')
+  .option('--permanent', 'answer 301; browsers may cache and bypass later retargeting and hit counting')
+  .option('--temporary', 'answer 302 (retargetable links)')
+  .option('--locked', 'prevent deletion of the source path')
+  .option('--unlocked', 'allow deletion of the source path')
+  .action(
+    withInput(z.tuple([z.string().min(1), redirectUpdateOptionsSchema]), async (ctx, [id, options]) => {
+      const target = redirectTarget(options);
+      if (!target.ok) {
+        emit(target, ctx.json, () => '');
+        return;
+      }
+      const input: TenantRedirectUpdateBody = {
+        id,
+        target: target.value,
+        permanent: options.permanent === true,
+        locked: options.locked === true,
+      };
+      emit(
+        await ctx.api.updateTenantRedirect(input),
+        ctx.json,
+        (data) => `updated redirect ${data.redirect.fromPath} -> ${data.redirect.targetPath} (${data.redirect.id})`,
       );
     }),
   );

@@ -268,6 +268,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
 | `GET /api/tenant/redirects` | authenticated | read | tenant redirects |
 | `POST /api/tenant/redirects` | authenticated | mutating | tenant redirect create |
+| `POST /api/tenant/redirects/update` | authenticated | mutating | tenant redirect update |
 | `POST /api/tenant/redirects/remove` | authenticated | mutating | tenant redirect delete |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
@@ -397,4 +398,4 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
-| `GET /*` | public | read | Tenant-configured path redirects and the social preview for link crawlers |
+| `GET /*` | public | mutating | Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only |

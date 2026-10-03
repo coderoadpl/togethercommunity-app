@@ -80,6 +80,7 @@ import {
   tenantRedirectCreateInputSchema,
   tenantRedirectDeleteInputSchema,
   tenantRedirectListQuerySchema,
+  tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
@@ -1431,6 +1432,10 @@ export const tenantRedirectCreateSchema = tenantRedirectCreateInputSchema;
 
 export type TenantRedirectCreateBody = z.input<typeof tenantRedirectCreateSchema>;
 
+export const tenantRedirectUpdateSchema = tenantRedirectUpdateInputSchema;
+
+export type TenantRedirectUpdateBody = z.input<typeof tenantRedirectUpdateSchema>;
+
 export const tenantRedirectDeleteSchema = tenantRedirectDeleteInputSchema;
 
 export type TenantRedirectDeleteBody = z.input<typeof tenantRedirectDeleteSchema>;
@@ -2083,6 +2088,7 @@ export const API_ROUTES = {
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
   tenantRedirectCreate: { method: 'POST', path: '/api/tenant/redirects' },
+  tenantRedirectUpdate: { method: 'POST', path: '/api/tenant/redirects/update' },
   tenantRedirectDelete: { method: 'POST', path: '/api/tenant/redirects/remove' },
   tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
   tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
@@ -2419,6 +2425,7 @@ export const API_PATHS = {
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantRedirects: API_ROUTES.tenantRedirects.path,
   tenantRedirectCreate: API_ROUTES.tenantRedirectCreate.path,
+  tenantRedirectUpdate: API_ROUTES.tenantRedirectUpdate.path,
   tenantRedirectDelete: API_ROUTES.tenantRedirectDelete.path,
   tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
   tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,

@@ -1,6 +1,6 @@
 {
-  "hash": "4e30df448ddb1c721658aa489b6d9ea6ef71a243e9fc9db3c2aa7a95116c7a20",
-  "shortId": "4e30df448ddb",
+  "hash": "c567759d451ae81792850786845aa7e3bbf96913c05d1133654d56115437ae81",
+  "shortId": "c567759d451a",
   "schema": {
     "constraints": [
       {
@@ -4375,6 +4375,22 @@
             "type": "text"
           },
           {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "hit_count",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "locked",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -4412,6 +4428,22 @@
             "identity": "",
             "name": "id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_hit_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_anchor",
+            "notNull": false,
             "type": "text"
           },
           {

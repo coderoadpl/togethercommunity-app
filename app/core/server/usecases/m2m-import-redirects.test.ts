@@ -126,7 +126,9 @@ const harness = () => {
         [...redirects.values()].find((redirect) => redirect.fromPath === fromPath) ?? null,
       listPage: async () => ({ redirects: [...redirects.values()], total: redirects.size }),
       create: async () => 'saved' as const,
+      update: async () => null,
       deleteById: async () => false,
+      incrementHit: async () => undefined,
       commit: async (_tenantId, mutation) => {
         redirects.set(mutation.resource.id, mutation.resource);
         audits.set(`redirect:${mutation.event.importKey}`, mutation.event);
@@ -288,7 +290,11 @@ describe('m2m redirect import', () => {
       targetKind: 'path' as const,
       targetId: null,
       targetPath: '/my',
+      targetAnchor: null,
       permanent: false,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'manual' as const,
       createdBy: 'user-owner',
       createdAt: NOW,
@@ -303,6 +309,76 @@ describe('m2m redirect import', () => {
     });
     expect(h.redirects.get('redirect-manual')).toEqual(manual);
     expect(h.redirects.has('redirect-course')).toBe(false);
+  });
+
+  it('does not overwrite a locked manual redirect referenced by import history', async () => {
+    const h = harness();
+    const manual: TenantRedirect = {
+      id: 'redirect-manual-locked',
+      tenantId: TENANT_ID,
+      fromPath: '/course/javascript',
+      targetKind: 'path',
+      targetId: null,
+      targetPath: '/my',
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 9,
+      lastHitAt: NOW,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: NOW,
+    };
+    h.redirects.set(manual.id, manual);
+    h.audits.set('redirect:redirect-course', {
+      id: 'audit-redirect-course',
+      tenantId: TENANT_ID,
+      apiKeyId: apiKey.id,
+      kind: 'redirect',
+      importKey: 'redirect-course',
+      resourceId: manual.id,
+      action: 'created',
+      payloadHash: 'old',
+      at: NOW,
+    });
+
+    const result = await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.redirects.get(manual.id)).toEqual(manual);
+  });
+
+  it('does not overwrite a locked imported redirect', async () => {
+    const h = harness();
+    await importM2mRedirects(ctx, apiKey, write([redirectRecord()]), h.deps);
+    const imported = h.redirects.get('redirect-course');
+    if (imported === undefined) throw new Error('Imported redirect missing');
+    h.redirects.set(imported.id, {
+      ...imported,
+      targetPath: '/my/locked-target',
+      locked: true,
+      hitCount: 9,
+      lastHitAt: NOW,
+    });
+
+    const result = await importM2mRedirects(ctx, apiKey, write([
+      redirectRecord({ permanent: false }),
+    ]), h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.redirects.get(imported.id)).toMatchObject({
+      targetPath: '/my/locked-target',
+      permanent: true,
+      locked: true,
+      hitCount: 9,
+      lastHitAt: NOW,
+    });
   });
 
   it('stores an imported redirect as import-owned', async () => {

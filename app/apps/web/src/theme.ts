@@ -3795,6 +3795,9 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
+  '& h1, & h2, & h3, & h4, & h5, & h6': {
+    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+  },
   '& pre': {
     overflowX: 'auto',
     padding: '0.75rem',

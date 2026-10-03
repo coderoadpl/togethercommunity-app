@@ -13,5 +13,6 @@ export type AppVars = {
     sessionId?: string;
     secureHeadersNonce?: string;
     signupRedirectOrigin?: string;
+    tenantRedirectHit?: { tenantId: string; redirectId: string };
   };
 };

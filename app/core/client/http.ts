@@ -388,6 +388,12 @@ export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
   body: BodyInit;
 }
 
+const isRedirectFailure = (cause: unknown): boolean => {
+  if (!(cause instanceof Error)) return false;
+  if (cause.message.toLowerCase().includes('redirect')) return true;
+  return cause.cause instanceof Error && cause.cause.message.toLowerCase().includes('redirect');
+};
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -401,20 +407,29 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   const traceparent = options.traceparent?.();
   let response: Response;
   try {
+    const headers: Record<string, string> = {
+      ...((body === undefined && raw?.body === undefined) || raw?.multipart === true ? {} : { 'content-type': 'application/json' }),
+      ...(traceparent === undefined ? {} : { traceparent }),
+      ...options.headers?.(),
+      ...raw?.headers,
+    };
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
-      headers: {
-        ...((body === undefined && raw?.body === undefined) || raw?.multipart === true ? {} : { 'content-type': 'application/json' }),
-        ...(traceparent === undefined ? {} : { traceparent }),
-        ...options.headers?.(),
-        ...raw?.headers,
-      },
+      headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
+      ...(headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
+        ? {}
+        : { redirect: 'error' as const }),
       signal: signal ?? null,
     });
   } catch (cause) {
-    return err(internal(raw?.redactErrors === true ? 'Operator request failed' : `Network error calling ${path}: ${String(cause)}`));
+    const message = raw?.redactErrors === true
+      ? isRedirectFailure(cause)
+        ? 'Operator request refused a redirect'
+        : 'Operator request failed'
+      : `Network error calling ${path}: ${String(cause)}`;
+    return err(internal(message));
   }
 
   let payload: unknown;

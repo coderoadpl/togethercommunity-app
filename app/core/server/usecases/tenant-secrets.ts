@@ -84,6 +84,20 @@ const maskValue = (value: string): string => {
   return `••••${suffix}`;
 };
 
+export const buildTenantSecret = (
+  tenantId: string,
+  key: TenantSecretKey,
+  value: string,
+  deps: Pick<TenantSecretDeps, 'secretCrypto' | 'ids' | 'clock'>,
+): TenantSecret => ({
+  id: deps.ids.nextId(),
+  tenantId,
+  key,
+  ...deps.secretCrypto.encrypt(value),
+  maskedPreview: maskValue(value),
+  updatedAt: deps.clock.nowIso(),
+});
+
 export const setTenantSecret = async (
   ctx: Ctx,
   input: SetTenantSecretInput,
@@ -99,15 +113,10 @@ export const setTenantSecret = async (
       return err(validation(`The Stripe ${expected} slot requires a ${expected} restricted key`));
     }
   }
-  const encrypted = deps.secretCrypto.encrypt(parsed.data.value);
-  const stored = await deps.tenantSecrets.upsert(tenant.value, {
-    id: deps.ids.nextId(),
-    tenantId: tenant.value,
-    key: parsed.data.key,
-    ...encrypted,
-    maskedPreview: maskValue(parsed.data.value),
-    updatedAt: deps.clock.nowIso(),
-  });
+  const stored = await deps.tenantSecrets.upsert(
+    tenant.value,
+    buildTenantSecret(tenant.value, parsed.data.key, parsed.data.value, deps),
+  );
   await checkSesIdentityAfterCredentialSave(tenant.value, parsed.data.key, deps);
   return ok(masked(stored));
 };

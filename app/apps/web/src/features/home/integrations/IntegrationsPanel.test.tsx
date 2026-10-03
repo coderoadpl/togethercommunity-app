@@ -50,6 +50,7 @@ const renderPanel = (
   let stripeMode = initialStripeMode;
   let stripeTestLastEventAt = initialTestLastEventAt;
   const stripeTestRemovals: string[] = [];
+  const tenantSecretRemovals: string[] = [];
   const testedProviders: string[] = [];
   const storageSubmissions: unknown[] = [];
   const stripeConfigurations: string[] = [];
@@ -171,9 +172,17 @@ const renderPanel = (
       return HttpResponse.json({ ok: true, data: { removed: true } });
     }),
     http.delete('/api/tenant-secrets/:key', ({ params }) => {
-      secrets = secrets.filter((s) => s.key !== params.key);
-      if (params.key === 'stripe.restrictedKey') stripeMode = null;
-      return HttpResponse.json({ ok: true, data: { key: params.key } });
+      const key = String(params.key);
+      tenantSecretRemovals.push(key);
+      if (!secrets.some((secret) => secret.key === key)) {
+        return HttpResponse.json(
+          { ok: false, error: { code: 'not_found', message: `No secret "${key}" in this tenant` } },
+          { status: 404 },
+        );
+      }
+      secrets = secrets.filter((secret) => secret.key !== key);
+      if (key === 'stripe.restrictedKey') stripeMode = null;
+      return HttpResponse.json({ ok: true, data: { key } });
     }),
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
     http.get('/api/tenant/routing', () => HttpResponse.json({
@@ -312,6 +321,7 @@ const renderPanel = (
     storageSubmissions,
     stripeConfigurations,
     stripeTestRemovals,
+    tenantSecretRemovals,
     testedProviders,
     apiKeySubmissions,
     settingsSubmissions,
@@ -919,10 +929,11 @@ describe('IntegrationsPanel', () => {
     });
   });
 
-  it('removes both Stripe credentials from the configuration card', async () => {
-    renderPanel([
+  it('removes all live Stripe records from the configuration card', async () => {
+    const { tenantSecretRemovals } = renderPanel([
       { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
       { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookEndpointId', maskedPreview: '••••oint', updatedAt: '1998-07-12T10:00:00.000Z' },
     ], defaultSettings, 'live');
 
     await userEvent.click(await screen.findByTestId('stripe-remove'));
@@ -936,6 +947,31 @@ describe('IntegrationsPanel', () => {
     });
     expect(screen.queryByTestId('stripe-mode-badge')).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
+    expect(tenantSecretRemovals).toEqual([
+      'stripe.webhookSecret',
+      'stripe.restrictedKey',
+      'stripe.webhookEndpointId',
+    ]);
+  });
+
+  it('disconnects a legacy live Stripe configuration without an endpoint marker', async () => {
+    const { tenantSecretRemovals } = renderPanel([
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '1998-07-12T10:00:00.000Z' },
+    ], defaultSettings, 'live');
+
+    await userEvent.click(await screen.findByTestId('stripe-remove'));
+    await userEvent.click(screen.getByTestId('stripe-remove-confirm'));
+
+    await waitFor(() => {
+      expect(screen.queryByText(en.integrations.stripeDisconnectConfirmBody)).not.toBeInTheDocument();
+      expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(en.integrations.notConfigured);
+    });
+    expect(tenantSecretRemovals).toEqual([
+      'stripe.webhookSecret',
+      'stripe.restrictedKey',
+      'stripe.webhookEndpointId',
+    ]);
   });
 
   it('saves the member billing portal URL alongside the Stripe credentials', async () => {

@@ -3865,6 +3865,35 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
     if (!row) throw new Error('tenant_secrets upsert returned no row');
     return parseSecret(row);
   },
+  upsertMany: async (tenantId, secrets) => {
+    if (secrets.length === 0) return [];
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(tenantSecrets)
+        .values(secrets.map((secret) => ({
+          id: secret.id,
+          tenantId,
+          key: secret.key,
+          ciphertext: secret.ciphertext,
+          iv: secret.iv,
+          authTag: secret.authTag,
+          maskedPreview: secret.maskedPreview,
+          updatedAt: secret.updatedAt,
+        })))
+        .onConflictDoUpdate({
+          target: [tenantSecrets.tenantId, tenantSecrets.key],
+          set: {
+            ciphertext: sql`excluded.ciphertext`,
+            iv: sql`excluded.iv`,
+            authTag: sql`excluded.auth_tag`,
+            maskedPreview: sql`excluded.masked_preview`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        })
+        .returning();
+      return rows.map(parseSecret);
+    });
+  },
   delete: async (tenantId, key) => {
     const rows = await db
       .delete(tenantSecrets)

@@ -375,6 +375,7 @@ const deps = (input: {
       listByTenant: async () => [],
       findByKey: async () => null,
       upsert: async (_tenantId, secret) => secret,
+      upsertMany: async (_tenantId, secrets) => [...secrets],
       delete: async () => false,
     },
     secretCrypto: {

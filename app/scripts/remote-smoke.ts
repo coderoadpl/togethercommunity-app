@@ -508,6 +508,7 @@ export const runAuthMailServerlessCheck = async (
   let latestStatus = 'not found';
   while (true) {
     const evidenceResponse = await request(evidenceUrl, {
+      redirect: 'error',
       headers: {
         [SCHEDULER_OPERATOR_SECRET_HEADER]: options.operatorSecret,
         [VERCEL_BYPASS_HEADER]: options.bypassSecret,

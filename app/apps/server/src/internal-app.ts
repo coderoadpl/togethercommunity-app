@@ -110,6 +110,7 @@ import {
   productsUnpublishInputSchema,
   productsUpdateInputSchema,
   productDownloadUploadRequestSchema,
+  productDownloadCompleteRequestSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   schedulerRunsQuerySchema,
   simulatePurchaseInputSchema,
@@ -528,6 +529,10 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
 });
 
 const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAssetMetadata => ({
+  lineageId: asset.lineageId,
+  versionNumber: asset.versionNumber,
+  versionNote: asset.versionNote,
+  supersededAt: asset.supersededAt,
   id: asset.id,
   productId: asset.productId,
   fileName: asset.fileName,
@@ -537,7 +542,8 @@ const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAs
   createdAt: asset.createdAt,
 });
 
-const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetView => ({
+const productDownloadView = (asset: ProductDownloadAsset & { previousVersions?: ProductDownloadAsset[] }): ProductDownloadAssetView => ({
+  previousVersions: (asset.previousVersions ?? []).map(productDownloadView),
   ...productDownloadMetadata(asset),
   downloadPath: API_PATHS.memberProductDownload
     .replace(':productId', encodeURIComponent(asset.productId))
@@ -1993,11 +1999,23 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productDownloadComplete, async (c) => {
+    const raw = await c.req.text();
+    let body: unknown = {};
+    if (raw.trim() !== '') {
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        return respond(err(validation('Invalid version details')));
+      }
+    }
+    const parsed = productDownloadCompleteRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid version details', parsed.error.flatten())));
     const result = await completeProductDownloadUpload(
       ctxOf(c),
       c.req.param('productId'),
       c.req.param('assetId'),
       deps,
+      parsed.data,
     );
     return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value) }) : result);
   });

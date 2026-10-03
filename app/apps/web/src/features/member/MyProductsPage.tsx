@@ -135,16 +135,30 @@ const ProductRow = ({
           <Box>
             <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               {product.downloads.map((download) => (
-                <Button
-                  key={download.id}
-                  variant="outlined"
-                  size="small"
-                  component="a"
-                  href={download.downloadPath}
-                  data-testid={`download-${download.id}`}
-                >
-                  {t.student.downloadFile({ name: download.fileName })}
-                </Button>
+                <Stack key={download.id} spacing="0.5rem">
+                  <Button variant="outlined" size="small" component="a" href={download.downloadPath}
+                    data-testid={`download-${download.id}`}>
+                    {t.student.downloadFile({ name: download.fileName })}
+                    {' · '}{t.products.fileVersion({ number: download.versionNumber })}
+                  </Button>
+                  {download.versionNote ? <Typography variant="body2">{download.versionNote}</Typography> : null}
+                  {download.previousVersions.length > 0 ? (
+                    <Box component="details">
+                      <Typography component="summary" sx={{ cursor: 'pointer' }}>{t.products.previousVersions}</Typography>
+                      <Stack spacing="0.5rem">
+                        {download.previousVersions.map((previous) => (
+                          <Box key={previous.id}>
+                            <Button size="small" component="a" href={previous.downloadPath} data-testid={`download-${previous.id}`}>
+                              {t.student.downloadFile({ name: previous.fileName })}
+                              {' · '}{t.products.fileVersion({ number: previous.versionNumber })}
+                            </Button>
+                            {previous.versionNote ? <Typography variant="body2">{previous.versionNote}</Typography> : null}
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : null}
+                </Stack>
               ))}
             </Stack>
           </Box>

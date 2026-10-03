@@ -1213,6 +1213,11 @@ export const pl: Messages = {
       format('Plik „{name}” przestanie być dostępny dla kupujących. Tej operacji nie można cofnąć.', { name }),
     deleteDownloadConfirm: 'Usuń plik',
     downloadStatusPending: 'Oczekuje',
+    fileVersion: ({ number }) => `Wersja pliku ${number}`,
+    versionNote: 'Opis wersji',
+    uploadNewVersion: 'Dodaj nową wersję',
+    previousVersions: 'Poprzednie wersje',
+    deleteVersion: 'Usuń wersję',
     downloadStatusReady: 'Gotowy',
   },
   access: {

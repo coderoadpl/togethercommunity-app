@@ -625,9 +625,26 @@
             "createdAt": "2026-06-19T12:00:00.000Z",
             "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook",
+            "lineageId": "download-asset-workbook",
             "productId": "product-download-workbook",
             "sizeBytes": 2416640,
-            "status": "ready"
+            "status": "ready",
+            "supersededAt": "2026-06-29T12:00:00.000Z",
+            "versionNote": null,
+            "versionNumber": 1
+          },
+          {
+            "contentType": "application/pdf",
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "fileName": "workbook-creator.pdf",
+            "id": "download-asset-workbook-v2",
+            "lineageId": "download-asset-workbook",
+            "productId": "product-download-workbook",
+            "sizeBytes": 2426880,
+            "status": "ready",
+            "supersededAt": null,
+            "versionNote": "Corrected the diagram in chapter 4.",
+            "versionNumber": 2
           }
         ]
       }

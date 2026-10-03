@@ -295,7 +295,7 @@ export interface ProductDownloadAssetRepository {
   findById(tenantId: string, assetId: string): Promise<ProductDownloadAsset | null>;
   listByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
   listReadyByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
-  markReady(tenantId: string, assetId: string, sizeBytes: number): Promise<ProductDownloadAsset | null>;
+  markReady(tenantId: string, assetId: string, sizeBytes: number, version: { replacesAssetId: string | undefined; versionNote: string | null; now: string }): Promise<ProductDownloadAsset | null>;
   delete(tenantId: string, assetId: string): Promise<boolean>;
 }
 

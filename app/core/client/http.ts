@@ -1710,7 +1710,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
         API_ROUTES.productDownloadUpload.method,
         API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
         productDownloadUploadOutputSchema,
-        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes, replacesAssetId: input.replacesAssetId },
         signal,
       ),
       (started) => started.upload,
@@ -1721,7 +1721,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
           .replace(':productId', encodeURIComponent(input.productId))
           .replace(':assetId', encodeURIComponent(started.asset.id)),
         productDownloadCompleteOutputSchema,
-        {},
+        { replacesAssetId: input.replacesAssetId, versionNote: input.versionNote },
         signal,
       ),
       signal,

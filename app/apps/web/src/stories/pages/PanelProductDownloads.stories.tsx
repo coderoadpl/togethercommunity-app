@@ -28,3 +28,7 @@ export const ListedEditorEn: Story = visibilityStory('listed', 'en');
 export const UnlistedEditorEn: Story = visibilityStory('unlisted', 'en');
 export const ListedEditorPl: Story = visibilityStory('listed', 'pl');
 export const UnlistedEditorPl: Story = visibilityStory('unlisted', 'pl');
+
+export const VersionsDarkDesktop: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
+export const VersionsDarkMobile: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
+export const VersionsPolish: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };

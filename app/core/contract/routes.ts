@@ -68,6 +68,7 @@ import {
   lessonAttachmentUploadInputSchema,
   lessonAttachmentViewSchema,
   productDownloadAssetMetadataSchema,
+  productDownloadCompleteInputSchema,
   productDownloadAssetViewSchema,
   productDownloadUploadInputSchema,
   listDiscussionInputSchema,
@@ -944,6 +945,8 @@ export const productDownloadUploadOutputSchema = z.object({
     expiresAt: z.string().datetime(),
   }),
 });
+
+export const productDownloadCompleteRequestSchema = productDownloadCompleteInputSchema;
 
 export const productDownloadCompleteOutputSchema = z.object({
   asset: productDownloadAssetMetadataSchema,

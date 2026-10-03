@@ -1144,6 +1144,11 @@ export interface Messages {
     deleteDownloadConfirmBody: (params: { name: string }) => string;
     deleteDownloadConfirm: string;
     downloadStatusPending: string;
+    fileVersion: (params: { number: number }) => string;
+    versionNote: string;
+    uploadNewVersion: string;
+    previousVersions: string;
+    deleteVersion: string;
     downloadStatusReady: string;
   };
   access: {

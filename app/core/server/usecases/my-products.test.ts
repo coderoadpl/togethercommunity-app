@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, MemberGrant, Product, ProductPrice } from '#core/domain/index.js';
+import type { Identity, MemberGrant, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
 import type { ProductGrantRepository, ProductPriceRepository } from '../ports.js';
@@ -213,4 +213,25 @@ describe('listMyProducts', () => {
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+});
+
+
+it('groups the buyer downloads by lineage with newest ready versions first', async () => {
+  const first: ProductDownloadAsset = {
+    id: 'pdf-1', tenantId: 't-acme', productId: 'p1', lineageId: 'pdf-1', versionNumber: 1,
+    versionNote: null, supersededAt: clock.nowIso(), replacesAssetId: null,
+    fileName: 'book.pdf', contentType: 'application/pdf', sizeBytes: 1024,
+    storageKey: 'pdf-1', status: 'ready', createdAt: clock.nowIso(),
+  };
+  const latest = { ...first, id: 'pdf-2', versionNumber: 2, supersededAt: null, versionNote: 'Errata', storageKey: 'pdf-2' };
+  const epub = { ...first, id: 'epub', lineageId: 'epub', supersededAt: null, storageKey: 'epub' };
+  const result = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
+    grants: grants([{ ...granted, type: 'digital_download' }], [memberGrant()]),
+    clock, subscriptions, prices,
+    downloadAssets: { ...downloadAssets, listReadyByProduct: async () => [first, epub, latest] },
+  });
+  expect(result).toMatchObject({ ok: true, value: [{ downloads: [
+    { id: 'pdf-2', versionNumber: 2, previousVersions: [first] },
+    { id: 'epub', previousVersions: [] },
+  ] }] });
 });

@@ -4009,6 +4009,11 @@ describe('purchased product download route', () => {
   };
   const asset: ProductDownloadAsset = {
     id: 'download-asset',
+    lineageId: 'download-asset',
+    versionNumber: 1,
+    versionNote: null,
+    supersededAt: null,
+    replacesAssetId: null,
     tenantId: acme.id,
     productId: downloadProduct.id,
     fileName: 'workbook.pdf',
@@ -4076,6 +4081,45 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+  it('accepts legacy bodyless completion and rejects malformed version JSON', async () => {
+    const app = scopedApp('owner', { overrides: overrides(true) });
+    const completePath = API_PATHS.productDownloadComplete
+      .replace(':productId', downloadProduct.id).replace(':assetId', asset.id);
+    const headers = { host: 'acme.localhost:48730' };
+    const legacy = await app.request(completePath, { method: 'POST', headers });
+    expect(legacy.status).toBe(200);
+    expect(await legacy.json()).toMatchObject({ ok: true, data: { asset: { id: asset.id, versionNumber: 1 } } });
+    const malformed = await app.request(completePath, { method: 'POST', headers, body: '{' });
+    expect(malformed.status).toBe(400);
+  });
+
+  it('serializes buyer history with separate protected paths and no storage keys', async () => {
+    const base = deps();
+    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z' };
+    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata' };
+    const app = scopedApp('member', { overrides: {
+      grants: {
+        ...base.grants,
+        listGrantedProducts: async () => [downloadProduct],
+        listForMemberWithProductNames: async () => [{
+          mode: 'live', id: grant.id, productId: downloadProduct.id, productName: downloadProduct.title,
+          source: 'stripe', startsAt: grant.startsAt, expiresAt: null, active: true,
+        }],
+      },
+      downloadAssets: { ...base.downloadAssets, listReadyByProduct: async () => [previous, latest] },
+    } });
+    const response = await app.request(API_PATHS.myProducts, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ ok: true, data: { products: [{ downloads: [{
+      id: latest.id, lineageId: asset.lineageId, versionNumber: 2, versionNote: 'Errata',
+      downloadPath: '/api/my/products/digital-download/downloads/download-v2',
+      previousVersions: [{ id: asset.id, downloadPath: path, supersededAt: previous.supersededAt }],
+    }] }] } });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('replacesAssetId');
+  });
+
 });
 
 describe('public tenant image asset route', () => {

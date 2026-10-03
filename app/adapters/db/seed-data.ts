@@ -1207,6 +1207,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(productDownloadAssets)
     .values({
       id: 'download-asset-workbook',
+      lineageId: 'download-asset-workbook',
       tenantId: 'tenant-studio',
       productId: 'product-download-workbook',
       fileName: 'workbook-creator.pdf',
@@ -1214,9 +1215,24 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       sizeBytes: 2_416_640,
       storageKey: 'product-downloads/product-download-workbook/download-asset-workbook/workbook-creator.pdf',
       status: 'ready',
+      supersededAt: relativeIso(-2),
       createdAt: relativeIso(-12),
     })
     .onConflictDoNothing();
+  await db.insert(productDownloadAssets).values({
+    id: 'download-asset-workbook-v2',
+    lineageId: 'download-asset-workbook',
+    versionNumber: 2,
+    versionNote: 'Corrected the diagram in chapter 4.',
+    tenantId: 'tenant-studio',
+    productId: 'product-download-workbook',
+    fileName: 'workbook-creator.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 2_426_880,
+    storageKey: 'product-downloads/product-download-workbook/download-asset-workbook-v2/workbook-creator.pdf',
+    status: 'ready',
+    createdAt: relativeIso(-2),
+  }).onConflictDoNothing();
   await db
     .insert(members)
     .values(

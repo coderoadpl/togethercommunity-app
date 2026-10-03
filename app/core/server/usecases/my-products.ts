@@ -33,7 +33,7 @@ export interface MyProductsDeps {
 export type MyProduct = GrantedProduct & {
   purchasable: boolean;
   subscription: MemberSubscriptionSummary | null;
-  downloads: ProductDownloadAsset[];
+  downloads: Array<ProductDownloadAsset & { previousVersions: ProductDownloadAsset[] }>;
 };
 
 const statusRank: Record<GrantWindowStatus, number> = { active: 0, upcoming: 1, expired: 2 };
@@ -101,14 +101,18 @@ export const listMyProducts = async (
     }
   }
 
-  const downloadsByProduct = new Map<string, ProductDownloadAsset[]>();
+  const downloadsByProduct = new Map<string, MyProduct['downloads']>();
   await Promise.all(products.map(async (product) => {
     const grant = bestGrantByProduct.get(product.id);
     if (product.type !== 'digital_download' || grant === undefined || grantStatus(grant, nowMs) !== 'active') return;
-    downloadsByProduct.set(
-      product.id,
-      await deps.downloadAssets.listReadyByProduct(tenantId, product.id),
-    );
+    const assets = await deps.downloadAssets.listReadyByProduct(tenantId, product.id);
+    const lineages = new Map<string, MyProduct['downloads'][number]>();
+    for (const asset of assets.sort((a, b) => b.versionNumber - a.versionNumber)) {
+      const latest = lineages.get(asset.lineageId);
+      if (latest) latest.previousVersions.push(asset);
+      else lineages.set(asset.lineageId, { ...asset, previousVersions: [] });
+    }
+    downloadsByProduct.set(product.id, [...lineages.values()]);
   }));
 
   const seen = new Set<string>();

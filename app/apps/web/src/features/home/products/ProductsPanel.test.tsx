@@ -124,6 +124,10 @@ const renderProductsPanel = async (
         data: {
           asset: {
             id: 'asset-1',
+            lineageId: 'asset-1',
+            versionNumber: 1,
+            versionNote: null,
+            supersededAt: null,
             productId: 'download-1',
             fileName: 'workbook.pdf',
             contentType: 'application/pdf',
@@ -146,6 +150,10 @@ const renderProductsPanel = async (
     http.post('/api/products/:productId/downloads/:assetId/complete', () => {
       const asset: ProductDownloadAssetMetadata = {
         id: 'asset-1',
+        lineageId: 'asset-1',
+        versionNumber: 1,
+        versionNote: null,
+        supersededAt: null,
         productId: 'download-1',
         fileName: 'workbook.pdf',
         contentType: 'application/pdf',
@@ -379,6 +387,10 @@ describe('ProductsPanel', () => {
     };
     const asset: ProductDownloadAssetMetadata = {
       id: 'asset-1',
+      lineageId: 'asset-1',
+      versionNumber: 1,
+      versionNote: null,
+      supersededAt: null,
       productId: download.id,
       fileName: 'workbook.pdf',
       contentType: 'application/pdf',
@@ -428,6 +440,10 @@ describe('ProductsPanel', () => {
     const price: ProductPrice = { ...basePrice, id: 'price-download-1', productId: product.id };
     const asset: ProductDownloadAssetMetadata = {
       id: 'asset-1',
+      lineageId: 'asset-1',
+      versionNumber: 1,
+      versionNote: null,
+      supersededAt: null,
       productId: product.id,
       fileName: 'workbook.pdf',
       contentType: 'application/pdf',
@@ -579,4 +595,45 @@ it('keeps unlisted products in Studio with a chip and copyable checkout link', a
   await renderProductsPanel([], '/panel/products', [{ ...base, published: true, visibility: 'unlisted' }]);
   expect(await screen.findByText(en.products.unlisted)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: en.products.copyCheckoutLink })).toBeEnabled();
+});
+
+
+it('reuses the upload control with replacement details and hides earlier versions initially', async () => {
+  const base = initialProducts[0];
+  if (!base) throw new Error('Missing product fixture');
+  const latest: ProductDownloadAssetMetadata = {
+    id: 'asset-2', lineageId: 'asset-1', versionNumber: 2, versionNote: 'Second edition', supersededAt: null,
+    productId: 'download-1', fileName: 'book.pdf', contentType: 'application/pdf', sizeBytes: 1024,
+    status: 'ready', createdAt: '2026-07-12T12:00:00.000Z',
+  };
+  await renderProductsPanel([], '/panel/products/download-1', [{ ...base, id: 'download-1', type: 'digital_download' }], [], [
+    latest, { ...latest, id: 'asset-1', versionNumber: 1, versionNote: 'First edition', supersededAt: latest.createdAt },
+  ]);
+  expect(await screen.findByText('Second edition')).toBeVisible();
+  expect(screen.getByText('First edition')).not.toBeVisible();
+  await userEvent.click(screen.getByText(en.products.previousVersions));
+  expect(screen.getByText('First edition')).toBeVisible();
+  expect(screen.getByText(en.products.deleteVersion)).toBeVisible();
+  let beginBody: unknown;
+  let completeBody: unknown;
+  server.use(
+    http.post('/api/products/:productId/downloads/upload', async ({ request }) => {
+      beginBody = await request.json();
+      return HttpResponse.json({ ok: true, data: {
+        asset: { ...latest, id: 'asset-3', status: 'pending' },
+        upload: { url: 'https://storage.example.test/product-download', headers: {}, expiresAt: '2026-07-12T12:15:00.000Z' },
+      } });
+    }),
+    http.post('/api/products/:productId/downloads/:assetId/complete', async ({ request }) => {
+      completeBody = await request.json();
+      return HttpResponse.json({ ok: true, data: { asset: { ...latest, id: 'asset-3', versionNumber: 3 } } });
+    }),
+  );
+  await userEvent.type(screen.getByLabelText(en.products.versionNote), 'Corrected diagram');
+  const replace = screen.getAllByRole('button', { name: en.products.uploadNewVersion })[0];
+  if (!replace) throw new Error('Missing replacement action');
+  await userEvent.click(replace);
+  await userEvent.upload(screen.getByLabelText(en.products.downloadFileInput), new File(['content'], 'corrected.pdf', { type: 'application/pdf' }));
+  await waitFor(() => expect(completeBody).toEqual({ replacesAssetId: 'asset-2', versionNote: 'Corrected diagram' }));
+  expect(beginBody).toMatchObject({ replacesAssetId: 'asset-2', fileName: 'corrected.pdf' });
 });

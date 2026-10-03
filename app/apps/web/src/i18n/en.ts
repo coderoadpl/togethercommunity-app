@@ -1232,6 +1232,11 @@ export const en: Messages = {
       format('The file "{name}" will no longer be available to buyers. This cannot be undone.', { name }),
     deleteDownloadConfirm: 'Delete file',
     downloadStatusPending: 'Pending',
+    fileVersion: ({ number }) => `Version ${number}`,
+    versionNote: 'Version note',
+    uploadNewVersion: 'Upload new version',
+    previousVersions: 'Previous versions',
+    deleteVersion: 'Delete version',
     downloadStatusReady: 'Ready',
   },
   access: {

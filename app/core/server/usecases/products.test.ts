@@ -115,6 +115,11 @@ const price = (productId: string): ProductPrice => ({
 
 const download = (productId: string): ProductDownloadAsset => ({
   id: `download-${productId}`,
+  lineageId: `download-${productId}`,
+  versionNumber: 1,
+  versionNote: null,
+  supersededAt: null,
+  replacesAssetId: null,
   tenantId: 't-acme',
   productId,
   fileName: 'workbook.pdf',

@@ -449,7 +449,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/products',
     ready: async (page) => {
       await page.getByTestId('my-product-product-js-full').waitFor(visible);
-      await page.getByTestId('download-download-asset-workbook').waitFor(visible);
+      await page.getByTestId('download-download-asset-workbook-v2').waitFor(visible);
     },
   },
   {

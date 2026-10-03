@@ -1,6 +1,6 @@
 {
-  "hash": "c567759d451ae81792850786845aa7e3bbf96913c05d1133654d56115437ae81",
-  "shortId": "c567759d451a",
+  "hash": "1c19df26bff6d9d3481bf0dacb66489542cd95364a68206eecc1a86fca38e548",
+  "shortId": "1c19df26bff6",
   "schema": {
     "constraints": [
       {
@@ -132,6 +132,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((version_number > 0))",
+        "name": "product_download_assets_version_positive",
+        "table": "product_download_assets"
       },
       {
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
@@ -2486,6 +2491,11 @@
         "definition": "CREATE UNIQUE INDEX processed_events_fulfillment_uidx ON processed_events USING btree (tenant_id, object_id, type) WHERE (type = ANY (ARRAY['checkout.session.completed'::text, 'invoice.paid'::text]))",
         "name": "processed_events_fulfillment_uidx",
         "table": "processed_events"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX product_download_assets_lineage_version_uidx ON product_download_assets USING btree (tenant_id, lineage_id, version_number)",
+        "name": "product_download_assets_lineage_version_uidx",
+        "table": "product_download_assets"
       },
       {
         "definition": "CREATE UNIQUE INDEX product_download_assets_tenant_storage_key_uidx ON product_download_assets USING btree (tenant_id, storage_key)",
@@ -4851,6 +4861,123 @@
             "type": "text"
           },
           {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "version_number",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lineage_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "replaces_asset_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "storage_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "superseded_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "version_note",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "product_download_assets"
+      },
+      {
+        "columns": [
+          {
+            "default": "'pending'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -4916,83 +5043,6 @@
           }
         ],
         "name": "lesson_attachments"
-      },
-      {
-        "columns": [
-          {
-            "default": "'pending'::text",
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "content_type",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "file_name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "size_bytes",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "storage_key",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_download_assets"
       },
       {
         "columns": [

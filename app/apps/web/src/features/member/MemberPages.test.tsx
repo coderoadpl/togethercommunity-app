@@ -162,7 +162,7 @@ describe('member pages', () => {
     expect(screen.getAllByRole('link', { name: en.student.manageSubscription })).toHaveLength(3);
   });
 
-  it('renders purchased digital-download buttons alongside the course link', async () => {
+  it('renders latest and collapsed previous versions with their own links', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({
         ok: true,
@@ -174,6 +174,10 @@ describe('member pages', () => {
             title: 'Creator workbook',
             downloads: [{
               id: 'asset-1',
+              lineageId: 'asset-1',
+              versionNumber: 2,
+              versionNote: 'Corrected diagram',
+              supersededAt: null,
               productId: 'download-1',
               fileName: 'workbook.pdf',
               contentType: 'application/pdf',
@@ -181,6 +185,12 @@ describe('member pages', () => {
               status: 'ready',
               createdAt: '1998-07-12T00:00:00.000Z',
               downloadPath: '/api/my/products/download-1/downloads/asset-1',
+              previousVersions: [{
+                id: 'previous', lineageId: 'asset-1', versionNumber: 1, versionNote: 'First edition',
+                supersededAt: '1998-07-12T00:00:00.000Z', productId: 'download-1',
+                fileName: 'original.pdf', contentType: 'application/pdf', sizeBytes: 2048, status: 'ready',
+                createdAt: '1998-07-01T00:00:00.000Z', downloadPath: '/api/my/products/download-1/downloads/previous',
+              }],
             }],
           }],
         },
@@ -193,8 +203,13 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: en.student.downloadFile({ name: 'workbook.pdf' }) }))
+    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'workbook.pdf' })} · ${en.products.fileVersion({ number: 2 })}` }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
+    expect(screen.getByText('Corrected diagram')).toBeVisible();
+    expect(screen.getByText('First edition')).not.toBeVisible();
+    await userEvent.click(screen.getByText(en.products.previousVersions));
+    expect(screen.getByText('First edition')).toBeVisible();
+    expect(screen.getByTestId('download-previous')).toHaveAttribute('href', '/api/my/products/download-1/downloads/previous');
     expect(screen.getByRole('link', { name: 'Creator workbook' }))
       .toHaveAttribute('href', '/my/course/download-1');
   });

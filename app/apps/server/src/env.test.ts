@@ -68,15 +68,15 @@ describe('production posture detection', () => {
 });
 
 describe('redirect hit rate limit configuration', () => {
-  it('accepts a non-negative per-IP override and rejects invalid counts', () => {
+  it('accepts a non-negative per-redirect override and rejects invalid counts', () => {
     expect(envSchema.parse({
-      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '60',
-    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE).toBe(60);
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: '600',
+    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE).toBe(600);
     expect(envSchema.parse({
-      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '0',
-    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE).toBe(0);
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: '0',
+    }).PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE).toBe(0);
     expect(envSchema.safeParse({
-      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: '-1',
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: '-1',
     }).success).toBe(false);
   });
 });

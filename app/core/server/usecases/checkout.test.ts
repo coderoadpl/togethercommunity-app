@@ -103,6 +103,7 @@ const checkoutDeps = (): CheckoutDeps => ({
     listByTenant: async () => [],
     findByKey: async (_tenantId, key) => secret(key),
     upsert: async (_tenantId, value) => value,
+    upsertMany: async (_tenantId, secrets) => [...secrets],
     delete: async () => false,
   },
   payment: {
@@ -343,6 +344,7 @@ describe('createCheckoutSession', () => {
         listByTenant: async () => [],
         findByKey: async (tenantId, key) => (tenantId === 'tenant-a' ? secret(key) : null),
         upsert: async (_tenantId, value) => value,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
       payment: {
@@ -419,6 +421,7 @@ describe('createCheckoutSession', () => {
         listByTenant: async () => [],
         findByKey: async (_tenantId, key) => secret(key),
         upsert: async (_tenantId, value) => value,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
       payment: {

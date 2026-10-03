@@ -1660,6 +1660,76 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findByKey(ACME, 'stripe.restrictedKey')).toBeNull();
   });
 
+  it('replaces a tenant secret batch together', async () => {
+    const repo = createTenantSecretRepository(db);
+    const secrets = (suffix: string): TenantSecret[] => {
+      const keys = [
+        'stripe.webhookSecret',
+        'stripe.restrictedKey',
+        'stripe.webhookEndpointId',
+      ] as const;
+      return keys.map((key, index) => ({
+        id: `sec-batch-${suffix}-${String(index)}`,
+        tenantId: ACME,
+        key,
+        ciphertext: `ct-${suffix}-${String(index)}`,
+        iv: 'iv',
+        authTag: 'tag',
+        maskedPreview: `••••${suffix}`,
+        updatedAt: NOW,
+      }));
+    };
+    await repo.upsertMany(ACME, secrets('old'));
+
+    await expect(repo.upsertMany(ACME, secrets('new'))).resolves.toHaveLength(3);
+    expect((await repo.listByTenant(ACME)).map(({ key, ciphertext, maskedPreview }) => ({
+      key,
+      ciphertext,
+      maskedPreview,
+    }))).toEqual([
+      { key: 'stripe.restrictedKey', ciphertext: 'ct-new-1', maskedPreview: '••••new' },
+      { key: 'stripe.webhookEndpointId', ciphertext: 'ct-new-2', maskedPreview: '••••new' },
+      { key: 'stripe.webhookSecret', ciphertext: 'ct-new-0', maskedPreview: '••••new' },
+    ]);
+  });
+
+  it('rolls back a tenant secret batch when one row violates a constraint', async () => {
+    const repo = createTenantSecretRepository(db);
+    const record = (
+      id: string,
+      key: TenantSecret['key'],
+      ciphertext: string,
+    ): TenantSecret => ({
+      id,
+      tenantId: ACME,
+      key,
+      ciphertext,
+      iv: 'iv',
+      authTag: 'tag',
+      maskedPreview: '••••test',
+      updatedAt: NOW,
+    });
+    const previous = [
+      record('sec-atomic-webhook', 'stripe.webhookSecret', 'ct-old-webhook'),
+      record('sec-atomic-key', 'stripe.restrictedKey', 'ct-old-key'),
+      record('sec-atomic-endpoint', 'stripe.webhookEndpointId', 'ct-old-endpoint'),
+    ];
+    await repo.upsertMany(ACME, previous);
+    await repo.upsert(ACME, record('sec-atomic-collision', 'smtp.password', 'ct-collision'));
+
+    await expect(repo.upsertMany(ACME, [
+      record('sec-atomic-new-webhook', 'stripe.webhookSecret', 'ct-new-webhook'),
+      record('sec-atomic-new-key', 'stripe.restrictedKey', 'ct-new-key'),
+      record('sec-atomic-collision', 'stripe.testWebhookSecret', 'ct-new-endpoint'),
+    ])).rejects.toThrow();
+
+    await expect(Promise.all(previous.map(async ({ key }) => ({
+      key,
+      ciphertext: (await repo.findByKey(ACME, key))?.ciphertext,
+    })))).resolves.toEqual(previous.map(({ key, ciphertext }) => ({ key, ciphertext })));
+    await expect(repo.findByKey(ACME, 'stripe.testWebhookSecret')).resolves.toBeNull();
+  });
+
   it('scans tenant secrets across tenants and deletes them by id', async () => {
     const repo = createTenantSecretRepository(db);
     const scan = createTenantSecretScan(db);

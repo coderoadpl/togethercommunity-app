@@ -82,6 +82,7 @@ const secretRepository = (keys: TenantSecretKey[]): TenantSecretRepository => {
     listByTenant: async (tenantId) => rows.filter((row) => row.tenantId === tenantId),
     findByKey: async (tenantId, key) => rows.find((row) => row.tenantId === tenantId && row.key === key) ?? null,
     upsert: async (_tenantId, secret) => secret,
+    upsertMany: async (_tenantId, secrets) => [...secrets],
     delete: async () => false,
   };
 };

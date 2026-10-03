@@ -145,6 +145,7 @@ describe('createApiClient', () => {
     const fetchImpl: typeof fetch = async (_input, init) => {
       expect(init?.method).toBe('GET');
       expect(init?.body).toBeNull();
+      expect(init?.redirect).toBe('error');
       expect(new Headers(init?.headers).get('x-scheduler-operator-secret')).toBe('operator-secret');
       return jsonResponse({ ok: true, data: { runs: [], nextCursor: null } });
     };

@@ -184,6 +184,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
     listByTenant: async () => [secret],
     findByKey: async () => secret,
     upsert: async (_tenantId, stored) => stored,
+    upsertMany: async (_tenantId, secrets) => [...secrets],
     delete: async () => false,
   },
   secretCrypto: {
@@ -433,6 +434,7 @@ describe('checkDeepHealth', () => {
         listByTenant: async () => [],
         findByKey: async () => null,
         upsert: async (_tenantId, stored) => stored,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
     }));
@@ -642,6 +644,7 @@ describe('checkDeepHealth', () => {
         listByTenant: async () => [],
         findByKey: async () => null,
         upsert: async (_tenantId, stored) => stored,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
       secretResolver: { resolve: async (_tenantId, key) => err(notFound(`No secret "${key}"`)) },

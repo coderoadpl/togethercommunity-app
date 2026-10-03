@@ -1602,7 +1602,11 @@ export const deleteStripeSecretsMutation = (api: ApiClient) =>
     call: async () => {
       const webhookSecret = await api.deleteTenantSecret({ key: 'stripe.webhookSecret' });
       if (!webhookSecret.ok) return webhookSecret;
-      return api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+      const restrictedKey = await api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+      if (!restrictedKey.ok) return restrictedKey;
+      const endpoint = await api.deleteTenantSecret({ key: 'stripe.webhookEndpointId' });
+      if (!endpoint.ok && endpoint.error.code !== 'not_found') return endpoint;
+      return endpoint.ok ? endpoint : restrictedKey;
     },
   });
 

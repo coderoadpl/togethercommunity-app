@@ -20,7 +20,7 @@ const setup = () => {
     settings: { get: async () => settings, save: async (_tenantId, value) => { settings = value; } },
     outbox: { pending: async () => [], acknowledge: vi.fn(), retry: vi.fn(), discard: vi.fn(), status: async () => initial.sync },
     stores: { open: () => ({ probe, appendBatch, close: vi.fn(), deleteSubject: vi.fn(), campaignStats: async () => [], contactTimeline: async () => ({ events: [], nextCursor: null }), bounceComplaints: async () => ({ events: [], nextCursor: null }) }) },
-    secrets: { listByTenant: async () => secret === null ? [] : [secret], findByKey: async () => secret, upsert: async (_tenantId, row) => { secret = row; return row; }, delete: async () => { secret = null; return true; } },
+    secrets: { listByTenant: async () => secret === null ? [] : [secret], findByKey: async () => secret, upsert: async (_tenantId, row) => { secret = row; return row; }, upsertMany: async (_tenantId, rows) => { secret = rows.at(-1) ?? null; return [...rows]; }, delete: async () => { secret = null; return true; } },
     crypto: { encrypt: () => ({ ciphertext: 'encrypted', iv: 'iv', authTag: 'tag' }), decrypt: () => ok('mongodb://user:pass@example.test/analytics') },
     clock: { nowIso: () => at }, ids: { nextId: () => 'secret-id' }, egress: async () => initial.egress, hidesStatistics: true,
   };

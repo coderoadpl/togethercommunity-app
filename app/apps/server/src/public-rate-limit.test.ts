@@ -5,7 +5,7 @@ import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 describe('selectPublicRateLimitPolicies', () => {
   it('throttles production writes conservatively', () => {
     expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production' })).toEqual({
-      redirectHitsPerIp: { limit: 60, windowMs: 60_000 },
+      redirectHitsPerRedirect: { limit: 600, windowMs: 60_000 },
       signInPerIp: { limit: 60, windowMs: 60_000 },
       signInPerEmail: { limit: 10, windowMs: 600_000 },
       writesPerIp: { limit: 30, windowMs: 60_000 },
@@ -21,7 +21,7 @@ describe('selectPublicRateLimitPolicies', () => {
 
   it('keeps development and staging generous enough for end-to-end suites', () => {
     expect(selectPublicRateLimitPolicies({})).toMatchObject({
-      redirectHitsPerIp: { limit: 6_000 },
+      redirectHitsPerRedirect: { limit: 600 },
       writesPerIp: { limit: 3_000 },
       authLinksPerEmail: { limit: 500 },
       authResolvesPerIp: { limit: 6_000 },
@@ -35,7 +35,7 @@ describe('selectPublicRateLimitPolicies', () => {
   it('lets the environment override each bucket, including switching it off', () => {
     expect(selectPublicRateLimitPolicies({
       NODE_ENV: 'production',
-      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE: 8,
+      PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: 8,
       PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE: 3,
       PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES: 2,
       PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: 10,
@@ -47,7 +47,7 @@ describe('selectPublicRateLimitPolicies', () => {
       PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE: 7,
       PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES: 2,
     })).toEqual({
-      redirectHitsPerIp: { limit: 8, windowMs: 60_000 },
+      redirectHitsPerRedirect: { limit: 8, windowMs: 60_000 },
       signInPerIp: { limit: 3, windowMs: 60_000 },
       signInPerEmail: { limit: 2, windowMs: 600_000 },
       writesPerIp: { limit: 10, windowMs: 60_000 },

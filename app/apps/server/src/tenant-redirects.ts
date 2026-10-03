@@ -4,7 +4,6 @@ import { TENANT_HEADER } from '#core/contract/index.js';
 import { normalizeRedirectPath } from '#core/domain/index.js';
 import { claimRateLimitWindow, resolveTenant } from '#core/server/index.js';
 
-import { trustedClientIp } from './auth-network.js';
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 
@@ -27,9 +26,9 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
     if (hit === undefined) return;
     try {
       const claimed = await claimRateLimitWindow({
-        scope: 'redirect-hit:ip',
-        key: trustedClientIp(c, deps.authTrustedProxyHeader) ?? 'unattributed',
-        window: deps.publicRateLimitPolicies.redirectHitsPerIp,
+        scope: 'redirect-hit',
+        key: `${hit.tenantId}:${hit.redirectId}`,
+        window: deps.publicRateLimitPolicies.redirectHitsPerRedirect,
       }, { buckets: deps.rateLimitBuckets, clock: deps.clock });
       if (!claimed.ok) return;
       await deps.redirects.incrementHit(hit.tenantId, hit.redirectId);

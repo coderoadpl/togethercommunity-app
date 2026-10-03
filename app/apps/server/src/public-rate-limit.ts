@@ -26,7 +26,7 @@ import { type Env } from './env.js';
 import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {
-  redirectHitsPerIp: RateLimitWindow;
+  redirectHitsPerRedirect: RateLimitWindow;
   writesPerIp: RateLimitWindow;
   writesPerTenant: RateLimitWindow;
   authLinksPerEmail: RateLimitWindow;
@@ -50,7 +50,7 @@ const MINUTE_MS = 60_000;
 const TEN_MINUTES_MS = 10 * MINUTE_MS;
 
 const PRODUCTION_LIMITS = {
-  redirectHitsPerIp: 60,
+  redirectHitsPerRedirect: 600,
   writesPerIp: 30,
   writesPerTenant: 300,
   authLinksPerEmail: 5,
@@ -63,7 +63,7 @@ const PRODUCTION_LIMITS = {
   signupsPerEmail: 3,
 };
 const DEVELOPMENT_LIMITS = {
-  redirectHitsPerIp: 6_000,
+  redirectHitsPerRedirect: 600,
   writesPerIp: 3_000,
   writesPerTenant: 30_000,
   authLinksPerEmail: 500,
@@ -78,7 +78,7 @@ const DEVELOPMENT_LIMITS = {
 
 export type PublicRateLimitEnv = Pick<
   Env,
-  | 'PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES'
   | 'NODE_ENV'
@@ -96,8 +96,9 @@ export type PublicRateLimitEnv = Pick<
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
   return {
-    redirectHitsPerIp: {
-      limit: env.PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_IP_PER_MINUTE ?? fallback.redirectHitsPerIp,
+    redirectHitsPerRedirect: {
+      limit: env.PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE
+        ?? fallback.redirectHitsPerRedirect,
       windowMs: MINUTE_MS,
     },
     signupsPerIp: { limit: env.PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE ?? fallback.signupsPerIp, windowMs: MINUTE_MS },

@@ -8,8 +8,11 @@ import {
   type TenantSecret,
 } from '#core/domain/index.js';
 
-import type { PaymentProvider, TenantSecretRepository } from '../ports.js';
+import type { PaymentProvider } from '../ports.js';
+import { operatorCtx } from '../testing/operator-tenant-fakes.js';
+import { createTenantSecretRepositoryFake } from '../testing/tenant-secret-fake.js';
 import { configureStripe, type ConfigureStripeDeps } from './configure-stripe.js';
+import { getOperatorTenantReadiness } from './operator-tenant-readiness.js';
 
 const identity = (staffRole: Identity['staffRole']): Identity => ({
   userId: 'owner-1',
@@ -44,29 +47,20 @@ const payment = (
   test: async () => { throw new Error('unused'); },
 });
 
-const harness = (provider: PaymentProvider): { deps: ConfigureStripeDeps; rows: TenantSecret[] } => {
-  const rows: TenantSecret[] = [];
-  const tenantSecrets: TenantSecretRepository = {
-    listByTenant: async (tenantId) => rows.filter((row) => row.tenantId === tenantId),
-    findByKey: async (tenantId, key) =>
-      rows.find((row) => row.tenantId === tenantId && row.key === key) ?? null,
-    upsert: async (_tenantId, secret) => {
-      const index = rows.findIndex((row) => row.tenantId === secret.tenantId && row.key === secret.key);
-      if (index === -1) rows.push(secret);
-      else rows[index] = secret;
-      return secret;
-    },
-    delete: async () => false,
-  };
+const harness = (
+  provider: PaymentProvider,
+  initial: readonly TenantSecret[] = [],
+): ReturnType<typeof createTenantSecretRepositoryFake> & { deps: ConfigureStripeDeps } => {
+  const tenantSecrets = createTenantSecretRepositoryFake(initial);
   let id = 0;
   return {
-    rows,
+    ...tenantSecrets,
     deps: {
       appBaseUrl: 'https://app.example.test/base',
       baseDomain: 'example.test',
       singleTenantMode: false,
       payment: provider,
-      tenantSecrets,
+      tenantSecrets: tenantSecrets.repository,
       secretCrypto: {
         encrypt: (plaintext) => ({ ciphertext: `encrypted:${plaintext}`, iv: 'iv', authTag: 'tag' }),
         decrypt: () => { throw new Error('unused'); },
@@ -75,6 +69,24 @@ const harness = (provider: PaymentProvider): { deps: ConfigureStripeDeps; rows: 
       clock: { nowIso: () => '2026-08-03T12:00:00.000Z' },
     },
   };
+};
+
+const previousLiveConfiguration = (): TenantSecret[] => {
+  const values = [
+    ['stripe.webhookSecret', 'encrypted:whsec_previous'],
+    ['stripe.restrictedKey', 'encrypted:rk_live_previous'],
+    ['stripe.webhookEndpointId', 'encrypted:we_previous'],
+  ] as const;
+  return values.map(([key, ciphertext], index) => ({
+    id: `previous-${String(index)}`,
+    tenantId: 'tenant-1',
+    key,
+    ciphertext,
+    iv: 'iv',
+    authTag: 'tag',
+    maskedPreview: '••••ious',
+    updatedAt: '2026-08-02T12:00:00.000Z',
+  }));
 };
 
 describe('configureStripe', () => {
@@ -199,7 +211,48 @@ describe('configureStripe', () => {
     expect(h.rows).toEqual([]);
   });
 
-  it('deletes the newly created endpoint when signing-secret persistence fails', async () => {
+  it.each([0, 1, 2])(
+    'keeps the previous stored configuration when atomic persistence fails at position %s',
+    async (failurePosition) => {
+      const deleted: string[] = [];
+      const previous = previousLiveConfiguration();
+      const h = harness(payment(
+        async () => ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' }),
+        async (input) => {
+          deleted.push(input.webhookEndpointId);
+          return ok({ deleted: true });
+        },
+      ), previous);
+      h.failNextBatchAt(failurePosition);
+
+      await expect(configureStripe(
+        { identity: identity('owner') },
+        { restrictedKey: 'rk_live_private' },
+        h.deps,
+      )).rejects.toThrow(`tenant secret batch failed at ${String(failurePosition)}`);
+      expect(deleted).toEqual(['we_created']);
+      expect(h.rows).toEqual(previous);
+      const readiness = await getOperatorTenantReadiness(operatorCtx, { slug: 'acme' }, {
+        tenants: {
+          findBySlug: async () => ({
+            id: 'tenant-1', slug: 'acme', name: 'Acme', status: 'active',
+            plan: 'self_hosted', contentVersion: 1,
+          }),
+          findSettings: async () => null,
+        },
+        tenantAccess: { listStaffForTenant: async () => [] },
+        tenantSecrets: h.repository,
+        storageCorsCache: { read: async () => null },
+        products: { listPublishedByTenant: async () => [] },
+      });
+      expect(readiness).toMatchObject({
+        ok: true,
+        value: { stripeConfigured: true, mode: 'live', webhookEndpointRegistered: true },
+      });
+    },
+  );
+
+  it('cleans up a first-time test endpoint when atomic persistence fails', async () => {
     const deleted: string[] = [];
     const h = harness(payment(
       async () => ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' }),
@@ -208,17 +261,34 @@ describe('configureStripe', () => {
         return ok({ deleted: true });
       },
     ));
-    h.deps.tenantSecrets.upsert = async () => {
-      throw new Error('database unavailable');
-    };
+    h.failNextBatchAt(1);
 
     await expect(configureStripe(
       { identity: identity('owner') },
       { restrictedKey: 'rk_test_private', mode: 'test' },
       h.deps,
-    )).rejects.toThrow('database unavailable');
+    )).rejects.toThrow('tenant secret batch failed at 1');
     expect(deleted).toEqual(['we_created']);
     expect(h.rows).toEqual([]);
+  });
+
+  it('replaces all three records during a successful reconfiguration', async () => {
+    const h = harness(payment(async () => ok({
+      webhookEndpointId: 'we_reconfigured',
+      webhookSecret: 'whsec_reconfigured',
+    })), previousLiveConfiguration());
+
+    await expect(configureStripe(
+      { identity: identity('owner') },
+      { restrictedKey: 'rk_live_reconfigured' },
+      h.deps,
+    )).resolves.toMatchObject({ ok: true });
+
+    expect(h.rows.map(({ key, ciphertext }) => ({ key, ciphertext }))).toEqual([
+      { key: 'stripe.webhookSecret', ciphertext: 'encrypted:whsec_reconfigured' },
+      { key: 'stripe.restrictedKey', ciphertext: 'encrypted:rk_live_reconfigured' },
+      { key: 'stripe.webhookEndpointId', ciphertext: 'encrypted:we_reconfigured' },
+    ]);
   });
 });
 

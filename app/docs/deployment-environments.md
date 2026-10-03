@@ -57,6 +57,10 @@ production migrations are forward-only and use expand then contract across
 separate releases. A production release containing a constraint or destructive
 migration requires a recorded Neon restore point before promotion.
 
+The `product_download_assets_default_lineage` insert trigger is the expand step for the
+NOT NULL `lineage_id` column, so a release that omits it keeps inserting; the contract
+step is to drop the trigger once no running release omits `lineage_id`.
+
 Before it migrates or reseeds, the build compares the `DATABASE_URL` host
 fingerprint with `PRODUCTION_DATABASE_FINGERPRINT`. A deployment that is not
 production — `VERCEL_ENV` other than `production`, or an `APP_ENV` naming a

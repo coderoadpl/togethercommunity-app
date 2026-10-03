@@ -33,6 +33,7 @@ const pageScreenNames = new Set([
   'panel-settings-domains',
   'panel-settings-domains-active',
   'panel-settings-redirects',
+  'panel-settings-redirects-edit',
   'panel-storage-wizard',
   'panel-storage-wizard-connection',
   'panel-lesson-attachments',

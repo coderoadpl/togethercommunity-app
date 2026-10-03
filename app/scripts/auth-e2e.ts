@@ -247,6 +247,7 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
 
 const runMagicLinkReturnToPath = async (webBaseUrl: string): Promise<void> => {
   const protectedLessonPath = '/my/courses/course-acme/lessons/lesson-acme-intro';
+  const protectedLessonUrl = `${protectedLessonPath}#installation-notes`;
   let browser: Browser | null = null;
   try {
     browser = await chromium.launch(
@@ -258,9 +259,9 @@ const runMagicLinkReturnToPath = async (webBaseUrl: string): Promise<void> => {
       const context = await browser.newContext();
       await context.addInitScript((value) => window.localStorage.setItem('together-language', value), language);
       const page = await context.newPage();
-      await page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+      await page.goto(`${webBaseUrl}${protectedLessonUrl}`, { waitUntil: 'networkidle' });
       await page.waitForURL(
-        (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === protectedLessonPath,
+        (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === protectedLessonUrl,
         { timeout: 15000 },
       );
       await requestMagicLink(page, SMOKE_TENANT_MEMBER_EMAIL);
@@ -269,8 +270,11 @@ const runMagicLinkReturnToPath = async (webBaseUrl: string): Promise<void> => {
       const href = await devLink.getAttribute('href');
       assert(href !== null, `dev magic link was missing for ${language}`);
       await page.goto(href, { waitUntil: 'networkidle' });
-      await page.waitForURL((url) => url.pathname === protectedLessonPath, { timeout: 15000 });
-      assert(page.url() === `${webBaseUrl}${protectedLessonPath}`, `magic-link returnTo ended at ${page.url()} for ${language}`);
+      await page.waitForURL(
+        (url) => url.pathname === protectedLessonPath && url.hash === '#installation-notes',
+        { timeout: 15000 },
+      );
+      assert(page.url() === `${webBaseUrl}${protectedLessonUrl}`, `magic-link returnTo ended at ${page.url()} for ${language}`);
       await context.close();
     }
     console.log('auth-e2e: magic-link returnTo path OK');

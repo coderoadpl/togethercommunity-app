@@ -89,6 +89,14 @@ add it here before using it in either dictionary.
 | Staff preview of member UI | podgląd uczestnika | member view | Name whose view it is, without impersonation jargon. |
 | Invoice provider | iFirma | iFirma | Preserve trademark casing. |
 
+## Redirects
+
+| Concept | PL | EN | Decision notes |
+|---|---|---|---|
+| Redirect usage count | użycia | hits | Count each matching GET request once; avoid visits because the counter does not identify visitors. |
+| Protected redirect source | zablokowane źródło | locked source | A locked source can be retargeted but not deleted. Use lock / zablokuj for the action. |
+| Lesson section identifier | kotwica sekcji | section anchor | Lowercase fragment appended after `#`; do not expose fragment as the primary user-facing term. |
+
 ## Actions and tone
 
 Use the same action vocabulary throughout the product.

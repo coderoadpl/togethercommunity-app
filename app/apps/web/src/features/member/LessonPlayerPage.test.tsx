@@ -129,9 +129,9 @@ const okProgress = (completedLessonIds: string[] = []) =>
     HttpResponse.json({ ok: true, data: { progress: progress(completedLessonIds) } }),
   );
 
-const stubDesktopViewport = () => {
+const stubDesktopViewport = (reducedMotion = false) => {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('min-width'),
+    matches: query.includes('min-width') || reducedMotion && query.includes('prefers-reduced-motion'),
     media: query,
     onchange: null,
     addListener: () => undefined,
@@ -167,6 +167,7 @@ const renderPage = async (node: ReactNode) => {
 
 describe('LessonPlayerPage', () => {
   afterEach(() => {
+    window.history.replaceState(null, '', '/');
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -715,6 +716,110 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
     expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
     expect(memberOnlyRequests).toBe(0);
+  });
+
+  it('adds deterministic heading ids and scrolls anonymous previews to the hash', async () => {
+    stubDesktopViewport();
+    window.history.replaceState(null, '', '/#zolc-laka-2');
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () => HttpResponse.json({
+        ok: true,
+        data: {
+          lesson: {
+            ...lesson([
+              { type: 'html', html: '<h2 id="author-id">\u017b\u00f3\u0142\u0107 \u0141\u0105ka</h2>' },
+              { type: 'html', html: '<h3>\u017b\u00f3\u0142\u0107, \u0141\u0105ka!</h3><h3>Next section</h3><h3>Forms</h3><h3>Cookie</h3>' },
+            ]),
+            isPreview: true,
+          },
+          authenticated: false,
+        },
+      })),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const first = await screen.findByRole('heading', { name: '\u017b\u00f3\u0142\u0107 \u0141\u0105ka' });
+    const duplicate = screen.getByRole('heading', { name: '\u017b\u00f3\u0142\u0107, \u0141\u0105ka!' });
+    const next = screen.getByRole('heading', { name: 'Next section' });
+    expect(first).toHaveAttribute('id', 'zolc-laka');
+    expect(duplicate).toHaveAttribute('id', 'zolc-laka-2');
+    expect(next).toHaveAttribute('id', 'next-section');
+    expect(screen.getByRole('heading', { name: 'Forms' })).toHaveAttribute('id', 'forms-section');
+    expect(screen.getByRole('heading', { name: 'Cookie' })).toHaveAttribute('id', 'cookie-section');
+    expect(stylesAt(duplicate, 1440)).toMatchObject({
+      'scroll-margin-top': 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    });
+    await waitFor(() => expect(scrollIntoView.mock.instances).toContain(duplicate));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+
+    window.history.replaceState(null, '', '/#next-section');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(scrollIntoView.mock.instances).toContain(next));
+  });
+
+  it('does not scroll back to the same heading after lesson data refetches', async () => {
+    stubDesktopViewport();
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    let reads = 0;
+    server.use(
+      okStructure(),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', () => {
+        reads += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: lesson([
+              { type: 'html', html: '<h2>Stable heading</h2>' },
+              {
+                type: 'video',
+                storageKey: 'video',
+                streamVideoId: 'video',
+                embedUrl: `https://video.example.test/embed?signature=${String(reads)}`,
+              },
+            ]),
+            authenticated: true,
+          },
+        });
+      }),
+    );
+
+    const view = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await screen.findByRole('heading', { name: 'Stable heading' });
+    window.history.replaceState(null, '', '/#stable-heading');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    const readsBeforeRefetch = reads;
+    await view.queryClient.invalidateQueries(actions.studentLesson('l1'));
+    await waitFor(() => expect(reads).toBeGreaterThan(readsBeforeRefetch));
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses automatic hash scrolling when reduced motion is preferred', async () => {
+    stubDesktopViewport(true);
+    window.history.replaceState(null, '', '/#accessible-section');
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () => HttpResponse.json({
+        ok: true,
+        data: {
+          lesson: {
+            ...lesson([{ type: 'html', html: '<h2>Accessible section</h2>' }]),
+            isPreview: true,
+          },
+          authenticated: false,
+        },
+      })),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const heading = await screen.findByRole('heading', { name: 'Accessible section' });
+    await waitFor(() => expect(scrollIntoView.mock.instances).toContain(heading));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
 
   it('uses a signed Bunny embed url returned by the lesson endpoint', async () => {

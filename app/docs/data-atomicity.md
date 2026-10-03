@@ -91,3 +91,6 @@ owns invariants that depend on external systems or a decision spanning
 independent aggregates. New list surfaces require explicit stable ordering and
 pagination. Concurrency-sensitive aggregates must state whether they use a
 unique constraint, conditional write, row lock, or serializable transaction.
+Redirect hit counts use one tenant-and-id-scoped SQL `UPDATE` that increments
+`hit_count` and sets `last_hit_at`, so concurrent hits remain atomic without an
+interactive transaction.

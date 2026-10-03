@@ -119,6 +119,7 @@ import type {
   TenantRedirectsQueryInput,
   TenantRedirectCreateBody,
   TenantRedirectDeleteBody,
+  TenantRedirectUpdateBody,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
@@ -1676,6 +1677,12 @@ export const createTenantRedirectMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantRedirectScopes.all(), 'create'],
     call: (input: TenantRedirectCreateBody) => api.createTenantRedirect(input),
+  });
+
+export const updateTenantRedirectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRedirectScopes.all(), 'update'],
+    call: (input: TenantRedirectUpdateBody) => api.updateTenantRedirect(input),
   });
 
 export const deleteTenantRedirectMutation = (api: ApiClient) =>

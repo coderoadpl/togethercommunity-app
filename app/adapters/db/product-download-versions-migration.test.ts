@@ -78,4 +78,22 @@ describe('download version transactions', () => {
       await client.end();
     }
   });
+
+  it('defaults lineage and version for inserts from a release that omits them', async () => {
+    const client = new pg.Client({ connectionString: database.url });
+    await client.connect();
+    try {
+      const columns = 'id, tenant_id, product_id, file_name, content_type, size_bytes, storage_key, status, created_at';
+      const values = (id: string) => [id, 'version-tenant', 'version-product', `${id}.pdf`, 'application/pdf', 1, `legacy/${id}`, 'pending', NOW];
+      await client.query(`INSERT INTO product_download_assets (${columns}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, values('omitted'));
+      await client.query(`INSERT INTO product_download_assets (${columns}, lineage_id, version_number) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'explicit-lineage', 4)`, values('explicit'));
+      const result = await client.query("SELECT id, lineage_id, version_number FROM product_download_assets WHERE id IN ('omitted', 'explicit') ORDER BY id");
+      expect(result.rows).toEqual([
+        { id: 'explicit', lineage_id: 'explicit-lineage', version_number: 4 },
+        { id: 'omitted', lineage_id: 'omitted', version_number: 1 },
+      ]);
+    } finally {
+      await client.end();
+    }
+  });
 });

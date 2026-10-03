@@ -81,8 +81,13 @@ so oversized copies use the signed-link fallback before any response is committe
 The recorded asset size and
 supported content type are checked before fetching. At most two personalisations
 run concurrently per composed server instance through an injected slot adapter;
-this is an instance memory bound, not a deployment-wide limit; saturated requests use the signed-link
-fallback before fetching any object. Slots are released on success and failure. The S3-compatible reader
+this is an instance concurrency limit, not a deployment-wide limit. With the
+default Node ceiling, an instance can run two concurrent pdf-lib passes on
+20 MiB inputs. Parsed PDF objects, decoded metadata and output buffers add
+memory overhead, so 40 MiB is not a process memory ceiling. Lower
+`PERSONALISATION_MAX_BYTES` when the instance memory budget requires it.
+Saturated requests use the signed-link fallback before fetching any object.
+Slots are released on success and failure. The S3-compatible reader
 uses Content-Length to reject oversized or unknown-size objects before reading
 a body, then verifies the streamed byte count without buffering above the
 ceiling. PDF and EPUB personalisation buffers only capped files. EPUB container

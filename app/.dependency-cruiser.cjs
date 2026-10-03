@@ -42,7 +42,13 @@ module.exports = {
     {
       name: 'adapter-personalisation-external-allowlist',
       severity: 'error',
-      from: { path: '^adapters/personalisation' },
+      from: { path: '^adapters/personalisation', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: 'node_modules/(pdf-lib|fflate|@xmldom/xmldom)(/|$)' },
+    },
+    {
+      name: 'adapter-personalisation-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/personalisation/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: 'node_modules/(pdf-lib|fflate|@xmldom/xmldom|vitest)(/|$)' },
     },
     {

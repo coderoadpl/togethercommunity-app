@@ -565,7 +565,7 @@ export default tseslint.config(
               from: ['adapter-video'],
               allow: ['zod'],
             },
-            { from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom', 'vitest'] },
+            { from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom'] },
             {
               from: ['adapter-storage'],
               allow: ['node:crypto', 'node:dns', 'node:net', 'sharp', 'undici'],
@@ -853,6 +853,19 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-video'], allow: ['vitest', 'zod'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/personalisation/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom', 'vitest'] }],
         },
       ],
     },

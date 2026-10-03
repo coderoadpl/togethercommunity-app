@@ -424,6 +424,8 @@ invoices can be checked locally.
 - [@oxc-resolver/binding-wasm32-wasi@11.24.2](https://oxc.rs) - MIT
 - [@oxc-resolver/binding-win32-arm64-msvc@11.24.2](https://oxc.rs) - MIT
 - [@oxc-resolver/binding-win32-x64-msvc@11.24.2](https://oxc.rs) - MIT
+- [@pdf-lib/standard-fonts@1.0.0](https://github.com/Hopding/standard-fonts) - MIT
+- [@pdf-lib/upng@1.0.1](https://github.com/Hopding/upng#readme) - MIT
 - [@peculiar/asn1-android@2.8.0](https://github.com/PeculiarVentures/asn1-schema/tree/master/packages/android#readme) - MIT
 - [@peculiar/asn1-cms@2.8.0](https://github.com/PeculiarVentures/asn1-schema/tree/master/packages/cms#readme) - MIT
 - [@peculiar/asn1-csr@2.8.0](https://github.com/PeculiarVentures/asn1-schema/tree/master/packages/csr#readme) - MIT
@@ -618,6 +620,7 @@ invoices can be checked locally.
 - [@vitest/utils@3.2.4](https://github.com/vitest-dev/vitest/tree/main/packages/utils) - MIT
 - [@vitest/utils@4.1.11](https://github.com/vitest-dev/vitest/tree/main/packages/utils) - MIT
 - [@webcontainer/env@1.1.1](https://github.com/stackblitz/webcontainer-core) - MIT
+- [@xmldom/xmldom@0.9.12](https://github.com/xmldom/xmldom) - MIT
 - [acorn-jsx-walk@2.0.0](https://github.com/sderosiaux/acorn-jsx-walk#readme) - MIT
 - [acorn-jsx@5.3.2](https://github.com/acornjs/acorn-jsx) - MIT
 - [acorn-loose@8.5.2](https://github.com/acornjs/acorn) - MIT
@@ -772,6 +775,7 @@ invoices can be checked locally.
 - [fast-wrap-ansi@0.2.2](https://github.com/43081j/fast-wrap-ansi#readme) - MIT
 - [fd-package-json@2.0.0](https://github.com/es-tooling/fd-package-json#readme) - MIT
 - [fdir@6.5.0](https://github.com/thecodrr/fdir#readme) - MIT
+- [fflate@0.8.3](https://101arrowz.github.io/fflate) - MIT
 - [file-entry-cache@8.0.0](https://github.com/jaredwray/file-entry-cache#readme) - MIT
 - [fill-range@7.1.1](https://github.com/jonschlinkert/fill-range) - MIT
 - [find-root@1.1.0](https://github.com/js-n/find-root#readme) - MIT
@@ -958,6 +962,7 @@ invoices can be checked locally.
 - [p-locate@4.1.0](https://github.com/sindresorhus/p-locate#readme) - MIT
 - [p-locate@5.0.0](https://github.com/sindresorhus/p-locate#readme) - MIT
 - [p-try@2.2.0](https://github.com/sindresorhus/p-try#readme) - MIT
+- [pako@1.0.11](https://github.com/nodeca/pako) - (MIT AND Zlib)
 - [parent-module@1.0.1](https://github.com/sindresorhus/parent-module#readme) - MIT
 - [parse-json@5.2.0](https://github.com/sindresorhus/parse-json#readme) - MIT
 - [parse5@8.0.1](https://parse5.js.org) - MIT
@@ -969,6 +974,7 @@ invoices can be checked locally.
 - [path-type@4.0.0](https://github.com/sindresorhus/path-type#readme) - MIT
 - [pathe@2.0.3](https://github.com/unjs/pathe#readme) - MIT
 - [pathval@2.0.1](https://github.com/chaijs/pathval) - MIT
+- [pdf-lib@1.17.1](https://pdf-lib.js.org) - MIT
 - [pg-cloudflare@1.4.0](https://github.com/brianc/node-postgres#readme) - MIT
 - [pg-connection-string@2.14.0](https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string) - MIT
 - [pg-int8@1.0.1](https://github.com/charmander/pg-int8#readme) - ISC

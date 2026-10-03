@@ -246,6 +246,7 @@ export default tseslint.config(
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
         { type: 'adapter-telemetry', pattern: 'adapters/telemetry/**', mode: 'full' },
+        { type: 'adapter-personalisation', pattern: 'adapters/personalisation/**', mode: 'full' },
         { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         {
           type: 'platform-entry',
@@ -338,6 +339,7 @@ export default tseslint.config(
                 'adapter-video',
                 'adapter-storage',
                 'adapter-telemetry',
+                'adapter-personalisation',
               ],
               allow: [
                 'core-domain',
@@ -352,6 +354,7 @@ export default tseslint.config(
                 'adapter-video',
                 'adapter-storage',
                 'adapter-telemetry',
+                'adapter-personalisation',
               ],
             },
             {
@@ -373,6 +376,7 @@ export default tseslint.config(
                 'adapter-video',
                 'adapter-storage',
                 'adapter-telemetry',
+                'adapter-personalisation',
                 'app-server',
               ],
             },
@@ -565,6 +569,7 @@ export default tseslint.config(
               from: ['adapter-video'],
               allow: ['zod'],
             },
+            { from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom'] },
             {
               from: ['adapter-telemetry'],
               allow: ['mongodb', 'node:crypto', 'node:dns', 'node:net'],
@@ -862,7 +867,29 @@ export default tseslint.config(
   },
   {
     files: ['adapters/telemetry/**/*.test.{ts,tsx}'],
-    rules: { 'boundaries/external': ['error', { default: 'disallow', rules: [{ from: ['adapter-telemetry'], allow: ['mongodb', 'node:crypto', 'node:dns', 'node:net', 'vitest'] }] }] },
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-telemetry'], allow: ['mongodb', 'node:crypto', 'node:dns', 'node:net', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/personalisation/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-personalisation'], allow: ['pdf-lib', 'fflate', '@xmldom/xmldom', 'vitest'] }],
+        },
+      ],
+    },
   },
   {
     files: ['adapters/storage/**/*.test.{ts,tsx}'],

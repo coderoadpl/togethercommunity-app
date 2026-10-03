@@ -57,3 +57,51 @@ export const productDownloadUploadInputSchema = productDownloadCompleteInputSche
 });
 
 export type ProductDownloadUploadInput = z.input<typeof productDownloadUploadInputSchema>;
+
+export const copyIdentifierSchema = z.string().regex(/^copy_[A-Z2-7]{25}[AEIMQUY4]$/);
+
+export const downloadCopySchema = z.object({
+  id: z.string().min(1),
+  tenantId: z.string().min(1),
+  copyIdentifier: copyIdentifierSchema,
+  memberId: z.string().min(1),
+  orderId: z.string().min(1).nullable(),
+  productId: z.string().min(1),
+  assetId: z.string().min(1),
+  lineageId: z.string().min(1),
+  versionNumber: z.number().int().positive(),
+  fileName: z.string().min(1),
+  personalised: z.boolean(),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  bytes: z.number().int().nonnegative().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+export type DownloadCopy = z.infer<typeof downloadCopySchema>;
+
+export const DOWNLOAD_COPY_PAGE_SIZE = 50;
+
+const downloadCopyCursorSchema = z.string().transform((value, ctx) => {
+  const [createdAt, id, extra] = value.split('~');
+  if (extra !== undefined || !z.string().datetime().safeParse(createdAt).success || !id) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid copy cursor' });
+    return z.NEVER;
+  }
+  try {
+    return { createdAt: z.string().datetime().parse(createdAt), id: decodeURIComponent(id) };
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid copy cursor' });
+    return z.NEVER;
+  }
+});
+
+export const downloadCopyQuerySchema = z.object({
+  cursor: downloadCopyCursorSchema.optional(),
+  orderId: z.string().min(1).optional(),
+  memberId: z.string().min(1).optional(),
+  productId: z.string().min(1).optional(),
+  copyIdentifier: copyIdentifierSchema.optional(),
+}).refine((value) => value.orderId !== undefined || value.memberId !== undefined ||
+  (value.productId !== undefined && value.copyIdentifier !== undefined));
+
+export type DownloadCopyQuery = z.infer<typeof downloadCopyQuerySchema>;

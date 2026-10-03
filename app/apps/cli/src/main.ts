@@ -1176,6 +1176,21 @@ product.command('list').description('List products').action(
 );
 
 product
+  .command('copies')
+  .description('List issued copies for an order or member, or find a product copy')
+  .option('--order-id <id>')
+  .option('--member-id <id>')
+  .option('--product-id <id>')
+  .option('--copy-identifier <identifier>')
+  .option('--cursor <cursor>')
+  .action(withInput(z.tuple([z.object({
+    orderId: z.string().optional(), memberId: z.string().optional(),
+    productId: z.string().optional(), copyIdentifier: z.string().optional(), cursor: z.string().optional(),
+  })]), async (ctx, [query]) => {
+    emit(await ctx.api.listDownloadCopies(query), ctx.json, (data) => JSON.stringify(data.copies, null, 2));
+  }));
+
+product
   .command('create')
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')

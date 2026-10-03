@@ -1,3 +1,4 @@
+import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
   DefaultError,
@@ -2015,3 +2016,16 @@ export const disconnectTelemetryMutation = (api: ApiClient) => defineMutation({
 });
 
 export const telemetryStoreInvalidates = () => ({ queryKey: ['telemetry-store'] });
+
+export const downloadCopiesQuery = (api: ApiClient, query: Parameters<ApiClient['listDownloadCopies']>[0]) =>
+  defineCursorQuery({
+    queryKey: ['download-copies', query] as const,
+    call: ({ signal, pageParam }) => api.listDownloadCopies({
+      ...query, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => {
+      const last = page.copies.at(-1);
+      return page.copies.length === DOWNLOAD_COPY_PAGE_SIZE && last !== undefined
+        ? `${last.createdAt}~${encodeURIComponent(last.id).replaceAll('~', '%7E')}` : null;
+    },
+  });

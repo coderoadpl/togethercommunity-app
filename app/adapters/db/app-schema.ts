@@ -2480,3 +2480,26 @@ export const marketingSignupSubmissions = pgTable('marketing_signup_submissions'
   foreignKey({ columns: [t.tenantId, t.formId], foreignColumns: [marketingSignupForms.tenantId, marketingSignupForms.id], name: 'marketing_signup_submission_form_fk' }).onDelete('cascade'),
   index('marketing_signup_submissions_counts_idx').on(t.tenantId, t.formId, t.occurredAt),
 ]);
+
+export const downloadCopies = pgTable('download_copies', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  copyIdentifier: text('copy_identifier').notNull(),
+  memberId: text('member_id').notNull(),
+  orderId: text('order_id'),
+  productId: text('product_id').notNull(),
+  assetId: text('asset_id').notNull(),
+  lineageId: text('lineage_id').notNull(),
+  versionNumber: integer('version_number').notNull(),
+  fileName: text('file_name').notNull(),
+  personalised: boolean('personalised').notNull(),
+  contentHash: text('content_hash'),
+  bytes: integer('bytes'),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('download_copies_tenant_identifier_uidx').on(table.tenantId, table.copyIdentifier),
+  index('download_copies_tenant_member_idx').on(table.tenantId, table.memberId),
+  index('download_copies_tenant_order_idx').on(table.tenantId, table.orderId),
+  index('download_copies_tenant_product_idx').on(table.tenantId, table.productId),
+  check('download_copies_version_positive', sql`${table.versionNumber} > 0`),
+]);

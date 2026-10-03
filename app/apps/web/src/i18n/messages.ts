@@ -1630,6 +1630,23 @@ export interface Messages {
     downloadsHeading: string;
     downloadFile: (params: { name: string }) => string;
   };
+  downloadCopies: {
+    showMore: string;
+    member: string;
+    order: string;
+    noOrder: string;
+    product: string;
+    title: string;
+    identifier: string;
+    find: string;
+    search: string;
+    empty: string;
+    file: string;
+    version: string;
+    time: string;
+    fallback: string;
+    invalid: string;
+  };
   courseTree: {
     lockedTooltip: string;
     lockedLessonTooltip: (params: { name: string }) => string;

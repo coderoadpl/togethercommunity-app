@@ -1,6 +1,6 @@
 {
-  "hash": "170d84c311e710f0fc1fb4ad92c453b20781b56e46f283252c8b026441ccd52d",
-  "shortId": "170d84c311e7",
+  "hash": "e65a0da5c98c592ef6e1a3b01933b322b4cd45e2e574d861c69f0247decadc70",
+  "shortId": "e65a0da5c98c",
   "schema": {
     "constraints": [
       {
@@ -132,6 +132,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((version_number > 0))",
+        "name": "download_copies_version_positive",
+        "table": "download_copies"
       },
       {
         "definition": "CHECK ((version_number > 0))",
@@ -497,6 +502,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "dm_reports_tenant_id_tenants_id_fk",
         "table": "dm_reports"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "download_copies_tenant_id_fkey",
+        "table": "download_copies"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1137,6 +1147,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "dm_reports_pkey",
         "table": "dm_reports"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "download_copies_pkey",
+        "table": "download_copies"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1878,6 +1893,21 @@
         "table": "dm_reports"
       },
       {
+        "definition": "CREATE INDEX download_copies_tenant_member_idx ON download_copies USING btree (tenant_id, member_id)",
+        "name": "download_copies_tenant_member_idx",
+        "table": "download_copies"
+      },
+      {
+        "definition": "CREATE INDEX download_copies_tenant_order_idx ON download_copies USING btree (tenant_id, order_id)",
+        "name": "download_copies_tenant_order_idx",
+        "table": "download_copies"
+      },
+      {
+        "definition": "CREATE INDEX download_copies_tenant_product_idx ON download_copies USING btree (tenant_id, product_id)",
+        "name": "download_copies_tenant_product_idx",
+        "table": "download_copies"
+      },
+      {
         "definition": "CREATE INDEX email_events_tenant_occurred_idx ON email_events USING btree (tenant_id, occurred_at, sequence)",
         "name": "email_events_tenant_occurred_idx",
         "table": "email_events"
@@ -2301,6 +2331,11 @@
         "definition": "CREATE UNIQUE INDEX dm_reports_tenant_conversation_reporter_open_uidx ON dm_reports USING btree (tenant_id, conversation_id, reporter_user_id) WHERE (status = 'open'::text)",
         "name": "dm_reports_tenant_conversation_reporter_open_uidx",
         "table": "dm_reports"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX download_copies_tenant_identifier_uidx ON download_copies USING btree (tenant_id, copy_identifier)",
+        "name": "download_copies_tenant_identifier_uidx",
+        "table": "download_copies"
       },
       {
         "definition": "CREATE UNIQUE INDEX email_layouts_tenant_name_uidx ON email_layouts USING btree (tenant_id, name)",
@@ -8610,6 +8645,123 @@
           }
         ],
         "name": "marketing_lists"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "asset_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bytes",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_hash",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copy_identifier",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lineage_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "personalised",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "version_number",
+            "notNull": true,
+            "type": "integer"
+          }
+        ],
+        "name": "download_copies"
       },
       {
         "columns": [

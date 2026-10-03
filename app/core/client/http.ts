@@ -63,6 +63,7 @@ import {
   lessonAttachmentUploadOutputSchema,
   lessonAttachmentsOutputSchema,
   productDownloadAssetsOutputSchema,
+  downloadCopiesOutputSchema,
   productDownloadCompleteOutputSchema,
   productDownloadDeleteOutputSchema,
   productDownloadUploadOutputSchema,
@@ -1692,6 +1693,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listDownloadCopies: (query: { cursor?: string | undefined; memberId?: string | undefined; orderId?: string | undefined; productId?: string | undefined; copyIdentifier?: string | undefined }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.downloadCopies.method,
+      `${API_ROUTES.downloadCopies.path}?${new URLSearchParams(Object.entries(query).flatMap(([key, value]) => value === undefined ? [] : [[key, value]])).toString()}`,
+      downloadCopiesOutputSchema, undefined, signal),
+
   listProductDownloadAssets: (productId: string, signal?: AbortSignal) =>
     request(
       options,

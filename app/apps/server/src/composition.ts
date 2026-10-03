@@ -4,6 +4,11 @@ import { drainTelemetry } from '#core/server/telemetry/drain.js';
 import type { TelemetryTenantDirectory } from '#core/server/telemetry/ports.js';
 import type { TelemetryStoreDeps } from '#core/server/usecases/telemetry-store.js';
 import { createTelemetryEgressProbe } from './telemetry-egress.js';
+import { createDownloadCopyRepository, createDownloadCopyOrderReader } from '#adapters/db/download-copies.js';
+import { createDownloadCopyCrypto } from '#adapters/crypto/download-copy.js';
+import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
+import { createDownloadPersonaliser } from '#adapters/personalisation/index.js';
+import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadCopyCrypto, DownloadPersonaliser, PersonalisationSlots } from '#core/server/index.js';
 import { createSubscriptionAdoptionTransaction } from '#adapters/db/subscription-adoption.js';
 import type { SubscriptionAdoptionTransaction } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
@@ -411,6 +416,12 @@ export interface AppDeps {
   redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
+  downloadCopies: DownloadCopyRepository;
+  downloadCopyOrders: DownloadCopyOrderReader;
+  downloadCopyCrypto: DownloadCopyCrypto;
+  downloadPersonaliser: DownloadPersonaliser;
+  personalisationMaxBytes: number;
+  personalisationSlots: PersonalisationSlots;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
@@ -1335,6 +1346,12 @@ export const createDeps = (
     redirects: createTenantRedirectRepository(db),
     attachments: createLessonAttachmentRepository(db),
     downloadAssets: createProductDownloadAssetRepository(db),
+    downloadCopies: createDownloadCopyRepository(db),
+    downloadCopyOrders: createDownloadCopyOrderReader(db),
+    downloadCopyCrypto: createDownloadCopyCrypto(),
+    downloadPersonaliser: createDownloadPersonaliser(),
+    personalisationMaxBytes: env.PERSONALISATION_MAX_BYTES,
+    personalisationSlots: createPersonalisationSlots(),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),

@@ -13,8 +13,14 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(393);
-    expect(inventory.useCases).toHaveLength(308);
+    expect(inventory.routes).toHaveLength(394);
+    expect(inventory.useCases).toHaveLength(309);
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'GET /api/download-copies'),
+      inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);

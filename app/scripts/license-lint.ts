@@ -46,6 +46,15 @@ const allowedLicenses = new Set([
 
 const exceptions = new Map<string, LicenseException>([
   [
+    'pako@1.0.11',
+    {
+      license: '(MIT AND Zlib)',
+      packagePattern: /^pako$/,
+      reason: 'The pdf-lib transitive dependency combines permissive MIT and Zlib licenses; both are accepted for this version.',
+      versionPattern: /^1\.0\.11$/,
+    },
+  ],
+  [
     '@fontsource/*@*',
     {
       license: 'OFL-1.1',

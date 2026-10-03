@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 120. Route rows: 393. Exported `Ctx` use-case rows: 308.
+Closed capability count: 120. Route rows: 394. Exported `Ctx` use-case rows: 309.
 
 ## Human-readable diff
 
@@ -267,6 +267,7 @@ no changes
 | `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/download-copies` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -490,6 +491,7 @@ no changes
 | `direct-messages.ts#dmUnreadCount` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
 | `direct-messages.ts#blockDmParticipant` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
 | `direct-messages.ts#unblockDmParticipant` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `download-copies.ts#listDownloadCopies` | order:read | owner, admin | owner, admin | yes | core/server/usecases/download-copies.ts authorization call |
 | `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-reputation.ts#runReputationAlerts` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
@@ -745,12 +747,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:19` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:189` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1173` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1175` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1197` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1211` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1731` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1731` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1174` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1176` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1198` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1212` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1732` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1732` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -798,7 +800,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:66` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
-| member-scope | `core/server/usecases/product-downloads.ts:195` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
+| member-scope | `core/server/usecases/product-downloads.ts:205` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |

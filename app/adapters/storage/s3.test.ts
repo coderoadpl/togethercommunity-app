@@ -710,3 +710,37 @@ describe('createS3StorageProvider', () => {
     });
   });
 });
+
+describe('bounded object reads', () => {
+  const credentials = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'key', secretAccessKey: 'secret', region: 'us-east-1' };
+  it.each(['100', null, 'invalid'])('rejects Content-Length %s without reading any body bytes', async (length) => {
+    const read = vi.fn();
+    const cancel = vi.fn(async () => undefined);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => ({ ok: true, status: 200, headers: { get: (name) => name === 'content-length' ? length : null },
+        body: { cancel, getReader: () => ({ read, cancel, releaseLock: () => undefined }) }, text: async () => '' }),
+    });
+    expect(await storage.getObject(credentials, { maxBytes: 10 })).toMatchObject({ ok: false });
+    expect(read).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([2, 3, 4])('verifies the declared size against %s streamed bytes', async (size) => {
+    let sent = false;
+    const cancel = vi.fn(async () => undefined);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => ({ ok: true, status: 200, headers: { get: (name) => name === 'content-length' ? '3' : null },
+        body: { cancel, getReader: () => ({
+          read: async () => {
+            if (sent) return { done: true };
+            sent = true;
+            return { done: false, value: new Uint8Array(size) };
+          }, cancel, releaseLock: () => undefined,
+        }) }, text: async () => '' }),
+    });
+    expect((await storage.getObject(credentials, { maxBytes: 3 })).ok).toBe(size === 3);
+    expect(cancel).toHaveBeenCalledTimes(size > 3 ? 1 : 0);
+  });
+});

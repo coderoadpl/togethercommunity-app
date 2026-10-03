@@ -68,6 +68,7 @@ import {
   lessonAttachmentUploadInputSchema,
   lessonAttachmentViewSchema,
   productDownloadAssetMetadataSchema,
+  downloadCopySchema,
   productDownloadCompleteInputSchema,
   productDownloadAssetViewSchema,
   productDownloadUploadInputSchema,
@@ -951,6 +952,8 @@ export const productDownloadCompleteRequestSchema = productDownloadCompleteInput
 export const productDownloadCompleteOutputSchema = z.object({
   asset: productDownloadAssetMetadataSchema,
 });
+
+export const downloadCopiesOutputSchema = z.object({ copies: z.array(downloadCopySchema) });
 
 export const productDownloadAssetsOutputSchema = z.object({
   assets: z.array(productDownloadAssetMetadataSchema),
@@ -1903,6 +1906,7 @@ export const API_ROUTES = {
   lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
   lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
   lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
+  downloadCopies: { method: 'GET', path: '/api/download-copies' },
   productDownloadAssets: { method: 'GET', path: '/api/products/:productId/downloads' },
   productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
   productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
@@ -2256,6 +2260,7 @@ export const API_PATHS = {
   lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
   lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
   lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
+  downloadCopies: API_ROUTES.downloadCopies.path,
   productDownloadAssets: API_ROUTES.productDownloadAssets.path,
   productDownloadUpload: API_ROUTES.productDownloadUpload.path,
   productDownloadComplete: API_ROUTES.productDownloadComplete.path,

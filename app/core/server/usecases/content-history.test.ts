@@ -283,6 +283,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       delete: async () => false,
     },
     storage: {
+      getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'ok' }),

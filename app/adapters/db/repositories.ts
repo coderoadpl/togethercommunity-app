@@ -192,6 +192,7 @@ import {
   productGrants,
   productPrices,
   productDownloadAssets,
+  downloadCopies,
   processedPaymentEvents,
   products,
   spaces,
@@ -2698,7 +2699,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select()
         .from(members)
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)))
-        .limit(1);
+        .limit(1).for('update');
       const member = rows[0];
       if (!member) return null;
       if (member.deletedAt !== null) {
@@ -2709,6 +2710,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           avatarUrl: null,
         };
       }
+      await tx.delete(downloadCopies).where(and(eq(downloadCopies.tenantId, tenantId), eq(downloadCopies.memberId, input.memberId)));
       const [openErasureRequest] = await tx
         .select({ id: memberErasureRequests.id })
         .from(memberErasureRequests)

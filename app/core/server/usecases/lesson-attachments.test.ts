@@ -239,6 +239,7 @@ const testDeps = (actualSizeBytes = 2048) => {
   const signed: Array<{ method: 'GET' | 'PUT'; url: string; region?: string; expiresInSeconds: number }> = [];
   const removed: string[] = [];
   const storage: StorageProvider = {
+    getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
     probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),

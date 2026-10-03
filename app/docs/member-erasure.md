@@ -32,6 +32,7 @@ reconciliation must therefore finish before the next billing cycle.
 `adapters/db/repositories.ts` performs one transaction that:
 
 - records the erasure in `erasedMemberImports`;
+- deletes all tenant-scoped `download_copies` for the member;
 - end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `deletedMemberDisplay()`;
 - relabels the erased side of every `dm_reports` row — `reporter_display`,
@@ -159,3 +160,12 @@ Self-service data-subject export and deletion remain backlog item B1.
 Provider-side customer deletion and durable cancellation retry scheduling are
 not part of this flow. The operational retry and reconciliation procedure is in
 the [go-live checklist](go-live-checklist.md#15-provider-side-subscription-cancel-on-member-removal).
+
+## Download copy registry
+
+| Record | Erasure action | Retained data |
+|---|---|---|
+| `download_copies` | Delete rows for the tenant and member in the pseudonymization transaction. | None in the registry; downloaded files held by buyers cannot be recalled. |
+
+Issuance and erasure serialize on the member row. A download finishing after
+erasure cannot insert another copy record. Shared source assets are unchanged.

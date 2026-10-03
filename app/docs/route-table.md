@@ -244,6 +244,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/image-assets/branding/upload` | authenticated | mutating | branding asset upload |
 | `POST /api/image-assets/branding/complete` | authenticated | mutating | branding asset complete |
 | `GET /api/my/products` | authenticated | read | my products |
+| `GET /api/download-copies` | authenticated | read | download copies |
 | `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |

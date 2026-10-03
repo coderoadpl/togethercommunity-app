@@ -1,3 +1,4 @@
+import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { useState, type FormEvent } from 'react';
 import {
   Box,
@@ -616,6 +617,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
             </Select>
           </FormControl>
           <CommerceSummary mode={mode} memberId={member.id} />
+          <DownloadCopies query={{ memberId: member.id }} />
           <MemberTimeline memberId={member.id} />
           {member.deletedAt === null ? (
             <SectionCard title={t.members.moderationHeading}>

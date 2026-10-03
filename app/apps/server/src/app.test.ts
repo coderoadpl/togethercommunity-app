@@ -1,3 +1,5 @@
+import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
+import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
 import type { AppVars } from './app-vars.js';
@@ -249,6 +251,12 @@ const deps = (input: {
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },
+    downloadCopies: { create: async () => true, list: async () => [] },
+    downloadCopyOrders: { findLatestPaidOrderId: async () => null },
+    downloadPersonaliser: { personalise: async () => err(validation('Unsupported test file')) },
+    downloadCopyCrypto: { identifier: () => 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA', hash: () => 'a'.repeat(64) },
+    personalisationMaxBytes: 20 * 1024 * 1024,
+    personalisationSlots: createPersonalisationSlots(),
     downloadAssets: {
       create: async () => undefined,
       findById: async () => null,
@@ -423,6 +431,7 @@ const deps = (input: {
     },
     playbackTokenTtlSeconds: 21_600,
     storage: {
+      getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
@@ -3257,6 +3266,7 @@ describe('tenant domain check route', () => {
               : err(notFound(`No secret "${key}"`)),
         },
         storage: {
+          getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
           probeCors,
@@ -3841,6 +3851,7 @@ describe('lesson attachment download route', () => {
         })),
       },
       storage: {
+        getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -4061,6 +4072,76 @@ describe('purchased product download route', () => {
       ...deps().storage,
       presignGet: () => ok('https://download.example.test/signed-workbook'),
     },
+  });
+
+  it('serves personalised bytes only after recording the copy, with private attachment headers', async () => {
+    let recorded = false;
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      downloadPersonaliser: { personalise: async () => ok({ bytes: new Uint8Array([1, 2, 3]), contentType: 'application/pdf' }) },
+      downloadCopies: { create: async () => { recorded = true; return true; }, list: async () => [] },
+    } }).request(path, { headers: { host: 'acme.localhost:48730' } });
+    expect(recorded).toBe(true);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="workbook.pdf"; filename*=UTF-8\'\'workbook.pdf');
+    expect(response.headers.get('content-length')).toBe('3');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it.each(['recorded size', 'personalised output'])('redirects above the Vercel cap based on %s before committing a response', async (stage) => {
+    const recorded: boolean[] = [];
+    const limit = vercelPersonalisationMaxBytes(20 * 1024 * 1024);
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      personalisationMaxBytes: limit,
+      downloadAssets: { ...deps().downloadAssets, findById: async () => ({
+        ...asset, sizeBytes: stage === 'recorded size' ? 5 * 1024 * 1024 : 1024,
+      }) },
+      storage: { ...deps().storage,
+        presignGet: () => ok('https://download.example.test/signed-workbook'),
+        getObject: async (_input, context) => {
+          if (stage === 'recorded size') throw new Error('Oversized asset must not be fetched');
+          expect(context.maxBytes).toBe(limit);
+          return ok(new Uint8Array([1]));
+        },
+      },
+      downloadPersonaliser: { personalise: async (input) => {
+        expect(input.context.maxBytes).toBe(limit);
+        return ok({ bytes: new Uint8Array(limit + 1), contentType: 'application/pdf' });
+      } },
+      downloadCopies: { create: async (_tenantId, copy) => { recorded.push(copy.personalised); return true; }, list: async () => [] },
+    } }).request(path, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(recorded).toEqual([false]);
+  });
+
+  it('rejects HEAD without fetching bytes, personalising or issuing a copy', async () => {
+    const unexpected = async (): Promise<never> => { throw new Error('HEAD must not issue a download'); };
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      storage: { ...deps().storage, getObject: unexpected },
+      downloadPersonaliser: { personalise: unexpected },
+      downloadCopies: { create: unexpected, list: async () => [] },
+    } }).request(path, { method: 'HEAD', headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('');
+  });
+
+  it('restricts copy lookup to order-reading staff and scopes it to the resolved tenant', async () => {
+    const calls: string[] = [];
+    const lookupOverrides: Partial<AppDeps> = { downloadCopies: {
+      create: async () => true, list: async (tenantId) => { calls.push(tenantId); return []; },
+    } };
+    const lookup = `${API_PATHS.downloadCopies}?memberId=member-1`;
+    expect((await scopedApp('member', { overrides: lookupOverrides }).request(lookup, { headers: { host: 'acme.localhost:48730' } })).status).toBe(403);
+    const response = await scopedApp('owner', { overrides: lookupOverrides }).request(lookup, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(calls).toEqual([acme.id]);
   });
 
   it('redirects a purchased download to its signed object URL', async () => {

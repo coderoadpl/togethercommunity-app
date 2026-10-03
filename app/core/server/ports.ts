@@ -1415,6 +1415,12 @@ export interface BunnyTokenSigner {
 }
 
 export interface StorageProvider {
+  getObject(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+  }, options: { maxBytes: number }): Promise<Result<Uint8Array, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;
   probe(
     input: StorageConfiguration,

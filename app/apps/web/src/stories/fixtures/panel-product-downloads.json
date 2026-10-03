@@ -82,6 +82,29 @@
         "reports": []
       }
     },
+    "listDownloadCopies:[{\"copyIdentifier\":\"copy_AAAAAAAAAAAAAAAAAAAAAAAAAA\",\"productId\":\"product-download-workbook\"}]": {
+      "ok": true,
+      "value": {
+        "copies": [
+          {
+            "assetId": "download-asset-workbook-v2",
+            "bytes": 4096,
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "copyIdentifier": "copy_AAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "fileName": "workbook-creator.pdf",
+            "id": "copy-workbook-demo",
+            "lineageId": "download-asset-workbook",
+            "memberId": "member-studio-active",
+            "orderId": null,
+            "personalised": true,
+            "productId": "product-download-workbook",
+            "tenantId": "tenant-studio",
+            "versionNumber": 2
+          }
+        ]
+      }
+    },
     "listLessons:[]": {
       "ok": true,
       "value": {
@@ -625,9 +648,26 @@
             "createdAt": "2026-06-19T12:00:00.000Z",
             "fileName": "workbook-creator.pdf",
             "id": "download-asset-workbook",
+            "lineageId": "download-asset-workbook",
             "productId": "product-download-workbook",
             "sizeBytes": 2416640,
-            "status": "ready"
+            "status": "ready",
+            "supersededAt": "2026-06-29T12:00:00.000Z",
+            "versionNote": null,
+            "versionNumber": 1
+          },
+          {
+            "contentType": "application/pdf",
+            "createdAt": "2026-06-29T12:00:00.000Z",
+            "fileName": "workbook-creator.pdf",
+            "id": "download-asset-workbook-v2",
+            "lineageId": "download-asset-workbook",
+            "productId": "product-download-workbook",
+            "sizeBytes": 2426880,
+            "status": "ready",
+            "supersededAt": null,
+            "versionNote": "Corrected the diagram in chapter 4.",
+            "versionNumber": 2
           }
         ]
       }

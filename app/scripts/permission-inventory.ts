@@ -77,6 +77,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '*' || path === '/*') return 'offer:read';
   if (path === '/manifest.webmanifest') return 'offer:read';
   if (path === '/robots.txt' || path === '/sitemap.xml') return 'offer:read';
+  if (path === '/api/download-copies') return 'order:read';
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';
@@ -199,6 +200,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
+  if (path.startsWith('/api/integrations/telemetry')) return method === 'GET' ? 'tenant:secret:read' : 'tenant:settings:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
   if (path === '/api/products/update') return 'product:write';
@@ -294,6 +296,7 @@ const beforeForRoute = (
   if (path.startsWith('/api/student/')) {
     return tenantActors;
   }
+  if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
@@ -527,6 +530,7 @@ const beforeForUseCase = (
   if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts' || file === 'm2m-import-redirects.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
+  if (file === 'provision-tenant.ts' || file === 'operator-tenant-readiness.ts') return operatorSecret;
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'account-sessions.ts') return tenantActors;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'member-profile.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return tenantActors;
@@ -545,6 +549,7 @@ const beforeForUseCase = (
   if (file === 'tenant-domains.ts' || file === 'tenant-redirects.ts') {
     return capability === 'tenant:domain:read' ? staff : owner;
   }
+  if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
@@ -577,7 +582,7 @@ const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory || before === reportApiKey ? before : before === allHumans
+    const reachable = directory || before === reportApiKey || before === operatorSecret ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner

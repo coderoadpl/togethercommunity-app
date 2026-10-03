@@ -213,7 +213,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->472<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->496<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -234,6 +234,10 @@ terms-consent helpers, and Stripe webhook processing instead take explicit
 tenant inputs. The permission inventory covers exported `Ctx` functions, not
 every function in the use-case directory. Tenant-scoped repository operations
 require `tenantId`, with named platform exceptions in the tenant-scope checker.
+Session tenant creation follows `TENANT_CREATION`; an operator can add another
+workspace using the [operator provisioning runbook](docs/tenant-provisioning.md)
+without reopening public creation.
+
 Tenant lifecycle status and plan are migration-managed in this phase; no application write surface is exposed yet.
 
 ## Community

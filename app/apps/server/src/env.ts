@@ -45,6 +45,9 @@ const localDevelopmentOnly = (key: string): string =>
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
 export const envSchema = z
   .object({
+    PLATFORM_EGRESS_IP: optionalNonEmptyString.pipe(z.string().ip().optional()),
+    PLATFORM_EGRESS_ECHO_URL: optionalNonEmptyString.pipe(z.string().url().regex(/^https:\/\//u).optional()),
+    TELEMETRY_FREE_PLAN_HIDES_STATS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
     NODE_ENV: z.string().optional(),
     APP_ENV: z.string().optional(),
     PORT: z.coerce.number().int().positive().default(48730),
@@ -111,6 +114,7 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    PERSONALISATION_MAX_BYTES: z.coerce.number().int().positive().max(1024 * 1024 * 1024).default(20 * 1024 * 1024),
     PLAYBACK_TOKEN_TTL_SECONDS: z.coerce.number().int().min(300).max(86_400).default(21_600),
     TOGETHER_VISUAL_CLOCK: z.string().datetime({ offset: true }).optional(),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
@@ -137,9 +141,9 @@ export const envSchema = z
     MARKETING_SEND_SECONDS: z.coerce.number().min(1).max(50).default(50),
     MARKETING_BATCH_CAP: z.coerce.number().int().min(1).max(10000).default(1000),
     MARKETING_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).default(60000),
+    MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: z.coerce.number().int().positive().optional(),
     MARKETING_RETENTION_RAW_SNS_INBOX_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.rawSnsInboxDays),
     MARKETING_RETENTION_RENDERED_BODIES_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.renderedBodiesDays),
-    MARKETING_RETENTION_ENGAGEMENT_EVENTS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.engagementEventsDays),
     MARKETING_RETENTION_PENDING_CONSENTS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.pendingConsentsDays),
     MARKETING_RETENTION_SCHEDULER_RUNS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.schedulerRunsDays),
     MARKETING_RETENTION_SCHEDULER_IDLE_RUNS_DAYS: z.coerce.number().int().positive().default(MARKETING_RETENTION_DAYS.schedulerIdleRunsDays),
@@ -152,6 +156,7 @@ export const envSchema = z
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
     EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
+    PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_WRITES_PER_TENANT_PER_MINUTE: optionalCount,
     PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE: optionalCount,

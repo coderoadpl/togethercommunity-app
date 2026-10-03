@@ -1,3 +1,8 @@
+import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
+import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
+import { Hono } from 'hono';
+import { registerPublicRoutes } from './public-app.js';
+import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
@@ -196,6 +201,7 @@ const deps = (input: {
       }),
       listSessions: async () => [],
       revokeSessions: async () => undefined,
+      findUserByEmail: async () => null,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -245,6 +251,12 @@ const deps = (input: {
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },
+    downloadCopies: { create: async () => true, list: async () => [] },
+    downloadCopyOrders: { findLatestPaidOrderId: async () => null },
+    downloadPersonaliser: { personalise: async () => err(validation('Unsupported test file')) },
+    downloadCopyCrypto: { identifier: () => 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA', hash: () => 'a'.repeat(64) },
+    personalisationMaxBytes: 20 * 1024 * 1024,
+    personalisationSlots: createPersonalisationSlots(),
     downloadAssets: {
       create: async () => undefined,
       findById: async () => null,
@@ -363,6 +375,7 @@ const deps = (input: {
       listByTenant: async () => [],
       findByKey: async () => null,
       upsert: async (_tenantId, secret) => secret,
+      upsertMany: async (_tenantId, secrets) => [...secrets],
       delete: async () => false,
     },
     secretCrypto: {
@@ -419,6 +432,7 @@ const deps = (input: {
     },
     playbackTokenTtlSeconds: 21_600,
     storage: {
+      getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
@@ -630,7 +644,9 @@ const deps = (input: {
       findByFromPath: async () => null,
       listPage: async () => ({ redirects: [], total: 0 }),
       create: async () => 'saved' as const,
+      update: async () => null,
       deleteById: async () => false,
+      incrementHit: async () => undefined,
       commit: async () => 'saved' as const,
     },
     attachments: {
@@ -836,6 +852,7 @@ const deps = (input: {
         contentVersion: 1,
       }),
     },
+    telemetryTenantDirectory: { listTenantIds: async () => [] },
     tenantDirectory: {
       listAll: async () => tenants,
     },
@@ -3250,6 +3267,7 @@ describe('tenant domain check route', () => {
               : err(notFound(`No secret "${key}"`)),
         },
         storage: {
+          getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
           probeCors,
@@ -3834,6 +3852,7 @@ describe('lesson attachment download route', () => {
         })),
       },
       storage: {
+        getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -4002,6 +4021,11 @@ describe('purchased product download route', () => {
   };
   const asset: ProductDownloadAsset = {
     id: 'download-asset',
+    lineageId: 'download-asset',
+    versionNumber: 1,
+    versionNote: null,
+    supersededAt: null,
+    replacesAssetId: null,
     tenantId: acme.id,
     productId: downloadProduct.id,
     fileName: 'workbook.pdf',
@@ -4051,6 +4075,76 @@ describe('purchased product download route', () => {
     },
   });
 
+  it('serves personalised bytes only after recording the copy, with private attachment headers', async () => {
+    let recorded = false;
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      downloadPersonaliser: { personalise: async () => ok({ bytes: new Uint8Array([1, 2, 3]), contentType: 'application/pdf' }) },
+      downloadCopies: { create: async () => { recorded = true; return true; }, list: async () => [] },
+    } }).request(path, { headers: { host: 'acme.localhost:48730' } });
+    expect(recorded).toBe(true);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="workbook.pdf"; filename*=UTF-8\'\'workbook.pdf');
+    expect(response.headers.get('content-length')).toBe('3');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it.each(['recorded size', 'personalised output'])('redirects above the Vercel cap based on %s before committing a response', async (stage) => {
+    const recorded: boolean[] = [];
+    const limit = vercelPersonalisationMaxBytes(20 * 1024 * 1024);
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      personalisationMaxBytes: limit,
+      downloadAssets: { ...deps().downloadAssets, findById: async () => ({
+        ...asset, sizeBytes: stage === 'recorded size' ? 5 * 1024 * 1024 : 1024,
+      }) },
+      storage: { ...deps().storage,
+        presignGet: () => ok('https://download.example.test/signed-workbook'),
+        getObject: async (_input, context) => {
+          if (stage === 'recorded size') throw new Error('Oversized asset must not be fetched');
+          expect(context.maxBytes).toBe(limit);
+          return ok(new Uint8Array([1]));
+        },
+      },
+      downloadPersonaliser: { personalise: async (input) => {
+        expect(input.context.maxBytes).toBe(limit);
+        return ok({ bytes: new Uint8Array(limit + 1), contentType: 'application/pdf' });
+      } },
+      downloadCopies: { create: async (_tenantId, copy) => { recorded.push(copy.personalised); return true; }, list: async () => [] },
+    } }).request(path, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(recorded).toEqual([false]);
+  });
+
+  it('rejects HEAD without fetching bytes, personalising or issuing a copy', async () => {
+    const unexpected = async (): Promise<never> => { throw new Error('HEAD must not issue a download'); };
+    const response = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      storage: { ...deps().storage, getObject: unexpected },
+      downloadPersonaliser: { personalise: unexpected },
+      downloadCopies: { create: unexpected, list: async () => [] },
+    } }).request(path, { method: 'HEAD', headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('');
+  });
+
+  it('restricts copy lookup to order-reading staff and scopes it to the resolved tenant', async () => {
+    const calls: string[] = [];
+    const lookupOverrides: Partial<AppDeps> = { downloadCopies: {
+      create: async () => true, list: async (tenantId) => { calls.push(tenantId); return []; },
+    } };
+    const lookup = `${API_PATHS.downloadCopies}?memberId=member-1`;
+    expect((await scopedApp('member', { overrides: lookupOverrides }).request(lookup, { headers: { host: 'acme.localhost:48730' } })).status).toBe(403);
+    const response = await scopedApp('owner', { overrides: lookupOverrides }).request(lookup, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(calls).toEqual([acme.id]);
+  });
+
   it('redirects a purchased download to its signed object URL', async () => {
     const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4069,6 +4163,45 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+  it('accepts legacy bodyless completion and rejects malformed version JSON', async () => {
+    const app = scopedApp('owner', { overrides: overrides(true) });
+    const completePath = API_PATHS.productDownloadComplete
+      .replace(':productId', downloadProduct.id).replace(':assetId', asset.id);
+    const headers = { host: 'acme.localhost:48730' };
+    const legacy = await app.request(completePath, { method: 'POST', headers });
+    expect(legacy.status).toBe(200);
+    expect(await legacy.json()).toMatchObject({ ok: true, data: { asset: { id: asset.id, versionNumber: 1 } } });
+    const malformed = await app.request(completePath, { method: 'POST', headers, body: '{' });
+    expect(malformed.status).toBe(400);
+  });
+
+  it('serializes buyer history with separate protected paths and no storage keys', async () => {
+    const base = deps();
+    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z' };
+    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata' };
+    const app = scopedApp('member', { overrides: {
+      grants: {
+        ...base.grants,
+        listGrantedProducts: async () => [downloadProduct],
+        listForMemberWithProductNames: async () => [{
+          mode: 'live', id: grant.id, productId: downloadProduct.id, productName: downloadProduct.title,
+          source: 'stripe', startsAt: grant.startsAt, expiresAt: null, active: true,
+        }],
+      },
+      downloadAssets: { ...base.downloadAssets, listReadyByProduct: async () => [previous, latest] },
+    } });
+    const response = await app.request(API_PATHS.myProducts, { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ ok: true, data: { products: [{ downloads: [{
+      id: latest.id, lineageId: asset.lineageId, versionNumber: 2, versionNote: 'Errata',
+      downloadPath: '/api/my/products/digital-download/downloads/download-v2',
+      previousVersions: [{ id: asset.id, downloadPath: path, supersededAt: previous.supersededAt }],
+    }] }] } });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('replacesAssetId');
+  });
+
 });
 
 describe('public tenant image asset route', () => {
@@ -4747,7 +4880,7 @@ describe('post search route', () => {
 });
 
 describe('public route manifest', () => {
-  it('records the seven approved mutating surfaces', () => {
+  it('records the eight approved mutating surfaces', () => {
     const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
       .filter((route) => route.mutating)
       .map((route) => route.why));
@@ -4760,6 +4893,7 @@ describe('public route manifest', () => {
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
+      'Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only',
     ]));
   });
 });
@@ -5091,7 +5225,11 @@ describe('tenant redirects', () => {
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5103,7 +5241,11 @@ describe('tenant redirects', () => {
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
+      targetAnchor: null,
       permanent: false,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5115,7 +5257,11 @@ describe('tenant redirects', () => {
       targetKind: 'lesson',
       targetId: 'acme-lesson-let',
       targetPath: lessonPagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
@@ -5127,14 +5273,41 @@ describe('tenant redirects', () => {
       targetKind: 'course',
       targetId: 'acme-course-js',
       targetPath: coursePagePath,
+      targetAnchor: null,
       permanent: true,
+      locked: false,
+      hitCount: 0,
+      lastHitAt: null,
       origin: 'import',
       createdBy: null,
       createdAt: '1998-07-12T00:00:00.000Z',
     },
+    {
+      id: 'redirect-printed-guide',
+      tenantId: acme.id,
+      fromPath: '/printed/guide',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: 'installation-notes',
+      permanent: false,
+      locked: true,
+      hitCount: 12,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
   ];
 
-  const redirectApp = (owner: Tenant = acme) => {
+  const redirectApp = (owner: Tenant = acme, tracking?: {
+    increments?: string[];
+    warnings?: string[];
+    failIncrement?: boolean;
+    hitLimit?: number;
+    hitClaims?: Array<{ scope: string; key: string; limit: number }>;
+  }) => {
+    let hitClaimCount = 0;
     const base = deps({
       domains: [tenantDomainFixture({
         id: 'domain-acme',
@@ -5143,15 +5316,40 @@ describe('tenant redirects', () => {
         kind: 'custom',
         verified: true,
       })],
+      logger: { error: () => undefined, warn: (message) => tracking?.warnings?.push(message) },
+      ...(tracking === undefined ? {} : {
+        rateLimitBuckets: {
+          claim: async (input) => {
+            if (input.scope === 'redirect-hit') {
+              tracking.hitClaims?.push({ scope: input.scope, key: input.key, limit: input.limit });
+              hitClaimCount += 1;
+              return hitClaimCount <= input.limit;
+            }
+            return true;
+          },
+          purgeExpired: async () => 0,
+        },
+      }),
     });
     const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
     return buildApp({
       ...base,
+      publicRateLimitPolicies: {
+        ...base.publicRateLimitPolicies,
+        redirectHitsPerRedirect: {
+          ...base.publicRateLimitPolicies.redirectHitsPerRedirect,
+          limit: tracking?.hitLimit ?? base.publicRateLimitPolicies.redirectHitsPerRedirect.limit,
+        },
+      },
       redirects: {
         ...base.redirects,
         findByFromPath: async (tenantId, fromPath) =>
           owned.find((redirect) =>
             redirect.tenantId === tenantId && redirect.fromPath === fromPath) ?? null,
+        incrementHit: async (_tenantId, redirectId) => {
+          tracking?.increments?.push(redirectId);
+          if (tracking?.failIncrement === true) throw new Error('counter unavailable');
+        },
       },
     });
   };
@@ -5209,6 +5407,98 @@ describe('tenant redirects', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(`${lessonPagePath}?utm_source=newsletter`);
+  });
+
+  it('increments once and places the lesson anchor after the preserved query string', async () => {
+    const increments: string[] = [];
+    const response = await redirectApp(acme, { increments }).request(
+      '/printed/guide?edition=print',
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}?edition=print#installation-notes`);
+    expect(increments).toEqual(['redirect-printed-guide']);
+  });
+
+  it('does not update a counter when no redirect matches', async () => {
+    const increments: string[] = [];
+    const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+    await redirectApp(acme, { increments, hitClaims }).request('/course/python', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(increments).toEqual([]);
+    expect(hitClaims).toEqual([]);
+  });
+
+  it('counts 61 matched requests from one address', async () => {
+    const increments: string[] = [];
+    const app = redirectApp(acme, { increments });
+
+    const responses = await Promise.all(Array.from({ length: 61 }, () => app.request(
+      '/printed/guide',
+      { headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' } },
+    )));
+
+    expect(responses.every((response) => response.status === 302)).toBe(true);
+    expect(increments).toHaveLength(61);
+  });
+
+  it('still redirects without incrementing when the per-redirect hit bucket is exhausted', async () => {
+    const increments: string[] = [];
+    const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+    const app = redirectApp(acme, {
+      increments,
+      hitLimit: 2,
+      hitClaims,
+    });
+    const first = await app.request('/printed/guide', {
+      headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' },
+    });
+    const second = await app.request('/printed/guide', {
+      headers: { host: 'acme.localhost:48730', 'x-forwarded-for': '203.0.113.42' },
+    });
+    const third = await app.request('/printed/guide', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect([first.status, second.status, third.status]).toEqual([302, 302, 302]);
+    expect(third.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
+    expect(increments).toEqual(['redirect-printed-guide', 'redirect-printed-guide']);
+    expect(hitClaims).toEqual(Array.from({ length: 3 }, () => ({
+      scope: 'redirect-hit',
+      key: 't-acme:redirect-printed-guide',
+      limit: 2,
+    })));
+  });
+
+  it('warns and still redirects when the hit increment fails', async () => {
+    const warnings: string[] = [];
+    const response = await redirectApp(acme, { warnings, failIncrement: true }).request(
+      '/printed/guide',
+      { headers: { host: 'acme.localhost:48730' } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
+    expect(warnings).toEqual([
+      '[tenant-redirect] hit increment failed for t-acme/redirect-printed-guide',
+    ]);
+  });
+
+  it('does not count a HEAD request', async () => {
+    const increments: string[] = [];
+
+    const response = await redirectApp(acme, { increments }).request('/printed/guide', {
+      method: 'HEAD',
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${lessonPagePath}#installation-notes`);
+    expect(increments).toEqual([]);
   });
 
   it.each([
@@ -7945,7 +8235,10 @@ describe('impersonation HTTP surface', () => {
     expect(mutations.length).toBeGreaterThan(100);
     for (const route of mutations) {
       const path = route.path.replaceAll(/:[^/]+/g, 'x').replaceAll('*', 'x');
-      const response = await app.request(path, { method: route.method, headers: impersonated });
+      const requestHeaders = route.path === API_PATHS.operatorTenantProvision
+        ? { ...impersonated, [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-operator-secret' }
+        : impersonated;
+      const response = await app.request(path, { method: route.method, headers: requestHeaders });
       expect(response.status, `${route.method} ${path}`).toBe(403);
       expect(await response.json(), `${route.method} ${path}`).toMatchObject({
         error: { code: 'impersonation_read_only' },
@@ -8543,4 +8836,42 @@ describe('Stripe subscription adoption authorization', () => {
     expect((await app.request(API_PATHS.adoptStripeSubscription, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(403);
     expect((await app.request(API_PATHS.listStripeSubscriptions, { headers })).status).toBe(403);
   });
+});
+
+
+describe('operator provisioning public-surface regression', () => {
+  it('mounts operator routes only on the internal surface and excludes public manifests', async () => {
+    const base = deps();
+    const publicApp = new Hono<AppVars>();
+    registerPublicRoutes(publicApp, base);
+    for (const route of [API_ROUTES.operatorTenantProvision, API_ROUTES.operatorTenantReadiness]) {
+      expect(publicRouteManifestEntry(route)).toBeUndefined();
+      expect(publicApp.routes.some((candidate) => candidate.path === route.path)).toBe(false);
+      expect(selfAuthenticatingRouteManifestEntry(route)?.mechanism).toBe('Operator secret');
+      expect(collectRuntimeRoutes().some((candidate) => candidate.path === route.path && candidate.method === route.method)).toBe(true);
+    }
+    const app = buildApp(base);
+    expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', body: '{}' })).status).toBe(401);
+    expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'))).status).toBe(401);
+  });
+});
+
+
+it.each([undefined, 'wrong-operator-secret'])('rejects operator authentication before resolving an impersonation cookie', async (secret) => {
+  const base = deps();
+  const getAuthenticatedUser = vi.fn(base.authPort.getAuthenticatedUser);
+  const findBySlug = vi.fn(base.tenants.findBySlug);
+  const app = buildApp({
+    ...base,
+    authPort: { ...base.authPort, getAuthenticatedUser },
+    tenants: { ...base.tenants, findBySlug },
+  });
+  const headers = {
+    cookie: `${impersonationCookieName(base.secureCookies)}=untrusted-view-cookie`,
+    ...(secret === undefined ? {} : { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }),
+  };
+  expect((await app.request(API_PATHS.operatorTenantProvision, { method: 'POST', headers, body: '{}' })).status).toBe(401);
+  expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).toBe(401);
+  expect(getAuthenticatedUser).not.toHaveBeenCalled();
+  expect(findBySlug).not.toHaveBeenCalled();
 });

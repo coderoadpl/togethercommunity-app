@@ -103,6 +103,15 @@ describe('getTenantSettings', () => {
       value: { ...settings, supportConfigured: true },
     });
   });
+
+  it.each([null, 'admin'] as const)('omits telemetry store settings for role %s', async (role) => {
+    const result = await getTenantSettings({ identity: identity(role) }, deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Expected tenant settings');
+    expect(result.value).toMatchObject({ name: settings.name });
+    expect(result.value).not.toHaveProperty('telemetryStore');
+  });
 });
 
 describe('updateTenantSettings', () => {

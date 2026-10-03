@@ -11,6 +11,9 @@ add it here before using it in either dictionary.
 
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
+| Instance operator | operator instancji | instance operator | Authenticated with the operator secret, independently of workspace roles. |
+| Operator workspace creation | utworzenie obszaru roboczego przez operatora | operator workspace provisioning | Creates the workspace and grants ownership to an existing verified account. |
+| Workspace readiness | gotowość obszaru roboczego | workspace readiness | A read-only checklist of persisted configuration evidence. |
 | Person with access | uczestnik | member | Use across courses, community, the panel, and email; avoid course-only labels. Do not use kursant or członek in user-facing copy. Seed data display names may keep legacy Kursant fixtures. |
 | Person running a workspace | twórca | creator | A persona word, never a permission label. |
 | Workspace owner role | właściciel | owner | Use in role labels and permission descriptions. |
@@ -36,6 +39,14 @@ add it here before using it in either dictionary.
 | Adopting an existing provider subscription | Podłącz subskrypcję Stripe | Adopt Stripe subscription | Action label for connecting an existing Stripe subscription to a member. Progress copy uses Podłączanie subskrypcji… / Adopting subscription…; hints explain that billing continues unchanged; refusal and timeline copy use the same adoption concept. |
 | Imported price | cena zaimportowana | imported price | Compact price label is Zaimportowana / Imported. Imported recurring periods use localized interval copy from the importedPeriod dictionary key and must not imply the price is active for new checkout. |
 | Free sample content | bezpłatna lekcja próbna | free preview lesson | Use consistently across sample content. |
+| Copy identifier | identyfikator kopii | copy identifier | An opaque identifier stored only in downloaded file metadata. |
+| Additional copy history | Pokaż więcej kopii | Show more copies | Loads the next page of issued download copies. |
+| Copy recipient | odbiorca kopii | copy recipient | The member linked to an issued download copy. |
+| Copy order | zamówienie | order | Show Brak zamówienia / No order when no paid order is linked. |
+| Issued copies | wydane kopie | issued copies | The private staff registry of download attempts, including unpersonalised fallbacks. |
+| File version | wersja pliku | file version | A numbered revision of a downloadable file. |
+| Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
+| Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure
 
@@ -84,6 +95,14 @@ add it here before using it in either dictionary.
 | Setup status | Skonfigurowane / Nieskonfigurowane | Configured / Not configured | One adjectival pair throughout setup checklists. |
 | Staff preview of member UI | podgląd uczestnika | member view | Name whose view it is, without impersonation jargon. |
 | Invoice provider | iFirma | iFirma | Preserve trademark casing. |
+
+## Redirects
+
+| Concept | PL | EN | Decision notes |
+|---|---|---|---|
+| Redirect usage count | użycia | hits | Count each matching GET request once; avoid visits because the counter does not identify visitors. |
+| Protected redirect source | zablokowane źródło | locked source | A locked source can be retargeted but not deleted. Use lock / zablokuj for the action. |
+| Lesson section identifier | kotwica sekcji | section anchor | Lowercase fragment appended after `#`; do not expose fragment as the primary user-facing term. |
 
 ## Actions and tone
 
@@ -139,3 +158,14 @@ Never in Polish copy: member, workspace, tenant, checkout (as a noun), billing
 postęp or postępy), community (use społeczność). Technical proper nouns are fine
 (Stripe, webhook, restricted key, PDF, HTML, CSV, JSON); gloss in parentheses
 when a Polish label exists, such as klucz ograniczony (restricted key).
+
+## Customer-owned statistics storage
+
+| Concept | English | Polish |
+|---|---|---|
+| Telemetry integration tab | Statistics | Statystyki |
+| Customer-controlled analytics database | Statistics store | Magazyn statystyk |
+| MongoDB connection URI | Connection string | Ciąg połączenia |
+| Outbound platform networking | Outbound IP address | Wychodzący adres IP |
+| Pending replication | Statistics sync | Synchronizacja statystyk |
+| Coverage lost at buffer capacity | Missing events | Brakujące zdarzenia |

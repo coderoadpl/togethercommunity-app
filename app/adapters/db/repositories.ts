@@ -27,6 +27,7 @@ import {
   memberGrantSchema,
   memberSubscriptionSchema,
   normalizeEmail,
+  tenantSchema,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -191,6 +192,7 @@ import {
   productGrants,
   productPrices,
   productDownloadAssets,
+  downloadCopies,
   processedPaymentEvents,
   products,
   spaces,
@@ -770,22 +772,66 @@ export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAss
         ))
         .orderBy(asc(productDownloadAssets.createdAt))
     ).map(parseProductDownloadAsset),
-  markReady: async (tenantId, assetId, sizeBytes) => {
-    const rows = await db
-      .update(productDownloadAssets)
-      .set({ status: 'ready', sizeBytes })
-      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
-      .returning();
-    const row = rows[0];
-    return row ? parseProductDownloadAsset(row) : null;
-  },
-  delete: async (tenantId, assetId) => {
-    const rows = await db
-      .delete(productDownloadAssets)
-      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
-      .returning({ id: productDownloadAssets.id });
-    return rows.length > 0;
-  },
+  markReady: async (tenantId, assetId, sizeBytes, version) => db.transaction(async (tx) => {
+    const scope = and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId));
+    const [initial] = await tx.select().from(productDownloadAssets).where(scope);
+    if (!initial) return null;
+    await tx.select({ id: products.id }).from(products)
+      .where(and(eq(products.tenantId, tenantId), eq(products.id, initial.productId))).for('update');
+    const [asset] = await tx.select().from(productDownloadAssets).where(scope);
+    if (!asset) return null;
+    if (asset.status === 'ready') return parseProductDownloadAsset(asset);
+    let lineageId = asset.id;
+    let versionNumber = 1;
+    if (version.replacesAssetId !== undefined) {
+      const [replacement] = await tx.select().from(productDownloadAssets).where(and(
+        eq(productDownloadAssets.tenantId, tenantId),
+        eq(productDownloadAssets.productId, asset.productId),
+        eq(productDownloadAssets.id, version.replacesAssetId),
+        eq(productDownloadAssets.status, 'ready'),
+      ));
+      if (!replacement) return null;
+      lineageId = replacement.lineageId;
+      const [latest] = await tx.select().from(productDownloadAssets).where(and(
+        eq(productDownloadAssets.tenantId, tenantId),
+        eq(productDownloadAssets.productId, asset.productId),
+        eq(productDownloadAssets.lineageId, lineageId),
+      )).orderBy(desc(productDownloadAssets.versionNumber)).limit(1);
+      versionNumber = (latest?.versionNumber ?? 0) + 1;
+      await tx.update(productDownloadAssets).set({ supersededAt: version.now }).where(and(
+        eq(productDownloadAssets.tenantId, tenantId),
+        eq(productDownloadAssets.productId, asset.productId),
+        eq(productDownloadAssets.lineageId, lineageId),
+        eq(productDownloadAssets.status, 'ready'),
+        isNull(productDownloadAssets.supersededAt),
+      ));
+    }
+    const [ready] = await tx.update(productDownloadAssets)
+      .set({ status: 'ready', sizeBytes, lineageId, versionNumber, versionNote: version.versionNote, replacesAssetId: null })
+      .where(scope).returning();
+    return ready ? parseProductDownloadAsset(ready) : null;
+  }),
+  delete: async (tenantId, assetId) => db.transaction(async (tx) => {
+    const scope = and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId));
+    const [initial] = await tx.select().from(productDownloadAssets).where(scope);
+    if (!initial) return false;
+    await tx.select({ id: products.id }).from(products)
+      .where(and(eq(products.tenantId, tenantId), eq(products.id, initial.productId))).for('update');
+    const [deleted] = await tx.delete(productDownloadAssets).where(scope).returning();
+    if (!deleted) return false;
+    if (deleted.status === 'ready' && deleted.supersededAt === null) {
+      const [latest] = await tx.select().from(productDownloadAssets).where(and(
+        eq(productDownloadAssets.tenantId, tenantId),
+        eq(productDownloadAssets.productId, deleted.productId),
+        eq(productDownloadAssets.lineageId, deleted.lineageId),
+        eq(productDownloadAssets.status, 'ready'),
+      )).orderBy(desc(productDownloadAssets.versionNumber)).limit(1);
+      if (latest) await tx.update(productDownloadAssets).set({ supersededAt: null }).where(and(
+        eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, latest.id),
+      ));
+    }
+    return true;
+  }),
 });
 
 /**
@@ -2653,7 +2699,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select()
         .from(members)
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)))
-        .limit(1);
+        .limit(1).for('update');
       const member = rows[0];
       if (!member) return null;
       if (member.deletedAt !== null) {
@@ -2664,6 +2710,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           avatarUrl: null,
         };
       }
+      await tx.delete(downloadCopies).where(and(eq(downloadCopies.tenantId, tenantId), eq(downloadCopies.memberId, input.memberId)));
       const [openErasureRequest] = await tx
         .select({ id: memberErasureRequests.id })
         .from(memberErasureRequests)
@@ -3818,6 +3865,35 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
     if (!row) throw new Error('tenant_secrets upsert returned no row');
     return parseSecret(row);
   },
+  upsertMany: async (tenantId, secrets) => {
+    if (secrets.length === 0) return [];
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(tenantSecrets)
+        .values(secrets.map((secret) => ({
+          id: secret.id,
+          tenantId,
+          key: secret.key,
+          ciphertext: secret.ciphertext,
+          iv: secret.iv,
+          authTag: secret.authTag,
+          maskedPreview: secret.maskedPreview,
+          updatedAt: secret.updatedAt,
+        })))
+        .onConflictDoUpdate({
+          target: [tenantSecrets.tenantId, tenantSecrets.key],
+          set: {
+            ciphertext: sql`excluded.ciphertext`,
+            iv: sql`excluded.iv`,
+            authTag: sql`excluded.auth_tag`,
+            maskedPreview: sql`excluded.masked_preview`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        })
+        .returning();
+      return rows.map(parseSecret);
+    });
+  },
   delete: async (tenantId, key) => {
     const rows = await db
       .delete(tenantSecrets)
@@ -4332,10 +4408,24 @@ export const createTenantRepository = (
   },
   createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
       if (options?.requireEmpty === true) {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
         const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
         if (existing.length > 0) return null;
+      }
+      if (options?.idempotentOwner === true) {
+        const verifiedOwner = await tx.select({ id: user.id }).from(user)
+          .where(and(eq(user.id, input.ownerGrant.userId), eq(user.emailVerified, true))).for('share');
+        if (verifiedOwner.length !== 1) return null;
+        const existing = await tx.select().from(tenants).where(eq(tenants.slug, input.tenant.slug)).limit(1);
+        const tenant = existing[0];
+        if (tenant !== undefined) {
+          const owners = await tx.select({ userId: tenantAdmins.userId }).from(tenantAdmins)
+            .where(and(eq(tenantAdmins.tenantId, tenant.id), eq(tenantAdmins.role, 'owner')));
+          return owners.length === 1 && owners[0]?.userId === input.ownerGrant.userId
+            ? tenantSchema.parse(tenant)
+            : null;
+        }
       }
       const rows = await tx
         .insert(tenants)
@@ -4356,6 +4446,9 @@ export const createTenantRepository = (
         userId: input.ownerGrant.userId,
         role: input.ownerGrant.staffRole,
       });
+      if (input.provisionAudit !== undefined) {
+        await tx.insert(tenantAuditEvents).values(input.provisionAudit);
+      }
       return tenant;
     }),
   hasAny: async () => {

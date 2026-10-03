@@ -897,6 +897,41 @@
       "when": 1789200001000,
       "tag": "0127_stripe_test_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1790964000000,
+      "tag": "0128_redirect_print_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1790964000001,
+      "tag": "0129_product_download_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1790964000002,
+      "tag": "0130_product_download_lineage_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1790964000003,
+      "tag": "0131_download_copies",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1790964000004,
+      "tag": "0132_telemetry_outbox",
+      "breakpoints": true
     }
   ]
 }

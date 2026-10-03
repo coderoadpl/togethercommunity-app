@@ -1,3 +1,7 @@
+import { telemetryStoreInputSchema } from '#core/contract/index.js';
+import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
+import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
+import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
 import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
@@ -109,6 +113,7 @@ import {
   productsUnpublishInputSchema,
   productsUpdateInputSchema,
   productDownloadUploadRequestSchema,
+  productDownloadCompleteRequestSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   schedulerRunsQuerySchema,
   simulatePurchaseInputSchema,
@@ -132,6 +137,7 @@ import {
   tenantRedirectsQuerySchema,
   tenantRedirectCreateSchema,
   tenantRedirectDeleteSchema,
+  tenantRedirectUpdateSchema,
   tenantSettingsUpdateInputSchema,
   impersonationStartRequestSchema,
   tenantAuditEventsQuerySchema,
@@ -282,6 +288,7 @@ import {
   getTenantSettings,
   listTenantRedirects,
   createTenantRedirect,
+  updateTenantRedirect,
   deleteTenantRedirect,
   getTenantSetupReadiness,
   toRenderedPublicPost,
@@ -314,6 +321,7 @@ import {
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductDownloadAssets,
+  listDownloadCopies,
   listProductPrices,
   listDmReports,
   listReports,
@@ -525,6 +533,10 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
 });
 
 const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAssetMetadata => ({
+  lineageId: asset.lineageId,
+  versionNumber: asset.versionNumber,
+  versionNote: asset.versionNote,
+  supersededAt: asset.supersededAt,
   id: asset.id,
   productId: asset.productId,
   fileName: asset.fileName,
@@ -534,7 +546,8 @@ const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAs
   createdAt: asset.createdAt,
 });
 
-const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetView => ({
+const productDownloadView = (asset: ProductDownloadAsset & { previousVersions?: ProductDownloadAsset[] }): ProductDownloadAssetView => ({
+  previousVersions: (asset.previousVersions ?? []).map(productDownloadView),
   ...productDownloadMetadata(asset),
   downloadPath: API_PATHS.memberProductDownload
     .replace(':productId', encodeURIComponent(asset.productId))
@@ -741,6 +754,7 @@ export const registerAuthSendLogLatestRoute = (
 
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
+  registerOperatorTenantRoutes(app, deps);
   const sesWebhookBaseUrl = createSesWebhookBaseUrlResolver({
     tenants: deps.tenants,
     routing: deps,
@@ -1307,7 +1321,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       campaigns: deps.marketing.campaigns,
       sends: deps.marketing.campaignSends,
     });
-    return respond(result.ok ? ok({ campaigns: result.value }) : result);
+    const hidden = await telemetryReportsHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok ? ok({ campaigns: hidden.value ? result.value.map(campaignWithoutStatistics) : result.value }) : result);
   });
 
   app.post(API_PATHS.marketingCampaigns, async (c) => {
@@ -1345,7 +1361,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       { campaignId: c.req.param('id') },
       { campaigns: deps.marketing.campaigns, sends: deps.marketing.campaignSends },
     );
-    return respond(result.ok ? ok({ campaign: result.value }) : result);
+    const hidden = await telemetryReportsHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok ? ok({ campaign: hidden.value ? campaignWithoutStatistics(result.value) : result.value }) : result);
   });
 
   app.post(API_PATHS.marketingCampaignUpdate, async (c) => {
@@ -1660,11 +1678,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const kind = z.enum(['transactional', 'marketing']).safeParse(c.req.param('kind'));
     if (!kind.success) return respond(err(validation('Invalid e-mail kind', kind.error.flatten())));
-    return respond(await getEmailSend(
+    const result = await getEmailSend(
       ctxOf(c),
       { kind: kind.data, id: c.req.param('id') },
       { sends: deps.marketing.emailSends, events: deps.marketing.events },
-    ));
+    );
+    const hidden = await telemetryDeliveryEngagementHidden(ctxOf(c), deps.telemetryStore);
+    if (!hidden.ok) return respond(hidden);
+    return respond(result.ok && hidden.value ? ok(sendWithoutEngagement(result.value)) : result);
   });
 
   app.get(API_PATHS.memberEmailSends, async (c) => {
@@ -1989,11 +2010,23 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.productDownloadComplete, async (c) => {
+    const raw = await c.req.text();
+    let body: unknown = {};
+    if (raw.trim() !== '') {
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        return respond(err(validation('Invalid version details')));
+      }
+    }
+    const parsed = productDownloadCompleteRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid version details', parsed.error.flatten())));
     const result = await completeProductDownloadUpload(
       ctxOf(c),
       c.req.param('productId'),
       c.req.param('assetId'),
       deps,
+      parsed.data,
     );
     return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value) }) : result);
   });
@@ -2077,6 +2110,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
   });
 
+  app.get(API_PATHS.downloadCopies, async (c) => respond(await listDownloadCopies(ctxOf(c), c.req.query(), deps)));
+
   app.get(API_PATHS.memberProductDownload, async (c) => {
     const result = await getProductDownload(
       ctxOf(c),
@@ -2086,7 +2121,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
     if (!result.ok) return respond(result);
     c.header('Cache-Control', 'no-store');
-    return c.redirect(result.value, 302);
+    if (result.value.kind === 'redirect') return c.redirect(result.value.url, 302);
+    return new Response(new Uint8Array(result.value.bytes), {
+      headers: {
+        'Content-Type': result.value.contentType,
+        'Content-Disposition': `attachment; filename="${result.value.fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(result.value.fileName).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`,
+        'Content-Length': String(result.value.bytes.byteLength),
+        'Cache-Control': 'no-store',
+      },
+    });
   });
 
   app.get(API_PATHS.members, async (c) => {
@@ -2327,6 +2370,14 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result.ok ? ok({ redirect: result.value }) : result);
   });
 
+  app.post(API_PATHS.tenantRedirectUpdate, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = tenantRedirectUpdateSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid redirect payload', parsed.error.flatten())));
+    const result = await updateTenantRedirect(ctxOf(c), parsed.data, tenantRedirectDeps);
+    return respond(result.ok ? ok({ redirect: result.value }) : result);
+  });
+
   app.post(API_PATHS.tenantRedirectDelete, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     const parsed = tenantRedirectDeleteSchema.safeParse(body);
@@ -2424,6 +2475,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       },
     ));
   });
+
+  app.get(API_PATHS.telemetryStore, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await getTelemetryStore(ctxOf(c), deps.telemetryStore)));
+  app.post(API_PATHS.telemetryConnect, async (c) => {
+    const parsed = telemetryStoreInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid telemetry connection')));
+    return respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await connectTelemetryStore(ctxOf(c), parsed.data, deps.telemetryStore));
+  });
+  app.post(API_PATHS.telemetryProbe, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await probeTelemetryStore(ctxOf(c), deps.telemetryStore)));
+  app.post(API_PATHS.telemetryDisconnect, async (c) => respond(deps.telemetryStore === undefined ? err(validation('Telemetry is unavailable')) : await disconnectTelemetryStore(ctxOf(c), deps.telemetryStore)));
 
   app.post(API_PATHS.storageProbe, async (c) => {
     const body: unknown = await readJson(c.req.raw);

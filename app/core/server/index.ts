@@ -128,3 +128,9 @@ export { createStripeTestSession, hasStripeTestSession } from './usecases/stripe
 export * from './usecases/stripe-subscription-adoption.js';
 export * from './marketing-signup-ports.js';
 export * from './usecases/marketing-signup-forms.js';
+
+export * from './usecases/provision-tenant.js';
+export * from './usecases/operator-tenant-readiness.js';
+
+export * from './download-copy-ports.js';
+export * from './usecases/download-copies.js';

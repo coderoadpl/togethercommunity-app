@@ -29,6 +29,7 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
+  'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',
   'AccountAvatarTenantReader.listTenantIdsForUser': "Google sign-in discovers every member tenant before copying the provider avatar into each tenant boundary, and GET /api/tenants via tenants.ts lists the caller's member communities.",
@@ -101,6 +102,8 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   CursorQueryDescriptor: 'Client query descriptor: cursor bookkeeping over an already tenant-scoped route.',
   DevMarketingScheduler: 'Development scheduler control boundary.',
   DiscussionLinkPort: 'URL construction boundary with no persistence access.',
+  DownloadCopyCrypto: 'Random identifier and content hashing primitives with no persistence access.',
+  DownloadPersonaliser: 'Metadata transform boundary operating only on supplied bytes with no persistence access.',
   DomainProvisionState: 'External domain-provider response shape with no persistence access.',
   DomainProvisioner: 'External domain-provider control-plane boundary.',
   FanoutPlan: 'Resolved fan-out description whose reader is already bound to one tenant.',
@@ -127,6 +130,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   NotificationsStreamHandle: 'Browser event-stream lifecycle handle.',
   NotificationsStreamOptions: 'Browser event-stream callback configuration.',
   PaymentProvider: 'External payment-provider boundary.',
+  PersonalisationSlots: 'Instance-local memory reservations with no persistence or tenant data access.',
   PgRealtimeBus: 'Ephemeral event-delivery boundary with no persistence access.',
   PgRealtimeBusOptions: 'Realtime transport connection settings and error callback.',
   PublicMarketingMessages: 'Localized message formatter callbacks.',
@@ -144,7 +148,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   SmtpTransport: 'External SMTP delivery boundary.',
   SnsSubscriptionOperations: 'External SNS subscription boundary.',
   SnsVerifier: 'External SNS verification boundary.',
-  StorageProvider: 'Object-storage URL-signing boundary with no persistence access.',
+  StorageProvider: 'Object-storage signing and I/O boundary; callers resolve tenant credentials and object keys.',
   StorageProviderOptions: 'Object-storage adapter callbacks and probe configuration with no persistence access.',
   StorageResponse: 'External object-storage response boundary.',
   StripePaymentProviderConfig: 'External Stripe client configuration and factory callback.',

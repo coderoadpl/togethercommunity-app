@@ -181,6 +181,7 @@ const prepareRedirect = async (
   let action: PreparedRedirect['action'];
   let id: string;
   let createdAt: string;
+  let stored: TenantRedirect | null = null;
   if (audit === null) {
     if (await deps.redirects.findById(tenantId, record.importKey) !== null) {
       return err(appError(
@@ -192,7 +193,10 @@ const prepareRedirect = async (
     id = record.importKey;
     createdAt = record.createdAt ?? now;
   } else {
-    const stored = await deps.redirects.findById(tenantId, audit.resourceId);
+    stored = await deps.redirects.findById(tenantId, audit.resourceId);
+    if (stored?.locked === true) {
+      return err(appError('conflict', `Locked redirect "${stored.fromPath}" cannot be overwritten by import`));
+    }
     action = stored === null
       ? 'created'
       : audit.payloadHash === payloadHash ? 'unchanged' : 'updated';
@@ -219,7 +223,11 @@ const prepareRedirect = async (
       targetKind: target.value.kind,
       targetId: target.value.id,
       targetPath: target.value.path,
+      targetAnchor: null,
       permanent: record.permanent,
+      locked: false,
+      hitCount: stored?.hitCount ?? 0,
+      lastHitAt: stored?.lastHitAt ?? null,
       origin: 'import',
       createdBy: null,
       createdAt,

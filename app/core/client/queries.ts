@@ -1,3 +1,4 @@
+import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
   DefaultError,
@@ -119,6 +120,7 @@ import type {
   TenantRedirectsQueryInput,
   TenantRedirectCreateBody,
   TenantRedirectDeleteBody,
+  TenantRedirectUpdateBody,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
@@ -1600,7 +1602,11 @@ export const deleteStripeSecretsMutation = (api: ApiClient) =>
     call: async () => {
       const webhookSecret = await api.deleteTenantSecret({ key: 'stripe.webhookSecret' });
       if (!webhookSecret.ok) return webhookSecret;
-      return api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+      const restrictedKey = await api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+      if (!restrictedKey.ok) return restrictedKey;
+      const endpoint = await api.deleteTenantSecret({ key: 'stripe.webhookEndpointId' });
+      if (!endpoint.ok && endpoint.error.code !== 'not_found') return endpoint;
+      return endpoint.ok ? endpoint : restrictedKey;
     },
   });
 
@@ -1676,6 +1682,12 @@ export const createTenantRedirectMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantRedirectScopes.all(), 'create'],
     call: (input: TenantRedirectCreateBody) => api.createTenantRedirect(input),
+  });
+
+export const updateTenantRedirectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantRedirectScopes.all(), 'update'],
+    call: (input: TenantRedirectUpdateBody) => api.updateTenantRedirect(input),
   });
 
 export const deleteTenantRedirectMutation = (api: ApiClient) =>
@@ -1992,4 +2004,32 @@ export const adoptStripeSubscriptionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...membersScopes.all(), 'adopt-subscription'],
     call: (input: AdoptStripeSubscriptionInput) => api.adoptStripeSubscription(input),
+  });
+
+export const telemetryStoreQuery = (api: ApiClient) => defineQuery({
+  queryKey: ['telemetry-store'], call: ({ signal }) => api.telemetryStore(signal),
+});
+export const connectTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'connect'], call: (input: { connectionString: string; region: string }) => api.connectTelemetry(input),
+});
+export const probeTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'probe'], call: () => api.probeTelemetry(),
+});
+export const disconnectTelemetryMutation = (api: ApiClient) => defineMutation({
+  mutationKey: ['telemetry-store', 'disconnect'], call: () => api.disconnectTelemetry(),
+});
+
+export const telemetryStoreInvalidates = () => ({ queryKey: ['telemetry-store'] });
+
+export const downloadCopiesQuery = (api: ApiClient, query: Parameters<ApiClient['listDownloadCopies']>[0]) =>
+  defineCursorQuery({
+    queryKey: ['download-copies', query] as const,
+    call: ({ signal, pageParam }) => api.listDownloadCopies({
+      ...query, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => {
+      const last = page.copies.at(-1);
+      return page.copies.length === DOWNLOAD_COPY_PAGE_SIZE && last !== undefined
+        ? `${last.createdAt}~${encodeURIComponent(last.id).replaceAll('~', '%7E')}` : null;
+    },
   });

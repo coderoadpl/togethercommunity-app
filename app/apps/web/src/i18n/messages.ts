@@ -17,6 +17,34 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  operatorTenant: {
+    operatorTitle: string;
+    operatorTenantTitle: string;
+    provisionDescription: string;
+    readinessDescription: string;
+    slugLabel: string;
+    nameLabel: string;
+    ownerEmailLabel: string;
+    languageLabel: string;
+    secretRequired: string;
+    invalidPayload: string;
+    invalidSlug: string;
+    reservedSlug: string;
+    ownerUnavailable: string;
+    ownerConflict: string;
+    requestFailed: string;
+    created: string;
+    workspaceExists: string;
+    ownerGrantPresent: string;
+    storageConfigured: string;
+    lastProbeOk: string;
+    lastProbeAt: string;
+    stripeConfigured: string;
+    mode: string;
+    webhookRegistered: string;
+    legalUrlsSet: string;
+    publishedProducts: string;
+  };
   signupForms: {
     noList: string;
     title: string;
@@ -821,6 +849,35 @@ export interface Messages {
     sessionsRevokeOthersConfirmTitle: string;
     sessionsRevokeOthersConfirmBody: string;
   };
+  telemetryStore: {
+    title: string;
+    intro: string;
+    connection: string;
+    region: string;
+    connect: string;
+    probe: string;
+    disconnect: string;
+    confirmDisconnect: string;
+    disconnectWarning: string;
+    connected: string;
+    disconnected: string;
+    probing: string;
+    error: string;
+    success: string;
+    stable: string;
+    dynamic: string;
+    unknown: string;
+    lastAck: string;
+    lastSync: string;
+    pending: string;
+    oldest: string;
+    gaps: string;
+    never: string;
+    empty: string;
+    unavailable: string;
+    privacy: string;
+    pause: string;
+  };
   integrations: {
     heading: string;
     intro: string;
@@ -1087,6 +1144,11 @@ export interface Messages {
     deleteDownloadConfirmBody: (params: { name: string }) => string;
     deleteDownloadConfirm: string;
     downloadStatusPending: string;
+    fileVersion: (params: { number: number }) => string;
+    versionNote: string;
+    uploadNewVersion: string;
+    previousVersions: string;
+    deleteVersion: string;
     downloadStatusReady: string;
   };
   access: {
@@ -1567,6 +1629,23 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadsHeading: string;
     downloadFile: (params: { name: string }) => string;
+  };
+  downloadCopies: {
+    showMore: string;
+    member: string;
+    order: string;
+    noOrder: string;
+    product: string;
+    title: string;
+    identifier: string;
+    find: string;
+    search: string;
+    empty: string;
+    file: string;
+    version: string;
+    time: string;
+    fallback: string;
+    invalid: string;
   };
   courseTree: {
     lockedTooltip: string;
@@ -2115,11 +2194,21 @@ export interface Messages {
     columnSource: string;
     columnTarget: string;
     columnStatus: string;
+    columnHits: string;
+    columnLastHit: string;
     columnOrigin: string;
     permanent: string;
     temporary: string;
     originImport: string;
     originManual: string;
+    locked: string;
+    neverHit: string;
+    lockedLabel: string;
+    lockedHint: string;
+    edit: string;
+    editHeading: string;
+    save: string;
+    updated: (params: { fromPath: string }) => string;
     delete: string;
     deleteConfirmTitle: string;
     deleteConfirmBody: (params: { fromPath: string }) => string;
@@ -2135,6 +2224,8 @@ export interface Messages {
     targetPath: string;
     targetCourseLabel: string;
     targetLessonLabel: string;
+    anchorLabel: string;
+    anchorNone: string;
     targetPathLabel: string;
     targetPathHint: string;
     permanentLabel: string;

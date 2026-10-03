@@ -11,8 +11,9 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import type { TenantRedirect } from '#core/domain/index.js';
+import { headingIds, type TenantRedirect } from '#core/domain/index.js';
 
+import { lessonHeadingDocument } from '../../../components/ui/lesson-heading-document.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -21,6 +22,7 @@ import { RedirectsPanel } from './RedirectsPanel.js';
 
 const COURSE_ID = 'course-js';
 const LESSON_ID = 'lesson-intro';
+const LESSON_HTML = '<h2>Safety first</h2><h2>Safety first</h2><h2>Forms</h2><h2>Cookie</h2>';
 
 const redirect = (overrides: Partial<TenantRedirect> = {}): TenantRedirect => ({
   id: 'redirect-1',
@@ -29,7 +31,11 @@ const redirect = (overrides: Partial<TenantRedirect> = {}): TenantRedirect => ({
   targetKind: 'path',
   targetId: null,
   targetPath: '/my',
+  targetAnchor: null,
   permanent: true,
+  locked: false,
+  hitCount: 0,
+  lastHitAt: null,
   origin: 'import',
   createdBy: null,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -43,12 +49,13 @@ const page = (index: number) => redirect({
 
 interface Backend {
   created: unknown[];
+  updated: unknown[];
   deleted: string[];
   queries: URLSearchParams[];
 }
 
 const installBackend = (seed: TenantRedirect[], createResult?: 'conflict'): Backend => {
-  const backend: Backend = { created: [], deleted: [], queries: [] };
+  const backend: Backend = { created: [], updated: [], deleted: [], queries: [] };
   let stored = [...seed];
 
   server.use(
@@ -96,7 +103,7 @@ const installBackend = (seed: TenantRedirect[], createResult?: 'conflict'): Back
           tenantId: 'tenant-1',
           name: 'Introduction to JS',
           isPreview: false,
-          contents: [],
+          contents: [{ type: 'html', html: LESSON_HTML }],
           legacyId: null,
           createdAt: '2026-01-01T00:00:00.000Z',
         }],
@@ -141,6 +148,40 @@ const installBackend = (seed: TenantRedirect[], createResult?: 'conflict'): Back
       stored = stored.filter((entry) => entry.id !== body.id);
       return HttpResponse.json({ ok: true, data: { id: body.id } });
     }),
+    http.post('/api/tenant/redirects/update', async ({ request }) => {
+      const body = z.object({
+        id: z.string(),
+        target: z.union([
+          z.object({ kind: z.literal('path'), path: z.string() }),
+          z.object({ kind: z.literal('course'), courseId: z.string() }),
+          z.object({
+            kind: z.literal('lesson'),
+            courseId: z.string(),
+            lessonId: z.string(),
+            anchor: z.string().optional(),
+          }),
+        ]),
+        permanent: z.boolean(),
+        locked: z.boolean(),
+      }).parse(await request.json());
+      backend.updated.push(body);
+      const current = stored.find((entry) => entry.id === body.id);
+      if (current === undefined) {
+        return HttpResponse.json(
+          { ok: false, error: { code: 'not_found', message: 'missing' } },
+          { status: 404 },
+        );
+      }
+      const updated = {
+        ...current,
+        targetPath: body.target.kind === 'path' ? body.target.path : current.targetPath,
+        targetAnchor: body.target.kind === 'lesson' ? body.target.anchor ?? null : null,
+        permanent: body.permanent,
+        locked: body.locked,
+      };
+      stored = stored.map((entry) => entry.id === body.id ? updated : entry);
+      return HttpResponse.json({ ok: true, data: { redirect: updated } });
+    }),
   );
 
   return backend;
@@ -174,9 +215,9 @@ const findToast = async (kind: 'success' | 'error') =>
   screen.findByTestId(new RegExp(`^toast-${kind}-`));
 
 describe('RedirectsPanel', () => {
-  it('lists redirects with their kind and origin', async () => {
+  it('lists redirects with their kind, origin, hits, and lock state', async () => {
     installBackend([
-      redirect(),
+      redirect({ hitCount: 17, locked: true }),
       redirect({ id: 'redirect-2', fromPath: '/legacy/two', permanent: false, origin: 'manual' }),
     ]);
 
@@ -186,6 +227,9 @@ describe('RedirectsPanel', () => {
     expect(first).toHaveTextContent('/legacy/one');
     expect(within(first).getByText(en.redirects.permanent)).toBeInTheDocument();
     expect(within(first).getByText('Import')).toBeInTheDocument();
+    expect(within(first).getByText('17')).toBeInTheDocument();
+    expect(within(first).getByText(en.redirects.locked)).toBeInTheDocument();
+    expect(within(first).getByTestId('redirect-delete-redirect-1')).toBeDisabled();
 
     const second = screen.getByTestId('redirect-row-redirect-2');
     expect(within(second).getByText(en.redirects.temporary)).toBeInTheDocument();
@@ -246,8 +290,16 @@ describe('RedirectsPanel', () => {
     expect(backend.queries.at(-1)?.get('limit')).toBe('50');
   });
 
-  it('previews the normalised source path and creates a lesson redirect', async () => {
+  it('creates a lesson redirect with the heading id rendered by the player', async () => {
     const backend = installBackend([]);
+    const headingDocument = lessonHeadingDocument([LESSON_HTML], headingIds);
+    const formsHeading = headingDocument.headings.find((heading) => heading.text === 'Forms');
+    if (formsHeading === undefined) throw new Error('missing Forms heading');
+    const playerDocument = document.createElement('template');
+    playerDocument.innerHTML = headingDocument.htmlBlocks[0] ?? '';
+    const renderedFormsHeading = [...playerDocument.content.querySelectorAll('h2')]
+      .find((heading) => heading.textContent === 'Forms');
+    if (renderedFormsHeading === undefined) throw new Error('missing rendered Forms heading');
 
     renderPage();
     await screen.findByText(en.redirects.empty);
@@ -262,16 +314,29 @@ describe('RedirectsPanel', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'JavaScript Course' }));
     await userEvent.click(await screen.findByLabelText(en.redirects.targetLessonLabel));
     await userEvent.click(await screen.findByRole('option', { name: 'Introduction to JS' }));
+    await userEvent.click(await screen.findByLabelText(en.redirects.anchorLabel));
+    await userEvent.click(await screen.findByRole('option', {
+      name: `Forms (#${formsHeading.id})`,
+    }));
     await userEvent.click(screen.getByTestId('redirect-permanent'));
+    await userEvent.click(screen.getByTestId('redirect-locked'));
     await userEvent.click(screen.getByRole('button', { name: en.redirects.submit }));
 
     await waitFor(() => {
       expect(backend.created).toEqual([{
         fromPath: '/Course/JavaScript/',
-        target: { kind: 'lesson', courseId: COURSE_ID, lessonId: LESSON_ID },
+        target: {
+          kind: 'lesson',
+          courseId: COURSE_ID,
+          lessonId: LESSON_ID,
+          anchor: renderedFormsHeading.id,
+        },
         permanent: true,
+        locked: true,
       }]);
     });
+    expect(formsHeading.id).toBe('forms-section');
+    expect(renderedFormsHeading.id).toBe(formsHeading.id);
     expect(await findToast('success'))
       .toHaveTextContent(en.redirects.created({ fromPath: '/course/javascript' }));
   });
@@ -293,12 +358,117 @@ describe('RedirectsPanel', () => {
         fromPath: '/offer',
         target: { kind: 'path', path: '/my' },
         permanent: false,
+        locked: false,
       }]);
     });
     const row = await screen.findByTestId('redirect-row-redirect-created');
     expect(within(row).getByText(en.redirects.temporary)).toBeInTheDocument();
     expect(screen.queryByTestId('redirect-add')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.redirects.addHeading })).toBeInTheDocument();
+  });
+
+  it('edits a redirect in place and keeps its source path disabled', async () => {
+    const backend = installBackend([redirect({ origin: 'manual', hitCount: 9 })]);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId('redirect-edit-redirect-1'));
+
+    expect(screen.getByTestId('redirect-edit')).toBeInTheDocument();
+    expect(screen.getByTestId('redirect-from-path')).toBeDisabled();
+    await userEvent.clear(screen.getByTestId('redirect-target-path'));
+    await userEvent.type(screen.getByTestId('redirect-target-path'), '/new-target');
+    await userEvent.click(screen.getByTestId('redirect-locked'));
+    await userEvent.click(screen.getByRole('button', { name: en.redirects.save }));
+
+    await waitFor(() => {
+      expect(backend.updated).toEqual([{
+        id: 'redirect-1',
+        target: { kind: 'path', path: '/new-target' },
+        permanent: true,
+        locked: true,
+      }]);
+    });
+    const row = await screen.findByTestId('redirect-row-redirect-1');
+    expect(row).toHaveTextContent('/legacy/one');
+    expect(row).toHaveTextContent('/new-target');
+    expect(row).toHaveTextContent('9');
+    expect(await findToast('success'))
+      .toHaveTextContent(en.redirects.updated({ fromPath: '/legacy/one' }));
+  });
+
+  it('resets the edit form when switching from one row to another', async () => {
+    const backend = installBackend([
+      redirect({ id: 'redirect-a', fromPath: '/legacy/a', targetPath: '/target-a', permanent: true, locked: true }),
+      redirect({ id: 'redirect-b', fromPath: '/legacy/b', targetPath: '/target-b', permanent: false, locked: false }),
+    ]);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId('redirect-edit-redirect-a'));
+    expect(screen.getByTestId('redirect-target-path')).toHaveValue('/target-a');
+    expect(within(screen.getByTestId('redirect-permanent')).getByRole('switch')).toBeChecked();
+    expect(within(screen.getByTestId('redirect-locked')).getByRole('switch')).toBeChecked();
+
+    await userEvent.click(screen.getByTestId('redirect-edit-redirect-b'));
+    expect(screen.getByTestId('redirect-target-path')).toHaveValue('/target-b');
+    expect(within(screen.getByTestId('redirect-permanent')).getByRole('switch')).not.toBeChecked();
+    expect(within(screen.getByTestId('redirect-locked')).getByRole('switch')).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: en.redirects.save }));
+
+    await waitFor(() => {
+      expect(backend.updated).toEqual([{
+        id: 'redirect-b',
+        target: { kind: 'path', path: '/target-b' },
+        permanent: false,
+        locked: false,
+      }]);
+    });
+  });
+
+  it('opens an imported module target as its resolved course', async () => {
+    const backend = installBackend([redirect({
+      targetKind: 'module-as-course',
+      targetId: 'module-1',
+      targetPath: `/my/courses/${COURSE_ID}`,
+    })]);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId('redirect-edit-redirect-1'));
+
+    expect(screen.getByRole('radio', { name: en.redirects.targetCourse })).toBeChecked();
+    expect(screen.getByTestId('redirect-target-course')).toHaveTextContent('JavaScript Course');
+    await userEvent.click(screen.getByRole('button', { name: en.redirects.save }));
+    await waitFor(() => {
+      expect(backend.updated).toMatchObject([{
+        id: 'redirect-1',
+        target: { kind: 'course', courseId: COURSE_ID },
+      }]);
+    });
+  });
+
+  it('shows and preserves a stored anchor after its heading was renamed', async () => {
+    const backend = installBackend([redirect({
+      targetKind: 'lesson',
+      targetId: LESSON_ID,
+      targetPath: `/my/courses/${COURSE_ID}/lessons/${LESSON_ID}`,
+      targetAnchor: 'renamed-section',
+    })]);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId('redirect-edit-redirect-1'));
+
+    expect(await screen.findByTestId('redirect-target-anchor')).toHaveTextContent('#renamed-section');
+    await userEvent.click(screen.getByRole('button', { name: en.redirects.save }));
+    await waitFor(() => {
+      expect(backend.updated).toMatchObject([{
+        id: 'redirect-1',
+        target: {
+          kind: 'lesson',
+          courseId: COURSE_ID,
+          lessonId: LESSON_ID,
+          anchor: 'renamed-section',
+        },
+      }]);
+    });
   });
 
   it('reports a conflict from the server without clearing the form', async () => {

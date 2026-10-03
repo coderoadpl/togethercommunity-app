@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { DownloadCopyLookup } from '../downloads/DownloadCopies.js';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
@@ -7,9 +8,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   OutlinedInput,
   Select,
@@ -20,6 +18,7 @@ import {
   TableHead,
   TableRow,
   Typography,
+  TextField,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -30,6 +29,7 @@ import {
   type PriceKind,
   type Product,
   type ProductPrice,
+  type ProductDownloadAssetMetadata,
   type ProductVisibility,
 } from '#core/domain/index.js';
 
@@ -37,7 +37,7 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatFileSize, formatPrice } from '../../../lib/format.js';
+import { formatDate, formatFileSize, formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
@@ -414,13 +414,20 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [deletingAsset, setDeletingAsset] = useState<{ id: string; fileName: string } | null>(null);
+  const [replacesAssetId, setReplacesAssetId] = useState<string | undefined>();
+  const [versionNote, setVersionNote] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
   const assets = useQuery(actions.productDownloadAssets(productId));
   const refresh = async () => {
     await queryClient.invalidateQueries(actions.productDownloadAssetsInvalidates(productId));
   };
   const upload = useMutation({
     ...actions.uploadProductDownload,
-    onSuccess: refresh,
+    onSuccess: async () => {
+      setReplacesAssetId(undefined);
+      setVersionNote('');
+      await refresh();
+    },
   });
   const remove = useMutation({
     ...actions.deleteProductDownload,
@@ -437,8 +444,41 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       contentType: file.type || 'application/octet-stream',
       sizeBytes: file.size,
       body: file,
+      replacesAssetId,
+      versionNote,
     });
   };
+  const lineages = new Map<string, ProductDownloadAssetMetadata[]>();
+  for (const asset of [...(assets.data?.assets ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)) {
+    const key = asset.status === 'pending' ? asset.id : asset.lineageId;
+    const versions = lineages.get(key) ?? [];
+    versions.push(asset);
+    lineages.set(key, versions);
+  }
+  const assetRow = (asset: ProductDownloadAssetMetadata) => (
+    <Stack key={asset.id} spacing="0.5rem" sx={{ py: 1 }}>
+      <Typography>{asset.fileName}</Typography>
+      <Typography variant="body2" color="text.secondary">
+        {t.products.fileVersion({ number: asset.versionNumber })}
+        {' · '}{formatFileSize(asset.sizeBytes, language)}{' · '}{formatDate(asset.createdAt, language)}
+      </Typography>
+      {asset.versionNote ? <Typography variant="body2">{asset.versionNote}</Typography> : null}
+      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+        <Chip size="small" color={asset.status === 'ready' ? 'success' : 'warning'} variant="outlined"
+          label={asset.status === 'ready' ? t.products.downloadStatusReady : t.products.downloadStatusPending} />
+        {asset.status === 'ready' ? (
+          <Button size="small" disabled={upload.isPending} onClick={() => {
+            setReplacesAssetId(asset.id);
+            fileInput.current?.click();
+          }}>{t.products.uploadNewVersion}</Button>
+        ) : null}
+        <Button size="small" color="error" aria-label={t.products.deleteDownload({ name: asset.fileName })}
+          disabled={remove.isPending} onClick={() => setDeletingAsset({ id: asset.id, fileName: asset.fileName })}>
+          {asset.supersededAt ? t.products.deleteVersion : t.common.remove}
+        </Button>
+      </Stack>
+    </Stack>
+  );
 
   return (
     <SectionCard
@@ -455,47 +495,34 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
           {t.products.downloadsEmpty}
         </Typography>
       ) : (
-        <List disablePadding>
-          {assets.data.assets.map((asset) => (
-            <ListItem key={asset.id} disableGutters>
-              <ListItemText
-                primary={asset.fileName}
-                secondary={formatFileSize(asset.sizeBytes, language)}
-              />
-              <Chip
-                size="small"
-                color={asset.status === 'ready' ? 'success' : 'warning'}
-                variant="outlined"
-                label={asset.status === 'ready'
-                  ? t.products.downloadStatusReady
-                  : t.products.downloadStatusPending}
-              />
-              <Button
-                size="small"
-                color="error"
-                aria-label={t.products.deleteDownload({ name: asset.fileName })}
-                disabled={remove.isPending}
-                onClick={() => setDeletingAsset({ id: asset.id, fileName: asset.fileName })}
-              >
-                {t.common.remove}
-              </Button>
-            </ListItem>
+        <Stack spacing="1rem">
+          {[...lineages.entries()].map(([lineageId, versions]) => (
+            <Box key={lineageId}>
+              {versions[0] ? assetRow(versions[0]) : null}
+              {versions.length > 1 ? (
+                <Box component="details">
+                  <Typography component="summary" sx={{ cursor: 'pointer' }}>{t.products.previousVersions}</Typography>
+                  {versions.slice(1).map(assetRow)}
+                </Box>
+              ) : null}
+            </Box>
           ))}
-        </List>
+        </Stack>
       )}
+      <TextField label={t.products.versionNote} value={versionNote} disabled={upload.isPending}
+        onChange={(event) => setVersionNote(event.target.value)} slotProps={{ htmlInput: { maxLength: 500 } }} fullWidth />
       <Box>
-        <Button component="label" variant="outlined" disabled={upload.isPending}>
+        <Button variant="outlined" disabled={upload.isPending} onClick={() => {
+          setReplacesAssetId(undefined);
+          fileInput.current?.click();
+        }}>
           {upload.isPending ? t.products.uploadingDownload : t.products.uploadDownload}
-          <input
-            hidden
-            type="file"
-            aria-label={t.products.downloadFileInput}
-            onChange={(event) => {
-              selectFile(event.target.files?.[0]);
-              event.target.value = '';
-            }}
-          />
         </Button>
+        <input ref={fileInput} hidden type="file" aria-label={t.products.downloadFileInput}
+          onChange={(event) => {
+            selectFile(event.target.files?.[0]);
+            event.target.value = '';
+          }} />
       </Box>
       {upload.isError ? <Alert severity="error">{localizePanelError(upload.error, t)}</Alert> : null}
       {remove.isError ? <Alert severity="error">{localizePanelError(remove.error, t)}</Alert> : null}
@@ -525,7 +552,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />
       </Box>
-      {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
+      {product.type === 'digital_download' ? <><DownloadAssetsSection productId={product.id} /><DownloadCopyLookup productId={product.id} /></> : null}
       <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>
         <ProductAccessEditor product={product} />

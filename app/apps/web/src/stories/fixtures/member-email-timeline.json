@@ -51,6 +51,29 @@
         "reports": []
       }
     },
+    "listDownloadCopies:[{\"memberId\":\"member-studio-active\"}]": {
+      "ok": true,
+      "value": {
+        "copies": [
+          {
+            "assetId": "download-asset-workbook-v2",
+            "bytes": 4096,
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "copyIdentifier": "copy_AAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "createdAt": "2026-07-01T12:00:00.000Z",
+            "fileName": "workbook-creator.pdf",
+            "id": "copy-workbook-demo",
+            "lineageId": "download-asset-workbook",
+            "memberId": "member-studio-active",
+            "orderId": null,
+            "personalised": true,
+            "productId": "product-download-workbook",
+            "tenantId": "tenant-studio",
+            "versionNumber": 2
+          }
+        ]
+      }
+    },
     "listMemberEmailSends:[\"member-studio-active\"]": {
       "ok": true,
       "value": {

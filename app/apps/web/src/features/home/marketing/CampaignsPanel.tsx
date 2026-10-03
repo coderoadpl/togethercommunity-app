@@ -1,3 +1,4 @@
+import { TelemetryUnavailable } from '../integrations/TelemetryTab.js';
 import { CampaignAudienceSection } from './CampaignAudienceSection.js';
 import { ApiError } from '#core/client/index.js';
 import type { ContactCampaignAudience } from '#core/domain/index.js';
@@ -47,7 +48,8 @@ import {
   renderCampaignPreview,
 } from './marketing-markdown.js';
 
-type CampaignDetailRow = z.infer<typeof marketingCampaignDetailOutputSchema>['campaign'];
+type CampaignReadRow = z.infer<typeof marketingCampaignDetailOutputSchema>['campaign'];
+type CampaignDetailRow = Exclude<z.infer<typeof marketingCampaignDetailOutputSchema>['campaign'], { statisticsUnavailable: true }>;
 type CampaignProgress = Pick<CampaignDetailRow, 'candidateCount' | 'queued' | 'skipped' | 'unresolved' | 'results'>;
 
 const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -163,7 +165,7 @@ const CampaignResultTiles = ({ campaign }: { campaign: CampaignDetailRow }) => {
   );
 };
 
-const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }) => {
+const CampaignForm = ({ campaign }: { campaign?: CampaignReadRow | undefined }) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -378,7 +380,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
         consentDefinitionId={effectiveConsentId}
         disabled={!editable}
         frozen={campaign?.audienceSnapshotId != null}
-        progress={campaign?.audienceVersion === 2 ? <Typography variant="body2">{campaignEditorProgress(campaign, t)}</Typography> : undefined}
+        progress={campaign?.audienceVersion === 2 && !('statisticsUnavailable' in campaign) ? <Typography variant="body2">{campaignEditorProgress(campaign, t)}</Typography> : undefined}
         overlapError={campaignAudienceOverlapError(create.error ?? update.error, t)}
         onChange={setAudience}
       />
@@ -460,7 +462,7 @@ const CampaignForm = ({ campaign }: { campaign?: CampaignDetailRow | undefined }
   );
 };
 
-export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
+export const CampaignActions = ({ campaign }: { campaign: Pick<Campaign, 'id' | 'status' | 'sendAt' | 'pausedReason'> }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
@@ -553,7 +555,7 @@ export const CampaignsPanel = () => {
   const settings = useQuery(actions.marketingSesSettings);
   const navigate = useNavigate();
   const trackingDisabled = trackingDisabledFromSettings(settings);
-  const showTrackingDisabledAlert = trackingDisabled && campaigns.isSuccess && campaigns.data.campaigns.some((campaign) => shouldMaskEngagement(campaign.engagement, true));
+  const showTrackingDisabledAlert = trackingDisabled && campaigns.isSuccess && campaigns.data.campaigns.some((campaign) => !('statisticsUnavailable' in campaign) && shouldMaskEngagement(campaign.engagement, true));
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
@@ -579,7 +581,7 @@ export const CampaignsPanel = () => {
                 key={campaign.id}
                 title={campaign.name}
                 chips={<><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Chip size="small" variant="outlined" label={consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId} /></>}
-                summary={(
+                summary={'statisticsUnavailable' in campaign ? <TelemetryUnavailable /> : (
                   <Box component="span" sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: '0.25rem', sm: '1rem' }, flexWrap: 'wrap' }}>
                     <span>{t.marketing.listSent({ sent: campaign.results.sent, candidates: campaignCandidateCount(campaign) })}</span>
                     <span>{t.marketing.compactResults(campaign.results)}</span>
@@ -707,6 +709,7 @@ const CampaignReport = ({ campaign, trackingDisabled }: { campaign: CampaignDeta
 
 export const CampaignDetailPage = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const params = useParams({ strict: false });
   const campaign = useQuery(actions.marketingCampaign(params.campaignId ?? ''));
   const settings = useQuery(actions.marketingSesSettings);
@@ -714,6 +717,13 @@ export const CampaignDetailPage = () => {
   if (campaign.isPending) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} />;
   if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizePanelError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
+  if ('statisticsUnavailable' in campaign.data.campaign) return <PanelPage title={campaign.data.campaign.name} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}>
+    <CampaignStatusChip status={campaign.data.campaign.status} label={t.marketing.status[campaign.data.campaign.status]} />
+    <Typography>{campaignListDate(campaign.data.campaign, language, t)}</Typography>
+    <TelemetryUnavailable />
+    {campaignEditable(campaign.data.campaign) ? <CampaignForm campaign={campaign.data.campaign} /> : <Typography>{campaign.data.campaign.subject}</Typography>}
+    <CampaignActions campaign={campaign.data.campaign} />
+  </PanelPage>;
   return (
     <PanelPage
       title={<Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>{campaign.data.campaign.name}<CampaignStatusChip status={campaign.data.campaign.status} label={t.marketing.status[campaign.data.campaign.status]} /></Box>}

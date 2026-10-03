@@ -49,6 +49,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeRequiredTenant } from '../authorize.js';
+import { ENGAGEMENT_PAYLOAD_SCRUB_BATCH } from '../marketing-retention.js';
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -1628,8 +1629,8 @@ export const applyVerifiedSesEvent = async (
           send.id,
           event.kind === 'open' ? 'opened' : 'clicked',
           event.kind === 'open'
-            ? { rawProviderPayload: event.raw }
-            : { linkUrl: event.linkUrl, rawProviderPayload: event.raw },
+            ? {}
+            : { linkUrl: event.linkUrl },
           event.occurredAt,
         ),
       );
@@ -1707,8 +1708,8 @@ export const runMarketingRetentionJobs = async (
   input: {
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
-    engagementOlderThan: string;
     rawSnsInboxOlderThan: string;
+    engagementOlderThan?: string;
     idempotencyNow: string;
   },
   deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
@@ -1721,6 +1722,7 @@ export const runMarketingRetentionJobs = async (
 ): Promise<Result<{
   pendingConsentsPurged: number;
   renderedBodiesPurged: number;
+  engagementPayloadsScrubbed: number;
   engagementEventsPurged: number;
   idempotencyKeysPurged: number;
 }, AppError>> => {
@@ -1732,9 +1734,12 @@ export const runMarketingRetentionJobs = async (
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.marketingOutbox?.purge(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   await deps.snsInbox?.purge(tenantId.value, input.rawSnsInboxOlderThan);
-  const engagementEventsPurged = await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
+  const engagementPayloadsScrubbed = await deps.events.scrubEngagementPayloads(tenantId.value, ENGAGEMENT_PAYLOAD_SCRUB_BATCH);
+  const engagementEventsPurged = input.engagementOlderThan === undefined
+    ? 0
+    : await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementEventsPurged, idempotencyKeysPurged });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementPayloadsScrubbed, engagementEventsPurged, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1792,8 +1797,8 @@ export const runScheduledMarketingJobs = async (
     now: string;
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
-    engagementOlderThan: string;
     rawSnsInboxOlderThan: string;
+    engagementOlderThan?: string;
     schedulerRunsOlderThan: string;
     schedulerIdleRunsOlderThan: string;
     sesIdentityRefreshIntervalMs: number;
@@ -1810,8 +1815,8 @@ export const runScheduledMarketingJobs = async (
     runRetention(tenantId: string, input: {
       pendingOlderThan: string;
       renderedBodiesOlderThan: string;
-      engagementOlderThan: string;
       rawSnsInboxOlderThan: string;
+      engagementOlderThan?: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
     refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
@@ -1876,8 +1881,8 @@ export const runScheduledMarketingJobs = async (
     const retained = await deps.runRetention(tenantId, {
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
-      engagementOlderThan: input.engagementOlderThan,
       rawSnsInboxOlderThan: input.rawSnsInboxOlderThan,
+      ...(input.engagementOlderThan === undefined ? {} : { engagementOlderThan: input.engagementOlderThan }),
       idempotencyNow: input.now,
     });
     if (!retained.ok && firstError === null) firstError = retained.error;

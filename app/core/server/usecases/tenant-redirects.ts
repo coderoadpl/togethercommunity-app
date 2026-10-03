@@ -17,6 +17,7 @@ import {
   type TenantRedirectListQuery,
   type TenantRedirectPage,
   type TenantRedirectTargetInput,
+  type TenantRedirectUpdateInput,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -46,7 +47,7 @@ export interface TenantRedirectWriteDeps {
   clock: Clock;
 }
 
-type ResolvedTarget = Pick<TenantRedirect, 'targetKind' | 'targetId' | 'targetPath'>;
+type ResolvedTarget = Pick<TenantRedirect, 'targetKind' | 'targetId' | 'targetPath' | 'targetAnchor'>;
 
 const lessonBelongsToCourse = async (
   tenantId: string,
@@ -70,7 +71,7 @@ const resolveTarget = async (
   deps: TenantRedirectWriteDeps,
 ): Promise<Result<ResolvedTarget, AppError>> => {
   if (target.kind === 'path') {
-    return ok({ targetKind: 'path', targetId: null, targetPath: target.path });
+    return ok({ targetKind: 'path', targetId: null, targetPath: target.path, targetAnchor: null });
   }
   const course = await deps.courses.findById(tenantId, target.courseId);
   if (course === null) return err(notFound('Course not found'));
@@ -79,6 +80,7 @@ const resolveTarget = async (
       targetKind: 'course',
       targetId: course.id,
       targetPath: coursePath(encodeURIComponent(course.id)),
+      targetAnchor: null,
     });
   }
   const lesson = await deps.lessons.findById(tenantId, target.lessonId);
@@ -90,6 +92,7 @@ const resolveTarget = async (
     targetKind: 'lesson',
     targetId: lesson.id,
     targetPath: lessonPath(encodeURIComponent(course.id), encodeURIComponent(lesson.id)),
+    targetAnchor: target.anchor ?? null,
   });
 };
 
@@ -132,6 +135,9 @@ export const createTenantRedirect = async (
     fromPath: fromPath.data,
     ...target.value,
     permanent: input.permanent ?? false,
+    locked: input.locked ?? false,
+    hitCount: 0,
+    lastHitAt: null,
     origin: 'manual',
     createdBy: ctx.identity.userId,
     createdAt: deps.clock.nowIso(),
@@ -154,6 +160,57 @@ export const createTenantRedirect = async (
   return ok(redirect);
 };
 
+const targetWithAnchor = (redirect: Pick<TenantRedirect, 'targetPath' | 'targetAnchor'>): string =>
+  `${redirect.targetPath}${redirect.targetAnchor === null ? '' : `#${redirect.targetAnchor}`}`;
+
+export const updateTenantRedirect = async (
+  ctx: Ctx,
+  input: TenantRedirectUpdateInput,
+  deps: TenantRedirectWriteDeps,
+): Promise<Result<TenantRedirect, AppError>> => {
+  const tenantId = authorizeTenant(ctx, 'tenant:settings:write');
+  if (!tenantId.ok) return tenantId;
+
+  const existing = await deps.redirects.findById(tenantId.value, input.id);
+  if (existing === null) return err(notFound('Redirect not found'));
+  const target = await resolveTarget(tenantId.value, input.target, deps);
+  if (!target.ok) return target;
+  const resolvedTarget = existing.targetKind === 'module-as-course'
+    && target.value.targetKind === 'course'
+    && target.value.targetPath === existing.targetPath
+    ? {
+        targetKind: existing.targetKind,
+        targetId: existing.targetId,
+        targetPath: existing.targetPath,
+        targetAnchor: existing.targetAnchor,
+      }
+    : target.value;
+  if (normalizeRedirectPath(resolvedTarget.targetPath) === existing.fromPath) {
+    return err(validation('A redirect cannot point at its own source path'));
+  }
+
+  const updated = await deps.redirects.update(tenantId.value, {
+    ...existing,
+    ...resolvedTarget,
+    permanent: input.permanent,
+    locked: input.locked,
+  });
+  if (updated === null) return err(notFound('Redirect not found'));
+
+  await deps.auditEvents.record(tenantId.value, {
+    id: deps.ids.nextId(),
+    tenantId: tenantId.value,
+    kind: 'redirect_updated',
+    actorUserId: ctx.identity.userId,
+    actorEmail: ctx.identity.email,
+    subjectMemberId: null,
+    reason: `${targetWithAnchor(existing)} to ${targetWithAnchor(updated)}`,
+    at: deps.clock.nowIso(),
+  });
+
+  return ok(updated);
+};
+
 export const deleteTenantRedirect = async (
   ctx: Ctx,
   input: TenantRedirectDeleteInput,
@@ -164,6 +221,9 @@ export const deleteTenantRedirect = async (
 
   const redirect = await deps.redirects.findById(tenantId.value, input.id);
   if (redirect === null) return err(notFound('Redirect not found'));
+  if (redirect.locked) {
+    return err(appError('conflict', 'Locked redirects cannot be deleted'));
+  }
   if (!await deps.redirects.deleteById(tenantId.value, redirect.id)) {
     return err(notFound('Redirect not found'));
   }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const tenantSecretKeySchema = z.enum([
   'stripe.restrictedKey',
   'stripe.webhookSecret',
+  'stripe.webhookEndpointId',
   'stripe.testRestrictedKey',
   'stripe.testWebhookSecret',
   'stripe.testWebhookEndpointId',
@@ -12,6 +13,7 @@ export const tenantSecretKeySchema = z.enum([
   's3.accessKeyId',
   's3.secretAccessKey',
   's3.configuration',
+  'telemetry.mongodb',
   'ses.accessKeyId',
   'ses.secretAccessKey',
   'ses.region',
@@ -53,8 +55,13 @@ export type TenantSecretMasked = z.infer<typeof tenantSecretMaskedSchema>;
 const storageSecretFlowMessage =
   'Storage credentials are stored by the storage configuration flow (POST /api/integrations/storage/configure), which probes the connection before saving';
 
+const telemetrySecretFlowMessage =
+  'Telemetry credentials are stored by the telemetry connect flow (POST /api/integrations/telemetry/connect), which probes the store before saving';
+
 export const setTenantSecretInputSchema = z.object({
-  key: tenantSecretKeySchema.refine((key) => !key.startsWith('s3.'), storageSecretFlowMessage),
+  key: tenantSecretKeySchema
+    .refine((key) => !key.startsWith('s3.'), storageSecretFlowMessage)
+    .refine((key) => key !== 'telemetry.mongodb', telemetrySecretFlowMessage),
   value: z.string().trim().min(1),
 });
 

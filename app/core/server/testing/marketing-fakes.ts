@@ -261,6 +261,26 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     this.rows.push(structuredClone(event));
   }
 
+  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
+    const before = this.rows.length;
+    this.rows = this.rows.filter((row) => !(row.tenantId === tenantId
+      && (row.type === 'opened' || row.type === 'clicked')
+      && Date.parse(row.occurredAt) < Date.parse(olderThan)));
+    return before - this.rows.length;
+  }
+
+  async scrubEngagementPayloads(tenantId: string, limit: number): Promise<number> {
+    let changed = 0;
+    for (const row of this.rows) {
+      if (changed >= limit) break;
+      if (row.tenantId !== tenantId || (row.type !== 'opened' && row.type !== 'clicked')
+        || row.meta === null || !Object.hasOwn(row.meta, 'rawProviderPayload')) continue;
+      delete row.meta['rawProviderPayload'];
+      changed += 1;
+    }
+    return changed;
+  }
+
   async listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]> {
     return this.ordered(this.rows.filter((row) =>
       row.tenantId === tenantId && row.mailKind === mailKind && row.refId === refId
@@ -273,17 +293,6 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
       row.tenantId === tenantId
       && this.addresses.get(`${tenantId}:${row.mailKind}:${row.refId}`) === normalized
     ));
-  }
-
-  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
-    const retained = this.rows.filter((row) =>
-      row.tenantId !== tenantId
-      || row.occurredAt >= olderThan
-      || (row.type !== 'opened' && row.type !== 'clicked')
-    );
-    const purged = this.rows.length - retained.length;
-    this.rows = retained;
-    return purged;
   }
 
   async reputationCounts(tenantId: string, window: { since: string; until: string }) {

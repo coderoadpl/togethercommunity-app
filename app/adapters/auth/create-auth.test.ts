@@ -1968,3 +1968,18 @@ describe('email-endpoint rate limiting', () => {
     expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
   });
 });
+
+
+describe('operator owner lookup', () => {
+  it('normalizes email and reads verification without creating an account', async () => {
+    const { auth, authPort } = buildAuth();
+    const email = `operator-owner-${crypto.randomUUID()}@example.test`;
+    expect(await authPort.findUserByEmail(email)).toBeNull();
+    const { internalAdapter } = await auth.$context;
+    expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+    const owner = await internalAdapter.createUser({ email, name: 'Owner', emailVerified: false });
+    expect(await authPort.findUserByEmail(` ${email.toUpperCase()} `)).toEqual({ userId: owner.id, emailVerified: false });
+    await internalAdapter.updateUser(owner.id, { emailVerified: true });
+    expect(await authPort.findUserByEmail(email)).toEqual({ userId: owner.id, emailVerified: true });
+  });
+});

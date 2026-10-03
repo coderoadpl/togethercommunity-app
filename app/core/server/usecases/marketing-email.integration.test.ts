@@ -889,25 +889,22 @@ describe('marketing e-mail use-case integration', () => {
     const topicArn = settings.snsTopicArn ?? '';
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'fake-ses-message', kind: 'open',
-      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1', userAgent: 'Engagement test agent' } },
     }, deps)).toEqual(ok({ kind: 'applied' }));
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'fake-ses-message', kind: 'click',
       linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
-      raw: { click: { link: 'https://tenant.test/offer' } },
+      raw: { click: { link: 'https://tenant.test/offer', ipAddress: '192.0.2.1', userAgent: 'Engagement test agent' } },
     }, deps)).toEqual(ok({ kind: 'applied' }));
     const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
-    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2))
-      .toMatchObject([
-        { type: 'opened', meta: { rawProviderPayload: { open: { ipAddress: '192.0.2.1' } } } },
-        {
-          type: 'clicked',
-          meta: {
-            linkUrl: 'https://tenant.test/offer',
-            rawProviderPayload: { click: { link: 'https://tenant.test/offer' } },
-          },
-        },
-      ]);
+    const engagement = (await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2);
+    expect(engagement.map(({ type, meta }) => ({ type, meta }))).toEqual([
+      { type: 'opened', meta: {} },
+      { type: 'clicked', meta: { linkUrl: 'https://tenant.test/offer' } },
+    ]);
+    expect(engagement[0]?.meta).not.toHaveProperty('rawProviderPayload');
+    expect(JSON.stringify(engagement)).not.toContain('192.0.2.1');
+    expect(JSON.stringify(engagement)).not.toContain('Engagement test agent');
     expect(await applyVerifiedSesEvent(ctx, {
       topicArn, messageId: 'unknown', kind: 'open', occurredAt: NOW, raw: {},
     }, deps)).toEqual(ok({ kind: 'awaiting_correlation' }));
@@ -1114,6 +1111,7 @@ describe('marketing e-mail use-case integration', () => {
       },
       secretResolver: { resolve: async () => err(notFound('Storage is not configured')) },
       storage: {
+        getObject: async () => ok(new Uint8Array()),
         objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
         probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),
@@ -1152,7 +1150,6 @@ describe('marketing e-mail use-case integration', () => {
     expect(await runMarketingRetentionJobs(ctx, {
       pendingOlderThan: '1998-07-01T00:00:00.000Z',
       renderedBodiesOlderThan: NOW,
-      engagementOlderThan: NOW,
       rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
@@ -1162,11 +1159,44 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
   });
 
+  it.each([undefined, '1998-07-01T00:00:00.000Z'])('purges engagement only with an explicit cutoff (%s) and always scrubs payloads', async (engagementOlderThan) => {
+    const deps = await setup([]);
+    for (const [id, type, occurredAt] of [
+      ['old-open', 'opened', '1998-06-01T00:00:00.000Z'],
+      ['old-click', 'clicked', '1998-06-01T00:00:00.000Z'],
+      ['old-delivery', 'delivered', '1998-06-01T00:00:00.000Z'],
+      ['boundary-open', 'opened', '1998-07-01T00:00:00.000Z'],
+    ]) {
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id, tenantId: 'tenant-1', mailKind: 'marketing', refId: 'retention-send',
+        type, occurredAt, createdAt: occurredAt, meta: {
+          rawProviderPayload: { retained: true },
+          ...(type === 'clicked' ? { linkUrl: 'https://example.test/offer' } : {}),
+        },
+      }));
+    }
+    const purge = vi.spyOn(deps.events, 'purgeEngagement');
+    const result = await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW, renderedBodiesOlderThan: NOW, rawSnsInboxOlderThan: NOW, idempotencyNow: NOW,
+      ...(engagementOlderThan === undefined ? {} : { engagementOlderThan }),
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
+    expect(result).toMatchObject({ ok: true, value: {
+      engagementEventsPurged: engagementOlderThan === undefined ? 0 : 2,
+      engagementPayloadsScrubbed: 3,
+    } });
+    if (engagementOlderThan === undefined) expect(purge).not.toHaveBeenCalled();
+    else expect(purge).toHaveBeenCalledWith('tenant-1', engagementOlderThan);
+    const retained = await deps.events.listByRef('tenant-1', 'marketing', 'retention-send');
+    expect(retained.map((row) => row.id)).toEqual(engagementOlderThan === undefined
+      ? ['old-open', 'old-click', 'old-delivery', 'boundary-open'] : ['old-delivery', 'boundary-open']);
+    expect(retained.filter((row) => row.type === 'opened' || row.type === 'clicked')
+      .every((row) => !Object.hasOwn(row.meta ?? {}, 'rawProviderPayload'))).toBe(true);
+  });
+
   it('applies each marketing retention boundary to its own data class', async () => {
     const deps = await setup([]);
     const pending = vi.spyOn(deps.consents, 'purgeStalePending').mockResolvedValue(0);
     const rendered = vi.spyOn(deps.sends, 'ageOutRenderedBodies').mockResolvedValue(0);
-    const engagement = vi.spyOn(deps.events, 'purgeEngagement').mockResolvedValue(0);
     const outbox = vi.spyOn(deps.marketingOutbox, 'purge').mockResolvedValue(0);
     const inbox = vi.spyOn(deps.snsInbox, 'purge').mockResolvedValue(0);
     const idempotency = new InMemoryAutomationIdempotencyRepository();
@@ -1174,7 +1204,6 @@ describe('marketing e-mail use-case integration', () => {
     const boundaries = {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-07-08T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T11:00:00.000Z',
       rawSnsInboxOlderThan: '1998-07-15T10:00:00.000Z',
       idempotencyNow: NOW,
     };
@@ -1185,7 +1214,6 @@ describe('marketing e-mail use-case integration', () => {
     expect(rendered).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
     expect(outbox).toHaveBeenCalledWith('tenant-1', boundaries.renderedBodiesOlderThan, NOW);
     expect(inbox).toHaveBeenCalledWith('tenant-1', boundaries.rawSnsInboxOlderThan);
-    expect(engagement).toHaveBeenCalledWith('tenant-1', boundaries.engagementOlderThan);
     expect(idempotencySweep).toHaveBeenCalledWith(NOW);
   });
 
@@ -1275,7 +1303,7 @@ describe('marketing e-mail use-case integration', () => {
     expect(await deps.consents.listByEmail('tenant-1', 'future@example.test')).toEqual([]);
   });
 
-  it('scans all due campaign work and runs retention for every marketing tenant', async () => {
+  it.each([undefined, '1998-06-22T10:00:00.000Z'])('scans all due campaign work and forwards the optional engagement cutoff (%s)', async (engagementOlderThan) => {
     const dispatched: string[] = [];
     const retained: string[] = [];
     const refreshed: string[] = [];
@@ -1283,9 +1311,9 @@ describe('marketing e-mail use-case integration', () => {
     const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
+      ...(engagementOlderThan === undefined ? {} : { engagementOlderThan }),
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1309,7 +1337,8 @@ describe('marketing e-mail use-case integration', () => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
       },
-      runRetention: async (tenantId) => {
+      runRetention: async (tenantId, input) => {
+        expect(input.engagementOlderThan).toBe(engagementOlderThan);
         retained.push(tenantId);
         return ok(undefined);
       },
@@ -1359,7 +1388,6 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1401,7 +1429,6 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
-      engagementOlderThan: '1998-06-22T10:00:00.000Z',
       rawSnsInboxOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerRunsOlderThan: '1998-06-22T10:00:00.000Z',
       schedulerIdleRunsOlderThan: '1998-06-22T10:00:00.000Z',
@@ -1692,16 +1719,25 @@ describe('marketing e-mail use-case integration', () => {
     const retention = await runMarketingRetentionJobs(ctx, {
       pendingOlderThan: NOW,
       renderedBodiesOlderThan: NOW,
-      engagementOlderThan: NOW,
       rawSnsInboxOlderThan: NOW,
       idempotencyNow: NOW,
     }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
     expect(retention).toMatchObject({
       ok: true,
-      value: { renderedBodiesPurged: 0, engagementEventsPurged: 1 },
+      value: { renderedBodiesPurged: 0, engagementPayloadsScrubbed: 1 },
     });
-    expect((await deps.events.listByRef('tenant-1', 'marketing', 'send-old')).map((event) => event.type))
-      .toEqual(['delivered']);
+    const retained = await deps.events.listByRef('tenant-1', 'marketing', 'send-old');
+    expect(retained.map((event) => event.id)).toEqual(['old-open', 'old-delivery']);
+    expect(retained[0]?.meta).not.toHaveProperty('rawProviderPayload');
+    expect(retained[1]?.meta).toEqual({ rawProviderPayload: {} });
+    expect(await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW,
+      renderedBodiesOlderThan: NOW,
+      rawSnsInboxOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
+      ok: true, value: { engagementPayloadsScrubbed: 0 },
+    });
   });
 
   it('requires campaign write capability to delete a campaign', async () => {

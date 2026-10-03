@@ -885,6 +885,11 @@ const nameFromEmail = (email: string): string => email.split('@')[0] ?? email;
  * these accounts sign in via magic link or passkey.
  */
 export const createAuthPort = (auth: Auth): AuthPort => ({
+  findUserByEmail: async (email) => {
+    const { internalAdapter } = await auth.$context;
+    const found = await internalAdapter.findUserByEmail(normalizeEmail(email));
+    return found === null ? null : { userId: found.user.id, emailVerified: found.user.emailVerified };
+  },
   getAuthenticatedUser: async (requestHeaders) => {
     const session = await auth.api.getSession({ headers: requestHeaders });
     if (!session) return null;

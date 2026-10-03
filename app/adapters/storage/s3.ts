@@ -19,6 +19,7 @@ import {
   type StorageCorsProbeResult,
   type StorageProbeErrorCode,
 } from '#core/domain/index.js';
+import { privateNetworkAddress, privateNetworkHostname } from '#core/domain/network.js';
 import type { StorageProvider, TenantSecretResolver } from '#core/server/index.js';
 
 const S3_HOST_PATTERN =
@@ -60,7 +61,14 @@ interface StorageResponse {
   ok: boolean;
   status: number;
   headers: { get(name: string): string | null };
-  body: { cancel(): Promise<void> } | null;
+  body: {
+    cancel(): Promise<void>;
+    getReader?(): {
+      read(): Promise<{ done: boolean; value?: Uint8Array }>;
+      cancel(): Promise<void>;
+      releaseLock(): void;
+    };
+  } | null;
   text(): Promise<string>;
 }
 
@@ -158,47 +166,13 @@ const sendProbeRequest = async (
   }
 };
 
-const privateIpv4 = (address: string): boolean => {
-  const octets = address.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return true;
-  }
-  const first = octets[0] ?? 0;
-  const second = octets[1] ?? 0;
-  return first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 198 && (second === 18 || second === 19)) ||
-    first >= 224;
-};
-
-const privateAddress = (address: string): boolean => {
-  if (/^\d+(?:\.\d+){3}$/.test(address)) return privateIpv4(address);
-  if (!address.includes(':')) return false;
-  const normalized = address.toLowerCase();
-  return normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('::ffff:') ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    /^fe[89ab]/.test(normalized) ||
-    normalized.startsWith('ff');
-};
-
 const validateProbeEndpoint = async (
   endpoint: string,
   allowPrivateEndpoints: boolean,
   lookupAddresses: (hostname: string) => Promise<string[]>,
 ): Promise<Result<{ address: string }, AppError>> => {
   const hostname = new URL(endpoint).hostname.replace(/^\[|\]$/g, '');
-  if (
-    !allowPrivateEndpoints &&
-    (hostname === 'localhost' || hostname.endsWith('.localhost') || privateAddress(hostname))
-  ) {
+  if (!allowPrivateEndpoints && privateNetworkHostname(hostname)) {
     return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
   }
   if (isIP(hostname) !== 0) return ok({ address: hostname });
@@ -222,7 +196,7 @@ const validateProbeEndpoint = async (
   if (addresses.some((address) => isIP(address) === 0)) {
     return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
   }
-  if (!allowPrivateEndpoints && addresses.some(privateAddress)) {
+  if (!allowPrivateEndpoints && addresses.some(privateNetworkAddress)) {
     return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
   }
   const address = addresses[0];
@@ -591,6 +565,49 @@ export const createS3StorageProvider = (
         return err(integrationUnavailable('S3 returned invalid object size metadata.'));
       }
       return ok({ sizeBytes: Number(contentLength) });
+    },
+    getObject: async (input, { maxBytes }) => {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return err(validation('Invalid object byte ceiling'));
+      const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
+      if (!signed.ok) return signed;
+      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await fetchStorage(signed.value, {
+          method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
+          headers: { 'Accept-Encoding': 'identity' },
+        });
+        const length = response.headers.get('content-length');
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
+          (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
+          await discardStorageResponseBody(response);
+          return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        }
+        const reader = response.body.getReader();
+        try {
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            if (chunk.value === undefined || offset + chunk.value.byteLength > size) {
+              await reader.cancel();
+              return err(integrationUnavailable('Object exceeds its declared size'));
+            }
+            bytes.set(chunk.value, offset);
+            offset += chunk.value.byteLength;
+          }
+          return offset === size ? ok(bytes) : err(integrationUnavailable('Object size does not match its metadata'));
+        } finally {
+          reader.releaseLock();
+        }
+      } catch {
+        return err(integrationUnavailable('Could not read the bounded storage object'));
+      } finally {
+        await dispatcher.destroy();
+      }
     },
     healthcheck: ({ tenantId }) => checkCredentials(resolver, tenantId),
     test: async ({ tenantId, corsOrigins }) => {

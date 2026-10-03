@@ -392,7 +392,7 @@ describe('LoginPage', () => {
 
     const { router } = await renderLoginPage(
       false,
-      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
     await continueWithEmail();
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
@@ -400,6 +400,7 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
     expect(router.state.location.searchStr).toBe('?thread=t1');
+    expect(router.state.location.hash).toBe('wiring');
   });
 
   it('returns passkey sign-in to the safe returnTo path', async () => {
@@ -509,6 +510,18 @@ describe('LoginPage', () => {
     );
     await waitFor(() => expect(returned.router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
     returned.unmount();
+
+    const returnedWithHash = await renderLoginPage(
+      false,
+      '/login?verification=verified&returnTo=/my/courses/course-1/lessons/lesson-1#installation-notes',
+      undefined,
+      ['password'],
+      [],
+      staffMe(),
+    );
+    await waitFor(() => expect(returnedWithHash.router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+    expect(returnedWithHash.router.state.location.hash).toBe('installation-notes');
+    returnedWithHash.unmount();
 
     const fallback = await renderLoginPage(false, '/login?verification=verified', undefined, ['password'], [], staffMe());
     await waitFor(() => expect(fallback.router.state.location.pathname).toBe('/start'));

@@ -62,6 +62,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/marketing/forms/:slug/submit` | public | read | Form-specific allow-listed JSON submission preflight |
 | `POST /api/public/marketing/forms/:slug/submit` | public | mutating | Rate-limited public signup recording contacts, consent evidence and confirmation mail requests |
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
+| `POST /api/internal/tenants/provision` | self-authenticating | mutating | operator tenant provision |
+| `GET /api/internal/tenants/:slug/readiness` | self-authenticating | read | operator tenant readiness |
 | `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
 | `GET /api/internal/dispatch-email` | self-authenticating | read | api internal dispatch-email |
 | `POST /api/internal/dispatch-auto-invoices` | self-authenticating | mutating | auto invoice dispatch |
@@ -242,6 +244,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/image-assets/branding/upload` | authenticated | mutating | branding asset upload |
 | `POST /api/image-assets/branding/complete` | authenticated | mutating | branding asset complete |
 | `GET /api/my/products` | authenticated | read | my products |
+| `GET /api/download-copies` | authenticated | read | download copies |
 | `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
@@ -266,6 +269,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/tenant/settings` | authenticated | read | tenant settings |
 | `GET /api/tenant/redirects` | authenticated | read | tenant redirects |
 | `POST /api/tenant/redirects` | authenticated | mutating | tenant redirect create |
+| `POST /api/tenant/redirects/update` | authenticated | mutating | tenant redirect update |
 | `POST /api/tenant/redirects/remove` | authenticated | mutating | tenant redirect delete |
 | `GET /api/tenant/routing` | authenticated | read | tenant routing |
 | `POST /api/tenant/domains` | authenticated | mutating | tenant domain add |
@@ -277,6 +281,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
 | `GET /api/onboarding/setup` | authenticated | read | onboarding setup |
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
+| `GET /api/integrations/telemetry` | authenticated | read | telemetry store |
+| `POST /api/integrations/telemetry/connect` | authenticated | mutating | telemetry connect |
+| `POST /api/integrations/telemetry/probe` | authenticated | mutating | telemetry probe |
+| `POST /api/integrations/telemetry/disconnect` | authenticated | mutating | telemetry disconnect |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
 | `POST /api/checkout/stripe-test-session` | authenticated | mutating | stripe test session |
@@ -391,4 +399,4 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/messages/report` | authenticated | mutating | messages report |
 | `GET /api/messages/:conversationId` | authenticated | read | messages thread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
-| `GET /*` | public | read | Tenant-configured path redirects and the social preview for link crawlers |
+| `GET /*` | public | mutating | Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only |

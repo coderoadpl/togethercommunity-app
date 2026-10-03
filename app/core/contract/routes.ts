@@ -1,3 +1,5 @@
+import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
+import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
 import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
 
 export { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema };
@@ -66,6 +68,8 @@ import {
   lessonAttachmentUploadInputSchema,
   lessonAttachmentViewSchema,
   productDownloadAssetMetadataSchema,
+  downloadCopySchema,
+  productDownloadCompleteInputSchema,
   productDownloadAssetViewSchema,
   productDownloadUploadInputSchema,
   listDiscussionInputSchema,
@@ -78,6 +82,7 @@ import {
   tenantRedirectCreateInputSchema,
   tenantRedirectDeleteInputSchema,
   tenantRedirectListQuerySchema,
+  tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
@@ -942,9 +947,13 @@ export const productDownloadUploadOutputSchema = z.object({
   }),
 });
 
+export const productDownloadCompleteRequestSchema = productDownloadCompleteInputSchema;
+
 export const productDownloadCompleteOutputSchema = z.object({
   asset: productDownloadAssetMetadataSchema,
 });
+
+export const downloadCopiesOutputSchema = z.object({ copies: z.array(downloadCopySchema) });
 
 export const productDownloadAssetsOutputSchema = z.object({
   assets: z.array(productDownloadAssetMetadataSchema),
@@ -1429,6 +1438,10 @@ export const tenantRedirectCreateSchema = tenantRedirectCreateInputSchema;
 
 export type TenantRedirectCreateBody = z.input<typeof tenantRedirectCreateSchema>;
 
+export const tenantRedirectUpdateSchema = tenantRedirectUpdateInputSchema;
+
+export type TenantRedirectUpdateBody = z.input<typeof tenantRedirectUpdateSchema>;
+
 export const tenantRedirectDeleteSchema = tenantRedirectDeleteInputSchema;
 
 export type TenantRedirectDeleteBody = z.input<typeof tenantRedirectDeleteSchema>;
@@ -1496,6 +1509,9 @@ export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
 export const integrationTestOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
 });
+
+export const telemetryStoreInputSchema = telemetryConnectionSchema;
+export const telemetryStoreOutputSchema = telemetryStoreViewSchema;
 
 export const storageProbeInputSchema = storageConfigurationSchema;
 
@@ -1625,10 +1641,10 @@ export const marketingCampaignAudienceInputSchema = z.object({ campaignId: z.str
 export type MarketingCampaignAudienceInput = z.input<typeof marketingCampaignAudienceInputSchema>;
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignDetailOutputSchema = z.object({
-  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) }),
+  campaign: z.union([campaignWithoutStatisticsSchema, campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })]),
 });
 export const marketingCampaignsOutputSchema = z.object({
-  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })),
+  campaigns: z.array(z.union([campaignWithoutStatisticsSchema, campaignSchema.extend({ engagement: campaignEngagementStatsSchema, queued: z.number().int().nonnegative().default(0), unresolved: z.number().int().nonnegative().default(0), results: campaignResultsSchema.default({ candidates: 0, waiting: 0, sent: 0, failed: 0, skipped: 0, delivered: 0, bounced: 0, complained: 0, unresolved: 0 }) })])),
 });
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
@@ -1796,6 +1812,8 @@ export const authSendLogLatestOutputSchema = z.object({
  * verbs are commands. `core/client` brands its call surface from these methods.
  */
 export const API_ROUTES = {
+  operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
+  operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
@@ -1888,6 +1906,7 @@ export const API_ROUTES = {
   lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
   lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
   lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
+  downloadCopies: { method: 'GET', path: '/api/download-copies' },
   productDownloadAssets: { method: 'GET', path: '/api/products/:productId/downloads' },
   productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
   productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
@@ -1994,6 +2013,10 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  telemetryStore: { method: 'GET', path: '/api/integrations/telemetry' },
+  telemetryConnect: { method: 'POST', path: '/api/integrations/telemetry/connect' },
+  telemetryProbe: { method: 'POST', path: '/api/integrations/telemetry/probe' },
+  telemetryDisconnect: { method: 'POST', path: '/api/integrations/telemetry/disconnect' },
   storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
   storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
   stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
@@ -2072,6 +2095,7 @@ export const API_ROUTES = {
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
   tenantRedirectCreate: { method: 'POST', path: '/api/tenant/redirects' },
+  tenantRedirectUpdate: { method: 'POST', path: '/api/tenant/redirects/update' },
   tenantRedirectDelete: { method: 'POST', path: '/api/tenant/redirects/remove' },
   tenantDomainAdd: { method: 'POST', path: '/api/tenant/domains' },
   tenantDomainCheck: { method: 'POST', path: '/api/tenant/domains/check' },
@@ -2090,6 +2114,8 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
+  operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
   activitySummary: API_ROUTES.activitySummary.path,
   memberActivity: API_ROUTES.memberActivity.path,
   listMarketingSignupForms: API_ROUTES.listMarketingSignupForms.path,
@@ -2234,6 +2260,7 @@ export const API_PATHS = {
   lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
   lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
   lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
+  downloadCopies: API_ROUTES.downloadCopies.path,
   productDownloadAssets: API_ROUTES.productDownloadAssets.path,
   productDownloadUpload: API_ROUTES.productDownloadUpload.path,
   productDownloadComplete: API_ROUTES.productDownloadComplete.path,
@@ -2334,6 +2361,10 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
+  telemetryStore: API_ROUTES.telemetryStore.path,
+  telemetryConnect: API_ROUTES.telemetryConnect.path,
+  telemetryProbe: API_ROUTES.telemetryProbe.path,
+  telemetryDisconnect: API_ROUTES.telemetryDisconnect.path,
   storageProbe: API_ROUTES.storageProbe.path,
   storageConfigure: API_ROUTES.storageConfigure.path,
   stripeConfigure: API_ROUTES.stripeConfigure.path,
@@ -2402,6 +2433,7 @@ export const API_PATHS = {
   tenantRouting: API_ROUTES.tenantRouting.path,
   tenantRedirects: API_ROUTES.tenantRedirects.path,
   tenantRedirectCreate: API_ROUTES.tenantRedirectCreate.path,
+  tenantRedirectUpdate: API_ROUTES.tenantRedirectUpdate.path,
   tenantRedirectDelete: API_ROUTES.tenantRedirectDelete.path,
   tenantDomainDispatch: API_ROUTES.tenantDomainDispatch.path,
   tenantDomainAdd: API_ROUTES.tenantDomainAdd.path,

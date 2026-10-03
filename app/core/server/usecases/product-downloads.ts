@@ -5,6 +5,8 @@ import {
   notFound,
   ok,
   productDownloadUploadInputSchema,
+  productDownloadCompleteInputSchema,
+  type ProductDownloadCompleteInput,
   validation,
   type AppError,
   type Product,
@@ -12,6 +14,8 @@ import {
   type ProductDownloadUploadInput,
   type Result,
 } from '#core/domain/index.js';
+
+import type { DownloadCopyRepository, DownloadCopyOrderReader, DownloadPersonaliser, DownloadCopyCrypto, PersonalisationSlots } from '../download-copy-ports.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
@@ -34,6 +38,12 @@ const PRODUCT_DOWNLOAD_UPLOAD_TTL_SECONDS = 15 * 60;
 export const PRODUCT_DOWNLOAD_TTL_SECONDS = 60 * 60;
 
 export interface ProductDownloadDeps {
+  downloadCopies: DownloadCopyRepository;
+  downloadCopyOrders: DownloadCopyOrderReader;
+  downloadPersonaliser: DownloadPersonaliser;
+  downloadCopyCrypto: DownloadCopyCrypto;
+  personalisationMaxBytes: number;
+  personalisationSlots: PersonalisationSlots;
   downloadAssets: ProductDownloadAssetRepository;
   products: ProductRepository;
   grants: ProductGrantRepository;
@@ -56,6 +66,18 @@ const requireDigitalProduct = async (
     : err(validation('Files can only be attached to digital-download products'));
 };
 
+const validateReplacement = async (
+  tenantId: string,
+  productId: string,
+  assetId: string | undefined,
+  repository: ProductDownloadAssetRepository,
+): Promise<Result<void, AppError>> => {
+  if (assetId === undefined) return ok(undefined);
+  const asset = await repository.findById(tenantId, assetId);
+  if (asset === null || asset.productId !== productId) return err(notFound('Replacement file not found'));
+  return asset.status === 'ready' ? ok(undefined) : err(validation('Only ready files can be replaced'));
+};
+
 export const beginProductDownloadUpload = async (
   ctx: Ctx,
   productId: string,
@@ -68,6 +90,8 @@ export const beginProductDownloadUpload = async (
   if (!parsed.success) return err(validation('Invalid download asset', parsed.error.flatten()));
   const product = await requireDigitalProduct(tenant.value, productId, deps.products);
   if (!product.ok) return product;
+  const replacement = await validateReplacement(tenant.value, productId, parsed.data.replacesAssetId, deps.downloadAssets);
+  if (!replacement.ok) return replacement;
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
 
@@ -84,6 +108,11 @@ export const beginProductDownloadUpload = async (
   const createdAt = deps.clock.nowIso();
   const asset: ProductDownloadAsset = {
     id,
+    lineageId: id,
+    versionNumber: 1,
+    versionNote: parsed.data.versionNote ?? null,
+    supersededAt: null,
+    replacesAssetId: parsed.data.replacesAssetId ?? null,
     tenantId: tenant.value,
     productId,
     fileName: parsed.data.fileName,
@@ -105,7 +134,8 @@ export const completeProductDownloadUpload = async (
   ctx: Ctx,
   productId: string,
   assetId: string,
-  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'secretResolver' | 'storage'>,
+  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'secretResolver' | 'storage' | 'clock'>,
+  input: ProductDownloadCompleteInput = {},
 ): Promise<Result<ProductDownloadAsset, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
@@ -113,7 +143,13 @@ export const completeProductDownloadUpload = async (
   if (asset === null || asset.productId !== productId) {
     return err(notFound(`No download asset "${assetId}" on this product`));
   }
+  const parsed = productDownloadCompleteInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid version details', parsed.error.flatten()));
   if (asset.status === 'ready') return ok(asset);
+  const replacesAssetId = parsed.data.replacesAssetId ?? asset.replacesAssetId ?? undefined;
+  if (replacesAssetId === asset.id) return err(validation('A file cannot replace itself'));
+  const replacement = await validateReplacement(tenant.value, productId, replacesAssetId, deps.downloadAssets);
+  if (!replacement.ok) return replacement;
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const storedObject = await deps.storage.head({
@@ -133,7 +169,11 @@ export const completeProductDownloadUpload = async (
     if (!removed.ok) return removed;
     return err(validation(`Uploaded file must be between 1 and ${String(PRODUCT_DOWNLOAD_MAX_BYTES)} bytes`));
   }
-  const ready = await deps.downloadAssets.markReady(tenant.value, assetId, storedObject.value.sizeBytes);
+  const ready = await deps.downloadAssets.markReady(tenant.value, assetId, storedObject.value.sizeBytes, {
+    replacesAssetId,
+    versionNote: parsed.data.versionNote ?? asset.versionNote,
+    now: deps.clock.nowIso(),
+  });
   return ready === null
     ? err(notFound(`No download asset "${assetId}" on this product`))
     : ok(ready);
@@ -156,8 +196,8 @@ export const getProductDownload = async (
   ctx: Ctx,
   productId: string,
   assetId: string,
-  deps: Pick<ProductDownloadDeps, 'clock' | 'downloadAssets' | 'grants' | 'secretResolver' | 'storage'>,
-): Promise<Result<string, AppError>> => {
+  deps: Pick<ProductDownloadDeps, 'clock' | 'downloadAssets' | 'grants' | 'secretResolver' | 'storage' | 'downloadCopies' | 'downloadCopyOrders' | 'downloadPersonaliser' | 'downloadCopyCrypto' | 'personalisationMaxBytes' | 'personalisationSlots' | 'ids'>,
+): Promise<Result<{ kind: 'redirect'; url: string } | { kind: 'file'; bytes: Uint8Array; contentType: string; fileName: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:product:read');
   if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));
@@ -176,18 +216,54 @@ export const getProductDownload = async (
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const target = deps.storage.objectUrl(configuration.value, asset.storageKey);
-  target.searchParams.set(
-    'response-content-disposition',
-    `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`,
-  );
-  target.searchParams.set('response-content-type', asset.contentType);
-  return deps.storage.presignGet({
-    url: target.toString(),
+  const credentials = {
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
-    expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
-  });
+  };
+  target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
+  target.searchParams.set('response-content-type', asset.contentType);
+  if (ctx.impersonation !== undefined) {
+    const signed = deps.storage.presignGet({
+      ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+    });
+    return signed.ok ? ok({ kind: 'redirect', url: signed.value }) : signed;
+  }
+  const copyIdentifier = deps.downloadCopyCrypto.identifier();
+  const release = asset.sizeBytes <= deps.personalisationMaxBytes &&
+    (asset.contentType === 'application/pdf' || asset.contentType === 'application/epub+zip')
+    ? deps.personalisationSlots.acquire() : null;
+  try {
+    let file: { bytes: Uint8Array; contentType: string } | null = null;
+    if (release !== null) {
+      const stored = await deps.storage.getObject({ ...credentials, url: target.toString() }, { maxBytes: deps.personalisationMaxBytes });
+      if (stored.ok) {
+        const personalised = await deps.downloadPersonaliser.personalise({
+          contentType: asset.contentType, bytes: stored.value, copyIdentifier,
+          context: { maxBytes: deps.personalisationMaxBytes },
+        });
+        if (personalised.ok && personalised.value.bytes.byteLength <= deps.personalisationMaxBytes) file = personalised.value;
+      }
+    }
+    const response = file === null ? deps.storage.presignGet({
+      ...credentials, url: target.toString(), expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+    }) : ok(file);
+    if (!response.ok) return response;
+    const orderId = await deps.downloadCopyOrders.findLatestPaidOrderId(tenant.value, ctx.identity.memberId, productId);
+    const recorded = await deps.downloadCopies.create(tenant.value, {
+      id: deps.ids.nextId(), tenantId: tenant.value, copyIdentifier, memberId: ctx.identity.memberId,
+      orderId, productId, assetId, lineageId: asset.lineageId, versionNumber: asset.versionNumber,
+      fileName: asset.fileName, personalised: file !== null,
+      contentHash: file === null ? null : deps.downloadCopyCrypto.hash(file.bytes),
+      bytes: file?.bytes.byteLength ?? null, createdAt: deps.clock.nowIso(),
+    });
+    if (!recorded) return err(forbidden('This member has been erased'));
+    return ok(typeof response.value === 'string'
+      ? { kind: 'redirect', url: response.value }
+      : { kind: 'file', ...response.value, fileName: asset.fileName });
+  } finally {
+    release?.();
+  }
 };
 
 export const deleteProductDownloadAsset = async (

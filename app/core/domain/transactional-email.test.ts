@@ -210,6 +210,45 @@ describe('welcomeSignIn', () => {
     `);
   });
 
+  it.each([
+    ['course', 'Sign in and open your course'],
+    ['digital_download', 'Sign in and download your files'],
+    ['membership', 'Sign in to your account'],
+  ] as const)('renders the %s action in both languages', (productType, enLabel) => {
+    const input = {
+      tenantName: 'Acme Courses',
+      actionUrl: 'https://acme.localhost/sign-in?token=abc',
+      productType,
+    };
+    const plLabel = transactionalEmailMessagesPl.welcomeSignIn.actionLabels[productType];
+    const en = welcomeSignIn('en', input);
+    const pl = welcomeSignIn('pl', input);
+
+    expect(en.html).toContain(`>${enLabel}</a>`);
+    expect(en.text).toContain(`${enLabel}: ${input.actionUrl}`);
+    expect(pl.html).toContain(`>${plLabel}</a>`);
+    expect(pl.text).toContain(`${plLabel}: ${input.actionUrl}`);
+  });
+
+  it('defaults an absent product type to the course action', () => {
+    const input = {
+      tenantName: 'Acme Courses',
+      actionUrl: 'https://acme.localhost/sign-in?token=abc',
+    };
+    expect(welcomeSignIn('en', input).text).toContain(`Sign in and open your course: ${input.actionUrl}`);
+    expect(welcomeSignIn('pl', input).text).toContain(`${transactionalEmailMessagesPl.welcomeSignIn.actionLabels.course}: ${input.actionUrl}`);
+  });
+
+  it('renders unknown product types with the neutral action', () => {
+    const input = {
+      tenantName: 'Acme Courses',
+      actionUrl: 'https://acme.localhost/sign-in?token=abc',
+      productType: 'unknown',
+    } as const;
+    expect(welcomeSignIn('en', input).text).toContain(`Sign in to your account: ${input.actionUrl}`);
+    expect(welcomeSignIn('pl', input).text).toContain(`${transactionalEmailMessagesPl.welcomeSignIn.actionLabels.unknown}: ${input.actionUrl}`);
+  });
+
   it('falls back to the default locale for unknown languages', () => {
     expect(welcomeSignIn('de', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject).toBe(
       welcomeSignIn('en', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject,

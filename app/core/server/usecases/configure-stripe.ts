@@ -15,7 +15,7 @@ import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';
 import type { TenantUrlDeps } from '../tenant-url.js';
-import { setTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './tenant-secrets.js';
+import { buildTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './tenant-secrets.js';
 
 export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
   payment: PaymentProvider;
@@ -61,17 +61,12 @@ export const configureStripe = async (
     });
   };
   try {
-    for (const secret of [
+    const records = [
       { key: mode === 'test' ? 'stripe.testWebhookSecret' as const : 'stripe.webhookSecret' as const, value: configured.value.webhookSecret },
       { key: mode === 'test' ? 'stripe.testRestrictedKey' as const : 'stripe.restrictedKey' as const, value: parsed.data.restrictedKey },
-      ...(mode === 'test' ? [{ key: 'stripe.testWebhookEndpointId' as const, value: configured.value.webhookEndpointId }] : []),
-    ]) {
-      const stored = await setTenantSecret(ctx, secret, deps);
-      if (!stored.ok) {
-        await cleanup();
-        return stored;
-      }
-    }
+      { key: mode === 'test' ? 'stripe.testWebhookEndpointId' as const : 'stripe.webhookEndpointId' as const, value: configured.value.webhookEndpointId },
+    ].map((secret) => buildTenantSecret(tenant.value, secret.key, secret.value, deps));
+    await deps.tenantSecrets.upsertMany(tenant.value, records);
   } catch (cause) {
     await cleanup();
     throw cause;

@@ -439,6 +439,7 @@ const authMailRequest = (
       return Response.json(magicLink.payload, { status: magicLink.status });
     }
     if (url.pathname === '/api/internal/auth-send-log/latest') {
+      expect(init?.redirect).toBe('error');
       expect(url.searchParams.get('tenant')).toBe('acme');
       expect(url.searchParams.get('kind')).toBe('magic-link');
       expect(url.searchParams.get('since')).toBe('2026-09-05T11:59:30.000Z');

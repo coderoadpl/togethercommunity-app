@@ -1,7 +1,7 @@
 import type { ConsentDefinitionVersion } from '#core/domain/index.js';
 import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
@@ -391,6 +391,11 @@ export const productDownloadAssets = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     productId: text('product_id').notNull(),
+    lineageId: text('lineage_id').notNull(),
+    versionNumber: integer('version_number').notNull().default(1),
+    versionNote: text('version_note'),
+    supersededAt: text('superseded_at'),
+    replacesAssetId: text('replaces_asset_id'),
     fileName: text('file_name').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
@@ -404,6 +409,8 @@ export const productDownloadAssets = pgTable(
       columns: [table.tenantId, table.productId],
       foreignColumns: [products.tenantId, products.id],
     }).onDelete('cascade'),
+    uniqueIndex('product_download_assets_lineage_version_uidx').on(table.tenantId, table.lineageId, table.versionNumber),
+    check('product_download_assets_version_positive', sql`${table.versionNumber} > 0`),
     index('product_download_assets_tenant_product_idx').on(table.tenantId, table.productId),
     uniqueIndex('product_download_assets_tenant_storage_key_uidx').on(table.tenantId, table.storageKey),
   ],
@@ -1864,7 +1871,11 @@ export const tenantRedirects = pgTable(
     }).notNull(),
     targetId: text('target_id'),
     targetPath: text('target_path').notNull(),
+    targetAnchor: text('target_anchor'),
     permanent: boolean('permanent').notNull().default(false),
+    locked: boolean('locked').notNull().default(false),
+    hitCount: bigint('hit_count', { mode: 'number' }).notNull().default(0),
+    lastHitAt: timestamp('last_hit_at', { withTimezone: true, mode: 'string' }),
     origin: text('origin', { enum: ['import', 'manual'] }).notNull().default('import'),
     createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
@@ -2252,8 +2263,10 @@ export const tenantAuditEvents = pgTable(
         'impersonation_ended',
         'content_version_restored',
         'redirect_created',
+        'redirect_updated',
         'redirect_deleted',
         'post_purged',
+        'tenant_provisioned',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),
@@ -2466,4 +2479,27 @@ export const marketingSignupSubmissions = pgTable('marketing_signup_submissions'
 }, (t) => [
   foreignKey({ columns: [t.tenantId, t.formId], foreignColumns: [marketingSignupForms.tenantId, marketingSignupForms.id], name: 'marketing_signup_submission_form_fk' }).onDelete('cascade'),
   index('marketing_signup_submissions_counts_idx').on(t.tenantId, t.formId, t.occurredAt),
+]);
+
+export const downloadCopies = pgTable('download_copies', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  copyIdentifier: text('copy_identifier').notNull(),
+  memberId: text('member_id').notNull(),
+  orderId: text('order_id'),
+  productId: text('product_id').notNull(),
+  assetId: text('asset_id').notNull(),
+  lineageId: text('lineage_id').notNull(),
+  versionNumber: integer('version_number').notNull(),
+  fileName: text('file_name').notNull(),
+  personalised: boolean('personalised').notNull(),
+  contentHash: text('content_hash'),
+  bytes: integer('bytes'),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('download_copies_tenant_identifier_uidx').on(table.tenantId, table.copyIdentifier),
+  index('download_copies_tenant_member_idx').on(table.tenantId, table.memberId),
+  index('download_copies_tenant_order_idx').on(table.tenantId, table.orderId),
+  index('download_copies_tenant_product_idx').on(table.tenantId, table.productId),
+  check('download_copies_version_positive', sql`${table.versionNumber} > 0`),
 ]);

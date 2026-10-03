@@ -295,7 +295,7 @@ export interface ProductDownloadAssetRepository {
   findById(tenantId: string, assetId: string): Promise<ProductDownloadAsset | null>;
   listByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
   listReadyByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
-  markReady(tenantId: string, assetId: string, sizeBytes: number): Promise<ProductDownloadAsset | null>;
+  markReady(tenantId: string, assetId: string, sizeBytes: number, version: { replacesAssetId: string | undefined; versionNote: string | null; now: string }): Promise<ProductDownloadAsset | null>;
   delete(tenantId: string, assetId: string): Promise<boolean>;
 }
 
@@ -919,7 +919,9 @@ export interface TenantRedirectReader {
 
 export interface TenantRedirectRepository extends TenantRedirectReader {
   create(tenantId: string, redirect: TenantRedirect): Promise<'saved' | 'path_taken'>;
+  update(tenantId: string, redirect: TenantRedirect): Promise<TenantRedirect | null>;
   deleteById(tenantId: string, redirectId: string): Promise<boolean>;
+  incrementHit(tenantId: string, redirectId: string): Promise<void>;
 }
 
 export type ImportRedirectMutation = {
@@ -966,6 +968,7 @@ export interface TenantSecretRepository {
   listByTenant(tenantId: string): Promise<TenantSecret[]>;
   findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;
   upsert(tenantId: string, secret: TenantSecret): Promise<TenantSecret>;
+  upsertMany(tenantId: string, secrets: readonly TenantSecret[]): Promise<TenantSecret[]>;
   delete(tenantId: string, key: TenantSecretKey): Promise<boolean>;
 }
 
@@ -1413,6 +1416,12 @@ export interface BunnyTokenSigner {
 }
 
 export interface StorageProvider {
+  getObject(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+  }, options: { maxBytes: number }): Promise<Result<Uint8Array, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;
   probe(
     input: StorageConfiguration,
@@ -1625,9 +1634,10 @@ export interface PlatformTransactionalPool {
 
 export interface EmailEventRepository {
   append(tenantId: string, event: EmailEvent): Promise<void>;
+  purgeEngagement(tenantId: string, olderThan: string): Promise<number>;
+  scrubEngagementPayloads(tenantId: string, limit: number): Promise<number>;
   listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
   listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;
-  purgeEngagement(tenantId: string, olderThan: string): Promise<number>;
   reputationCounts(
     tenantId: string,
     window: { since: string; until: string },
@@ -1874,14 +1884,15 @@ export interface TenantRepository {
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
   createTenantWithOwnerGrant(
     input: {
-      tenant: { id: string; slug: string; name: string; createdAt: string };
+      tenant: { id: string; slug: string; name: string; createdAt: string; defaultLanguage?: Language };
+      provisionAudit?: TenantAuditEventInput;
       ownerGrant: {
         id: string;
         userId: string;
         staffRole: Extract<StaffRole, 'owner'>;
       };
     },
-    options?: { requireEmpty: boolean },
+    options?: { requireEmpty: boolean; idempotentOwner?: boolean },
   ): Promise<Tenant | null>;
   hasAny(): Promise<boolean>;
 }
@@ -2299,6 +2310,7 @@ export interface AccountSession {
 }
 
 export interface AuthPort {
+  findUserByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;
   /** Unexpired sessions of one account, in provider order. */

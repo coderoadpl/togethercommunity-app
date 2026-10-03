@@ -574,3 +574,16 @@ describe('campaign body editor', () => {
     expect(await screen.findByText(en.marketing.bodyRequired)).toBeInTheDocument();
   });
 });
+
+it('keeps campaign identity and controls while hiding an unavailable report', async () => {
+  const detail = { ...campaignRow({ name: 'Unavailable campaign', status: 'finished' }), statisticsUnavailable: true };
+  server.use(
+    http.get('/api/marketing/campaigns/:campaignId', () => HttpResponse.json({ ok: true, data: { campaign: detail } })),
+    http.get('/api/marketing/ses/settings', () => HttpResponse.json({ ok: true, data: { settings: sesSettings(true) } })),
+  );
+  await renderDirectory(CampaignDetailPage, '/panel/marketing/campaigns/$campaignId', '/panel/marketing/campaigns/campaign-cancelled');
+  expect(await screen.findByText('Unavailable campaign')).toBeVisible();
+  expect(screen.getByTestId('telemetry-statistics-unavailable')).toBeVisible();
+  expect(screen.queryByTestId('campaign-result-stats')).not.toBeInTheDocument();
+  expect(screen.queryByText(en.marketing.campaignRunsTitle)).not.toBeInTheDocument();
+});

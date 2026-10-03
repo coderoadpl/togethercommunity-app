@@ -92,6 +92,14 @@ email's HMAC-SHA-256 digest keyed with `BETTER_AUTH_SECRET`, outcome and reason
 codes. Provider logging retains errors while suppressing warnings and lower
 levels. Magic links use the existing `auth-link:email` bucket without a second
 sign-in email counter.
+
+Anonymous tenant redirects increment only an aggregate hit counter after a
+per-redirect minute bucket accepts the request. The default is 600 and
+`PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE` overrides it. The
+bucket key contains only the tenant and redirect identifiers, so the counter
+stores no visitor data. Exhausting the bucket skips the counter update without
+blocking the redirect, making counts a lower bound during a traffic flood.
+
 Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
 that policy. The lesson read resolves a session when one is present and falls
 back to anonymous public capabilities, which reach lessons flagged as free
@@ -177,3 +185,43 @@ must use HTTPS without embedded credentials; users cannot override them in a
 submission. Consent, submission history, and mail enqueueing share the submission
 transaction; deferred contact and list effects commit in the confirmation
 transaction. Public submissions never lift a suppression.
+
+
+## Operator tenant provisioning
+
+- `POST /api/internal/tenants/provision` requires the operator secret and the
+  `tenant:provision` capability. It creates a tenant, the existing verified owner's
+  grant, and an audit event atomically, with retries deduplicated by slug and owner.
+- `GET /api/internal/tenants/:slug/readiness` requires the same secret and
+  `tenant:readiness`. It returns only configuration booleans, a probe timestamp,
+  the Stripe mode and the published-product count.
+
+Both routes compare `x-scheduler-operator-secret` with `deps.operatorSecret`
+using `secretEquals` before parsing input or accessing repositories. An early
+route-specific guard also rejects invalid secrets before the global impersonation
+middleware can resolve a session cookie. They are
+registered on the internal app and excluded from public manifests. Session roles
+have neither capability. Like neighboring operator routes, they have no separate
+rate limiter. Public `TENANT_CREATION` policy is unchanged.
+
+The provisioning body rejects unknown fields, including storage and Stripe
+credentials. The owner configures those integrations in the panel or with the
+existing owner CLI commands after creation. Operator CLI commands read the secret
+only from `OPERATOR_SECRET`, never a flag, and redact transport exceptions.
+Requests carrying the operator secret refuse redirects, preventing the header
+from being forwarded to another origin.
+See [operator tenant provisioning](tenant-provisioning.md) for the procedure,
+readiness evidence limits and recovery behavior.
+
+## Download copy privacy
+
+The copy registry is tenant-scoped and requires `order:read`. Public and member
+read models do not expose identifiers, hashes, order links or registry rows.
+The member download path retains its active-grant and ready-asset checks. It
+serves the unchanged original through a signed link during member impersonation
+without reading, personalising or issuing a copy, so operator downloads cannot
+be attributed to the member. For ordinary member requests, it
+checks recorded size before fetching, enforces the storage Content-Length
+ceiling before reading a body, and writes the registry before sending a file
+or signed redirect. Personalised files are private, `no-store` responses.
+Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).

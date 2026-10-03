@@ -184,6 +184,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
     listByTenant: async () => [secret],
     findByKey: async () => secret,
     upsert: async (_tenantId, stored) => stored,
+    upsertMany: async (_tenantId, secrets) => [...secrets],
     delete: async () => false,
   },
   secretCrypto: {
@@ -195,6 +196,7 @@ const deps = (overrides: Partial<DeepHealthDeps> = {}): DeepHealthDeps => ({
       key === 's3.configuration' ? ok(storageConfiguration) : err(notFound(`No secret "${key}"`)),
   },
   storage: {
+    getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
@@ -432,6 +434,7 @@ describe('checkDeepHealth', () => {
         listByTenant: async () => [],
         findByKey: async () => null,
         upsert: async (_tenantId, stored) => stored,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
     }));
@@ -641,6 +644,7 @@ describe('checkDeepHealth', () => {
         listByTenant: async () => [],
         findByKey: async () => null,
         upsert: async (_tenantId, stored) => stored,
+        upsertMany: async (_tenantId, secrets) => [...secrets],
         delete: async () => false,
       },
       secretResolver: { resolve: async (_tenantId, key) => err(notFound(`No secret "${key}"`)) },

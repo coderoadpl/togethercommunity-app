@@ -449,7 +449,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/products',
     ready: async (page) => {
       await page.getByTestId('my-product-product-js-full').waitFor(visible);
-      await page.getByTestId('download-download-asset-workbook').waitFor(visible);
+      await page.getByTestId('download-download-asset-workbook-v2').waitFor(visible);
     },
   },
   {
@@ -589,6 +589,13 @@ export const SCREENS: readonly ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-settings-redirects-edit',
+    auth: 'creator',
+    path: '/panel/settings/redirects',
+    fixtureName: 'panel-settings-redirects',
+    ready: (page) => page.getByRole('heading', { name: en.redirects.editHeading }).waitFor(visible),
+  },
+  {
     name: 'panel-storage-wizard',
     auth: 'creator',
     path: '/panel/integrations#storage',
@@ -636,11 +643,11 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-product-downloads',
     auth: 'creator',
     path: '/panel/products/product-download-workbook',
-    ready: (page) => page.getByTestId('product-download-assets').waitFor(visible),
+    ready: (page) => page.getByRole('link', { name: 'member-studio-active', exact: true }).waitFor(visible),
     settled: async (page) => {
-      await page.getByTestId('product-download-assets').evaluate((element) =>
-        element.scrollIntoView({ block: 'start' }),
-      );
+      await page.getByTestId('download-copy-lookup').evaluate((element) => {
+        window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 72);
+      });
     },
   },
   {

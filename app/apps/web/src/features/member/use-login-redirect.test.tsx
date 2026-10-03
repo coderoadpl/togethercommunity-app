@@ -40,14 +40,14 @@ const renderRedirectProbe = async (initialEntry: string) => {
 };
 
 describe('useRedirectToLogin', () => {
-  it('redirects to login with the protected path and query in returnTo', async () => {
-    const { router } = await renderRedirectProbe('/my/courses/course-1/lessons/lesson-1?thread=t1');
+  it('redirects to login with the protected path, query, and hash in returnTo', async () => {
+    const { router } = await renderRedirectProbe('/my/courses/course-1/lessons/lesson-1?thread=t1#wiring');
 
     await userEvent.click(screen.getByRole('button', { name: 'Redirect' }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
     expect(router.state.location.searchStr).toBe(
-      '?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+      '?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
   });
 

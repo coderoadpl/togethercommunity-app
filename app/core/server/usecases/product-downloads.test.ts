@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PRODUCT_DOWNLOAD_MAX_BYTES,
@@ -6,6 +6,7 @@ import {
   integrationUnavailable,
   ok,
   type Identity,
+  type DownloadCopy,
   type Product,
   type ProductDownloadAsset,
   type ProductGrant,
@@ -83,6 +84,11 @@ const grant: ProductGrant = {
 
 const storedAsset = (overrides: Partial<ProductDownloadAsset> = {}): ProductDownloadAsset => ({
   id: 'asset-1',
+  lineageId: 'asset-1',
+  versionNumber: 1,
+  versionNote: null,
+  supersededAt: null,
+  replacesAssetId: null,
   tenantId: 'tenant-1',
   productId: product.id,
   fileName: 'workbook.pdf',
@@ -108,18 +114,30 @@ const assetRepository = (): ProductDownloadAssetRepository & { rows: ProductDown
     listReadyByProduct: async (tenantId, productId) =>
       rows.filter((asset) =>
         asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
-    markReady: async (tenantId, assetId, sizeBytes) => {
+    markReady: async (tenantId, assetId, sizeBytes, version) => {
       const index = rows.findIndex((asset) => asset.tenantId === tenantId && asset.id === assetId);
       const current = rows[index];
       if (current === undefined) return null;
-      const ready: ProductDownloadAsset = { ...current, status: 'ready', sizeBytes };
+      const target = rows.find((row) => row.id === version.replacesAssetId && row.tenantId === tenantId);
+      const history = rows.filter((row) => row.tenantId === tenantId && row.lineageId === target?.lineageId);
+      for (const row of history) if (row.supersededAt === null) row.supersededAt = version.now;
+      const ready: ProductDownloadAsset = {
+        ...current, status: 'ready', sizeBytes, versionNote: version.versionNote,
+        lineageId: target?.lineageId ?? current.id,
+        versionNumber: target ? Math.max(...history.map((row) => row.versionNumber)) + 1 : 1,
+      };
       rows[index] = ready;
       return ready;
     },
     delete: async (tenantId, assetId) => {
       const index = rows.findIndex((asset) => asset.tenantId === tenantId && asset.id === assetId);
       if (index < 0) return false;
-      rows.splice(index, 1);
+      const [deleted] = rows.splice(index, 1);
+      if (deleted?.status === 'ready' && deleted.supersededAt === null) {
+        const latest = rows.filter((row) => row.tenantId === tenantId && row.lineageId === deleted.lineageId && row.status === 'ready')
+          .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+        if (latest) latest.supersededAt = null;
+      }
       return true;
     },
   };
@@ -162,6 +180,7 @@ const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
   const removed: string[] = [];
   const warnings: string[] = [];
   const storage: StorageProvider = {
+    getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
     probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
@@ -181,7 +200,14 @@ const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
     healthcheck: async () => ok({ healthy: true }),
     test: async () => ok({ code: 'storage.available', message: 'ok' }),
   };
+  const copies: DownloadCopy[] = [];
   const deps: ProductDownloadDeps = {
+    downloadCopies: { create: async (_tenantId, copy) => { copies.push(copy); return true; }, list: async () => copies },
+    downloadCopyOrders: { findLatestPaidOrderId: async () => null },
+    downloadPersonaliser: { personalise: async () => err(integrationUnavailable('Unsupported test file')) },
+    downloadCopyCrypto: { identifier: () => 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA', hash: () => 'a'.repeat(64) },
+    personalisationMaxBytes: 20 * 1024 * 1024,
+    personalisationSlots: { acquire: () => () => undefined },
     downloadAssets,
     products,
     grants: grants(activeGrant),
@@ -191,7 +217,7 @@ const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
     clock: { nowIso: () => NOW },
     logger: { error: (message) => warnings.push(message) },
   };
-  return { deps, downloadAssets, removed, signed, warnings };
+  return { deps, downloadAssets, removed, signed, warnings, copies };
 };
 
 describe('product downloads', () => {
@@ -315,5 +341,189 @@ describe('product downloads', () => {
       deleteProductDownloadAsset(memberCtx, product.id, 'asset-1', deps),
     ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(downloadAssets.rows).toHaveLength(1);
+  });
+});
+
+
+describe('file version use cases', () => {
+  it('joins the lineage on completion without deleting older storage objects', async () => {
+    const { deps, downloadAssets, removed } = testDeps();
+    deps.ids = { nextId: () => 'asset-2' };
+    downloadAssets.rows.push(storedAsset());
+    await beginProductDownloadUpload(ownerCtx, product.id, {
+      fileName: 'errata.pdf', contentType: 'application/pdf', sizeBytes: 100, replacesAssetId: 'asset-1',
+    }, deps);
+    expect(downloadAssets.rows[0]?.supersededAt).toBeNull();
+    const result = await completeProductDownloadUpload(ownerCtx, product.id, 'asset-2', deps, { versionNote: '  Fixed diagram  ' });
+    expect(result).toMatchObject({ ok: true, value: { lineageId: 'asset-1', versionNumber: 2, versionNote: 'Fixed diagram' } });
+    expect(downloadAssets.rows[0]?.supersededAt).toBe(NOW);
+    expect(removed).toEqual([]);
+    await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-2', deps);
+    expect(downloadAssets.rows[0]?.supersededAt).toBeNull();
+    expect(removed).toEqual(['https://storage.example.test/creator-files/product-downloads/download-1/asset-2/errata.pdf']);
+  });
+
+  it.each([
+    { override: { productId: 'other-product' }, code: 'not_found' },
+    { override: { tenantId: 'other-tenant' }, code: 'not_found' },
+    { override: { status: 'pending' as const }, code: 'validation' },
+  ])('rejects invalid replacements at begin and completion: $code $override', async ({ override, code }) => {
+    const { deps, downloadAssets } = testDeps();
+    downloadAssets.rows.push(storedAsset(override), storedAsset({ id: 'pending', lineageId: 'pending', status: 'pending' }));
+    const input = { fileName: 'new.pdf', contentType: 'application/pdf', sizeBytes: 100, replacesAssetId: 'asset-1' };
+    expect(await beginProductDownloadUpload(ownerCtx, product.id, input, deps)).toMatchObject({ ok: false, error: { code } });
+    expect(await completeProductDownloadUpload(ownerCtx, product.id, 'pending', deps, input)).toMatchObject({ ok: false, error: { code } });
+  });
+
+  it('allows old versions only with active member access and preserves the TTL', async () => {
+    const { deps, downloadAssets, signed } = testDeps();
+    downloadAssets.rows.push(storedAsset({ supersededAt: NOW }));
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true });
+    expect(signed[0]?.expiresInSeconds).toBe(PRODUCT_DOWNLOAD_TTL_SECONDS);
+    deps.grants = grants(false);
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getProductDownload(ownerCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(signed).toHaveLength(1);
+  });
+});
+
+describe('issued download copies', () => {
+  it.each(['application/pdf', 'application/epub+zip', 'image/png'])(
+    'redirects %s downloads to the unchanged original during impersonation without issuing a copy', async (contentType) => {
+      const { deps, downloadAssets, copies, signed } = testDeps();
+      downloadAssets.rows.push(storedAsset({ contentType }));
+      const read = vi.spyOn(deps.storage, 'getObject');
+      const personalise = vi.spyOn(deps.downloadPersonaliser, 'personalise').mockResolvedValue(
+        ok({ bytes: new Uint8Array([1, 2, 3]), contentType }),
+      );
+      const acquire = vi.spyOn(deps.personalisationSlots, 'acquire');
+      const identify = vi.spyOn(deps.downloadCopyCrypto, 'identifier');
+      const findOrder = vi.spyOn(deps.downloadCopyOrders, 'findLatestPaidOrderId');
+      const issue = vi.spyOn(deps.downloadCopies, 'create');
+      const ctx: Ctx = {
+        ...memberCtx,
+        impersonation: {
+          id: 'impersonation-1', actorUserId: 'owner-user', actorEmail: 'owner@example.test',
+          actorName: 'Owner', actorStaffRole: 'owner', subjectMemberId: 'member-1',
+          subjectName: 'Buyer', expiresAt: '2026-08-03T13:00:00.000Z',
+        },
+      };
+
+      expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({
+        ok: true, value: { kind: 'redirect' },
+      });
+      expect(read).not.toHaveBeenCalled();
+      expect(personalise).not.toHaveBeenCalled();
+      expect(acquire).not.toHaveBeenCalled();
+      expect(identify).not.toHaveBeenCalled();
+      expect(findOrder).not.toHaveBeenCalled();
+      expect(issue).not.toHaveBeenCalled();
+      expect(copies).toEqual([]);
+      expect(signed).toEqual([expect.objectContaining({
+        method: 'GET',
+        expiresInSeconds: PRODUCT_DOWNLOAD_TTL_SECONDS,
+      })]);
+      expect(signed[0]?.url).toContain('response-content-disposition=attachment');
+      expect(signed[0]?.url).toContain('response-content-type=');
+    },
+  );
+
+  it('forbids an impersonated download without an active grant', async () => {
+    const { deps, downloadAssets, copies, signed } = testDeps(false);
+    downloadAssets.rows.push(storedAsset());
+    const ctx: Ctx = {
+      ...memberCtx,
+      impersonation: {
+        id: 'impersonation-1', actorUserId: 'owner-user', actorEmail: 'owner@example.test',
+        actorName: 'Owner', actorStaffRole: 'owner', subjectMemberId: 'member-1',
+        subjectName: 'Buyer', expiresAt: '2026-08-03T13:00:00.000Z',
+      },
+    };
+
+    expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({
+      ok: false, error: { code: 'forbidden' },
+    });
+    expect(copies).toEqual([]);
+    expect(signed).toEqual([]);
+  });
+
+  it('records the exact member, paid order, asset lineage and output hash before returning bytes', async () => {
+    const { deps, downloadAssets, copies, signed } = testDeps();
+    downloadAssets.rows.push(storedAsset({ lineageId: 'first-edition', versionNumber: 3 }));
+    deps.downloadCopyOrders.findLatestPaidOrderId = async (tenantId, memberId, productId) => {
+      expect([tenantId, memberId, productId]).toEqual(['tenant-1', 'member-1', product.id]);
+      return 'paid-order';
+    };
+    deps.downloadPersonaliser.personalise = async (input) => {
+      expect(input.copyIdentifier).toBe('copy_AAAAAAAAAAAAAAAAAAAAAAAAAA');
+      return ok({ bytes: new Uint8Array([1, 2, 3]), contentType: input.contentType });
+    };
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true, value: { kind: 'file', fileName: 'workbook.pdf' } });
+    expect(copies).toEqual([expect.objectContaining({
+      tenantId: 'tenant-1', memberId: 'member-1', productId: product.id, orderId: 'paid-order',
+      assetId: 'asset-1', lineageId: 'first-edition', versionNumber: 3, personalised: true,
+      bytes: 3, contentHash: 'a'.repeat(64), createdAt: NOW,
+    })]);
+    expect(signed).toEqual([]);
+  });
+
+  it.each([
+    { contentType: 'application/pdf', sizeBytes: 20 * 1024 * 1024 + 1 },
+    { contentType: 'image/png', sizeBytes: 100 },
+  ])('decides fallback before reading $contentType of $sizeBytes bytes', async (override) => {
+    const { deps, downloadAssets, copies } = testDeps();
+    downloadAssets.rows.push(storedAsset(override));
+    deps.storage.getObject = async () => { throw new Error('Must not fetch'); };
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true, value: { kind: 'redirect' } });
+    expect(copies).toMatchObject([{ personalised: false, orderId: null, contentHash: null, bytes: null }]);
+  });
+
+  it('falls back without reading when no injected slot is available', async () => {
+    const { deps, downloadAssets, copies } = testDeps();
+    downloadAssets.rows.push(storedAsset());
+    deps.personalisationSlots.acquire = () => null;
+    deps.storage.getObject = async () => { throw new Error('Saturated request must not fetch'); };
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true, value: { kind: 'redirect' } });
+    expect(copies).toMatchObject([{ personalised: false, contentHash: null, bytes: null }]);
+  });
+
+  it.each(['success', 'storage rejection', 'registry rejection'])('releases the injected slot after %s', async (outcome) => {
+    const { deps, downloadAssets } = testDeps();
+    downloadAssets.rows.push(storedAsset());
+    let released = 0;
+    deps.personalisationSlots.acquire = () => () => { released++; };
+    if (outcome === 'storage rejection') deps.storage.getObject = async () => { throw new Error(outcome); };
+    if (outcome === 'registry rejection') deps.downloadCopies.create = async () => { throw new Error(outcome); };
+    const result = getProductDownload(memberCtx, product.id, 'asset-1', deps);
+    if (outcome === 'success') expect(await result).toMatchObject({ ok: true });
+    else await expect(result).rejects.toThrow(outcome);
+    expect(released).toBe(1);
+  });
+
+  it('records unpersonalised fallback on adapter failure and stops if the registry write fails', async () => {
+    const { deps, downloadAssets, copies } = testDeps();
+    downloadAssets.rows.push(storedAsset());
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true, value: { kind: 'redirect' } });
+    expect(copies[0]?.personalised).toBe(false);
+    deps.downloadCopies.create = async () => { throw new Error('Database unavailable'); };
+    await expect(getProductDownload(memberCtx, product.id, 'asset-1', deps)).rejects.toThrow('Database unavailable');
+  });
+
+  it('records storage-size failure as fallback and denies an erased member without a response', async () => {
+    const { deps, downloadAssets, copies } = testDeps();
+    downloadAssets.rows.push(storedAsset());
+    deps.storage.getObject = async () => err(integrationUnavailable('Object too large'));
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: true, value: { kind: 'redirect' } });
+    expect(copies[0]?.personalised).toBe(false);
+    deps.downloadCopies.create = async () => false;
+    expect(await getProductDownload(memberCtx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('does not read bytes or issue copies to expired grants or non-members', async () => {
+    const { deps, downloadAssets, copies } = testDeps(false);
+    downloadAssets.rows.push(storedAsset());
+    deps.storage.getObject = async () => { throw new Error('Must not fetch'); };
+    for (const ctx of [memberCtx, ownerCtx]) expect(await getProductDownload(ctx, product.id, 'asset-1', deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(copies).toEqual([]);
   });
 });

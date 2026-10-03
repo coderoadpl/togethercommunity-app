@@ -132,6 +132,7 @@ const setup = (): { banBodies: unknown[]; grantBodies: unknown[]; revoked: strin
   const grantBodies: unknown[] = [];
   const revoked: string[] = [];
   server.use(
+    http.get('/api/download-copies', () => HttpResponse.json({ ok: true, data: { copies: [] } })),
     http.get('/api/members/:memberId/grants', () => HttpResponse.json({ ok: true, data: { grants } })),
     http.get('/api/members/:memberId/commerce', () => HttpResponse.json({
       ok: true,

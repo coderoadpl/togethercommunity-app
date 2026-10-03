@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 118. Route rows: 386. Exported `Ctx` use-case rows: 299.
+Closed capability count: 120. Route rows: 394. Exported `Ctx` use-case rows: 309.
 
 ## Human-readable diff
 
@@ -85,6 +85,8 @@ no changes
 | `OPTIONS /api/public/marketing/forms/:slug/submit` | offer:read | public | public | yes | public route manifest |
 | `POST /api/public/marketing/forms/:slug/submit` | marketing:consent:write | public | public | yes | public route manifest |
 | `POST /api/webhooks/stripe/:tenantId` | webhook:process | webhook | webhook | yes | public route manifest |
+| `POST /api/internal/tenants/provision` | tenant:provision | operator-secret | operator-secret | yes | Operator secret |
+| `GET /api/internal/tenants/:slug/readiness` | tenant:readiness | operator-secret | operator-secret | yes | Operator secret |
 | `POST /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `GET /api/internal/dispatch-email` | scheduler:dispatch | operator-secret | operator-secret | yes | E-mail dispatch secret |
 | `POST /api/internal/dispatch-auto-invoices` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
@@ -265,6 +267,7 @@ no changes
 | `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/download-copies` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -289,6 +292,7 @@ no changes
 | `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/tenant/redirects` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant/redirects` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/redirects/update` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/redirects/remove` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant/routing` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant/domains` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
@@ -300,6 +304,10 @@ no changes
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/onboarding/setup` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/integrations/telemetry` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/connect` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/probe` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/telemetry/disconnect` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/checkout/stripe-test-session` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -483,6 +491,7 @@ no changes
 | `direct-messages.ts#dmUnreadCount` | dm:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
 | `direct-messages.ts#blockDmParticipant` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
 | `direct-messages.ts#unblockDmParticipant` | dm:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/direct-messages.ts authorization call |
+| `download-copies.ts#listDownloadCopies` | order:read | owner, admin | owner, admin | yes | core/server/usecases/download-copies.ts authorization call |
 | `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-reputation.ts#runReputationAlerts` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
@@ -658,6 +667,7 @@ no changes
 | `my-products.ts#listMyProducts` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/my-products.ts authorization call |
 | `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
+| `operator-tenant-readiness.ts#getOperatorTenantReadiness` | tenant:readiness | operator-secret | operator-secret | yes | core/server/usecases/operator-tenant-readiness.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
 | `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
@@ -684,6 +694,7 @@ no changes
 | `progress.ts#updateLastViewed` | member:progress:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `progress.ts#getProgress` | member:progress:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
+| `provision-tenant.ts#provisionTenant` | tenant:provision | operator-secret | operator-secret | yes | core/server/usecases/provision-tenant.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -705,6 +716,12 @@ no changes
 | `stripe-subscription-adoption.ts#listStripeSubscriptions` | subscriptions:read | owner, admin | owner, admin | yes | core/server/usecases/stripe-subscription-adoption.ts authorization call |
 | `stripe-test-session.ts#createStripeTestSession` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stripe-test-session.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
+| `telemetry-store.ts#getTelemetryStore` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#connectTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#probeTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#disconnectTelemetryStore` | tenant:settings:write | owner | owner | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#telemetryReportsHidden` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
+| `telemetry-store.ts#telemetryDeliveryEngagementHidden` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/telemetry-store.ts authorization call |
 | `tenant-domains.ts#getTenantRouting` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#addTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-domains.ts#checkTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
@@ -712,6 +729,7 @@ no changes
 | `tenant-domains.ts#removeTenantDomain` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-domains.ts authorization call |
 | `tenant-redirects.ts#listTenantRedirects` | tenant:domain:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-redirects.ts authorization call |
 | `tenant-redirects.ts#createTenantRedirect` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-redirects.ts authorization call |
+| `tenant-redirects.ts#updateTenantRedirect` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-redirects.ts authorization call |
 | `tenant-redirects.ts#deleteTenantRedirect` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-redirects.ts authorization call |
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
@@ -727,14 +745,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:15` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:183` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1160` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1162` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1184` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:19` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:189` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1174` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1176` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
 | api-key | `apps/server/src/internal-app.ts:1198` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1711` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1711` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1212` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1732` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1732` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -782,7 +800,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:66` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
-| member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
+| member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |

@@ -977,7 +977,11 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         targetKind: 'course' as const,
         targetId: 'course-js',
         targetPath: '/my/courses/course-js',
+        targetAnchor: null,
         permanent: true,
+        locked: false,
+        hitCount: 128,
+        lastHitAt: relativeIso(91),
         origin: 'import' as const,
         createdBy: null,
         createdAt: relativeIso(-30),
@@ -986,10 +990,14 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
         id: 'redirect-studio-offer',
         tenantId: 'tenant-studio',
         fromPath: '/offer',
-        targetKind: 'path' as const,
-        targetId: null,
-        targetPath: '/my',
+        targetKind: 'lesson' as const,
+        targetId: 'lesson-js-variables-1',
+        targetPath: '/my/courses/course-js/lessons/lesson-js-variables-1',
+        targetAnchor: 'variables-in-javascript',
         permanent: false,
+        locked: true,
+        hitCount: 42,
+        lastHitAt: relativeIso(92),
         origin: 'manual' as const,
         createdBy: creatorUserIds.get('tenant-studio') ?? null,
         createdAt: relativeIso(-2),
@@ -1199,6 +1207,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(productDownloadAssets)
     .values({
       id: 'download-asset-workbook',
+      lineageId: 'download-asset-workbook',
       tenantId: 'tenant-studio',
       productId: 'product-download-workbook',
       fileName: 'workbook-creator.pdf',
@@ -1206,9 +1215,24 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
       sizeBytes: 2_416_640,
       storageKey: 'product-downloads/product-download-workbook/download-asset-workbook/workbook-creator.pdf',
       status: 'ready',
+      supersededAt: relativeIso(-2),
       createdAt: relativeIso(-12),
     })
     .onConflictDoNothing();
+  await db.insert(productDownloadAssets).values({
+    id: 'download-asset-workbook-v2',
+    lineageId: 'download-asset-workbook',
+    versionNumber: 2,
+    versionNote: 'Corrected the diagram in chapter 4.',
+    tenantId: 'tenant-studio',
+    productId: 'product-download-workbook',
+    fileName: 'workbook-creator.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 2_426_880,
+    storageKey: 'product-downloads/product-download-workbook/download-asset-workbook-v2/workbook-creator.pdf',
+    status: 'ready',
+    createdAt: relativeIso(-2),
+  }).onConflictDoNothing();
   await db
     .insert(members)
     .values(

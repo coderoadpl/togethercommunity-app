@@ -1,6 +1,6 @@
 {
-  "hash": "ce5f1430bdadafb84280d4377a9177069dcc367552185f23a785cb217f02b3f1",
-  "shortId": "ce5f1430bdad",
+  "hash": "e65a0da5c98c592ef6e1a3b01933b322b4cd45e2e574d861c69f0247decadc70",
+  "shortId": "e65a0da5c98c",
   "schema": {
     "constraints": [
       {
@@ -99,6 +99,11 @@
         "table": "product_grants"
       },
       {
+        "definition": "CHECK ((pending_bytes >= 0))",
+        "name": "telemetry_pending_bytes_nonnegative",
+        "table": "telemetry_accounting"
+      },
+      {
         "definition": "CHECK ((plan = ANY (ARRAY['self_hosted'::text, 'hosted'::text, 'hosted_pro'::text])))",
         "name": "tenants_plan_check",
         "table": "tenants"
@@ -127,6 +132,16 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((version_number > 0))",
+        "name": "download_copies_version_positive",
+        "table": "download_copies"
+      },
+      {
+        "definition": "CHECK ((version_number > 0))",
+        "name": "product_download_assets_version_positive",
+        "table": "product_download_assets"
       },
       {
         "definition": "CHECK ((visibility = ANY (ARRAY['listed'::text, 'unlisted'::text])))",
@@ -487,6 +502,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "dm_reports_tenant_id_tenants_id_fk",
         "table": "dm_reports"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "download_copies_tenant_id_fkey",
+        "table": "download_copies"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1130,6 +1150,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "download_copies_pkey",
+        "table": "download_copies"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "email_events_pkey",
         "table": "email_events"
       },
@@ -1434,6 +1459,11 @@
         "table": "invoice_events"
       },
       {
+        "definition": "PRIMARY KEY (sequence)",
+        "name": "telemetry_outbox_pkey",
+        "table": "telemetry_outbox"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "marketing_throttle_buckets_pkey",
         "table": "marketing_throttle_buckets"
@@ -1447,6 +1477,16 @@
         "definition": "PRIMARY KEY (tenant_id)",
         "name": "storage_cors_checks_pkey",
         "table": "storage_cors_checks"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "telemetry_accounting_pkey",
+        "table": "telemetry_accounting"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id)",
+        "name": "telemetry_connections_pkey",
+        "table": "telemetry_connections"
       },
       {
         "definition": "PRIMARY KEY (tenant_id)",
@@ -1579,6 +1619,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
+      },
+      {
+        "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION product_download_assets_default_lineage() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN NEW.lineage_id := COALESCE(NEW.lineage_id, NEW.id); NEW.version_number := COALESCE(NEW.version_number, 1); RETURN NEW; END; $function$",
+        "name": "product_download_assets_default_lineage"
       },
       {
         "arguments": "",
@@ -1846,6 +1891,21 @@
         "definition": "CREATE INDEX dm_reports_tenant_status_created_idx ON dm_reports USING btree (tenant_id, status, created_at DESC NULLS LAST, id DESC NULLS LAST)",
         "name": "dm_reports_tenant_status_created_idx",
         "table": "dm_reports"
+      },
+      {
+        "definition": "CREATE INDEX download_copies_tenant_member_idx ON download_copies USING btree (tenant_id, member_id)",
+        "name": "download_copies_tenant_member_idx",
+        "table": "download_copies"
+      },
+      {
+        "definition": "CREATE INDEX download_copies_tenant_order_idx ON download_copies USING btree (tenant_id, order_id)",
+        "name": "download_copies_tenant_order_idx",
+        "table": "download_copies"
+      },
+      {
+        "definition": "CREATE INDEX download_copies_tenant_product_idx ON download_copies USING btree (tenant_id, product_id)",
+        "name": "download_copies_tenant_product_idx",
+        "table": "download_copies"
       },
       {
         "definition": "CREATE INDEX email_events_tenant_occurred_idx ON email_events USING btree (tenant_id, occurred_at, sequence)",
@@ -2163,6 +2223,11 @@
         "table": "space_subscriptions"
       },
       {
+        "definition": "CREATE INDEX telemetry_outbox_tenant_sequence ON telemetry_outbox USING btree (tenant_id, sequence)",
+        "name": "telemetry_outbox_tenant_sequence",
+        "table": "telemetry_outbox"
+      },
+      {
         "definition": "CREATE INDEX tenant_audit_events_tenant_at_idx ON tenant_audit_events USING btree (tenant_id, at)",
         "name": "tenant_audit_events_tenant_at_idx",
         "table": "tenant_audit_events"
@@ -2266,6 +2331,11 @@
         "definition": "CREATE UNIQUE INDEX dm_reports_tenant_conversation_reporter_open_uidx ON dm_reports USING btree (tenant_id, conversation_id, reporter_user_id) WHERE (status = 'open'::text)",
         "name": "dm_reports_tenant_conversation_reporter_open_uidx",
         "table": "dm_reports"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX download_copies_tenant_identifier_uidx ON download_copies USING btree (tenant_id, copy_identifier)",
+        "name": "download_copies_tenant_identifier_uidx",
+        "table": "download_copies"
       },
       {
         "definition": "CREATE UNIQUE INDEX email_layouts_tenant_name_uidx ON email_layouts USING btree (tenant_id, name)",
@@ -2463,6 +2533,11 @@
         "table": "processed_events"
       },
       {
+        "definition": "CREATE UNIQUE INDEX product_download_assets_lineage_version_uidx ON product_download_assets USING btree (tenant_id, lineage_id, version_number)",
+        "name": "product_download_assets_lineage_version_uidx",
+        "table": "product_download_assets"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX product_download_assets_tenant_storage_key_uidx ON product_download_assets USING btree (tenant_id, storage_key)",
         "name": "product_download_assets_tenant_storage_key_uidx",
         "table": "product_download_assets"
@@ -2521,6 +2596,11 @@
         "definition": "CREATE UNIQUE INDEX suppressions_tenant_email_hmac_active_uidx ON suppressions USING btree (tenant_id, email_hmac) WHERE (lifted_at IS NULL)",
         "name": "suppressions_tenant_email_hmac_active_uidx",
         "table": "suppressions"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX telemetry_outbox_event_unique ON telemetry_outbox USING btree (tenant_id, event_id)",
+        "name": "telemetry_outbox_event_unique",
+        "table": "telemetry_outbox"
       },
       {
         "definition": "CREATE UNIQUE INDEX tenant_admins_tenant_user_uidx ON tenant_admins USING btree (tenant_id, user_id)",
@@ -2640,6 +2720,15 @@
         "maximum": "9223372036854775807",
         "minimum": "1",
         "name": "product_price_history_id_seq",
+        "start": "1"
+      },
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "telemetry_outbox_sequence_seq",
         "start": "1"
       }
     ],
@@ -4336,6 +4425,22 @@
             "type": "text"
           },
           {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "hit_count",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "locked",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -4373,6 +4478,22 @@
             "identity": "",
             "name": "id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_hit_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "target_anchor",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -4780,6 +4901,123 @@
             "type": "text"
           },
           {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "version_number",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lineage_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "replaces_asset_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "storage_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "superseded_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "version_note",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "product_download_assets"
+      },
+      {
+        "columns": [
+          {
+            "default": "'pending'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -4845,83 +5083,6 @@
           }
         ],
         "name": "lesson_attachments"
-      },
-      {
-        "columns": [
-          {
-            "default": "'pending'::text",
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "content_type",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "file_name",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "size_bytes",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "storage_key",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "product_download_assets"
       },
       {
         "columns": [
@@ -5944,6 +6105,75 @@
             "type": "integer"
           },
           {
+            "default": "nextval('telemetry_outbox_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "charged_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "retry_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_outbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
             "default": null,
             "generated": "",
             "identity": "",
@@ -6363,6 +6593,67 @@
           }
         ],
         "name": "two_factor"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "gap_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "last_acknowledged_sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "pending_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "gap_from",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "gap_through",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_acknowledged_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_accounting"
       },
       {
         "columns": [
@@ -8354,6 +8645,123 @@
           }
         ],
         "name": "marketing_lists"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "asset_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "bytes",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_hash",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copy_identifier",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lineage_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "personalised",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "version_number",
+            "notNull": true,
+            "type": "integer"
+          }
+        ],
+        "name": "download_copies"
       },
       {
         "columns": [
@@ -12079,6 +12487,27 @@
           }
         ],
         "name": "space_seen_marks"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "settings",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "telemetry_connections"
       }
     ],
     "triggers": [
@@ -12096,6 +12525,11 @@
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",
         "name": "orders_paid_billing_immutable",
         "table": "orders"
+      },
+      {
+        "definition": "CREATE TRIGGER product_download_assets_default_lineage BEFORE INSERT ON product_download_assets FOR EACH ROW EXECUTE FUNCTION product_download_assets_default_lineage()",
+        "name": "product_download_assets_default_lineage",
+        "table": "product_download_assets"
       },
       {
         "definition": "CREATE TRIGGER product_prices_history_after_write AFTER INSERT OR UPDATE OF amount_cents ON product_prices FOR EACH ROW EXECUTE FUNCTION append_product_price_history()",

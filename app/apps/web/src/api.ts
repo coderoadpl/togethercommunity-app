@@ -1,3 +1,4 @@
+import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
@@ -100,6 +101,7 @@ import {
   productAccessIssuesQuery,
   productDownloadAssetsInvalidates,
   productDownloadAssetsQuery,
+  downloadCopiesQuery,
   orderReconciliationQuery,
   lessonsInvalidates,
   lessonsQuery,
@@ -251,6 +253,7 @@ import {
   tenantRedirectsQuery,
   tenantRedirectsInvalidates,
   createTenantRedirectMutation,
+  updateTenantRedirectMutation,
   deleteTenantRedirectMutation,
   tenantRoutingQuery,
   tenantRoutingInvalidates,
@@ -359,6 +362,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   createProductPrice: createProductPriceMutation(apiClient),
   deactivateProductPrice: deactivateProductPriceMutation(apiClient),
   productPricesInvalidates,
+  downloadCopies: (query: Parameters<typeof apiClient.listDownloadCopies>[0]) => downloadCopiesQuery(apiClient, query),
   productDownloadAssets: (productId: string) => productDownloadAssetsQuery(apiClient, productId),
   productDownloadAssetsInvalidates,
   uploadProductDownload: uploadProductDownloadMutation(apiClient),
@@ -532,6 +536,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   tenantRedirects: tenantRedirectsQuery(apiClient),
   tenantRedirectsInvalidates,
   createTenantRedirect: createTenantRedirectMutation(apiClient),
+  updateTenantRedirect: updateTenantRedirectMutation(apiClient),
   deleteTenantRedirect: deleteTenantRedirectMutation(apiClient),
   addTenantDomain: addTenantDomainMutation(apiClient),
   checkTenantDomain: checkTenantDomainMutation(apiClient),
@@ -605,6 +610,11 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   schedulerRuns: (input: SchedulerRunsQueryInput) => schedulerRunsQuery(apiClient, input),
   schedulerRun: (id: string) => schedulerRunQuery(apiClient, id),
   updateMarketingSesSettings: updateMarketingSesSettingsMutation(apiClient),
+  telemetryStoreInvalidates,
+  telemetryStore: telemetryStoreQuery(apiClient),
+  connectTelemetry: connectTelemetryMutation(apiClient),
+  probeTelemetry: probeTelemetryMutation(apiClient),
+  disconnectTelemetry: disconnectTelemetryMutation(apiClient),
   marketingInvalidates,
 });
 

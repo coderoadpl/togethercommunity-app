@@ -196,6 +196,7 @@ const harness = (options: {
         updatedAt: now,
       }),
       upsert: async (_tenantId, secret) => secret,
+      upsertMany: async (_tenantId, secrets) => [...secrets],
       delete: async () => false,
     },
     secretCrypto: {

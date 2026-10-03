@@ -12,6 +12,8 @@ const redirectTargetKindSchema = z.enum(['course', 'lesson', 'module-as-course',
 
 const redirectOriginSchema = z.enum(['import', 'manual']);
 
+const redirectAnchorSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
+
 export const tenantRedirectSchema = z
   .object({
     id: z.string().min(1),
@@ -20,7 +22,11 @@ export const tenantRedirectSchema = z
     targetKind: redirectTargetKindSchema,
     targetId: z.string().min(1).nullable(),
     targetPath: redirectPathSchema,
+    targetAnchor: redirectAnchorSchema.nullable(),
     permanent: z.boolean(),
+    locked: z.boolean(),
+    hitCount: z.number().int().nonnegative(),
+    lastHitAt: z.string().datetime().nullable(),
     origin: redirectOriginSchema,
     createdBy: z.string().min(1).nullable(),
     createdAt: z.string().datetime(),
@@ -41,6 +47,7 @@ const tenantRedirectTargetInputSchema = z.discriminatedUnion('kind', [
       kind: z.literal('lesson'),
       courseId: z.string().min(1),
       lessonId: z.string().min(1),
+      anchor: redirectAnchorSchema.optional(),
     })
     .strict(),
   z.object({ kind: z.literal('path'), path: redirectPathSchema }).strict(),
@@ -53,10 +60,22 @@ export const tenantRedirectCreateInputSchema = z
     fromPath: z.string().trim().min(1).max(2_000),
     target: tenantRedirectTargetInputSchema,
     permanent: z.boolean().default(false),
+    locked: z.boolean().default(false),
   })
   .strict();
 
 export type TenantRedirectCreateInput = z.input<typeof tenantRedirectCreateInputSchema>;
+
+export const tenantRedirectUpdateInputSchema = z
+  .object({
+    id: z.string().min(1),
+    target: tenantRedirectTargetInputSchema,
+    permanent: z.boolean(),
+    locked: z.boolean(),
+  })
+  .strict();
+
+export type TenantRedirectUpdateInput = z.output<typeof tenantRedirectUpdateInputSchema>;
 
 export const tenantRedirectDeleteInputSchema = z
   .object({ id: z.string().min(1) })

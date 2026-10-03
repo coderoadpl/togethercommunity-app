@@ -1,3 +1,5 @@
+import { telemetryStoreOutputSchema } from '#core/contract/index.js';
+import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import type { AdoptStripeSubscriptionInput, ListStripeSubscriptionsInput } from '#core/domain/index.js';
@@ -61,6 +63,7 @@ import {
   lessonAttachmentUploadOutputSchema,
   lessonAttachmentsOutputSchema,
   productDownloadAssetsOutputSchema,
+  downloadCopiesOutputSchema,
   productDownloadCompleteOutputSchema,
   productDownloadDeleteOutputSchema,
   productDownloadUploadOutputSchema,
@@ -322,6 +325,7 @@ import {
   type TenantRedirectsQueryInput,
   type TenantRedirectCreateBody,
   type TenantRedirectDeleteBody,
+  type TenantRedirectUpdateBody,
   type TenantSettingsUpdateInput,
   type TermsConsentRequest,
   type WriteMethod,
@@ -385,6 +389,12 @@ export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
   body: BodyInit;
 }
 
+const isRedirectFailure = (cause: unknown): boolean => {
+  if (!(cause instanceof Error)) return false;
+  if (cause.message.toLowerCase().includes('redirect')) return true;
+  return cause.cause instanceof Error && cause.cause.message.toLowerCase().includes('redirect');
+};
+
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   options: ApiClientOptions,
   method: M,
@@ -392,26 +402,35 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean },
+  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean; redactErrors?: boolean },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
   let response: Response;
   try {
+    const headers: Record<string, string> = {
+      ...((body === undefined && raw?.body === undefined) || raw?.multipart === true ? {} : { 'content-type': 'application/json' }),
+      ...(traceparent === undefined ? {} : { traceparent }),
+      ...options.headers?.(),
+      ...raw?.headers,
+    };
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
-      headers: {
-        ...((body === undefined && raw?.body === undefined) || raw?.multipart === true ? {} : { 'content-type': 'application/json' }),
-        ...(traceparent === undefined ? {} : { traceparent }),
-        ...options.headers?.(),
-        ...raw?.headers,
-      },
+      headers,
       body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
+      ...(headers[SCHEDULER_OPERATOR_SECRET_HEADER] === undefined
+        ? {}
+        : { redirect: 'error' as const }),
       signal: signal ?? null,
     });
   } catch (cause) {
-    return err(internal(`Network error calling ${path}: ${String(cause)}`));
+    const message = raw?.redactErrors === true
+      ? isRedirectFailure(cause)
+        ? 'Operator request refused a redirect'
+        : 'Operator request failed'
+      : `Network error calling ${path}: ${String(cause)}`;
+    return err(internal(message));
   }
 
   let payload: unknown;
@@ -473,6 +492,14 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
+    request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,
+      provisionTenantOutputSchema, input, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+  getOperatorTenantReadiness: (slug: string, secret: string) =>
+    request(options, API_ROUTES.operatorTenantReadiness.method,
+      API_ROUTES.operatorTenantReadiness.path.replace(':slug', encodeURIComponent(slug)),
+      operatorTenantReadinessSchema, undefined, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
+
   activitySummary: (input: z.input<typeof activitySummaryQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
@@ -1681,6 +1708,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listDownloadCopies: (query: { cursor?: string | undefined; memberId?: string | undefined; orderId?: string | undefined; productId?: string | undefined; copyIdentifier?: string | undefined }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.downloadCopies.method,
+      `${API_ROUTES.downloadCopies.path}?${new URLSearchParams(Object.entries(query).flatMap(([key, value]) => value === undefined ? [] : [[key, value]])).toString()}`,
+      downloadCopiesOutputSchema, undefined, signal),
+
   listProductDownloadAssets: (productId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1699,7 +1731,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
         API_ROUTES.productDownloadUpload.method,
         API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
         productDownloadUploadOutputSchema,
-        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes, replacesAssetId: input.replacesAssetId },
         signal,
       ),
       (started) => started.upload,
@@ -1710,7 +1742,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
           .replace(':productId', encodeURIComponent(input.productId))
           .replace(':assetId', encodeURIComponent(started.asset.id)),
         productDownloadCompleteOutputSchema,
-        {},
+        { replacesAssetId: input.replacesAssetId, versionNote: input.versionNote },
         signal,
       ),
       signal,
@@ -2319,6 +2351,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  telemetryStore: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryStore.method, API_ROUTES.telemetryStore.path, telemetryStoreOutputSchema, undefined, signal),
+  connectTelemetry: (input: { connectionString: string; region: string }, signal?: AbortSignal) => request(options, API_ROUTES.telemetryConnect.method, API_ROUTES.telemetryConnect.path, telemetryStoreOutputSchema, input, signal),
+  probeTelemetry: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryProbe.method, API_ROUTES.telemetryProbe.path, telemetryStoreOutputSchema, {}, signal),
+  disconnectTelemetry: (signal?: AbortSignal) => request(options, API_ROUTES.telemetryDisconnect.method, API_ROUTES.telemetryDisconnect.path, telemetryStoreOutputSchema, {}, signal),
   probeStorage: (input: StorageProbeInput, signal?: AbortSignal) =>
     request(
       options,
@@ -2535,6 +2571,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.tenantRedirectCreate.method,
       API_ROUTES.tenantRedirectCreate.path,
+      tenantRedirectOutputSchema,
+      input,
+      signal,
+    ),
+  updateTenantRedirect: (input: TenantRedirectUpdateBody, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantRedirectUpdate.method,
+      API_ROUTES.tenantRedirectUpdate.path,
       tenantRedirectOutputSchema,
       input,
       signal,

@@ -18,3 +18,5 @@ export { marketingCampaignAudienceInputSchema, type MarketingCampaignAudienceInp
 
 export { activitySummaryQuerySchema, memberActivityQuerySchema, activitySummarySchema, memberActivitySchema } from '#core/domain/index.js';
 export * from './marketing-signup-forms.js';
+
+export * from './operator-tenant.js';

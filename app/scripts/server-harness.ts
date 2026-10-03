@@ -80,6 +80,15 @@ export interface BootServerOptions {
   timeoutMs?: number;
 }
 
+interface ServerLogCapture {
+  output: string;
+}
+
+const serverLogs = new WeakMap<ChildProcess, ServerLogCapture>();
+
+export const readServerOutput = (child: ChildProcess): string =>
+  serverLogs.get(child)?.output ?? '';
+
 export const bootServer = async ({
   port,
   healthUrl,
@@ -92,13 +101,14 @@ export const bootServer = async ({
     detached: true,
     env: { ...process.env, ...env, PORT: String(port) },
   });
-  let logs = '';
+  const logs: ServerLogCapture = { output: '' };
+  serverLogs.set(child, logs);
   let exitInfo: string | null = null;
   child.stdout?.on('data', (chunk) => {
-    logs += String(chunk);
+    logs.output += String(chunk);
   });
   child.stderr?.on('data', (chunk) => {
-    logs += String(chunk);
+    logs.output += String(chunk);
   });
   child.on('exit', (code, signal) => {
     exitInfo = `code=${String(code)} signal=${String(signal)}`;
@@ -108,7 +118,7 @@ export const bootServer = async ({
   while (Date.now() < deadline) {
     if (exitInfo !== null) {
       throw new Error(
-        `Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs}`,
+        `Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs.output}`,
       );
     }
     try {
@@ -123,6 +133,6 @@ export const bootServer = async ({
 
   await killServer(child);
   throw new Error(
-    `Server did not become ready within ${String(timeoutMs)}ms on port ${String(port)}.\n--- server output ---\n${logs}`,
+    `Server did not become ready within ${String(timeoutMs)}ms on port ${String(port)}.\n--- server output ---\n${logs.output}`,
   );
 };

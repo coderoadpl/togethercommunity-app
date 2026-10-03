@@ -32,6 +32,7 @@ import {
   delay,
   ephemeralPort,
   killServer,
+  readServerOutput,
   rootDir,
   run,
   tsxBin,
@@ -41,11 +42,6 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = 'together_e2e_member_activity';
-const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
-assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
-const e2eUrlObject = new URL(baseDatabaseUrl);
-e2eUrlObject.pathname = `/${E2E_DB}`;
-const e2eDatabaseUrl = e2eUrlObject.toString();
 
 const studioSpaceId = 'space-studio-community';
 const freeMemberPostId = 'post-community-resources';
@@ -352,6 +348,11 @@ const pressRepeatedly = async (page: Page, key: string, times: number): Promise<
   for (let index = 0; index < times; index += 1) await page.keyboard.press(key);
 };
 
+const htmlExcerpt = async (locator: Locator): Promise<string> => {
+  if (await locator.count() === 0) return '(relevant element was not rendered)';
+  return (await locator.evaluate((element) => element.outerHTML)).slice(0, 500);
+};
+
 const authorWithToolbar = async (page: Page, composer: Locator, suffix: string): Promise<void> => {
   const bold = `Bold ${suffix}`;
   const label = 'safe link';
@@ -368,11 +369,22 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');
   await page.getByRole('button', { name: en.markdownEditor.linkApply }).click();
   await page.getByRole('dialog').waitFor({ state: 'detached', timeout: 15000 });
+  const editor = composer.getByTestId('space-composer-input');
+  const authoredLink = editor.locator('a[href="https://example.com/community"]', { hasText: label });
+  try {
+    await authoredLink.waitFor({ state: 'visible', timeout: 15000 });
+  } catch {
+    throw new E2eFailure(
+      `Markdown editor did not reach the authored link state.\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(editor)}`,
+    );
+  }
 
   await page.keyboard.press('Home');
   await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
   await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
   await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
+  await editor.locator('strong').getByText(bold, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+  await authoredLink.waitFor({ state: 'visible', timeout: 15000 });
 };
 
 const createMarkdownPost = async (
@@ -403,13 +415,25 @@ const createMarkdownPost = async (
   const raw = await response.text();
   assert(response.ok(), `Markdown post in ${locale} returned HTTP ${String(response.status())}.\n${raw}`);
   const created = parseOkData(raw, `Markdown post in ${locale}`, postOutputSchema).post;
-  assert(created.bodyFormat === 'markdown', `Markdown post in ${locale} was stored as ${created.bodyFormat}`);
-  assert(created.bodyHtml.includes(`<strong>Bold ${suffix}</strong>`), `Markdown post in ${locale} did not render bold text`);
-  assert(created.bodyHtml.includes('rel="noopener noreferrer nofollow ugc"'), `Markdown post in ${locale} did not render the safe link policy`);
-  assert(created.bodyHtml.includes('href="https://example.com/community"'), `Markdown post in ${locale} did not render the authored link destination`);
-  assert(!created.bodyHtml.includes('<script>'), `Markdown post in ${locale} retained raw script HTML`);
   const rendered = page.getByTestId(`post-body-${created.id}`);
   await rendered.locator('strong').getByText(`Bold ${suffix}`, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+  const safeLink = rendered.locator(
+    'a[href="https://example.com/community"][target="_blank"][rel="noopener noreferrer nofollow ugc"]',
+    { hasText: 'safe link' },
+  );
+  try {
+    await safeLink.waitFor({ state: 'visible', timeout: 15000 });
+  } catch {
+    throw new E2eFailure(
+      `Markdown post in ${locale} did not render the safe link policy.\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(rendered)}`,
+    );
+  }
+  const renderedHtml = await htmlExcerpt(rendered);
+  assert(created.bodyFormat === 'markdown', `Markdown post in ${locale} was stored as ${created.bodyFormat}`);
+  assert(created.bodyHtml.includes(`<strong>Bold ${suffix}</strong>`), `Markdown post in ${locale} did not render bold text`);
+  assert(created.bodyHtml.includes('rel="noopener noreferrer nofollow ugc"'), `Markdown post in ${locale} did not render the safe link policy.\nRelevant HTML (first 500 chars):\n${renderedHtml}`);
+  assert(created.bodyHtml.includes('href="https://example.com/community"'), `Markdown post in ${locale} did not render the authored link destination`);
+  assert(!created.bodyHtml.includes('<script>'), `Markdown post in ${locale} retained raw script HTML`);
   assert(await rendered.locator('script').count() === 0, `Markdown post in ${locale} rendered a script element`);
 };
 
@@ -642,7 +666,13 @@ const runBlockAndReportJourney = async (
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
+let baseDatabaseUrl: string | null = null;
 try {
+  baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
+  assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
+  const e2eUrlObject = new URL(baseDatabaseUrl);
+  e2eUrlObject.pathname = `/${E2E_DB}`;
+  const e2eDatabaseUrl = e2eUrlObject.toString();
   console.log('member-activity-e2e: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateSeedAndActivateMembers(e2eDatabaseUrl);
@@ -721,10 +751,37 @@ try {
 } catch (error) {
   const message = error instanceof E2eFailure ? error.message : String(error);
   console.error(`\nmember-activity-e2e: FAIL\n${message}`);
+  if (server !== null) {
+    const output = readServerOutput(server).trim();
+    console.error(`--- server output ---\n${output === '' ? '(no server output)' : output}`);
+  }
   process.exitCode = 1;
 } finally {
-  if (server) await killServer(server);
-  if (browser) await browser.close();
-  rmSync(webDistDir, { recursive: true, force: true });
-  await dropDatabase(baseDatabaseUrl);
+  const cleanupErrors: string[] = [];
+  try {
+    if (server) await killServer(server);
+  } catch (error) {
+    cleanupErrors.push(`server shutdown: ${String(error)}`);
+  }
+  try {
+    if (browser) await browser.close();
+  } catch (error) {
+    cleanupErrors.push(`browser shutdown: ${String(error)}`);
+  }
+  try {
+    rmSync(webDistDir, { recursive: true, force: true });
+  } catch (error) {
+    cleanupErrors.push(`web build cleanup: ${String(error)}`);
+  }
+  if (baseDatabaseUrl !== null) {
+    try {
+      await dropDatabase(baseDatabaseUrl);
+    } catch (error) {
+      cleanupErrors.push(`database cleanup: ${String(error)}`);
+    }
+  }
+  if (cleanupErrors.length > 0) {
+    console.error(`\nmember-activity-e2e: FAIL during cleanup\n${cleanupErrors.join('\n')}`);
+    process.exitCode = 1;
+  }
 }

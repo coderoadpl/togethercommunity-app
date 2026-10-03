@@ -37,8 +37,7 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
     }
   });
   app.get('*', async (c, next) => {
-    const isLinkPath = c.req.path.startsWith('/link/');
-    if (!isLinkPath && isAssetRequest(c.req.path)) {
+    if (isAssetRequest(c.req.path)) {
       await next();
       return;
     }
@@ -56,7 +55,6 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
       normalizeRedirectPath(c.req.path),
     );
     if (redirect === null) {
-      if (isLinkPath) return c.redirect('/', 302);
       await next();
       return;
     }

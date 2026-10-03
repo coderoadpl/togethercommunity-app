@@ -4942,7 +4942,7 @@ describe('public route manifest', () => {
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
-      'Tenant redirects increment a rate-limited aggregate hit counter; unknown /link/ paths return home; social previews remain read-only',
+      'Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only',
     ]));
   });
 });
@@ -5363,6 +5363,22 @@ describe('tenant redirects', () => {
       createdBy: 'user-owner',
       createdAt: '1998-07-12T00:00:00.000Z',
     },
+    {
+      id: 'redirect-link-asset',
+      tenantId: acme.id,
+      fromPath: '/link/guide.js',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 0,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
   ];
 
   const redirectApp = (owner: Tenant = acme, tracking?: {
@@ -5457,13 +5473,19 @@ describe('tenant redirects', () => {
     },
   );
 
-  it.each(['/assets/app.js', '/color-scheme.js'])(
+  it.each(['/assets/app.js', '/color-scheme.js', '/link/guide.js', '/LINK/guide.JS'])(
     'leaves the static asset %s to the web build',
     async (path) => {
-      const response = await redirectGet(path);
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
     },
   );
 
@@ -5486,41 +5508,28 @@ describe('tenant redirects', () => {
     expect(increments).toEqual(['redirect-printed-guide']);
   });
 
-  it('answers a stored printed link and increments its hit counter', async () => {
-    const increments: string[] = [];
-    const response = await redirectApp(acme, { increments }).request('/link/guide', {
-      headers: { host: 'acme.localhost:48730' },
-    });
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(lessonPagePath);
-    expect(increments).toEqual(['redirect-link']);
-  });
-
-  it.each(['/link/', '/link/missing?edition=print', '/link/missing.js?edition=print'])(
-    'returns an unknown printed link %s to the tenant home without counting a hit',
+  it.each(['/link/guide', '/LINK/Guide'])(
+    'answers the stored path %s and increments its hit counter',
     async (path) => {
       const increments: string[] = [];
-      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
-      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
-        headers: { host: 'course.acme.example' },
+      const response = await redirectApp(acme, { increments }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
       });
 
       expect(response.status).toBe(302);
-      expect(response.headers.get('location')).toBe('/');
-      expect(increments).toEqual([]);
-      expect(hitClaims).toEqual([]);
+      expect(response.headers.get('location')).toBe(lessonPagePath);
+      expect(increments).toEqual(['redirect-link']);
     },
   );
 
-  it('returns a printed link configured for another tenant to this tenant home', async () => {
+  it('leaves a path configured for another tenant unchanged', async () => {
     const increments: string[] = [];
     const response = await redirectApp(globex, { increments }).request('/link/guide', {
       headers: { host: 'acme.localhost:48730' },
     });
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/');
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
     expect(increments).toEqual([]);
   });
 
@@ -5538,8 +5547,8 @@ describe('tenant redirects', () => {
     },
   );
 
-  it.each(['/course/python', '/link', '/link-other/missing'])(
-    'leaves an unmatched path outside the printed-link prefix %s unchanged without counting a hit',
+  it.each(['/course/python', '/link', '/link/', '/link/missing?edition=print', '/link/missing.js?edition=print', '/LINK/missing.js?edition=print', '/link-other/missing'])(
+    'leaves an unmatched path %s unchanged without counting a hit',
     async (path) => {
       const increments: string[] = [];
       const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];

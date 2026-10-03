@@ -112,10 +112,10 @@ results. Together keeps a redirect table per workspace and answers it on every
 tenant host — custom domains and workspace subdomains alike — so those links
 keep landing on the right page instead of a not-found screen.
 
-On Vercel, `/courses/` and `/link/` reach the server; other stored paths answer only when the edge routes them to the server.
+On Vercel, the edge forwards `/courses/` and `/link/` to the server; other stored paths answer only when the edge routes them to the server.
 
-The platform knows nothing about the URL shapes of the site a workspace came
-from. Each entry is one source path with one destination. Entries arrive two
+These forwarding rules do not interpret individual source paths from a previous
+site. Each entry is one source path with one destination. Entries arrive two
 ways: in bulk through the `redirect` kind of the [import API](import-api.md),
 where the tool that reads the previous site decides which paths exist and what
 they mean, and one at a time from Settings → Addresses → Redirects.
@@ -124,9 +124,8 @@ they mean, and one at a time from Settings → Addresses → Redirects.
 |---|---|---|
 | a source path marked permanent | its destination | `301` |
 | a source path left temporary | its destination | `302` |
-| a path under `/link/` with no entry on a resolved tenant host | `/`, without the query string or a hit increment | `302` |
-| another path with no entry | unchanged — the web app serves it | — |
-| a static file path outside `/link/` (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) | unchanged — the web build serves it | — |
+| a path with no entry | unchanged — the web app serves it | — |
+| a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) | unchanged — the web build serves it | — |
 
 Document extensions are not static file paths: the `.html` and `.php` links a
 previous site minted by the thousand redirect like any other source path.

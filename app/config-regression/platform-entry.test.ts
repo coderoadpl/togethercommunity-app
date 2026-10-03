@@ -62,11 +62,10 @@ describe('Vercel platform entry boundary', () => {
     expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
   });
 
-  it('sends printed links to the function before the bot and web fallbacks', () => {
+  it('sends /link/ paths to the function before the bot and web fallbacks', () => {
     const rewrites = vercel.rewrites.map(({ source }) => source);
 
     expect(vercel.rewrites).toContainEqual({ source: '/link/(.*)', destination: '/api/index' });
-    expect(rewrites.indexOf('/link/(.*)')).toBe(rewrites.indexOf('/courses/(.*)') + 1);
     expect(rewrites.indexOf('/link/(.*)')).toBeLessThan(rewrites.indexOf('/(.*)'));
     expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
   });

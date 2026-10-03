@@ -1,4 +1,4 @@
-import { PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { strToU8, unzipSync, zipSync, Zip, ZipDeflate } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
@@ -88,6 +88,50 @@ describe('download personalisation', () => {
       })).toMatchObject({ ok: false });
     },
   );
+
+  it.each([
+    [
+      'inherited signature field type',
+      (document: PDFDocument) => {
+        const signatureValue = document.context.register(document.context.obj({ Type: PDFName.of('Sig') }));
+        const childField = document.context.register(document.context.obj({ V: signatureValue }));
+        return [document.context.register(document.context.obj({ FT: PDFName.of('Sig'), Kids: [childField] }))];
+      },
+    ],
+    [
+      'inherited signature value',
+      (document: PDFDocument) => {
+        const signatureValue = document.context.register(document.context.obj({ Type: PDFName.of('Sig') }));
+        const childField = document.context.register(document.context.obj({ FT: PDFName.of('Sig') }));
+        return [document.context.register(document.context.obj({ V: signatureValue, Kids: [childField] }))];
+      },
+    ],
+  ])('falls back for PDFs with %s and no signature flags', async (_name, createFields) => {
+    const original = await PDFDocument.create();
+    original.addPage();
+    const acroForm = original.context.obj({ SigFlags: 0, Fields: createFields(original) });
+    original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+
+    expect(await adapter.personalise({
+      contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+    })).toMatchObject({ ok: false });
+  });
+
+  it('personalises unsigned PDFs with valued text fields and no signature flags', async () => {
+    const original = await PDFDocument.create();
+    original.addPage();
+    const textField = original.context.register(original.context.obj({ FT: PDFName.of('Tx'), V: PDFHexString.fromText('Filled text') }));
+    const acroForm = original.context.obj({ SigFlags: 0, Fields: [textField] });
+    original.catalog.set(PDFName.of('AcroForm'), original.context.register(acroForm));
+
+    const result = await adapter.personalise({
+      contentType: 'application/pdf', bytes: await original.save(), copyIdentifier, context,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    const document = await PDFDocument.load(result.value.bytes);
+    const info = document.context.lookup(document.context.trailerInfo.Info, PDFDict);
+    expect(info.has(PDFName.of('together:copy'))).toBe(true);
+  });
 
   it.each([false, true])('only replaces EPUB metadata with data descriptors=%s and normalizes deflated mimetype', async (descriptors) => {
     const files = {

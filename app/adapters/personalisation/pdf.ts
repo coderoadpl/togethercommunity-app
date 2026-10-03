@@ -11,16 +11,21 @@ const hasSignatureField = (
   fields: PDFArray,
   visited: Set<PDFDict>,
   depth: number,
+  inheritedFt: PDFName | undefined,
+  inheritedHasV: boolean,
 ): boolean => {
   if (depth > SIGNATURE_FIELD_MAX_DEPTH) return true;
   for (let index = 0; index < fields.size(); index++) {
     const field = fields.lookupMaybe(index, PDFDict);
-    if (field === undefined || visited.has(field)) continue;
+    if (field === undefined) continue;
+    if (visited.has(field)) return true;
     visited.add(field);
-    const fieldType = field.lookupMaybe(PDFName.of('FT'), PDFName);
-    if (fieldType?.asString() === '/Sig' && field.has(PDFName.of('V'))) return true;
+    const ownFieldType = field.lookupMaybe(PDFName.of('FT'), PDFName);
+    const effectiveFieldType = ownFieldType ?? inheritedFt;
+    const effectiveHasValue = field.has(PDFName.of('V')) || inheritedHasV;
+    if (effectiveFieldType?.asString() === '/Sig' && effectiveHasValue) return true;
     const kids = field.lookupMaybe(PDFName.of('Kids'), PDFArray);
-    if (kids !== undefined && hasSignatureField(kids, visited, depth + 1)) return true;
+    if (kids !== undefined && hasSignatureField(kids, visited, depth + 1, effectiveFieldType, effectiveHasValue)) return true;
   }
   return false;
 };
@@ -32,7 +37,7 @@ const isSignedOrCertified = (document: PDFDocument): boolean => {
   const signatureFlags = acroForm.lookupMaybe(PDFName.of('SigFlags'), PDFNumber);
   if (signatureFlags !== undefined && (signatureFlags.asNumber() & 1) !== 0) return true;
   const fields = acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray);
-  return fields !== undefined && hasSignatureField(fields, new Set(), 0);
+  return fields !== undefined && hasSignatureField(fields, new Set(), 0, undefined, false);
 };
 
 export const personalisePdf = async (bytes: Uint8Array, copyIdentifier: string, maxBytes: number): Promise<Uint8Array> => {

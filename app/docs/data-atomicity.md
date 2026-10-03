@@ -63,6 +63,10 @@ at all.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.
+- Telemetry outbox: `EmailEventRepository.append` and
+  `MemberEventRepository.append` write the event, the per-tenant telemetry
+  accounting row and the outbox row in one commit, so the outbox sequence
+  follows commit order and an event is never stored without its accounting.
 
 <!-- MUST-ATOMIC:end -->
 

@@ -47,7 +47,7 @@ confirmation. Operator networking decisions remain external configuration.
 
 ## Transactional buffer and outage policy
 
-Migration `0131_telemetry_outbox` adds connection, accounting and outbox tables.
+The `telemetry_outbox` migration adds connection, accounting and outbox tables.
 Operational email/member event writes append normalized telemetry in the same
 Postgres transaction. Disconnected tenants produce no telemetry outbox rows.
 Remote writes run only in scheduled draining, independently of mail delivery.

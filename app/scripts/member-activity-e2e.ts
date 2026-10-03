@@ -349,8 +349,12 @@ const pressRepeatedly = async (page: Page, key: string, times: number): Promise<
 };
 
 const htmlExcerpt = async (locator: Locator): Promise<string> => {
-  if (await locator.count() === 0) return '(relevant element was not rendered)';
-  return (await locator.evaluate((element) => element.outerHTML)).slice(0, 500);
+  try {
+    if (await locator.count() === 0) return '(relevant element was not rendered)';
+    return (await locator.evaluate((element) => element.outerHTML)).slice(0, 500);
+  } catch {
+    return '(relevant HTML could not be read)';
+  }
 };
 
 const authorWithToolbar = async (page: Page, composer: Locator, suffix: string): Promise<void> => {
@@ -428,10 +432,13 @@ const createMarkdownPost = async (
       `Markdown post in ${locale} did not render the safe link policy.\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(rendered)}`,
     );
   }
-  const renderedHtml = await htmlExcerpt(rendered);
   assert(created.bodyFormat === 'markdown', `Markdown post in ${locale} was stored as ${created.bodyFormat}`);
   assert(created.bodyHtml.includes(`<strong>Bold ${suffix}</strong>`), `Markdown post in ${locale} did not render bold text`);
-  assert(created.bodyHtml.includes('rel="noopener noreferrer nofollow ugc"'), `Markdown post in ${locale} did not render the safe link policy.\nRelevant HTML (first 500 chars):\n${renderedHtml}`);
+  if (!created.bodyHtml.includes('rel="noopener noreferrer nofollow ugc"')) {
+    throw new E2eFailure(
+      `Markdown post in ${locale} did not render the safe link policy.\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(rendered)}`,
+    );
+  }
   assert(created.bodyHtml.includes('href="https://example.com/community"'), `Markdown post in ${locale} did not render the authored link destination`);
   assert(!created.bodyHtml.includes('<script>'), `Markdown post in ${locale} retained raw script HTML`);
   assert(await rendered.locator('script').count() === 0, `Markdown post in ${locale} rendered a script element`);
@@ -668,13 +675,14 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 let baseDatabaseUrl: string | null = null;
 try {
-  baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
-  assertSafeE2eDatabaseReset(baseDatabaseUrl, E2E_DB, process.env);
-  const e2eUrlObject = new URL(baseDatabaseUrl);
+  const resolved = resolveE2eDatabaseUrl(process.env);
+  assertSafeE2eDatabaseReset(resolved, E2E_DB, process.env);
+  baseDatabaseUrl = resolved;
+  const e2eUrlObject = new URL(resolved);
   e2eUrlObject.pathname = `/${E2E_DB}`;
   const e2eDatabaseUrl = e2eUrlObject.toString();
   console.log('member-activity-e2e: preparing isolated database...');
-  await setupDatabase(baseDatabaseUrl);
+  await setupDatabase(resolved);
   await migrateSeedAndActivateMembers(e2eDatabaseUrl);
   console.log('member-activity-e2e: building the web SPA...');
   await buildWeb();
@@ -759,12 +767,12 @@ try {
 } finally {
   const cleanupErrors: string[] = [];
   try {
-    if (server) await killServer(server);
+    if (server !== null) await killServer(server);
   } catch (error) {
     cleanupErrors.push(`server shutdown: ${String(error)}`);
   }
   try {
-    if (browser) await browser.close();
+    if (browser !== null) await browser.close();
   } catch (error) {
     cleanupErrors.push(`browser shutdown: ${String(error)}`);
   }

@@ -5347,6 +5347,38 @@ describe('tenant redirects', () => {
       createdBy: 'user-owner',
       createdAt: '1998-07-12T00:00:00.000Z',
     },
+    {
+      id: 'redirect-link',
+      tenantId: acme.id,
+      fromPath: '/link/guide',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 0,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+    {
+      id: 'redirect-link-asset',
+      tenantId: acme.id,
+      fromPath: '/link/guide.js',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 0,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
   ];
 
   const redirectApp = (owner: Tenant = acme, tracking?: {
@@ -5441,13 +5473,19 @@ describe('tenant redirects', () => {
     },
   );
 
-  it.each(['/assets/app.js', '/color-scheme.js'])(
+  it.each(['/assets/app.js', '/color-scheme.js', '/link/guide.js', '/LINK/guide.JS'])(
     'leaves the static asset %s to the web build',
     async (path) => {
-      const response = await redirectGet(path);
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
     },
   );
 
@@ -5470,17 +5508,80 @@ describe('tenant redirects', () => {
     expect(increments).toEqual(['redirect-printed-guide']);
   });
 
-  it('does not update a counter when no redirect matches', async () => {
+  it.each(['/link/guide', '/LINK/Guide'])(
+    'answers the stored path %s and increments its hit counter',
+    async (path) => {
+      const increments: string[] = [];
+      const response = await redirectApp(acme, { increments }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe(lessonPagePath);
+      expect(increments).toEqual(['redirect-link']);
+    },
+  );
+
+  it('sends a short link configured for another tenant to the workspace home without counting a hit', async () => {
     const increments: string[] = [];
     const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
-
-    await redirectApp(acme, { increments, hitClaims }).request('/course/python', {
+    const response = await redirectApp(globex, { increments, hitClaims }).request('/link/guide', {
       headers: { host: 'acme.localhost:48730' },
     });
 
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/');
     expect(increments).toEqual([]);
     expect(hitClaims).toEqual([]);
   });
+
+  it.each(['/link/guide', '/link/missing'])(
+    'leaves %s unchanged on an unknown tenant host',
+    async (path) => {
+      const increments: string[] = [];
+      const response = await redirectApp(acme, { increments }).request(path, {
+        headers: { host: 'missing.localhost:48730' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+    },
+  );
+
+  it.each(['/link', '/link/', '/link/missing?edition=print', '/LINK/Missing?edition=print'])(
+    'sends the unknown short link %s to the workspace home without counting a hit',
+    async (path) => {
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/');
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+    },
+  );
+
+  it.each(['/course/python', '/link/missing.js?edition=print', '/LINK/missing.js?edition=print', '/link-other/missing'])(
+    'leaves an unmatched path %s unchanged without counting a hit',
+    async (path) => {
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+    },
+  );
 
   it('counts 61 matched requests from one address', async () => {
     const increments: string[] = [];

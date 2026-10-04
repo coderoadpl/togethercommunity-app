@@ -88,6 +88,16 @@ GitHub repository variables and secrets, or in import datasets produced by
 tooling the owner keeps privately. A tenant's legacy URLs reach the platform as
 `redirect` import records, never as code that knows their shape.
 
+Forwarded prefixes (owner decision 2026-10-04): the hosted deployment's edge
+serves the web app for most paths and forwards a fixed prefix list to the server
+(`app/vercel.json`), so the per-workspace redirect table can answer only under a
+forwarded prefix. `/link/` is reserved platform-wide as the short-link prefix: a
+workspace stores `/link/<key>` redirect rows for printed material and QR codes.
+`/courses/` is forwarded so redirect rows for course paths minted by a previous
+site can answer. The platform owns the prefixes, never the keys: keys stay
+workspace data and `link` is not a reserved redirect root. Adding a forwarded
+prefix needs a dated owner decision here.
+
 `pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
 patterns across every tracked file. An exception needs a line in
 `.tenant-neutral-allow` with a written justification.

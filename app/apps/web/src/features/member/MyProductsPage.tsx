@@ -141,6 +141,11 @@ const ProductRow = ({
                     {t.student.downloadFile({ name: download.fileName })}
                     {' · '}{t.products.fileVersion({ number: download.versionNumber })}
                   </Button>
+                  {download.personalisationSizeExceeded ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {t.student.downloadNoCopyIdentifier}
+                    </Typography>
+                  ) : null}
                   {download.versionNote ? <Typography variant="body2">{download.versionNote}</Typography> : null}
                   {download.previousVersions.length > 0 ? (
                     <Box component="details">
@@ -152,6 +157,11 @@ const ProductRow = ({
                               {t.student.downloadFile({ name: previous.fileName })}
                               {' · '}{t.products.fileVersion({ number: previous.versionNumber })}
                             </Button>
+                            {previous.personalisationSizeExceeded ? (
+                              <Typography variant="body2" color="text.secondary">
+                                {t.student.downloadNoCopyIdentifier}
+                              </Typography>
+                            ) : null}
                             {previous.versionNote ? <Typography variant="body2">{previous.versionNote}</Typography> : null}
                           </Box>
                         ))}

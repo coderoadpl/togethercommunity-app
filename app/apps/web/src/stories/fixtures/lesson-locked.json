@@ -3,6 +3,7 @@
     "getTenantSettings:[]": {
       "ok": true,
       "value": {
+        "personalisationMaxBytes": null,
         "settings": {
           "accentColor": null,
           "accentLight": null,

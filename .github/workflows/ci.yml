@@ -83,6 +83,41 @@ jobs:
             sleep 30
           done
 
+  telemetry-mongodb:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    services:
+      mongodb:
+        image: mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: MongoDB telemetry adapter integration tests
+        env:
+          MONGODB_TEST_URL: mongodb://127.0.0.1:27017/together_test
+        run: pnpm exec vitest run adapters/telemetry/mongodb/store.test.ts --maxWorkers=1
+
   visual:
     runs-on: macos-26
     timeout-minutes: 20

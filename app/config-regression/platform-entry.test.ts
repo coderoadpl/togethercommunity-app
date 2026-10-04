@@ -62,6 +62,14 @@ describe('Vercel platform entry boundary', () => {
     expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
   });
 
+  it('sends /link/ paths to the function before the bot and web fallbacks', () => {
+    const rewrites = vercel.rewrites.map(({ source }) => source);
+
+    expect(vercel.rewrites).toContainEqual({ source: '/link/(.*)', destination: '/api/index' });
+    expect(rewrites.indexOf('/link/(.*)')).toBeLessThan(rewrites.indexOf('/(.*)'));
+    expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: '/index.html' });
+  });
+
   it('sends crawler metadata files to the function for every user agent', () => {
     const rewrites = vercel.rewrites.map(({ source }) => source);
 

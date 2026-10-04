@@ -16,16 +16,22 @@ import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type { ProductRepository, SpaceRepository, TenantRepository } from '../ports.js';
 
+export interface TenantSettingsProjection {
+  settings: TenantSettings;
+  personalisationMaxBytes: number | null;
+}
+
 export interface TenantSettingsDeps {
   tenants: TenantRepository;
   spaces: SpaceRepository;
   products: Pick<ProductRepository, 'bumpContentVersion'>;
+  personalisationMaxBytes: number;
 }
 
 export const getTenantSettings = async (
   ctx: Ctx,
   deps: TenantSettingsDeps,
-): Promise<Result<TenantSettings, AppError>> => {
+): Promise<Result<TenantSettingsProjection, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:read');
   if (!tenant.ok) return tenant;
   const settings = await deps.tenants.findSettings(tenant.value);
@@ -33,8 +39,14 @@ export const getTenantSettings = async (
   const supportConfigured = settings.supportEmail !== null && settings.supportEmail !== undefined;
   return ok(
     ctx.identity.staffRole === null
-      ? { ...settings, supportEmail: null, supportConfigured }
-      : { ...settings, supportConfigured },
+      ? {
+          settings: { ...settings, supportEmail: null, supportConfigured },
+          personalisationMaxBytes: null,
+        }
+      : {
+          settings: { ...settings, supportConfigured },
+          personalisationMaxBytes: deps.personalisationMaxBytes,
+        },
   );
 };
 

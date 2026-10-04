@@ -532,7 +532,7 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
     .replace(':attachmentId', encodeURIComponent(attachment.id)),
 });
 
-const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAssetMetadata => ({
+const productDownloadMetadata = (asset: ProductDownloadAsset, personalisationMaxBytes: number): ProductDownloadAssetMetadata => ({
   lineageId: asset.lineageId,
   versionNumber: asset.versionNumber,
   versionNote: asset.versionNote,
@@ -544,11 +544,15 @@ const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAs
   sizeBytes: asset.sizeBytes,
   status: asset.status,
   createdAt: asset.createdAt,
+  personalisationSizeExceeded: asset.sizeBytes > personalisationMaxBytes,
 });
 
-const productDownloadView = (asset: ProductDownloadAsset & { previousVersions?: ProductDownloadAsset[] }): ProductDownloadAssetView => ({
-  previousVersions: (asset.previousVersions ?? []).map(productDownloadView),
-  ...productDownloadMetadata(asset),
+const productDownloadView = (
+  asset: ProductDownloadAsset & { previousVersions?: ProductDownloadAsset[] },
+  personalisationMaxBytes: number,
+): ProductDownloadAssetView => ({
+  previousVersions: (asset.previousVersions ?? []).map((previous) => productDownloadView(previous, personalisationMaxBytes)),
+  ...productDownloadMetadata(asset, personalisationMaxBytes),
   downloadPath: API_PATHS.memberProductDownload
     .replace(':productId', encodeURIComponent(asset.productId))
     .replace(':assetId', encodeURIComponent(asset.id)),
@@ -1983,7 +1987,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       deps,
     );
     return respond(result.ok
-      ? ok({ assets: result.value.map(productDownloadMetadata) })
+      ? ok({
+          assets: result.value.map((asset) => productDownloadMetadata(asset, deps.personalisationMaxBytes)),
+          personalisationMaxBytes: deps.personalisationMaxBytes,
+        })
       : result);
   });
 
@@ -1999,7 +2006,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
     return respond(result.ok
       ? ok({
-          asset: productDownloadMetadata(result.value.asset),
+          asset: productDownloadMetadata(result.value.asset, deps.personalisationMaxBytes),
           upload: {
             url: result.value.uploadUrl,
             headers: { 'content-type': result.value.asset.contentType },
@@ -2028,7 +2035,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       deps,
       parsed.data,
     );
-    return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value) }) : result);
+    return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value, deps.personalisationMaxBytes) }) : result);
   });
 
   app.delete(API_PATHS.productDownloadDelete, async (c) => {
@@ -2103,7 +2110,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
             subscription: product.subscription,
-            downloads: product.downloads.map(productDownloadView),
+            downloads: product.downloads.map((download) => productDownloadView(download, deps.personalisationMaxBytes)),
           })),
         })
         : result,
@@ -2298,7 +2305,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.get(API_PATHS.tenantSettings, async (c) => {
     const result = await getTenantSettings(ctxOf(c), deps);
-    return respond(result.ok ? ok({ settings: result.value }) : result);
+    return respond(result.ok ? ok(result.value) : result);
   });
 
   const tenantRoutingDeps = {

@@ -4155,6 +4155,33 @@ describe('purchased product download route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('serializes the product download limit and size threshold for staff downloads', async () => {
+    const base = deps();
+    const limit = 4096;
+    const equalLimit = { ...asset, id: 'equal-limit', lineageId: 'equal-limit', sizeBytes: limit };
+    const aboveLimit = { ...asset, id: 'above-limit', lineageId: 'above-limit', sizeBytes: limit + 1 };
+    const app = scopedApp('owner', { overrides: {
+      personalisationMaxBytes: limit,
+      products: { ...base.products, findById: async () => downloadProduct },
+      downloadAssets: { ...base.downloadAssets, listByProduct: async () => [equalLimit, aboveLimit] },
+    } });
+    const response = await app.request(API_PATHS.productDownloadAssets.replace(':productId', downloadProduct.id), {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        personalisationMaxBytes: limit,
+        assets: [
+          { id: 'equal-limit', personalisationSizeExceeded: false },
+          { id: 'above-limit', personalisationSizeExceeded: true },
+        ],
+      },
+    });
+  });
+
   it('returns 403 for an unentitled member', async () => {
     const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
       headers: { host: 'acme.localhost:48730' },
@@ -4175,11 +4202,13 @@ describe('purchased product download route', () => {
     expect(malformed.status).toBe(400);
   });
 
-  it('serializes buyer history with separate protected paths and no storage keys', async () => {
+  it('serializes buyer history with protected paths, size threshold flags and no storage keys', async () => {
     const base = deps();
-    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z' };
-    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata' };
+    const limit = 4096;
+    const previous = { ...asset, supersededAt: '1998-08-01T00:00:00.000Z', sizeBytes: limit };
+    const latest = { ...asset, id: 'download-v2', versionNumber: 2, versionNote: 'Errata', sizeBytes: limit + 1 };
     const app = scopedApp('member', { overrides: {
+      personalisationMaxBytes: limit,
       grants: {
         ...base.grants,
         listGrantedProducts: async () => [downloadProduct],
@@ -4195,11 +4224,31 @@ describe('purchased product download route', () => {
     const body: unknown = await response.json();
     expect(body).toMatchObject({ ok: true, data: { products: [{ downloads: [{
       id: latest.id, lineageId: asset.lineageId, versionNumber: 2, versionNote: 'Errata',
+      personalisationSizeExceeded: true,
       downloadPath: '/api/my/products/digital-download/downloads/download-v2',
-      previousVersions: [{ id: asset.id, downloadPath: path, supersededAt: previous.supersededAt }],
+      previousVersions: [{
+        id: asset.id,
+        downloadPath: path,
+        supersededAt: previous.supersededAt,
+        personalisationSizeExceeded: false,
+      }],
     }] }] } });
     expect(JSON.stringify(body)).not.toContain('storageKey');
     expect(JSON.stringify(body)).not.toContain('replacesAssetId');
+  });
+
+  it('returns the personalisation limit only for staff tenant settings readers', async () => {
+    const limit = 12_345;
+    const settingsPath = API_PATHS.tenantSettings;
+    const member = await scopedApp('member', { overrides: { personalisationMaxBytes: limit } })
+      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
+    const staff = await scopedApp('staff', { overrides: { personalisationMaxBytes: limit } })
+      .request(settingsPath, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(member.status).toBe(200);
+    expect(await member.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: null } });
+    expect(staff.status).toBe(200);
+    expect(await staff.json()).toMatchObject({ ok: true, data: { personalisationMaxBytes: limit } });
   });
 
 });
@@ -5298,6 +5347,38 @@ describe('tenant redirects', () => {
       createdBy: 'user-owner',
       createdAt: '1998-07-12T00:00:00.000Z',
     },
+    {
+      id: 'redirect-link',
+      tenantId: acme.id,
+      fromPath: '/link/guide',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 0,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
+    {
+      id: 'redirect-link-asset',
+      tenantId: acme.id,
+      fromPath: '/link/guide.js',
+      targetKind: 'lesson',
+      targetId: 'acme-lesson-let',
+      targetPath: lessonPagePath,
+      targetAnchor: null,
+      permanent: false,
+      locked: true,
+      hitCount: 0,
+      lastHitAt: null,
+      origin: 'manual',
+      createdBy: 'user-owner',
+      createdAt: '1998-07-12T00:00:00.000Z',
+    },
   ];
 
   const redirectApp = (owner: Tenant = acme, tracking?: {
@@ -5392,13 +5473,19 @@ describe('tenant redirects', () => {
     },
   );
 
-  it.each(['/assets/app.js', '/color-scheme.js'])(
+  it.each(['/assets/app.js', '/color-scheme.js', '/link/guide.js', '/LINK/guide.JS'])(
     'leaves the static asset %s to the web build',
     async (path) => {
-      const response = await redirectGet(path);
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
 
       expect(response.status).toBe(404);
       expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
     },
   );
 
@@ -5421,17 +5508,80 @@ describe('tenant redirects', () => {
     expect(increments).toEqual(['redirect-printed-guide']);
   });
 
-  it('does not update a counter when no redirect matches', async () => {
+  it.each(['/link/guide', '/LINK/Guide'])(
+    'answers the stored path %s and increments its hit counter',
+    async (path) => {
+      const increments: string[] = [];
+      const response = await redirectApp(acme, { increments }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe(lessonPagePath);
+      expect(increments).toEqual(['redirect-link']);
+    },
+  );
+
+  it('sends a short link configured for another tenant to the workspace home without counting a hit', async () => {
     const increments: string[] = [];
     const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
-
-    await redirectApp(acme, { increments, hitClaims }).request('/course/python', {
+    const response = await redirectApp(globex, { increments, hitClaims }).request('/link/guide', {
       headers: { host: 'acme.localhost:48730' },
     });
 
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/');
     expect(increments).toEqual([]);
     expect(hitClaims).toEqual([]);
   });
+
+  it.each(['/link/guide', '/link/missing'])(
+    'leaves %s unchanged on an unknown tenant host',
+    async (path) => {
+      const increments: string[] = [];
+      const response = await redirectApp(acme, { increments }).request(path, {
+        headers: { host: 'missing.localhost:48730' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+    },
+  );
+
+  it.each(['/link', '/link/', '/link/missing?edition=print', '/LINK/Missing?edition=print'])(
+    'sends the unknown short link %s to the workspace home without counting a hit',
+    async (path) => {
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/');
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+    },
+  );
+
+  it.each(['/course/python', '/link/missing.js?edition=print', '/LINK/missing.js?edition=print', '/link-other/missing'])(
+    'leaves an unmatched path %s unchanged without counting a hit',
+    async (path) => {
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+
+      const response = await redirectApp(acme, { increments, hitClaims }).request(path, {
+        headers: { host: 'acme.localhost:48730' },
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+    },
+  );
 
   it('counts 61 matched requests from one address', async () => {
     const increments: string[] = [];

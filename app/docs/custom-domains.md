@@ -116,12 +116,11 @@ The deployment's edge serves the web app directly for most paths and forwards a
 fixed list of prefixes to the server; `app/vercel.json` is the source of truth,
 and for redirects the ones that matter are `/courses/` and `/link/`. A stored
 redirect outside a forwarded prefix never answers an ordinary browser request on
-this deployment; the web app shows its not-found screen. Requests from the social
-and search crawlers listed in `app/vercel.json` are forwarded on every path, so
-such a crawler does receive the stored answer. `/link/` is the platform's
-short-link prefix (owner
-decision 2026-10-04): every workspace may store `/link/<key>` entries for printed
-material and QR codes.
+this deployment; the web app shows its not-found screen. Requests from the
+social and search crawlers listed in `app/vercel.json` are forwarded on every
+path, so such a crawler does receive the stored answer. `/link/` is the
+platform's short-link prefix (owner decision 2026-10-04): every workspace may
+store `/link/<key>` entries for printed material and QR codes.
 
 The platform knows nothing about the URL shapes of the site a workspace came
 from. Each entry is one source path with one destination. Entries arrive two
@@ -129,14 +128,15 @@ ways: in bulk through the `redirect` kind of the [import API](import-api.md),
 where the tool that reads the previous site decides which paths exist and what
 they mean, and one at a time from Settings → Addresses → Redirects.
 
-| Entry                                                                                                         | Redirected to                                                                                               | Status |
-| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------ |
-| a source path under a forwarded prefix marked permanent                                                       | its destination                                                                                             | `301`  |
-| a source path under a forwarded prefix left temporary                                                         | its destination                                                                                             | `302`  |
-| a `/link/<key>` with no entry                                                                                 | the workspace home (`/`)                                                                                    | `302`  |
-| a path outside the forwarded prefixes, entry or not                                                           | unchanged — the web app serves it (browser requests; listed crawlers get the stored answer)                 | —      |
-| a path with no entry under `/courses/`                                                                        | the server's not-found answer                                                                               | `404`  |
-| a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) — under a forwarded prefix too | never redirected; under `/courses/` or `/link/` the server answers `404`, elsewhere the web build serves it | —      |
+| Entry | Redirected to | Status |
+|---|---|---|
+| a source path under a forwarded prefix marked permanent | its destination | `301` |
+| a source path under a forwarded prefix left temporary | its destination | `302` |
+| a `/link/<key>` with no entry | the workspace home (`/`) | `302` |
+| a path with an entry outside the forwarded prefixes | unchanged for a browser — the web app serves it; a listed crawler gets the entry's destination | — / `301` / `302` |
+| a path with no entry outside the forwarded prefixes | unchanged — the web app serves it; a listed crawler gets the social-preview document for an extensionless path and `404` for a document-extension path such as `.html` | — |
+| a path with no entry under `/courses/` | the server's not-found answer | `404` |
+| a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) — under a forwarded prefix too | never redirected; under `/courses/` or `/link/` the server answers `404`, elsewhere the web build serves it; a listed crawler gets `404` for a static path the web build does not contain | — |
 
 An unknown short link counts no hit.
 

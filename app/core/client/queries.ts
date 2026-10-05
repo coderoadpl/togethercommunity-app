@@ -1,3 +1,4 @@
+import type { MarkLessonEditionInput, UnmarkLessonEditionInput } from "#core/contract/index.js";
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
@@ -1078,6 +1079,15 @@ export const contentHistoryQuery = (
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 
+export const staffLessonHistoryQuery = (api: ApiClient, lessonId: string, offset = 0) =>
+  defineQuery({ queryKey: [...contentHistoryScopes.all(), 'lesson', lessonId, offset], call: ({ signal }) => api.staffLessonHistory(lessonId, offset, signal) });
+
+export const markLessonEditionMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: [...contentHistoryScopes.all(), 'mark-edition'], call: (input: MarkLessonEditionInput) => api.markLessonEdition(input) });
+
+export const unmarkLessonEditionMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: [...contentHistoryScopes.all(), 'unmark-edition'], call: (input: UnmarkLessonEditionInput) => api.unmarkLessonEdition(input) });
+
 export const contentVersionQuery = (api: ApiClient, versionId: string) =>
   defineQuery({
     queryKey: contentHistoryScopes.version(versionId),
@@ -1194,10 +1204,22 @@ export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
     call: ({ signal }) => api.studentLesson(lessonId, signal),
   });
 
-export const studentLessonPlaybackQuery = (api: ApiClient, lessonId: string) =>
+export const studentLessonEditionsQuery = (api: ApiClient, lessonId: string) =>
   defineQuery({
-    queryKey: [...studentScopes.lesson(lessonId), 'playback'],
-    call: ({ signal }) => api.studentLessonPlayback(lessonId, signal),
+    queryKey: [...studentScopes.lesson(lessonId), 'editions'],
+    call: ({ signal }) => api.studentLessonEditions(lessonId, signal),
+  });
+
+export const studentLessonEditionQuery = (api: ApiClient, lessonId: string, number: string) =>
+  defineQuery({
+    queryKey: [...studentScopes.lesson(lessonId), 'edition', number],
+    call: ({ signal }) => api.studentLessonEdition(lessonId, number, signal),
+  });
+
+export const studentLessonPlaybackQuery = (api: ApiClient, lessonId: string, editionNumber?: string) =>
+  defineQuery({
+    queryKey: [...studentScopes.lesson(lessonId), 'playback', editionNumber ?? null],
+    call: ({ signal }) => api.studentLessonPlayback(lessonId, signal, editionNumber),
   });
 
 export const studentLessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>

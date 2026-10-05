@@ -128,7 +128,9 @@ const harness = () => {
   const audits = new Map<string, ImportAuditEvent>();
   const domains: TenantDomain[] = [];
   const versions: EntityVersionRecord[] = [];
+  const mutations: ImportContentMutation[] = [];
   const save = (mutation: ImportContentMutation): void => {
+    mutations.push(mutation);
     if (mutation.version !== undefined) versions.push(mutation.version);
     if (mutation.kind === 'course') courses.set(mutation.resource.id, mutation.resource);
     if (mutation.kind === 'module') modules.set(mutation.resource.id, mutation.resource);
@@ -191,6 +193,7 @@ const harness = () => {
     audits,
     domains,
     versions,
+    mutations,
     commitCalls: () => commitCalls,
     resetCommitCalls: () => {
       commitCalls = 0;
@@ -644,5 +647,32 @@ describe('m2m import rate limits', () => {
 
     expect(result).toEqual({ ok: true, value: undefined });
     expect(limits).toEqual([60, expectedLimit]);
+  });
+});
+
+
+describe('lesson edition imports', () => {
+  it('preserves the published-product write guard for edition imports', async () => {
+    const h = harness();
+    await seedImportedProduct(h);
+    publishImportedProduct(h);
+    expect(await importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [{ ...lessonRecord(), edition: { number: '2' } }],
+    }, h.deps)).toMatchObject({ ok: true, value: { results: [{ action: 'error', error: { code: 'conflict' } }] } });
+  });
+
+  it('carries edition metadata and a snapshot through create, note updates, and unchanged reimports', async () => {
+    const h = harness();
+    const record = { ...lessonRecord(), edition: { number: '2.1', note: 'First note' } };
+    const write = (note: string) => importM2mContent(ctx, apiKey, 'lesson', {
+      datasetVersion: 'together-import/v1', records: [{ ...record, edition: { number: '2.1', note } }],
+    }, h.deps);
+    expect(await write('First note')).toMatchObject({ ok: true, value: { results: [{ action: 'created' }] } });
+    expect(h.mutations.at(-1)).toMatchObject({ kind: 'lesson', edition: { number: '2.1', note: 'First note' },
+      version: { entityKind: 'course_lesson', payload: { name: 'Lesson' } } });
+    expect(await write('Updated note')).toMatchObject({ ok: true, value: { results: [{ action: 'updated' }] } });
+    expect(h.mutations.at(-1)).toMatchObject({ edition: { number: '2.1', note: 'Updated note' } });
+    expect(await write('Updated note')).toMatchObject({ ok: true, value: { results: [{ action: 'unchanged' }] } });
+    expect(h.mutations.at(-1)?.version).toBeDefined();
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { List, ListItemButton, ListItemText, Paper } from '@mui/material';
+import { Button, List, ListItemButton, ListItemText, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
@@ -9,16 +9,20 @@ import { Eyebrow, FinePrint } from '../../../theme.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { VersionPreviewDialog } from './VersionPreviewDialog.js';
 
-/**
- * "Historia zmian" for a course: the course's own snapshots merged with those
- * of its attached modules. Each entry opens a read-only preview that can be
- * restored as a new save.
- */
-export const HistoryPanel = ({ courseId }: { courseId: string }) => {
+export const HistoryPanel = (input: { courseId: string } | { lessonId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const [offset, setOffset] = useState(0);
   const [openVersionId, setOpenVersionId] = useState<string | null>(null);
-  const history = useQuery(actions.contentHistory({ courseId }));
+  const courseHistory = useQuery({
+    ...actions.contentHistory({ courseId: 'courseId' in input ? input.courseId : '' }),
+    enabled: 'courseId' in input,
+  });
+  const lessonHistory = useQuery({
+    ...actions.staffLessonHistory('lessonId' in input ? input.lessonId : '', offset),
+    enabled: 'lessonId' in input,
+  });
+  const history = 'lessonId' in input ? lessonHistory : courseHistory;
 
   return (
     <Paper elevation={1} sx={{ p: '1.1rem', display: 'grid', gap: '0.75rem' }} data-testid="history-panel">
@@ -31,7 +35,7 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
         <StatusView state={{ kind: 'error', message: localizePanelError(history.error, t), retry: { label: t.common.retry, onRetry: () => void history.refetch() } }} />
       ) : history.data.versions.length === 0 ? (
         <StatusView
-          state={{ kind: 'empty', title: t.courses.historyEmpty, body: t.courses.historyEmptyBody }}
+          state={{ kind: 'empty', title: offset > 0 ? t.courses.historyEnd : t.courses.historyEmpty, ...(offset > 0 ? {} : { body: t.courses.historyEmptyBody }) }}
           surface={false}
         />
       ) : (
@@ -54,14 +58,27 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
                   secondary={`${
                     version.subjectKind === 'course'
                       ? t.courses.historySubjectCourse({ name: version.subjectName })
-                      : t.courses.historySubjectModule({ name: version.subjectName })
-                  } · ${t.courses.historyEntrySchema({ version: version.schemaVersion })}`}
+                      : version.subjectKind === 'lesson'
+                        ? t.courses.historySubjectLesson({ name: version.subjectName })
+                        : t.courses.historySubjectModule({ name: version.subjectName })
+                  } · ${t.courses.historyEntrySchema({ version: version.schemaVersion })}${version.edition ? ` · ${t.lesson.editionLabel({ number: version.edition.number })}` : ''}`}
                 />
               </ListItemButton>
             ))}
           </List>
         </>
       )}
+      {'lessonId' in input && (offset > 0 || (history.data?.versions.length ?? 0) === 20) ? (
+        <Stack direction="row" useFlexGap spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button disabled={offset === 0 || history.isPending} onClick={() => setOffset((current) => Math.max(0, current - 20))}>
+            {t.pagination.previousPage}
+          </Button>
+          <Typography variant="caption" aria-live="polite">{t.courses.historyPage({ page: offset / 20 + 1 })}</Typography>
+          <Button disabled={history.isPending || (history.data?.versions.length ?? 0) < 20} onClick={() => setOffset((current) => current + 20)}>
+            {t.pagination.nextPage}
+          </Button>
+        </Stack>
+      ) : null}
       {openVersionId === null ? null : (
         <VersionPreviewDialog versionId={openVersionId} onClose={() => setOpenVersionId(null)} />
       )}

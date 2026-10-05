@@ -1,6 +1,14 @@
 import { visible, type ScreenSpec } from './visual-screen-inventory.js';
 
 const storyByScreen: ReadonlyMap<string, string> = new Map([
+  ['lesson-editions-light-desktop', 'member-lessoneditions--light-desktop'],
+  ['lesson-editions-light-mobile', 'member-lessoneditions--light-mobile'],
+  ['lesson-editions-dark-desktop', 'member-lessoneditions--dark-desktop'],
+  ['lesson-editions-dark-mobile', 'member-lessoneditions--dark-mobile'],
+  ['lesson-editions-menu-light-desktop', 'member-lessoneditions--menu-light-desktop'],
+  ['lesson-editions-menu-light-mobile', 'member-lessoneditions--menu-light-mobile'],
+  ['lesson-editions-menu-dark-desktop', 'member-lessoneditions--menu-dark-desktop'],
+  ['lesson-editions-menu-dark-mobile', 'member-lessoneditions--menu-dark-mobile'],
   ['telemetry-overview', 'integrations-telemetrystore--overview'],
   ['markdown-editor-empty', 'forms-markdowneditor--empty'],
   ['markdown-editor-long-content', 'forms-markdowneditor--long-content'],
@@ -47,6 +55,14 @@ const telemetryScreens: ScreenSpec[] = [{
 }];
 
 export const componentScreens: readonly ScreenSpec[] = [
+  { name: 'lesson-editions-light-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('story-lesson-editions').waitFor(visible); } },
+  { name: 'lesson-editions-light-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('story-lesson-editions').waitFor(visible); } },
+  { name: 'lesson-editions-dark-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('story-lesson-editions').waitFor(visible); } },
+  { name: 'lesson-editions-dark-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('story-lesson-editions').waitFor(visible); } },
+  { name: 'lesson-editions-menu-light-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
+  { name: 'lesson-editions-menu-light-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
+  { name: 'lesson-editions-menu-dark-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
+  { name: 'lesson-editions-menu-dark-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('menuitem', { name: 'Previous editions' }).waitFor(visible); } },
   ...telemetryScreens,
   screen('markdown-editor-empty', 'desktop'),
   screen('markdown-editor-long-content', 'mobile'),

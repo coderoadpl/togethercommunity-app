@@ -1,3 +1,6 @@
+import { getLessonEdition, listLessonEditions, markLessonEdition, unmarkLessonEdition } from './lesson-editions.js';
+import { buildSnapshot } from '#core/domain/index.js';
+import type { EntityVersionRecord, LessonEditionRepository } from '../ports.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -784,5 +787,75 @@ describe('getNextLesson', () => {
       ok: false,
       error: { code: 'not_found' },
     });
+  });
+});
+
+describe('reader lesson editions', () => {
+  const harness = (access: CourseAccessDeps) => {
+    const records = new Map<string, { version: EntityVersionRecord; number: string; note: string | null; markedAt: string }>();
+    const lessonEditions: LessonEditionRepository = {
+      list: async (_tenantId, lessonId) => [...records.values()].filter((row) => row.version.entityId === lessonId)
+        .map((row) => ({ versionId: row.version.id, number: row.number, note: row.note, markedAt: row.markedAt })),
+      find: async (_tenantId, lessonId, number) => {
+        const row = records.get(number);
+        return row?.version.entityId === lessonId ? row.version : null;
+      },
+      mark: async (_tenantId, version, edition, markedAt) => {
+        const existing = records.get(edition.number);
+        if (existing !== undefined && existing.version.id !== version.id) return 'conflict';
+        const row = { version, number: edition.number, note: edition.note ?? null, markedAt };
+        records.set(edition.number, row);
+        return { versionId: version.id, number: row.number, note: row.note, markedAt };
+      },
+      unmark: async (_tenantId, lessonId, number) => {
+        if (records.get(number)?.version.entityId !== lessonId) return false;
+        return records.delete(number);
+      },
+    };
+    const snapshot = buildSnapshot('course_lesson', { ...lesson('l4'), name: 'Chapter 3 earlier', isPreview: true });
+    if (!snapshot.ok) throw new Error(snapshot.error.message);
+    const version: EntityVersionRecord = { id: 'version-1', entityKind: 'course_lesson', entityId: 'l4', ...snapshot.value, createdAt: NOW, createdBy: null };
+    const staffDeps = { ...access, lessonEditions, ids: { nextId: () => 'current-version' },
+      entityVersions: { list: async () => [], findById: async () => ({ ...version, ordinal: 1 }) } };
+    return { deps: { ...access, lessonEditions }, staffDeps, version };
+  };
+
+  it('only exposes marked versions and hides them again after unmarking', async () => {
+    const h = harness(deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]));
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({ ok: true, value: [] });
+    expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await markLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps))
+      .toMatchObject({ ok: true, value: { number: '1' } });
+    expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: true, value: { id: 'l4', name: 'Chapter 3 earlier', isPreview: false } });
+    expect(await unmarkLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', number: '1' }, h.staffDeps)).toEqual({ ok: true, value: undefined });
+    expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('denies a member without a grant even when the stored snapshot was a preview', async () => {
+    const h = harness(deps([], []));
+    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW);
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await markLessonEdition(ctx({}), { lessonId: 'l4', edition: { number: '2' } }, h.staffDeps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it.each([true, false])('uses the public preview course access rule: %s', async (publiclyVisible) => {
+    const previewLessons = lessons.map((row) => row.id === 'l4' ? { ...row, isPreview: true } : row);
+    const h = harness(deps([], [], [{ ...c1, publiclyVisible }], [m1, m2], [], previewLessons));
+    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW);
+    const anonymous: Ctx = { identity: identity({ memberId: null }), capabilities: capabilitiesForPrincipal('public') };
+    expect((await getLessonEdition(anonymous, 'l4', '1', h.deps)).ok).toBe(publiclyVisible);
+    expect((await listLessonEditions(anonymous, 'l4', h.deps)).ok).toBe(publiclyVisible);
+  });
+
+  it('captures current content and rejects a duplicate number', async () => {
+    const h = harness(deps([], []));
+    const staff = ctx({ staffRole: 'owner' });
+    await markLessonEdition(staff, { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps);
+    expect(await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '1' } }, h.staffDeps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2', note: 'Current text' } }, h.staffDeps))
+      .toMatchObject({ ok: true, value: { number: '2', note: 'Current text' } });
+    expect(await getLessonEdition(staff, 'l4', '2', h.deps)).toMatchObject({ ok: true, value: { name: 'Lesson l4' } });
   });
 });

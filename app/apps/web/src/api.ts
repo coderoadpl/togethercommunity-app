@@ -1,3 +1,4 @@
+import { staffLessonHistoryQuery, markLessonEditionMutation, unmarkLessonEditionMutation } from "#core/client/index.js";
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
 
@@ -278,6 +279,8 @@ import {
   uncompleteLessonMutation,
   studentLessonQuery,
   studentLessonPlaybackQuery,
+  studentLessonEditionsQuery,
+  studentLessonEditionQuery,
   studentLessonAttachmentsQuery,
   studentProgressQuery,
   tenantsQuery,
@@ -427,6 +430,9 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   courses: coursesQuery(apiClient),
   createCourse: createCourseMutation(apiClient),
   updateCourse: updateCourseMutation(apiClient),
+  staffLessonHistory: (lessonId: string, offset = 0) => staffLessonHistoryQuery(apiClient, lessonId, offset),
+  markLessonEdition: markLessonEditionMutation(apiClient),
+  unmarkLessonEdition: unmarkLessonEditionMutation(apiClient),
   contentHistory: (input: { courseId: string; limit?: number }) =>
     contentHistoryQuery(apiClient, input),
   contentVersion: (versionId: string) => contentVersionQuery(apiClient, versionId),
@@ -454,7 +460,9 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   studentCourses: studentCoursesQuery(apiClient),
   courseStructure: (courseId: string) => courseStructureQuery(apiClient, courseId),
   studentLesson: (lessonId: string) => studentLessonQuery(apiClient, lessonId),
-  studentLessonPlayback: (lessonId: string) => studentLessonPlaybackQuery(apiClient, lessonId),
+  studentLessonEditions: (lessonId: string) => studentLessonEditionsQuery(apiClient, lessonId),
+  studentLessonEdition: (lessonId: string, number: string) => studentLessonEditionQuery(apiClient, lessonId, number),
+  studentLessonPlayback: (lessonId: string, editionNumber?: string) => studentLessonPlaybackQuery(apiClient, lessonId, editionNumber),
   studentLessonAttachments: (lessonId: string) => studentLessonAttachmentsQuery(apiClient, lessonId),
   nextLesson: (lessonId: string) => nextLessonQuery(apiClient, lessonId),
   studentProgress: (courseId: string) => studentProgressQuery(apiClient, courseId),

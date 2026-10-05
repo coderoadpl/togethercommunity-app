@@ -10,9 +10,11 @@ import {
 import type { ImportContentMutation, ImportContentRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { createLessonEditionRepository } from './lesson-editions.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { uniqueViolation, uniqueViolationIn } from './pg-errors.js';
 import {
+  entityVersions,
   courseLessons,
   courseModules,
   courses,
@@ -153,17 +155,37 @@ const intraTenantConflictConstraints = [
   'products_tenant_legacy_uidx',
 ];
 
+class EditionConflictError extends Error {}
+
 export const createImportContentRepository = (db: Db): ImportContentRepository => ({
   commit: async (tenantId, mutation) => {
     try {
       return await db.transaction(async (tx) => {
         if (mutation.action === 'created') await createResource(tx, tenantId, mutation);
         if (mutation.action === 'updated' && !await updateResource(tx, tenantId, mutation)) return 'conflict';
+        if (mutation.kind === 'lesson' && mutation.edition !== undefined) {
+          await tx.select({ id: courseLessons.id }).from(courseLessons).where(and(
+            eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, mutation.resource.id),
+          )).for('update');
+        }
         if (mutation.version !== undefined) await insertEntityVersion(tx, tenantId, mutation.version);
+        if (mutation.kind === 'lesson' && mutation.edition !== undefined && mutation.version !== undefined) {
+          const repository = createLessonEditionRepository(tx);
+          const existing = await repository.find(tenantId, mutation.resource.id, mutation.edition.number);
+          if (existing !== null) {
+            await tx.update(entityVersions).set({ editionNote: mutation.edition.note ?? null }).where(and(
+              eq(entityVersions.tenantId, tenantId), eq(entityVersions.id, existing.id),
+            ));
+          } else {
+            const marked = await repository.mark(tenantId, mutation.version, mutation.edition, mutation.event.at);
+            if (marked === 'conflict') throw new EditionConflictError('Concurrent edition marking');
+          }
+        }
         await insertAuditEvent(tx, tenantId, mutation);
         return 'saved';
       });
     } catch (cause) {
+      if (cause instanceof EditionConflictError) return 'conflict';
       if (mutation.kind === 'product' && uniqueViolation(cause, 'products_tenant_slug_uidx')) {
         return 'slug_taken';
       }

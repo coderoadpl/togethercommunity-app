@@ -224,6 +224,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     if (method === 'GET' && (path === '/api/coupons' || path === '/api/coupons/export' || path.includes('/stats'))) return 'coupon:report';
     return method === 'GET' ? 'coupon:read' : 'coupon:write';
   }
+  if (path.startsWith('/api/courses/history') && method === 'GET') return 'course:history:read';
   if (path === '/api/courses' || path.startsWith('/api/courses/')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/modules') || path.startsWith('/api/lessons')) return method === 'GET' ? 'course:read' : 'course:write';
   if (path.startsWith('/api/student/')) {
@@ -538,6 +539,7 @@ const beforeForUseCase = (
     return tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
+  if (file === 'lesson-editions.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'image-assets.ts') {
     if (capability === 'member:profile:self-write') return tenantActors;

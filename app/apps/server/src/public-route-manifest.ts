@@ -37,6 +37,8 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: API_PATHS.publicSpaceEvents, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Read-only events of a publicly readable space' },
   { path: API_PATHS.publicSpaceEvent, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Read-only event of a publicly readable space' },
   { path: API_PATHS.publicImageAsset, methods: ['GET'], mutating: false, why: 'Tenant image assets (covers, branding) redirected from private BYO storage' },
+  { path: API_PATHS.studentLessonEditions, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview editions with the current lesson access check' },
+  { path: API_PATHS.studentLessonEdition, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview edition with the current lesson access check' },
   { path: API_PATHS.studentLesson, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview' },
   { path: '/api/public/payment-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Checkout capability discovery' },
   { path: '/api/public/checkout/coupon', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Read-only coupon validation' },

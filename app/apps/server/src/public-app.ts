@@ -1,3 +1,5 @@
+import { listLessonEditions } from "#core/server/index.js";
+import { lessonEditionsOutputSchema } from "#core/contract/index.js";
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
@@ -307,6 +309,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   registerOpenCors(app, API_PATHS.publicSpaceEvents, 'GET');
   registerOpenCors(app, API_PATHS.publicSpaceEvent, 'GET');
   registerOpenCors(app, API_PATHS.studentLesson, 'GET', API_PATHS.studentLessonNext);
+  registerOpenCors(app, API_PATHS.studentLessonEditions, 'GET');
+  registerOpenCors(app, API_PATHS.studentLessonEdition, 'GET');
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
@@ -479,11 +483,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       : respondPublic(err(internal('Public space event response does not match the contract')));
   });
 
-  app.get(API_PATHS.studentLesson, async (c, next) => {
-    if (c.req.path === API_PATHS.studentLessonNext) {
-      await next();
-      return;
-    }
+  const readerLesson = async (c: Context<AppVars>, mode: 'current' | 'list' | 'edition') => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
@@ -516,7 +516,13 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
           : { identity: impersonationIdentity, impersonation };
       }
     }
-    const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
+    const lessonId = c.req.param('lessonId') ?? '';
+    if (mode === 'list') {
+      const editions = await listLessonEditions(ctx, lessonId, deps);
+      if (!editions.ok) return respondPublic(!authenticated && editions.error.code === 'forbidden' ? err(unauthorized()) : editions);
+      return respondPublic(ok(lessonEditionsOutputSchema.parse({ editions: editions.value })));
+    }
+    const result = await getPlayableLesson(ctx, lessonId, deps, mode === 'edition' ? c.req.param('number') : undefined);
     if (!result.ok) {
       return respondPublic(!authenticated && result.error.code === 'forbidden'
         ? err(unauthorized())
@@ -526,6 +532,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return parsed.success
       ? respondPublic(ok(parsed.data))
       : respondPublic(err(internal('Preview lesson response does not match the contract')));
+  };
+  app.get(API_PATHS.studentLessonEditions, (c) => readerLesson(c, 'list'));
+  app.get(API_PATHS.studentLessonEdition, (c) => readerLesson(c, 'edition'));
+  app.get(API_PATHS.studentLesson, async (c, next) => {
+    if (c.req.path === API_PATHS.studentLessonNext) return next();
+    return readerLesson(c, 'current');
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

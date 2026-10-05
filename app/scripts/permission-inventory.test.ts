@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(394);
-    expect(inventory.useCases).toHaveLength(309);
+    expect(inventory.routes).toHaveLength(400);
+    expect(inventory.useCases).toHaveLength(313);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/download-copies'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
@@ -26,6 +26,22 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('keeps edition writes staff-only and reader editions on the existing lesson capability', () => {
+    const inventory = collectPermissionInventory();
+    for (const action of ['mark', 'unmark']) {
+      expect(inventory.routes.find((row) => row.subject === `POST /api/courses/history/edition/${action}`))
+        .toMatchObject({ capability: 'course:write', after: ['owner', 'admin'] });
+    }
+    for (const name of ['getLessonEdition', 'listLessonEditions']) {
+      expect(inventory.useCases.find((row) => row.subject === `lesson-editions.ts#${name}`))
+        .toMatchObject({ capability: 'lesson:play', after: ['owner', 'admin', 'member'] });
+    }
+    for (const suffix of ['editions', 'editions/:number']) {
+      expect(inventory.routes.find((row) => row.subject === `GET /api/student/lessons/:lessonId/${suffix}`))
+        .toMatchObject({ capability: 'lesson:play', evidence: 'public route manifest' });
+    }
   });
 
   it('keeps tenant provisioning and readiness operator-only at both boundaries', () => {

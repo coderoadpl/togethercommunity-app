@@ -75,6 +75,18 @@ export const getContentHistory = async (
   if (!tenant.ok) return tenant;
   const parsed = courseHistoryQuerySchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid history query', parsed.error.flatten()));
+  if (parsed.data.lessonId !== undefined) {
+    const lesson = await deps.lessons.findById(tenant.value, parsed.data.lessonId);
+    if (lesson === null) return err(notFound('Lesson not found'));
+    const versions = await deps.entityVersions.list(tenant.value, {
+      entityKind: 'course_lesson', entityId: lesson.id, limit: parsed.data.limit, offset: parsed.data.offset,
+    });
+    const names = await deps.userDisplays.findDisplayNames(tenant.value,
+      [...new Set(versions.flatMap((version) => version.createdBy === null ? [] : [version.createdBy]))]);
+    return ok(versions.map((version) => ({ ...version, subjectKind: 'lesson' as const,
+      subjectName: lesson.name, createdByDisplayName: authorName(version.createdBy, names) })));
+  }
+  if (parsed.data.courseId === undefined) return err(validation('A course or lesson id is required'));
   const [course, modules] = await Promise.all([
     deps.courses.findById(tenant.value, parsed.data.courseId),
     deps.modules.list(tenant.value),
@@ -179,6 +191,7 @@ export const getContentVersion = async (
   return ok({
     version: {
       id: record.id,
+      edition: record.edition ?? null,
       entityKind: record.entityKind,
       entityId: record.entityId,
       ordinal: record.ordinal,

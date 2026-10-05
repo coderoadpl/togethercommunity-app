@@ -22,6 +22,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
 | `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
+| `OPTIONS /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
+| `OPTIONS /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
@@ -35,6 +37,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
+| `GET /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
+| `GET /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -322,6 +326,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/courses` | authenticated | read | courses |
 | `POST /api/courses` | authenticated | mutating | courses create |
 | `POST /api/courses/update` | authenticated | mutating | courses update |
+| `POST /api/courses/history/edition/mark` | authenticated | mutating | lesson edition mark |
+| `POST /api/courses/history/edition/unmark` | authenticated | mutating | lesson edition unmark |
 | `GET /api/courses/history/version` | authenticated | read | courses history version |
 | `POST /api/courses/history/restore` | authenticated | mutating | courses history restore |
 | `GET /api/courses/history` | authenticated | read | courses history |

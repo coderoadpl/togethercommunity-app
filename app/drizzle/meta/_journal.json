@@ -932,6 +932,13 @@
       "when": 1790964000004,
       "tag": "0132_telemetry_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1790964000005,
+      "tag": "0133_lesson_editions",
+      "breakpoints": true
     }
   ]
 }

@@ -1847,6 +1847,26 @@ course
     }),
   );
 
+course.command('lesson-history <lessonId>').description('List stored lesson versions').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+    emit(await ctx.api.staffLessonHistory(lessonId), ctx.json, ({ versions }) =>
+      versions.map((version) => `#${version.ordinal}  ${version.id}  ${version.createdAt}`).join('\n') || 'no versions');
+  }),
+);
+
+course.command('mark-edition <lessonId> <number>').description('Mark current content or a stored version as a reader edition')
+  .option('--version-id <id>', 'Stored version; omit to capture current content')
+  .option('--note <text>', 'Optional edition note, up to 200 characters')
+  .action(withInput(z.tuple([z.string().min(1), z.string().min(1), z.object({ versionId: z.string().optional(), note: z.string().max(200).optional() })]), async (ctx, [lessonId, number, options]) => {
+    emit(await ctx.api.markLessonEdition({ lessonId, ...(options.versionId === undefined ? {} : { versionId: options.versionId }), edition: { number, ...(options.note === undefined ? {} : { note: options.note }) } }), ctx.json, ({ edition }) => `marked edition ${edition.number}`);
+  }));
+
+course.command('unmark-edition <lessonId> <number>').description('Hide an edition without deleting its stored version').action(
+  withInput(z.tuple([z.string().min(1), z.string().min(1), noOptionsSchema]), async (ctx, [lessonId, number]) => {
+    emit(await ctx.api.unmarkLessonEdition({ lessonId, number }), ctx.json, () => 'edition hidden');
+  }),
+);
+
 const moduleCommand = program.command('module').description('Course modules (staff only)');
 
 moduleCommand.command('list').description('List modules').action(
@@ -2121,6 +2141,19 @@ student
       );
     }),
   );
+
+student.command('editions <lessonId>').description('List marked lesson editions').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+    emit(await ctx.api.studentLessonEditions(lessonId), ctx.json, ({ editions }) =>
+      editions.map((edition) => `${edition.number}  ${edition.markedAt}  ${edition.note ?? ''}`).join('\n') || 'no editions');
+  }),
+);
+
+student.command('edition <lessonId> <number>').description('Read a marked lesson edition').action(
+  withInput(z.tuple([z.string().min(1), z.string().min(1), noOptionsSchema]), async (ctx, [lessonId, number]) => {
+    emit(await ctx.api.studentLessonEdition(lessonId, number), ctx.json, ({ lesson }) => `${lesson.name} (${lesson.contents.length} block(s))`);
+  }),
+);
 
 student
   .command('complete <lessonId>')

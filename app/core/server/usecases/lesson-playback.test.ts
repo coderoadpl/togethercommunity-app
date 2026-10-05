@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildSnapshot,
   computeCourseModuleName,
   err,
   internal,
@@ -20,6 +21,7 @@ import {
 import type { Ctx } from '../context.js';
 import type {
   CourseLessonRepository,
+  LessonEditionRepository,
   CourseModuleRepository,
   CourseRepository,
   MemberCourseProgressRepository,
@@ -429,5 +431,53 @@ describe('getLessonPlayback', () => {
       embedUrl: expect.stringContaining(`expires=${expires}`),
       hlsUrl: expect.stringContaining(`expires=${expires}`),
     });
+  });
+});
+
+
+describe('lesson edition playback', () => {
+  const editions = (marked: boolean): LessonEditionRepository => {
+    const snapshot = buildSnapshot('course_lesson', { ...lesson, isPreview: true, contents: [{
+      type: 'video', storageKey: 'videos/earlier', streamLibraryId: 'lib-2', streamVideoId: 'earlier-video',
+    }] });
+    if (!snapshot.ok) throw new Error(snapshot.error.message);
+    return {
+      list: async () => [],
+      find: vi.fn(async () => marked ? { id: 'edition-version', entityKind: 'course_lesson' as const,
+        entityId: lesson.id, ...snapshot.value, createdAt: NOW, createdBy: null } : null),
+      mark: async () => 'conflict',
+      unmark: async () => false,
+    };
+  };
+
+  it('signs the selected edition video and preserves the lesson identity', async () => {
+    const { deps, recording } = dependencies();
+    const lessonEditions = editions(true);
+    const result = await getLessonPlayback(ctx(), lesson.id, { ...deps, lessonEditions }, '1');
+    if (!result.ok) throw new Error(result.error.message);
+    expect(lessonEditions.find).toHaveBeenCalledWith('t1', lesson.id, '1');
+    expect(result.value.lessonId).toBe(lesson.id);
+    expect(result.value.videos).toEqual([{
+      kind: 'bunny', storageKey: 'videos/earlier', videoId: 'earlier-video', libraryId: 'lib-2',
+      embedUrl: expect.stringContaining('/embed/lib-2/earlier-video?'),
+      hlsUrl: expect.stringContaining('/earlier-video/playlist.m3u8?'), signed: true,
+    }]);
+    expect(recording).toEqual({ secretCalls: 1, embedCalls: 1, hlsCalls: 1 });
+  });
+
+  it('checks live access before reading or signing a historical preview video', async () => {
+    const { deps, recording } = dependencies({ entitled: false });
+    const lessonEditions = editions(true);
+    expect(await getLessonPlayback(ctx(), lesson.id, { ...deps, lessonEditions }, '1'))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(lessonEditions.find).not.toHaveBeenCalled();
+    expect(recording).toEqual({ secretCalls: 0, embedCalls: 0, hlsCalls: 0 });
+  });
+
+  it('does not fall back to current videos when an edition is unmarked', async () => {
+    const { deps, recording } = dependencies();
+    expect(await getLessonPlayback(ctx(), lesson.id, { ...deps, lessonEditions: editions(false) }, '1'))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(recording).toEqual({ secretCalls: 0, embedCalls: 0, hlsCalls: 0 });
   });
 });

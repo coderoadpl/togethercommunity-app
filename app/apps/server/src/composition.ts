@@ -1,3 +1,5 @@
+import { createLessonEditionRepository } from "#adapters/db/lesson-editions.js";
+import type { LessonEditionRepository } from "#core/server/index.js";
 import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
 import { drainTelemetry } from '#core/server/telemetry/drain.js';
@@ -423,6 +425,7 @@ export interface AppDeps {
   personalisationMaxBytes: number;
   personalisationSlots: PersonalisationSlots;
   entityVersions: EntityVersionRepository;
+  lessonEditions: LessonEditionRepository;
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
   accountAvatars: AccountAvatarRepository;
@@ -1353,6 +1356,7 @@ export const createDeps = (
     personalisationMaxBytes: env.PERSONALISATION_MAX_BYTES,
     personalisationSlots: createPersonalisationSlots(),
     entityVersions: createEntityVersionRepository(db),
+    lessonEditions: createLessonEditionRepository(db),
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),
     accountAvatars,

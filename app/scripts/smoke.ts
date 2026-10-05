@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, dropDatabase, migrateAndSeed } from './smoke-database.js';
 import {
   activitySummarySchema,
+  lessonEditionOutputSchema,
+  lessonEditionsOutputSchema,
   memberActivitySchema,
   API_PATHS,
   deepHealthOutputSchema,
@@ -1069,6 +1071,27 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
     expectOk(await acme(['student', 'lesson', lessonOne.lesson.id], studentHome), 'student flow: fetch accessible lesson'),
   );
   assert(openLesson.lesson.contents.length === 1, 'the accessible lesson should expose its contents');
+  const markedEdition = lessonEditionOutputSchema.parse(expectOk(
+    await acme(['course', 'mark-edition', lessonOne.lesson.id, '2.1', '--note', 'Revised examples'], creatorHome),
+    'lesson editions: mark current content',
+  ));
+  assert(markedEdition.edition.number === '2.1', 'the author controls the edition number');
+  const editions = lessonEditionsOutputSchema.parse(expectOk(
+    await acme(['student', 'editions', lessonOne.lesson.id], studentHome),
+    'lesson editions: list accessible editions',
+  ));
+  assert(editions.editions.length === 1, 'only the explicitly marked snapshot is reader-visible');
+  const earlierLesson = lessonSchema.parse(expectOk(
+    await acme(['student', 'edition', lessonOne.lesson.id, '2.1'], studentHome),
+    'lesson editions: read marked content',
+  ));
+  assert(earlierLesson.lesson.id === lessonOne.lesson.id, 'an edition retains the lesson identity');
+  expectError(await acme(['course', 'mark-edition', lessonOne.lesson.id, '3'], studentHome),
+    'lesson editions: readers cannot mark editions', EXIT_CODE_BY_ERROR_CODE.forbidden, 'forbidden');
+  expectOk(await acme(['course', 'unmark-edition', lessonOne.lesson.id, '2.1'], creatorHome), 'lesson editions: unmark');
+  expectError(await acme(['student', 'edition', lessonOne.lesson.id, '2.1'], studentHome),
+    'lesson editions: unmarked snapshot is inaccessible', EXIT_CODE_BY_ERROR_CODE.not_found, 'not_found');
+
 
   const completed = progressSchema.parse(
     expectOk(await acme(['student', 'complete', lessonOne.lesson.id], studentHome), 'student flow: complete lesson'),

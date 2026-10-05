@@ -1,3 +1,4 @@
+import type { LessonEdition, LessonEditionInput } from '#core/domain/index.js';
 import type {
   ActivitySummary,
   ActivitySummaryQuery,
@@ -165,12 +166,13 @@ export interface EntityVersionRecord {
 /** A stored row, carrying its 1-based position among the entity's versions. */
 export interface StoredEntityVersion extends EntityVersionRecord {
   ordinal: number;
+  edition?: LessonEdition | null;
 }
 
 export interface EntityVersionRepository {
   list(
     tenantId: string,
-    query: { entityKind: EntityKind; entityId: string; limit: number },
+    query: { entityKind: EntityKind; entityId: string; limit: number; offset?: number },
   ): Promise<EntityHistoryEntry[]>;
   findById(tenantId: string, id: string): Promise<StoredEntityVersion | null>;
 }
@@ -838,7 +840,7 @@ export interface ImportAuditEventRepository {
 export type ImportContentMutation = { version?: EntityVersionRecord } & (
   | { kind: 'course'; action: 'created' | 'updated' | 'unchanged'; resource: Course; event: ImportAuditEvent }
   | { kind: 'module'; action: 'created' | 'updated' | 'unchanged'; resource: CourseModule; event: ImportAuditEvent }
-  | { kind: 'lesson'; action: 'created' | 'updated' | 'unchanged'; resource: CourseLesson; event: ImportAuditEvent }
+  | { kind: 'lesson'; action: 'created' | 'updated' | 'unchanged'; resource: CourseLesson; event: ImportAuditEvent; edition?: LessonEditionInput }
   | { kind: 'product'; action: 'created' | 'updated' | 'unchanged'; resource: Product; event: ImportAuditEvent }
 );
 
@@ -2435,4 +2437,11 @@ export interface SubscriptionAdoptionRepositories {
 
 export interface SubscriptionAdoptionTransaction {
   run<T>(tenantId: string, operation: (repositories: SubscriptionAdoptionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+export interface LessonEditionRepository {
+  list(tenantId: string, lessonId: string): Promise<LessonEdition[]>;
+  find(tenantId: string, lessonId: string, number: string): Promise<EntityVersionRecord | null>;
+  mark(tenantId: string, version: EntityVersionRecord, edition: LessonEditionInput, markedAt: string): Promise<LessonEdition | 'conflict'>;
+  unmark(tenantId: string, lessonId: string, number: string): Promise<boolean>;
 }

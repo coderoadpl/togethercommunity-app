@@ -51,6 +51,8 @@ import {
   LessonMediaFrame,
   LessonMediaIframe,
 } from '../../../theme.js';
+import { LessonEditionEditor } from './LessonEditionEditor.js';
+import { HistoryPanel } from './HistoryPanel.js';
 import { BunnyVideoPickerDialog } from './BunnyVideoPickerDialog.js';
 import { errorMessage, MutationError } from './feedback.js';
 
@@ -739,6 +741,8 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
         <>
           <Divider />
           <LessonAttachmentsEditor lessonId={lesson.id} />
+          <Divider />
+          <LessonEditionEditor lessonId={lesson.id} edition={null} disabled={dirty || pending} />
         </>
       )}
 
@@ -950,6 +954,7 @@ export const LessonEditPage = ({ lesson }: { lesson: CourseLesson }) => {
         lesson={lesson}
         onSaved={() => void navigate({ to: '/panel/lessons' })}
       />
+      <HistoryPanel lessonId={lesson.id} />
     </PanelPage>
   );
 };

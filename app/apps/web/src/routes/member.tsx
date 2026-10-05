@@ -1,5 +1,6 @@
 import { useParams, useSearch } from '@tanstack/react-router';
 
+import { parseLessonEditionNumber } from '../features/member/lesson-edition-search.js';
 import { CoursePage } from '../features/member/CoursePage.js';
 import { EventPage } from '../features/member/events/EventPage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
@@ -47,19 +48,24 @@ export const validateAccountSearch = (search: Record<string, unknown>) => ({
     : 'profile',
 });
 
-export const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
+export const validateLessonSearch = (search: Record<string, unknown>): { thread?: string; edition?: string } => {
   const thread = search['thread'];
-  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
+  const edition = parseLessonEditionNumber(search['edition']);
+  return {
+    ...(typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {}),
+    ...(edition === undefined ? {} : { edition }),
+  };
 };
 
 export const LessonPlayerRoute = () => {
   const params = useParams({ strict: false });
-  const { thread } = useSearch({ strict: false });
+  const { thread, edition } = useSearch({ strict: false });
   return (
     <LessonPlayerPage
       courseId={params.courseId ?? ''}
       lessonId={params.lessonId ?? ''}
       threadRootPostId={thread ?? null}
+      editionNumber={edition}
     />
   );
 };

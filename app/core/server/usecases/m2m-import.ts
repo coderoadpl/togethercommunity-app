@@ -31,6 +31,7 @@ import {
   type ImportContentKind,
   type ImportCourseRecord,
   type ImportLessonRecord,
+  type LessonEditionInput,
   type ImportModuleRecord,
   type ImportProductRecord,
   type ImportValidationResponse,
@@ -118,7 +119,7 @@ type PredictedAction = {
 type PreparedContent =
   | { kind: 'course'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: Course }
   | { kind: 'module'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: CourseModule }
-  | { kind: 'lesson'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: CourseLesson }
+  | { kind: 'lesson'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: CourseLesson; edition?: LessonEditionInput }
   | { kind: 'product'; importKey: string; payloadHash: string; action: PredictedAction['action']; resource: Product };
 
 const emptyReferenceMaps = (): ReferenceMaps => ({
@@ -465,6 +466,7 @@ const prepareLesson = async (
   if (!predicted.ok) return predicted;
   return ok({
     kind: 'lesson',
+    ...(record.edition === undefined ? {} : { edition: record.edition }),
     importKey: record.importKey,
     payloadHash,
     action: predicted.value.action,
@@ -596,16 +598,12 @@ const ENTITY_KIND_BY_IMPORT_KIND: Record<ImportContentKind, EntityKind> = {
   product: 'product',
 };
 
-/**
- * The import records the state it writes, so a batch leaves the same readable
- * trail as a studio edit. An unchanged record writes nothing.
- */
 const versionFor = (
   prepared: PreparedContent,
   apiKey: TenantApiKey,
   deps: Pick<M2mImportContentDeps, 'ids' | 'clock'>,
 ): Result<EntityVersionRecord | undefined, AppError> => {
-  if (prepared.action === 'unchanged') return ok(undefined);
+  if (prepared.action === 'unchanged' && !(prepared.kind === 'lesson' && prepared.edition !== undefined)) return ok(undefined);
   const kind = ENTITY_KIND_BY_IMPORT_KIND[prepared.kind];
   const built = buildSnapshot(kind, prepared.resource);
   if (!built.ok) return built;
@@ -640,7 +638,7 @@ const mutationFor = (
   const versioned = version === undefined ? {} : { version };
   if (prepared.kind === 'course') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
   if (prepared.kind === 'module') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
-  if (prepared.kind === 'lesson') return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
+  if (prepared.kind === 'lesson') return { ...versioned, ...(prepared.edition === undefined ? {} : { edition: prepared.edition }), kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
   return { ...versioned, kind: prepared.kind, action: prepared.action, resource: prepared.resource, event };
 };
 

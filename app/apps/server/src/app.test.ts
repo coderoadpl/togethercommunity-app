@@ -657,6 +657,7 @@ const deps = (input: {
       markReady: async () => null,
       delete: async () => false,
     },
+    lessonEditions: { list: async () => [], find: async () => null, mark: async () => 'conflict', unmark: async () => false },
     entityVersions: {
       list: async () => [],
       findById: async () => null,
@@ -5915,6 +5916,30 @@ describe('free lesson preview route', () => {
     ...base,
     courses: { ...base.courses, list: async () => [course] },
     modules: { ...base.modules, list: async () => [moduleFor(course.id, lessonId)] },
+  });
+
+  it('serves only marked preview editions and applies the live lesson access check', async () => {
+    const preview = lesson('edition-preview', true);
+    const base = deps({ lessons: [preview], getAuthenticatedUser: async () => null });
+    const stored = { id: 'edition-version', entityKind: 'course_lesson' as const, entityId: preview.id, schemaVersion: 3, payload: { ...preview, contents: [{ type: 'html', html: '<p>Earlier content</p>' }] }, createdAt: preview.createdAt, createdBy: null };
+    const edition = { versionId: stored.id, number: '2', note: 'Updated examples', markedAt: preview.createdAt };
+    const makeApp = (isPreview: boolean) => appWithCourse({
+      ...base,
+      lessons: { ...base.lessons, findById: async () => ({ ...preview, isPreview }) },
+      lessonEditions: { ...base.lessonEditions, list: async () => [edition], find: async (_tenant, _lesson, number) => number === '2' ? stored : null },
+    }, courseFor('edition-course', true), preview.id);
+    const headers = { [TENANT_HEADER]: acme.slug };
+    const listPath = API_PATHS.studentLessonEditions.replace(':lessonId', preview.id);
+    const editionPath = API_PATHS.studentLessonEdition.replace(':lessonId', preview.id);
+    const listed = await makeApp(true).request(listPath, { headers });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({ data: { editions: [edition] } });
+    const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
+    expect(opened.status).toBe(200);
+    expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });
+    expect((await makeApp(true).request(editionPath.replace(':number', '3'), { headers })).status).toBe(404);
+    expect((await makeApp(false).request(listPath, { headers })).status).toBe(401);
+    expect((await makeApp(false).request(editionPath.replace(':number', '2'), { headers })).status).toBe(401);
   });
 
   it.each([false, true])('serves visitor previews with a shared session: %s', async (signedIn) => {

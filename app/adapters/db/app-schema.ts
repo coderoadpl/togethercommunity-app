@@ -1733,8 +1733,13 @@ export const entityVersions = pgTable(
     payload: jsonb('payload').notNull(),
     createdAt: text('created_at').notNull(),
     createdBy: text('created_by'),
+    editionNumber: text('edition_number'),
+    editionNote: text('edition_note'),
+    editionMarkedAt: text('edition_marked_at'),
   },
   (table) => [
+    uniqueIndex('entity_versions_lesson_edition_uidx').on(table.tenantId, table.entityId, table.editionNumber)
+      .where(sql`${table.entityKind} = 'course_lesson' and ${table.editionNumber} is not null`),
     index('entity_versions_tenant_entity_created_idx').on(
       table.tenantId,
       table.entityKind,

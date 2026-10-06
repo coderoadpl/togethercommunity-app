@@ -149,6 +149,8 @@ deterministic verification loop for AI agents — and the reference client.
 
 ## Marketing e-mail
 
+For one-question audience feedback, see [Surveys](docs/surveys.md).
+
 Marketing delivery uses a BYO-SES model: every tenant connects its own Amazon
 SES account, while Together enforces consent, suppression, unsubscribe, sender
 identity, throttling, and send logging. Multi-step automations are intentionally
@@ -213,7 +215,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->502<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->508<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

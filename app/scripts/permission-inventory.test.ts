@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(400);
-    expect(inventory.useCases).toHaveLength(313);
+    expect(inventory.routes).toHaveLength(412);
+    expect(inventory.useCases).toHaveLength(321);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/download-copies'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
@@ -26,6 +26,26 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('keeps survey management staff-only and public answering open', () => {
+    const inventory = collectPermissionInventory();
+    for (const [subject, capability] of [
+      ['GET /api/surveys', 'survey:read'],
+      ['GET /api/surveys/:id/results', 'survey:read'],
+      ['GET /api/surveys/:id/export', 'survey:read'],
+      ['POST /api/surveys', 'survey:write'],
+      ['POST /api/surveys/:id', 'survey:write'],
+      ['POST /api/surveys/preview', 'survey:write'],
+      ['DELETE /api/surveys/:id', 'survey:write'],
+    ]) {
+      expect(inventory.routes.find((row) => row.subject === subject))
+        .toMatchObject({ capability, before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    for (const subject of ['GET /api/public/surveys/:slug', 'POST /api/public/surveys/:slug/submit']) {
+      expect(inventory.routes.find((row) => row.subject === subject))
+        .toMatchObject({ capability: 'offer:read', evidence: 'public route manifest' });
+    }
   });
 
   it('keeps edition writes staff-only and reader editions on the existing lesson capability', () => {

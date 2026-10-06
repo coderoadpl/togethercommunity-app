@@ -16,6 +16,9 @@ interface Hoisted {
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
+  listSurveys: ReturnType<typeof vi.fn>;
+  createSurvey: ReturnType<typeof vi.fn>;
+  deleteSurvey: ReturnType<typeof vi.fn>;
   listMarketingSignupForms: ReturnType<typeof vi.fn>;
   getMarketingSignupForm: ReturnType<typeof vi.fn>;
   createMarketingSignupForm: ReturnType<typeof vi.fn>;
@@ -57,6 +60,9 @@ const h = vi.hoisted(
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
+    listSurveys: vi.fn(),
+    createSurvey: vi.fn(),
+    deleteSurvey: vi.fn(),
     listMarketingSignupForms: vi.fn(),
     getMarketingSignupForm: vi.fn(),
     createMarketingSignupForm: vi.fn(),
@@ -146,6 +152,9 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
+    listSurveys: h.listSurveys,
+    createSurvey: h.createSurvey,
+    deleteSurvey: h.deleteSurvey,
     listMarketingSignupForms: h.listMarketingSignupForms,
     getMarketingSignupForm: h.getMarketingSignupForm,
     createMarketingSignupForm: h.createMarketingSignupForm,
@@ -214,6 +223,9 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
+  h.createSurvey.mockReset();
+  h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
   h.listMarketingSignupForms.mockReset().mockResolvedValue(ok({ forms: [] }));
   h.getMarketingSignupForm.mockReset().mockResolvedValue(err(appError('not_found', 'Signup form was not found')));
   h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
@@ -1196,5 +1208,28 @@ describe('operator tenant commands', () => {
       error: { code: 'internal', message: 'Operator request refused a redirect' },
     });
     expect(process.exitCode).toBe(10);
+  });
+});
+
+
+describe('survey commands', () => {
+  it('lists surveys using one standard JSON envelope', async () => {
+    await run('--json', 'survey', 'list');
+    expect(h.listSurveys).toHaveBeenCalledExactlyOnceWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { surveys: [] } });
+  });
+
+  it('deletes the identified survey after confirmation', async () => {
+    await run('--json', 'survey', 'delete', 'survey-one', '--confirm');
+    expect(h.deleteSurvey).toHaveBeenCalledExactlyOnceWith({ id: 'survey-one' });
+    expect(soleJson()).toEqual({ ok: true, data: { deleted: true } });
+  });
+
+  it('rejects malformed create input before transport', async () => {
+    await run('--json', 'survey', 'create', '--input', '{private-input');
+    expect(h.createSurvey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(logSpy.mock.calls[0]?.[0]).not.toContain('private-input');
+    expect(process.exitCode).toBe(2);
   });
 });

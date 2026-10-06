@@ -94,6 +94,7 @@ type PanelSection =
   | 'marketingSends'
   | 'marketingContacts'
   | 'marketingLists'
+  | 'surveys'
   | 'marketingForms'
   | 'marketingCampaigns'
   | 'marketingConsents'
@@ -183,6 +184,7 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'marketing',
     sections: [
       { id: 'marketingContacts', to: '/panel/marketing/contacts' },
+      { id: 'surveys', to: '/panel/marketing/surveys' },
       { id: 'marketingForms', to: '/panel/marketing/forms' },
       { id: 'marketingLists', to: '/panel/marketing/lists' },
       { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
@@ -233,6 +235,7 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <MarketingSendsIcon />;
     case 'marketingContacts':
       return <MarketingContactsIcon />;
+    case 'surveys':
     case 'marketingForms':
       return <MarketingFormsIcon />;
     case 'marketingLists':

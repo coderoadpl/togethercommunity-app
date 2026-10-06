@@ -1,3 +1,4 @@
+import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
 import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
 import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
@@ -1831,6 +1832,7 @@ export const API_ROUTES = {
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
   ...MARKETING_SIGNUP_ROUTES,
+  ...SURVEY_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -2131,6 +2133,17 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  listSurveys: API_ROUTES.listSurveys.path,
+  getSurvey: API_ROUTES.getSurvey.path,
+  createSurvey: API_ROUTES.createSurvey.path,
+  updateSurvey: API_ROUTES.updateSurvey.path,
+  deleteSurvey: API_ROUTES.deleteSurvey.path,
+  getSurveyResults: API_ROUTES.getSurveyResults.path,
+  exportSurveyResponses: API_ROUTES.exportSurveyResponses.path,
+  getPublicSurvey: API_ROUTES.getPublicSurvey.path,
+  submitSurvey: API_ROUTES.submitSurvey.path,
+  previewSurveyEnding: API_ROUTES.previewSurveyEnding.path,
+
   operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
   operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
   activitySummary: API_ROUTES.activitySummary.path,

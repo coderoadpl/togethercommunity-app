@@ -1,3 +1,4 @@
+import { registerSurveyCommands } from './survey-commands.js';
 import { registerOperatorCommands } from './operator-commands.js';
 import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
 import { registerMarketingCommands } from './marketing-commands.js';
@@ -637,6 +638,7 @@ const cliCtx = (): Result<CliCtx, AppError> => {
 };
 
 registerMarketingCommands(program, cliCtx);
+registerSurveyCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 

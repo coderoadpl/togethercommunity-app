@@ -99,6 +99,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/marketing/forms/')) return 'offer:read';
   if (path.startsWith('/api/public/marketing/forms/')) return method === 'POST' ? 'marketing:consent:write' : 'offer:read';
   if (path.startsWith('/api/marketing/forms')) return method === 'GET' ? 'marketing:list:read' : 'marketing:list:write';
+  if (path.startsWith('/api/public/surveys/')) return 'offer:read';
+  if (path === '/api/surveys' || path.startsWith('/api/surveys/')) return method === 'GET' ? 'survey:read' : 'survey:write';
   if (path.startsWith('/legal/')) return 'legal:read';
   if (path.startsWith('/courses/')) return 'offer:read';
   if (

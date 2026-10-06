@@ -21,7 +21,7 @@ import {
 } from '#core/server/index.js';
 
 import { trustedClientIp } from './auth-network.js';
-import { isPublicFormPath, isMarketingSignupSubmissionPath } from './body-limits.js';
+import { isPublicFormPath, isMarketingSignupSubmissionPath, isSurveySubmissionPath } from './body-limits.js';
 import { type Env } from './env.js';
 import { respond } from './respond.js';
 
@@ -152,7 +152,8 @@ const emailBodySchema = z.object({ email: z.string().trim().toLowerCase().email(
 const isPublicWritePath = (path: string): boolean =>
   path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
-  || isPublicFormPath(path);
+  || isPublicFormPath(path)
+  || isSurveySubmissionPath(path);
 
 type PublicRateLimitKind = 'auth-password' | 'auth-link' | 'auth-resolve' | 'write';
 

@@ -367,8 +367,13 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   // Formatting a range re-renders it, which makes Home/End navigation over that range
   // unreliable afterwards, so the link (applied to the trailing text) runs before the bold
   // (applied to the leading text) — each selection is made on text no prior step has touched.
-  await page.keyboard.press('End');
-  await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
+  let selectedText = '';
+  for (let attempt = 0; attempt < 3 && selectedText !== label; attempt += 1) {
+    await page.keyboard.press('End');
+    await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
+    selectedText = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+  }
+  assert(selectedText === label, `Markdown editor link selection was ${JSON.stringify(selectedText)}, expected ${JSON.stringify(label)}`);
   await composer.getByRole('button', { name: en.markdownEditor.link }).click();
   await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');
   await page.getByRole('button', { name: en.markdownEditor.linkApply }).click();

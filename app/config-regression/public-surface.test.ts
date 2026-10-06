@@ -24,6 +24,8 @@ const publicServerImports = publicApp
   .sort();
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
+  'getPublicSurvey',
+  'submitSurvey',
   'authLinkBaseUrl',
   'ensureMember',
   'hasStripeTestSession',

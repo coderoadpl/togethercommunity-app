@@ -17,6 +17,9 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: API_PATHS.getPublicSurvey, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Active workspace survey definition without an account' },
+  { path: API_PATHS.submitSurvey, methods: ['OPTIONS'], mutating: false, why: 'Tenant-origin survey submission preflight' },
+  { path: API_PATHS.submitSurvey, methods: ['POST'], mutating: true, why: 'Rate-limited survey responses with form token and honeypot checks' },
   { path: '/marketing/forms/:slug', methods: ['GET'], mutating: false, why: 'Hosted tenant newsletter signup form with explicit consent wording' },
   { path: '/marketing/forms/:slug/thanks', methods: ['GET'], mutating: false, why: 'Generic signup acknowledgement without recipient information' },
   { path: API_PATHS.submitMarketingSignupForm, methods: ['OPTIONS'], mutating: false, why: 'Form-specific allow-listed JSON submission preflight' },

@@ -1,3 +1,5 @@
+import { createSurveyRepository } from '#adapters/db/surveys.js';
+import type { SurveyDeps } from '#core/server/index.js';
 import { createLessonEditionRepository, createLessonEditionTransaction } from '#adapters/db/lesson-editions.js';
 import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
@@ -555,6 +557,7 @@ export interface AppDeps {
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
   marketingContacts?: MarketingContactDeps;
+  surveys?: SurveyDeps;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -1505,6 +1508,7 @@ export const createDeps = (
     authConfig: { googleEnabled: google !== null, googleClientId: google?.clientId ?? null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
+    surveys: { surveys: createSurveyRepository(db), clock, ids, tokens },
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

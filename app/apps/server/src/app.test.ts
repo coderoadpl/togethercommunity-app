@@ -1,3 +1,4 @@
+import type { SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
@@ -51,6 +52,7 @@ import {
   notFound,
   ok,
   validation,
+  type Survey,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -4931,7 +4933,7 @@ describe('post search route', () => {
 });
 
 describe('public route manifest', () => {
-  it('records the eight approved mutating surfaces', () => {
+  it('records the approved mutating surfaces', () => {
     const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
       .filter((route) => route.mutating)
       .map((route) => route.why));
@@ -4944,6 +4946,7 @@ describe('public route manifest', () => {
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
+      'Rate-limited survey responses with form token and honeypot checks',
       'Tenant redirects increment a rate-limited aggregate hit counter; social previews remain read-only',
     ]));
   });
@@ -9052,4 +9055,111 @@ it.each([undefined, 'wrong-operator-secret'])('rejects operator authentication b
   expect((await app.request(API_PATHS.operatorTenantReadiness.replace(':slug', 'acme'), { headers })).status).toBe(401);
   expect(getAuthenticatedUser).not.toHaveBeenCalled();
   expect(findBySlug).not.toHaveBeenCalled();
+});
+
+describe('public surveys', () => {
+  const fixture = (memberId: string | null = null) => {
+    const appDeps = deps({ authenticated: true, domains: [tenantDomainFixture({ id: 'survey-domain', tenantId: acme.id, domain: 'feedback.example.test', verified: true })] });
+    const survey: Survey = {
+      id: 'survey-feedback', tenantId: acme.id, title: 'Audience feedback', question: 'How was your experience?', slug: 'feedback', type: 'nps', commentEnabled: true, commentPrompt: 'Tell us more', active: true,
+      endings: [{ min: 0, max: 6, body: 'We appreciate your feedback.' }, { min: 7, max: 8, body: 'Thank you.' }, { min: 9, max: 10, body: '**Thank you!**' }],
+      token: 'survey-token', revision: 1, createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-01T10:00:00.000Z',
+    };
+    const submit = vi.fn<SurveyRepository['submit']>().mockResolvedValue(ok(undefined));
+    appDeps.surveys = {
+      clock: appDeps.clock, ids: appDeps.ids, tokens: { nextToken: () => 'next-survey-token' },
+      surveys: {
+        list: async () => [survey], findById: async (tenantId, id) => tenantId === survey.tenantId && id === survey.id ? survey : null,
+        findBySlug: async (tenantId, slug) => tenantId === survey.tenantId && slug === survey.slug ? survey : null,
+        save: async (_tenantId, value) => ok(value), delete: async () => true, submit, responses: async () => [], exportResponses: async () => [], distribution: async () => [],
+      },
+    };
+    if (memberId !== null) {
+      appDeps.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session', userId: 'respondent', email: 'respondent@example.test', name: 'Respondent', emailVerified: true, image: null });
+      appDeps.tenantAccess.findMember = async (tenantId, userId) => tenantId === acme.id && userId === 'respondent' ? memberSchema.parse({ id: memberId, tenantId, userId, email: 'respondent@example.test', displayName: 'Respondent', tags: [], marketingConsents: {}, externalCustomerIds: {}, deletedAt: null, createdAt: survey.createdAt }) : null;
+    }
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    const payload = { score: 9, comment: 'Helpful', token: survey.token, website: '' };
+    return { appDeps, survey, submit, headers, payload };
+  };
+
+  it('publishes only active survey fields on workspace subdomains and custom domains', async () => {
+    const { appDeps, survey, headers } = fixture();
+    const app = buildApp(appDeps);
+    const response = await app.request('/api/public/surveys/feedback', { headers });
+    expect(response.status).toBe(200);
+    expect((await app.request('/api/public/surveys/feedback', { headers: { host: 'feedback.example.test' } })).status).toBe(200);
+    const json: unknown = await response.json();
+    expect(json).toMatchObject({ ok: true, data: { survey: { question: survey.question, token: survey.token } } });
+    expect(JSON.stringify(json)).not.toContain('Audience feedback');
+    expect(JSON.stringify(json)).not.toContain('endings');
+    const inactive = { ...survey, active: false };
+    if (appDeps.surveys !== undefined) appDeps.surveys.surveys.findBySlug = async () => inactive;
+    expect((await app.request('/api/public/surveys/feedback', { headers })).status).toBe(404);
+  });
+
+  it.each([null, 'member-respondent'])('stores the authenticated workspace member or anonymous identity: %s', async (memberId) => {
+    const { appDeps, submit, headers, payload } = fixture(memberId);
+    const response = await buildApp(appDeps).request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify({ ...payload, memberId: 'untrusted-member' }) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { endingHtml: '<p><strong>Thank you!</strong></p>\n' } });
+    expect(submit).toHaveBeenCalledWith(acme.id, expect.anything(), expect.objectContaining({ memberId, score: 9, comment: 'Helpful' }));
+    const recorded = submit.mock.calls[0]?.[2];
+    expect(recorded).not.toHaveProperty('ip');
+    expect(recorded).not.toHaveProperty('userAgent');
+  });
+
+  it.each(['bannedAt', 'deletedAt'] as const)('accepts a signed-in visitor with %s membership anonymously', async (field) => {
+    const { appDeps, survey, submit, headers, payload } = fixture('member-respondent');
+    const findMember = appDeps.tenantAccess.findMember;
+    appDeps.tenantAccess.findMember = async (tenantId, userId) => {
+      const member = await findMember(tenantId, userId);
+      return member === null ? null : { ...member, [field]: survey.createdAt };
+    };
+    const response = await buildApp(appDeps).request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(response.status).toBe(200);
+    expect(submit).toHaveBeenCalledWith(acme.id, expect.anything(), expect.objectContaining({ memberId: null }));
+  });
+
+  it('parses results pagination and enforces staff capabilities', async () => {
+    const { appDeps, headers } = fixture();
+    const responses = vi.fn<SurveyRepository['responses']>().mockResolvedValue([]);
+    if (appDeps.surveys !== undefined) appDeps.surveys.surveys.responses = responses;
+    const owner = scopedApp('owner', { overrides: appDeps.surveys === undefined ? {} : { surveys: appDeps.surveys } });
+    const result = await owner.request('/api/surveys/survey-feedback/results?page=2&pageSize=10', { headers });
+    expect(result.status).toBe(200);
+    expect(responses).toHaveBeenCalledWith(acme.id, 'survey-feedback', 10, 10);
+    expect((await owner.request('/api/surveys/survey-feedback/results?page=invalid', { headers })).status).toBe(400);
+    const member = scopedApp('member', { overrides: appDeps.surveys === undefined ? {} : { surveys: appDeps.surveys } });
+    expect((await member.request('/api/surveys', { headers })).status).toBe(403);
+    expect((await member.request('/api/surveys/survey-feedback', { method: 'DELETE', headers })).status).toBe(403);
+    expect((await owner.request('/api/surveys/preview', { method: 'POST', headers, body: JSON.stringify({ body: '**Thank you**<script>alert(1)</script>' }) })).status).toBe(200);
+  });
+
+  it('rejects unknown surveys and tenant mismatches without recording a response', async () => {
+    const { appDeps, submit, headers, payload } = fixture();
+    const app = buildApp(appDeps);
+    expect((await app.request('/api/public/surveys/unknown/submit', { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(404);
+    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, host: 'globex.localhost' }, body: JSON.stringify(payload) })).status).toBe(404);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('enforces the public write limiter before recording a response', async () => {
+    const { appDeps, submit, headers, payload } = fixture();
+    appDeps.rateLimitBuckets.claim = async () => false;
+    const response = await buildApp(appDeps).request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify(payload) });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).not.toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('discards honeypots and blocks stale tokens, oversized comments and foreign origins', async () => {
+    const { appDeps, submit, headers, payload } = fixture();
+    const app = buildApp(appDeps);
+    for (const [body, expected] of [[{ ...payload, website: 'bot' }, 200], [{ ...payload, token: 'stale' }, 400], [{ ...payload, comment: 'x'.repeat(2001) }, 400]] as const) {
+      expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers, body: JSON.stringify(body) })).status).toBe(expected);
+    }
+    expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
+    expect(submit).not.toHaveBeenCalled();
+  });
 });

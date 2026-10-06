@@ -12,6 +12,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import {
+  surveyContracts,
   lessonEditionsOutputSchema,
   API_PATHS,
   authResolveRequestSchema,
@@ -33,6 +34,7 @@ import {
   capabilitiesForPrincipal,
   DEFAULT_LANGUAGE,
   emailBrandingFrom,
+  forbidden,
   err,
   internal,
   languageSchema,
@@ -53,6 +55,8 @@ import {
   type Result
 } from '#core/domain/index.js';
 import {
+  getPublicSurvey,
+  submitSurvey,
   listLessonEditions,
   authLinkBaseUrl,
   fulfillStripeWebhook,
@@ -301,6 +305,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
 
   registerDeepHealthRoute(app, deps);
 
+  registerOpenCors(app, API_PATHS.getPublicSurvey, 'GET');
+  registerTenantScopedCors(app, API_PATHS.submitSurvey, deps);
   registerOpenCors(app, API_PATHS.publicOffer, 'GET');
   registerOpenCors(app, API_PATHS.publicNavigation, 'GET');
   registerOpenCors(app, API_PATHS.publicCourseStructure, 'GET');
@@ -481,6 +487,35 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return parsed.success
       ? respondPublic(ok(parsed.data))
       : respondPublic(err(internal('Public space event response does not match the contract')));
+  });
+
+  app.get(API_PATHS.getPublicSurvey, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (tenant.value === null) return respond(err(tenantNotFound()));
+    if (deps.surveys === undefined) return respond(err(internal('Surveys are unavailable')));
+    return respond(await getPublicSurvey(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.surveys));
+  });
+
+  app.post(API_PATHS.submitSurvey, async (c) => {
+    const origin = c.req.header('origin');
+    if (origin !== undefined) {
+      const parsedOrigin = z.string().url().safeParse(origin);
+      const host = c.req.header('host') ?? new URL(c.req.url).host;
+      if (!parsedOrigin.success || new URL(parsedOrigin.data).hostname !== new URL(`https://${host}`).hostname) return respond(err(forbidden('Survey responses must come from this workspace')));
+    }
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (tenant.value === null) return respond(err(tenantNotFound()));
+    if (deps.surveys === undefined) return respond(err(internal('Surveys are unavailable')));
+    const body = z.record(z.unknown()).safeParse(await readJson(c.req.raw));
+    if (!body.success) return respond(err(validation('Invalid survey response')));
+    const parsed = surveyContracts.submitSurvey.input.safeParse({ ...body.data, slug: c.req.param('slug') });
+    if (!parsed.success) return respond(err(validation('Invalid survey response')));
+    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+    const member = user === null ? null : await deps.tenantAccess.findMember(tenant.value.tenant.id, user.userId);
+    const memberId = member === null || member.deletedAt !== null || member.bannedAt !== null ? null : member.id;
+    return respond(await submitSurvey(tenant.value.tenant.id, parsed.data.slug, parsed.data, memberId, deps.surveys));
   });
 
   const readerLesson = async (c: Context<AppVars>, mode: 'current' | 'list' | 'edition') => {

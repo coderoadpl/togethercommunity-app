@@ -1,5 +1,6 @@
 import { spawnSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 
 import { baseDatabaseUrl, smokeDatabaseUrl, setupDatabase, dropDatabase, migrateAndSeed } from './smoke-database.js';
 import {
+  surveyContracts,
   activitySummarySchema,
   lessonEditionOutputSchema,
   lessonEditionsOutputSchema,
@@ -2031,6 +2033,49 @@ const driveTenantRedirects = async (port: number, homes: string[]): Promise<void
   await expectNoHop(`${legacyBase}/unknown`, 'acme', 'redirects: unconfigured path');
 };
 
+const driveSurveyFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const home = mkdtempSync(join(tmpdir(), 'smoke-surveys-'));
+  homes.push(home);
+  const cli = (args: string[]): Promise<Run> => run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, '--tenant', 'acme', ...args], { HOME: home });
+  expectOk(await cli(['login', '--email', SMOKE_TENANT_CREATOR_EMAIL, '--password', 'demo-password-15']), 'surveys: staff login');
+  const input = {
+    title: 'Audience feedback', question: 'How was your experience?', slug: 'smoke-feedback', type: 'nps', active: true, commentEnabled: true, commentPrompt: 'Tell us more',
+    endings: [{ min: 0, max: 6, body: 'Thank you for helping us improve.' }, { min: 7, max: 8, body: 'Thank you for your feedback.' }, { min: 9, max: 10, body: '**Thank you!**' }],
+  };
+  const { survey } = surveyContracts.createSurvey.output.parse(expectOk(await cli(['survey', 'create', '--input', JSON.stringify(input)]), 'surveys: create'));
+  const list = surveyContracts.listSurveys.output.parse(expectOk(await cli(['survey', 'list']), 'surveys: list'));
+  assert(list.surveys.some((item) => item.id === survey.id), 'surveys: created survey missing from list');
+  const publicPath = `/api/public/surveys/${survey.slug}`;
+  const headers = { host: `acme.localhost:${port}`, 'content-type': 'application/json' };
+  const requestSurvey = (path: string, body?: string): Promise<Response> => new Promise((resolve, reject) => {
+    const request = httpRequest(`${url}${path}`, { method: body === undefined ? 'GET' : 'POST', headers }, (response) => {
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk: unknown) => { text += String(chunk); });
+      response.on('error', reject);
+      response.on('end', () => resolve(new Response(text, { status: response.statusCode ?? 500 })));
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+  const publicResponse = await requestSurvey(publicPath);
+  const publicEnvelope = envelopeSchema(surveyContracts.getPublicSurvey.output).parse(await publicResponse.json());
+  assert(publicEnvelope.ok, `surveys: public survey unavailable (HTTP ${publicResponse.status}): ${JSON.stringify(publicEnvelope)}`);
+  const submitted = await requestSurvey(`${publicPath}/submit`, JSON.stringify({ score: 9, comment: 'A useful experience.', website: '', token: publicEnvelope.data.survey.token }));
+  const submission = envelopeSchema(surveyContracts.submitSurvey.output).parse(await submitted.json());
+  assert(submission.ok && submission.data.endingHtml.includes('<strong>Thank you!</strong>'), 'surveys: score ending was not rendered');
+  const results = surveyContracts.getSurveyResults.output.parse(expectOk(await cli(['survey', 'results', survey.id, '--page', '1', '--page-size', '10']), 'surveys: results'));
+  assert(results.results.count === 1 && results.results.nps === 100 && results.results.responses[0]?.memberId === null, 'surveys: anonymous response or score aggregation mismatch');
+  const exported = surveyContracts.exportSurveyResponses.output.parse(expectOk(await cli(['survey', 'export', survey.id]), 'surveys: export'));
+  assert(exported.csv.includes('Anonymous') && exported.csv.includes('A useful experience.'), 'surveys: export missing response');
+  const surveyId = survey.id;
+  expectOk(await cli(['survey', 'update', surveyId, '--input', JSON.stringify({ ...input, id: surveyId, expectedRevision: survey.revision, active: false })]), 'surveys: deactivate');
+  assert((await requestSurvey(publicPath)).status === 404, 'surveys: inactive survey remained public');
+  expectOk(await cli(['survey', 'delete', surveyId, '--confirm']), 'surveys: delete');
+  expectError(await cli(['survey', 'show', surveyId]), 'surveys: deleted survey', EXIT_CODE_BY_ERROR_CODE.not_found, 'not_found');
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -2078,6 +2123,8 @@ try {
   await driveEventsFlow(port, homes);
   console.log('smoke: driving the anonymous public surface...');
   await driveAnonymousPublicFlow(port, homes);
+  console.log('smoke: driving native surveys...');
+  await driveSurveyFlow(port, homes);
   console.log('smoke: following tenant redirects...');
   await driveTenantRedirects(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');

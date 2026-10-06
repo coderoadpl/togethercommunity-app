@@ -6,16 +6,14 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { Clock, CourseLessonRepository, EntityVersionRecord, EntityVersionRepository, IdGenerator, LessonEditionRepository } from '../ports.js';
+import type { Clock, EntityVersionRecord, IdGenerator, LessonEditionRepositories, LessonEditionRepository, LessonEditionTransaction } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface LessonEditionReadDeps extends CourseAccessDeps {
   lessonEditions: LessonEditionRepository;
 }
-export interface LessonEditionWriteDeps {
-  lessonEditions: LessonEditionRepository;
-  entityVersions: EntityVersionRepository;
-  lessons: Pick<CourseLessonRepository, 'findById'>;
+export interface LessonEditionWriteDeps extends LessonEditionRepositories {
+  lessonEditionTransaction: LessonEditionTransaction;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -55,31 +53,41 @@ export const markLessonEdition = async (
   if (!tenant.ok) return tenant;
   const parsed = markLessonEditionInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson edition', parsed.error.flatten()));
-  const lesson = await deps.lessons.findById(tenant.value, parsed.data.lessonId);
-  if (lesson === null) return err(notFound('Lesson not found'));
-  const snapshot = buildSnapshot('course_lesson', lesson);
-  if (!snapshot.ok) return snapshot;
-  let version: EntityVersionRecord | null;
-  if (parsed.data.versionId === undefined) {
-    const [latest] = await deps.entityVersions.list(tenant.value, {
-      entityKind: 'course_lesson', entityId: lesson.id, limit: 1,
-    });
-    const stored = latest === undefined ? null : await deps.entityVersions.findById(tenant.value, latest.id);
-    version = stored !== null && stored.schemaVersion === snapshot.value.schemaVersion &&
-      (stored.edition == null || stored.edition.number === parsed.data.edition.number) &&
-      snapshotPayloadsEqual(stored.payload, snapshot.value.payload) ? stored : {
-        id: deps.ids.nextId(), entityKind: 'course_lesson', entityId: lesson.id,
-        schemaVersion: snapshot.value.schemaVersion, payload: snapshot.value.payload,
-        createdAt: deps.clock.nowIso(), createdBy: ctx.identity.userId,
-      };
-  } else {
-    version = await deps.entityVersions.findById(tenant.value, parsed.data.versionId);
-  }
-  if (version === null || version.entityKind !== 'course_lesson' || version.entityId !== lesson.id) {
-    return err(notFound('Lesson version not found'));
-  }
-  const marked = await deps.lessonEditions.mark(tenant.value, version, parsed.data.edition, deps.clock.nowIso());
-  return marked === 'conflict' ? err(appError('conflict', 'Edition number already exists for this lesson')) : ok(marked);
+  const mark = async (repositories: LessonEditionRepositories): Promise<Result<LessonEdition, AppError>> => {
+    const lesson = await repositories.lessons.findById(tenant.value, parsed.data.lessonId);
+    if (lesson === null) return err(notFound('Lesson not found'));
+    const snapshot = buildSnapshot('course_lesson', lesson);
+    if (!snapshot.ok) return snapshot;
+    let version: EntityVersionRecord | null;
+    let expectedEditionNumber: string | null;
+    if (parsed.data.versionId === undefined) {
+      const [latest] = await repositories.entityVersions.list(tenant.value, {
+        entityKind: 'course_lesson', entityId: lesson.id, limit: 1,
+      });
+      const stored = latest === undefined ? null : await repositories.entityVersions.findById(tenant.value, latest.id);
+      const reuse = stored !== null && stored.schemaVersion === snapshot.value.schemaVersion &&
+        (stored.edition == null || stored.edition.number === parsed.data.edition.number) &&
+        snapshotPayloadsEqual(stored.payload, snapshot.value.payload);
+      expectedEditionNumber = reuse ? stored.edition?.number ?? null : null;
+      version = reuse ? stored : {
+          id: deps.ids.nextId(), entityKind: 'course_lesson', entityId: lesson.id,
+          schemaVersion: snapshot.value.schemaVersion, payload: snapshot.value.payload,
+          createdAt: deps.clock.nowIso(), createdBy: ctx.identity.userId,
+        };
+    } else {
+      const stored = await repositories.entityVersions.findById(tenant.value, parsed.data.versionId);
+      expectedEditionNumber = stored?.edition?.number ?? null;
+      version = stored;
+    }
+    if (version === null || version.entityKind !== 'course_lesson' || version.entityId !== lesson.id) {
+      return err(notFound('Lesson version not found'));
+    }
+    const marked = await repositories.lessonEditions.mark(tenant.value, version, parsed.data.edition, deps.clock.nowIso(), expectedEditionNumber);
+    return marked === 'conflict' ? err(appError('conflict', 'Edition number already exists for this lesson')) : ok(marked);
+  };
+  return parsed.data.versionId === undefined
+    ? deps.lessonEditionTransaction.run(tenant.value, parsed.data.lessonId, mark)
+    : mark(deps);
 };
 
 export const unmarkLessonEdition = async (

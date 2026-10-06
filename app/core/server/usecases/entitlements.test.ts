@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildSnapshot,
@@ -34,7 +34,7 @@ import {
   resolveMemberEntitlements,
   type CourseAccessDeps,
 } from './entitlements.js';
-import { getLessonEdition, listLessonEditions, markLessonEdition, unmarkLessonEdition } from './lesson-editions.js';
+import { getLessonEdition, listLessonEditions, markLessonEdition, unmarkLessonEdition, type LessonEditionWriteDeps } from './lesson-editions.js';
 
 const NOW = '1998-06-01T00:00:00.000Z';
 
@@ -816,7 +816,8 @@ describe('reader lesson editions', () => {
     const snapshot = buildSnapshot('course_lesson', { ...lesson('l4'), name: 'Chapter 3 earlier', isPreview: true });
     if (!snapshot.ok) throw new Error(snapshot.error.message);
     const version: EntityVersionRecord = { id: 'version-1', entityKind: 'course_lesson', entityId: 'l4', ...snapshot.value, createdAt: NOW, createdBy: null };
-    const staffDeps = { ...access, lessonEditions, ids: { nextId: () => 'current-version' },
+    const staffDeps: LessonEditionWriteDeps = { ...access, lessonEditions,
+      lessonEditionTransaction: { run: async (_tenantId, _lessonId, operation) => operation(staffDeps) }, ids: { nextId: () => 'current-version' },
       entityVersions: { list: async () => [], findById: async () => ({ ...version, ordinal: 1 }) } };
     return { deps: { ...access, lessonEditions }, staffDeps, version };
   };
@@ -837,7 +838,7 @@ describe('reader lesson editions', () => {
 
   it('denies a member without a grant even when the stored snapshot was a preview', async () => {
     const h = harness(deps([], []));
-    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW);
+    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW, null);
     expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await markLessonEdition(ctx({}), { lessonId: 'l4', edition: { number: '2' } }, h.staffDeps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -846,7 +847,7 @@ describe('reader lesson editions', () => {
   it.each([true, false])('uses the public preview course access rule: %s', async (publiclyVisible) => {
     const previewLessons = lessons.map((row) => row.id === 'l4' ? { ...row, isPreview: true } : row);
     const h = harness(deps([], [], [{ ...c1, publiclyVisible }], [m1, m2], [], previewLessons));
-    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW);
+    await h.deps.lessonEditions.mark('t1', h.version, { number: '1' }, NOW, null);
     const anonymous: Ctx = { identity: identity({ memberId: null }), capabilities: capabilitiesForPrincipal('public') };
     expect((await getLessonEdition(anonymous, 'l4', '1', h.deps)).ok).toBe(publiclyVisible);
     expect((await listLessonEditions(anonymous, 'l4', h.deps)).ok).toBe(publiclyVisible);
@@ -861,6 +862,28 @@ describe('reader lesson editions', () => {
     expect(await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2', note: 'Current text' } }, h.staffDeps))
       .toMatchObject({ ok: true, value: { number: '2', note: 'Current text' } });
     expect(await getLessonEdition(staff, 'l4', '2', h.deps)).toMatchObject({ ok: true, value: { name: 'Lesson l4' } });
+  });
+
+  it.each([undefined, 'version-1'])('maps a conditional mark rejection to conflict for version %s', async (versionId) => {
+    const h = harness(deps([], []));
+    const mark = vi.spyOn(h.staffDeps.lessonEditions, 'mark').mockResolvedValue('conflict');
+    expect(await markLessonEdition(ctx({ staffRole: 'owner' }), {
+      lessonId: 'l4', versionId, edition: { number: '3' },
+    }, h.staffDeps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(mark).toHaveBeenCalledWith('t1', expect.objectContaining({
+      id: versionId ?? 'current-version',
+    }), { number: '3' }, NOW, null);
+  });
+
+  it('passes the observed edition number to a conditional mark', async () => {
+    const h = harness(deps([], []));
+    h.staffDeps.entityVersions.findById = async () => ({ ...h.version, ordinal: 1,
+      edition: { versionId: h.version.id, number: '2', note: null, markedAt: NOW } });
+    const mark = vi.spyOn(h.staffDeps.lessonEditions, 'mark').mockResolvedValue('conflict');
+    expect(await markLessonEdition(ctx({ staffRole: 'owner' }), {
+      lessonId: 'l4', versionId: h.version.id, edition: { number: '3' },
+    }, h.staffDeps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(mark).toHaveBeenCalledWith('t1', expect.objectContaining({ id: h.version.id }), { number: '3' }, NOW, '2');
   });
 
   it.each([true, false])('reuses the latest version only when its payload matches current content: %s', async (matches) => {
@@ -881,6 +904,7 @@ describe('reader lesson editions', () => {
         return latest;
       },
     } };
+    staffDeps.lessonEditionTransaction = { run: async (_tenantId, _lessonId, operation) => operation(staffDeps) };
     expect(await markLessonEdition(ctx({ staffRole: 'owner' }), {
       lessonId: 'l4', edition: { number: '2' },
     }, staffDeps)).toMatchObject({

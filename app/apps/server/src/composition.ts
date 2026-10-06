@@ -1,4 +1,4 @@
-import { createLessonEditionRepository } from '#adapters/db/lesson-editions.js';
+import { createLessonEditionRepository, createLessonEditionTransaction } from '#adapters/db/lesson-editions.js';
 import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
 import { drainTelemetry } from '#core/server/telemetry/drain.js';
@@ -184,6 +184,7 @@ import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
   LessonEditionRepository,
+  LessonEditionTransaction,
   ActivityReportRepository,
   AccountSecurityReader,
   AppErrorTelemetry,
@@ -426,6 +427,7 @@ export interface AppDeps {
   personalisationSlots: PersonalisationSlots;
   entityVersions: EntityVersionRepository;
   lessonEditions: LessonEditionRepository;
+  lessonEditionTransaction: LessonEditionTransaction;
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
   accountAvatars: AccountAvatarRepository;
@@ -1357,6 +1359,7 @@ export const createDeps = (
     personalisationSlots: createPersonalisationSlots(),
     entityVersions: createEntityVersionRepository(db),
     lessonEditions: createLessonEditionRepository(db),
+    lessonEditionTransaction: createLessonEditionTransaction(db),
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),
     accountAvatars,

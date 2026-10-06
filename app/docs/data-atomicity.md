@@ -101,3 +101,11 @@ unique constraint, conditional write, row lock, or serializable transaction.
 Redirect hit counts use one tenant-and-id-scoped SQL `UPDATE` that increments
 `hit_count` and sets `last_hit_at`, so concurrent hits remain atomic without an
 interactive transaction.
+
+Capturing a lesson edition locks the tenant-scoped `course_lessons` row with
+`FOR UPDATE`, shared with content imports, before reading current content and
+the latest version and deciding whether to reuse or insert a snapshot in the
+same transaction. Marking a version conditionally updates only an unnumbered
+row or one with the edition number observed by the caller. Concurrent captures
+of different numbers preserve both editions in distinct version rows; a stale
+mark or duplicate number returns the existing `conflict` error.

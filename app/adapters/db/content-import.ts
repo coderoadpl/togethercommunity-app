@@ -177,7 +177,7 @@ export const createImportContentRepository = (db: Db): ImportContentRepository =
               eq(entityVersions.tenantId, tenantId), eq(entityVersions.id, existing.id),
             ));
           } else {
-            const marked = await repository.mark(tenantId, mutation.version, mutation.edition, mutation.event.at);
+            const marked = await repository.mark(tenantId, mutation.version, mutation.edition, mutation.event.at, null);
             if (marked === 'conflict') throw new EditionConflictError('Concurrent edition marking');
           }
         }

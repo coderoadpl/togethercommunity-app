@@ -1,11 +1,12 @@
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 
-import { lessonEditionSchema } from '#core/domain/index.js';
-import type { LessonEditionRepository } from '#core/server/index.js';
+import { lessonEditionSchema, type AppError, type Result } from '#core/domain/index.js';
+import type { LessonEditionRepository, LessonEditionTransaction } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
-import { entityVersions } from './schema.js';
+import { createCourseLessonRepository, createEntityVersionRepository } from './repositories.js';
+import { courseLessons, entityVersions } from './schema.js';
 
 export const createLessonEditionRepository = (db: Db): LessonEditionRepository => ({
   list: async (tenantId, lessonId) => {
@@ -24,14 +25,14 @@ export const createLessonEditionRepository = (db: Db): LessonEditionRepository =
     )).limit(1);
     return row ?? null;
   },
-  mark: async (tenantId, version, edition, markedAt) => {
+  mark: async (tenantId, version, edition, markedAt, expectedEditionNumber) => {
     try {
       const [row] = await db.insert(entityVersions).values({
         ...version, tenantId, editionNumber: edition.number, editionNote: edition.note ?? null, editionMarkedAt: markedAt,
       }).onConflictDoUpdate({
         target: entityVersions.id,
         set: { editionNumber: edition.number, editionNote: edition.note ?? null, editionMarkedAt: markedAt },
-        setWhere: sql`${entityVersions.tenantId} = ${tenantId} and ${entityVersions.entityKind} = 'course_lesson' and ${entityVersions.entityId} = ${version.entityId}`,
+        setWhere: sql`${entityVersions.tenantId} = ${tenantId} and ${entityVersions.entityKind} = 'course_lesson' and ${entityVersions.entityId} = ${version.entityId} and (${entityVersions.editionNumber} is null or ${entityVersions.editionNumber} = ${expectedEditionNumber})`,
       }).returning();
       if (row === undefined) return 'conflict';
       return lessonEditionSchema.parse({ versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt });
@@ -46,5 +47,28 @@ export const createLessonEditionRepository = (db: Db): LessonEditionRepository =
       eq(entityVersions.entityId, lessonId), eq(entityVersions.editionNumber, number),
     )).returning({ id: entityVersions.id });
     return rows.length === 1;
+  },
+});
+
+export const createLessonEditionTransaction = (db: Db): LessonEditionTransaction => ({
+  run: async (tenantId, lessonId, operation) => {
+    let rejected: Result<never, AppError> | null = null;
+    try {
+      return await db.transaction(async (tx) => {
+        await tx.select({ id: courseLessons.id }).from(courseLessons).where(and(
+          eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, lessonId),
+        )).for('update');
+        const result = await operation({
+          lessons: createCourseLessonRepository(tx),
+          entityVersions: createEntityVersionRepository(tx),
+          lessonEditions: createLessonEditionRepository(tx),
+        });
+        if (!result.ok) { rejected = result; tx.rollback(); }
+        return result;
+      });
+    } catch (cause) {
+      if (rejected !== null) return rejected;
+      throw cause;
+    }
   },
 });

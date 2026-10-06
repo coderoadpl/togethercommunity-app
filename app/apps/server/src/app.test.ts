@@ -658,6 +658,7 @@ const deps = (input: {
       delete: async () => false,
     },
     lessonEditions: { list: async () => [], find: async () => null, mark: async () => 'conflict', unmark: async () => false },
+    lessonEditionTransaction: { run: async () => { throw new Error('Unexpected lesson edition transaction'); } },
     entityVersions: {
       list: async () => [],
       findById: async () => null,

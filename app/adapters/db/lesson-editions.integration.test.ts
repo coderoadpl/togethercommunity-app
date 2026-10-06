@@ -6,7 +6,7 @@ import { markLessonEdition, type Ctx, type EntityVersionRecord, type ImportConte
 import type { Db } from './client.js';
 import { createImportContentRepository } from './content-import.js';
 import { insertEntityVersion } from './entity-versions.js';
-import { createLessonEditionRepository } from './lesson-editions.js';
+import { createLessonEditionRepository, createLessonEditionTransaction } from './lesson-editions.js';
 import { createCourseLessonRepository, createEntityVersionRepository } from './repositories.js';
 import { entityVersions, tenantApiKeys, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -37,8 +37,8 @@ describe('lesson edition persistence', () => {
     await insertEntityVersion(db, TENANT, version('ordinary'));
     expect(await editions.list(TENANT, lesson.id)).toEqual([]);
     expect(await editions.find(TENANT, lesson.id, 'ordinary')).toBeNull();
-    expect(await editions.mark(TENANT, version('ordinary'), { number: '2' }, NOW)).toMatchObject({ number: '2' });
-    expect(await editions.mark(TENANT, version('duplicate'), { number: '2' }, NOW)).toBe('conflict');
+    expect(await editions.mark(TENANT, version('ordinary'), { number: '2' }, NOW, null)).toMatchObject({ number: '2' });
+    expect(await editions.mark(TENANT, version('duplicate'), { number: '2' }, NOW, null)).toBe('conflict');
     expect(await editions.find('other-tenant', lesson.id, '2')).toBeNull();
     expect(await editions.unmark('other-tenant', lesson.id, '2')).toBe(false);
     expect(await editions.unmark(TENANT, lesson.id, '2')).toBe(true);
@@ -61,6 +61,7 @@ describe('lesson edition persistence', () => {
     } };
     const deps = {
       lessons, entityVersions: versions, lessonEditions: editions,
+      lessonEditionTransaction: createLessonEditionTransaction(db),
       ids: { nextId: () => 'new-current-version' }, clock: { nowIso: () => '2026-01-02T00:00:00.000Z' },
     };
     expect(await markLessonEdition(ctx, { lessonId: resource.id, edition: { number: '2' } }, deps))
@@ -72,6 +73,59 @@ describe('lesson edition persistence', () => {
     expect((await editions.find(TENANT, resource.id, '3'))?.payload).toEqual(oldEdition?.payload);
     expect(await versions.list(TENANT, { entityKind: 'course_lesson', entityId: resource.id, limit: 10 }))
       .toHaveLength(2);
+  });
+
+  it('serializes concurrent captures without renaming the unnumbered latest version', async () => {
+    const resource = { ...lesson, id: 'concurrent-lesson' };
+    const lessons = createCourseLessonRepository(db);
+    const versions = createEntityVersionRepository(db);
+    const editions = createLessonEditionRepository(db);
+    await lessons.create(TENANT, resource);
+    await insertEntityVersion(db, TENANT, version('concurrent-version', resource));
+    const ctx: Ctx = { identity: {
+      userId: 'author', email: 'author@invalid.test', name: 'Author', emailVerified: true,
+      tenantAccess: 'staff', tenantId: TENANT, tenantSlug: 'editions', tenantName: 'Workspace',
+      staffRole: 'owner', memberId: null, image: null, memberDisplayName: null,
+      memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+    } };
+    const deps = {
+      lessons, entityVersions: versions, lessonEditions: editions,
+      lessonEditionTransaction: createLessonEditionTransaction(db),
+      ids: { nextId: () => crypto.randomUUID() }, clock: { nowIso: () => '2026-01-02T00:00:00.000Z' },
+    };
+    const results = await Promise.all(['3', '4'].map((number) =>
+      markLessonEdition(ctx, { lessonId: resource.id, edition: { number } }, deps)));
+    expect(results).toEqual([
+      { ok: true, value: expect.objectContaining({ number: '3' }) },
+      { ok: true, value: expect.objectContaining({ number: '4' }) },
+    ]);
+    for (const result of results) {
+      if (!result.ok) throw new Error(result.error.message);
+      const stored = await versions.findById(TENANT, result.value.versionId);
+      expect(stored?.edition).toEqual(result.value);
+      expect(await editions.find(TENANT, resource.id, result.value.number))
+        .toMatchObject({ id: result.value.versionId });
+    }
+    const history = await versions.list(TENANT, { entityKind: 'course_lesson', entityId: resource.id, limit: 10 });
+    expect(history).toHaveLength(2);
+    expect(new Set(history.map(({ id }) => id)).size).toBe(2);
+    expect(history.some(({ id }) => id === 'concurrent-version')).toBe(true);
+    expect((await editions.list(TENANT, resource.id)).map(({ number }) => number)).toEqual(['4', '3']);
+  });
+
+  it('rejects stale edition state without renaming a marked row', async () => {
+    const editions = createLessonEditionRepository(db);
+    const resource = { ...lesson, id: 'conditional-lesson' };
+    const unnumbered = version('conditional-version', resource);
+    await insertEntityVersion(db, TENANT, unnumbered);
+    expect(await editions.mark(TENANT, unnumbered, { number: '3' }, NOW, null)).toMatchObject({ number: '3' });
+    const editionThree = await editions.find(TENANT, resource.id, '3');
+    expect(await editions.mark(TENANT, unnumbered, { number: '4' }, NOW, null)).toBe('conflict');
+    expect(await editions.mark(TENANT, unnumbered, { number: '4' }, NOW, '2')).toBe('conflict');
+    expect(await editions.find(TENANT, resource.id, '3')).toEqual(editionThree);
+    expect(await editions.find(TENANT, resource.id, '4')).toBeNull();
+    expect(await editions.mark(TENANT, unnumbered, { number: '3', note: 'Updated note' }, NOW, '3'))
+      .toMatchObject({ versionId: unnumbered.id, number: '3', note: 'Updated note' });
   });
 
   it('lists at most 100 editions in descending numeric edition order', async () => {

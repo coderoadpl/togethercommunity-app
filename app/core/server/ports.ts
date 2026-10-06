@@ -2442,6 +2442,16 @@ export interface SubscriptionAdoptionTransaction {
 export interface LessonEditionRepository {
   list(tenantId: string, lessonId: string): Promise<LessonEdition[]>;
   find(tenantId: string, lessonId: string, number: string): Promise<EntityVersionRecord | null>;
-  mark(tenantId: string, version: EntityVersionRecord, edition: LessonEditionInput, markedAt: string): Promise<LessonEdition | 'conflict'>;
+  mark(tenantId: string, version: EntityVersionRecord, edition: LessonEditionInput, markedAt: string, expectedEditionNumber: string | null): Promise<LessonEdition | 'conflict'>;
   unmark(tenantId: string, lessonId: string, number: string): Promise<boolean>;
+}
+
+export interface LessonEditionRepositories {
+  lessonEditions: LessonEditionRepository;
+  entityVersions: EntityVersionRepository;
+  lessons: Pick<CourseLessonRepository, 'findById'>;
+}
+
+export interface LessonEditionTransaction {
+  run<T>(tenantId: string, lessonId: string, operation: (repositories: LessonEditionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }

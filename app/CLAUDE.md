@@ -90,9 +90,11 @@ tooling the owner keeps privately. A tenant's legacy URLs reach the platform as
 
 Forwarded prefixes (owner decision 2026-10-04): the hosted deployment's edge
 serves the web app for most paths and forwards a fixed prefix list to the server
-(`app/vercel.json`), so the per-workspace redirect table can answer only under a
-forwarded prefix. `/link/` is reserved platform-wide as the short-link prefix: a
-workspace stores `/link/<key>` redirect rows for printed material and QR codes.
+(`app/vercel.json`), so for ordinary browser requests the per-workspace redirect
+table can answer only under a forwarded prefix; the social and search crawlers
+listed in that file are forwarded on every path and do receive the stored answer.
+`/link/` is reserved platform-wide as the short-link prefix: a workspace stores
+`/link/<key>` redirect rows for printed material and QR codes.
 `/courses/` is forwarded so redirect rows for course paths minted by a previous
 site can answer. The platform owns the prefixes, never the keys: keys stay
 workspace data and `link` is not a reserved redirect root. Adding a forwarded

@@ -12,7 +12,10 @@ import {
   looseEnvelopeSchema,
   publicNavigationOutputSchema,
   spaceFeedOutputSchema,
+  studentLessonOutputSchema,
 } from '#core/contract/index.js';
+
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import {
@@ -394,6 +397,61 @@ const runBoundaryJourney = async (studioBaseUrl: string, akademiaBaseUrl: string
   console.log('public-authz-e2e: hidden-resource and tenant-isolation boundaries OK');
 };
 
+const runReturningVisitorJourney = async (browser: Browser, baseUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: e2eDatabaseUrl });
+  await client.connect();
+  try {
+    for (const role of ['owner', 'member', 'guest']) {
+      for (const state of role === 'guest' ? ['absent'] : ['expired', 'deleted']) {
+        const email = role === 'owner' ? 'creator@together.dev' : 'student.active@together.dev';
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
+        if (role !== 'guest') {
+          const login = await context.newPage();
+          await login.goto(`${baseUrl}/login`);
+          if (role === 'owner') {
+            await signInWithPassword(login, email, 'demo-password-15');
+          } else {
+            await requestMagicLink(login, email);
+            const link = login.getByTestId('magic-link-sent').locator('a[href]').first();
+            await link.waitFor({ state: 'visible', timeout: 15000 });
+            const href = await link.getAttribute('href');
+            assert(href !== null, 'Missing local development magic link');
+            await login.goto(href);
+          }
+          await login.waitForURL(/\/(?:my|start)(?:[/?#]|$)/, { timeout: 15000 });
+          await login.goto('about:blank');
+          const cookies = await context.cookies(baseUrl);
+          assert(cookies.some((cookie) => cookie.name.includes('session_token')), 'Session cookie missing');
+        }
+        const userCondition = 'user_id = (SELECT id FROM "user" WHERE email = $1)';
+        if (state !== 'absent') {
+          const invalidated = await client.query(state === 'expired'
+            ? `UPDATE session SET expires_at = NOW() - INTERVAL '1 day' WHERE ${userCondition}`
+            : `DELETE FROM session WHERE ${userCondition}`, [email]);
+          assert(invalidated.rowCount !== null && invalidated.rowCount > 0, `${role} ${state}: no session was invalidated`);
+        }
+        const page = await context.newPage();
+        await page.goto(`${baseUrl}/my/courses/${publicCourseId}/lessons/${previewLessonId}`);
+        await page.getByTestId('lesson-html').waitFor({ state: 'visible', timeout: 15000 });
+        await page.waitForLoadState('networkidle');
+        const me = await context.request.get(new URL(API_PATHS.me, baseUrl).toString());
+        assert(me.status() === 401, `${role} ${state}: identity was still authenticated`);
+        const preview = await context.request.get(new URL(API_PATHS.studentLesson.replace(':lessonId', previewLessonId), baseUrl).toString());
+        assert(preview.status() === 200, `${role} ${state}: preview request failed`);
+        assert(!parseOk(await preview.text(), 'Returning visitor preview', studentLessonOutputSchema).authenticated, `${role} ${state}: preview was not anonymous`);
+        assert(await page.getByRole('alert').count() === 0, `${role} ${state}: preview showed an error alert`);
+        assert(await page.getByRole('button', { name: 'Try again', exact: true }).count() === 0, `${role} ${state}: preview showed a retry button`);
+        await page.getByRole('link', { name: 'Sign in', exact: true }).waitFor({ state: 'visible' });
+        console.log(`public-authz-e2e: ${role} ${state} session preview OK`);
+        await context.close();
+      }
+    }
+  } finally {
+    await client.end();
+  }
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -434,6 +492,7 @@ try {
   const page = await context.newPage();
   page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
 
+  await runReturningVisitorJourney(browser, studioBaseUrl);
   await runHomeJourney(page, studioBaseUrl);
   await runReadOnlyCommunityJourney(page, studioBaseUrl);
   await runCourseJourney(page, studioBaseUrl);

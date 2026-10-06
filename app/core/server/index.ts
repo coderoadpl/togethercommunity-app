@@ -136,3 +136,5 @@ export * from './download-copy-ports.js';
 export * from './usecases/download-copies.js';
 
 export * from './usecases/lesson-editions.js';
+export * from './survey-ports.js';
+export * from './usecases/surveys.js';

@@ -1,3 +1,4 @@
+import { surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
 
@@ -332,6 +333,7 @@ const authClient = createBetterAuthClientAdapter('');
  * these ready actions and never see a client, a port or an adapter.
  */
 export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClientPort, 'listPasskeys'> = authClient) => ({
+  surveys: surveyActions(apiClient),
   directory: marketingDirectoryActions(apiClient),
   health: healthQuery(apiClient),
   me: meQuery(apiClient),

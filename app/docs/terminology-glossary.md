@@ -173,3 +173,12 @@ when a Polish label exists, such as klucz ograniczony (restricted key).
 | Outbound platform networking | Outbound IP address | Wychodzący adres IP |
 | Pending replication | Statistics sync | Synchronizacja statystyk |
 | Coverage lost at buffer capacity | Missing events | Brakujące zdarzenia |
+
+## Surveys
+
+| Concept | PL | EN | Decision notes |
+|---|---|---|---|
+| One-question feedback form | ankieta | survey | Supports a score and an optional comment. |
+| Submitted survey answer | odpowiedź | response | One current response per signed-in member. |
+| Score-dependent closing message | zakończenie | ending | Authored in Markdown by workspace staff. |
+| Numeric survey answer | ocena | score | NPS uses 0–10; stars use 1–5. |

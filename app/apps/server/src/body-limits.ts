@@ -22,6 +22,8 @@ const isWebhookPath = (path: string): boolean =>
 
 export const isMarketingSignupSubmissionPath = (path: string): boolean => /^\/api\/public\/marketing\/forms\/[^/]+\/submit$/.test(path);
 
+export const isSurveySubmissionPath = (path: string): boolean => /^\/api\/public\/surveys\/[^/]+\/submit$/.test(path);
+
 export const isPublicFormPath = (path: string): boolean =>
   /^\/u\/[^/]+(?:\/(?:confirm|all|preferences))?$/.test(path)
   || /^\/marketing\/confirm\/[^/]+$/.test(path);
@@ -35,7 +37,7 @@ export const requestBodyLimit = (method: string, path: string): number | undefin
   if (path === API_PATHS.m2mImportValidate) return M2M_IMPORT_VALIDATE_BODY_LIMIT;
   if (path.startsWith('/api/m2m/import/')) return M2M_IMPORT_BODY_LIMIT;
   if (CONTENT_PATHS.has(path)) return CONTENT_BODY_LIMIT;
-  if (isMarketingSignupSubmissionPath(path)) return PUBLIC_FORM_BODY_LIMIT;
+  if (isMarketingSignupSubmissionPath(path) || isSurveySubmissionPath(path)) return PUBLIC_FORM_BODY_LIMIT;
   if (path.startsWith('/api/')) return DEFAULT_API_BODY_LIMIT;
   if (isPublicFormPath(path)) return PUBLIC_FORM_BODY_LIMIT;
   return undefined;

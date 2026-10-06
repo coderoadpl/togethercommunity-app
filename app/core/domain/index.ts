@@ -85,3 +85,4 @@ export * from './stripe-subscription.js';
 export * from './operator-tenant.js';
 
 export * from './lesson-editions.js';
+export * from './survey.js';

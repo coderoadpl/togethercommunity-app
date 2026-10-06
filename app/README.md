@@ -149,6 +149,8 @@ deterministic verification loop for AI agents — and the reference client.
 
 ## Marketing e-mail
 
+For one-question audience feedback, see [Surveys](docs/surveys.md).
+
 Marketing delivery uses a BYO-SES model: every tenant connects its own Amazon
 SES account, while Together enforces consent, suppression, unsubscribe, sender
 identity, throttling, and send logging. Multi-step automations are intentionally
@@ -219,7 +221,7 @@ Chromium CDP CPU throttling to both member pages; it defaults to `1` (off).
 It does not change assertions or timeouts. Run `nvm use` and `pnpm run db:up`
 first, as for the other local runtime checks.
 
-The Vitest projects currently discover <!--count:test-files-->502<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->508<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

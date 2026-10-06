@@ -1,3 +1,4 @@
+import { registerSurveyRoutes } from './survey-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
@@ -1291,6 +1292,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   registerSessionMarketingContactRoutes(app, deps);
   registerSessionMarketingSignupRoutes(app, deps);
+  registerSurveyRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

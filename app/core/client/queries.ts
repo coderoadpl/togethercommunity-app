@@ -2055,3 +2055,16 @@ export const downloadCopiesQuery = (api: ApiClient, query: Parameters<ApiClient[
         ? `${last.createdAt}~${encodeURIComponent(last.id).replaceAll('~', '%7E')}` : null;
     },
   });
+
+export const surveyActions = (api: ApiClient) => ({
+  list: (tenantId: string) => defineQuery({ queryKey: ['surveys', tenantId] as const, call: ({ signal }) => api.listSurveys({}, signal) }),
+  publicSurvey: (slug: string) => defineQuery({ queryKey: ['surveys', 'public', slug] as const, call: ({ signal }) => api.getPublicSurvey({ slug }, signal) }),
+  results: (tenantId: string, input: Parameters<ApiClient['getSurveyResults']>[0]) => defineQuery({ queryKey: ['surveys', tenantId, 'results', input] as const, call: ({ signal }) => api.getSurveyResults(input, signal) }),
+  create: defineMutation({ mutationKey: ['surveys', 'create'], call: (input: Parameters<ApiClient['createSurvey']>[0]) => api.createSurvey(input) }),
+  update: defineMutation({ mutationKey: ['surveys', 'update'], call: (input: Parameters<ApiClient['updateSurvey']>[0]) => api.updateSurvey(input) }),
+  remove: defineMutation({ mutationKey: ['surveys', 'remove'], call: (input: Parameters<ApiClient['deleteSurvey']>[0]) => api.deleteSurvey(input) }),
+  submit: defineMutation({ mutationKey: ['surveys', 'submit'], call: (input: Parameters<ApiClient['submitSurvey']>[0]) => api.submitSurvey(input) }),
+  export: (tenantId: string, input: Parameters<ApiClient['exportSurveyResponses']>[0]) => defineQuery({ queryKey: ['surveys', tenantId, 'export', input] as const, call: ({ signal }) => api.exportSurveyResponses(input, signal) }),
+  preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
+  invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
+});

@@ -4071,3 +4071,8 @@ export const MarkdownSourceInput = styled(OutlinedInput)(({ theme }) => ({
 
 export const OutlineEmptyStateIcon = styled(EmptyStateIcon)({ fill: 'none' });
 export const OutlineStatTileIcon = styled(StatTileIcon)({ fill: 'none' });
+
+export const SurveySurface = styled(Paper)({ borderRadius: '1rem' });
+export const SurveyHeading = styled(Typography)(({ theme }) => ({ fontSize: '1.8rem', lineHeight: 1.2, [theme.breakpoints.up('sm')]: { fontSize: '2.4rem' } }));
+export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => prop !== 'scaleType' })<{ scaleType: 'nps' | 'stars' }>(({ scaleType }) => ({ fontSize: scaleType === 'stars' ? '1.8rem' : '1rem' }));
+export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });

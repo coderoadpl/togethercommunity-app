@@ -282,7 +282,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
                   overflow: 'hidden',
                 }}
               >
-                {lessonCrumbs === null ? null : (
+                {!isMember || lessonCrumbs === null ? null : (
                   <CourseBreadcrumbs
                     courseId={lessonCrumbs.courseId}
                     lessonId={lessonCrumbs.lessonId}

@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildSnapshot, type CourseLesson } from '#core/domain/index.js';
-import type { EntityVersionRecord, ImportContentMutation } from '#core/server/index.js';
+import { markLessonEdition, type Ctx, type EntityVersionRecord, type ImportContentMutation } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createImportContentRepository } from './content-import.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { createLessonEditionRepository } from './lesson-editions.js';
 import { createCourseLessonRepository, createEntityVersionRepository } from './repositories.js';
-import { tenantApiKeys, tenants } from './schema.js';
+import { entityVersions, tenantApiKeys, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -44,6 +44,51 @@ describe('lesson edition persistence', () => {
     expect(await editions.unmark(TENANT, lesson.id, '2')).toBe(true);
     expect(await editions.find(TENANT, lesson.id, '2')).toBeNull();
     expect(await createEntityVersionRepository(db).findById(TENANT, 'ordinary')).not.toBeNull();
+  });
+
+  it('reuses an identical unnumbered snapshot but preserves it when marking a different edition', async () => {
+    const resource = { ...lesson, id: 'current-lesson' };
+    const lessons = createCourseLessonRepository(db);
+    const versions = createEntityVersionRepository(db);
+    const editions = createLessonEditionRepository(db);
+    await lessons.create(TENANT, resource);
+    await insertEntityVersion(db, TENANT, version('current-version', resource));
+    const ctx: Ctx = { identity: {
+      userId: 'author', email: 'author@invalid.test', name: 'Author', emailVerified: true,
+      tenantAccess: 'staff', tenantId: TENANT, tenantSlug: 'editions', tenantName: 'Workspace',
+      staffRole: 'owner', memberId: null, image: null, memberDisplayName: null,
+      memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+    } };
+    const deps = {
+      lessons, entityVersions: versions, lessonEditions: editions,
+      ids: { nextId: () => 'new-current-version' }, clock: { nowIso: () => '2026-01-02T00:00:00.000Z' },
+    };
+    expect(await markLessonEdition(ctx, { lessonId: resource.id, edition: { number: '2' } }, deps))
+      .toMatchObject({ ok: true, value: { versionId: 'current-version', number: '2' } });
+    const oldEdition = await editions.find(TENANT, resource.id, '2');
+    expect(await markLessonEdition(ctx, { lessonId: resource.id, edition: { number: '3' } }, deps))
+      .toMatchObject({ ok: true, value: { versionId: 'new-current-version', number: '3' } });
+    expect(await editions.find(TENANT, resource.id, '2')).toEqual(oldEdition);
+    expect((await editions.find(TENANT, resource.id, '3'))?.payload).toEqual(oldEdition?.payload);
+    expect(await versions.list(TENANT, { entityKind: 'course_lesson', entityId: resource.id, limit: 10 }))
+      .toHaveLength(2);
+  });
+
+  it('lists at most 100 editions in descending numeric edition order', async () => {
+    const editions = createLessonEditionRepository(db);
+    const numbered = { ...lesson, id: 'numbered-lesson' };
+    const numbers = ['2.9', '2', '2.10', '2.0.0', '999999999999', '2.0'];
+    await db.insert(entityVersions).values(numbers.map((number) => ({
+      ...version(`numbered-${number}`, numbered), tenantId: TENANT, editionNumber: number, editionMarkedAt: NOW,
+    })));
+    expect((await editions.list(TENANT, numbered.id)).map(({ number }) => number))
+      .toEqual(['999999999999', '2.10', '2.9', '2.0.0', '2.0', '2']);
+    const bounded = { ...lesson, id: 'bounded-lesson' };
+    await db.insert(entityVersions).values(Array.from({ length: 101 }, (_, index) => ({
+      ...version(`bounded-${index}`, bounded), tenantId: TENANT, editionNumber: String(index), editionMarkedAt: NOW,
+    })));
+    expect((await editions.list(TENANT, bounded.id)).map(({ number }) => number))
+      .toEqual(Array.from({ length: 100 }, (_, index) => String(100 - index)));
   });
 
   it('creates an edition with the import and updates its note without duplicating or replacing the snapshot', async () => {

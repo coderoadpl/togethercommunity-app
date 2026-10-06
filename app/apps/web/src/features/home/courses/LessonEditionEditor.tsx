@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -25,6 +25,10 @@ export const LessonEditionEditor = ({
   const queryClient = useQueryClient();
   const [number, setNumber] = useState(edition?.number ?? '');
   const [note, setNote] = useState(edition?.note ?? '');
+  useEffect(() => {
+    setNumber(edition?.number ?? '');
+    setNote(edition?.note ?? '');
+  }, [edition?.number, edition?.note]);
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.contentHistoryInvalidates());
   };
@@ -65,12 +69,18 @@ export const LessonEditionEditor = ({
         <Button
           variant="outlined"
           disabled={disabled || pending || !validNumber || note.length > 200}
-          onClick={() => mark.mutate({ lessonId, ...(versionId === undefined ? {} : { versionId }), edition: { number, ...(note === '' ? {} : { note }) } })}
+          onClick={() => {
+            unmark.reset();
+            mark.mutate({ lessonId, ...(versionId === undefined ? {} : { versionId }), edition: { number, ...(note === '' ? {} : { note }) } });
+          }}
         >
           {edition === null ? t.courses.editionMark : t.courses.editionUpdate}
         </Button>
         {edition === null ? null : (
-          <Button disabled={disabled || pending} onClick={() => unmark.mutate({ lessonId, number: edition.number })}>
+          <Button disabled={disabled || pending} onClick={() => {
+            mark.reset();
+            unmark.mutate({ lessonId, number: edition.number });
+          }}>
             {t.courses.editionUnmark}
           </Button>
         )}

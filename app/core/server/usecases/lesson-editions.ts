@@ -66,6 +66,7 @@ export const markLessonEdition = async (
     });
     const stored = latest === undefined ? null : await deps.entityVersions.findById(tenant.value, latest.id);
     version = stored !== null && stored.schemaVersion === snapshot.value.schemaVersion &&
+      (stored.edition == null || stored.edition.number === parsed.data.edition.number) &&
       snapshotPayloadsEqual(stored.payload, snapshot.value.payload) ? stored : {
         id: deps.ids.nextId(), entityKind: 'course_lesson', entityId: lesson.id,
         schemaVersion: snapshot.value.schemaVersion, payload: snapshot.value.payload,

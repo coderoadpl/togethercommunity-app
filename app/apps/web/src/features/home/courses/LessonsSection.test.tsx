@@ -815,9 +815,14 @@ describe('current lesson edition', () => {
     await userEvent.click(screen.getByRole('button', { name: en.courses.editionUnmark }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: en.courses.editionNumber })).toHaveValue(''));
     expect(screen.queryByRole('button', { name: en.courses.editionUnmark })).not.toBeInTheDocument();
+    expect(await screen.findByText(en.courses.editionRemoved)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue('');
     await userEvent.type(screen.getByRole('textbox', { name: en.courses.editionNumber }), '2.10');
     await userEvent.click(screen.getByRole('button', { name: en.courses.editionMark }));
     expect(await screen.findByRole('button', { name: en.courses.editionUnmark })).toBeEnabled();
+    expect(await screen.findByText(en.courses.editionSaved)).toBeInTheDocument();
+    expect(screen.queryByText(en.courses.editionRemoved)).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue(edition.note);
   });
 
   it('does not label changed current content with an older snapshot edition', async () => {

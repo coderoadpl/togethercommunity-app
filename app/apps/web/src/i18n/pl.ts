@@ -1400,7 +1400,7 @@ export const pl: Messages = {
     historySubjectCourse: ({ name }) => format('Kurs: {name}', { name }),
     historySubjectModule: ({ name }) => format('Moduł: {name}', { name }),
     historySubjectLesson: ({ name }) => format('Lekcja: {name}', { name }),
-    editionHeading: 'Wydanie dla czytelników',
+    editionHeading: 'Wydanie',
     editionNumber: 'Numer wydania',
     editionNote: 'Notatka do wydania (opcjonalna)',
     editionNumberConflict: 'Ten numer wydania jest już używany przez inną wersję tej lekcji.',
@@ -1938,7 +1938,7 @@ export const pl: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
-    editionLabel: ({ number }: { number: string }) => `Wydanie ${number}`,
+    editionLabel: ({ number }) => format('Wydanie {number}', { number }),
     previousEditions: 'Poprzednie wydania',
     editionMenu: 'Opcje lekcji',
     editionOlderWarning: 'Nie oglądasz aktualnej wersji tej lekcji',

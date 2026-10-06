@@ -1386,7 +1386,7 @@ export const en: Messages = {
     historySubjectCourse: ({ name }) => format('Course: {name}', { name }),
     historySubjectModule: ({ name }) => format('Module: {name}', { name }),
     historySubjectLesson: ({ name }) => format('Lesson: {name}', { name }),
-    editionHeading: 'Reader edition',
+    editionHeading: 'Edition',
     editionNumber: 'Edition number',
     editionNote: 'Edition note (optional)',
     editionNumberConflict: 'This edition number is already used by another version of this lesson.',
@@ -1917,7 +1917,7 @@ export const en: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
-    editionLabel: ({ number }: { number: string }) => `Edition ${number}`,
+    editionLabel: ({ number }) => format('Edition {number}', { number }),
     previousEditions: 'Previous editions',
     editionMenu: 'Lesson options',
     editionOlderWarning: 'You are not viewing the current version of this lesson',

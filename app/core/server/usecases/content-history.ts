@@ -65,7 +65,6 @@ export interface ContentVersionView {
 const authorName = (createdBy: string | null, names: Map<string, string>): string | null =>
   createdBy === null ? null : (names.get(createdBy) ?? createdBy);
 
-/** Lists course and attached-module snapshots newest first, capped by `limit`. */
 export const getContentHistory = async (
   ctx: Ctx,
   input: unknown,

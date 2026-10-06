@@ -756,7 +756,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           <LessonAttachmentsEditor lessonId={lesson.id} />
           <Divider />
           <LessonEditionEditor
-            key={`${lesson.id}-${currentEdition?.number ?? ''}-${currentEdition?.note ?? ''}`}
+            key={lesson.id}
             lessonId={lesson.id}
             edition={currentEdition}
             disabled={dirty || pending || !history.isSuccess || (latestVersion?.edition != null && !markedVersion.isSuccess)}

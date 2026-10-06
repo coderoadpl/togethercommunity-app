@@ -1,6 +1,6 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 
-import { compareLessonEditionNumbers, lessonEditionSchema } from '#core/domain/index.js';
+import { lessonEditionSchema } from '#core/domain/index.js';
 import type { LessonEditionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -12,10 +12,10 @@ export const createLessonEditionRepository = (db: Db): LessonEditionRepository =
     const rows = await db.select().from(entityVersions).where(and(
       eq(entityVersions.tenantId, tenantId), eq(entityVersions.entityKind, 'course_lesson'),
       eq(entityVersions.entityId, lessonId), isNotNull(entityVersions.editionNumber),
-    ));
+    )).orderBy(desc(sql`string_to_array(${entityVersions.editionNumber}, '.')::numeric[]`)).limit(100);
     return rows.map((row) => lessonEditionSchema.parse({
       versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt,
-    })).sort((left, right) => compareLessonEditionNumbers(right.number, left.number));
+    }));
   },
   find: async (tenantId, lessonId, number) => {
     const [row] = await db.select().from(entityVersions).where(and(

@@ -1279,8 +1279,8 @@ export interface Messages {
     editionHeading: string;
     editionNumber: string;
     editionNote: string;
-    editionNumberHint: string;
     editionNumberConflict: string;
+    editionNumberHint: string;
     editionMark: string;
     editionUpdate: string;
     editionUnmark: string;

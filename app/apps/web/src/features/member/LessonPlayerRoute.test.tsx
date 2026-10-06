@@ -223,5 +223,4 @@ describe('lesson edition routes', () => {
     expect(await screen.findByRole('heading', { name: en.lesson.contentLocked })).toBeInTheDocument();
     expect(editionReads).not.toHaveBeenCalled();
   });
-
 });

@@ -11,7 +11,12 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
-  LessonEditionRepository, AppErrorTelemetry, BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
+  LessonEditionRepository,
+  AppErrorTelemetry,
+  BunnyTokenSigner,
+  TenantRepository,
+  TenantSecretResolver,
+} from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 import { getLessonEdition } from './lesson-editions.js';
 

@@ -219,6 +219,48 @@ describe('LessonPlayerPage', () => {
     );
   });
 
+  it('shows only the badge for a lesson with one reader edition', async () => {
+    server.use(okLesson([]), okStructure(), okProgress(),
+      http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
+        ok: true,
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+      })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent('Edition 2.1');
+    expect(screen.queryByRole('button', { name: en.lesson.editionMenu })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
+  });
+
+  it('renders selected edition content while completion and discussion remain on the lesson', async () => {
+    const completions: unknown[] = [];
+    const discussions: string[] = [];
+    server.use(okStructure(), okProgress(), okLesson([]),
+      http.get('/api/student/lessons/l1/editions/2.1', () => HttpResponse.json({
+        ok: true,
+        data: { lesson: lesson([{ type: 'html', html: '<p>Earlier chapter content</p>' }]), authenticated: true },
+      })),
+      http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
+        ok: true,
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+      })),
+      http.get('/api/discussion', ({ request }) => {
+        discussions.push(new URL(request.url).searchParams.get('contextId') ?? '');
+        return HttpResponse.json({ ok: true, data: { discussion: { threads: [], nextCursor: null, viewerSubscriptions: {} } } });
+      }),
+      http.post('/api/student/lessons/complete', async ({ request }) => {
+        completions.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber="2.1" />);
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Earlier chapter content');
+    expect(screen.getByTestId('lesson-edition-banner')).toHaveTextContent(en.lesson.editionOlderWarning);
+    await userEvent.click(await screen.findByTestId('mark-complete'));
+    await waitFor(() => expect(completions).toEqual([{ lessonId: 'l1' }]));
+    expect(discussions).toContain('l1');
+  });
+
   it('uses the lesson title with the tenant name', async () => {
     server.use(okLesson([]), okStructure(), okProgress());
     await renderPage(

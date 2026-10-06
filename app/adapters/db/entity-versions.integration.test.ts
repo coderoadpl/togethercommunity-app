@@ -70,6 +70,13 @@ describe('entity version repository', () => {
     ]);
   });
 
+  it('pages stored versions without changing their ordinals', async () => {
+    const page = await createEntityVersionRepository(db).list(TENANT, {
+      entityKind: 'course', entityId: 'course-1', limit: 1, offset: 1,
+    });
+    expect(page.map((row) => [row.id, row.ordinal])).toEqual([['v2', 2]]);
+  });
+
   it('carries the same ordinal on a single-version fetch', async () => {
     const repository = createEntityVersionRepository(db);
 

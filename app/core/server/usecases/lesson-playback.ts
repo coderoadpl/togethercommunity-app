@@ -1,5 +1,7 @@
 import {
   bunnyEmbedUrl,
+  err,
+  notFound,
   ok,
   withVideoAutoplay,
   type AppError,
@@ -8,10 +10,18 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { AppErrorTelemetry, BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
+import type {
+  LessonEditionRepository,
+  AppErrorTelemetry,
+  BunnyTokenSigner,
+  TenantRepository,
+  TenantSecretResolver,
+} from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
+import { getLessonEdition } from './lesson-editions.js';
 
 export interface LessonPlaybackDeps extends CourseAccessDeps {
+  lessonEditions?: LessonEditionRepository;
   telemetry?: AppErrorTelemetry;
   tenants: TenantRepository;
   secretResolver: TenantSecretResolver;
@@ -44,10 +54,14 @@ export const getLessonPlayback = async (
   ctx: Ctx,
   lessonId: string,
   deps: LessonPlaybackDeps,
+  editionNumber?: string,
 ): Promise<Result<LessonPlaybackOutput, AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
-  const lesson = await getAccessibleLesson(ctx, lessonId, deps);
+  if (editionNumber !== undefined && deps.lessonEditions === undefined) return err(notFound('Lesson edition not found'));
+  const lesson = editionNumber !== undefined && deps.lessonEditions !== undefined
+    ? await getLessonEdition(ctx, lessonId, editionNumber, { ...deps, lessonEditions: deps.lessonEditions })
+    : await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
 
   const blocks = lesson.value.contents.filter(

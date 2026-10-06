@@ -216,6 +216,12 @@ const lessonPlayerRoute = createRoute({
   validateSearch: validateLessonSearch,
   component: LessonPlayerRoute,
 });
+const lessonEditionRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+  validateSearch: validateLessonSearch,
+  component: LessonPlayerRoute,
+});
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
@@ -537,6 +543,7 @@ const router = createRouter({
       courseRoute,
       courseStructureRoute,
       lessonPlayerRoute,
+      lessonEditionRoute,
       accountRoute,
       notificationsRoute,
       messagesRoute,

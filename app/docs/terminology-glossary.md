@@ -47,6 +47,9 @@ add it here before using it in either dictionary.
 | Issued copies | wydane kopie | issued copies | The private staff registry of download attempts, including unpersonalised fallbacks. |
 | File version | wersja pliku | file version | A numbered revision of a downloadable file. |
 | Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
+| Edition | wydanie | edition | An author-marked, numbered snapshot of lesson content that readers can open. Distinct from a file version (a downloadable file) and from change-history versions (every save, staff only). |
+| Edition note | notatka do wydania | edition note | Optional author note shown with an edition. |
+| Previous editions | poprzednie wydania | previous editions | Reader entry point listing a lesson's earlier editions. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure

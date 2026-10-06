@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 120. Route rows: 394. Exported `Ctx` use-case rows: 309.
+Closed capability count: 120. Route rows: 400. Exported `Ctx` use-case rows: 313.
 
 ## Human-readable diff
 
@@ -45,6 +45,8 @@ no changes
 | `OPTIONS /api/public/spaces/:spaceId/events` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | offer:read | public | public | yes | public route manifest |
 | `OPTIONS /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
+| `OPTIONS /api/student/lessons/:lessonId/editions` | lesson:play | public | public | yes | public route manifest |
+| `OPTIONS /api/student/lessons/:lessonId/editions/:number` | lesson:play | public | public | yes | public route manifest |
 | `OPTIONS /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
 | `OPTIONS /api/public/checkout/session` | checkout:start | public | public | yes | public route manifest |
@@ -58,6 +60,8 @@ no changes
 | `GET /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/events` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/events/:eventId` | offer:read | public | public | yes | public route manifest |
+| `GET /api/student/lessons/:lessonId/editions` | lesson:play | public | public | yes | public route manifest |
+| `GET /api/student/lessons/:lessonId/editions/:number` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
@@ -345,9 +349,11 @@ no changes
 | `GET /api/courses` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `GET /api/courses/history/version` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/courses/history/edition/mark` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/courses/history/edition/unmark` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/courses/history/version` | course:history:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/history/restore` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `GET /api/courses/history` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/courses/history` | course:history:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/modules` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/modules` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/modules/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -541,6 +547,10 @@ no changes
 | `lesson-attachments.ts#getLessonAttachmentDownload` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-attachments.ts#deleteLessonAttachment` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-editions.ts#listLessonEditions` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-editions.ts authorization call |
+| `lesson-editions.ts#getLessonEdition` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-editions.ts authorization call |
+| `lesson-editions.ts#markLessonEdition` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-editions.ts authorization call |
+| `lesson-editions.ts#unmarkLessonEdition` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-editions.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `lesson-playback.ts#getLessonPlayback` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-playback.ts authorization call |
 | `m2m-import-redirects.ts#importM2mRedirects` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import-redirects.ts authorization call |
@@ -745,14 +755,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:19` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:189` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1178` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1180` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1202` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1216` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1736` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1736` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:20` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:191` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1180` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1182` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1204` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1218` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1738` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1738` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -761,7 +771,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:536` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:548` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

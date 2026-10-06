@@ -3,7 +3,6 @@ import { useParams, useSearch } from '@tanstack/react-router';
 import { CoursePage } from '../features/member/CoursePage.js';
 import { EventPage } from '../features/member/events/EventPage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
-import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
 import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
 import { ConversationPage } from '../features/member/messages/ConversationPage.js';
 import { MessagesListPage } from '../features/member/messages/MessagesListPage.js';
@@ -16,6 +15,8 @@ import { SearchPage } from '../features/member/SearchPage.js';
 import { MemberShell } from '../features/member/shell/MemberShell.js';
 import { SpacesListPage } from '../features/member/SpacesListPage.js';
 import { StartPage } from '../features/member/StartPage.js';
+
+export { LessonPlayerRoute, validateLessonSearch } from '../features/member/LessonPlayerRoute.js';
 
 export const MemberShellRoute = () => <MemberShell />;
 
@@ -46,23 +47,6 @@ export const validateAccountSearch = (search: Record<string, unknown>) => ({
     ? search['tab']
     : 'profile',
 });
-
-export const validateLessonSearch = (search: Record<string, unknown>): { thread?: string } => {
-  const thread = search['thread'];
-  return typeof thread === 'string' && thread.trim().length > 0 ? { thread: thread.trim() } : {};
-};
-
-export const LessonPlayerRoute = () => {
-  const params = useParams({ strict: false });
-  const { thread } = useSearch({ strict: false });
-  return (
-    <LessonPlayerPage
-      courseId={params.courseId ?? ''}
-      lessonId={params.lessonId ?? ''}
-      threadRootPostId={thread ?? null}
-    />
-  );
-};
 
 export const NotificationsRoute = () => {
   const { filter } = useSearch({ strict: false });

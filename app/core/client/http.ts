@@ -8,6 +8,7 @@ import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketing
 import { type z } from 'zod';
 
 import {
+  lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput,
   API_ROUTES,
   marketingDirectoryContracts,
   marketingSignupContracts,
@@ -1610,6 +1611,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  staffLessonHistory: (lessonId: string, offset = 0, signal?: AbortSignal, limit?: number) =>
+    request(options, API_ROUTES.coursesHistory.method, `${API_ROUTES.coursesHistory.path}?lessonId=${encodeURIComponent(lessonId)}&offset=${offset}${limit === undefined ? '' : `&limit=${limit}`}`, contentHistoryOutputSchema, undefined, signal),
+  markLessonEdition: (input: MarkLessonEditionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonEditionMark.method, API_ROUTES.lessonEditionMark.path, lessonEditionOutputSchema, input, signal),
+  unmarkLessonEdition: (input: UnmarkLessonEditionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonEditionUnmark.method, API_ROUTES.lessonEditionUnmark.path, lessonEditionUnmarkOutputSchema, input, signal),
   getContentVersion: (id: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1783,6 +1790,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  studentLessonEditions: (lessonId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.studentLessonEditions.method, API_ROUTES.studentLessonEditions.path.replace(':lessonId', encodeURIComponent(lessonId)), lessonEditionsOutputSchema, undefined, signal),
+  studentLessonEdition: (lessonId: string, number: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.studentLessonEdition.method, API_ROUTES.studentLessonEdition.path.replace(':lessonId', encodeURIComponent(lessonId)).replace(':number', encodeURIComponent(number)), studentLessonOutputSchema, undefined, signal),
   studentLesson: (lessonId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1792,11 +1803,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  studentLessonPlayback: (lessonId: string, signal?: AbortSignal) =>
+  studentLessonPlayback: (lessonId: string, signal?: AbortSignal, editionNumber?: string) =>
     request(
       options,
       API_ROUTES.studentLessonPlayback.method,
-      API_ROUTES.studentLessonPlayback.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      API_ROUTES.studentLessonPlayback.path.replace(':lessonId', encodeURIComponent(lessonId)) + (editionNumber === undefined ? '' : `?edition=${encodeURIComponent(editionNumber)}`),
       studentLessonPlaybackOutputSchema,
       undefined,
       signal,

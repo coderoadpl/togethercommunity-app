@@ -84,6 +84,10 @@ import {
   tenantRedirectListQuerySchema,
   tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
+  lessonEditionSchema,
+  readerLessonEditionSchema,
+  markLessonEditionInputSchema,
+  unmarkLessonEditionInputSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   restoreContentVersionInputSchema,
@@ -985,6 +989,13 @@ export const imageAssetCompleteRequestSchema = z.object({
 export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
+
+export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
+export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
+export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
+export { markLessonEditionInputSchema, unmarkLessonEditionInputSchema };
+export type MarkLessonEditionInput = z.input<typeof markLessonEditionInputSchema>;
+export type UnmarkLessonEditionInput = z.input<typeof unmarkLessonEditionInputSchema>;
 
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
@@ -1921,6 +1932,10 @@ export const API_ROUTES = {
   brandingAssetComplete: { method: 'POST', path: '/api/image-assets/branding/complete' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
+  lessonEditionMark: { method: 'POST', path: '/api/courses/history/edition/mark' },
+  lessonEditionUnmark: { method: 'POST', path: '/api/courses/history/edition/unmark' },
+  studentLessonEditions: { method: 'GET', path: '/api/student/lessons/:lessonId/editions' },
+  studentLessonEdition: { method: 'GET', path: '/api/student/lessons/:lessonId/editions/:number' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
   studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
   studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
@@ -2275,6 +2290,10 @@ export const API_PATHS = {
   brandingAssetComplete: API_ROUTES.brandingAssetComplete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
+  lessonEditionMark: API_ROUTES.lessonEditionMark.path,
+  lessonEditionUnmark: API_ROUTES.lessonEditionUnmark.path,
+  studentLessonEditions: API_ROUTES.studentLessonEditions.path,
+  studentLessonEdition: API_ROUTES.studentLessonEdition.path,
   studentLesson: API_ROUTES.studentLesson.path,
   studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
   studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,

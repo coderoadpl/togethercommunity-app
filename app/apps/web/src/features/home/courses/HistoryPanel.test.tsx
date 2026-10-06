@@ -23,6 +23,60 @@ const version = (over: Record<string, unknown>) => ({
 });
 
 describe('HistoryPanel', () => {
+  it('pages through all lesson versions and returns to newer snapshots', async () => {
+    const offsets: number[] = [];
+    server.use(http.get('/api/courses/history', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('limit')).toBe('20');
+      const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+      offsets.push(offset);
+      const versions = Array.from({ length: offset === 0 ? 20 : 1 }, (_, index) => version({
+        id: `version-${21 - offset - index}`,
+        ordinal: 21 - offset - index,
+        entityKind: 'course_lesson', entityId: 'lesson-1', subjectKind: 'lesson', subjectName: 'Chapter 3',
+      }));
+      return HttpResponse.json({ ok: true, data: { versions } });
+    }));
+    renderWithProviders(<HistoryPanel lessonId="lesson-1" />);
+    expect(await screen.findByRole('button', { name: en.courses.historyOpenAria({ ordinal: 21 }) })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.pagination.previousPage })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: en.pagination.nextPage }));
+    expect(await screen.findByRole('button', { name: en.courses.historyOpenAria({ ordinal: 1 }) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.courses.historyOpenAria({ ordinal: 21 }) })).not.toBeInTheDocument();
+    expect(screen.getByText(en.courses.historyPage({ page: 2 }))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.pagination.nextPage })).toBeDisabled();
+    expect(offsets).toEqual([0, 20]);
+    await userEvent.click(screen.getByRole('button', { name: en.pagination.previousPage }));
+    expect(await screen.findByRole('button', { name: en.courses.historyOpenAria({ ordinal: 21 }) })).toBeInTheDocument();
+  });
+
+  it('opens a lesson snapshot with its reader edition controls', async () => {
+    const lessonVersion = version({
+      entityKind: 'course_lesson', entityId: 'lesson-1', subjectKind: 'lesson', subjectName: 'Chapter 3',
+      edition: { versionId: 'version-1', number: '2', note: 'Revised examples', markedAt: '2026-10-01T00:00:00.000Z' },
+    });
+    server.use(
+      http.get('/api/courses/history', ({ request }) => {
+        expect(new URL(request.url).searchParams.get('lessonId')).toBe('lesson-1');
+        return HttpResponse.json({ ok: true, data: { versions: [lessonVersion] } });
+      }),
+      http.get('/api/courses/history/version', () => HttpResponse.json({
+        ok: true,
+        data: {
+          version: { ...lessonVersion, currentSchemaVersion: 4, payload: {} },
+          preview: { fields: [{ name: 'title', value: { kind: 'text', value: 'Chapter 3' } }] },
+          current: null,
+          changedFields: [],
+        },
+      })),
+    );
+    renderWithProviders(<HistoryPanel lessonId="lesson-1" />);
+    expect(await screen.findByText((content) => content.includes(en.courses.historySubjectLesson({ name: 'Chapter 3' })))).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.courses.historyOpenAria({ ordinal: 1 }) }));
+    expect(await screen.findByRole('textbox', { name: en.courses.editionNumber })).toHaveValue('2');
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue('Revised examples');
+    expect(screen.getByRole('button', { name: en.courses.editionUnmark })).toBeEnabled();
+  });
+
   it('labels entries by their ordinal and keeps the schema version as fine print', async () => {
     server.use(
       http.get('/api/courses/history', ({ request }) => {

@@ -134,3 +134,5 @@ export * from './usecases/operator-tenant-readiness.js';
 
 export * from './download-copy-ports.js';
 export * from './usecases/download-copies.js';
+
+export * from './usecases/lesson-editions.js';

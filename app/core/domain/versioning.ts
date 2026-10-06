@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { lessonEditionSchema } from './lesson-editions.js';
+
 import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.js';
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
@@ -287,7 +289,9 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
 // --- read-surface DTOs -----------------------------------------------------
 
 export const courseHistoryQuerySchema = z.object({
-  courseId: z.string().min(1),
+  courseId: z.string().min(1).optional(),
+  lessonId: z.string().min(1).optional(),
+  offset: z.coerce.number().int().nonnegative().default(0),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
@@ -301,12 +305,13 @@ export const entityHistoryEntrySchema = z.object({
   schemaVersion: z.number().int().positive(),
   createdAt: z.string().datetime(),
   createdBy: z.string().nullable(),
+  edition: lessonEditionSchema.nullable().optional(),
 });
 
 export type EntityHistoryEntry = z.infer<typeof entityHistoryEntrySchema>;
 
 export const courseHistoryEntrySchema = entityHistoryEntrySchema.extend({
-  subjectKind: z.enum(['course', 'module']),
+  subjectKind: z.enum(['course', 'module', 'lesson']),
   subjectName: z.string().min(1),
   createdByDisplayName: z.string().min(1).nullable(),
 });

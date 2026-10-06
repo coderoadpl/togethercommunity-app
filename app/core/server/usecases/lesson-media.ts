@@ -1,5 +1,7 @@
 import {
   bunnyEmbedUrl,
+  err,
+  notFound,
   ok,
   type AppError,
   type LessonBlock,
@@ -11,6 +13,7 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
+  LessonEditionRepository,
   AppErrorTelemetry,
   BunnyTokenSigner,
   StorageProvider,
@@ -18,8 +21,10 @@ import type {
   TenantSecretResolver,
 } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
+import { getLessonEdition } from './lesson-editions.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
+  lessonEditions?: LessonEditionRepository;
   telemetry?: AppErrorTelemetry;
   secretResolver: TenantSecretResolver;
   storage: StorageProvider;
@@ -67,10 +72,14 @@ export const getPlayableLesson = async (
   ctx: Ctx,
   lessonId: string,
   deps: PlayableLessonDeps,
+  editionNumber?: string,
 ): Promise<Result<PlayableCourseLesson, AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
-  const lesson = await getAccessibleLesson(ctx, lessonId, deps);
+  if (editionNumber !== undefined && deps.lessonEditions === undefined) return err(notFound('Lesson edition not found'));
+  const lesson = editionNumber !== undefined && deps.lessonEditions !== undefined
+    ? await getLessonEdition(ctx, lessonId, editionNumber, { ...deps, lessonEditions: deps.lessonEditions })
+    : await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
   const tenantId = ctx.identity.tenantId;
   if (tenantId === null) return lesson;
@@ -79,7 +88,10 @@ export const getPlayableLesson = async (
   if (contents.some((block) => block.type === 'video')) {
     const settings = await deps.tenants.findSettings(tenantId);
     const libraryId = settings?.bunnyStreamLibraryId ?? null;
-    if (libraryId !== null) {
+    const hasEditionLibrary = editionNumber !== undefined && contents.some(
+      (block) => block.type === 'video' && block.streamLibraryId !== undefined,
+    );
+    if (libraryId !== null || hasEditionLibrary) {
       const securityKey = await deps.secretResolver.resolve(tenantId, 'bunny.securityKey');
       const secretInvalid = !securityKey.ok && securityKey.error.code !== 'not_found';
       if (secretInvalid) deps.telemetry?.recordAppError(securityKey.error);
@@ -87,9 +99,11 @@ export const getPlayableLesson = async (
         const expires = Math.floor(Date.parse(deps.clock.nowIso()) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
         contents = contents.map((block): PlayableLessonBlock => {
           if (block.type !== 'video') return block;
+          const videoLibraryId = editionNumber === undefined ? libraryId : (block.streamLibraryId ?? libraryId);
+          if (videoLibraryId === null) return block;
           const embedUrl = securityKey.ok
-            ? signBunnyEmbedUrl(libraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
-            : bunnyEmbedUrl(libraryId, block.streamVideoId).toString();
+            ? signBunnyEmbedUrl(videoLibraryId, block, securityKey.value, expires, deps.bunnyTokenSigner)
+            : bunnyEmbedUrl(videoLibraryId, block.streamVideoId).toString();
           return { ...block, embedUrl };
         });
       }

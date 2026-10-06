@@ -1264,6 +1264,8 @@ export interface Messages {
     unknownLesson: string;
     sourceLesson: (params: { name: string }) => string;
     historyHeading: string;
+    historyPage: (params: { page: number }) => string;
+    historyEnd: string;
     historyLoading: string;
     historyEmpty: string;
     historyEmptyBody: string;
@@ -1273,6 +1275,18 @@ export interface Messages {
     historyEntrySchema: (params: { version: number }) => string;
     historySubjectCourse: (params: { name: string }) => string;
     historySubjectModule: (params: { name: string }) => string;
+    historySubjectLesson: (params: { name: string }) => string;
+    editionHeading: string;
+    editionNumber: string;
+    editionNote: string;
+    editionNumberConflict: string;
+    editionNumberHint: string;
+    editionMark: string;
+    editionUpdate: string;
+    editionUnmark: string;
+    editionSaved: string;
+    editionRemoved: string;
+    editionCurrentHint: string;
     historyOpenAria: (params: { ordinal: number }) => string;
     versionDialogTitle: (params: { ordinal: number }) => string;
     versionDialogSubtitle: (params: { date: string; author: string }) => string;
@@ -1689,6 +1703,11 @@ export interface Messages {
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
   lesson: {
+    editionLabel: (params: { number: string }) => string;
+    previousEditions: string;
+    editionMenu: string;
+    editionOlderWarning: string;
+    editionBackToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
     videoMissingLibrary: string;

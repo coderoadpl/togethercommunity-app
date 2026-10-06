@@ -18,6 +18,7 @@ import { ApiError } from '#core/client/index.js';
 import {
   groupLessonBlocks,
   headingIds,
+  lessonEditionNumberSchema,
   resolveVideoAutoplay,
   withVideoAutoplay,
   type LessonContentGroup,
@@ -46,6 +47,7 @@ import {
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
 } from '../../theme.js';
+import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
@@ -85,9 +87,9 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
   }
 };
 
-const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated }: { lessonId: string; storageKey: string; autoplay: boolean; authenticated: boolean }) => {
+const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editionNumber }: { lessonId: string; storageKey: string; autoplay: boolean; authenticated: boolean; editionNumber?: string | undefined }) => {
   const t = useTranslations();
-  const playback = useQuery({ ...actions.studentLessonPlayback(lessonId), enabled: authenticated });
+  const playback = useQuery({ ...actions.studentLessonPlayback(lessonId, editionNumber), enabled: authenticated });
   if (!authenticated) return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
   const video = playback.data?.videos.find((video) => video.kind !== 'external' && video.storageKey === storageKey);
   if (video?.kind === 'bunny') {
@@ -107,11 +109,11 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated }: { l
   return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
 };
 
-const BlockBody = ({ block, autoplay, lessonId, authenticated, html }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined }) => {
+const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
-      return <UnavailableVideo key={lessonId} lessonId={lessonId} storageKey={block.storageKey} autoplay={autoplay} authenticated={authenticated} />;
+      return <UnavailableVideo key={lessonId} lessonId={lessonId} storageKey={block.storageKey} autoplay={autoplay} authenticated={authenticated} editionNumber={editionNumber} />;
     }
     return (
       <LessonMediaEmbed
@@ -171,10 +173,10 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated, html }: { block: 
   return <RichTextContent html={html ?? block.html} data-testid="lesson-html" />;
 };
 
-const GroupBody = ({ group, autoplay, lessonId, authenticated, html }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined }) => {
+const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} />;
+      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -270,22 +272,31 @@ export const LessonPlayerPage = ({
   courseId,
   lessonId,
   threadRootPostId = null,
+  editionNumber,
 }: {
   courseId: string;
   lessonId: string;
   threadRootPostId?: string | null;
+  editionNumber?: string | undefined;
 }) => {
   const t = useTranslations();
-  const lesson = useQuery({
+  const invalidEdition = editionNumber !== undefined && !lessonEditionNumberSchema.safeParse(editionNumber).success;
+  const currentLesson = useQuery({
     ...actions.studentLesson(lessonId),
+    enabled: editionNumber === undefined,
     placeholderData: (previous) => previous,
   });
+  const edition = useQuery({
+    ...actions.studentLessonEdition(lessonId, editionNumber ?? ''),
+    enabled: editionNumber !== undefined && !invalidEdition,
+  });
+  const lesson = editionNumber === undefined ? currentLesson : edition;
   const queryClient = useQueryClient();
   const cachedMe = queryClient.getQueryData(actions.me.queryKey);
   const authenticated =
     lesson.data?.authenticated === true ||
     isForbidden(lesson.error) ||
-    (lesson.isPending && cachedMe !== undefined);
+    (!invalidEdition && lesson.isPending && cachedMe !== undefined);
   const me = useQuery({ ...actions.me, enabled: authenticated });
   const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
@@ -417,6 +428,17 @@ export const LessonPlayerPage = ({
     }
   }, [queryClient, nextLesson]);
 
+  if (invalidEdition || lesson.error instanceof ApiError && lesson.error.appError.code === 'not_found') {
+    return (
+      <MemberSurface
+        title={t.lesson.unavailable}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{ kind: 'not-found', title: t.errors.headingNotFound, body: t.errors.messageNotFound }}
+      />
+    );
+  }
+
   if (lesson.isPending) {
     return <CourseLoading />;
   }
@@ -507,6 +529,11 @@ export const LessonPlayerPage = ({
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
+      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onSelect={(number) => void navigate({
+        to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+        params: { courseId, lessonId, number },
+        search: threadRootPostId === null ? {} : { thread: threadRootPostId },
+      })} />}
     >
       <Box sx={{ minWidth: 0 }}>
         {transitioning ? (
@@ -516,6 +543,11 @@ export const LessonPlayerPage = ({
           />
         ) : (
           <>
+        {editionNumber === undefined ? null : <LessonEditionBanner onCurrent={() => void navigate({
+          to: '/my/courses/$courseId/lessons/$lessonId',
+          params: { courseId, lessonId },
+          search: threadRootPostId === null ? {} : { thread: threadRootPostId },
+        })} />}
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
@@ -554,7 +586,7 @@ export const LessonPlayerPage = ({
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} />
+                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />
               </Paper>
               );
             })
@@ -691,9 +723,13 @@ export const LessonPlayerPage = ({
                   focusThread: {
                     rootPostId: threadRootPostId,
                     onExit: () =>
-                      void navigate({
+                      void navigate(editionNumber === undefined ? {
                         to: '/my/courses/$courseId/lessons/$lessonId',
                         params: { courseId, lessonId },
+                        search: {},
+                      } : {
+                        to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+                        params: { courseId, lessonId, number: editionNumber },
                         search: {},
                       }),
                   },

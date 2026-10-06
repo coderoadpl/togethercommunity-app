@@ -21,7 +21,7 @@ The CLI creates the same keys: `pnpm run cli --tenant <slug> api-key create 'Mig
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
 - Every successful record write, including an `unchanged` result, is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates the journal so a leaked token can be investigated and cleaned up.
 
-- Every created or updated course, module, lesson, and product also stores a content version — the state the import wrote — in the same transaction as the write, so studio staff can read and restore it from the course change history. The version's author is the key's name, or `import` when the key has none. An `unchanged` record stores no version.
+- Every created or updated course, module, lesson, and product also stores a content version — the state the import wrote — in the same transaction as the write, so studio staff can read and restore it from the course change history. The version's author is the key's name, or `import` when the key has none. An `unchanged` record stores no ordinary version; an explicit edition may still mark its content or update an existing edition note.
 
 Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostname, or send the tenant slug in `x-tenant` on a shared host — the same as the [transactional e-mail API](transactional-m2m-email.md).
 
@@ -83,6 +83,21 @@ Records reference each other by `importKey`, never by Together ids. A reference 
 The display name is computed from `prefix` and `title`; it is never accepted as input. `courseKeys` must be unique. Chapter and content `id`s are stored verbatim and must be unique within the module — derive them from your source ids too. Each `lessonKey` must resolve or the record fails with `conflict`.
 
 ### Lesson
+
+A lesson may include `edition: { number: "2", note: "Updated examples" }`.
+The note is optional and limited to 200 characters. Numbers contain one to three
+dot-separated non-negative integers without leading zeros, with at most 12
+characters in total. They are unique within a lesson and sort numerically by
+segment. Omitting `edition` leaves ordinary content versions staff-only.
+The edition snapshot is marked in the same transaction as the lesson write.
+The existing draft-only import rules still apply; supplying an edition does not
+permit import updates to lessons reachable through published products.
+Re-importing an existing number updates its note without duplicating or replacing
+that edition's original content snapshot. Use a new number for a new edition.
+
+```json
+{"kind":"lesson","importKey":"lesson-chapter-3","name":"Chapter 3","isPreview":false,"contents":[{"type":"html","html":"<p>Revised content.</p>"}],"edition":{"number":"2.1","note":"Updated examples"}}
+```
 
 ```jsonl
 {"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"embed","embedUrl":"https://codesandbox.io/s/alert-demo-abc123","collapsed":true},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
@@ -351,3 +366,30 @@ Run through this before you call the migration done.
 6. **Spot-check the drafts.** Open a course in the panel and confirm module order, chapter structure, and lesson blocks of every type you use render correctly; check one product's access items against your source access rules.
 7. **Spot-check the people.** Verify one member per access tier has the grant they should have, and request one magic link or password reset for an imported member.
 8. **Close the door.** Revoke the import keys, and use the key's import audit to confirm the journal contains exactly what you expected.
+
+## Lesson history and reader editions
+
+In the studio lesson editor, save changes before marking the current content.
+Choose an edition number and an optional note in the edition control. The lesson
+history also lets staff preview and mark any stored lesson version. Unmarking
+hides the edition from readers while retaining its snapshot for staff history
+and restore. Ordinary saves and restores keep their existing behavior.
+
+Readers see a small edition badge beside the lesson title. When multiple
+editions exist, **Previous editions** in the overflow menu lists their numbers,
+marking dates, and notes, ordered numerically from newest edition number to
+oldest. Selecting one opens
+`/my/courses/<courseId>/lessons/<lessonId>/editions/<number>`, for example
+`/my/courses/course-1/lessons/lesson-1/editions/2.10`. Share this URL to link
+directly to the snapshot. The path preserves author-chosen numbers such as
+`2`, `2.0`, and `2.10` as distinct strings. Unknown or malformed edition numbers
+show the lesson not-found notice. This URL requires the same lesson access as
+current content, including free previews. Every explicit edition view shows a prominent warning and a
+return-to-current control, because even the highest numbered snapshot may
+precede ordinary edits. The return control opens the lesson URL without the
+`/editions/<number>` suffix.
+Discussion, progress, completion, and next-lesson navigation keep the lesson's
+identity. Unmarked snapshots are unavailable through reader APIs.
+
+The CLI exposes `course lesson-history`, `course mark-edition`,
+`course unmark-edition`, `student editions`, and `student edition`.

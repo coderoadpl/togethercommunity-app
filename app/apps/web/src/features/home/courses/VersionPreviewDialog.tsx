@@ -20,6 +20,8 @@ import { localizePanelError, useLanguage, useTranslations, type Messages } from 
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { BreakAnywhereText, CoverImageElement, Eyebrow, FinePrint, VersionDiffRow } from '../../../theme.js';
 
+import { LessonEditionEditor } from './LessonEditionEditor.js';
+
 type PreviewValue = VersionPreview['fields'][number]['value'];
 
 const FieldValue = ({ value, t, language }: { value: PreviewValue; t: Messages; language: string }) => {
@@ -194,6 +196,14 @@ export const VersionPreviewDialog = ({
                 <Alert severity="success">
                   {t.courses.versionRestoreDone({ ordinal: version.data.version.ordinal })}
                 </Alert>
+              ) : null}
+              {version.data.version.entityKind === 'course_lesson' ? (
+                <LessonEditionEditor
+                  key={`${version.data.version.id}-${version.data.version.edition?.number ?? ''}-${version.data.version.edition?.note ?? ''}`}
+                  lessonId={version.data.version.entityId}
+                  versionId={version.data.version.id}
+                  edition={version.data.version.edition ?? null}
+                />
               ) : null}
               {version.data.preview.fields.map((field) => (
                 <FieldRow

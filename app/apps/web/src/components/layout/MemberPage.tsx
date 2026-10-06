@@ -120,7 +120,7 @@ export const MemberPage = ({
               </Eyebrow>
             )}
           </Box>
-          {actions === undefined ? null : <Box sx={{ flexShrink: 0 }}>{actions}</Box>}
+          {actions === undefined ? null : <Box sx={{ flexShrink: 0, '&:empty': { display: 'none' } }}>{actions}</Box>}
         </Box>
       </MemberLedgerHeader>
 

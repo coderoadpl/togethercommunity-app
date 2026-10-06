@@ -1,6 +1,6 @@
 {
-  "hash": "e65a0da5c98c592ef6e1a3b01933b322b4cd45e2e574d861c69f0247decadc70",
-  "shortId": "e65a0da5c98c",
+  "hash": "77108d42c8675ba6c6d7c0c24e82b408429fa084fd891d3027e86829acf68262",
+  "shortId": "77108d42c867",
   "schema": {
     "constraints": [
       {
@@ -2346,6 +2346,11 @@
         "definition": "CREATE UNIQUE INDEX email_outbox_ses_message_id_uidx ON email_outbox USING btree (ses_message_id) WHERE (ses_message_id IS NOT NULL)",
         "name": "email_outbox_ses_message_id_uidx",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX entity_versions_lesson_edition_uidx ON entity_versions USING btree (tenant_id, entity_id, edition_number) WHERE ((entity_kind = 'course_lesson'::text) AND (edition_number IS NOT NULL))",
+        "name": "entity_versions_lesson_edition_uidx",
+        "table": "entity_versions"
       },
       {
         "definition": "CREATE UNIQUE INDEX erased_member_imports_tenant_legacy_uidx ON erased_member_imports USING btree (tenant_id, legacy_id) WHERE (legacy_id IS NOT NULL)",
@@ -10903,6 +10908,30 @@
             "generated": "",
             "identity": "",
             "name": "created_by",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "edition_marked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "edition_note",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "edition_number",
             "notNull": false,
             "type": "text"
           },

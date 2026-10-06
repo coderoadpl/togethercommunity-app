@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { lessonEditionInputSchema } from './lesson-editions.js';
+
 import { ERROR_CODES, type AppError } from './errors.js';
 import { chapterSchema, lessonBlockSchema } from './course.js';
 import { normalizeEmail } from './email.js';
@@ -132,6 +134,7 @@ export const importLessonRecordSchema = z
     isPreview: z.boolean(),
     durationMinutes: z.number().int().positive().optional(),
     contents: z.array(lessonBlockSchema),
+    edition: lessonEditionInputSchema.optional(),
   })
   .strict();
 

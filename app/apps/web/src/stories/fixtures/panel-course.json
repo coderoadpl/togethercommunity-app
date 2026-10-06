@@ -44,7 +44,7 @@
         }
       }
     },
-    "listContentHistory:[{\"courseId\":\"course-js\"}]": {
+    "listContentHistory:[{\"courseId\":\"course-js\",\"limit\":20}]": {
       "ok": true,
       "value": {
         "versions": []

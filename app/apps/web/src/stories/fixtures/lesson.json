@@ -666,6 +666,12 @@
         "attachments": []
       }
     },
+    "studentLessonEditions:[\"lesson-js-variables-1\"]": {
+      "ok": true,
+      "value": {
+        "editions": []
+      }
+    },
     "studentProgress:[\"course-js\"]": {
       "ok": true,
       "value": {

@@ -53,6 +53,7 @@ import { LinkIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
+import { useAnonymousSessionFallback } from './use-anonymous-session-fallback.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -60,6 +61,14 @@ const isUnauthorized = (error: Error | null) =>
 
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
+
+const useSideError = (error: Error | null, anonymous: boolean, success: boolean): Error | null => {
+  const retained = useRef<Error | null>(null);
+  if (!anonymous || error !== null || success) {
+    retained.current = anonymous && isUnauthorized(error) ? null : error;
+  }
+  return retained.current;
+};
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
 
@@ -293,10 +302,20 @@ export const LessonPlayerPage = ({
   const lesson = editionNumber === undefined ? currentLesson : edition;
   const queryClient = useQueryClient();
   const cachedMe = queryClient.getQueryData(actions.me.queryKey);
-  const authenticated =
+  const expired = useAnonymousSessionFallback(
+    lesson.data?.authenticated === false || lesson.isSuccess && [
+      actions.me.queryKey,
+      actions.tenantSettings.queryKey,
+      actions.courseStructure(courseId).queryKey,
+      actions.studentProgress(courseId).queryKey,
+      actions.studentLessonAttachments(lessonId).queryKey,
+    ].some((queryKey) => isUnauthorized(queryClient.getQueryState(queryKey)?.error ?? null)),
+    editionNumber === undefined ? actions.studentLesson(lessonId).queryKey : actions.studentLessonEdition(lessonId, editionNumber).queryKey,
+  );
+  const authenticated = !expired && (
     lesson.data?.authenticated === true ||
     isForbidden(lesson.error) ||
-    (!invalidEdition && lesson.isPending && cachedMe !== undefined);
+    (!invalidEdition && lesson.isPending && cachedMe !== undefined));
   const me = useQuery({ ...actions.me, enabled: authenticated });
   const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
@@ -306,6 +325,9 @@ export const LessonPlayerPage = ({
     ...actions.studentLessonAttachments(lessonId),
     enabled: authenticated && lesson.isSuccess,
   });
+  const tenantSettingsError = useSideError(tenantSettings.error, expired, tenantSettings.isSuccess);
+  const structureError = useSideError(structure.error, expired, structure.isSuccess);
+  const attachmentsError = useSideError(attachments.error, expired, attachments.isSuccess);
   const navigate = useNavigate();
   const redirectToLogin = useRedirectToLogin();
 
@@ -423,10 +445,10 @@ export const LessonPlayerPage = ({
 
   const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {
-    if (nextLesson !== null) {
+    if (authenticated && nextLesson !== null) {
       void queryClient.prefetchQuery(actions.studentLesson(nextLesson.lessonId));
     }
-  }, [queryClient, nextLesson]);
+  }, [authenticated, queryClient, nextLesson]);
 
   if (invalidEdition || lesson.error instanceof ApiError && lesson.error.appError.code === 'not_found') {
     return (
@@ -488,14 +510,13 @@ export const LessonPlayerPage = ({
     return <CourseLoading />;
   }
 
-  const videoAutoplay = tenantSettings.data === undefined
+  const videoAutoplay = !authenticated || tenantSettings.data === undefined
     ? false
     : resolveVideoAutoplay(
         tenantSettings.data.settings,
         me.data?.tenant?.videoAutoplay ?? null,
       );
-  const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
-    .some((query) => query.isError);
+  const hasSideErrors = tenantSettingsError !== null || structureError !== null || attachmentsError !== null || complete.isError || uncomplete.isError;
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
@@ -550,9 +571,9 @@ export const LessonPlayerPage = ({
         })} />}
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
-            {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
-            {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
-            {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
+            {tenantSettingsError !== null ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettingsError, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
+            {structureError !== null ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structureError, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
+            {attachmentsError !== null ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachmentsError, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
             {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
             {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>
@@ -593,7 +614,7 @@ export const LessonPlayerPage = ({
           )}
         </Stack>
 
-        {attachments.isSuccess && attachments.data.attachments.length > 0 ? (
+        {authenticated && attachments.isSuccess && attachments.data.attachments.length > 0 ? (
           <SectionCard title={t.lesson.attachmentsHeading} data-testid="lesson-attachments">
             <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
               {attachments.data.attachments.map((attachment) => (

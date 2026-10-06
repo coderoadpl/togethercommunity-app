@@ -4,7 +4,8 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -12,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -234,13 +236,16 @@ const anonCoursePage = (imageUrl: string | null, offer: NonNullable<CourseStruct
   );
 };
 
-const renderPage = async (node: ReactNode) => {
+const renderPage = async (node: ReactNode, queryClient?: QueryClient) => {
   const rootRoute = createRootRoute({ component: () => node });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/my/courses/course-1'] }),
   });
   await router.load();
+  if (queryClient !== undefined) {
+    return { queryClient, ...render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>) };
+  }
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
@@ -554,6 +559,40 @@ describe('CourseStructurePage', () => {
     expect(screen.getByText(en.courseTree.courseNotInLibrary)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it('falls back to the public course after a cached session expires', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    server.use(okMe());
+    await queryClient.fetchQuery(actions.me);
+    anonCoursePage(null);
+    let resolveIdentity: (response: Response) => void = () => undefined;
+    const identityResponse = new Promise<Response>((resolve) => { resolveIdentity = resolve; });
+    server.use(
+      http.get('/api/me', async () => (await identityResponse).clone()),
+      http.get('/api/student/courses/:courseId/structure', () => HttpResponse.json(
+        { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } }, { status: 401 },
+      )),
+      http.get('/api/student/progress', () => HttpResponse.json(
+        { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } }, { status: 401 },
+      )),
+      http.get('/api/student/courses', () => HttpResponse.json(
+        { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } }, { status: 401 },
+      )),
+    );
+
+    await renderPage(<CourseStructurePage courseId="course-1" />, queryClient);
+    expect(await screen.findByTestId('anon-course-program')).toBeInTheDocument();
+    await act(async () => resolveIdentity(HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } }, { status: 401 },
+    )));
+
+    expect(await screen.findByTestId('anon-course-program')).toBeInTheDocument();
+    expect(screen.queryAllByText(en.errors.messageUnauthorized)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(queryClient.getQueryData(actions.me.queryKey)).toBeUndefined();
+    expect(queryClient.getQueryData(actions.courseStructure('course-1').queryKey)).toBeUndefined();
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {

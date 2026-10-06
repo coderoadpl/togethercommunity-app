@@ -65,6 +65,15 @@ describe('refresh error policy', () => {
     unsubscribe();
   });
 
+  it.each(['unauthorized', 'internal'] as const)('clears only an unauthorized toast when stale identity is removed (%s)', (code) => {
+    queryClient.setQueryData(['me'], { userId: 'u1' });
+    refreshToastStore.show(code);
+
+    queryClient.removeQueries({ queryKey: ['me'], exact: true });
+
+    expect(refreshToastStore.snapshot()).toEqual(code === 'unauthorized' ? null : { code });
+  });
+
   it('does not show a toast when the initial load fails', async () => {
     await expect(
       queryClient.fetchQuery({

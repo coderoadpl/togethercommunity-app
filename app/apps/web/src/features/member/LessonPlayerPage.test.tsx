@@ -7,7 +7,8 @@ import {
   useParams,
   useSearch,
 } from '@tanstack/react-router';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -28,8 +29,10 @@ import { updateLastViewedInputSchema } from '#core/domain/index.js';
 import { DocumentTitleProvider } from '../../components/layout/document-title.js';
 import { actions } from '../../api.js';
 import { StartPage } from './StartPage.js';
+import { MemberShell } from './shell/MemberShell.js';
 import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
@@ -155,14 +158,21 @@ const stubMobileViewport = () => {
   }));
 };
 
-const renderPage = async (node: ReactNode) => {
-  const rootRoute = createRootRoute({ component: () => node });
+const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = false) => {
+  const rootRoute = createRootRoute({ component: shell ? () => <MemberShell hostname="acme.localhost" /> : () => node });
+  const routeTree = shell ? rootRoute.addChildren([createRoute({
+    getParentRoute: () => rootRoute, path: '/my/courses/course-1/lessons/l1', component: () => node,
+  })]) : rootRoute;
   const router = createRouter({
-    routeTree: rootRoute,
+    routeTree,
     history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  const page = shell ? <ThemeModeProvider><RouterProvider router={router} /></ThemeModeProvider> : <RouterProvider router={router} />;
+  if (queryClient !== undefined) {
+    return { queryClient, ...render(<QueryClientProvider client={queryClient}>{page}</QueryClientProvider>) };
+  }
+  return renderWithProviders(page);
 };
 
 describe('LessonPlayerPage', () => {
@@ -722,6 +732,124 @@ describe('LessonPlayerPage', () => {
       'html',
       'links',
     ]);
+  });
+
+  it.each([false, true])('drops a lapsed cached session when a preview resolves as anonymous (shell: %s)', async (shell) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    await queryClient.fetchQuery(actions.me);
+    queryClient.setQueryData(actions.studentCourses.queryKey, { courses: [] });
+    let resolveResponse: (response: Response) => void = () => undefined;
+    const response = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    let settingsRequests = 0;
+    let structureRequests = 0;
+    let releaseIdentity: () => void = () => undefined;
+    const identityReady = new Promise<void>((resolve) => { releaseIdentity = resolve; });
+    const rejectMember = () => HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
+      { status: 401 },
+    );
+    server.use(
+      http.get('/api/student/lessons/:lessonId', async () => (await response).clone()),
+      http.get('/api/me', async () => { await identityReady; return rejectMember(); }),
+      http.get('/api/public/navigation', () => HttpResponse.json({
+        ok: true, data: { navigation: { spaces: [], courses: [], lockedSpaces: [], defaultHomeSpaceId: null } },
+      })),
+      http.get('/api/public/offer', () => HttpResponse.json({
+        ok: true, data: { tenant: { slug: 'acme', name: 'Acme', socialLinks: [] }, products: [], contentVersion: 1 },
+      })),
+      http.get('/api/notifications/unread-count', () => HttpResponse.json({ ok: true, data: { unread: 0 } })),
+      http.get('/api/tenant/settings', () => { settingsRequests += 1; return rejectMember(); }),
+      http.get('/api/student/courses/:courseId/structure', () => { structureRequests += 1; return rejectMember(); }),
+      http.get('/api/student/progress', rejectMember),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />, queryClient, shell);
+    await waitFor(() => expect(settingsRequests).toBeGreaterThan(0));
+    await waitFor(() => expect(structureRequests).toBeGreaterThan(0));
+    await act(async () => resolveResponse(HttpResponse.json({
+      ok: true,
+      data: { lesson: { ...lesson([{ type: 'html', html: '<p>Preview body</p>' }]), isPreview: true }, authenticated: false },
+    })));
+
+    await act(async () => releaseIdentity());
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
+    if (shell) expect(await screen.findByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryAllByText(en.errors.messageUnauthorized)).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
+    await waitFor(() => expect(queryClient.getQueryData(actions.me.queryKey)).toBeUndefined());
+    expect(queryClient.getQueryData(actions.studentCourses.queryKey)).toBeUndefined();
+    expect(queryClient.getQueryData(actions.studentLesson('l1').queryKey)).toBeDefined();
+  });
+
+  it('keeps genuine member-query failures visible after falling back to a preview', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    await queryClient.fetchQuery(actions.me);
+    let resolveResponse: (response: Response) => void = () => undefined;
+    const response = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    server.use(
+      http.get('/api/student/lessons/:lessonId', async () => (await response).clone()),
+      http.get('/api/tenant/settings', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'Settings unavailable' } }, { status: 500 },
+      )),
+      okStructure(), okProgress(),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />, queryClient);
+    await waitFor(() => expect(queryClient.getQueryState(actions.tenantSettings.queryKey)?.status).toBe('error'));
+    await act(async () => resolveResponse(HttpResponse.json({
+      ok: true, data: { lesson: { ...lesson([{ type: 'html', html: '<p>Preview body</p>' }]), isPreview: true }, authenticated: false },
+    })));
+
+    await waitFor(() => expect(queryClient.getQueryData(actions.me.queryKey)).toBeUndefined());
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
+    expect(screen.getByText(en.errors.messageInternal)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.common.retry })).toBeInTheDocument();
+    expect(queryClient.getQueryData(actions.tenantSettings.queryKey)).toBeUndefined();
+  });
+
+  it('keeps the optimistic member queries while a valid session lesson loads', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    const identity = await queryClient.fetchQuery(actions.me);
+    let resolveResponse: (response: Response) => void = () => undefined;
+    const response = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    server.use(http.get('/api/student/lessons/:lessonId', async () => (await response).clone()), okStructure(), okProgress());
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />, queryClient);
+    await waitFor(() => expect(queryClient.getQueryState(actions.courseStructure('course-1').queryKey)?.status).toBe('success'));
+    expect(screen.queryByTestId('lesson-html')).not.toBeInTheDocument();
+    expect(queryClient.getQueryData(actions.me.queryKey)).toEqual(identity);
+    await act(async () => resolveResponse(HttpResponse.json({
+      ok: true, data: { lesson: lesson([{ type: 'html', html: '<p>Member body</p>' }]), authenticated: true },
+    })));
+
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Member body');
+    expect(await screen.findByTestId('mark-complete')).toBeInTheDocument();
+    expect(screen.queryAllByText(en.errors.messageUnauthorized)).toHaveLength(0);
+    expect(queryClient.getQueryData(actions.me.queryKey)).toEqual(identity);
+  });
+
+  it('redirects a guest on a non-preview lesson to sign in', async () => {
+    server.use(http.get('/api/student/lessons/:lessonId', () => HttpResponse.json(
+      { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } }, { status: 401 },
+    )));
+    const root = createRootRoute();
+    const lessonRoute = createRoute({
+      getParentRoute: () => root, path: '/my/courses/course-1/lessons/l1',
+      component: () => <LessonPlayerPage courseId="course-1" lessonId="l1" />,
+    });
+    const loginRoute = createRoute({ getParentRoute: () => root, path: '/login', component: () => <p>{en.auth.signInLink}</p> });
+    const router = createRouter({
+      routeTree: root.addChildren([lessonRoute, loginRoute]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    expect(await screen.findByText(en.auth.signInLink)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+    expect(router.state.location.searchStr).toContain('returnTo=');
   });
 
   it('renders an anonymous preview without member-only requests or controls', async () => {

@@ -37,6 +37,13 @@ const queryCache = new QueryCache({
   },
 });
 
+queryCache.subscribe((event) => {
+  if (
+    event.type === 'removed' && event.query.queryKey.length === 1 && event.query.queryKey[0] === 'me' &&
+    refreshToastStore.snapshot()?.code === 'unauthorized'
+  ) refreshToastStore.dismiss();
+});
+
 /**
  * The one QueryClient, created at module scope. Application code reaches it via
  * `useQueryClient()`; only the composition root imports this singleton.

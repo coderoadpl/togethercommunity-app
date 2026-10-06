@@ -223,7 +223,7 @@ describe('LessonPlayerPage', () => {
     server.use(okLesson([]), okStructure(), okProgress(),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ versionId: 'v1', number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
       })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -242,7 +242,7 @@ describe('LessonPlayerPage', () => {
       })),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ versionId: 'v1', number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
       })),
       http.get('/api/discussion', ({ request }) => {
         discussions.push(new URL(request.url).searchParams.get('contextId') ?? '');

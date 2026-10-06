@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import type { ListItemButtonProps } from '@mui/material/ListItemButton';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
@@ -3773,6 +3773,13 @@ export const LessonMediaIframe = styled('iframe')({
   border: 0,
   display: 'block',
 });
+
+export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
+  '&.MuiAlert-colorWarning': {
+    backgroundColor: theme.palette.warning.main,
+    color: theme.palette.warning.contrastText,
+  },
+}));
 
 export const LessonPlaceholder = styled(Box)(({ theme }) => ({
   display: 'flex',

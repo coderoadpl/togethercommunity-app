@@ -671,6 +671,18 @@
         }
       }
     },
+    "staffLessonHistory:[\"lesson-js-variables-1\",0,1]": {
+      "ok": true,
+      "value": {
+        "versions": []
+      }
+    },
+    "staffLessonHistory:[\"lesson-js-variables-1\",0,20]": {
+      "ok": true,
+      "value": {
+        "versions": []
+      }
+    },
     "unreadNotificationCount:[]": {
       "ok": true,
       "value": {

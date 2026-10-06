@@ -223,6 +223,12 @@
         "attachments": []
       }
     },
+    "studentLessonEditions:[\"lesson-acme-intro\"]": {
+      "ok": true,
+      "value": {
+        "editions": []
+      }
+    },
     "studentProgress:[\"course-acme\"]": {
       "ok": true,
       "value": {
@@ -261,12 +267,6 @@
         "message": "Network error calling /api/student/progress/last-viewed: TypeError: Failed to fetch"
       },
       "ok": false
-    },
-    "studentLessonEditions:[\"lesson-acme-intro\"]": {
-      "ok": true,
-      "value": {
-        "editions": []
-      }
     }
   },
   "principal": "kontakt+smoke-member@togethercommunity.app",

@@ -9,17 +9,19 @@ import { Eyebrow, FinePrint } from '../../../theme.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { VersionPreviewDialog } from './VersionPreviewDialog.js';
 
+const HISTORY_PAGE_SIZE = 20;
+
 export const HistoryPanel = (input: { courseId: string } | { lessonId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const [offset, setOffset] = useState(0);
   const [openVersionId, setOpenVersionId] = useState<string | null>(null);
   const courseHistory = useQuery({
-    ...actions.contentHistory({ courseId: 'courseId' in input ? input.courseId : '' }),
+    ...actions.contentHistory({ courseId: 'courseId' in input ? input.courseId : '', limit: HISTORY_PAGE_SIZE }),
     enabled: 'courseId' in input,
   });
   const lessonHistory = useQuery({
-    ...actions.staffLessonHistory('lessonId' in input ? input.lessonId : '', offset),
+    ...actions.staffLessonHistory('lessonId' in input ? input.lessonId : '', offset, HISTORY_PAGE_SIZE),
     enabled: 'lessonId' in input,
   });
   const history = 'lessonId' in input ? lessonHistory : courseHistory;
@@ -68,13 +70,13 @@ export const HistoryPanel = (input: { courseId: string } | { lessonId: string })
           </List>
         </>
       )}
-      {'lessonId' in input && (offset > 0 || (history.data?.versions.length ?? 0) === 20) ? (
+      {'lessonId' in input && (offset > 0 || (history.data?.versions.length ?? 0) === HISTORY_PAGE_SIZE) ? (
         <Stack direction="row" useFlexGap spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button disabled={offset === 0 || history.isPending} onClick={() => setOffset((current) => Math.max(0, current - 20))}>
+          <Button disabled={offset === 0 || history.isPending} onClick={() => setOffset((current) => Math.max(0, current - HISTORY_PAGE_SIZE))}>
             {t.pagination.previousPage}
           </Button>
-          <Typography variant="caption" aria-live="polite">{t.courses.historyPage({ page: offset / 20 + 1 })}</Typography>
-          <Button disabled={history.isPending || (history.data?.versions.length ?? 0) < 20} onClick={() => setOffset((current) => current + 20)}>
+          <Typography variant="caption" aria-live="polite">{t.courses.historyPage({ page: offset / HISTORY_PAGE_SIZE + 1 })}</Typography>
+          <Button disabled={history.isPending || (history.data?.versions.length ?? 0) < HISTORY_PAGE_SIZE} onClick={() => setOffset((current) => current + HISTORY_PAGE_SIZE)}>
             {t.pagination.nextPage}
           </Button>
         </Stack>

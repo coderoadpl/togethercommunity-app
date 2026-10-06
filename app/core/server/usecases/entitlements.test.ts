@@ -1,9 +1,7 @@
-import { getLessonEdition, listLessonEditions, markLessonEdition, unmarkLessonEdition } from './lesson-editions.js';
-import { buildSnapshot } from '#core/domain/index.js';
-import type { EntityVersionRecord, LessonEditionRepository } from '../ports.js';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildSnapshot,
   capabilitiesForPrincipal,
   computeCourseModuleName,
   type Course,
@@ -21,6 +19,8 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  EntityVersionRecord,
+  LessonEditionRepository,
   MemberCourseProgressRepository,
   ProductGrantRepository,
   ProductRepository,
@@ -34,6 +34,7 @@ import {
   resolveMemberEntitlements,
   type CourseAccessDeps,
 } from './entitlements.js';
+import { getLessonEdition, listLessonEditions, markLessonEdition, unmarkLessonEdition } from './lesson-editions.js';
 
 const NOW = '1998-06-01T00:00:00.000Z';
 
@@ -826,6 +827,9 @@ describe('reader lesson editions', () => {
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await markLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps))
       .toMatchObject({ ok: true, value: { number: '1' } });
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({
+      ok: true, value: [{ number: '1', note: null, markedAt: NOW }],
+    });
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: true, value: { id: 'l4', name: 'Chapter 3 earlier', isPreview: false } });
     expect(await unmarkLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', number: '1' }, h.staffDeps)).toEqual({ ok: true, value: undefined });
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -857,5 +861,30 @@ describe('reader lesson editions', () => {
     expect(await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2', note: 'Current text' } }, h.staffDeps))
       .toMatchObject({ ok: true, value: { number: '2', note: 'Current text' } });
     expect(await getLessonEdition(staff, 'l4', '2', h.deps)).toMatchObject({ ok: true, value: { name: 'Lesson l4' } });
+  });
+
+  it.each([true, false])('reuses the latest version only when its payload matches current content: %s', async (matches) => {
+    const h = harness(deps([], []));
+    const snapshot = buildSnapshot('course_lesson', lesson('l4'));
+    if (!snapshot.ok) throw new Error(snapshot.error.message);
+    const latest = { ...h.version, ...snapshot.value, id: 'latest-version', ordinal: 2,
+      payload: matches ? Object.fromEntries(Object.entries(lesson('l4')).reverse()) : h.version.payload };
+    const staffDeps = { ...h.staffDeps, entityVersions: {
+      list: async (tenantId: string, query: { entityKind: string; entityId: string; limit: number }) => {
+        expect(tenantId).toBe('t1');
+        expect(query).toEqual({ entityKind: 'course_lesson', entityId: 'l4', limit: 1 });
+        return [latest];
+      },
+      findById: async (tenantId: string, versionId: string) => {
+        expect(tenantId).toBe('t1');
+        expect(versionId).toBe(latest.id);
+        return latest;
+      },
+    } };
+    expect(await markLessonEdition(ctx({ staffRole: 'owner' }), {
+      lessonId: 'l4', edition: { number: '2' },
+    }, staffDeps)).toMatchObject({
+      ok: true, value: { versionId: matches ? 'latest-version' : 'current-version' },
+    });
   });
 });

@@ -18,6 +18,7 @@ import { ApiError } from '#core/client/index.js';
 import {
   groupLessonBlocks,
   headingIds,
+  lessonEditionNumberSchema,
   resolveVideoAutoplay,
   withVideoAutoplay,
   type LessonContentGroup,
@@ -279,6 +280,7 @@ export const LessonPlayerPage = ({
   editionNumber?: string | undefined;
 }) => {
   const t = useTranslations();
+  const invalidEdition = editionNumber !== undefined && !lessonEditionNumberSchema.safeParse(editionNumber).success;
   const currentLesson = useQuery({
     ...actions.studentLesson(lessonId),
     enabled: editionNumber === undefined,
@@ -286,7 +288,7 @@ export const LessonPlayerPage = ({
   });
   const edition = useQuery({
     ...actions.studentLessonEdition(lessonId, editionNumber ?? ''),
-    enabled: editionNumber !== undefined,
+    enabled: editionNumber !== undefined && !invalidEdition,
   });
   const lesson = editionNumber === undefined ? currentLesson : edition;
   const queryClient = useQueryClient();
@@ -294,7 +296,7 @@ export const LessonPlayerPage = ({
   const authenticated =
     lesson.data?.authenticated === true ||
     isForbidden(lesson.error) ||
-    (lesson.isPending && cachedMe !== undefined);
+    (!invalidEdition && lesson.isPending && cachedMe !== undefined);
   const me = useQuery({ ...actions.me, enabled: authenticated });
   const tenantSettings = useQuery({ ...actions.tenantSettings, enabled: authenticated });
   const ownProgress = me.data !== undefined && me.data.impersonation === null;
@@ -426,6 +428,17 @@ export const LessonPlayerPage = ({
     }
   }, [queryClient, nextLesson]);
 
+  if (invalidEdition || lesson.error instanceof ApiError && lesson.error.appError.code === 'not_found') {
+    return (
+      <MemberSurface
+        title={t.lesson.unavailable}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{ kind: 'not-found', title: t.errors.headingNotFound, body: t.errors.messageNotFound }}
+      />
+    );
+  }
+
   if (lesson.isPending) {
     return <CourseLoading />;
   }
@@ -516,10 +529,10 @@ export const LessonPlayerPage = ({
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
-      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} onSelect={(number) => void navigate({
-        to: '/my/courses/$courseId/lessons/$lessonId',
-        params: { courseId, lessonId },
-        search: { ...(threadRootPostId === null ? {} : { thread: threadRootPostId }), edition: number },
+      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onSelect={(number) => void navigate({
+        to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+        params: { courseId, lessonId, number },
+        search: threadRootPostId === null ? {} : { thread: threadRootPostId },
       })} />}
     >
       <Box sx={{ minWidth: 0 }}>
@@ -710,10 +723,14 @@ export const LessonPlayerPage = ({
                   focusThread: {
                     rootPostId: threadRootPostId,
                     onExit: () =>
-                      void navigate({
+                      void navigate(editionNumber === undefined ? {
                         to: '/my/courses/$courseId/lessons/$lessonId',
                         params: { courseId, lessonId },
-                        search: editionNumber === undefined ? {} : { edition: editionNumber },
+                        search: {},
+                      } : {
+                        to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+                        params: { courseId, lessonId, number: editionNumber },
+                        search: {},
                       }),
                   },
                 })}

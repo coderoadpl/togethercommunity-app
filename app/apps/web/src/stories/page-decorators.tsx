@@ -76,6 +76,12 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
         validateSearch: validateLessonSearch,
         component: LessonPlayerRoute,
       }),
+      createRoute({
+        getParentRoute: () => shell,
+        path: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+        validateSearch: validateLessonSearch,
+        component: LessonPlayerRoute,
+      }),
       createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.communitySpace, component: SpaceFeedRoute }),
       createRoute({ getParentRoute: () => shell, path: '/account', validateSearch: validateAccountSearch, component: MemberAccountRoute }),
       createRoute({ getParentRoute: () => shell, path: '/community', component: CommunityRoute }),

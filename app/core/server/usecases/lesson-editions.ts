@@ -1,12 +1,12 @@
 import {
   appError, buildSnapshot, currentSnapshotParsers, err, lessonEditionNumberSchema,
-  markLessonEditionInputSchema, notFound, ok, readSnapshot, unmarkLessonEditionInputSchema, validation,
-  type AppError, type CourseLesson, type LessonEdition, type Result,
+  markLessonEditionInputSchema, notFound, ok, readSnapshot, snapshotPayloadsEqual, unmarkLessonEditionInputSchema, validation,
+  type AppError, type CourseLesson, type LessonEdition, type ReaderLessonEdition, type Result,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { Clock, CourseLessonRepository, EntityVersionRepository, IdGenerator, LessonEditionRepository } from '../ports.js';
+import type { Clock, CourseLessonRepository, EntityVersionRecord, EntityVersionRepository, IdGenerator, LessonEditionRepository } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface LessonEditionReadDeps extends CourseAccessDeps {
@@ -22,12 +22,13 @@ export interface LessonEditionWriteDeps {
 
 export const listLessonEditions = async (
   ctx: Ctx, lessonId: string, deps: LessonEditionReadDeps,
-): Promise<Result<LessonEdition[], AppError>> => {
+): Promise<Result<ReaderLessonEdition[], AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   const lesson = await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
-  return ok(await deps.lessonEditions.list(tenant.value, lessonId));
+  const editions = await deps.lessonEditions.list(tenant.value, lessonId);
+  return ok(editions.map(({ number, note, markedAt }) => ({ number, note, markedAt })));
 };
 
 export const getLessonEdition = async (
@@ -58,11 +59,21 @@ export const markLessonEdition = async (
   if (lesson === null) return err(notFound('Lesson not found'));
   const snapshot = buildSnapshot('course_lesson', lesson);
   if (!snapshot.ok) return snapshot;
-  const version = parsed.data.versionId === undefined ? {
-    id: deps.ids.nextId(), entityKind: 'course_lesson' as const, entityId: lesson.id,
-    schemaVersion: snapshot.value.schemaVersion, payload: snapshot.value.payload,
-    createdAt: deps.clock.nowIso(), createdBy: ctx.identity.userId,
-  } : await deps.entityVersions.findById(tenant.value, parsed.data.versionId);
+  let version: EntityVersionRecord | null;
+  if (parsed.data.versionId === undefined) {
+    const [latest] = await deps.entityVersions.list(tenant.value, {
+      entityKind: 'course_lesson', entityId: lesson.id, limit: 1,
+    });
+    const stored = latest === undefined ? null : await deps.entityVersions.findById(tenant.value, latest.id);
+    version = stored !== null && stored.schemaVersion === snapshot.value.schemaVersion &&
+      snapshotPayloadsEqual(stored.payload, snapshot.value.payload) ? stored : {
+        id: deps.ids.nextId(), entityKind: 'course_lesson', entityId: lesson.id,
+        schemaVersion: snapshot.value.schemaVersion, payload: snapshot.value.payload,
+        createdAt: deps.clock.nowIso(), createdBy: ctx.identity.userId,
+      };
+  } else {
+    version = await deps.entityVersions.findById(tenant.value, parsed.data.versionId);
+  }
   if (version === null || version.entityKind !== 'course_lesson' || version.entityId !== lesson.id) {
     return err(notFound('Lesson version not found'));
   }

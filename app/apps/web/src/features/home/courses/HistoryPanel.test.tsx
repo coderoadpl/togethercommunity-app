@@ -26,6 +26,7 @@ describe('HistoryPanel', () => {
   it('pages through all lesson versions and returns to newer snapshots', async () => {
     const offsets: number[] = [];
     server.use(http.get('/api/courses/history', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('limit')).toBe('20');
       const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
       offsets.push(offset);
       const versions = Array.from({ length: offset === 0 ? 20 : 1 }, (_, index) => version({

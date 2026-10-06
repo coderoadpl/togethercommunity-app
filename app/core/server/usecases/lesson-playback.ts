@@ -10,10 +10,10 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { AppErrorTelemetry, BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
+import type {
+  LessonEditionRepository, AppErrorTelemetry, BunnyTokenSigner, TenantRepository, TenantSecretResolver } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 import { getLessonEdition } from './lesson-editions.js';
-import type { LessonEditionRepository } from '../ports.js';
 
 export interface LessonPlaybackDeps extends CourseAccessDeps {
   lessonEditions?: LessonEditionRepository;

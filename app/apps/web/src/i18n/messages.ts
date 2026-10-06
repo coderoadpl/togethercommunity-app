@@ -1280,6 +1280,7 @@ export interface Messages {
     editionNumber: string;
     editionNote: string;
     editionNumberHint: string;
+    editionNumberConflict: string;
     editionMark: string;
     editionUpdate: string;
     editionUnmark: string;

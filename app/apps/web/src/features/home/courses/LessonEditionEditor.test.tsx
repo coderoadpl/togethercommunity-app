@@ -56,6 +56,16 @@ describe('LessonEditionEditor', () => {
     expect(await screen.findByText(en.courses.editionRemoved)).toBeInTheDocument();
   });
 
+  it('explains when another version already uses the edition number', async () => {
+    server.use(http.post('/api/courses/history/edition/mark', () => HttpResponse.json({
+      ok: false, error: { code: 'conflict', message: 'Edition number already exists for this lesson' },
+    }, { status: 409 })));
+    renderWithProviders(<LessonEditionEditor lessonId="lesson-1" edition={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: en.courses.editionNumber }), '2');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.editionMark }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.courses.editionNumberConflict);
+  });
+
   it('prevents marking while lesson edits are unsaved', () => {
     renderWithProviders(<LessonEditionEditor lessonId="lesson-1" edition={edition} disabled />);
     expect(screen.getByRole('button', { name: en.courses.editionUpdate })).toBeDisabled();

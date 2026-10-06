@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { Alert, AlertTitle, Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemButton, ListItemText, Menu, MenuItem, Stack, Typography } from '@mui/material';
+import { AlertTitle, Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, List, ListItem, ListItemButton, ListItemText, Menu, MenuItem, Stack, Typography } from '@mui/material';
 
 import { actions } from '../../api.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { LessonEditionWarning } from '../../theme.js';
 
-export interface ReaderEdition {
+interface ReaderEdition {
   number: string;
   note: string | null;
   markedAt: string;
@@ -67,19 +68,19 @@ export const LessonEditionMenu = ({ editions, onSelect }: { editions: readonly R
 export const LessonEditionBanner = ({ onCurrent }: { onCurrent: () => void }) => {
   const t = useTranslations();
   return (
-    <Alert severity="warning" variant="outlined" data-testid="lesson-edition-banner" sx={{ mb: '1.5rem', p: { xs: '1rem', sm: '1.5rem' } }}>
+    <LessonEditionWarning severity="warning" variant="filled" data-testid="lesson-edition-banner" sx={{ mb: '1.5rem', p: { xs: '1rem', sm: '1.5rem' } }}>
       <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
         <AlertTitle><Typography component="span" variant="h3">{t.lesson.editionOlderWarning}</Typography></AlertTitle>
         <Button variant="outlined" color="inherit" onClick={onCurrent}>{t.lesson.editionBackToCurrent}</Button>
       </Stack>
-    </Alert>
+    </LessonEditionWarning>
   );
 };
 
-export const LessonEditionControls = ({ lessonId, editionNumber, onSelect }: { lessonId: string; editionNumber?: string | undefined; onSelect: (number: string) => void }) => {
-  const editions = useQuery(actions.studentLessonEditions(lessonId));
+export const LessonEditionControls = ({ lessonId, editionNumber, enabled, onSelect }: { lessonId: string; editionNumber?: string | undefined; enabled: boolean; onSelect: (number: string) => void }) => {
+  const editions = useQuery({ ...actions.studentLessonEditions(lessonId), enabled });
   const displayedNumber = editionNumber ?? editions.data?.editions[0]?.number;
-  if (displayedNumber === undefined || editions.data === undefined) return null;
+  if (!enabled || displayedNumber === undefined || editions.data === undefined) return null;
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
       <LessonEditionBadge number={displayedNumber} />

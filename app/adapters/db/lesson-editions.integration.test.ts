@@ -24,7 +24,7 @@ describe('lesson edition persistence', () => {
   let db: Db;
   let close: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    const database = await createTestDatabase('together_lesson_editions', 'postgres://together:together@localhost:48912/together');
+    const database = await createTestDatabase('together_lesson_editions', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
     db = database.db;
     close = database.close;
     await db.insert(tenants).values({ id: TENANT, slug: 'editions', name: 'Workspace', createdAt: NOW });

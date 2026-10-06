@@ -13,6 +13,7 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
+  LessonEditionRepository,
   AppErrorTelemetry,
   BunnyTokenSigner,
   StorageProvider,
@@ -21,7 +22,6 @@ import type {
 } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 import { getLessonEdition } from './lesson-editions.js';
-import type { LessonEditionRepository } from '../ports.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
   lessonEditions?: LessonEditionRepository;

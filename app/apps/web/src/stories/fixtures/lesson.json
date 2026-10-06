@@ -666,6 +666,12 @@
         "attachments": []
       }
     },
+    "studentLessonEditions:[\"lesson-js-variables-1\"]": {
+      "ok": true,
+      "value": {
+        "editions": []
+      }
+    },
     "studentProgress:[\"course-js\"]": {
       "ok": true,
       "value": {
@@ -710,18 +716,6 @@
         "message": "Network error calling /api/student/progress/last-viewed: TypeError: Failed to fetch"
       },
       "ok": false
-    },
-    "studentLessonEditions:[\"lesson-js-variables-1\"]": {
-      "ok": true,
-      "value": {
-        "editions": []
-      }
-    },
-    "studentLessonEditions:[\"lesson-js-variables-2\"]": {
-      "ok": true,
-      "value": {
-        "editions": []
-      }
     }
   },
   "principal": "student.active@together.dev",

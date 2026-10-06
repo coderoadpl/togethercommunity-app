@@ -1,4 +1,3 @@
-import { lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput } from "#core/contract/index.js";
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
@@ -9,6 +8,7 @@ import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketing
 import { type z } from 'zod';
 
 import {
+  lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput,
   API_ROUTES,
   marketingDirectoryContracts,
   marketingSignupContracts,
@@ -1611,8 +1611,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
-  staffLessonHistory: (lessonId: string, offset = 0, signal?: AbortSignal) =>
-    request(options, API_ROUTES.coursesHistory.method, `${API_ROUTES.coursesHistory.path}?lessonId=${encodeURIComponent(lessonId)}&offset=${offset}`, contentHistoryOutputSchema, undefined, signal),
+  staffLessonHistory: (lessonId: string, offset = 0, signal?: AbortSignal, limit?: number) =>
+    request(options, API_ROUTES.coursesHistory.method, `${API_ROUTES.coursesHistory.path}?lessonId=${encodeURIComponent(lessonId)}&offset=${offset}${limit === undefined ? '' : `&limit=${limit}`}`, contentHistoryOutputSchema, undefined, signal),
   markLessonEdition: (input: MarkLessonEditionInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.lessonEditionMark.method, API_ROUTES.lessonEditionMark.path, lessonEditionOutputSchema, input, signal),
   unmarkLessonEdition: (input: UnmarkLessonEditionInput, signal?: AbortSignal) =>

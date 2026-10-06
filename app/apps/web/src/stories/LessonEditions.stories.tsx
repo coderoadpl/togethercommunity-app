@@ -4,6 +4,7 @@ import { userEvent, within } from 'storybook/test';
 
 import { LessonEditionBadge, LessonEditionBanner, LessonEditionMenu, LessonEditionsList } from '../features/member/LessonEditions.js';
 import { en } from '../i18n/en.js';
+import { useTranslations } from '../i18n/index.js';
 import { withAccountPreview } from './page-decorators.js';
 
 const editions = [
@@ -16,22 +17,25 @@ const meta = {
   title: 'Member/LessonEditions',
   decorators: [withAccountPreview],
   parameters: { locale: 'en', colorScheme: 'light' },
-  render: () => (
-    <Box data-testid="story-lesson-editions" sx={{ p: { xs: '1rem', sm: '2rem' }, maxWidth: '60rem', mx: 'auto' }}>
-      <Stack spacing={3}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-          <Typography variant="h1" sx={{ flexGrow: 1 }}>Chapter 3</Typography>
-          <LessonEditionBadge number="2.1" />
-          <LessonEditionMenu editions={editions} onSelect={() => undefined} />
+  render: function EditionPreview() {
+    const t = useTranslations();
+    return (
+      <Box data-testid="story-lesson-editions" sx={{ p: { xs: '1rem', sm: '2rem' }, maxWidth: '60rem', mx: 'auto' }}>
+        <Stack spacing={3}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography variant="h1" sx={{ flexGrow: 1 }}>Chapter 3</Typography>
+            <LessonEditionBadge number="2.1" />
+            <LessonEditionMenu editions={editions} onSelect={() => undefined} />
+          </Stack>
+          <LessonEditionBanner onCurrent={() => undefined} />
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="h2">{t.lesson.previousEditions}</Typography>
+            <LessonEditionsList editions={editions} onSelect={() => undefined} />
+          </Paper>
         </Stack>
-        <LessonEditionBanner onCurrent={() => undefined} />
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="h2">Previous editions</Typography>
-          <LessonEditionsList editions={editions} onSelect={() => undefined} />
-        </Paper>
-      </Stack>
-    </Box>
-  ),
+      </Box>
+    );
+  },
 } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;

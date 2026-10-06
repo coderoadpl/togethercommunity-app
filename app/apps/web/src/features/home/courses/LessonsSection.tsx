@@ -25,7 +25,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
 import {
+  buildSnapshot,
   groupLessonBlocks,
+  snapshotPayloadsEqual,
   inspectVideoEmbedUrl,
   lessonBlockSchema,
   type CourseLesson,
@@ -524,6 +526,17 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const queryClient = useQueryClient();
   const tenantSecrets = useQuery(actions.tenantSecrets);
   const references = useQuery({ ...actions.lessonReferences(lesson?.id ?? ''), enabled: lesson !== null });
+  const history = useQuery({ ...actions.staffLessonHistory(lesson?.id ?? '', 0, 1), enabled: lesson !== null });
+  const latestVersion = history.data?.versions[0];
+  const markedVersion = useQuery({
+    ...actions.contentVersion(latestVersion?.id ?? ''),
+    enabled: latestVersion?.edition != null,
+  });
+  const savedSnapshot = lesson === null ? null : buildSnapshot('course_lesson', lesson);
+  const currentEdition = savedSnapshot?.ok && latestVersion?.edition != null && markedVersion.data !== undefined
+    && latestVersion?.id === markedVersion.data.version.id
+    && snapshotPayloadsEqual(savedSnapshot.value.payload, markedVersion.data.version.payload)
+    ? latestVersion.edition : null;
   const [name, setName] = useState(lesson?.name ?? '');
   const [duration, setDuration] = useState(
     lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
@@ -742,7 +755,12 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           <Divider />
           <LessonAttachmentsEditor lessonId={lesson.id} />
           <Divider />
-          <LessonEditionEditor lessonId={lesson.id} edition={null} disabled={dirty || pending} />
+          <LessonEditionEditor
+            key={`${lesson.id}-${currentEdition?.number ?? ''}-${currentEdition?.note ?? ''}`}
+            lessonId={lesson.id}
+            edition={currentEdition}
+            disabled={dirty || pending || !history.isSuccess || (latestVersion?.edition != null && !markedVersion.isSuccess)}
+          />
         </>
       )}
 

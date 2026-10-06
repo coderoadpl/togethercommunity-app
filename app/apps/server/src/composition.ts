@@ -1,5 +1,4 @@
-import { createLessonEditionRepository } from "#adapters/db/lesson-editions.js";
-import type { LessonEditionRepository } from "#core/server/index.js";
+import { createLessonEditionRepository } from '#adapters/db/lesson-editions.js';
 import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
 import { drainTelemetry } from '#core/server/telemetry/drain.js';
@@ -184,6 +183,7 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  LessonEditionRepository,
   ActivityReportRepository,
   AccountSecurityReader,
   AppErrorTelemetry,

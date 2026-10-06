@@ -598,6 +598,10 @@ const ENTITY_KIND_BY_IMPORT_KIND: Record<ImportContentKind, EntityKind> = {
   product: 'product',
 };
 
+/**
+ * The import records the state it writes, so a batch leaves the same readable
+ * trail as a studio edit. An unchanged record writes nothing unless it marks an edition.
+ */
 const versionFor = (
   prepared: PreparedContent,
   apiKey: TenantApiKey,

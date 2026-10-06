@@ -99,7 +99,6 @@ that edition's original content snapshot. Use a new number for a new edition.
 {"kind":"lesson","importKey":"lesson-chapter-3","name":"Chapter 3","isPreview":false,"contents":[{"type":"html","html":"<p>Revised content.</p>"}],"edition":{"number":"2.1","note":"Updated examples"}}
 ```
 
-
 ```jsonl
 {"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"embed","embedUrl":"https://codesandbox.io/s/alert-demo-abc123","collapsed":true},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
@@ -379,13 +378,16 @@ and restore. Ordinary saves and restores keep their existing behavior.
 Readers see a small edition badge beside the lesson title. When multiple
 editions exist, **Previous editions** in the overflow menu lists their numbers,
 marking dates, and notes, ordered numerically from newest edition number to
-oldest. Selecting one adds the router-encoded query `?edition=%222.1%22` to the
-existing lesson URL. The encoded quotes preserve author-chosen numbers such as
-`2` and `2.0` as distinct strings. Share the generated URL rather than rewriting
-the query as a JSON number. This URL requires the same lesson access as current content, including
-free previews. Every explicit edition view shows a prominent warning and a
+oldest. Selecting one opens
+`/my/courses/<courseId>/lessons/<lessonId>/editions/<number>`, for example
+`/my/courses/course-1/lessons/lesson-1/editions/2.10`. Share this URL to link
+directly to the snapshot. The path preserves author-chosen numbers such as
+`2`, `2.0`, and `2.10` as distinct strings. Unknown or malformed edition numbers
+show the lesson not-found notice. This URL requires the same lesson access as
+current content, including free previews. Every explicit edition view shows a prominent warning and a
 return-to-current control, because even the highest numbered snapshot may
-precede ordinary edits. Removing the query parameter returns to current content.
+precede ordinary edits. The return control opens the lesson URL without the
+`/editions/<number>` suffix.
 Discussion, progress, completion, and next-lesson navigation keep the lesson's
 identity. Unmarked snapshots are unavailable through reader APIs.
 

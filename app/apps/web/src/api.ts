@@ -1,9 +1,9 @@
-import { staffLessonHistoryQuery, markLessonEditionMutation, unmarkLessonEditionMutation } from "#core/client/index.js";
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
+  staffLessonHistoryQuery, markLessonEditionMutation, unmarkLessonEditionMutation,
   authConfigQuery,
   marketingDirectoryActions,
   apiKeysInvalidates,
@@ -430,7 +430,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   courses: coursesQuery(apiClient),
   createCourse: createCourseMutation(apiClient),
   updateCourse: updateCourseMutation(apiClient),
-  staffLessonHistory: (lessonId: string, offset = 0) => staffLessonHistoryQuery(apiClient, lessonId, offset),
+  staffLessonHistory: (lessonId: string, offset: number, limit: number) => staffLessonHistoryQuery(apiClient, lessonId, offset, limit),
   markLessonEdition: markLessonEditionMutation(apiClient),
   unmarkLessonEdition: unmarkLessonEditionMutation(apiClient),
   contentHistory: (input: { courseId: string; limit?: number }) =>

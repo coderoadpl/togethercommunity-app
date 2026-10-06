@@ -1,5 +1,3 @@
-import { markLessonEditionInputSchema, unmarkLessonEditionInputSchema } from "#core/contract/index.js";
-import { markLessonEdition, unmarkLessonEdition } from "#core/server/index.js";
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
@@ -18,6 +16,7 @@ import { type Context, type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
 
 import {
+  markLessonEditionInputSchema, unmarkLessonEditionInputSchema,
   API_KEY_HEADER,
   API_PATHS,
   apiKeyCreateInputSchema,
@@ -179,6 +178,7 @@ import {
   type AppError
 } from '#core/domain/index.js';
 import {
+  markLessonEdition, unmarkLessonEdition,
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,

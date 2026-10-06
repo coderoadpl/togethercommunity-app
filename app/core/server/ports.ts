@@ -1,5 +1,5 @@
-import type { LessonEdition, LessonEditionInput } from '#core/domain/index.js';
 import type {
+  LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
   AppError,

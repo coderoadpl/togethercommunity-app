@@ -1,5 +1,3 @@
-import { listLessonEditions } from "#core/server/index.js";
-import { lessonEditionsOutputSchema } from "#core/contract/index.js";
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
@@ -14,6 +12,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import {
+  lessonEditionsOutputSchema,
   API_PATHS,
   authResolveRequestSchema,
   checkoutSessionRequestSchema,
@@ -54,6 +53,7 @@ import {
   type Result
 } from '#core/domain/index.js';
 import {
+  listLessonEditions,
   authLinkBaseUrl,
   fulfillStripeWebhook,
   getPaymentConfig,

@@ -1,10 +1,14 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { actions } from '../../api.js';
+import { server } from '../../test/server.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
-import { LessonEditionBadge, LessonEditionBanner, LessonEditionMenu, LessonEditionsList } from './LessonEditions.js';
+import { LessonEditionBadge, LessonEditionBanner, LessonEditionControls, LessonEditionMenu, LessonEditionsList } from './LessonEditions.js';
 
 const editions = [
   { number: '10', note: 'Revised examples', markedAt: '2026-10-01T12:00:00.000Z' },
@@ -40,6 +44,17 @@ describe('lesson editions', () => {
     expect(items[0]).toHaveTextContent('Oct 1, 2026');
     expect(items[0]).toHaveTextContent('Revised examples');
     expect(items[1]).toHaveTextContent('Edition 2.1');
+  });
+
+  it('defers the editions request until lesson content has loaded successfully', async () => {
+    const reads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions } }));
+    server.use(http.get('/api/student/lessons/l1/editions', reads));
+    const view = renderWithProviders(<LessonEditionControls lessonId="l1" enabled={false} onSelect={vi.fn()} />);
+    expect(view.queryClient.getQueryState(actions.studentLessonEditions('l1').queryKey)?.fetchStatus).toBe('idle');
+    expect(reads).not.toHaveBeenCalled();
+    view.rerender(<QueryClientProvider client={view.queryClient}><LessonEditionControls lessonId="l1" enabled onSelect={vi.fn()} /></QueryClientProvider>);
+    expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent('Edition 10');
+    expect(reads).toHaveBeenCalledOnce();
   });
 
   it('prominently warns about historical content and returns to the current lesson', async () => {

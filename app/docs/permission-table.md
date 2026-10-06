@@ -755,7 +755,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:21` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:20` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:191` | `authenticateApiKey,` |
 | api-key | `apps/server/src/internal-app.ts:1180` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
 | api-key | `apps/server/src/internal-app.ts:1182` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |

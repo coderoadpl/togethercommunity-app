@@ -1403,6 +1403,7 @@ export const pl: Messages = {
     editionHeading: 'Wydanie dla czytelników',
     editionNumber: 'Numer wydania',
     editionNote: 'Notatka do wydania (opcjonalna)',
+    editionNumberConflict: 'Ten numer wydania jest już używany przez inną wersję tej lekcji.',
     editionNumberHint: 'Wpisz do trzech liczb oddzielonych kropkami, bez zer na początku.',
     editionMark: 'Oznacz jako wydanie',
     editionUpdate: 'Zaktualizuj wydanie',

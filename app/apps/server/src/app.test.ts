@@ -5933,7 +5933,9 @@ describe('free lesson preview route', () => {
     const editionPath = API_PATHS.studentLessonEdition.replace(':lessonId', preview.id);
     const listed = await makeApp(true).request(listPath, { headers });
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toMatchObject({ data: { editions: [edition] } });
+    expect(await listed.json()).toEqual({ ok: true, data: { editions: [{
+      number: edition.number, note: edition.note, markedAt: edition.markedAt,
+    }] } });
     const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
     expect(opened.status).toBe(200);
     expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });

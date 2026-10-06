@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { ApiError } from '#core/client/index.js';
 import { lessonEditionNumberSchema } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -32,6 +33,8 @@ export const LessonEditionEditor = ({
   const pending = mark.isPending || unmark.isPending;
   const validNumber = lessonEditionNumberSchema.safeParse(number).success;
   const error = mark.error ?? unmark.error;
+  const errorMessage = mark.error instanceof ApiError && mark.error.appError.code === 'conflict'
+    ? t.courses.editionNumberConflict : localizePanelError(error, t);
 
   return (
     <Stack spacing={1.5} data-testid="lesson-edition-editor">
@@ -72,7 +75,7 @@ export const LessonEditionEditor = ({
           </Button>
         )}
       </Stack>
-      {error === null ? null : <Alert severity="error">{localizePanelError(error, t)}</Alert>}
+      {error === null ? null : <Alert severity="error">{errorMessage}</Alert>}
       {mark.isSuccess ? <Alert severity="success">{t.courses.editionSaved}</Alert> : null}
       {unmark.isSuccess ? <Alert severity="success">{t.courses.editionRemoved}</Alert> : null}
     </Stack>

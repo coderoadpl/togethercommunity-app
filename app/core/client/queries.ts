@@ -1,4 +1,3 @@
-import type { MarkLessonEditionInput, UnmarkLessonEditionInput } from "#core/contract/index.js";
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
@@ -13,6 +12,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  MarkLessonEditionInput, UnmarkLessonEditionInput,
   AccountSessionRevokeInput,
   CourseCreateInput,
   ApiKeyCreateInput,
@@ -1079,8 +1079,8 @@ export const contentHistoryQuery = (
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 
-export const staffLessonHistoryQuery = (api: ApiClient, lessonId: string, offset = 0) =>
-  defineQuery({ queryKey: [...contentHistoryScopes.all(), 'lesson', lessonId, offset], call: ({ signal }) => api.staffLessonHistory(lessonId, offset, signal) });
+export const staffLessonHistoryQuery = (api: ApiClient, lessonId: string, offset: number, limit: number) =>
+  defineQuery({ queryKey: [...contentHistoryScopes.all(), 'lesson', lessonId, offset, limit], call: ({ signal }) => api.staffLessonHistory(lessonId, offset, signal, limit) });
 
 export const markLessonEditionMutation = (api: ApiClient) =>
   defineMutation({ mutationKey: [...contentHistoryScopes.all(), 'mark-edition'], call: (input: MarkLessonEditionInput) => api.markLessonEdition(input) });

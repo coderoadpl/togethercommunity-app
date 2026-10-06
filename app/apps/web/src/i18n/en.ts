@@ -1389,6 +1389,7 @@ export const en: Messages = {
     editionHeading: 'Reader edition',
     editionNumber: 'Edition number',
     editionNote: 'Edition note (optional)',
+    editionNumberConflict: 'This edition number is already used by another version of this lesson.',
     editionNumberHint: 'Use up to three numbers separated by dots, without leading zeros.',
     editionMark: 'Mark as edition',
     editionUpdate: 'Update edition',

@@ -536,12 +536,6 @@
       "value": {
         "unread": 0
       }
-    },
-    "studentLessonEditions:[\"lesson-js-dom-1\"]": {
-      "ok": true,
-      "value": {
-        "editions": []
-      }
     }
   },
   "expectedErrors": {

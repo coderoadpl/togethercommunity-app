@@ -289,6 +289,40 @@ describe('MarkdownEditor', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('bolds the DOM selection on toolbar mousedown before the editor observes it', async () => {
+    render(<ControlledEditor initialValue="Read the safe guide" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    const textNode = visualEditor.querySelector('p')?.firstChild;
+    if (!textNode) throw new Error('missing paragraph text');
+    document.getSelection()?.setBaseAndExtent(textNode, 9, textNode, 19);
+    const boldButton = screen.getByRole('button', { name: en.markdownEditor.bold });
+    fireEvent.mouseDown(boldButton);
+    fireEvent.click(boldButton);
+
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe('Read the **safe guide**'));
+  });
+
+  it('links the DOM selection even when the editor has not yet observed it', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor initialValue="Read the safe guide" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    visualEditor.focus();
+    const textNode = visualEditor.querySelector('p')?.firstChild;
+    if (!textNode) throw new Error('missing paragraph text');
+    document.getSelection()?.setBaseAndExtent(textNode, 9, textNode, 19);
+    fireEvent.click(screen.getByRole('button', { name: en.markdownEditor.link }));
+    const input = screen.getByRole('textbox', { name: en.markdownEditor.linkUrlLabel });
+    await user.clear(input);
+    await user.type(input, 'https://example.com/guide');
+    await user.click(screen.getByRole('button', { name: en.markdownEditor.linkApply }));
+
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe('Read the [safe guide](https://example.com/guide)'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('keeps documents with unrepresentable link or image destinations on the Markdown tab instead of dropping them', () => {
     const value = '[Unsafe](javascript:alert(1)) [HTTP](http://example.com) [Safe](https://example.com) ![Unsafe image](http://example.com/image.png)';
     render(<ControlledEditor initialValue={value} />);

@@ -19,7 +19,7 @@ import {
   Tabs,
   TextField,
 } from '@mui/material';
-import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react';
 
 import { useTranslations } from '../../i18n/index.js';
 import { MarkdownEditorContent, MarkdownEditorToolbar, MarkdownSourceInput } from '../../theme.js';
@@ -157,12 +157,14 @@ const FormatButton = ({
   label,
   shortLabel,
   onClick,
+  onMouseDown,
 }: {
   active: boolean;
   disabled: boolean;
   label: string;
   shortLabel: ReactNode;
   onClick: () => void;
+  onMouseDown: (event: MouseEvent) => void;
 }) => (
   <Button
     type="button"
@@ -172,7 +174,7 @@ const FormatButton = ({
     aria-pressed={active}
     title={label}
     disabled={disabled}
-    onMouseDown={(event) => event.preventDefault()}
+    onMouseDown={onMouseDown}
     onClick={onClick}
     sx={{ minWidth: '2.35rem', px: '0.6rem' }}
   >
@@ -304,8 +306,29 @@ export const MarkdownEditor = ({
     }),
   });
 
+  const syncSelectionFromDom = () => {
+    if (editor === null || !editor.view.hasFocus()) return;
+    const domSelection = editor.view.dom.ownerDocument.getSelection();
+    if (
+      domSelection === null
+      || domSelection.anchorNode === null
+      || domSelection.focusNode === null
+      || !editor.view.dom.contains(domSelection.anchorNode)
+      || !editor.view.dom.contains(domSelection.focusNode)
+    ) return;
+    const anchor = editor.view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset);
+    const head = editor.view.posAtDOM(domSelection.focusNode, domSelection.focusOffset);
+    editor.commands.setTextSelection({ from: Math.min(anchor, head), to: Math.max(anchor, head) });
+  };
+
+  const toolbarMouseDown = (event: MouseEvent) => {
+    event.preventDefault();
+    syncSelectionFromDom();
+  };
+
   const openLinkDialog = () => {
     if (editor === null || disabled) return;
+    syncSelectionFromDom();
     const currentHref = linkHref(editor.getAttributes('link'));
     setLinkValue(currentHref === '' ? 'https://' : currentHref);
     setLinkAttempted(false);
@@ -380,11 +403,11 @@ export const MarkdownEditor = ({
       aria-label={t.markdownEditor.toolbarAria}
       sx={{ flexWrap: 'nowrap', overflow: 'hidden', p: '0.4rem' }}
     >
-      <FormatButton active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
-      <FormatButton active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
-      <FormatButton active={toolbar?.link ?? false} disabled={editorDisabled} label={t.markdownEditor.link} shortLabel="↗" onClick={openLinkDialog} />
-      <FormatButton active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />
-      <FormatButton active={toolbar?.code ?? false} disabled={editorDisabled} label={t.markdownEditor.inlineCode} shortLabel="&lt;/&gt;" onClick={() => editor?.chain().focus().toggleCode().run()} />
+      <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
+      <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+      <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.link ?? false} disabled={editorDisabled} label={t.markdownEditor.link} shortLabel="↗" onClick={openLinkDialog} />
+      <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />
+      <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.code ?? false} disabled={editorDisabled} label={t.markdownEditor.inlineCode} shortLabel="&lt;/&gt;" onClick={() => editor?.chain().focus().toggleCode().run()} />
       <Box sx={{ ml: 'auto' }}>{compactToggle}</Box>
     </MarkdownEditorToolbar>
   );
@@ -463,16 +486,16 @@ export const MarkdownEditor = ({
             aria-label={t.markdownEditor.toolbarAria}
             sx={{ flexWrap: 'wrap', p: '0.55rem' }}
           >
-            <FormatButton active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
-            <FormatButton active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
-            <FormatButton active={toolbar?.heading2 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading2} shortLabel="H2" onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} />
-            <FormatButton active={toolbar?.heading3 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading3} shortLabel="H3" onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
-            <FormatButton active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />
-            <FormatButton active={toolbar?.orderedList ?? false} disabled={editorDisabled} label={t.markdownEditor.orderedList} shortLabel="1." onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
-            <FormatButton active={toolbar?.blockquote ?? false} disabled={editorDisabled} label={t.markdownEditor.blockquote} shortLabel="❝" onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
-            <FormatButton active={toolbar?.code ?? false} disabled={editorDisabled} label={t.markdownEditor.inlineCode} shortLabel="&lt;/&gt;" onClick={() => editor?.chain().focus().toggleCode().run()} />
-            <FormatButton active={toolbar?.codeBlock ?? false} disabled={editorDisabled} label={t.markdownEditor.codeBlock} shortLabel="{ }" onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
-            <FormatButton active={toolbar?.link ?? false} disabled={editorDisabled} label={t.markdownEditor.link} shortLabel="↗" onClick={openLinkDialog} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.bold ?? false} disabled={editorDisabled} label={t.markdownEditor.bold} shortLabel={<strong>{t.markdownEditor.boldShort}</strong>} onClick={() => editor?.chain().focus().toggleBold().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.italic ?? false} disabled={editorDisabled} label={t.markdownEditor.italic} shortLabel={<em>{t.markdownEditor.italicShort}</em>} onClick={() => editor?.chain().focus().toggleItalic().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.heading2 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading2} shortLabel="H2" onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.heading3 ?? false} disabled={editorDisabled} label={t.markdownEditor.heading3} shortLabel="H3" onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.bulletList ?? false} disabled={editorDisabled} label={t.markdownEditor.bulletList} shortLabel="•" onClick={() => editor?.chain().focus().toggleBulletList().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.orderedList ?? false} disabled={editorDisabled} label={t.markdownEditor.orderedList} shortLabel="1." onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.blockquote ?? false} disabled={editorDisabled} label={t.markdownEditor.blockquote} shortLabel="❝" onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.code ?? false} disabled={editorDisabled} label={t.markdownEditor.inlineCode} shortLabel="&lt;/&gt;" onClick={() => editor?.chain().focus().toggleCode().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.codeBlock ?? false} disabled={editorDisabled} label={t.markdownEditor.codeBlock} shortLabel="{ }" onClick={() => editor?.chain().focus().toggleCodeBlock().run()} />
+            <FormatButton onMouseDown={toolbarMouseDown} active={toolbar?.link ?? false} disabled={editorDisabled} label={t.markdownEditor.link} shortLabel="↗" onClick={openLinkDialog} />
             <ActionButton disabled={editorDisabled || !(toolbar?.canUndo ?? false)} label={t.markdownEditor.undo} shortLabel="↶" onClick={() => editor?.chain().focus().undo().run()} />
             <ActionButton disabled={editorDisabled || !(toolbar?.canRedo ?? false)} label={t.markdownEditor.redo} shortLabel="↷" onClick={() => editor?.chain().focus().redo().run()} />
           </MarkdownEditorToolbar>

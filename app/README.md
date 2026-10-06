@@ -213,6 +213,12 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
+To exercise member-activity editor interactions on a slower CPU, run
+`E2E_CPU_THROTTLE=4 pnpm run e2e:member-activity` (or use `6`). The flag applies
+Chromium CDP CPU throttling to both member pages; it defaults to `1` (off).
+It does not change assertions or timeouts. Run `nvm use` and `pnpm run db:up`
+first, as for the other local runtime checks.
+
 The Vitest projects currently discover <!--count:test-files-->502<!--/count-->
 test files across the Node and browser suites.
 

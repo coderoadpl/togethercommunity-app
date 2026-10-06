@@ -732,6 +732,13 @@ try {
   for (const page of [creatorPage, memberAPage, memberBPage, anonymousPage]) {
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
   }
+  const cpuThrottle = Number(process.env['E2E_CPU_THROTTLE'] ?? '1');
+  if (cpuThrottle > 1) {
+    for (const page of [memberAPage, memberBPage]) {
+      const session = await page.context().newCDPSession(page);
+      await session.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
+    }
+  }
 
   await signInCreator(creatorPage, studioBaseUrl);
   await signInMember(memberAPage, studioBaseUrl, 'student.active@together.dev');

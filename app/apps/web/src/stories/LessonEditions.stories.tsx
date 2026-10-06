@@ -47,6 +47,7 @@ export const DarkMobile: Story = { parameters: { colorScheme: 'dark' }, globals:
 export const MenuLightDesktop: Story = {
   ...LightDesktop,
   play: async ({ canvasElement }) => {
+    await document.fonts.ready;
     await userEvent.click(within(canvasElement).getByRole('button', { name: en.lesson.editionMenu }));
   },
 };

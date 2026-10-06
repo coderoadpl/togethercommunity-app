@@ -771,3 +771,75 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   });
 });
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+
+describe('current lesson edition', () => {
+  const lesson: CourseLesson = {
+    id: 'lesson-1', tenantId: 't1', name: 'Intro lesson', isPreview: false,
+    contents: [{ type: 'html', html: '<p>Current content</p>' }], legacyId: null,
+    createdAt: '2026-10-01T00:00:00.000Z',
+  };
+  const edition = { versionId: 'version-1', number: '2.10', note: 'Updated examples', markedAt: lesson.createdAt };
+  const version = {
+    id: 'version-1', entityKind: 'course_lesson', entityId: lesson.id, ordinal: 1,
+    schemaVersion: 7, createdAt: lesson.createdAt, createdBy: 'user-creator',
+    createdByDisplayName: 'Ada Creator', subjectKind: 'lesson', subjectName: lesson.name,
+  };
+
+  it('loads the current edition and refreshes its controls after unmarking and marking', async () => {
+    let marked = true;
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [lesson] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({
+        ok: true, data: { versions: [{ ...version, edition: marked ? edition : null }] },
+      })),
+      http.get('/api/courses/history/version', () => HttpResponse.json({
+        ok: true, data: {
+          version: { ...version, edition, currentSchemaVersion: 7, payload: lesson },
+          preview: { fields: [] }, current: { fields: [] }, changedFields: [],
+        },
+      })),
+      http.post('/api/courses/history/edition/unmark', async ({ request }) => {
+        expect(await request.json()).toEqual({ lessonId: lesson.id, number: edition.number });
+        marked = false;
+        return HttpResponse.json({ ok: true, data: { removed: true } });
+      }),
+      http.post('/api/courses/history/edition/mark', async ({ request }) => {
+        expect(await request.json()).toEqual({ lessonId: lesson.id, edition: { number: edition.number } });
+        marked = true;
+        return HttpResponse.json({ ok: true, data: { edition } });
+      }),
+    );
+    await renderLessonsAt('/panel/lessons/lesson-1');
+    await waitFor(() => expect(screen.getByRole('textbox', { name: en.courses.editionNumber })).toHaveValue('2.10'));
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue(edition.note);
+    await userEvent.click(screen.getByRole('button', { name: en.courses.editionUnmark }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: en.courses.editionNumber })).toHaveValue(''));
+    expect(screen.queryByRole('button', { name: en.courses.editionUnmark })).not.toBeInTheDocument();
+    expect(await screen.findByText(en.courses.editionRemoved)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue('');
+    await userEvent.type(screen.getByRole('textbox', { name: en.courses.editionNumber }), '2.10');
+    await userEvent.click(screen.getByRole('button', { name: en.courses.editionMark }));
+    expect(await screen.findByRole('button', { name: en.courses.editionUnmark })).toBeEnabled();
+    expect(await screen.findByText(en.courses.editionSaved)).toBeInTheDocument();
+    expect(screen.queryByText(en.courses.editionRemoved)).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: en.courses.editionNote })).toHaveValue(edition.note);
+  });
+
+  it('does not label changed current content with an older snapshot edition', async () => {
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [lesson] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [{ ...version, edition }] } })),
+      http.get('/api/courses/history/version', () => HttpResponse.json({
+        ok: true, data: {
+          version: { ...version, edition, currentSchemaVersion: 7, payload: { ...lesson, name: 'Older title' } },
+          preview: { fields: [] }, current: { fields: [] }, changedFields: ['title'],
+        },
+      })),
+    );
+    await renderLessonsAt('/panel/lessons/lesson-1');
+    const number = await screen.findByRole('textbox', { name: en.courses.editionNumber });
+    await waitFor(() => expect(number).toBeEnabled());
+    expect(number).toHaveValue('');
+    expect(screen.queryByRole('button', { name: en.courses.editionUnmark })).not.toBeInTheDocument();
+  });
+});

@@ -24,12 +24,15 @@ const publicServerImports = publicApp
   .sort();
 
 const APPROVED_PUBLIC_SERVER_IMPORTS = [
+  'getPublicSurvey',
+  'submitSurvey',
   'authLinkBaseUrl',
   'ensureMember',
   'hasStripeTestSession',
   'fulfillStripeWebhook',
   'getPaymentConfig',
   'getPlayableLesson',
+  'listLessonEditions',
   'getPublicCourseStructure',
   'getPublicImageAssetUrl',
   'getPublicNavigation',

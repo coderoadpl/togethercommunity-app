@@ -1,3 +1,5 @@
+import { SurveysPanel } from './features/home/surveys/SurveysPanel.js';
+import { SurveyRoute } from './features/home/surveys/PublicSurveyPage.js';
 import '@fontsource/fraunces/latin-400.css';
 import '@fontsource/fraunces/latin-500.css';
 import '@fontsource/fraunces/latin-600.css';
@@ -216,6 +218,12 @@ const lessonPlayerRoute = createRoute({
   validateSearch: validateLessonSearch,
   component: LessonPlayerRoute,
 });
+const lessonEditionRoute = createRoute({
+  getParentRoute: () => memberShellRoute,
+  path: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+  validateSearch: validateLessonSearch,
+  component: LessonPlayerRoute,
+});
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
@@ -430,6 +438,8 @@ const panelRedirectsRoute = createRoute({
 const panelMarketingContactsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts', component: ContactsPanel });
 const panelMarketingContactImportRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/import', component: ContactImportWizard, validateSearch: validateContactImportSearch });
 const panelMarketingContactDetailRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/contacts/$contactId', component: ContactDetailPanel });
+const publicSurveyRoute = createRoute({ getParentRoute: () => rootRoute, path: '/survey/$slug', component: SurveyRoute });
+const panelSurveysRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/surveys', component: SurveysPanel });
 const panelMarketingFormsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/forms', component: SignupFormsPanel });
 const panelMarketingListsRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists', component: ListsPanel });
 const panelMarketingListCreateRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'marketing/lists/new', component: ListCreatePanel });
@@ -524,6 +534,7 @@ const panelMarketingSettingsRedirectRoute = createRoute({
 const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
+    publicSurveyRoute,
     loginRoute,
     checkoutRoute,
     registerRoute,
@@ -537,6 +548,7 @@ const router = createRouter({
       courseRoute,
       courseStructureRoute,
       lessonPlayerRoute,
+      lessonEditionRoute,
       accountRoute,
       notificationsRoute,
       messagesRoute,
@@ -585,6 +597,7 @@ const router = createRouter({
       panelMarketingContactDetailRoute,
       panelMarketingListsRoute,
       panelMarketingFormsRoute,
+      panelSurveysRoute,
       panelMarketingListCreateRoute,
       panelMarketingListDetailRoute,
       panelMarketingCampaignsRoute,

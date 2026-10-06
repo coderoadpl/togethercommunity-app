@@ -33,6 +33,7 @@ reconciliation must therefore finish before the next billing cycle.
 
 - records the erasure in `erasedMemberImports`;
 - deletes all tenant-scoped `download_copies` for the member;
+- deletes all tenant-scoped `survey_responses` linked to the member;
 - end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `deletedMemberDisplay()`;
 - relabels the erased side of every `dm_reports` row — `reporter_display`,
@@ -169,3 +170,16 @@ the [go-live checklist](go-live-checklist.md#15-provider-side-subscription-cance
 
 Issuance and erasure serialize on the member row. A download finishing after
 erasure cannot insert another copy record. Shared source assets are unchanged.
+
+## Survey responses
+
+| Record | Erasure action | Retained data |
+|---|---|---|
+| `survey_responses` linked to the member | Delete rows for the tenant and member in the pseudonymization transaction, including the score and the free-text comment. | None for the member. |
+| `survey_responses` submitted anonymously | Not selected: they carry no member id and no visitor identifier, so erasure cannot attribute them to anyone. | The score and comment stay until the survey or the workspace is deleted. |
+
+Submission and erasure serialize on the member row. A member-linked submission
+that reaches its transaction after erasure is rejected and writes nothing; later
+requests from that visitor are handled as anonymous and are never linked to the
+erased member.
+See [Surveys](surveys.md#privacy-and-erasure).

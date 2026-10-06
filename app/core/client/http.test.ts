@@ -517,3 +517,34 @@ describe('activity report client', () => {
     expect((await client.activitySummary({ from: '1998-08-01T00:00:00Z', to: '1998-09-01T00:00:00Z' })).ok).toBe(false);
   });
 });
+
+describe('survey transport', () => {
+  it('deletes through DELETE and encodes the survey identifier', async () => {
+    const client = createApiClient({ baseUrl: 'https://example.test', fetchImpl: async (input, init) => {
+      expect(input).toBe('https://example.test/api/surveys/survey%2Fone');
+      expect(init?.method).toBe('DELETE');
+      return jsonResponse({ ok: true, data: { deleted: true } });
+    } });
+    expect(await client.deleteSurvey({ id: 'survey/one' })).toEqual(ok({ deleted: true }));
+  });
+
+  it('sends public responses and parses only the returned ending', async () => {
+    const response = { slug: 'feedback', token: 'form-token', score: 9, comment: 'Helpful', website: '' };
+    const client = createApiClient({ baseUrl: 'https://example.test', fetchImpl: async (input, init) => {
+      expect(input).toBe('https://example.test/api/public/surveys/feedback/submit');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify(response));
+      return jsonResponse({ ok: true, data: { ending: 'Thank you', endingHtml: '<p>Thank you</p>' } });
+    } });
+    expect(await client.submitSurvey(response)).toEqual(ok({ ending: 'Thank you', endingHtml: '<p>Thank you</p>' }));
+  });
+
+  it('puts results pagination in the query string', async () => {
+    const client = createApiClient({ baseUrl: 'https://example.test', fetchImpl: async (input, init) => {
+      expect(input).toBe('https://example.test/api/surveys/one/results?page=2&pageSize=10');
+      expect(init?.method).toBe('GET');
+      return jsonResponse({ ok: true, data: { results: { count: 0, nps: null, average: null, distribution: [], responses: [], page: 2, pageSize: 10, totalPages: 0 } } });
+    } });
+    expect((await client.getSurveyResults({ id: 'one', page: 2, pageSize: 10 })).ok).toBe(true);
+  });
+});

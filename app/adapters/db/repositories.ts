@@ -1,3 +1,5 @@
+import { surveyResponses } from './survey-schema.js';
+import { lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
@@ -854,6 +856,9 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
           schemaVersion: entityVersions.schemaVersion,
           createdAt: entityVersions.createdAt,
           createdBy: entityVersions.createdBy,
+          editionNumber: entityVersions.editionNumber,
+          editionNote: entityVersions.editionNote,
+          editionMarkedAt: entityVersions.editionMarkedAt,
         })
         .from(entityVersions)
         .where(
@@ -865,7 +870,10 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
         )
         .orderBy(desc(entityVersions.createdAt), desc(entityVersions.id))
         .limit(query.limit)
-    ).map((row) => entityHistoryEntrySchema.parse(row)),
+        .offset(query.offset ?? 0)
+    ).map((row) => entityHistoryEntrySchema.parse({ ...row, edition: row.editionNumber === null ? null : {
+      versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt,
+    } })),
   findById: async (tenantId, id) => {
     const rows = await db
       .select()
@@ -890,6 +898,7 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
       entityKind: row.entityKind,
       entityId: row.entityId,
       ordinal: counted?.ordinal ?? 1,
+      edition: row.editionNumber === null ? null : lessonEditionSchema.parse({ versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt }),
       schemaVersion: row.schemaVersion,
       payload: row.payload,
       createdAt: row.createdAt,
@@ -2710,6 +2719,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           avatarUrl: null,
         };
       }
+      await tx.delete(surveyResponses).where(and(eq(surveyResponses.tenantId, tenantId), eq(surveyResponses.memberId, input.memberId)));
       await tx.delete(downloadCopies).where(and(eq(downloadCopies.tenantId, tenantId), eq(downloadCopies.memberId, input.memberId)));
       const [openErasureRequest] = await tx
         .select({ id: memberErasureRequests.id })

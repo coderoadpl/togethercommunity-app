@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildSnapshot,
   computeCourseModuleName,
   err,
   internal,
@@ -20,6 +21,7 @@ import type { Ctx } from '../context.js';
 import type {
   Clock,
   CourseLessonRepository,
+  LessonEditionRepository,
   CourseModuleRepository,
   CourseRepository,
   StorageProvider,
@@ -538,5 +540,36 @@ describe('getPlayableLesson', () => {
     }));
 
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+
+describe('lesson edition media signing', () => {
+  it('signs the historical PDF and video without using current media blocks', async () => {
+    const historicalPdf = 'https://edition-files.s3.eu-central-1.amazonaws.com/chapter-3.pdf';
+    const snapshot = buildSnapshot('course_lesson', { ...pdfLesson, contents: [
+      { type: 'pdf', pdfUrl: historicalPdf, name: 'Chapter 3' },
+      { type: 'video', storageKey: 'videos/earlier', streamLibraryId: 'lib-2', streamVideoId: 'earlier-video' },
+    ] });
+    if (!snapshot.ok) throw new Error(snapshot.error.message);
+    const lessonEditions: LessonEditionRepository = {
+      list: async () => [],
+      find: async () => ({ id: 'edition-version', entityKind: 'course_lesson', entityId: pdfLesson.id,
+        ...snapshot.value, createdAt: NOW, createdBy: null }),
+      mark: async () => 'conflict',
+      unmark: async () => false,
+    };
+    const { signer, calls } = recordingSigner();
+    const result = await getPlayableLesson(ctx(), pdfLesson.id, deps({ lessonEditions, storage: signer,
+      secretResolver: secretsOf({ 's3.accessKeyId': 'test-key', 's3.secretAccessKey': 'test-secret', 'bunny.securityKey': 'security-key' }),
+    }), '1');
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.id).toBe(pdfLesson.id);
+    expect(result.value.contents).toEqual([
+      { type: 'pdf', pdfUrl: `${historicalPdf}?X-Amz-Signature=test`, name: 'Chapter 3' },
+      { type: 'video', storageKey: 'videos/earlier', streamLibraryId: 'lib-2', streamVideoId: 'earlier-video',
+        embedUrl: expect.stringContaining('/embed/lib-2/earlier-video?') },
+    ]);
+    expect(calls).toEqual([{ url: historicalPdf, expiresInSeconds: PDF_URL_TTL_SECONDS }]);
   });
 });

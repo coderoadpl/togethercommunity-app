@@ -223,6 +223,12 @@
         "attachments": []
       }
     },
+    "studentLessonEditions:[\"lesson-acme-intro\"]": {
+      "ok": true,
+      "value": {
+        "editions": []
+      }
+    },
     "studentProgress:[\"course-acme\"]": {
       "ok": true,
       "value": {

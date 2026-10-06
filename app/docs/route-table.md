@@ -14,6 +14,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `GET /api/health/deep` | public | read | Aggregated production readiness probe over every tenant |
+| `OPTIONS /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |
+| `OPTIONS /api/public/surveys/:slug/submit` | public | read | Tenant-origin survey submission preflight |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
 | `OPTIONS /api/public/navigation` | public | read | Anonymous tenant-home navigation |
 | `OPTIONS /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
@@ -22,6 +24,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
 | `OPTIONS /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
 | `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
+| `OPTIONS /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
+| `OPTIONS /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
@@ -35,6 +39,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
+| `GET /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |
+| `POST /api/public/surveys/:slug/submit` | public | mutating | Rate-limited survey responses with form token and honeypot checks |
+| `GET /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
+| `GET /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -176,6 +184,14 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/marketing/forms/:slug` | authenticated | read | get marketing signup form |
 | `POST /api/marketing/forms` | authenticated | mutating | create marketing signup form |
 | `POST /api/marketing/forms/:slug` | authenticated | mutating | update marketing signup form |
+| `POST /api/surveys/preview` | authenticated | mutating | preview survey ending |
+| `GET /api/surveys` | authenticated | read | list surveys |
+| `GET /api/surveys/:id` | authenticated | read | get survey |
+| `POST /api/surveys` | authenticated | mutating | create survey |
+| `POST /api/surveys/:id` | authenticated | mutating | update survey |
+| `DELETE /api/surveys/:id` | authenticated | mutating | delete survey |
+| `GET /api/surveys/:id/results` | authenticated | read | get survey results |
+| `GET /api/surveys/:id/export` | authenticated | read | export survey responses |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |
@@ -322,6 +338,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/courses` | authenticated | read | courses |
 | `POST /api/courses` | authenticated | mutating | courses create |
 | `POST /api/courses/update` | authenticated | mutating | courses update |
+| `POST /api/courses/history/edition/mark` | authenticated | mutating | lesson edition mark |
+| `POST /api/courses/history/edition/unmark` | authenticated | mutating | lesson edition unmark |
 | `GET /api/courses/history/version` | authenticated | read | courses history version |
 | `POST /api/courses/history/restore` | authenticated | mutating | courses history restore |
 | `GET /api/courses/history` | authenticated | read | courses history |

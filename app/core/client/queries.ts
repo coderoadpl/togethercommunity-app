@@ -12,6 +12,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  MarkLessonEditionInput, UnmarkLessonEditionInput,
   AccountSessionRevokeInput,
   CourseCreateInput,
   ApiKeyCreateInput,
@@ -1078,6 +1079,15 @@ export const contentHistoryQuery = (
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 
+export const staffLessonHistoryQuery = (api: ApiClient, lessonId: string, offset: number, limit: number) =>
+  defineQuery({ queryKey: [...contentHistoryScopes.all(), 'lesson', lessonId, offset, limit], call: ({ signal }) => api.staffLessonHistory(lessonId, offset, signal, limit) });
+
+export const markLessonEditionMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: [...contentHistoryScopes.all(), 'mark-edition'], call: (input: MarkLessonEditionInput) => api.markLessonEdition(input) });
+
+export const unmarkLessonEditionMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: [...contentHistoryScopes.all(), 'unmark-edition'], call: (input: UnmarkLessonEditionInput) => api.unmarkLessonEdition(input) });
+
 export const contentVersionQuery = (api: ApiClient, versionId: string) =>
   defineQuery({
     queryKey: contentHistoryScopes.version(versionId),
@@ -1194,10 +1204,22 @@ export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
     call: ({ signal }) => api.studentLesson(lessonId, signal),
   });
 
-export const studentLessonPlaybackQuery = (api: ApiClient, lessonId: string) =>
+export const studentLessonEditionsQuery = (api: ApiClient, lessonId: string) =>
   defineQuery({
-    queryKey: [...studentScopes.lesson(lessonId), 'playback'],
-    call: ({ signal }) => api.studentLessonPlayback(lessonId, signal),
+    queryKey: [...studentScopes.lesson(lessonId), 'editions'],
+    call: ({ signal }) => api.studentLessonEditions(lessonId, signal),
+  });
+
+export const studentLessonEditionQuery = (api: ApiClient, lessonId: string, number: string) =>
+  defineQuery({
+    queryKey: [...studentScopes.lesson(lessonId), 'edition', number],
+    call: ({ signal }) => api.studentLessonEdition(lessonId, number, signal),
+  });
+
+export const studentLessonPlaybackQuery = (api: ApiClient, lessonId: string, editionNumber?: string) =>
+  defineQuery({
+    queryKey: [...studentScopes.lesson(lessonId), 'playback', editionNumber ?? null],
+    call: ({ signal }) => api.studentLessonPlayback(lessonId, signal, editionNumber),
   });
 
 export const studentLessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
@@ -2033,3 +2055,16 @@ export const downloadCopiesQuery = (api: ApiClient, query: Parameters<ApiClient[
         ? `${last.createdAt}~${encodeURIComponent(last.id).replaceAll('~', '%7E')}` : null;
     },
   });
+
+export const surveyActions = (api: ApiClient) => ({
+  list: (tenantId: string) => defineQuery({ queryKey: ['surveys', tenantId] as const, call: ({ signal }) => api.listSurveys({}, signal) }),
+  publicSurvey: (slug: string) => defineQuery({ queryKey: ['surveys', 'public', slug] as const, call: ({ signal }) => api.getPublicSurvey({ slug }, signal) }),
+  results: (tenantId: string, input: Parameters<ApiClient['getSurveyResults']>[0]) => defineQuery({ queryKey: ['surveys', tenantId, 'results', input] as const, call: ({ signal }) => api.getSurveyResults(input, signal) }),
+  create: defineMutation({ mutationKey: ['surveys', 'create'], call: (input: Parameters<ApiClient['createSurvey']>[0]) => api.createSurvey(input) }),
+  update: defineMutation({ mutationKey: ['surveys', 'update'], call: (input: Parameters<ApiClient['updateSurvey']>[0]) => api.updateSurvey(input) }),
+  remove: defineMutation({ mutationKey: ['surveys', 'remove'], call: (input: Parameters<ApiClient['deleteSurvey']>[0]) => api.deleteSurvey(input) }),
+  submit: defineMutation({ mutationKey: ['surveys', 'submit'], call: (input: Parameters<ApiClient['submitSurvey']>[0]) => api.submitSurvey(input) }),
+  export: (tenantId: string, input: Parameters<ApiClient['exportSurveyResponses']>[0]) => defineQuery({ queryKey: ['surveys', tenantId, 'export', input] as const, call: ({ signal }) => api.exportSurveyResponses(input, signal) }),
+  preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
+  invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
+});

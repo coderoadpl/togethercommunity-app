@@ -8,9 +8,11 @@ import { marketingSnsInboxOutputSchema, marketingSnsRetryOutputSchema, marketing
 import { type z } from 'zod';
 
 import {
+  lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput,
   API_ROUTES,
   marketingDirectoryContracts,
   marketingSignupContracts,
+  surveyContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -504,6 +506,16 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  listSurveys: (input: z.input<typeof surveyContracts.listSurveys.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listSurveys.path, surveyContracts.listSurveys.output, undefined, signal),
+  getSurvey: (input: z.input<typeof surveyContracts.getSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.getSurvey.output, undefined, signal),
+  createSurvey: (input: z.input<typeof surveyContracts.createSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createSurvey.path, surveyContracts.createSurvey.output, input, signal),
+  updateSurvey: (input: z.input<typeof surveyContracts.updateSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.updateSurvey.output, input, signal),
+  deleteSurvey: (input: z.input<typeof surveyContracts.deleteSurvey.input>, signal?: AbortSignal) => request(options, 'DELETE', API_ROUTES.deleteSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.deleteSurvey.output, input, signal),
+  getSurveyResults: (input: z.input<typeof surveyContracts.getSurveyResults.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSurveyResults.path.replace(':id', encodeURIComponent(input.id)) + '?' + new URLSearchParams({ ...(input.page === undefined ? {} : { page: String(input.page) }), ...(input.pageSize === undefined ? {} : { pageSize: String(input.pageSize) }) }).toString(), surveyContracts.getSurveyResults.output, undefined, signal),
+  exportSurveyResponses: (input: z.input<typeof surveyContracts.exportSurveyResponses.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.exportSurveyResponses.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.exportSurveyResponses.output, undefined, signal),
+  getPublicSurvey: (input: z.input<typeof surveyContracts.getPublicSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getPublicSurvey.path.replace(':slug', encodeURIComponent(input.slug)), surveyContracts.getPublicSurvey.output, undefined, signal),
+  submitSurvey: (input: z.input<typeof surveyContracts.submitSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.submitSurvey.path.replace(':slug', encodeURIComponent(input.slug)), surveyContracts.submitSurvey.output, input, signal),
+  previewSurveyEnding: (input: z.input<typeof surveyContracts.previewSurveyEnding.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.previewSurveyEnding.path, surveyContracts.previewSurveyEnding.output, input, signal),
   listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
   getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
   createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),
@@ -1610,6 +1622,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  staffLessonHistory: (lessonId: string, offset = 0, signal?: AbortSignal, limit?: number) =>
+    request(options, API_ROUTES.coursesHistory.method, `${API_ROUTES.coursesHistory.path}?lessonId=${encodeURIComponent(lessonId)}&offset=${offset}${limit === undefined ? '' : `&limit=${limit}`}`, contentHistoryOutputSchema, undefined, signal),
+  markLessonEdition: (input: MarkLessonEditionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonEditionMark.method, API_ROUTES.lessonEditionMark.path, lessonEditionOutputSchema, input, signal),
+  unmarkLessonEdition: (input: UnmarkLessonEditionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonEditionUnmark.method, API_ROUTES.lessonEditionUnmark.path, lessonEditionUnmarkOutputSchema, input, signal),
   getContentVersion: (id: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1783,6 +1801,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  studentLessonEditions: (lessonId: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.studentLessonEditions.method, API_ROUTES.studentLessonEditions.path.replace(':lessonId', encodeURIComponent(lessonId)), lessonEditionsOutputSchema, undefined, signal),
+  studentLessonEdition: (lessonId: string, number: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.studentLessonEdition.method, API_ROUTES.studentLessonEdition.path.replace(':lessonId', encodeURIComponent(lessonId)).replace(':number', encodeURIComponent(number)), studentLessonOutputSchema, undefined, signal),
   studentLesson: (lessonId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1792,11 +1814,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  studentLessonPlayback: (lessonId: string, signal?: AbortSignal) =>
+  studentLessonPlayback: (lessonId: string, signal?: AbortSignal, editionNumber?: string) =>
     request(
       options,
       API_ROUTES.studentLessonPlayback.method,
-      API_ROUTES.studentLessonPlayback.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      API_ROUTES.studentLessonPlayback.path.replace(':lessonId', encodeURIComponent(lessonId)) + (editionNumber === undefined ? '' : `?edition=${encodeURIComponent(editionNumber)}`),
       studentLessonPlaybackOutputSchema,
       undefined,
       signal,

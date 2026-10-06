@@ -76,6 +76,12 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
         validateSearch: validateLessonSearch,
         component: LessonPlayerRoute,
       }),
+      createRoute({
+        getParentRoute: () => shell,
+        path: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+        validateSearch: validateLessonSearch,
+        component: LessonPlayerRoute,
+      }),
       createRoute({ getParentRoute: () => shell, path: MEMBER_ROUTE_PATHS.communitySpace, component: SpaceFeedRoute }),
       createRoute({ getParentRoute: () => shell, path: '/account', validateSearch: validateAccountSearch, component: MemberAccountRoute }),
       createRoute({ getParentRoute: () => shell, path: '/community', component: CommunityRoute }),
@@ -177,3 +183,15 @@ const Preview = ({ parameters, children }: { parameters: z.infer<typeof paramete
 export const withAccountPreview: Decorator = (Story, context) => <Preview key={context.id} parameters={parametersSchema.parse(context.parameters)}><Story /></Preview>;
 export const idleOperation = { pending: false, success: false, error: null, run: () => undefined };
 export const previewFailure = new Error('Preview operation failed');
+
+const surveyPreviewRouter = (content: ReactNode) => {
+  const root = createRootRoute({ component: () => <>{content}</> });
+  const route = createRoute({ getParentRoute: () => root, path: '/' });
+  return createRouter({ routeTree: root.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/'] }) });
+};
+const SurveyPreview = ({ children, parameters }: { children: ReactNode; parameters: z.infer<typeof parametersSchema> }) => {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }));
+  const [router] = useState(() => surveyPreviewRouter(children));
+  return <Preview parameters={parameters}><QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider></Preview>;
+};
+export const withSurveyPreview: Decorator = (Story, context) => <SurveyPreview key={context.id} parameters={parametersSchema.parse(context.parameters)}><Story /></SurveyPreview>;

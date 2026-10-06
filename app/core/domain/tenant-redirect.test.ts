@@ -63,6 +63,15 @@ describe('isReservedRedirectPath', () => {
 });
 
 describe('redirect lesson anchors', () => {
+  it('accepts a public survey as a stored path destination', () => {
+    expect(tenantRedirectCreateInputSchema.safeParse({
+      fromPath: '/link/feedback',
+      target: { kind: 'path', path: '/survey/feedback' },
+    }).success).toBe(true);
+    expect(isReservedRedirectPath('/survey/feedback')).toBe(true);
+    expect(isReservedRedirectPath('/link/feedback')).toBe(false);
+  });
+
   it.each(['section', 'part-2', 'a'.repeat(80)])('accepts %s', (anchor) => {
     expect(tenantRedirectCreateInputSchema.safeParse({
       fromPath: '/printed',

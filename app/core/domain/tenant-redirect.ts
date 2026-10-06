@@ -116,6 +116,7 @@ const RESERVED_REDIRECT_ROOTS = [
   'reset-password',
   'search',
   'start',
+  'survey',
 ] as const;
 
 export const isReservedRedirectPath = (path: string): boolean => {

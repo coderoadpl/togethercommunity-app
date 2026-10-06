@@ -1,3 +1,4 @@
+import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
 import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
 import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
@@ -84,6 +85,10 @@ import {
   tenantRedirectListQuerySchema,
   tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
+  lessonEditionSchema,
+  readerLessonEditionSchema,
+  markLessonEditionInputSchema,
+  unmarkLessonEditionInputSchema,
   courseHistoryEntrySchema,
   entityVersionDetailSchema,
   restoreContentVersionInputSchema,
@@ -986,6 +991,13 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
+export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
+export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
+export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
+export { markLessonEditionInputSchema, unmarkLessonEditionInputSchema };
+export type MarkLessonEditionInput = z.input<typeof markLessonEditionInputSchema>;
+export type UnmarkLessonEditionInput = z.input<typeof unmarkLessonEditionInputSchema>;
+
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
 });
@@ -1820,6 +1832,7 @@ export const API_ROUTES = {
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,
   ...MARKETING_SIGNUP_ROUTES,
+  ...SURVEY_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -1921,6 +1934,10 @@ export const API_ROUTES = {
   brandingAssetComplete: { method: 'POST', path: '/api/image-assets/branding/complete' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
+  lessonEditionMark: { method: 'POST', path: '/api/courses/history/edition/mark' },
+  lessonEditionUnmark: { method: 'POST', path: '/api/courses/history/edition/unmark' },
+  studentLessonEditions: { method: 'GET', path: '/api/student/lessons/:lessonId/editions' },
+  studentLessonEdition: { method: 'GET', path: '/api/student/lessons/:lessonId/editions/:number' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
   studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
   studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
@@ -2116,6 +2133,17 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  listSurveys: API_ROUTES.listSurveys.path,
+  getSurvey: API_ROUTES.getSurvey.path,
+  createSurvey: API_ROUTES.createSurvey.path,
+  updateSurvey: API_ROUTES.updateSurvey.path,
+  deleteSurvey: API_ROUTES.deleteSurvey.path,
+  getSurveyResults: API_ROUTES.getSurveyResults.path,
+  exportSurveyResponses: API_ROUTES.exportSurveyResponses.path,
+  getPublicSurvey: API_ROUTES.getPublicSurvey.path,
+  submitSurvey: API_ROUTES.submitSurvey.path,
+  previewSurveyEnding: API_ROUTES.previewSurveyEnding.path,
+
   operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
   operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,
   activitySummary: API_ROUTES.activitySummary.path,
@@ -2275,6 +2303,10 @@ export const API_PATHS = {
   brandingAssetComplete: API_ROUTES.brandingAssetComplete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
+  lessonEditionMark: API_ROUTES.lessonEditionMark.path,
+  lessonEditionUnmark: API_ROUTES.lessonEditionUnmark.path,
+  studentLessonEditions: API_ROUTES.studentLessonEditions.path,
+  studentLessonEdition: API_ROUTES.studentLessonEdition.path,
   studentLesson: API_ROUTES.studentLesson.path,
   studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
   studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,

@@ -1,3 +1,6 @@
+import { createSurveyRepository } from '#adapters/db/surveys.js';
+import type { SurveyDeps } from '#core/server/index.js';
+import { createLessonEditionRepository, createLessonEditionTransaction } from '#adapters/db/lesson-editions.js';
 import { createTelemetrySettingsRepository, createTelemetryOutbox, createTelemetryTenantDirectory } from '#adapters/db/telemetry-outbox.js';
 import { createMongoTelemetryFactory } from '#adapters/telemetry/mongodb/store.js';
 import { drainTelemetry } from '#core/server/telemetry/drain.js';
@@ -182,6 +185,8 @@ import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.
 import { createSnsVerifier } from '#adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
+  LessonEditionRepository,
+  LessonEditionTransaction,
   ActivityReportRepository,
   AccountSecurityReader,
   AppErrorTelemetry,
@@ -423,6 +428,8 @@ export interface AppDeps {
   personalisationMaxBytes: number;
   personalisationSlots: PersonalisationSlots;
   entityVersions: EntityVersionRepository;
+  lessonEditions: LessonEditionRepository;
+  lessonEditionTransaction: LessonEditionTransaction;
   userDisplays: UserDisplayReader;
   avatarSources: AvatarSourceReader;
   accountAvatars: AccountAvatarRepository;
@@ -550,6 +557,7 @@ export interface AppDeps {
   authTrustedProxyHeader: string | null;
   marketing?: MarketingAppDeps;
   marketingContacts?: MarketingContactDeps;
+  surveys?: SurveyDeps;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -1353,6 +1361,8 @@ export const createDeps = (
     personalisationMaxBytes: env.PERSONALISATION_MAX_BYTES,
     personalisationSlots: createPersonalisationSlots(),
     entityVersions: createEntityVersionRepository(db),
+    lessonEditions: createLessonEditionRepository(db),
+    lessonEditionTransaction: createLessonEditionTransaction(db),
     userDisplays: createUserDisplayReader(db),
     avatarSources: createAvatarSourceReader(db),
     accountAvatars,
@@ -1498,6 +1508,7 @@ export const createDeps = (
     authConfig: { googleEnabled: google !== null, googleClientId: google?.clientId ?? null },
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
+    surveys: { surveys: createSurveyRepository(db), clock, ids, tokens },
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

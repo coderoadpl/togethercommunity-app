@@ -47,6 +47,9 @@ add it here before using it in either dictionary.
 | Issued copies | wydane kopie | issued copies | The private staff registry of download attempts, including unpersonalised fallbacks. |
 | File version | wersja pliku | file version | A numbered revision of a downloadable file. |
 | Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
+| Edition | wydanie | edition | An author-marked, numbered snapshot of lesson content that readers can open. Distinct from a file version (a downloadable file) and from change-history versions (every save, staff only). |
+| Edition note | notatka do wydania | edition note | Optional author note shown with an edition. |
+| Previous editions | poprzednie wydania | previous editions | Reader entry point listing a lesson's earlier editions. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure
@@ -170,3 +173,12 @@ when a Polish label exists, such as klucz ograniczony (restricted key).
 | Outbound platform networking | Outbound IP address | Wychodzący adres IP |
 | Pending replication | Statistics sync | Synchronizacja statystyk |
 | Coverage lost at buffer capacity | Missing events | Brakujące zdarzenia |
+
+## Surveys
+
+| Concept | PL | EN | Decision notes |
+|---|---|---|---|
+| One-question feedback form | ankieta | survey | Supports a score and an optional comment. |
+| Submitted survey answer | odpowiedź | response | One current response per signed-in member. |
+| Score-dependent closing message | zakończenie | ending | Authored in Markdown by workspace staff. |
+| Numeric survey answer | ocena | score | NPS uses 0–10; stars use 1–5. |

@@ -1,3 +1,4 @@
+import { registerSurveyRoutes } from './survey-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
@@ -16,6 +17,7 @@ import { type Context, type Hono, type HonoRequest } from 'hono';
 import { z } from 'zod';
 
 import {
+  markLessonEditionInputSchema, unmarkLessonEditionInputSchema,
   API_KEY_HEADER,
   API_PATHS,
   apiKeyCreateInputSchema,
@@ -177,6 +179,7 @@ import {
   type AppError
 } from '#core/domain/index.js';
 import {
+  markLessonEdition, unmarkLessonEdition,
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,
@@ -1289,6 +1292,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   registerSessionMarketingContactRoutes(app, deps);
   registerSessionMarketingSignupRoutes(app, deps);
+  registerSurveyRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
@@ -2965,6 +2969,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(result.ok ? ok({ course: result.value }) : result);
   });
 
+  app.post(API_PATHS.lessonEditionMark, async (c) => {
+    const parsed = markLessonEditionInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid lesson edition', parsed.error.flatten())));
+    const result = await markLessonEdition(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ edition: result.value }) : result);
+  });
+
+  app.post(API_PATHS.lessonEditionUnmark, async (c) => {
+    const parsed = unmarkLessonEditionInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid lesson edition', parsed.error.flatten())));
+    const result = await unmarkLessonEdition(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ removed: true }) : result);
+  });
+
   app.get(API_PATHS.coursesHistoryVersion, async (c) => {
     const id = c.req.query('id');
     if (id === undefined) return respond(err(validation('Missing "id" query parameter')));
@@ -2983,6 +3001,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   app.get(API_PATHS.coursesHistory, async (c) => {
     const query = {
       courseId: c.req.query('courseId'),
+      lessonId: c.req.query('lessonId'),
+      offset: c.req.query('offset'),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
     };
     const result = await getContentHistory(ctxOf(c), query, deps);
@@ -3153,6 +3173,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ctxOf(c),
       c.req.param('lessonId'),
       deps,
+      c.req.query('edition'),
     );
     if (!result.ok) return respond(result);
     c.header('Cache-Control', 'no-store');

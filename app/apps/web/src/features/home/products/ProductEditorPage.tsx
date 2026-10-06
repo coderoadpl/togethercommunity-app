@@ -455,13 +455,20 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
     versions.push(asset);
     lineages.set(key, versions);
   }
-  const assetRow = (asset: ProductDownloadAssetMetadata) => (
+  const assetRow = (asset: ProductDownloadAssetMetadata, personalisationMaxBytes: number | null) => (
     <Stack key={asset.id} spacing="0.5rem" sx={{ py: 1 }}>
       <Typography>{asset.fileName}</Typography>
       <Typography variant="body2" color="text.secondary">
         {t.products.fileVersion({ number: asset.versionNumber })}
         {' · '}{formatFileSize(asset.sizeBytes, language)}{' · '}{formatDate(asset.createdAt, language)}
       </Typography>
+      {asset.personalisationSizeExceeded && personalisationMaxBytes !== null ? (
+        <Typography variant="body2" color="text.secondary">
+          {t.products.downloadNoCopyIdentifier({
+            limit: formatFileSize(personalisationMaxBytes, language),
+          })}
+        </Typography>
+      ) : null}
       {asset.versionNote ? <Typography variant="body2">{asset.versionNote}</Typography> : null}
       <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
         <Chip size="small" color={asset.status === 'ready' ? 'success' : 'warning'} variant="outlined"
@@ -498,11 +505,11 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
         <Stack spacing="1rem">
           {[...lineages.entries()].map(([lineageId, versions]) => (
             <Box key={lineageId}>
-              {versions[0] ? assetRow(versions[0]) : null}
+              {versions[0] ? assetRow(versions[0], assets.data.personalisationMaxBytes) : null}
               {versions.length > 1 ? (
                 <Box component="details">
                   <Typography component="summary" sx={{ cursor: 'pointer' }}>{t.products.previousVersions}</Typography>
-                  {versions.slice(1).map(assetRow)}
+                  {versions.slice(1).map((asset) => assetRow(asset, assets.data.personalisationMaxBytes))}
                 </Box>
               ) : null}
             </Box>

@@ -40,6 +40,7 @@ add it here before using it in either dictionary.
 | Imported price | cena zaimportowana | imported price | Compact price label is Zaimportowana / Imported. Imported recurring periods use localized interval copy from the importedPeriod dictionary key and must not imply the price is active for new checkout. |
 | Free sample content | bezpłatna lekcja próbna | free preview lesson | Use consistently across sample content. |
 | Copy identifier | identyfikator kopii | copy identifier | An opaque identifier stored only in downloaded file metadata. |
+| Personalisation size limit | limit rozmiaru personalizacji | personalisation size limit | Files above this configured ceiling are delivered without an embedded copy identifier. |
 | Additional copy history | Pokaż więcej kopii | Show more copies | Loads the next page of issued download copies. |
 | Copy recipient | odbiorca kopii | copy recipient | The member linked to an issued download copy. |
 | Copy order | zamówienie | order | Show Brak zamówienia / No order when no paid order is linked. |

@@ -9,13 +9,14 @@ the named staging environment.
 **STATUS:** done
 
 Magic-link exposure fails closed at boot. `AUTH_DEV_EXPOSE_MAGIC_LINKS` defaults
-to `false` (`apps/server/src/env.ts:93-96`), and every environment except local
-development rejects `true` (`apps/server/src/env.ts:165-180`). Local development
+to `false` (`apps/server/src/env.ts:109-112`), and every environment except local
+development rejects `true` (`apps/server/src/env.ts:219-234`). Local development
 means `NODE_ENV` other than `production` with `APP_ENV` unset or `development`
-(`apps/server/src/env.ts:38-43`), so staging and preview refuse to boot with the
-flag on. In local development the auth adapter writes links to `dev_magic_links`
-(`adapters/auth/create-auth.ts:467-475`) and the sign-in response exposes them
-(`apps/server/src/internal-app.ts:882`).
+(`apps/server/src/env.ts:34-39`), so staging and preview refuse to boot with the
+flag on. In local development the auth adapter writes issued links to `dev_magic_links`
+(`adapters/auth/create-auth.ts:792-801`), the dev magic-link endpoint returns
+them (`apps/server/src/internal-app.ts:1124-1128`), and the simulated-purchase
+response includes the issued link (`apps/server/src/internal-app.ts:1120-1121`).
 
 Verify the deployed environment has `AUTH_DEV_EXPOSE_MAGIC_LINKS` unset or set
 to `false`.
@@ -26,14 +27,14 @@ to `false`.
 
 Simulation endpoints fail closed at boot and are mounted only in local
 development. `SIMULATED_PAYMENTS` defaults to `false`
-(`apps/server/src/env.ts:89-92`) and is rejected outside local development
-(`apps/server/src/env.ts:165-180`); `selectDevEndpoints`
-(`apps/server/src/composition.ts:458-466`) additionally forces both dev flags off
+(`apps/server/src/env.ts:105-108`) and is rejected outside local development
+(`apps/server/src/env.ts:219-226`); `selectDevEndpoints`
+(`apps/server/src/composition.ts:606-614`) additionally forces both dev flags off
 whenever the process is not a local development one, so no `/api/dev/*` route is
 registered on production, staging or preview. The resulting flag gates the
 complete `/api/dev/*` block, including purchase, grant, magic-link, e-mail, and
 subscription-cycle simulation endpoints
-(`apps/server/src/internal-app.ts:686-932`).
+(`apps/server/src/internal-app.ts:915-1171`).
 
 Verify the deployed environment has `SIMULATED_PAYMENTS` unset or set to
 `false`.

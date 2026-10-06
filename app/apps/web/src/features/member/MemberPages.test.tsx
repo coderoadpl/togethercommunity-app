@@ -185,11 +185,13 @@ describe('member pages', () => {
               status: 'ready',
               createdAt: '1998-07-12T00:00:00.000Z',
               downloadPath: '/api/my/products/download-1/downloads/asset-1',
+              personalisationSizeExceeded: false,
               previousVersions: [{
                 id: 'previous', lineageId: 'asset-1', versionNumber: 1, versionNote: 'First edition',
                 supersededAt: '1998-07-12T00:00:00.000Z', productId: 'download-1',
                 fileName: 'original.pdf', contentType: 'application/pdf', sizeBytes: 2048, status: 'ready',
                 createdAt: '1998-07-01T00:00:00.000Z', downloadPath: '/api/my/products/download-1/downloads/previous',
+                personalisationSizeExceeded: true,
               }],
             }],
           }],
@@ -210,8 +212,85 @@ describe('member pages', () => {
     await userEvent.click(screen.getByText(en.products.previousVersions));
     expect(screen.getByText('First edition')).toBeVisible();
     expect(screen.getByTestId('download-previous')).toHaveAttribute('href', '/api/my/products/download-1/downloads/previous');
+    expect(screen.getByText(en.student.downloadNoCopyIdentifier)).toBeVisible();
     expect(screen.getByRole('link', { name: 'Creator workbook' }))
       .toHaveAttribute('href', '/my/course/download-1');
+  });
+
+  it('shows when a buyer download is delivered without a copy identifier', async () => {
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({
+        ok: true,
+        data: {
+          products: [{
+            ...productsBody.products[0],
+            id: 'download-1',
+            type: 'digital_download',
+            title: 'Creator workbook',
+            downloads: [{
+              id: 'asset-1',
+              lineageId: 'asset-1',
+              versionNumber: 1,
+              versionNote: null,
+              supersededAt: null,
+              productId: 'download-1',
+              fileName: 'large-workbook.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 21 * 1024 * 1024,
+              status: 'ready',
+              createdAt: '1998-07-12T00:00:00.000Z',
+              downloadPath: '/api/my/products/download-1/downloads/asset-1',
+              previousVersions: [],
+              personalisationSizeExceeded: true,
+            }, {
+              id: 'asset-2',
+              lineageId: 'asset-2',
+              versionNumber: 1,
+              versionNote: null,
+              supersededAt: null,
+              productId: 'download-1',
+              fileName: 'equal-limit-workbook.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 20 * 1024 * 1024,
+              status: 'ready',
+              createdAt: '1998-07-12T00:00:00.000Z',
+              downloadPath: '/api/my/products/download-1/downloads/asset-2',
+              previousVersions: [],
+              personalisationSizeExceeded: false,
+            }, {
+              id: 'asset-3',
+              lineageId: 'asset-3',
+              versionNumber: 1,
+              versionNote: null,
+              supersededAt: null,
+              productId: 'download-1',
+              fileName: 'regular-workbook.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 1024,
+              status: 'ready',
+              createdAt: '1998-07-12T00:00:00.000Z',
+              downloadPath: '/api/my/products/download-1/downloads/asset-3',
+              previousVersions: [],
+              personalisationSizeExceeded: false,
+            }],
+          }],
+        },
+      })),
+      http.get('/api/tenant/settings', () => HttpResponse.json({
+        ok: true,
+        data: { settings: { billingPortalUrl: null, bunnyStreamLibraryId: null } },
+      })),
+    );
+
+    await renderPage(MyProductsPage, '/my/products');
+
+    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'large-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+      .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
+    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'equal-limit-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+      .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-2');
+    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'regular-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+      .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-3');
+    expect(screen.getAllByText(en.student.downloadNoCopyIdentifier)).toHaveLength(1);
   });
 
   it('renders the coming-soon stub when the member can access no course yet', async () => {

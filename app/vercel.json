@@ -46,6 +46,10 @@
       "destination": "/api/index"
     },
     {
+      "source": "/link/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/(.*)",
       "has": [
         {

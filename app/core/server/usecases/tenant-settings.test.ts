@@ -87,21 +87,59 @@ const deps: TenantSettingsDeps = {
   },
   spaces: spaceRepo(space()),
   products: { bumpContentVersion: async () => undefined },
+  personalisationMaxBytes: 20 * 1024 * 1024,
 };
 
 describe('getTenantSettings', () => {
   it('exposes support availability without exposing the private recipient to members', async () => {
     expect(await getTenantSettings({ identity: identity(null) }, deps)).toEqual({
       ok: true,
-      value: { ...settings, supportEmail: null, supportConfigured: true },
+      value: {
+        settings: { ...settings, supportEmail: null, supportConfigured: true },
+        personalisationMaxBytes: null,
+      },
     });
   });
 
   it('keeps the support recipient visible to staff settings', async () => {
     expect(await getTenantSettings({ identity: identity('admin') }, deps)).toEqual({
       ok: true,
-      value: { ...settings, supportConfigured: true },
+      value: {
+        settings: { ...settings, supportConfigured: true },
+        personalisationMaxBytes: deps.personalisationMaxBytes,
+      },
     });
+  });
+
+  it('returns the personalisation limit only for staff settings readers', async () => {
+    const limit = 12_345;
+    const configured = { ...deps, personalisationMaxBytes: limit };
+    const impersonatedMember = {
+      identity: identity(null),
+      impersonation: {
+        id: 'impersonation-1',
+        subjectMemberId: 'member-1',
+        subjectName: 'Member',
+        actorUserId: 'owner-1',
+        actorEmail: 'owner@example.test',
+        actorName: 'Owner',
+        actorStaffRole: 'owner' as const,
+        expiresAt: '1998-07-12T12:00:00.000Z',
+      },
+    };
+    const apiKey = { identity: { ...identity(null), memberId: null, tenantAccess: 'none' as const }, capabilities: ['tenant:settings:read' as const] };
+    const worker = { identity: { ...identity(null), memberId: null, tenantAccess: 'none' as const }, capabilities: ['tenant:settings:read' as const] };
+
+    await expect(getTenantSettings({ identity: identity(null) }, configured))
+      .resolves.toMatchObject({ ok: true, value: { personalisationMaxBytes: null } });
+    await expect(getTenantSettings(impersonatedMember, configured))
+      .resolves.toMatchObject({ ok: true, value: { personalisationMaxBytes: null } });
+    await expect(getTenantSettings(apiKey, configured))
+      .resolves.toMatchObject({ ok: true, value: { personalisationMaxBytes: null } });
+    await expect(getTenantSettings(worker, configured))
+      .resolves.toMatchObject({ ok: true, value: { personalisationMaxBytes: null } });
+    await expect(getTenantSettings({ identity: identity('admin') }, configured))
+      .resolves.toMatchObject({ ok: true, value: { personalisationMaxBytes: limit } });
   });
 
   it.each([null, 'admin'] as const)('omits telemetry store settings for role %s', async (role) => {
@@ -109,8 +147,8 @@ describe('getTenantSettings', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Expected tenant settings');
-    expect(result.value).toMatchObject({ name: settings.name });
-    expect(result.value).not.toHaveProperty('telemetryStore');
+    expect(result.value.settings).toMatchObject({ name: settings.name });
+    expect(result.value.settings).not.toHaveProperty('telemetryStore');
   });
 });
 

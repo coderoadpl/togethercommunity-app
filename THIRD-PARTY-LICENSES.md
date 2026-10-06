@@ -1055,8 +1055,8 @@ invoices can be checked locally.
 - [scheduler@0.27.0](https://react.dev/) - MIT
 - [semver@6.3.1](https://github.com/npm/node-semver#readme) - ISC
 - [semver@7.8.5](https://github.com/npm/node-semver#readme) - ISC
-- [seroval-plugins@1.5.6](https://github.com/lxsmnsyc/seroval/tree/main/packages/plugins) - MIT
-- [seroval@1.5.6](https://github.com/lxsmnsyc/seroval/tree/main/packages/seroval) - MIT
+- [seroval-plugins@1.6.8](https://github.com/lxsmnsyc/seroval/tree/main/packages/plugins) - MIT
+- [seroval@1.6.8](https://github.com/lxsmnsyc/seroval/tree/main/packages/seroval) - MIT
 - [set-blocking@2.0.0](https://github.com/yargs/set-blocking#readme) - ISC
 - [set-cookie-parser@3.1.1](https://github.com/nfriedly/set-cookie-parser) - MIT
 - [set-function-length@1.2.2](https://github.com/ljharb/set-function-length#readme) - MIT

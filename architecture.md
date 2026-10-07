@@ -311,9 +311,12 @@ Architecture is enforced by configuration and executable probes:
 | `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 | `pnpm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 
-In `.github/workflows/ci.yml`, the `check` job runs `check` and the production
-dependency audit. The `smoke` job runs `smoke` and `quickstart:probe`; the macOS
-`visual` job runs `visual`, which builds Storybook before comparing captures.
+In `.github/workflows/ci.yml`, the `check` job runs `check` and blocks on the
+production dependency audit only for dependency-changing pull requests,
+promotions into `main`, and pushes to `main`, while the advisory `dependency-audit`
+job reports findings on every run. The `smoke` job runs `smoke` and
+`quickstart:probe`; the macOS `visual` job runs `visual`, which builds Storybook
+before comparing captures.
 The twelve e2e matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`,
 `public-authz`, `member-activity`, `member-shell`, `impersonation`, `two-factor`,
 `image-assets`, and `custom-domain`. The `auth` job also runs `fixtures:check`

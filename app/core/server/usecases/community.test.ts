@@ -244,7 +244,7 @@ class FakePosts implements PostRepository {
       (post) =>
         post.tenantId === tenantId &&
         post.authorUserId === query.authorUserId &&
-        post.createdAt >= query.since &&
+        (post.createdAt >= query.since || (post.editedAt !== null && post.editedAt >= query.since)) &&
         post.deletedAt === null,
     ).length;
   }
@@ -1639,6 +1639,83 @@ describe('community guard and error branches', () => {
       ok: false,
       error: { code: 'rate_limited' },
     });
+  });
+
+  const rememberAgedPost = (d: CommunityDeps, id: string): void => {
+    if (!(d.posts instanceof FakePosts)) throw new Error('expected fake posts');
+    d.posts.rows.push({
+      id,
+      tenantId: 't1',
+      contextKind: 'lesson',
+      contextId: 'l1',
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: 'u1',
+      authorDisplay: 'User One',
+      authorIsStaff: false,
+      body: `aged ${id}`,
+      bodyFormat: 'plain',
+      createdAt: '2026-07-15T09:00:00.000Z',
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    });
+  };
+
+  it('counts an edit of an older post toward the rate limit', async () => {
+    const d = access();
+    rememberAgedPost(d, 'aged-filler');
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts - 1; index += 1) {
+      await expect(
+        createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: `fresh ${index}` }, d),
+      ).resolves.toMatchObject({ ok: true });
+    }
+    await expect(
+      editPost(memberCtx, { id: 'aged-filler', body: 'edited aged filler' }, d),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'one post too many' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+
+  it('blocks edits and creates once edits alone fill the rate limit', async () => {
+    const d = access();
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts; index += 1) {
+      rememberAgedPost(d, `aged-${index}`);
+    }
+    rememberAgedPost(d, 'aged-over');
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts; index += 1) {
+      await expect(
+        editPost(memberCtx, { id: `aged-${index}`, body: `edited aged ${index}` }, d),
+      ).resolves.toMatchObject({ ok: true });
+    }
+    await expect(
+      editPost(memberCtx, { id: 'aged-over', body: 'https://one.test https://two.test https://three.test' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    await expect(
+      createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'created after the edit bucket filled' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(d.reports).toBeInstanceOf(FakeReports);
+    if (!(d.reports instanceof FakeReports)) throw new Error('expected fake reports');
+    expect(d.reports.rows).toEqual([]);
+  });
+
+  it('counts repeated edits of one post as a single rate-limit slot', async () => {
+    const d = access();
+    rememberAgedPost(d, 'aged-only');
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts + 2; index += 1) {
+      await expect(
+        editPost(memberCtx, { id: 'aged-only', body: `revision ${index} of the same post` }, d),
+      ).resolves.toMatchObject({ ok: true });
+    }
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts - 1; index += 1) {
+      await expect(
+        createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: `alongside ${index}` }, d),
+      ).resolves.toMatchObject({ ok: true });
+    }
+    await expect(
+      createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'the slot the repeated edits did not consume' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 
   it('opens a heuristic report when an edit turns a post into a link flood', async () => {

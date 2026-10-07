@@ -2474,6 +2474,63 @@ describe('post repository', () => {
     await expect(repo.findByIds(GLOBEX, ['post-spam-recent-a'])).resolves.toEqual([]);
   });
 
+  it('counts a post once when it was created or last edited inside the window', async () => {
+    const repo = createPostRepository(db);
+    const authorUserId = 'user-acme-edit-window';
+    const since = '1998-07-14T09:45:00.000Z';
+    const postAt = (id: string, tenantId: string, createdAt: string, author = authorUserId): Post => ({
+      id,
+      tenantId,
+      contextKind: 'space',
+      contextId: 'space-edit-window',
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: author,
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: `Body ${id}`,
+      bodyFormat: 'plain',
+      createdAt,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    });
+    const edit = (tenantId: string, id: string, editedAt: string) => repo.updateBody(tenantId, {
+      id,
+      body: `Edited ${id} ${editedAt}`,
+      bodyFormat: 'plain',
+      editedAt,
+    });
+
+    await repo.createPost(ACME, postAt('post-edit-window-old', ACME, '1998-07-14T08:00:00.000Z'));
+    await edit(ACME, 'post-edit-window-old', '1998-07-14T09:50:00.000Z');
+    await expect(repo.countByAuthorSince(ACME, { authorUserId, since })).resolves.toBe(1);
+    await edit(ACME, 'post-edit-window-old', '1998-07-14T09:55:00.000Z');
+    await edit(ACME, 'post-edit-window-old', '1998-07-14T09:58:00.000Z');
+    await expect(repo.countByAuthorSince(ACME, { authorUserId, since })).resolves.toBe(1);
+
+    await repo.createPost(ACME, postAt('post-edit-window-fresh', ACME, '1998-07-14T09:51:00.000Z'));
+    await edit(ACME, 'post-edit-window-fresh', '1998-07-14T09:57:00.000Z');
+    await repo.createPost(ACME, postAt('post-edit-window-stale', ACME, '1998-07-14T08:00:00.000Z'));
+    await edit(ACME, 'post-edit-window-stale', '1998-07-14T08:30:00.000Z');
+    await repo.createPost(ACME, postAt('post-edit-window-deleted', ACME, '1998-07-14T08:00:00.000Z'));
+    await edit(ACME, 'post-edit-window-deleted', '1998-07-14T09:56:00.000Z');
+    await repo.softDelete(ACME, {
+      id: 'post-edit-window-deleted',
+      deletedAt: NOW,
+      deletedBy: 'author',
+      deletedByUserId: authorUserId,
+    });
+    await repo.createPost(ACME, postAt('post-edit-window-other-author', ACME, '1998-07-14T08:00:00.000Z', 'user-acme-other-editor'));
+    await edit(ACME, 'post-edit-window-other-author', '1998-07-14T09:56:00.000Z');
+    await repo.createPost(GLOBEX, postAt('post-edit-window-globex', GLOBEX, '1998-07-14T08:00:00.000Z'));
+    await edit(GLOBEX, 'post-edit-window-globex', '1998-07-14T09:56:00.000Z');
+
+    await expect(repo.countByAuthorSince(ACME, { authorUserId, since })).resolves.toBe(2);
+    await expect(repo.countByAuthorSince(GLOBEX, { authorUserId, since })).resolves.toBe(1);
+    await expect(repo.countByAuthorSince(ACME, { authorUserId: 'user-acme-other-editor', since })).resolves.toBe(1);
+  });
+
   it('lists only posts for the requested tenant and author', async () => {
     const repo = createPostRepository(db);
     const authoredPost = (

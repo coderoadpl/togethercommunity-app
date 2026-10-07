@@ -122,9 +122,10 @@ targets `main` for promotion, or runs on a push to `main`. The independent
 (`continue-on-error`, so it cannot block): a failed run shows as a warning with
 an error annotation and an advisory count in the job summary rather than a red
 required check, and on an unrelated pull request it means a dependency bump
-pull request is due. Owner decision 2026-10-08: the production dependency audit
-blocks merges only for pull requests that change dependencies and for promotions
-into main; on every other run the advisory `dependency-audit` job reports the
+pull request is due. Owner decision 2026-10-07 (recorded in `app/CLAUDE.md`,
+section on the dependency audit): the production dependency audit blocks merges
+only for pull requests that change dependencies and for promotions into main;
+on every other run the advisory `dependency-audit` job reports the
 finding without blocking, and an unaccepted advisory is handled by a dependency
 bump or an entry under Accepted dependency advisories before the next promotion.
 The audit allowlist contains only this reviewed advisory:

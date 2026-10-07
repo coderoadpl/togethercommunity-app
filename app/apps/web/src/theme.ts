@@ -4078,7 +4078,7 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
   fontSize: scaleType === 'stars' ? '1.8rem' : '1rem',
   ...(scaleType === 'stars' ? {
     '& > [data-filled="true"]': { color: theme.palette.warning.main },
-    ...(theme.palette.mode === 'light' ? { '&:hover, &:active': { backgroundColor: theme.palette.background.paper } } : {}),
+    ...(theme.palette.mode === 'light' ? { '&.MuiButton-outlined:hover, &.MuiButton-outlined:active': { backgroundColor: theme.palette.background.paper } } : {}),
   } : {}),
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });

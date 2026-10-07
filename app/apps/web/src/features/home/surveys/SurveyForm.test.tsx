@@ -42,6 +42,16 @@ describe('Survey form', () => {
     expect(contrastRatio(theme.palette.warning.main, theme.palette.background.paper)).toBeGreaterThanOrEqual(3);
     const hoverBackground = scheme === 'light' ? theme.palette.background.paper : theme.palette.action.hover;
     expect(contrastRatio(theme.palette.warning.main, hoverBackground)).toBeGreaterThanOrEqual(3);
+    if (scheme === 'light') {
+      const wrapperClass = buttons[0]?.className.split(' ').find((name) => name.startsWith('css-'));
+      const paper = theme.palette.background.paper;
+      const paperRgb = `rgb(${[1, 3, 5].map((offset) => parseInt(paper.slice(offset, offset + 2), 16)).join(', ')})`;
+      const paperRules = Array.from(document.styleSheets)
+        .flatMap((sheet) => Array.from(sheet.cssRules))
+        .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.style.backgroundColor === paperRgb)
+        .map((rule) => rule.selectorText);
+      expect(paperRules).toContain(`.${wrapperClass}.MuiButton-outlined:hover,.${wrapperClass}.MuiButton-outlined:active`);
+    }
   });
   it('previews hovered stars without changing the score and restores it on leaving the group', async () => {
     const theme = createThemeForMode('shadcn');

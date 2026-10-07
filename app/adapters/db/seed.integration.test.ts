@@ -271,6 +271,23 @@ describe('demo seed lifecycle', () => {
          'AUDIT-email-event', 'tenant-studio', 'transactional', 'AUDIT-email', 'sent', NOW(), NOW()
        )`,
     );
+    await client.query(
+      `INSERT INTO campaigns (
+         id, tenant_id, name, subject, body_html, body_source, status, consent_definition_id,
+         created_at
+       ) VALUES (
+         'AUDIT-campaign', 'tenant-studio', 'AUDIT campaign', 'AUDIT subject', '<p>AUDIT</p>',
+         '<p>AUDIT</p>', 'draft', 'consent-definition-studio-news', NOW()
+       )`,
+    );
+    await client.query(
+      `INSERT INTO campaign_sends (
+         id, tenant_id, campaign_id, source, email, subject, status, created_at
+       ) VALUES (
+         'AUDIT-campaign-send', 'tenant-studio', 'AUDIT-campaign', 'broadcast',
+         'audit-campaign-send@example.com', 'AUDIT subject', 'sent', NOW()
+       )`,
+    );
 
     runDatabaseScript('reseed.ts');
 
@@ -306,6 +323,12 @@ describe('demo seed lifecycle', () => {
     const staleEmailEvent = await client.query(
       `SELECT id FROM email_events WHERE id = 'AUDIT-email-event'`,
     );
+    const staleCampaign = await client.query(
+      `SELECT id FROM campaigns WHERE id = 'AUDIT-campaign'`,
+    );
+    const staleCampaignSend = await client.query(
+      `SELECT id FROM campaign_sends WHERE id = 'AUDIT-campaign-send'`,
+    );
 
     expect(auditCourse.rowCount).toBe(0);
     expect(course.rows).toEqual([{ module_order: [] }]);
@@ -320,5 +343,7 @@ describe('demo seed lifecycle', () => {
     expect(sharedSchedulerRun.rows).toEqual([{ id: 'AUDIT-shared-scheduler-run' }]);
     expect(sharedSchedulerRunTenants.rows).toEqual([{ tenant_id: 'AUDIT-tenant' }]);
     expect(staleEmailEvent.rowCount).toBe(0);
+    expect(staleCampaign.rowCount).toBe(0);
+    expect(staleCampaignSend.rowCount).toBe(0);
   }, 180_000);
 });

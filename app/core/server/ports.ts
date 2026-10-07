@@ -310,7 +310,6 @@ export interface PostRepository {
   createPost(tenantId: string, post: Post, fanoutJob?: NotificationFanoutJob): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
   findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
-  /** Non-deleted posts this author created or last edited at or after `since`, counted once per post. */
   countByAuthorSince(
     tenantId: string,
     query: { authorUserId: string; since: string },

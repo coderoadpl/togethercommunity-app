@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { userEvent, within } from 'storybook/test';
 import { Box, Typography } from '@mui/material';
 import { SurveyForm } from '../features/home/surveys/SurveyForm.js';
 import { SurveyEditor } from '../features/home/surveys/SurveyEditor.js';
@@ -13,6 +14,12 @@ const PublicPreview = ({ type = 'nps', ending }: { type?: 'nps' | 'stars'; endin
 const meta = { title: 'Surveys/NativeSurvey', decorators: [withSurveyPreview], parameters: { locale: 'en', colorScheme: 'light', layout: 'fullscreen' }, render: () => <PublicPreview />, play: async () => { await document.fonts.ready; } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
+const selectStars: Story['play'] = async ({ canvasElement }) => {
+  await document.fonts.ready;
+  const button = within(canvasElement).getByRole('button', { name: 'Score 3' });
+  await userEvent.click(button);
+  await userEvent.unhover(button);
+};
 
 export const NpsFormLightDesktop: Story = { render: () => <PublicPreview />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'desktop' } } };
 
@@ -22,13 +29,13 @@ export const NpsFormDarkDesktop: Story = { render: () => <PublicPreview />, para
 
 export const NpsFormDarkMobile: Story = { render: () => <PublicPreview />, parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
 
-export const StarsFormLightDesktop: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'desktop' } } };
+export const StarsFormLightDesktop: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'desktop' } }, play: selectStars };
 
-export const StarsFormLightMobile: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'mobile' } } };
+export const StarsFormLightMobile: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'mobile' } }, play: selectStars };
 
-export const StarsFormDarkDesktop: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
+export const StarsFormDarkDesktop: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } }, play: selectStars };
 
-export const StarsFormDarkMobile: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
+export const StarsFormDarkMobile: Story = { render: () => <PublicPreview type="stars" />, parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } }, play: selectStars };
 
 export const NpsEnding1LightDesktop: Story = { render: () => <PublicPreview type="nps" ending={0} />, parameters: { colorScheme: 'light' }, globals: { viewport: { value: 'desktop' } } };
 

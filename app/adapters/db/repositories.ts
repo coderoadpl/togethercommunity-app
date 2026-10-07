@@ -1226,7 +1226,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
       .where(and(
         eq(posts.tenantId, tenantId),
         eq(posts.authorUserId, query.authorUserId),
-        gte(posts.createdAt, query.since),
+        or(gte(posts.createdAt, query.since), gte(posts.editedAt, query.since)),
         isNull(posts.deletedAt),
       ));
     return rows[0]?.value ?? 0;

@@ -24,7 +24,6 @@ import { sesIdentityFreshness, type SnsWebhookDelivery } from '#core/domain/inde
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { CopyField } from '../../../components/ui/CopyField.js';
-import { nativeValidityProps } from '../../../components/ui/native-validity.js';
 import {
   errorCodeOf,
   localizePanelError,
@@ -665,7 +664,7 @@ export const EmailTab = () => {
             closeText={t.common.close}
             clearText={t.common.clear}
             noOptionsText={t.common.noOptions}
-            renderInput={(params) => <TextField {...params} required slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, ...nativeValidityProps(t.common.requiredField) } }} />}
+            renderInput={(params) => <TextField {...params} required />}
             renderOption={({ key, ...optionProps }, option) => {
               const item = detectedIdentities.find((candidate) => candidate.identity === option);
               return (

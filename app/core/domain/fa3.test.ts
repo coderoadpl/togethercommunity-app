@@ -46,6 +46,19 @@ const EXEMPT_FA3_FIXTURE =
   '<P_12>zw</P_12></FaWiersz></Fa></Faktura>\n';
 
 describe('FA(3) renderer', () => {
+  it('renders and validates mixed rates with exemption in line order', () => {
+    const xml = renderFa3Invoice({ ...input, grossAmountCents: 27800, discountCents: 0, positions: [
+      { name: 'Printed material', grossCents: 10500, netCents: 10000, vatCents: 500, vat: { kind: 'rate', percent: 5 } },
+      { name: 'Download', grossCents: 12300, netCents: 10000, vatCents: 2300, vat: { kind: 'rate', percent: 23 } },
+      { name: 'Workshop', grossCents: 5000, netCents: 5000, vatCents: 0, vat: { kind: 'exempt', basisKind: 'other', basis: 'Section 1' } },
+    ] });
+    expect(xml).toContain('<P_13_1>100.00</P_13_1><P_14_1>23.00</P_14_1><P_13_3>100.00</P_13_3><P_14_3>5.00</P_14_3><P_13_7>50.00</P_13_7>');
+    expect(xml).toContain('<P_15>278.00</P_15>');
+    expect(xml.indexOf('<P_7>Printed material')).toBeLessThan(xml.indexOf('<P_7>Download'));
+    expect(xml).toContain('<NrWierszaFa>3</NrWierszaFa>');
+    expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
+  });
+
   it('is deterministic and emits the official FA(3) identity in schema order', () => {
     const first = renderFa3Invoice(input);
     const second = renderFa3Invoice(input);

@@ -1,3 +1,4 @@
+import type { OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
@@ -271,7 +272,7 @@ const harness = (
         return completed;
       },
       create: async (_tenantId, order) => {
-        orders.push(order);
+        orders.push({ ...order, verificationToken: 'b'.repeat(64) });
       },
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
@@ -2402,4 +2403,80 @@ it('renews and cancels an adopted subscription without Together checkout metadat
   expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-deleted', type: 'customer.subscription.deleted', subscriptionId: 'sub_existing', status: 'canceled', currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
   expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('canceled');
   expect(h.errors).toEqual([]);
+});
+
+const bundlePayment = () => {
+  const h = harness();
+  const lines: OrderLine[] = [
+    { productId: 'product-1', name: 'Digital item', productType: 'digital_download', grossCents: 4900, netCents: 3984, vatRate: 23, vatCents: 916, vatExemptionBasis: null, issuedCount: null },
+    { productId: 'product-2', name: 'Course item', productType: 'course', grossCents: 5400, netCents: 5000, vatRate: 8, vatCents: 400, vatExemptionBasis: null, issuedCount: null },
+    { productId: 'product-3', name: 'Printed item', productType: 'physical', grossCents: 2100, netCents: 2000, vatRate: 5, vatCents: 100, vatExemptionBasis: null, issuedCount: 0 },
+  ];
+  h.deps.products.findById = async (tenantId, id) => {
+    const line = lines.find((item) => item.productId === id);
+    return line === undefined ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
+  };
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
+      id, tenantId, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now,
+    } : null,
+  };
+  const event = completedEvent({ amountTotalCents: 12400 });
+  if (event.checkoutSession !== null) {
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+  }
+  return { ...h, event, lines };
+};
+
+it('fulfills a bundle as one payment with immutable VAT lines and no physical grant', async () => {
+  const h = bundlePayment();
+  const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+  expect(result.ok).toBe(true);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ salesLinkId: 'link-1', amountCents: 12400, lines: h.lines });
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+    purchase: {
+      orderNumber: h.orders[0]?.id,
+      verificationUrl: `https://alpha.example.com/panel/orders/verify/${'b'.repeat(64)}`,
+      qrImageUrl: `https://alpha.example.com/api/public/orders/qr/${'b'.repeat(64)}`,
+      lines: h.lines.map((line) => line.name),
+    },
+  });
+  expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
+  expect(h.enrollmentEmails).toHaveLength(1);
+  const replay = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+  expect(replay.ok).toBe(true);
+  expect(h.orders).toHaveLength(1);
+  expect(h.grants.size).toBe(2);
+});
+
+it.each(['wrong-tenant', 'wrong-total', 'wrong-link', 'missing-snapshot'])(
+  'rejects a mismatched bundle payment: %s', async (reason) => {
+    const h = bundlePayment();
+    if (h.event.checkoutSession !== null) {
+      if (reason === 'wrong-tenant') h.event.checkoutSession.metadata.tenantId = 'tenant-b';
+      if (reason === 'wrong-total') h.event.checkoutSession.amountTotalCents = 12399;
+      if (reason === 'wrong-link') h.event.checkoutSession.metadata.salesLinkId = 'link-other';
+      if (reason === 'missing-snapshot') h.event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-other';
+    }
+    const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+    expect(result.ok).toBe(false);
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants.size).toBe(0);
+  },
+);
+
+it('revokes all nonphysical bundle grants after one full payment refund', async () => {
+  const h = bundlePayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const result = await fulfillStripeWebhook(tenantA, {
+    id: 'bundle-refund', type: 'charge.refunded', objectId: 'charge-1', checkoutSession: null,
+    adjustment: { chargeId: 'charge-1', paymentIntentId: 'pi-1', invoiceId: null,
+      refund: { full: true, amountRefundedCents: 12400, amountCents: 12400 } },
+  }, h.deps);
+  expect(result.ok).toBe(true);
+  expect(h.orders[0]?.status).toBe('refunded');
+  expect([...h.grants.values()].every((grant) => grant.expiresAt === now)).toBe(true);
 });

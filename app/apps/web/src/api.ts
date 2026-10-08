@@ -1,3 +1,5 @@
+import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates } from '#core/client/index.js';
+import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
@@ -333,6 +335,7 @@ const authClient = createBetterAuthClientAdapter('');
  * these ready actions and never see a client, a port or an adapter.
  */
 export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClientPort, 'listPasskeys'> = authClient) => ({
+  salesLinks: salesLinkActions(apiClient),
   surveys: surveyActions(apiClient),
   directory: marketingDirectoryActions(apiClient),
   health: healthQuery(apiClient),
@@ -383,6 +386,10 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   productsInvalidates,
   orders: (input: OrdersListQueryInput) => ordersQuery(apiClient, input),
   orderReconciliation: orderReconciliationQuery(apiClient),
+  orderVerification: (reference: string) => orderVerificationQuery(apiClient, reference),
+  issueOrderLine: issueOrderLineMutation(apiClient),
+  ordersInvalidates,
+  orderVerificationInvalidates,
   order: (id: string) => orderQuery(apiClient, id),
   issueInvoice: issueInvoiceMutation(apiClient),
   refreshInvoice: refreshInvoiceMutation(apiClient),

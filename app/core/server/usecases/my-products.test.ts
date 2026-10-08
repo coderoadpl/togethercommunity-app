@@ -107,6 +107,23 @@ const grants = (products: Product[], memberGrants: MemberGrant[]): ProductGrantR
 });
 
 describe('listMyProducts', () => {
+  it('includes paid physical lines without creating or requiring an access grant', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const orders = { listForMember: vi.fn(async () => [{
+      mode: 'live' as const, id: 'order-1', tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null,
+      lines: [{ productId: physical.id, name: physical.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 }],
+    }]) };
+    const products = { findByIds: vi.fn(async () => [physical]) };
+    expect(await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock, orders, products,
+    })).toMatchObject({ ok: true, value: [{ type: 'physical', downloads: [], subscription: null }] });
+    expect(orders.listForMember).toHaveBeenCalledWith('t-acme', 'm1');
+    expect(products.findByIds).toHaveBeenCalledWith('t-acme', [physical.id]);
+  });
+
   it('returns the granted products for a member with an active window', async () => {
     const result = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
       grants: grants([granted], [memberGrant()]),

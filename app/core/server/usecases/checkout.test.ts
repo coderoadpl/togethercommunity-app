@@ -1,3 +1,4 @@
+import type { CheckoutSnapshot } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -517,4 +518,119 @@ it('records the sandbox session as a pending test order before returning its URL
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'test', customerEmail: 'staff@example.test',
     successUrl: expect.stringContaining('test_purchase=1') }));
   expect(recorded).toMatchObject([{ mode: 'test', status: 'pending', memberId: 'staff-member', providerObjectIds: { checkoutSession: 'default' } }]);
+});
+
+const bundleCheckout = () => {
+  const base = checkoutDeps();
+  const products: Product[] = [
+    { ...product, vatRate: 23 },
+    { ...product, id: 'physical-1', title: 'Printed item', type: 'physical', priceCents: 2100, vatRate: 5 },
+  ];
+  const link = {
+    id: 'link-1', tenantId: tenant.id, slug: 'collection', title: 'Collection', heading: 'Collection',
+    description: '', productIds: products.map((item) => item.id), active: true, listed: false,
+    validFrom: null, validTo: null, createdAt: product.createdAt, updatedAt: product.createdAt, revision: 1,
+  };
+  const snapshots: CheckoutSnapshot[] = [];
+  const calls: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
+  const deps: CheckoutDeps = {
+    ...base,
+    ids: { nextId: () => 'snapshot-1' }, clock: { nowIso: () => '2026-10-08T12:00:00.000Z' },
+    products: { ...base.products, findById: async (_tenantId, id) => products.find((item) => item.id === id) ?? null },
+    prices: { ...base.prices, listActiveByProducts: async () => products.map((item) => ({ id: `price-${item.id}`, tenantId: tenant.id, productId: item.id, kind: 'one_time', interval: null, amountCents: item.priceCents, currency: item.currency, active: true, createdAt: item.createdAt })) },
+    salesLinks: {
+      list: async () => [link], findById: async () => link, findBySlug: async () => link,
+      save: async (_tenantId, value) => ok(value), delete: async () => ok(undefined),
+    },
+    checkoutSnapshots: {
+      create: async (_tenantId, snapshot) => { snapshots.push(snapshot); },
+      findById: async () => snapshots[0] ?? null,
+    },
+    payment: { ...base.payment, createCheckoutSession: async (input) => {
+      calls.push(input); return ok({ sessionId: 'bundle-session', url: 'https://checkout.stripe.test/bundle' });
+    } },
+  };
+  return { deps, link, products, calls, snapshots };
+};
+
+it('creates one checkout with ordered product lines and freezes their VAT amounts', async () => {
+  const h = bundleCheckout();
+  const { createCheckoutSession } = await import('./checkout.js');
+  const result = await createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: product.id, salesLinkId: h.link.id,
+  }, h.deps);
+  expect(result.ok).toBe(true);
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]?.successUrl).toContain('/offer/collection?status=success');
+  expect(h.calls[0]).toMatchObject({ salesLinkId: h.link.id, checkoutSnapshotId: 'snapshot-1', priceCents: 7000,
+    lines: [{ productId: product.id, grossCents: 4900 }, { productId: 'physical-1', name: 'Printed item', grossCents: 2100 }] });
+  expect(h.snapshots[0]?.lines).toEqual([
+    { productId: product.id, priceId: `price-${product.id}`, name: product.title, productType: 'course', grossCents: 4900, netCents: 3984, vatCents: 916, vatRate: 23, vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: null },
+    { productId: 'physical-1', priceId: 'price-physical-1', name: 'Printed item', productType: 'physical', grossCents: 2100, netCents: 2000, vatCents: 100, vatRate: 5, vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: 0 },
+  ]);
+});
+
+it.each(['inactive', 'expired', 'unpublished', 'subscription', 'mixed-currency', 'wrong-first-product'])(
+  'rejects an unavailable bundle: %s', async (reason) => {
+    const h = bundleCheckout();
+    if (reason === 'inactive') h.link.active = false;
+    if (reason === 'expired' && h.deps.salesLinks !== undefined) h.deps.salesLinks = { ...h.deps.salesLinks, findById: async () => ({ ...h.link, validTo: '2026-10-01T00:00:00.000Z' }) };
+    if (reason === 'unpublished' && h.products[1]) h.products[1].published = false;
+    if (reason === 'subscription' && h.products[1]) h.products[1].type = 'membership';
+    if (reason === 'mixed-currency' && h.products[1]) h.products[1].currency = 'EUR';
+    const { createCheckoutSession } = await import('./checkout.js');
+    const result = await createCheckoutSession(tenant, 'https://workspace.example.com', {
+      productId: reason === 'wrong-first-product' ? 'physical-1' : product.id, salesLinkId: h.link.id,
+    }, h.deps);
+    expect(result.ok).toBe(false);
+    expect(h.calls).toHaveLength(0);
+  },
+);
+
+
+it('rejects a recurring price for a physical product before creating a checkout session', async () => {
+  const base = checkoutDeps();
+  const createCheckout = vi.spyOn(base.payment, 'createCheckoutSession');
+  const checkout = await import('./checkout.js');
+  const result = await checkout.createCheckoutSession(tenant, 'https://example.test', { productId: product.id, priceId: recurringPrice.id }, {
+    ...base,
+    products: { ...base.products, findById: async () => ({ ...product, type: 'physical' }) },
+    prices: { ...base.prices, findById: async () => recurringPrice },
+  });
+  expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Physical products require a one-time price' } });
+  expect(createCheckout).not.toHaveBeenCalled();
+});
+
+it('uses replacement price amounts, currencies and identifiers throughout bundle checkout', async () => {
+  const h = bundleCheckout();
+  const prices = (await h.deps.prices.listActiveByProducts(tenant.id, h.link.productIds)).map((price, index) => ({ ...price, id: `replacement-${index}`, amountCents: index === 0 ? 5900 : 3100, currency: 'EUR' }));
+  h.deps.prices.listActiveByProducts = async () => prices;
+  const history = vi.fn(async (_tenantId: string, input: { currentAmountCents: number }) => input.currentAmountCents);
+  h.deps.priceHistory = { lowestSince: history };
+  h.deps.coupons = { findByCode: async () => freeCoupon, findById: async () => freeCoupon, cacheStripeIds: async () => freeCoupon };
+  h.deps.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+  h.deps.couponCheckoutSessions = { create: async () => undefined, findById: async () => null, attachProviderSession: async () => undefined };
+  const { createCheckoutSession } = await import('./checkout.js');
+  const paid = await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkSlug: h.link.slug }, h.deps);
+  expect(paid.ok).toBe(true);
+  expect(h.calls[0]).toMatchObject({ priceCents: 9000, currency: 'EUR', lines: [{ grossCents: 5900 }, { grossCents: 3100 }] });
+  expect(h.snapshots[0]).toMatchObject({ currency: 'EUR', lines: [{ priceId: 'replacement-0', grossCents: 5900 }, { priceId: 'replacement-1', grossCents: 3100 }] });
+  const discounted = await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id, couponCode: 'FREE', email: 'buyer@example.test' }, h.deps);
+  expect(discounted).toMatchObject({ ok: true, value: { coupon: { originalCents: 9000, currency: 'EUR', lowestPriceLast30DaysCents: 9000 } } });
+  expect(history).toHaveBeenCalledWith(tenant.id, expect.objectContaining({ productId: product.id, priceId: 'replacement-0', currentAmountCents: 5900 }));
+  expect(history).toHaveBeenCalledWith(tenant.id, expect.objectContaining({ productId: 'physical-1', priceId: 'replacement-1', currentAmountCents: 3100 }));
+});
+
+it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects invalid bundle prices before checkout: %s', async (reason) => {
+  const h = bundleCheckout();
+  const prices = await h.deps.prices.listActiveByProducts(tenant.id, h.link.productIds);
+  const first = prices[0];
+  if (first === undefined) throw new Error('Missing price fixture');
+  h.deps.prices.listActiveByProducts = async () => reason === 'missing' ? prices.slice(1)
+    : reason === 'ambiguous' ? [...prices, { ...first, id: 'another-price' }]
+    : prices.map((price) => price.id !== first.id ? price : { ...price, ...(reason === 'imported' ? { imported: true } : reason === 'inactive' ? { active: false } : { currency: 'EUR' }) });
+  const { createCheckoutSession } = await import('./checkout.js');
+  expect(await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps)).toMatchObject({ ok: false });
+  expect(h.snapshots).toHaveLength(0);
+  expect(h.calls).toHaveLength(0);
 });

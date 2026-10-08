@@ -1,3 +1,6 @@
+import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
+import { productVatRateSchema } from '#core/domain/index.js';
+import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
 import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
@@ -390,6 +393,7 @@ export const publicOfferQuerySchema = z.object({
 });
 
 export const publicOfferOutputSchema = z.object({
+  salesLinks: z.array(z.object({ id: z.string(), slug: productSlugSchema, heading: z.string(), description: z.string(), totalCents: z.number().int().nonnegative(), currency: z.string() })).default([]),
   tenant: z.object({
     slug: z.string(),
     name: z.string(),
@@ -414,6 +418,8 @@ export const publicOfferOutputSchema = z.object({
       title: z.string(),
       description: z.string(),
       coverUrl: productCoverUrlSchema.nullable(),
+      vatRate: productVatRateSchema.nullable().optional(),
+      vatExemptionBasis: z.string().nullable().optional(),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
@@ -453,6 +459,8 @@ export const checkoutSessionOutputSchema = z.object({
 });
 
 export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({
+  salesLinkId: true,
+  salesLinkSlug: true,
   productId: true,
   priceId: true,
   email: true,
@@ -647,6 +655,8 @@ const magicLinkSchema = z.object({
 });
 
 export const simulatePurchaseInputSchema = z.object({
+  salesLinkId: z.string().min(1).optional(),
+  salesLinkSlug: z.string().min(1).optional(),
   email: z.string().email(),
   productId: z.string().min(1),
   priceId: z.string().min(1).optional(),
@@ -1833,6 +1843,8 @@ export const API_ROUTES = {
   ...MARKETING_CONTACT_ROUTES,
   ...MARKETING_SIGNUP_ROUTES,
   ...SURVEY_ROUTES,
+  ...SALES_LINK_ROUTES,
+  ...ORDER_VERIFICATION_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -1844,6 +1856,7 @@ export const API_ROUTES = {
   smokeTenantReseed: { method: 'POST', path: '/api/internal/reseed-acme' },
   sanitizeStagingSecrets: { method: 'POST', path: '/api/internal/sanitize-staging-secrets' },
   authSendLogLatest: { method: 'GET', path: '/api/internal/auth-send-log/latest' },
+  publicOrderQr: { method: 'GET', path: '/api/public/orders/qr/:token' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicNavigation: { method: 'GET', path: '/api/public/navigation' },
   publicCourseStructure: { method: 'GET', path: '/api/public/courses/:courseId/structure' },
@@ -2133,6 +2146,14 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  listSalesLinks: API_ROUTES.listSalesLinks.path,
+  verifyOrder: API_ROUTES.verifyOrder.path,
+  issueOrderLine: API_ROUTES.issueOrderLine.path,
+  getSalesLink: API_ROUTES.getSalesLink.path,
+  createSalesLink: API_ROUTES.createSalesLink.path,
+  updateSalesLink: API_ROUTES.updateSalesLink.path,
+  deleteSalesLink: API_ROUTES.deleteSalesLink.path,
+  getPublicSalesLink: API_ROUTES.getPublicSalesLink.path,
   listSurveys: API_ROUTES.listSurveys.path,
   getSurvey: API_ROUTES.getSurvey.path,
   createSurvey: API_ROUTES.createSurvey.path,
@@ -2218,6 +2239,7 @@ export const API_PATHS = {
   emailDispatch: API_ROUTES.emailDispatch.path,
   autoInvoiceDispatch: API_ROUTES.autoInvoiceDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,
+  publicOrderQr: API_ROUTES.publicOrderQr.path,
   publicOffer: API_ROUTES.publicOffer.path,
   publicNavigation: API_ROUTES.publicNavigation.path,
   publicCourseStructure: API_ROUTES.publicCourseStructure.path,

@@ -43,27 +43,33 @@ interface TextLine {
 }
 
 const createPdf = (lines: TextLine[], rules: Array<{ y: number; width?: number }>): Uint8Array => {
-  const stream = [
-    '0.82 G',
-    ...rules.map((rule) =>
-      `45 ${String(rule.y)} m ${String(45 + (rule.width ?? 505))} ${String(rule.y)} l S`),
-    '0 g',
-    ...lines.flatMap((line) => [
-      'BT',
-      `/${line.bold === true ? 'F2' : 'F1'} ${String(line.size ?? 10)} Tf`,
-      `${String(line.x)} ${String(line.y)} Td`,
-      `(${escaped(line.text)}) Tj`,
-      'ET',
-    ]),
-  ].join('\n');
+  const pageFor = (y: number): number => Math.max(0, Math.floor((790 - y) / 745));
+  const pageCount = Math.max(1, ...lines.map((line) => pageFor(line.y) + 1));
+  const regularFont = 3 + pageCount * 2;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
-    `<< /Length ${String(Buffer.byteLength(stream))} >>\nstream\n${stream}\nendstream`,
+    `<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${String(3 + index * 2)} 0 R`).join(' ')}] /Count ${String(pageCount)} >>`,
   ];
+  for (let page = 0; page < pageCount; page += 1) {
+    const stream = [
+      '0.82 G',
+      ...rules.filter((rule) => pageFor(rule.y) === page).map((rule) =>
+        `45 ${String(rule.y + page * 745)} m ${String(45 + (rule.width ?? 505))} ${String(rule.y + page * 745)} l S`),
+      '0 g',
+      ...lines.filter((line) => pageFor(line.y) === page).flatMap((line) => [
+        'BT',
+        `/${line.bold === true ? 'F2' : 'F1'} ${String(line.size ?? 10)} Tf`,
+        `${String(line.x)} ${String(line.y + page * 745)} Td`,
+        `(${escaped(line.text)}) Tj`,
+        'ET',
+      ]),
+    ].join('\n');
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${String(regularFont)} 0 R /F2 ${String(regularFont + 1)} 0 R >> >> /Contents ${String(4 + page * 2)} 0 R >>`,
+      `<< /Length ${String(Buffer.byteLength(stream))} >>\nstream\n${stream}\nendstream`,
+    );
+  }
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
   let body = '%PDF-1.4\n';
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -90,10 +96,11 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
       net: value(row, 'P_11'),
       vat: value(row, 'P_12'),
     }));
-    const vatRate = rows[0]?.vat ?? '';
-    const exempt = vatRate === 'zw';
-    const vatSuffix = (): '1' | '2' | '3' =>
-      vatRate === '8' ? '2' : vatRate === '5' ? '3' : '1';
+    const exempt = rows.some((row) => row.vat === 'zw');
+    const summaries = ([['23', '1'], ['8', '2'], ['5', '3'], ['zw', '7']] as const)
+      .filter(([rate]) => rows.some((row) => row.vat === rate));
+    const summaryTop = Math.min(500, 576 - rows.length * 24);
+    const footerTop = summaryTop - 52 - summaries.length * 36;
     const lines: TextLine[] = [
       { x: 45, y: 790, text: 'FAKTURA VAT', size: 20, bold: true },
       { x: 45, y: 765, text: `Numer: ${value(xml, 'P_2')}`, size: 11, bold: true },
@@ -123,44 +130,30 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
           { x: 495, y, text: row.net },
         ];
       }),
-      { x: 330, y: 500, text: 'Podsumowanie VAT', size: 11, bold: true },
-      {
-        x: 330,
-        y: 478,
-        text: exempt
-          ? `Wartosc sprzedazy zwolnionej: ${value(xml, 'P_13_7')} PLN`
-          : `Netto: ${value(xml, `P_13_${vatSuffix()}`)} PLN`,
-      },
-      {
-        x: 330,
-        y: 460,
-        text: exempt ? 'VAT: 0.00 PLN' : `VAT ${vatRate}%: ${value(xml, `P_14_${vatSuffix()}`)} PLN`,
-      },
-      {
-        x: 330,
-        y: 436,
-        text: `${exempt ? 'Razem' : 'Razem brutto'}: ${value(xml, 'P_15')} PLN`,
-        size: 12,
-        bold: true,
-      },
+      { x: 330, y: summaryTop, text: 'Podsumowanie VAT', size: 11, bold: true },
+      ...summaries.flatMap(([rate, suffix], index): TextLine[] => [
+        { x: 330, y: summaryTop - 22 - index * 36, text: rate === 'zw' ? `Wartosc sprzedazy zwolnionej: ${value(xml, 'P_13_7')} PLN` : `Netto: ${value(xml, `P_13_${suffix}`)} PLN` },
+        { x: 330, y: summaryTop - 40 - index * 36, text: rate === 'zw' ? 'VAT: 0.00 PLN' : `VAT ${rate}%: ${value(xml, `P_14_${suffix}`)} PLN` },
+      ]),
+      { x: 330, y: footerTop + 24, text: `${summaries.length === 1 && exempt ? 'Razem' : 'Razem brutto'}: ${value(xml, 'P_15')} PLN`, size: 12, bold: true },
       ...(exempt
         ? [{
             x: 45,
-            y: 395,
+            y: footerTop - 17,
             text: `Zwolnienie z VAT: ${value(xml, 'P_19A') || value(xml, 'P_19C')}`,
           }]
         : []),
-      { x: 45, y: 365, text: 'NUMER KSeF', size: 9, bold: true },
-      { x: 45, y: 343, text: invoice.ksef?.ksefNumber ?? 'Oczekuje na przyjecie w KSeF', size: 12, bold: true },
-      { x: 45, y: 295, text: 'Weryfikacja', size: 9, bold: true },
+      { x: 45, y: footerTop - 47, text: 'NUMER KSeF', size: 9, bold: true },
+      { x: 45, y: footerTop - 69, text: invoice.ksef?.ksefNumber ?? 'Oczekuje na przyjecie w KSeF', size: 12, bold: true },
+      { x: 45, y: footerTop - 117, text: 'Weryfikacja', size: 9, bold: true },
       {
         x: 45,
-        y: 277,
+        y: footerTop - 135,
         text: 'Wizualizacja faktury ustrukturyzowanej FA(3). Zweryfikuj numer KSeF w systemie Ministerstwa Finansow.',
         size: 8,
       },
-      { x: 45, y: 258, text: `SHA-256 XML: ${invoice.ksef?.xmlSha256 ?? ''}`, size: 7 },
+      { x: 45, y: footerTop - 154, text: `SHA-256 XML: ${invoice.ksef?.xmlSha256 ?? ''}`, size: 7 },
     ];
-    return createPdf(lines, [{ y: 750 }, { y: 642 }, { y: 612 }, { y: 410 }, { y: 320 }]);
+    return createPdf(lines, [{ y: 750 }, { y: 642 }, { y: 612 }, { y: footerTop - 2 }, { y: footerTop - 92 }]);
   },
 });

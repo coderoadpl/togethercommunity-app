@@ -111,6 +111,7 @@ const RESERVED_REDIRECT_ROOTS = [
   'messages',
   'my',
   'notifications',
+  'offer',
   'panel',
   'register',
   'reset-password',

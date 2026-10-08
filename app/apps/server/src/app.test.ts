@@ -18,6 +18,7 @@ import {
   capabilitiesForPrincipal,
   deepHealthOutputSchema,
   envelopeSchema,
+  salesLinkContracts,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   studentLessonOutputSchema,
   TENANT_HEADER,
@@ -43,6 +44,11 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  orderListItemSchema,
+  salesLinkSchema,
+  couponSchema,
+  type CheckoutSnapshot,
+  type CouponCheckoutSession,
   memberSchema,
   forbidden,
   impersonationCookieName,
@@ -209,7 +215,7 @@ const deps = (input: {
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
     },
     members: {
-      findById: async () => null,
+      findById: async (tenantId, id) => members.find((member) => member.tenantId === tenantId && member.id === id) ?? null,
       findByEmail: async (_tenantId, email) => members.find((member) => member.email === email) ?? null,
       listWithProductIds: async () => [],
       create: async () => undefined,
@@ -7333,7 +7339,7 @@ describe('checkout consent ordering', () => {
 
     expect((await deliver()).status).toBe(200);
     expect(invoiceRequests).toBe(0);
-    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook', paymentIntent: 'pi_webhook' }, { checkoutSession: 'cs_webhook' }]);
+    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook', paymentIntent: 'pi_webhook' }, { checkoutSession: 'cs_webhook' }, { checkoutSession: 'cs_webhook' }]);
     expect(durableJobs).toMatchObject([{ webhookEventId: 'evt_webhook', status: 'queued' }]);
     orderLookups.length = 0;
     expect((await deliver()).status).toBe(200);
@@ -9161,5 +9167,149 @@ describe('public surveys', () => {
     }
     expect((await app.request('/api/public/surveys/feedback/submit', { method: 'POST', headers: { ...headers, origin: 'https://untrusted.example.test' }, body: JSON.stringify(payload) })).status).toBe(403);
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+
+const simulatedBundleApp = (couponScope: 'all' | 'first-only' = 'all') => {
+  const products: Product[] = [
+    { ...product({ id: 'print', tenantId: acme.id, title: 'Printed item', published: true }), type: 'physical', priceCents: 1050, vatRate: 5 },
+    { ...product({ id: 'digital', tenantId: acme.id, title: 'Digital item', published: true }), type: 'digital_download', priceCents: 1080, vatRate: 8 },
+  ];
+  const members: Member[] = [];
+  const base = deps({ products, members });
+  const orders: Order[] = [];
+  const grants: ProductGrant[] = [];
+  const snapshots = new Map<string, CheckoutSnapshot>();
+  const couponSessions = new Map<string, CouponCheckoutSession>();
+  const now = base.clock.nowIso();
+  const link = salesLinkSchema.parse({ id: 'bundle-link', tenantId: acme.id, slug: 'bundle', title: 'Complete bundle', heading: 'Complete bundle', productIds: products.map((item) => item.id), active: true, revision: 1, createdAt: now, updatedAt: now });
+  const coupon = couponSchema.parse({ id: 'coupon', tenantId: acme.id, code: 'BUNDLE', kind: 'percent', value: 10, scope: couponScope === 'all' ? { kind: 'all' } : { kind: 'products', productIds: ['print'] }, appliesTo: 'one_time', recurringDuration: 'first_invoice', startsAt: null, endsAt: null, maxRedemptions: null, maxRedemptionsPerMember: null, status: 'active', partnerLabel: null, stripeCouponId: null, stripePromotionCodeId: null, createdAt: now });
+  base.devEndpoints = { simulatedPayments: true, exposeMagicLinks: false };
+  base.salesLinks = { list: async () => [link], findById: async (tenantId, id) => tenantId === acme.id && id === link.id ? link : null, findBySlug: async () => link, save: async (_, next) => ok(next), delete: async () => ok(undefined) };
+  base.prices.listActiveByProducts = async () => products.map((item) => ({ id: `price-${item.id}`, productId: item.id, tenantId: acme.id, amountCents: item.priceCents, currency: 'PLN', kind: 'one_time', interval: null, active: true, createdAt: now }));
+  base.members.create = async (_, member) => { members.push(member); };
+  base.members.findById = async (_, id) => members.find((member) => member.id === id) ?? null;
+  base.grants.createGrant = async (_, grant) => { grants.push(grant); return true; };
+  base.orders.create = async (_, order) => { orders.push(order); };
+  base.enrollmentTransaction = { run: async (operation) => operation({ members: base.members, grants: base.grants, emailOutbox: base.emailOutbox }) };
+  base.paymentRefunds.findOrderByProviderObjectIds = async (_, providerIds) => orders.find((order) => order.providerObjectIds['checkoutSession'] === providerIds['checkoutSession']) ?? null;
+  base.checkoutSnapshots = { create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); }, findById: async (_, id) => snapshots.get(id) ?? null };
+  base.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon, create: async () => coupon, archive: async () => coupon };
+  base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async (_, input) => { orders.push(input.order); return true; } };
+  base.couponCheckoutSessions = { create: async (_, session) => { couponSessions.set(session.id, session); }, attachProviderSession: async () => undefined, findById: async (_, id) => couponSessions.get(id) ?? null };
+  base.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
+  return { app: buildApp(base), base, salesLinks: base.salesLinks, link, products, orders, grants, snapshots, couponSessions };
+};
+
+it.each([undefined, 'BUNDLE'])('simulates the full sales link through the HTTP route with coupon %s', async (couponCode) => {
+  const h = simulatedBundleApp();
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', ...(couponCode === undefined ? {} : { couponCode }) });
+  expect(await response.json()).toMatchObject({ ok: true, data: { productId: 'print', alreadyOwned: false, orderId: expect.any(String) } });
+  expect(response.status).toBe(200);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ salesLinkId: 'bundle-link', amountCents: couponCode === undefined ? 2130 : 1917, discountCents: couponCode === undefined ? 0 : 213, lines: [{ productId: 'print', grossCents: 1050, vatRate: 5, issuedCount: 0 }, { productId: 'digital', grossCents: 1080, vatRate: 8 }] });
+  expect(h.grants.map((grant) => grant.productId)).toEqual(['digital']);
+  if (couponCode !== undefined) {
+    expect([...h.couponSessions.values()]).toMatchObject([{ originalCents: 2130, finalCents: 1917 }]);
+    expect([...h.snapshots.values()]).toMatchObject([{ salesLinkId: 'bundle-link', lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
+  }
+});
+
+it('rejects a simulated bundle coupon that applies only to the first product', async () => {
+  const h = simulatedBundleApp('first-only');
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Coupon cannot be applied' } });
+  expect(h.orders).toHaveLength(0);
+  expect(h.grants).toHaveLength(0);
+  expect(h.snapshots.size).toBe(0);
+});
+
+
+it('exposes only public sales-link fields and accepts its slug for checkout', async () => {
+  const h = simulatedBundleApp();
+  h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  const response = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
+  const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
+  if (!body.ok) throw new Error(body.error.message);
+  expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
+  expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
+  const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });
+  expect(purchaseResponse.status).toBe(200);
+  expect(h.orders[0]?.salesLinkId).toBe('bundle-link');
+});
+
+it('revalidates listed sales links by revision and validity boundaries before reading their products', async () => {
+  const h = simulatedBundleApp();
+  let link = { ...h.link, listed: true, validFrom: '2026-10-08T12:00:00.000Z', validTo: '2026-10-08T14:00:00.000Z' };
+  let now = '2026-10-08T11:00:00.000Z';
+  const findByIds = vi.fn(h.base.products.findByIds);
+  const findBySlug = vi.fn(async () => link);
+  h.base.clock.nowIso = () => now;
+  h.base.salesLinkManagement = { salesLinks: { ...h.salesLinks, list: async () => [link], findBySlug }, products: { findByIds }, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  const headers = { host: 'acme.localhost' };
+  const before = await requestPublicOffer(h.app, headers);
+  expect((await before.json()).data.salesLinks).toEqual([]);
+  now = link.validFrom;
+  const first = await requestPublicOffer(h.app, { ...headers, 'if-none-match': before.headers.get('etag') ?? '' });
+  expect(first.status).toBe(200);
+  expect((await first.json()).data.salesLinks).toHaveLength(1);
+  const etag = first.headers.get('etag') ?? '';
+  const reads = findByIds.mock.calls.length;
+  const second = await requestPublicOffer(h.app, { ...headers, 'if-none-match': etag });
+  expect(second.status).toBe(304);
+  expect(findByIds).toHaveBeenCalledTimes(reads);
+  expect(findBySlug).not.toHaveBeenCalled();
+  link = { ...link, revision: 2, heading: 'Updated bundle' };
+  const changed = await requestPublicOffer(h.app, { ...headers, 'if-none-match': etag });
+  expect(changed.status).toBe(200);
+  expect((await changed.json()).data.salesLinks[0].heading).toBe('Updated bundle');
+  now = link.validTo;
+  const expired = await requestPublicOffer(h.app, { ...headers, 'if-none-match': changed.headers.get('etag') ?? '' });
+  expect(expired.status).toBe(200);
+  expect((await expired.json()).data.salesLinks).toEqual([]);
+});
+
+it('uses current bundle price amounts, currencies and identifiers for coupon previews and simulated orders', async () => {
+  const h = simulatedBundleApp();
+  h.base.prices.listActiveByProducts = async () => h.products.map((item) => ({ id: `current-${item.id}`, productId: item.id, tenantId: acme.id, amountCents: 4900, currency: 'EUR', kind: 'one_time', interval: null, active: true, createdAt: h.base.clock.nowIso() }));
+  const lowestSince = vi.fn(async (_tenantId: string, input: { currentAmountCents: number }) => input.currentAmountCents);
+  h.base.priceHistory = { lowestSince };
+  const response = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', couponCode: 'BUNDLE' }) });
+  expect(response.status).toBe(200);
+  expect((await response.json()).data.breakdown).toMatchObject({ originalCents: 9800, finalCents: 8820, currency: 'EUR' });
+  expect(lowestSince).toHaveBeenCalledWith(acme.id, expect.objectContaining({ productId: 'print', priceId: 'current-print', currentAmountCents: 4900 }));
+  expect(lowestSince).toHaveBeenCalledWith(acme.id, expect.objectContaining({ productId: 'digital', priceId: 'current-digital', currentAmountCents: 4900 }));
+  const purchased = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(purchased.status).toBe(200);
+  expect(h.orders[0]).toMatchObject({ amountCents: 8820, currency: 'EUR', lines: [{ productId: 'print', priceId: 'current-print', grossCents: 4900 }, { productId: 'digital', priceId: 'current-digital', grossCents: 4900 }] });
+});
+
+
+describe('public order QR response', () => {
+  const token = 'b'.repeat(64);
+  const storedOrder = orderListItemSchema.parse({ id: 'order-number', tenantId: acme.id, memberId: 'member', productId: 'physical', priceId: null, kind: 'one_time', status: 'paid', amountCents: 10500, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: '2026-10-08T12:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed material', couponCode: null, verificationToken: token });
+  const qrApp = () => {
+    const base = deps();
+    base.orderVerification = {
+      findByToken: async (tenantId, reference) => tenantId === storedOrder.tenantId && reference === token ? storedOrder : null,
+      findByReference: async () => { throw new Error('Public images must not accept order numbers'); },
+      issueLine: async () => { throw new Error('Public images must not issue items'); },
+    };
+    base.renderQrPng = async () => new Uint8Array([137, 80, 78, 71]);
+    return buildApp(base);
+  };
+  it('serves only PNG bytes without authentication or shared caching', async () => {
+    const response = await qrApp().request(`/api/public/orders/qr/${token}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+  });
+  it('returns not found for an order number or another workspace', async () => {
+    const app = qrApp();
+    expect((await app.request('/api/public/orders/qr/order-number', { headers: { host: 'acme.localhost' } })).status).toBe(404);
+    expect((await app.request(`/api/public/orders/qr/${token}`, { headers: { host: 'globex.localhost' } })).status).toBe(404);
   });
 });

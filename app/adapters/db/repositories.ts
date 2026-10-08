@@ -2,7 +2,7 @@ import { surveyResponses } from './survey-schema.js';
 import { lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
-import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -196,6 +196,7 @@ import {
   productDownloadAssets,
   downloadCopies,
   processedPaymentEvents,
+  salesLinks,
   products,
   spaces,
   suppressions,
@@ -401,6 +402,8 @@ export const createProductRepository = (
         coverUrl: product.coverUrl,
         visibility: product.visibility,
         priceCents: product.priceCents,
+        vatRate: product.vatRate ?? null,
+        vatExemptionBasis: product.vatExemptionBasis ?? null,
         currency: product.currency,
         published: product.published,
         accessItems: product.accessItems,
@@ -423,6 +426,8 @@ export const createProductRepository = (
         description: product.description,
         coverUrl: product.coverUrl,
         visibility: product.visibility,
+        vatRate: product.vatRate ?? null,
+        vatExemptionBasis: product.vatExemptionBasis ?? null,
       })
       .where(and(eq(products.tenantId, tenantId), eq(products.id, product.id)))
       .returning();
@@ -3123,6 +3128,8 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           description: products.description,
           coverUrl: products.coverUrl,
           priceCents: products.priceCents,
+          vatRate: products.vatRate,
+          vatExemptionBasis: products.vatExemptionBasis,
           currency: products.currency,
           visibility: products.visibility,
           published: products.published,
@@ -3214,7 +3221,7 @@ export const createOrderRepository = (
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
-    if (query.productId !== undefined) conditions.push(eq(orders.productId, query.productId));
+    if (query.productId !== undefined) conditions.push(sql`(${orders.productId} = ${query.productId} OR ${orders.lines} @> ${JSON.stringify([{ productId: query.productId }])}::jsonb)`);
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
     if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.search !== undefined) {
@@ -3245,6 +3252,7 @@ export const createOrderRepository = (
       return parseOrder(row);
     }),
     create: async (tenantId, order) => db.transaction(async (tx) => {
+      if (order.salesLinkId != null) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
       const rows = await tx
         .insert(orders)
         .values({
@@ -3263,6 +3271,9 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
+          salesLinkId: order.salesLinkId ?? null,
+          lines: order.lines ?? [],
+          ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
           createdAt: order.createdAt,
         })
         .onConflictDoNothing()
@@ -3294,15 +3305,27 @@ export const createOrderRepository = (
           memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
+          salesLinkTitle: salesLinks.title,
         })
         .from(orders)
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(orders.id, id)))
         .limit(1);
       const row = rows[0];
-      return row === undefined ? null : orderListItemSchema.parse({ ...row.order, ...row });
+      if (row === undefined) return null;
+      const order = orderListItemSchema.parse({ ...row.order, ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const staffIds = order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [];
+      const displayNames = await createUserDisplayReader(db).findDisplayNames(tenantId, staffIds);
+      return {
+        ...order,
+        lines: order.lines?.map((line) => ({
+          ...line,
+          issuedByDisplayName: line.issuedBy === undefined ? undefined : displayNames.get(line.issuedBy),
+        })),
+      };
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
@@ -3313,10 +3336,12 @@ export const createOrderRepository = (
           memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
+          salesLinkTitle: salesLinks.title,
         })
         .from(orders)
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
@@ -3337,6 +3362,7 @@ export const createOrderRepository = (
               memberName: row.memberName,
               productTitle: row.productTitle,
               couponCode: row.couponCode,
+              salesLinkTitle: row.salesLinkTitle ?? undefined,
             }),
         ),
         total: totals[0]?.value ?? 0,
@@ -3445,8 +3471,8 @@ export const createOrderRepository = (
             createdAt: orders.createdAt,
             memberId: orders.memberId,
             memberEmail: members.email,
-            productId: orders.productId,
-            productTitle: products.title,
+            productId: sql<string>`missing_line.product_id`,
+            productTitle: sql<string>`missing_line.product_title`,
             kind: orders.kind,
             provider: orders.provider,
             amountCents: orders.amountCents,
@@ -3456,25 +3482,25 @@ export const createOrderRepository = (
           .from(orders)
           .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
           .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+          .innerJoin(sql`LATERAL (
+            SELECT line->>'productId' AS product_id, line->>'name' AS product_title
+            FROM jsonb_array_elements(
+              CASE WHEN jsonb_array_length(${orders.lines}) > 0 THEN ${orders.lines}
+                ELSE jsonb_build_array(jsonb_build_object('productId', ${orders.productId}, 'name', ${products.title}, 'productType', ${products.type})) END
+            ) WITH ORDINALITY AS entries(line, position)
+            WHERE line->>'productType' <> 'physical'
+              AND NOT EXISTS (SELECT 1 FROM product_grants g
+                WHERE g.tenant_id = ${orders.tenantId} AND g.member_id = ${orders.memberId}
+                  AND g.product_id = line->>'productId' AND g.mode = ${orders.mode})
+            ORDER BY position
+            LIMIT 1
+          ) missing_line`, sql`true`)
           .where(
             and(
               eq(orders.tenantId, tenantId),
               eq(orders.mode, 'live'),
               eq(orders.status, 'paid'),
               sql`${orders.createdAt} <= ${query.paidBefore}`,
-              notExists(
-                db
-                  .select({ id: productGrants.id })
-                  .from(productGrants)
-                  .where(
-                    and(
-                      eq(productGrants.tenantId, orders.tenantId),
-                      eq(productGrants.memberId, orders.memberId),
-                      eq(productGrants.productId, orders.productId),
-                      eq(productGrants.mode, orders.mode),
-                    ),
-                  ),
-              ),
             ),
           )
           .orderBy(desc(orders.createdAt), desc(orders.id))
@@ -3525,7 +3551,7 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
         and(
           eq(orders.tenantId, tenantId),
           eq(orders.memberId, memberId),
-          eq(orders.productId, productId),
+          sql`(${orders.productId} = ${productId} OR ${orders.lines} @> ${JSON.stringify([{ productId }])}::jsonb)`,
           inArray(orders.status, [...ACCESS_RETAINING_ORDER_STATUSES]),
         ),
       )

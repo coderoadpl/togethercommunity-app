@@ -95,7 +95,7 @@ export const SalesPanel = () => {
   } as const;
 
   return (
-    <PanelPage title={t.sections.sales}>
+    <PanelPage title={t.sections.sales} action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
       {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
       {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
@@ -294,7 +294,7 @@ export const SalesPanel = () => {
                         {order.memberName ?? order.memberEmail}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{order.productTitle} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
+                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>

@@ -1,5 +1,7 @@
 import {
   EMPTY_LEGAL_URLS,
+  defaultProductVat,
+  type ProductVatRate,
   EMPTY_TENANT_BRANDING,
   ok,
   type AppError,
@@ -53,6 +55,8 @@ interface PublicOfferPrice {
 }
 
 interface PublicOfferProduct {
+  vatRate?: ProductVatRate | null | undefined;
+  vatExemptionBasis?: string | null | undefined;
   id: string;
   type: ProductType;
   slug: string;
@@ -133,6 +137,7 @@ export const getPublicOffer = async (
     contentVersion: tenant.contentVersion,
     previewLessons: lessons.filter((lesson) => publicCourseIds.has(lesson.courseId)),
     products: await Promise.all(products.map(async (product) => ({
+      ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),

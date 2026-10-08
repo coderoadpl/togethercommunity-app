@@ -26,6 +26,16 @@ add it here before using it in either dictionary.
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
 | Sellable unit | produkt | product | A product grants access to content; products and courses are distinct. |
+| Multi-product purchase URL | link sprzedażowy | sales link | A workspace offer with an ordered, non-removable set of product lines. |
+| Products purchased together | pakiet | bundle | One payment for all products on a sales link. |
+| Order or invoice position | pozycja | line | One product with its own price and VAT rate. |
+| Product tax rate | stawka VAT | VAT rate | Rates are 5%, 8%, 23%, or exempt with a legal basis. |
+| Item collected in person | produkt fizyczny | physical product | No shipping or access grant. |
+| Physical collection status | wydano | issued | Counts physical items handed to the buyer. |
+| First physical collection time | Wydano po raz pierwszy | First issued | Timestamp of the first handover; distinct from a content edition. |
+| Staff order verification action | Zweryfikuj zamówienie | Verify order | Opens the paid status, purchased lines, and physical collection status. |
+| Opaque order verification code | token | token | Random code used in the verification URL and manual lookup; distinct from the order number. |
+| Order reference | numer zamówienia | order number | Identifies the paid order in the confirmation email and staff lookup. |
 | Price | cena | price | One-time or recurring; recurring prices have a billing interval. |
 | Recurring purchase | subskrypcja | subscription | Statuses: active, payment past due, canceled. Do not use abonament. |
 | Sales ledger entry | zamówienie | order | Statuses: paid, pending, failed, refunded; lowercase in tables. |

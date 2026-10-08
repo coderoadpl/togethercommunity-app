@@ -17,12 +17,16 @@ import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   MemberSubscriptionRepository,
+  MemberOrderListReader,
+  ProductBatchReader,
   ProductDownloadAssetRepository,
   ProductGrantRepository,
   ProductPriceRepository,
 } from '../ports.js';
 
 export interface MyProductsDeps {
+  orders?: MemberOrderListReader;
+  products?: ProductBatchReader;
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
   subscriptions: MemberSubscriptionRepository;
@@ -132,6 +136,25 @@ export const listMyProducts = async (
       subscription: subscription ? toSubscriptionSummary(subscription) : null,
       downloads: downloadsByProduct.get(product.id) ?? [],
     });
+  }
+  if (deps.orders !== undefined && deps.products !== undefined) {
+    const orders = await deps.orders.listForMember(tenantId, memberId);
+    const purchasedAt = new Map<string, string>();
+    for (const order of orders) {
+      if (order.mode !== 'live' || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
+      for (const line of order.lines ?? []) {
+        if (line.productType === 'physical') purchasedAt.set(line.productId, order.createdAt);
+      }
+    }
+    const physicalProducts = await deps.products.findByIds(tenantId, [...purchasedAt.keys()]);
+    for (const product of physicalProducts) {
+      const startsAt = purchasedAt.get(product.id);
+      if (product.type !== 'physical' || startsAt === undefined || seen.has(product.id)) continue;
+      result.push({
+        ...product, purchasable: false, grantStatus: 'active', grantStartsAt: startsAt,
+        grantExpiresAt: null, subscription: null, downloads: [],
+      });
+    }
   }
   return ok(result);
 };

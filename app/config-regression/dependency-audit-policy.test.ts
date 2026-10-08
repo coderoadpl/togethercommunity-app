@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -69,6 +70,7 @@ describe('dependency audit policy', () => {
     'app/pnpm-workspace.yaml',
     'app/.pnpmfile.cjs',
   ])('requires the audit for a pull request changing %s', (changedPath) => {
+    const outputFile = join(mkdtempSync(join(tmpdir(), 'audit-policy-')), 'output');
     const result = spawnSync('bash', ['-e', '-c',
       `git() { printf '%s\\n' "$CHANGED_PATH"; }\n${policyStep?.run ?? ''}`,
     ], {
@@ -80,13 +82,13 @@ describe('dependency audit policy', () => {
         BASE_SHA: 'base',
         HEAD_SHA: 'head',
         CHANGED_PATH: changedPath,
-        GITHUB_OUTPUT: '/dev/stdout',
+        GITHUB_OUTPUT: outputFile,
       },
     });
 
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe('audit_required=true\n');
+    expect(readFileSync(outputFile, 'utf8')).toBe('audit_required=true\n');
   });
 
   it('gates the blocking audit on the policy output', () => {

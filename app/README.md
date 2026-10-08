@@ -204,8 +204,10 @@ pnpm run check
 pnpm run smoke
 ```
 
-In `.github/workflows/ci.yml`, `check` also runs the production dependency audit
-and the pull-request ruleset drift check after workflow changes.
+In `.github/workflows/ci.yml`, `check` blocks on the production dependency audit
+only for dependency-changing pull requests, promotions into `main` and pushes to
+`main`, while the advisory `dependency-audit` job reports on every run; `check`
+also runs the pull-request ruleset drift check after workflow changes.
 The `smoke` job runs `smoke` and `quickstart:probe`; the macOS `visual` job runs
 `visual`, which builds Storybook before comparing captures. The twelve e2e
 matrix suites are `auth`, `poc`, `subs`, `marketing`, `coupon`, `public-authz`,
@@ -215,7 +217,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->525<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->526<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

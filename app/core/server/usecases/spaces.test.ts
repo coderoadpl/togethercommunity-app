@@ -219,7 +219,7 @@ class FakePosts implements PostRepository {
       (post) =>
         post.tenantId === tenantId &&
         post.authorUserId === query.authorUserId &&
-        post.createdAt >= query.since &&
+        (post.createdAt >= query.since || (post.editedAt !== null && post.editedAt >= query.since)) &&
         post.deletedAt === null,
     ).length;
   }

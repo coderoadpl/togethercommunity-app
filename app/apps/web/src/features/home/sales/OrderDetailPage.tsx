@@ -1,3 +1,4 @@
+import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -49,6 +50,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     [t.sales.date, formatDateTime(order.createdAt, language)],
     [t.sales.member, order.memberName ?? order.memberEmail],
     [t.sales.product, order.productTitle],
+    [t.salesLinks.salesLink, order.salesLinkTitle ?? order.salesLinkId ?? '—'],
     [t.sales.kind, order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring],
     [t.sales.amount, formatPrice(order.amountCents, order.currency, language)],
     [t.sales.coupon, order.couponCode ?? '—'],
@@ -59,6 +61,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   return (
     <PanelPage
       title={t.sales.orderTitle({ id: order.id })}
+      action={<Button href={`/panel/orders/verify/${encodeURIComponent(order.verificationToken ?? order.id)}`} variant="outlined">{t.orderVerification.title}</Button>}
       backTo={<PanelBackLink to="/panel/sales">{t.sales.allOrders}</PanelBackLink>}
     >
       <SectionCard title={t.sales.orderTitle({ id: order.id })}>
@@ -82,6 +85,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
+      {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
       <DownloadCopies query={{ orderId }} />
       {order.billing == null ? null : (
         <SectionCard title={t.sales.billingDetails}>

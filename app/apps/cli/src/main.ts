@@ -1,3 +1,4 @@
+import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
 import { registerOperatorCommands } from './operator-commands.js';
 import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
@@ -164,9 +165,12 @@ const storageConfigurationOptionsSchema = z.object({
   accessKeyId: z.string().min(1),
   secretAccessKey: z.string().min(1),
 });
+const productVatOptionSchema = z.enum(['5', '8', '23', 'exempt']).transform((value) => value === 'exempt' ? value : value === '5' ? 5 as const : value === '8' ? 8 as const : 23 as const);
 const productCreateOptionsSchema = z.object({
+  vatRate: productVatOptionSchema.optional(),
+  vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
-  type: z.enum(['course', 'digital_download', 'membership']).optional(),
+  type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
   slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
   priceCents: centsSchema.optional(),
@@ -177,6 +181,8 @@ const productCreateOptionsSchema = z.object({
   accessItems: z.string().optional(),
 });
 const productUpdateOptionsSchema = z.object({
+  vatRate: productVatOptionSchema.optional(),
+  vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().optional(),
@@ -184,6 +190,7 @@ const productUpdateOptionsSchema = z.object({
   clearCover: z.boolean().default(false),
 });
 const simulatePurchaseOptionsSchema = z.object({
+  salesLink: z.string().min(1).optional(),
   email: z.string().email(),
   product: z.string().min(1),
   priceId: z.string().min(1).optional(),
@@ -257,6 +264,7 @@ const couponExportOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
 const checkoutSessionOptionsSchema = z.object({
+  salesLink: z.string().min(1).optional(),
   product: z.string().min(1),
   email: z.string().email().optional(),
   language: transactionalLanguageSchema.optional(),
@@ -639,6 +647,7 @@ const cliCtx = (): Result<CliCtx, AppError> => {
 
 registerMarketingCommands(program, cliCtx);
 registerSurveyCommands(program, cliCtx);
+registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 
@@ -844,6 +853,7 @@ const checkout = program.command('checkout').description('Public checkout');
 checkout
   .command('session')
   .description('Start a paid or free checkout')
+  .option('--sales-link <id>', 'buy every product in a sales link; --product is its first product')
   .requiredOption('--product <id>')
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
@@ -852,6 +862,7 @@ checkout
       emit(
         await ctx.api.createCheckoutSession({
           productId: options.product,
+          ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           ...(options.email === undefined ? {} : { email: options.email }),
           ...(options.language === undefined ? {} : { language: options.language }),
         }),
@@ -1197,8 +1208,10 @@ product
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .requiredOption('--title <title>')
-  .option('--type <type>', 'course, digital_download or membership')
+  .option('--type <type>', 'course, digital_download, membership or physical')
   .option('--slug <slug>', 'tenant-unique product slug')
+  .option('--vat-rate <rate>', '5, 8, 23 or exempt')
+  .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
   .option('--price-cents <cents>', 'price in integer cents')
   .option('--price <amount>', 'price in currency units, e.g. 199 or 199.99')
   .option('--currency <currency>', '3-letter uppercase currency code')
@@ -1237,6 +1250,8 @@ product
       emit(
         await ctx.api.createProduct({
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
+          ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
           title: options.title,
           priceCents,
           ...(options.type === undefined ? {} : { type: options.type }),
@@ -1278,6 +1293,8 @@ product
   .command('update <id>')
   .description('Update product title, description, cover or visibility')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--vat-rate <rate>', '5, 8, 23 or exempt')
+  .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
   .option('--title <title>')
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
@@ -1292,6 +1309,8 @@ product
         await ctx.api.updateProduct({
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           id,
+          ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
+          ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
           ...(options.title === undefined ? {} : { title: options.title }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(options.coverUrl === undefined && !options.clearCover
@@ -1434,6 +1453,18 @@ priceCommand
   );
 
 const ordersCommand = program.command('orders').description('Sales ledger of the active tenant (staff only)');
+
+ordersCommand.command('verify <reference>').description('Verify an order by QR token or order number').action(
+  withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [reference]) => {
+    emit(await ctx.api.verifyOrder({ reference }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
+  }),
+);
+ordersCommand.command('issue <orderId> <productId>').description('Record collection of a physical order line').action(
+  withInput(z.tuple([z.string().min(1), z.string().min(1), z.object({})]), async (ctx, [orderId, productId]) => {
+    emit(await ctx.api.issueOrderLine({ orderId, productId }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
+  }),
+);
+
 
 ordersCommand
   .command('list')
@@ -2900,6 +2931,7 @@ notifications
 program
   .command('simulate-purchase')
   .description('Simulate a purchase (dev endpoint): grant a product to a buyer email')
+  .option('--sales-link <id>', 'buy every product in a sales link; --product is its first product')
   .requiredOption('--email <email>')
   .requiredOption('--product <id>')
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
@@ -2911,6 +2943,7 @@ program
       }
       emit(
         await ctx.api.simulatePurchase({
+          ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),

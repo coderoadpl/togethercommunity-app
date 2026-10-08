@@ -11,6 +11,8 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  verifyOrder: ReturnType<typeof vi.fn>;
+  issueOrderLine: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
   getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
@@ -55,6 +57,8 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    verifyOrder: vi.fn(),
+    issueOrderLine: vi.fn(),
     provisionOperatorTenant: vi.fn(),
     getOperatorTenantReadiness: vi.fn(),
     activitySummary: vi.fn(),
@@ -147,6 +151,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    verifyOrder: h.verifyOrder,
+    issueOrderLine: h.issueOrderLine,
     provisionOperatorTenant: h.provisionOperatorTenant,
     getOperatorTenantReadiness: h.getOperatorTenantReadiness,
     activitySummary: h.activitySummary,
@@ -223,6 +229,8 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
+  h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1231,5 +1239,24 @@ describe('survey commands', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(logSpy.mock.calls[0]?.[0]).not.toContain('private-input');
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('order verification commands', () => {
+  it('verifies a pasted token or order number in one JSON envelope', async () => {
+    await run('--json', 'orders', 'verify', 'order-number');
+    expect(h.verifyOrder).toHaveBeenCalledExactlyOnceWith({ reference: 'order-number' });
+    expect(soleJson()).toEqual({ ok: true, data: { order: { id: 'order-number', status: 'paid' } } });
+  });
+  it('records collection of the identified physical line', async () => {
+    await run('--json', 'orders', 'issue', 'order-number', 'physical');
+    expect(h.issueOrderLine).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'physical' });
+    expect(soleJson()).toEqual({ ok: true, data: { order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } } });
+  });
+  it('preserves the forbidden exit code for an unauthorized issue', async () => {
+    h.issueOrderLine.mockResolvedValue(err(appError('forbidden', 'order:write is not permitted')));
+    await run('--json', 'orders', 'issue', 'order-number', 'physical');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
   });
 });

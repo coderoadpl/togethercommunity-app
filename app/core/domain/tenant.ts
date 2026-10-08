@@ -282,7 +282,9 @@ export const resolveVideoAutoplay = (
   return settings.videoAutoplayDefault ?? false;
 };
 
-export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
+export const resolveInvoiceVat = (settings: Pick<TenantSettings,
+  'invoiceVatMode' | 'invoiceVatRatePercent' | 'invoiceExemptionBasisKind' | 'invoiceExemptionBasis'
+>): InvoiceVatResolution => {
   if (settings.invoiceVatMode === null) return { ok: false, reason: 'unset' };
   if (settings.invoiceVatMode === undefined || settings.invoiceVatMode === 'rate') {
     return settings.invoiceVatRatePercent === 5 ||

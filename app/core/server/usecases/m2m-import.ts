@@ -12,6 +12,7 @@ import {
   importLessonRecordSchema,
   importModuleRecordSchema,
   importProductRecordSchema,
+  resolveProductVat,
   importPublicAssetPathSchema,
   importRecordSchemaFor,
   importValidateRequestSchema,
@@ -60,6 +61,7 @@ import type {
   ImportContentMutation,
   ImportContentRepository,
   ProductRepository,
+  TenantRepository,
   TenantDomainRepository,
 } from '../ports.js';
 import { aggregateAccessItems, buildAccessLookup } from './access.js';
@@ -74,6 +76,7 @@ import {
 } from './m2m-import-users.js';
 
 type ImportReaders = {
+  tenants?: Pick<TenantRepository, 'findSettings'>;
   courses: Pick<CourseRepository, 'findById'>;
   modules: Pick<CourseModuleRepository, 'findById' | 'list'>;
   lessons: Pick<CourseLessonRepository, 'findById'>;
@@ -527,6 +530,14 @@ const prepareProduct = async (
   reachable: () => Promise<PublishedReachability>,
   now: string,
 ): Promise<Result<PreparedContent, AppError>> => {
+  if (record.type === 'physical' && record.accessItems.length > 0) {
+    return err(validation('Physical products cannot grant access items'));
+  }
+  const settings = await deps.tenants?.findSettings(tenantId) ?? null;
+  if (record.vatRate === 'exempt' && resolveProductVat(record, settings) === null) {
+    return err(validation('VAT exemption requires a legal basis'));
+  }
+  const vat = resolveProductVat(record, settings);
   const accessItems = await resolveAccessItems(tenantId, record, references, deps);
   if (!accessItems.ok) return accessItems;
   const predicted = await predictAction(tenantId, 'product', record.importKey, payloadHash, deps, reachable);
@@ -544,6 +555,8 @@ const prepareProduct = async (
       id: predicted.value.id,
       tenantId,
       type: record.type,
+      vatRate: record.vatRate ?? null,
+      vatExemptionBasis: record.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
       slug: record.slug,
       title: record.title,
       description: record.description,

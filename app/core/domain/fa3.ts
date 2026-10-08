@@ -12,9 +12,19 @@ interface Fa3Buyer {
   addressLine: string;
 }
 
+export interface InvoicePosition {
+  name: string;
+  grossCents: number;
+  netCents: number;
+  vatCents: number;
+  vat: InvoiceVatTreatment;
+}
+
 export interface Fa3InvoiceInput {
+  positions?: InvoicePosition[];
   invoiceNumber: string;
   issueDate: string;
+  saleDate?: string;
   generatedAt: string;
   seller: Fa3Party;
   buyer: Fa3Buyer | null;
@@ -51,21 +61,30 @@ const buyerXml = (buyer: Fa3Buyer | null): string => {
 };
 
 export const renderFa3Invoice = (input: Fa3InvoiceInput): string => {
-  const netCents = input.vat.kind === 'exempt'
-    ? input.grossAmountCents
-    : Math.round(input.grossAmountCents * 100 / (100 + input.vat.percent));
-  const vatCents = input.grossAmountCents - netCents;
-  const summary = input.vat.kind === 'exempt'
-    ? `<P_13_7>${money(input.grossAmountCents)}</P_13_7>`
-    : `<P_13_${vatSummarySuffix(input.vat.percent)}>${money(netCents)}</P_13_${vatSummarySuffix(input.vat.percent)}><P_14_${vatSummarySuffix(input.vat.percent)}>${money(vatCents)}</P_14_${vatSummarySuffix(input.vat.percent)}>`;
-  const exemption = input.vat.kind === 'exempt'
-    ? `<P_19>1</P_19><${input.vat.basisKind === 'other' ? 'P_19C' : 'P_19A'}>${escaped(input.vat.basis.trim().replace(/\s+/gu, ' ').slice(0, 256))}</${input.vat.basisKind === 'other' ? 'P_19C' : 'P_19A'}>`
+  const positions: InvoicePosition[] = input.positions ?? [{
+    name: input.discountCents === 0 ? input.productName : `${input.productName} (rabat kuponowy: ${money(input.discountCents)} PLN)`,
+    grossCents: input.grossAmountCents,
+    netCents: input.vat.kind === 'exempt' ? input.grossAmountCents : Math.round(input.grossAmountCents * 100 / (100 + input.vat.percent)),
+    vatCents: input.vat.kind === 'exempt' ? 0 : input.grossAmountCents - Math.round(input.grossAmountCents * 100 / (100 + input.vat.percent)),
+    vat: input.vat,
+  }];
+  const summary = ([23, 8, 5, 'exempt'] as const).map((rate) => {
+    const lines = positions.filter((position) => rate === 'exempt' ? position.vat.kind === 'exempt' : position.vat.kind === 'rate' && position.vat.percent === rate);
+    if (lines.length === 0) return '';
+    const netCents = lines.reduce((sum, line) => sum + line.netCents, 0);
+    const vatCents = lines.reduce((sum, line) => sum + line.vatCents, 0);
+    return rate === 'exempt'
+      ? `<P_13_7>${money(netCents)}</P_13_7>`
+      : `<P_13_${vatSummarySuffix(rate)}>${money(netCents)}</P_13_${vatSummarySuffix(rate)}><P_14_${vatSummarySuffix(rate)}>${money(vatCents)}</P_14_${vatSummarySuffix(rate)}>`;
+  }).join('');
+  const exemptPositions = positions.filter((position) => position.vat.kind === 'exempt');
+  const bases = [...new Set(exemptPositions.flatMap((position) => position.vat.kind === 'exempt' ? [position.vat.basis] : []))];
+  const exemptionKind = exemptPositions.length === 1 && exemptPositions[0]?.vat.kind === 'exempt' && exemptPositions[0].vat.basisKind !== 'other' ? 'P_19A' : 'P_19C';
+  const exemption = bases.length > 0
+    ? `<P_19>1</P_19><${exemptionKind}>${escaped(bases.join('; ').trim().replace(/\s+/gu, ' ').slice(0, 256))}</${exemptionKind}>`
     : '<P_19N>1</P_19N>';
-  const rate = input.vat.kind === 'exempt' ? 'zw' : String(input.vat.percent);
-  const lineName = input.discountCents === 0
-    ? input.productName
-    : `${input.productName} (rabat kuponowy: ${money(input.discountCents)} PLN)`;
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Naglowek><KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza><WariantFormularza>3</WariantFormularza><DataWytworzeniaFa>${escaped(input.generatedAt)}</DataWytworzeniaFa><SystemInfo>Together</SystemInfo></Naglowek><Podmiot1><DaneIdentyfikacyjne><NIP>${escaped(input.seller.nip)}</NIP><Nazwa>${escaped(input.seller.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(input.seller.addressLine)}</AdresL1></Adres></Podmiot1>${buyerXml(input.buyer)}<Fa><KodWaluty>PLN</KodWaluty><P_1>${escaped(input.issueDate)}</P_1><P_2>${escaped(input.invoiceNumber)}</P_2>${summary}<P_15>${money(input.grossAmountCents)}</P_15><Adnotacje><P_16>2</P_16><P_17>2</P_17><P_18>2</P_18><P_18A>2</P_18A><Zwolnienie>${exemption}</Zwolnienie><NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu><P_23>2</P_23><PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy></Adnotacje><RodzajFaktury>VAT</RodzajFaktury><FaWiersz><NrWierszaFa>1</NrWierszaFa><P_7>${escaped(lineName)}</P_7><P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>${money(netCents)}</P_9A><P_11>${money(netCents)}</P_11><P_12>${rate}</P_12></FaWiersz></Fa></Faktura>\n`;
+  const rows = positions.map((position, index) => `<FaWiersz><NrWierszaFa>${String(index + 1)}</NrWierszaFa><P_7>${escaped(position.name)}</P_7><P_8A>szt.</P_8A><P_8B>1</P_8B><P_9A>${money(position.netCents)}</P_9A><P_11>${money(position.netCents)}</P_11><P_12>${position.vat.kind === 'exempt' ? 'zw' : String(position.vat.percent)}</P_12></FaWiersz>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"><Naglowek><KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza><WariantFormularza>3</WariantFormularza><DataWytworzeniaFa>${escaped(input.generatedAt)}</DataWytworzeniaFa><SystemInfo>Together</SystemInfo></Naglowek><Podmiot1><DaneIdentyfikacyjne><NIP>${escaped(input.seller.nip)}</NIP><Nazwa>${escaped(input.seller.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(input.seller.addressLine)}</AdresL1></Adres></Podmiot1>${buyerXml(input.buyer)}<Fa><KodWaluty>PLN</KodWaluty><P_1>${escaped(input.issueDate)}</P_1><P_2>${escaped(input.invoiceNumber)}</P_2>${input.saleDate === undefined ? '' : `<P_6>${escaped(input.saleDate)}</P_6>`}${summary}<P_15>${money(input.grossAmountCents)}</P_15><Adnotacje><P_16>2</P_16><P_17>2</P_17><P_18>2</P_18><P_18A>2</P_18A><Zwolnienie>${exemption}</Zwolnienie><NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu><P_23>2</P_23><PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy></Adnotacje><RodzajFaktury>VAT</RodzajFaktury>${rows}</Fa></Faktura>\n`;
 };
 
 const requiredFragments = [
@@ -103,11 +122,12 @@ export const validateFa3Structure = (
     if (bases.length > 1) errors.push('exemption-basis-choice');
     if (xml.includes('<P_19N>')) errors.push('exemption-both-branches');
     if (!xml.includes('<P_12>zw</P_12>')) errors.push('exemption-line-rate');
-    if (xml.includes('<P_14_')) errors.push('exemption-vat-amount');
+    const hasTaxedPositions = /<P_12>(5|8|23)<\/P_12>/u.test(xml);
+    if (!hasTaxedPositions && xml.includes('<P_14_')) errors.push('exemption-vat-amount');
     const exemptSummary = xml.match(/<P_13_7>([^<]+)<\/P_13_7>/u)?.[1];
     const total = xml.match(/<P_15>([^<]+)<\/P_15>/u)?.[1];
     if (exemptSummary === undefined) errors.push('exemption-summary');
-    else if (exemptSummary !== total) errors.push('exemption-total-mismatch');
+    else if (!hasTaxedPositions && exemptSummary !== total) errors.push('exemption-total-mismatch');
   }
   if (xml.includes('<P_19N>') && xml.includes('<P_12>zw</P_12>')) {
     errors.push('exemption-line-rate');

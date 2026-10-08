@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 import { stripeModeSchema } from './integration.js';
 
-import { currencySchema } from './product.js';
+import { currencySchema, productTypeSchema } from './product.js';
+import { productVatRateSchema } from './product-vat.js';
 
 export const priceKindSchema = z.enum(['one_time', 'recurring']);
 
@@ -103,6 +104,35 @@ export const billingDataSchema = z.object({
 
 export type BillingData = z.output<typeof billingDataSchema>;
 
+export const orderLineSchema = z.object({
+  priceId: z.string().min(1).optional(),
+  productId: z.string().min(1),
+  name: z.string().min(1),
+  productType: productTypeSchema,
+  grossCents: z.number().int().nonnegative(),
+  netCents: z.number().int().nonnegative(),
+  vatRate: productVatRateSchema.nullable(),
+  vatCents: z.number().int().nonnegative(),
+  vatExemptionBasis: z.string().nullable(),
+  vatExemptionBasisKind: z.enum(['art_113_1', 'art_113_9', 'art_43_1', 'other_statute', 'other']).nullable().optional(),
+  issuedCount: z.number().int().nonnegative().nullable(),
+  issuedAt: z.string().datetime().optional(),
+  issuedBy: z.string().min(1).optional(),
+});
+
+export type OrderLine = z.infer<typeof orderLineSchema>;
+
+export const checkoutSnapshotSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  salesLinkId: z.string().nullable(),
+  lines: z.array(orderLineSchema).min(1),
+  currency: currencySchema,
+  createdAt: z.string().datetime(),
+});
+
+export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
+
 export const orderSchema = z.object({
   mode: stripeModeSchema.default('live'),
   id: z.string(),
@@ -119,12 +149,17 @@ export const orderSchema = z.object({
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
   billing: billingDataSchema.nullable().optional(),
+  salesLinkId: z.string().nullable().optional(),
+  lines: z.array(orderLineSchema).optional(),
+  verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
   createdAt: z.string().datetime(),
 });
 
 export type Order = z.infer<typeof orderSchema>;
 
 export const orderListItemSchema = orderSchema.extend({
+  lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
+  salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
   memberName: z.string().nullable(),
   productTitle: z.string(),
@@ -132,6 +167,9 @@ export const orderListItemSchema = orderSchema.extend({
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
+
+export const orderVerificationReferenceSchema = z.string().trim().min(1).max(256);
+export const issueOrderLineInputSchema = z.object({ orderId: z.string().min(1), productId: z.string().min(1) }).strict();
 
 const orderExportFormatSchema = z.enum(['csv', 'json']);
 

@@ -220,3 +220,9 @@ describe('fake Stripe webhook verification', () => {
     expect(wrongSecret.ok).toBe(false);
   });
 });
+
+
+it('reassembles bundle product metadata chunks in fake webhooks', async () => {
+  const body = JSON.stringify({ id: 'evt_bundle_chunks', type: 'checkout.session.completed', data: { object: { id: 'cs_bundle_chunks', metadata: { productIds_1: ',"second"]', productIds_0: '["first"' } } } });
+  expect(await provider.verifyWebhookEvent({ payloadRaw: body, signatureHeader: signature(body), webhookSecret: secret })).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: '["first","second"]' } } } });
+});

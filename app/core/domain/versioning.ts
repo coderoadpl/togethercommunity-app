@@ -19,7 +19,7 @@ import {
   courseModuleSnapshotV1Schema,
   type CourseModuleSnapshotV1,
 } from './snapshots/course_module/v1.js';
-import { productSnapshotV5Schema, type ProductSnapshotV5 } from './snapshots/product/v5.js';
+import { productSnapshotV6Schema, type ProductSnapshotV6 } from './snapshots/product/v6.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -39,7 +39,7 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV5Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV7Schema,
-  product: productSnapshotV5Schema,
+  product: productSnapshotV6Schema,
 };
 
 /** Typed readers for the current frozen schema; a bump repoints these too. */
@@ -47,7 +47,7 @@ export const currentSnapshotParsers = {
   course: (payload: unknown): CourseSnapshotV5 => courseSnapshotV5Schema.parse(payload),
   course_module: (payload: unknown): CourseModuleSnapshotV1 => courseModuleSnapshotV1Schema.parse(payload),
   course_lesson: (payload: unknown): CourseLessonSnapshotV7 => courseLessonSnapshotV7Schema.parse(payload),
-  product: (payload: unknown): ProductSnapshotV5 => productSnapshotV5Schema.parse(payload),
+  product: (payload: unknown): ProductSnapshotV6 => productSnapshotV6Schema.parse(payload),
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -62,7 +62,7 @@ export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 5,
   course_module: 1,
   course_lesson: 7,
-  product: 5,
+  product: 6,
 };
 
 type Upcaster = (payload: unknown) => unknown;
@@ -131,6 +131,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
     },
     3: (payload) => payload,
     4: (payload) => ({ ...z.object({}).passthrough().parse(payload), visibility: 'listed' }),
+    5: (payload) => payload,
   },
 };
 
@@ -283,7 +284,7 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '70b6397d',
   course_module: 'db069353',
   course_lesson: '20a239d8',
-  product: 'ac65f4d0',
+  product: '8900ee6e',
 };
 
 // --- read-surface DTOs -----------------------------------------------------

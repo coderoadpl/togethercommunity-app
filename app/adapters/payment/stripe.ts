@@ -1,3 +1,4 @@
+import { checkoutProductIdsMetadata } from './metadata.js';
 import Stripe from 'stripe';
 
 import {
@@ -71,26 +72,31 @@ export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
 ): Stripe.Checkout.SessionCreateParams => {
   const locale = localeFor(input.language);
+  const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
+  const productMetadata: Record<string, string> = {};
+  if (productList !== undefined) {
+    if (productList.length <= 500) productMetadata['productIds'] = productList;
+    else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
+  }
   return {
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
     ...(locale === undefined ? {} : { locale }),
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: input.currency.toLowerCase(),
-          unit_amount: input.priceCents,
-          product_data: { name: input.productName },
-          ...(input.recurringInterval === undefined
-            ? {}
-            : { recurring: { interval: input.recurringInterval } }),
-        },
+    line_items: (input.lines ?? [{ productId: input.productId, name: input.productName, grossCents: input.priceCents }]).map((line) => ({
+      quantity: 1,
+      price_data: {
+        currency: input.currency.toLowerCase(),
+        unit_amount: line.grossCents,
+        product_data: { name: line.name },
+        ...(input.recurringInterval === undefined ? {} : { recurring: { interval: input.recurringInterval } }),
       },
-    ],
+    })),
     metadata: {
+      ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
+      ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
+      ...productMetadata,
       tenantId: input.tenantId,
       productId: input.productId,
       priceId: input.priceId ?? '',
@@ -144,6 +150,9 @@ const toCheckoutSessionEvent = (
       language: session.metadata?.language || null,
       checkoutConsentCaptureId: session.metadata?.checkoutConsentCaptureId || null,
       couponCheckoutSessionId: session.metadata?.couponCheckoutSessionId || null,
+      ...(session.metadata?.checkoutSnapshotId ? { checkoutSnapshotId: session.metadata.checkoutSnapshotId } : {}),
+      ...(session.metadata?.salesLinkId ? { salesLinkId: session.metadata.salesLinkId } : {}),
+      ...checkoutProductIdsMetadata(session.metadata),
     },
   },
 });

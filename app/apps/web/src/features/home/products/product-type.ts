@@ -8,6 +8,8 @@ export const productTypeLabel = (type: ProductType, t: Messages): string => {
       return t.products.typeCourse;
     case 'digital_download':
       return t.products.typeDigitalDownload;
+    case 'physical':
+      return t.salesLinks.physical;
     case 'membership':
       return t.products.typeMembership;
   }

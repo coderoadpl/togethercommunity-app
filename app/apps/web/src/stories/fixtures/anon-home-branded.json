@@ -42,9 +42,12 @@
             ],
             "slug": "akademia-annual",
             "title": "Akademia - annual access",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           }
         ],
+        "salesLinks": [],
         "tenant": {
           "branding": {
             "accentColor": "#0E7490",

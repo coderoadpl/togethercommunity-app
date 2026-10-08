@@ -8,6 +8,7 @@ import {
   MenuItem,
   OutlinedInput,
   Select,
+  TextField,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from '@tanstack/react-router';
@@ -15,6 +16,8 @@ import { useLocation, useNavigate } from '@tanstack/react-router';
 import {
   PRODUCT_TYPES,
   productSlugFromTitle,
+  productVatRateSchema,
+  type ProductVatRate,
   type ProductType,
 } from '#core/domain/index.js';
 
@@ -37,6 +40,8 @@ export const ProductCreatePage = () => {
   const [slugTouched, setSlugTouched] = useState(false);
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [vatRate, setVatRate] = useState<ProductVatRate | null>(null);
+  const [vatExemptionBasis, setVatExemptionBasis] = useState('');
 
   const createProduct = useMutation({
     ...actions.createProduct,
@@ -57,6 +62,8 @@ export const ProductCreatePage = () => {
     event.preventDefault();
     createProduct.mutate({
       type,
+      vatRate,
+      vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       slug: slug.trim(),
       title,
       description,
@@ -115,6 +122,12 @@ export const ProductCreatePage = () => {
           />
           <FormHelperText id="product-slug-helper">{slugError ?? t.products.slugHint}</FormHelperText>
         </FormControl>
+        <TextField select label={t.salesLinks.vatRate} value={vatRate ?? ''} onChange={(event) => setVatRate(event.target.value === '' ? null : productVatRateSchema.parse(event.target.value === 'exempt' ? 'exempt' : Number(event.target.value)))}>
+          <MenuItem value="">{t.salesLinks.vatDefault}</MenuItem>
+          {[5, 8, 23].map((rate) => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
+          <MenuItem value="exempt">{t.salesLinks.exempt}</MenuItem>
+        </TextField>
+        {vatRate === 'exempt' ? <TextField label={t.salesLinks.exemptionBasis} value={vatExemptionBasis} required onChange={(event) => setVatExemptionBasis(event.target.value)} /> : null}
         <HtmlEditor
           id="product-description"
           value={description}

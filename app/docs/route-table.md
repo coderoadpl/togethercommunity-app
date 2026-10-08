@@ -32,6 +32,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
 | `OPTIONS /api/public/auth-resolve` | public | read | Constant sign-in method list; no identifier is read |
 | `GET /api/public/assets/:kind/:file` | public | read | Tenant image assets (covers, branding) redirected from private BYO storage |
+| `GET /api/public/orders/qr/:token` | public | read | Opaque order token QR image without order or buyer details; verification requires staff authorization |
 | `GET /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/public/navigation` | public | read | Anonymous tenant-home navigation |
 | `GET /api/public/courses/:courseId/structure` | public | read | Public course program without lesson content |
@@ -39,6 +40,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/public/spaces/:spaceId/posts/:postId` | public | read | Read-only thread of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events` | public | read | Read-only events of a publicly readable space |
 | `GET /api/public/spaces/:spaceId/events/:eventId` | public | read | Read-only event of a publicly readable space |
+| `GET /api/public/sales-links/:slug` | public | read | Active workspace sales-link offer and product VAT lines |
 | `GET /api/public/surveys/:slug` | public | read | Active workspace survey definition without an account |
 | `POST /api/public/surveys/:slug/submit` | public | mutating | Rate-limited survey responses with form token and honeypot checks |
 | `GET /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
@@ -192,6 +194,13 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/surveys/:id` | authenticated | mutating | delete survey |
 | `GET /api/surveys/:id/results` | authenticated | read | get survey results |
 | `GET /api/surveys/:id/export` | authenticated | read | export survey responses |
+| `GET /api/sales-links` | authenticated | read | list sales links |
+| `GET /api/sales-links/:id` | authenticated | read | get sales link |
+| `POST /api/sales-links` | authenticated | mutating | create sales link |
+| `POST /api/sales-links/:id` | authenticated | mutating | update sales link |
+| `DELETE /api/sales-links/:id` | authenticated | mutating | delete sales link |
+| `GET /api/orders/verify/:reference` | authenticated | read | verify order |
+| `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

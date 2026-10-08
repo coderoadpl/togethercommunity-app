@@ -27,10 +27,18 @@ import type {
   ProductRepository,
   SecretCrypto,
   TenantSecretRepository,
+  TenantRepository,
 } from '../ports.js';
+import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
+import type { SalesLinkRepository } from '../sales-link-ports.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
+import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
+import { captureCheckoutSelection } from './checkout-lines.js';
 
 export interface CheckoutDeps {
+  salesLinks?: SalesLinkRepository;
+  checkoutSnapshots?: CheckoutSnapshotRepository;
+  tenants?: TenantRepository;
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenantSecrets: TenantSecretRepository;
@@ -45,10 +53,7 @@ export interface CheckoutDeps {
   clock?: Clock;
 }
 
-export interface CheckoutSelection {
-  product: Product;
-  price: ProductPrice | null;
-}
+export type { CheckoutSelection } from './checkout-selection.js';
 
 export const getPaymentConfig = async (
   tenantId: string,
@@ -70,15 +75,40 @@ export const testCheckoutRejection = (
   selection: CheckoutSelection,
 ): AppError | null =>
   input.couponCode !== undefined ||
-  (selection.price?.amountCents ?? selection.product.priceCents) === 0
+  (selection.productPrices?.reduce((total, price) => total + price.amountCents, 0) ?? selection.price?.amountCents ?? selection.product.priceCents) === 0
     ? validation('Test checkout requires a paid price without a coupon')
     : null;
 
 export const validateCheckoutSelection = async (
   tenantId: string,
-  input: Pick<CheckoutSessionInput, 'productId' | 'priceId'>,
-  deps: Pick<CheckoutDeps, 'products' | 'prices'>,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock'>,
 ): Promise<Result<CheckoutSelection, AppError>> => {
+  if (input.salesLinkId !== undefined || input.salesLinkSlug !== undefined) {
+    if (input.salesLinkId !== undefined && input.salesLinkSlug !== undefined) return err(validation('Invalid sales link selection'));
+    const link = input.salesLinkSlug === undefined
+      ? await deps.salesLinks?.findById(tenantId, input.salesLinkId ?? '')
+      : await deps.salesLinks?.findBySlug(tenantId, input.salesLinkSlug);
+    const now = deps.clock?.nowIso();
+    if (link == null || !link.active || now === undefined ||
+      (link.validFrom !== null && link.validFrom > now) || (link.validTo !== null && link.validTo <= now)) {
+      return err(notFound('Sales link not found'));
+    }
+    if (input.priceId !== undefined || link.productIds[0] !== input.productId) return err(validation('Invalid sales link selection'));
+    const products: Product[] = [];
+    for (const productId of link.productIds) {
+      const item = await deps.products.findById(tenantId, productId);
+      if (item === null || !item.published) return err(notFound('Sales link not found'));
+      if (item.type === 'membership') return err(validation('Subscriptions cannot be included in a sales link'));
+      products.push(item);
+    }
+    const activePrices = await deps.prices.listActiveByProducts(tenantId, link.productIds);
+    const resolvedPrices = resolveSalesLinkPrices(products, activePrices);
+    if (!resolvedPrices.ok) return resolvedPrices;
+    const product = products[0];
+    if (product === undefined) return err(notFound('Sales link not found'));
+    return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug });
+  }
   const product = await deps.products.findById(tenantId, input.productId);
   if (!product || !product.published) {
     return err(notFound(`No published product "${input.productId}" in this tenant`));
@@ -92,6 +122,9 @@ export const validateCheckoutSelection = async (
     }
   }
 
+  if (product.type === 'physical' && price?.kind === 'recurring') {
+    return err(validation('Physical products require a one-time price'));
+  }
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
@@ -111,9 +144,13 @@ export const startCheckoutSession = async (
   url: string;
   coupon?: CouponCheckoutBreakdown;
   couponCheckoutSessionId?: string;
+  checkoutSnapshotId?: string;
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps);
+  if (!captured.ok) return captured;
+  const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
   if (mode === 'test') {
     const rejected = testCheckoutRejection(input, selection);
@@ -122,7 +159,8 @@ export const startCheckoutSession = async (
   if (mode === 'test' && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
-  const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
+  const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
+  const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   let applied:
     | {
@@ -148,10 +186,11 @@ export const startCheckoutSession = async (
         code: input.couponCode,
         ...(input.email === undefined ? {} : { email: input.email }),
         productId: product.id,
+        ...(selection.productPrices === undefined ? {} : { productIds: selection.productPrices.map((item) => item.productId), products: selection.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents })) }),
         priceId: price?.id ?? null,
         priceKind: price?.kind ?? 'one_time',
-        amountCents: price?.amountCents ?? product.priceCents,
-        currency: price?.currency ?? product.currency,
+        amountCents: totalCents,
+        currency,
       },
       {
         coupons: deps.coupons,
@@ -182,6 +221,7 @@ export const startCheckoutSession = async (
         url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
         coupon: validated.value.breakdown,
         couponCheckoutSessionId: checkoutSessionId,
+        ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }),
         free: true,
       });
     }
@@ -207,9 +247,9 @@ export const startCheckoutSession = async (
       checkoutSessionId,
     };
   }
-  if ((price?.amountCents ?? product.priceCents) === 0 && price?.kind !== 'recurring') {
+  if (totalCents === 0 && price?.kind !== 'recurring') {
     if (input.email === undefined) return err(validation('An email is required for free checkout'));
-    return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true });
+    return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true, ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }) });
   }
   if (input.couponCode === undefined) {
     const configured = await getPaymentConfig(tenant.id, deps, mode);
@@ -221,10 +261,13 @@ export const startCheckoutSession = async (
     mode,
     productId: product.id,
     productName: product.title,
-    priceCents: price?.amountCents ?? product.priceCents,
-    currency: price?.currency ?? product.currency,
-    successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled`,
+    ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
+    ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }),
+    ...(selection.products === undefined ? {} : { lines }),
+    priceCents: totalCents,
+    currency,
+    successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${checkoutQuery}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -246,9 +289,9 @@ export const startCheckoutSession = async (
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
         kind: price?.kind ?? 'one_time', status: 'pending',
-        amountCents: price?.amountCents ?? product.priceCents, currency: price?.currency ?? product.currency,
+        amountCents: totalCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
-        couponId: null, discountCents: 0, billing: null, createdAt: deps.clock.nowIso(),
+        couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),
       });
     } catch (cause) {
       await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode: 'test' });
@@ -279,6 +322,7 @@ export const createCheckoutSession = async (
   url: string;
   coupon?: CouponCheckoutBreakdown;
   couponCheckoutSessionId?: string;
+  checkoutSnapshotId?: string;
   free: boolean;
 }, AppError>> => {
   const parsed = checkoutSessionInputSchema.safeParse(input);

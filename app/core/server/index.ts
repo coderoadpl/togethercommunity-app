@@ -138,3 +138,12 @@ export * from './usecases/download-copies.js';
 export * from './usecases/lesson-editions.js';
 export * from './survey-ports.js';
 export * from './usecases/surveys.js';
+
+export type { CheckoutSnapshotRepository } from './checkout-snapshot-ports.js';
+export * from './sales-link-ports.js';
+export * from './usecases/sales-links.js';
+
+export { captureCheckoutSelection } from './usecases/checkout-lines.js';
+export * from './order-verification-ports.js';
+export * from './usecases/order-verification.js';
+export * from './usecases/public-order-qr.js';

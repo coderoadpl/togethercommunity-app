@@ -1,3 +1,4 @@
+import { OrderVerificationPage } from './sales/OrderVerificationPage.js';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
@@ -174,6 +175,10 @@ export const PanelMarketingSettingsRedirectRoute = () => (
 );
 
 export const PanelSalesRoute = () => <SalesPanel />;
+export const PanelOrderVerificationRoute = () => {
+  const params = useParams({ strict: false });
+  return <OrderVerificationPage reference={params.token ?? ''} />;
+};
 export const PanelOrderDetailRoute = () => {
   const params = useParams({ strict: false });
   return <OrderDetailPage orderId={params.orderId ?? ''} />;

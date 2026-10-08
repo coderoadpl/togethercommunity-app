@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { tenantSettingsSchema } from '#core/domain/index.js';
+
 import type {
   Identity,
   Product,
@@ -167,6 +169,43 @@ const publicationDeps = (
 });
 
 describe('products use-cases', () => {
+  it('creates physical products with VAT and rejects course access', async () => {
+    const { repo } = fakeRepo();
+    const ctx = { identity: identity('t-acme', 'owner') };
+    expect(await createProduct(ctx, { title: 'Printed material', type: 'physical', priceCents: 10500, vatRate: 5 }, deps(repo))).toMatchObject({ ok: true, value: { type: 'physical', vatRate: 5, accessItems: [] } });
+    expect(await createProduct(ctx, { title: 'Invalid material', type: 'physical', priceCents: 10500, accessItems: [{ level: 'course', courseId: 'c1' }] }, deps(repo))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createProduct(ctx, { title: 'Exempt material', priceCents: 10500, vatRate: 'exempt' }, deps(repo))).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('keeps implicit VAT linked to Settings through creation and unrelated edits', async () => {
+    const { repo, store } = fakeRepo();
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const settings = tenantSettingsSchema.parse({
+      name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
+      invoiceVatMode: 'exempt', invoiceExemptionBasisKind: 'art_113_1',
+      invoiceExemptionBasis: 'art. 113 ust. 1',
+    });
+    const productDeps = {
+      ...deps(repo, ['product-1', 'version-1']),
+      tenants: { findSettings: async () => settings },
+    };
+    expect(await createProduct(ctx, { title: 'Material', priceCents: 10500 }, productDeps)).toMatchObject({
+      ok: true, value: { vatRate: null, vatExemptionBasis: null },
+    });
+    settings.invoiceVatMode = 'rate';
+    settings.invoiceVatRatePercent = 23;
+    expect(await updateProduct(ctx, { id: 'product-1', title: 'Updated material' }, productDeps)).toMatchObject({
+      ok: true, value: { vatRate: null, vatExemptionBasis: null },
+    });
+    expect(store[0]).toMatchObject({ vatRate: null, vatExemptionBasis: null });
+    expect(await listProducts(ctx, productDeps)).toMatchObject({ ok: true, value: [{ vatRate: null }] });
+  });
+
+  it('publishes a physical product with an active price and no access delivery', async () => {
+    const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical', vatRate: 5 }]);
+    expect(await publishProduct({ identity: identity('t-acme', 'owner') }, { id: 'p1' }, publicationDeps(repo))).toMatchObject({ ok: true, value: { published: true } });
+  });
+
   it('lists only the tenant in ctx for staff', async () => {
     const { repo } = fakeRepo([draft('1', 't-acme'), draft('2', 't-globex')]);
     const result = await listProducts({ identity: identity('t-acme', 'owner') }, deps(repo));

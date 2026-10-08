@@ -1,6 +1,18 @@
 import { visible, type ScreenSpec } from './visual-screen-inventory.js';
 
 const storyByScreen: ReadonlyMap<string, string> = new Map([
+  ['order-verification-dark-mobile', 'saleslinks-bundle--verification-dark-mobile'],
+  ['order-verification-dark-desktop', 'saleslinks-bundle--verification-dark-desktop'],
+  ['order-verification-light-mobile', 'saleslinks-bundle--verification-light-mobile'],
+  ['order-verification-light-desktop', 'saleslinks-bundle--verification-light-desktop'],
+  ['sales-link-offer-light-desktop', 'saleslinks-bundle--offer-light-desktop'],
+  ['sales-link-offer-light-mobile', 'saleslinks-bundle--offer-light-mobile'],
+  ['sales-link-offer-dark-desktop', 'saleslinks-bundle--offer-dark-desktop'],
+  ['sales-link-offer-dark-mobile', 'saleslinks-bundle--offer-dark-mobile'],
+  ['sales-link-editor-light-desktop', 'saleslinks-bundle--editor-light-desktop'],
+  ['sales-link-editor-light-mobile', 'saleslinks-bundle--editor-light-mobile'],
+  ['sales-link-editor-dark-desktop', 'saleslinks-bundle--editor-dark-desktop'],
+  ['sales-link-editor-dark-mobile', 'saleslinks-bundle--editor-dark-mobile'],
   ['survey-nps-form-light-desktop', 'surveys-nativesurvey--nps-form-light-desktop'],
   ['survey-nps-form-light-mobile', 'surveys-nativesurvey--nps-form-light-mobile'],
   ['survey-nps-form-dark-desktop', 'surveys-nativesurvey--nps-form-dark-desktop'],
@@ -100,6 +112,18 @@ const telemetryScreens: ScreenSpec[] = [{
 }];
 
 export const componentScreens: readonly ScreenSpec[] = [
+  { name: 'order-verification-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
+  { name: 'order-verification-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
+  { name: 'order-verification-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
+  { name: 'order-verification-light-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
+  { name: 'sales-link-offer-light-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('bundle-offer-summary').waitFor(visible); } },
+  { name: 'sales-link-offer-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('bundle-offer-summary').waitFor(visible); } },
+  { name: 'sales-link-offer-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('bundle-offer-summary').waitFor(visible); } },
+  { name: 'sales-link-offer-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('bundle-offer-summary').waitFor(visible); } },
+  { name: 'sales-link-editor-light-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('sales-link-editor').waitFor(visible); } },
+  { name: 'sales-link-editor-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('sales-link-editor').waitFor(visible); } },
+  { name: 'sales-link-editor-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('sales-link-editor').waitFor(visible); } },
+  { name: 'sales-link-editor-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('sales-link-editor').waitFor(visible); } },
   { name: 'survey-nps-form-light-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('story-survey').waitFor(visible); } },
   { name: 'survey-nps-form-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('story-survey').waitFor(visible); } },
   { name: 'survey-nps-form-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('story-survey').waitFor(visible); } },

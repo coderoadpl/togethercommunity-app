@@ -621,3 +621,34 @@ describe('directMessage', () => {
     expect(directMessage('en', input).subject).toBe('New message from Alex');
   });
 });
+
+it.each(['en', 'pl'])('includes escaped purchase lines, an order number and a linked QR in %s', (language) => {
+  const verificationUrl = `https://shop.example.org/panel/orders/verify/${'a'.repeat(64)}`;
+  const qrImageUrl = `https://shop.example.org/api/public/orders/qr/${'a'.repeat(64)}`;
+  const message = welcomeSignIn(language, {
+    tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', productType: 'physical',
+    purchase: { orderNumber: 'order-42', verificationUrl, qrImageUrl, lines: ['Printed <material>', 'Digital companion'] },
+  });
+  expect(message.html).toContain('order-42');
+  expect(message.html).toContain('<li>Printed &lt;material&gt;</li><li>Digital companion</li>');
+  expect(message.html).toContain(`<a href="${verificationUrl}"><img src="${qrImageUrl}"`);
+  expect(message.text).toContain('- Printed <material>\n- Digital companion');
+  expect(message.text).toContain(verificationUrl);
+  expect(message.text).toContain(language === 'en' ? 'Order number' : transactionalEmailMessagesPl.purchase.orderNumber);
+});
+
+it.each(['en', 'pl'])('places the purchase block before the social footer in %s', (language) => {
+  const verificationUrl = `https://shop.example.org/panel/orders/verify/${'a'.repeat(64)}`;
+  const qrImageUrl = `https://shop.example.org/api/public/orders/qr/${'a'.repeat(64)}`;
+  const socialUrl = 'https://social.example.org/workspace';
+  const message = welcomeSignIn(language, {
+    tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', productType: 'physical',
+    purchase: { orderNumber: 'order-42', verificationUrl, qrImageUrl, lines: ['Printed material'] },
+    branding: { logoUrl: null, accentColor: null, socialLinks: [{ label: 'Community profile', url: socialUrl }] },
+  });
+  expect(message.html).toContain(`</a><p style="font-size:12px;margin-top:24px"><a href="${socialUrl}">Community profile</a></p>`);
+  expect(message.html.indexOf(qrImageUrl)).toBeLessThan(message.html.indexOf(socialUrl));
+  expect(message.html.match(/Community profile/g)).toHaveLength(1);
+  expect(message.text).toContain(`${verificationUrl}\n\nCommunity profile: ${socialUrl}`);
+  expect(message.text.match(/Community profile/g)).toHaveLength(1);
+});

@@ -99,10 +99,10 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+        {product.type === 'physical' ? <Typography variant="h3">{product.title}</Typography> : <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
           {product.title}
-        </MemberProductLink>
-        {subscription !== null && product.grantStatus === 'active' ? null : (
+        </MemberProductLink>}
+        {product.type === 'physical' || subscription !== null && product.grantStatus === 'active' ? null : (
           <Chip
             size="small"
             variant={product.grantStatus === 'active' ? 'filled' : 'outlined'}
@@ -123,6 +123,7 @@ const ProductRow = ({
           />
         ) : null}
       </Stack>
+      {product.type === 'physical' ? <Typography color="text.secondary">{t.salesLinks.collectedInPerson}</Typography> : null}
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
         <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
       </Typography>

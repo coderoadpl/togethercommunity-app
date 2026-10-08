@@ -142,6 +142,7 @@ export const pl: Messages = {
   },
   deletedContent: { member: 'Konto usunięte', post: 'Wpis usunięty' },
   common: {
+    requiredField: 'To pole jest wymagane',
     appName: 'Together',
     language: 'Język',
     languagePolish: 'Polski',

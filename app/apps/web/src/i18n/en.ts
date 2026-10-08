@@ -189,6 +189,7 @@ export const en: Messages = {
   },
   deletedContent: { member: 'Deleted account', post: 'Deleted post' },
   common: {
+    requiredField: 'This field is required',
     appName: 'Together',
     language: 'Language',
     languagePolish: 'Polish',

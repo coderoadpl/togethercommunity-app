@@ -203,6 +203,7 @@ export interface Messages {
   };
   deletedContent: { member: string; post: string };
   common: {
+    requiredField: string;
     appName: string;
     language: string;
     languagePolish: string;

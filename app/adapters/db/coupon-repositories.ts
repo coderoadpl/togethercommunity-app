@@ -153,6 +153,7 @@ export const createCouponRedemptionRepository = (db: Db): CouponRedemptionReposi
   createOrderAndClaim: async (tenantId, input) =>
     db.transaction(async (tx) => {
       if (input.order.mode === 'test') return false;
+      if (input.order.salesLinkId != null) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
       await tx.execute(
         sql`select id from ${coupons} where ${coupons.tenantId} = ${tenantId} and ${coupons.id} = ${input.redemption.couponId} for update`,
       );

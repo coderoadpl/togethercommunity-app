@@ -121,6 +121,7 @@ import type {
   Invoice,
   InvoiceEvent,
   InvoiceVatTreatment,
+  InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
   TenantAuditEventListQuery,
@@ -1011,6 +1012,9 @@ export interface PaymentWebhookEvent {
       language: string | null;
       checkoutConsentCaptureId?: string | null;
       couponCheckoutSessionId?: string | null;
+      checkoutSnapshotId?: string | null;
+      salesLinkId?: string | null;
+      productIds?: string | null;
     };
   } | null;
   invoice?: {
@@ -1057,6 +1061,9 @@ export interface PaymentProvider {
     tenantId: string;
     productId: string;
     productName: string;
+    salesLinkId?: string;
+    checkoutSnapshotId?: string;
+    lines?: { productId: string; name: string; grossCents: number }[];
     priceCents: number;
     currency: string;
     successUrl: string;
@@ -1104,6 +1111,7 @@ export interface PaymentProvider {
 
 export interface InvoicingPort {
   issueInvoice(input: {
+    positions?: InvoicePosition[];
     order: Order;
     billing: BillingData | null;
     productName: string;

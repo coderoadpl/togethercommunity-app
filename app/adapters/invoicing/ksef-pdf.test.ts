@@ -113,3 +113,17 @@ describe('KSeF invoice PDF', () => {
     expect(source).not.toContain('VAT zw%');
   });
 });
+
+it('includes every mixed-rate summary and paginates long position lists', () => {
+  const xml = renderFa3Invoice({ invoiceNumber: 'FV/2026/000003', issueDate: '2026-10-08', generatedAt: '2026-10-08T10:00:00Z',
+    seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' }, buyer: null, productName: 'Bundle', grossAmountCents: 228000, discountCents: 0, vat: { kind: 'rate', percent: 5 },
+    positions: Array.from({ length: 20 }, (_, index) => index % 2 === 0
+      ? { name: `Printed material ${String(index)}`, grossCents: 10500, netCents: 10000, vatCents: 500, vat: { kind: 'rate' as const, percent: 5 as const } }
+      : { name: `Download ${String(index)}`, grossCents: 12300, netCents: 10000, vatCents: 2300, vat: { kind: 'rate' as const, percent: 23 as const } }),
+  });
+  const source = new TextDecoder().decode(createKsefInvoicePdf().render({ invoice, xml }));
+  expect(source).toContain('/Count 2');
+  expect(source).toContain('VAT 5%: 50.00 PLN');
+  expect(source).toContain('VAT 23%: 230.00 PLN');
+  expect(source).toContain('Download 19');
+});

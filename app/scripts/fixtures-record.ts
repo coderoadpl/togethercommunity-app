@@ -214,7 +214,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   // Routing goldens include the authoring server's port in CORS instructions.
   const recordedTenantHost = `${scenario.tenant}.localhost:${new URL(baseUrl).port}`;
   const goldenTenantHost = `${scenario.tenant}.localhost:63871`;
-  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => value === recordedUserId ? fixtureUserId : typeof value === 'string' ? staffMemberIds.get(value) ?? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
+  const snapshot: unknown = JSON.parse(JSON.stringify({ scenario: scenario.name, principal: scenario.principal, tenant: scenario.tenant, route, calls, ...(scenario.pending ? { pending: scenario.pending } : {}), ...(scenario.expectedErrors ? { expectedErrors: scenario.expectedErrors } : {}) }, (_key, value: unknown) => _key === 'verificationToken' ? 'fixture-verification-token-0000000000000000000000000000000000000000' : value === recordedUserId ? fixtureUserId : typeof value === 'string' ? staffMemberIds.get(value) ?? value.replaceAll(baseUrl, 'http://localhost:48730').replaceAll(recordedTenantHost, goldenTenantHost) : value));
   fixtureSchema.parse(snapshot);
   save(scenario.name, scenario.page === 'marketing-directory' ? normalizeMarketingDirectoryFixture(snapshot) : snapshot);
   console.log(`${scenario.name}: ${Object.keys(calls).length} calls`);

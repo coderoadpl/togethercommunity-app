@@ -6,6 +6,9 @@ import {
   resolveEmailLanguage,
   type AppError,
   type GrantSource,
+  type Member,
+  type Order,
+  type Product,
   type Result,
   type Tenant,
 } from '#core/domain/index.js';
@@ -16,9 +19,11 @@ import type {
   ProductGrantRepository,
   ProductRepository,
   TenantRepository,
+  EmailOutboxRepository,
 } from '../ports.js';
 import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
+import { orderVerificationUrl } from '../order-verification-url.js';
 import { createOrRenewGrant } from './grant-window.js';
 
 export interface FulfillEnrollmentDeps extends EnsureMemberDeps, TenantOriginDeps {
@@ -60,40 +65,13 @@ export const fulfillEnrollment = async (
   const completed = await deps.enrollmentTransaction.run(async (transaction) => {
     const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members });
     if (!member.ok) return member;
-    const grant = await createOrRenewGrant(
+    const grant = product.type === 'physical' ? { grantId: '', renewed: false } : await createOrRenewGrant(
       tenant.id,
       { mode: input.mode ?? 'live', memberId: member.value.id, productId: input.productId, expiresAt: input.expiresAt, source: input.source },
       { ...deps, grants: transaction.grants },
     );
     if (input.sendEmail && input.mode !== 'test') {
-      const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
-      const settings = await deps.tenants.findSettings(tenant.id);
-      const language = resolveEmailLanguage(
-        member.value.language,
-        input.language,
-        settings?.defaultLanguage,
-      );
-      const created = await deps.authPort.createEnrollmentMagicLink({
-        email: member.value.email,
-        callbackURL: tenantBaseUrl,
-        baseUrl: tenantBaseUrl,
-        tenantName: tenant.name,
-        language,
-      });
-      const queued = await transaction.emailOutbox.enqueue({
-        id: deps.ids.nextId(),
-        tenantId: tenant.id,
-        to: member.value.email,
-        payload: {
-          kind: 'welcome-sign-in',
-          language,
-          tenantName: tenant.name,
-          actionUrl: created.url,
-          productType: product.type,
-          ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
-        },
-        now: deps.clock.nowIso(),
-      });
+      const queued = await queueEnrollmentWelcome(tenant, member.value, product, input.language, transaction.emailOutbox, deps);
       if (!queued.ok) return queued;
     }
     return ok({ member: member.value, grant });
@@ -104,4 +82,50 @@ export const fulfillEnrollment = async (
     ? await deps.devMagicLinks.findByEmail(completed.value.member.email)
     : null;
   return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink });
+};
+
+export const queueEnrollmentWelcome = async (
+  tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
+  member: Member,
+  product: Product,
+  inputLanguage: string | null,
+  outbox: EmailOutboxRepository,
+  deps: FulfillEnrollmentDeps,
+  order?: Order,
+) => {
+  const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
+  const settings = await deps.tenants.findSettings(tenant.id);
+  const language = resolveEmailLanguage(
+    member.language,
+    inputLanguage,
+    settings?.defaultLanguage,
+  );
+  const created = await deps.authPort.createEnrollmentMagicLink({
+    email: member.email,
+    callbackURL: tenantBaseUrl,
+    baseUrl: tenantBaseUrl,
+    tenantName: tenant.name,
+    language,
+  });
+  const queued = await outbox.enqueue({
+    id: deps.ids.nextId(),
+    tenantId: tenant.id,
+    to: member.email,
+    payload: {
+      kind: 'welcome-sign-in',
+      language,
+      tenantName: tenant.name,
+      actionUrl: created.url,
+      productType: product.type,
+      ...(order?.verificationToken === undefined ? {} : { purchase: {
+        orderNumber: order.id,
+        verificationUrl: orderVerificationUrl(tenantBaseUrl, order.verificationToken),
+        qrImageUrl: new URL(`/api/public/orders/qr/${order.verificationToken}`, tenantBaseUrl).toString(),
+        lines: order.lines?.map((line) => line.name) ?? [product.title],
+      } }),
+      ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
+    },
+    now: deps.clock.nowIso(),
+  });
+  return queued;
 };

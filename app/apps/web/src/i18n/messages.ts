@@ -17,6 +17,59 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  orderVerification: {
+    title: string;
+    reference: string;
+    find: string;
+    help: string;
+    notFound: string;
+    markIssued: string;
+    issuing: string;
+    issued: (params: { count: number }) => string;
+    firstIssued: string;
+    staff: string;
+    unpaidHelp: string;
+  };
+  salesLinks: {
+    heading: string;
+    create: string;
+    edit: string;
+    internalTitle: string;
+    publicHeading: string;
+    slug: string;
+    description: string;
+    products: string;
+    addProduct: string;
+    active: string;
+    inactive: string;
+    activate: string;
+    deactivate: string;
+    listed: string;
+    validFrom: string;
+    validTo: string;
+    timezone: string;
+    save: string;
+    empty: string;
+    url: string;
+    remove: string;
+    deleteBody: string;
+    moveUp: string;
+    moveDown: string;
+    buyBundle: string;
+    total: string;
+    net: string;
+    vat: string;
+    gross: string;
+    vatDefault: string;
+    vatRate: string;
+    exempt: string;
+    exemptionBasis: string;
+    physical: string;
+    collectedInPerson: string;
+    invalid: string;
+    activationHelp: string;
+    salesLink: string;
+  };
   surveys: {
     status: string;
     actions: string;

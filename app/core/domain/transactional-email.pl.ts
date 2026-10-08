@@ -9,11 +9,13 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       direct: 'w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników',
     },
   },
+  purchase: { orderNumber: 'Numer zamówienia', lines: 'Zakupione pozycje', verification: 'Pokaż ten kod obsłudze podczas odbioru zamówienia', qrAlt: 'Kod QR do weryfikacji zamówienia' },
   welcomeSignIn: {
     actionLabels: {
       course: 'Zaloguj się i otwórz kurs',
       digital_download: 'Zaloguj się i pobierz pliki',
       membership: 'Zaloguj się na swoje konto',
+      physical: 'Zaloguj się na swoje konto',
       unknown: 'Zaloguj się na swoje konto',
     },
     render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, actionLabel, socialLinks }) => ({

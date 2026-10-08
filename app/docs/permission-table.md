@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 122. Route rows: 412. Exported `Ctx` use-case rows: 321.
+Closed capability count: 123. Route rows: 421. Exported `Ctx` use-case rows: 328.
 
 ## Human-readable diff
 
@@ -55,6 +55,7 @@ no changes
 | `OPTIONS /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
 | `OPTIONS /api/public/auth-resolve` | auth:use | public | public | yes | public route manifest |
 | `GET /api/public/assets/:kind/:file` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/orders/qr/:token` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/offer` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/navigation` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/courses/:courseId/structure` | offer:read | public | public | yes | public route manifest |
@@ -62,6 +63,7 @@ no changes
 | `GET /api/public/spaces/:spaceId/posts/:postId` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/events` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/spaces/:spaceId/events/:eventId` | offer:read | public | public | yes | public route manifest |
+| `GET /api/public/sales-links/:slug` | offer:read | public | public | yes | public route manifest |
 | `GET /api/public/surveys/:slug` | offer:read | public | public | yes | public route manifest |
 | `POST /api/public/surveys/:slug/submit` | offer:read | public | public | yes | public route manifest |
 | `GET /api/student/lessons/:lessonId/editions` | lesson:play | public | public | yes | public route manifest |
@@ -215,6 +217,13 @@ no changes
 | `DELETE /api/surveys/:id` | survey:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/surveys/:id/results` | survey:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/surveys/:id/export` | survey:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/sales-links` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/sales-links/:id` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/sales-links` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/sales-links/:id` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `DELETE /api/sales-links/:id` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/orders/verify/:reference` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/lines/:productId/issue` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -691,6 +700,8 @@ no changes
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `operator-tenant-readiness.ts#getOperatorTenantReadiness` | tenant:readiness | operator-secret | operator-secret | yes | core/server/usecases/operator-tenant-readiness.ts authorization call |
 | `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
+| `order-verification.ts#verifyOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/order-verification.ts authorization call |
+| `order-verification.ts#issueOrderLine` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-verification.ts authorization call |
 | `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
@@ -717,6 +728,11 @@ no changes
 | `progress.ts#getProgress` | member:progress:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/progress.ts authorization call |
 | `provider-diagnostics.ts#testIntegration` | integration:test | owner | owner | yes | core/server/usecases/provider-diagnostics.ts authorization call |
 | `provision-tenant.ts#provisionTenant` | tenant:provision | operator-secret | operator-secret | yes | core/server/usecases/provision-tenant.ts authorization call |
+| `sales-links.ts#listSalesLinks` | product:read | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
+| `sales-links.ts#getSalesLink` | product:read | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
+| `sales-links.ts#createSalesLink` | product:write | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
+| `sales-links.ts#updateSalesLink` | product:write | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
+| `sales-links.ts#deleteSalesLink` | product:write | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -775,14 +791,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:21` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:192` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1181` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1183` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1205` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1219` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1740` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1740` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:23` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:194` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1194` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1196` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1218` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1232` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1755` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1755` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -791,7 +807,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:583` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:625` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -816,7 +832,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/image-assets.ts:239` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:250` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:317` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/invoices.ts:459` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
+| member-scope | `core/server/usecases/invoices.ts:505` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
@@ -829,7 +845,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/my-products.ts:66` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/my-products.ts:70` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |

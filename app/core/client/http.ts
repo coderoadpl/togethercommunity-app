@@ -13,6 +13,8 @@ import {
   marketingDirectoryContracts,
   marketingSignupContracts,
   surveyContracts,
+  salesLinkContracts,
+  orderVerificationContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -494,6 +496,8 @@ const uploadImageAsset = (
 const directoryQuery = (input: object, drop: readonly string[] = ['contactId', 'listId', 'importId']): string => new URLSearchParams(Object.entries(input).filter(([key, value]) => value !== undefined && !drop.includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)])).toString();
 
 export const createApiClient = (options: ApiClientOptions) => ({
+  verifyOrder: (input: z.input<typeof orderVerificationContracts.verifyOrder.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), orderVerificationContracts.verifyOrder.output, undefined, signal),
+  issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
   provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
     request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,
       provisionTenantOutputSchema, input, undefined, { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret }, redactErrors: true }),
@@ -506,6 +510,12 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.activitySummary.method, `${API_ROUTES.activitySummary.path}?${directoryQuery(input)}`, activitySummarySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
   memberActivity: (input: z.input<typeof memberActivityQuerySchema>, transport?: { apiKey?: string }) =>
     request(options, API_ROUTES.memberActivity.method, `${API_ROUTES.memberActivity.path}?${directoryQuery(input)}`, memberActivitySchema, undefined, undefined, transport?.apiKey === undefined ? undefined : { headers: { 'x-api-key': transport.apiKey } }),
+  listSalesLinks: (input: z.input<typeof salesLinkContracts.listSalesLinks.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listSalesLinks.path, salesLinkContracts.listSalesLinks.output, undefined, signal),
+  getSalesLink: (input: z.input<typeof salesLinkContracts.getSalesLink.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.getSalesLink.output, undefined, signal),
+  createSalesLink: (input: z.input<typeof salesLinkContracts.createSalesLink.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createSalesLink.path, salesLinkContracts.createSalesLink.output, input, signal),
+  updateSalesLink: (input: z.input<typeof salesLinkContracts.updateSalesLink.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.updateSalesLink.output, input, signal),
+  deleteSalesLink: (input: z.input<typeof salesLinkContracts.deleteSalesLink.input>, signal?: AbortSignal) => request(options, 'DELETE', API_ROUTES.deleteSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.deleteSalesLink.output, input, signal),
+  getPublicSalesLink: (input: z.input<typeof salesLinkContracts.getPublicSalesLink.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getPublicSalesLink.path.replace(':slug', encodeURIComponent(input.slug)), salesLinkContracts.getPublicSalesLink.output, undefined, signal),
   listSurveys: (input: z.input<typeof surveyContracts.listSurveys.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listSurveys.path, surveyContracts.listSurveys.output, undefined, signal),
   getSurvey: (input: z.input<typeof surveyContracts.getSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.getSurvey.output, undefined, signal),
   createSurvey: (input: z.input<typeof surveyContracts.createSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createSurvey.path, surveyContracts.createSurvey.output, input, signal),

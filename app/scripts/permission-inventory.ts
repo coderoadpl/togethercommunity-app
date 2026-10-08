@@ -81,6 +81,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';
+  if (path === '/api/public/orders/qr/:token') return 'offer:read';
   if (path === '/api/public/navigation') return 'offer:read';
   if (path === '/api/public/courses/:courseId/structure') return 'offer:read';
   if (path === '/api/public/spaces/:spaceId/feed') return 'offer:read';
@@ -99,6 +100,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/marketing/forms/')) return 'offer:read';
   if (path.startsWith('/api/public/marketing/forms/')) return method === 'POST' ? 'marketing:consent:write' : 'offer:read';
   if (path.startsWith('/api/marketing/forms')) return method === 'GET' ? 'marketing:list:read' : 'marketing:list:write';
+  if (path.startsWith('/api/public/sales-links/')) return 'offer:read';
+  if (path === '/api/sales-links' || path.startsWith('/api/sales-links/')) return method === 'GET' ? 'product:read' : 'product:write';
   if (path.startsWith('/api/public/surveys/')) return 'offer:read';
   if (path === '/api/surveys' || path.startsWith('/api/surveys/')) return method === 'GET' ? 'survey:read' : 'survey:write';
   if (path.startsWith('/legal/')) return 'legal:read';
@@ -214,6 +217,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.endsWith('/access-items')) return 'product:access:write';
   if (path.endsWith('/access-issues')) return 'product:access:read';
   if (path.includes('/prices')) return method === 'GET' ? 'product:price:read' : 'product:price:write';
+  if (path === '/api/orders/verify/:reference') return 'order:read';
+  if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/export') return 'order:export';

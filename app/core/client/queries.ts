@@ -842,6 +842,8 @@ export const memberBillingOrdersQuery = (api: ApiClient) =>
     call: ({ signal }) => api.listMemberBillingOrders(1, 25, signal),
   });
 
+export const ordersInvalidates = () => ({ queryKey: salesScopes.all() });
+
 export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({
     queryKey: salesScopes.order(id),

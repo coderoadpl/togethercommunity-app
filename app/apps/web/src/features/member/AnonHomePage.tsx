@@ -6,8 +6,9 @@ import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
-import { QuietNotice } from '../../theme.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { formatPrice } from '../../lib/format.js';
+import { CourseCardRoot, QuietNotice } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
@@ -44,6 +45,9 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
 
 export const AnonHomePage = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
+  const offer = useQuery(actions.publicOffer);
+  const salesLinks = offer.data?.salesLinks ?? [];
   const navigation = useQuery(actions.publicNavigation);
 
   if (navigation.isPending) {
@@ -79,7 +83,7 @@ export const AnonHomePage = () => {
   const anchorFor = (section: typeof offerSection) =>
     section === offerSection ? PUBLIC_OFFER_ANCHOR : undefined;
 
-  if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0) {
+  if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0 && salesLinks.length === 0) {
     return (
       <MemberSurface title={t.anon.homeTitle} eyebrow={t.anon.eyebrow} width="wide">
         <StatusView
@@ -102,6 +106,9 @@ export const AnonHomePage = () => {
         {homeSpace === undefined ? null : (
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
+        {salesLinks.length === 0 ? null : <TileSection title={t.salesLinks.heading} testId="anon-sales-links">
+          {salesLinks.map((salesLink) => <CourseCardRoot key={salesLink.id} component={Link} to={`/offer/${encodeURIComponent(salesLink.slug)}`}><Box sx={{ p: '1.25rem', display: 'grid', gap: '0.6rem' }}><Typography variant="h2" component="h3">{salesLink.heading}</Typography><Typography>{formatPrice(salesLink.totalCents, salesLink.currency, language)}</Typography><Typography>{t.salesLinks.buyBundle}</Typography></Box></CourseCardRoot>)}
+        </TileSection>}
         {tileSpaces.length === 0 ? null : (
           <TileSection title={t.anon.spacesSection} id={anchorFor('spaces')} testId="anon-spaces">
             {tileSpaces.map((space) => (

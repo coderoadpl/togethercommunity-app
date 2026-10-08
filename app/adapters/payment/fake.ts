@@ -1,3 +1,4 @@
+import { checkoutProductIdsMetadata } from './metadata.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import {
@@ -98,6 +99,9 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
                 language: object.metadata?.language || null,
                 checkoutConsentCaptureId:
                   object.metadata?.checkoutConsentCaptureId || null,
+                ...(object.metadata?.checkoutSnapshotId ? { checkoutSnapshotId: object.metadata.checkoutSnapshotId } : {}),
+                ...(object.metadata?.salesLinkId ? { salesLinkId: object.metadata.salesLinkId } : {}),
+                ...checkoutProductIdsMetadata(object.metadata),
                 couponCheckoutSessionId:
                   object.metadata?.couponCheckoutSessionId || null,
               },

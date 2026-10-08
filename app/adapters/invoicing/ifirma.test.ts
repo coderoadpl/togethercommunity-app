@@ -321,3 +321,15 @@ describe('createIfirmaInvoicing', () => {
     });
   });
 });
+
+it('sends one iFirma position per mixed-rate line', () => {
+  const payload = ifirmaInvoicePayload({ ...input, order: { ...input.order, amountCents: 22800 }, positions: [
+    { name: 'Printed material', grossCents: 10500, netCents: 10000, vatCents: 500, vat: { kind: 'rate', percent: 5 } },
+    { name: 'Download', grossCents: 12300, netCents: 10000, vatCents: 2300, vat: { kind: 'rate', percent: 23 } },
+  ] }, '2026-10-08');
+  expect(payload.Pozycje).toEqual([
+    { StawkaVat: 0.05, Ilosc: 1, CenaJednostkowa: 105, NazwaPelna: 'Printed material', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+    { StawkaVat: 0.23, Ilosc: 1, CenaJednostkowa: 123, NazwaPelna: 'Download', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+  ]);
+  expect(payload.Zaplacono).toBe(228);
+});

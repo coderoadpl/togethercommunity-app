@@ -23,6 +23,13 @@ export const emailMessageSchema = z.object({
 
 export type EmailMessage = z.output<typeof emailMessageSchema>;
 
+export const purchaseEmailDetailsSchema = z.object({
+  orderNumber: z.string().min(1),
+  verificationUrl: z.string().url(),
+  qrImageUrl: z.string().url(),
+  lines: z.array(z.string().min(1)).min(1),
+});
+
 export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
 
 const escapeHtmlCharacter = (character: string): string => {
@@ -121,24 +128,33 @@ const brandSocialLinks = (
 
 export const welcomeSignIn = (
   language: string,
-  input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType },
+  input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType; purchase?: z.output<typeof purchaseEmailDetailsSchema> },
 ): EmailMessage => {
   const messages = messagesFor(language);
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
   const socialLinks = brandSocialLinks(input.branding);
   const productType = input.productType ?? 'course';
+  const purchase = input.purchase;
   const actionLabel = messages.welcomeSignIn.actionLabels[productType];
   const actionLink = link(input.actionUrl, actionLabel);
-  return emailMessageSchema.parse(messages.welcomeSignIn.render({
+  const rendered = messages.welcomeSignIn.render({
     tenantName: input.tenantName,
     tenantNameHtml: tenantName,
     actionUrl: input.actionUrl,
     actionLink,
     actionLabel,
     header,
-    socialLinks,
-  }));
+    socialLinks: purchase === undefined ? socialLinks : { html: '', text: '' },
+  });
+  if (purchase === undefined) return emailMessageSchema.parse(rendered);
+  const labels = messages.purchase;
+  const lines = purchase.lines.map((name) => `<li>${escapeHtml(name)}</li>`).join('');
+  return emailMessageSchema.parse({
+    ...rendered,
+    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p><ul>${lines}</ul><p>${link(purchase.verificationUrl, labels.verification)}</p><a href="${escapeHtml(purchase.verificationUrl)}"><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" /></a>${socialLinks.html}`,
+    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${purchase.lines.map((name) => `- ${name}`).join('\n')}\n\n${labels.verification}: ${purchase.verificationUrl}${socialLinks.text}`,
+  });
 };
 
 export const resetPassword = (

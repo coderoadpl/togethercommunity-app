@@ -1,3 +1,5 @@
+import { registerOrderVerificationRoutes } from './order-verification-routes.js';
+import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
@@ -399,6 +401,7 @@ import {
   sanitizeStagingSecrets,
   setTenantSecret,
   simulatePurchase,
+  captureCheckoutSelection,
   simulateSubscriptionCycle,
   simulateSubscriptionFailure,
   startSesIdentityVerification,
@@ -927,6 +930,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
       const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
       if (!selection.ok) return respond(selection);
+      const selectedProducts = selection.value.products ?? [selection.value.product];
+      const attachedDefinitionIds = [...new Set(selectedProducts.flatMap((product) => product.checkoutConsentDefinitionIds ?? []))];
+      const totalCents = selection.value.productPrices?.reduce((total, selectedPrice) => total + selectedPrice.amountCents, 0)
+        ?? selection.value.price?.amountCents ?? selection.value.product.priceCents;
 
       const consent = await validateTermsConsent(
         tenant.value.tenant.id,
@@ -945,6 +952,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
           {
             email: parsed.data.email,
             productId: parsed.data.productId,
+            ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId }),
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
           },
@@ -965,10 +973,11 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             code: parsed.data.couponCode,
             email: parsed.data.email,
             productId: selection.value.product.id,
+            ...(selection.value.productPrices === undefined ? {} : { productIds: selectedProducts.map((product) => product.id), products: selection.value.productPrices.map((selectedPrice) => ({ productId: selectedPrice.productId, priceId: selectedPrice.id, amountCents: selectedPrice.amountCents })) }),
             priceId: price?.id ?? null,
             priceKind: price?.kind ?? 'one_time',
-            amountCents: price?.amountCents ?? selection.value.product.priceCents,
-            currency: price?.currency ?? selection.value.product.currency,
+            amountCents: totalCents,
+            currency: selection.value.productPrices?.[0]?.currency ?? price?.currency ?? selection.value.product.currency,
           },
           {
             coupons: deps.coupons,
@@ -980,6 +989,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         if (!validated.ok) {
           result = validated;
         } else {
+          const captured = await captureCheckoutSelection(tenant.value.tenant.id, selection.value, deps);
+          if (!captured.ok) return respond(captured);
           const couponSessionId = deps.ids.nextId();
           const objectId = `simulated_${couponSessionId}`;
           const captureId = deps.ids.nextId();
@@ -988,7 +999,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             capture: {
               termsAccepted: parsed.data.termsAccepted === true,
               selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-              attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+              attachedDefinitionIds,
               collectedAt: deps.clock.nowIso(),
               confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
               ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
@@ -1029,6 +1040,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
                 language,
                 couponCheckoutSessionId: couponSessionId,
                 checkoutConsentCaptureId: captureId,
+                ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId, productIds: selectedProducts.map((product) => product.id).join(',') }),
+                ...(captured.value.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: captured.value.checkoutSnapshotId }),
               },
             },
           };
@@ -1083,7 +1096,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             tenant: tenant.value.tenant,
             email: parsed.data.email,
             selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-            attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+            attachedDefinitionIds,
             productId: selection.value.product.id,
             orderId: result.value.orderId,
             collectedAt: deps.clock.nowIso(),
@@ -1293,6 +1306,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSessionMarketingContactRoutes(app, deps);
   registerSessionMarketingSignupRoutes(app, deps);
   registerSurveyRoutes(app, deps);
+  registerSalesLinkRoutes(app, deps);
+  registerOrderVerificationRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

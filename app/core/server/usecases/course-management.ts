@@ -590,6 +590,10 @@ export const updateProductAccessItems = async (
   const product = await deps.products.findById(tenant.value, parsed.data.id);
   if (!product) return err(notFound(`No product "${parsed.data.id}" in this tenant`));
 
+  if (product.type === 'physical' && parsed.data.accessItems.length > 0) {
+    return err(validation('Physical products cannot grant access items'));
+  }
+
   const courseIds = unique(parsed.data.accessItems.map((item) => item.courseId));
   const courses = await deps.courses.findByIds(tenant.value, courseIds);
   if (courses.length !== courseIds.length) {

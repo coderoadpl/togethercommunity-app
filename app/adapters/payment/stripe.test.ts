@@ -633,3 +633,29 @@ it('maps a legacy invoice.paid without metadata by subscription id', async () =>
   expect(await provider.verifyWebhookEvent({ payloadRaw: payload, signatureHeader, webhookSecret }))
     .toMatchObject({ ok: true, value: { checkoutSession: null, invoice: { subscriptionId: 'sub_existing', amountCents: 3500, currency: 'EUR' } } });
 });
+
+it('sends one quantity-one Stripe item per bundle product and references its snapshot', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-1', productId: 'product-1', productName: 'Collection', priceCents: 3333,
+    currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/cancel',
+    salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
+    lines: [{ productId: 'product-1', name: 'Digital item', grossCents: 1233 }, { productId: 'product-2', name: 'Printed item', grossCents: 2100 }],
+  });
+  expect(params.line_items).toEqual([
+    { quantity: 1, price_data: { currency: 'pln', unit_amount: 1233, product_data: { name: 'Digital item' } } },
+    { quantity: 1, price_data: { currency: 'pln', unit_amount: 2100, product_data: { name: 'Printed item' } } },
+  ]);
+  expect(params.metadata).toMatchObject({ salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', productIds: '["product-1","product-2"]' });
+});
+
+
+it('reassembles numerically ordered bundle product metadata chunks in a signed webhook', async () => {
+  const productIds = Array.from({ length: 60 }, (_, index) => `product-${index}-identifier`);
+  const productList = JSON.stringify(productIds);
+  const metadata: Record<string, string> = {};
+  for (let offset = productList.length - 1; offset >= 0; offset -= 1) {
+    if (offset % 100 === 0) metadata[`productIds_${offset / 100}`] = productList.slice(offset, offset + 100);
+  }
+  const payload = JSON.stringify({ id: 'evt_bundle_chunks', type: 'checkout.session.completed', data: { object: { id: 'cs_bundle_chunks', metadata } } });
+  expect(await verify(payload)).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: productList } } } });
+});

@@ -136,6 +136,8 @@ const updateResource = async (
     description: product.description,
     coverUrl: product.coverUrl,
     priceCents: product.priceCents,
+    vatRate: product.vatRate ?? null,
+    vatExemptionBasis: product.vatExemptionBasis ?? null,
     currency: product.currency,
     accessItems: product.accessItems,
     legacyId: product.legacyId,

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
 
 import type { OrderListQuery } from '../ports.js';
-import { exportOrders, getSalesSummary, listOrders, type OrdersDeps } from './orders.js';
+import { exportOrders, getOrder, getSalesSummary, listOrders, type OrdersDeps } from './orders.js';
 
 const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null = 't1'): Identity => ({
   userId: 'u1',
@@ -266,4 +266,13 @@ describe('exportOrders', () => {
     expect(h.queries).toHaveLength(3);
     expect(h.queries.every((query) => query.status === 'paid' && query.pageSize === 100)).toBe(true);
   });
+});
+
+
+it('shows the originating sales-link title in staff order details', async () => {
+  const order = orderItem('bundle-order', { salesLinkId: 'link', salesLinkTitle: 'In-person offer' });
+  const result = await getOrder({ identity: identity('owner') }, order.id, {
+    orders: { findById: async () => order },
+  });
+  expect(result).toMatchObject({ ok: true, value: { order: { salesLinkId: 'link', salesLinkTitle: 'In-person offer' } } });
 });

@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import { ok, salesLinkSchema } from '#core/domain/index.js';
 
 import type {
   Member,
@@ -201,7 +203,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
   };
 
-  return { deps, purchases, orders, subscriptions, grants };
+  return { deps, purchases, orders, subscriptions, grants, members };
 };
 
 describe('simulatePurchase', () => {
@@ -278,4 +280,82 @@ describe('simulatePurchase', () => {
     const result = await simulatePurchase('t-acme', { email: 'buyer@together.dev', productId: 'p1' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
+});
+
+
+const bundleHarness = () => {
+  const products: Product[] = [
+    { ...product('print', 'workspace', true), type: 'physical', priceCents: 1050, vatRate: 5 },
+    { ...product('download', 'workspace', true), type: 'digital_download', priceCents: 1080, vatRate: 8 },
+    { ...product('course', 'workspace', true), priceCents: 1230, vatRate: 23 },
+  ];
+  const h = harness({ products, prices: products.map((item) => ({ ...monthlyPrice(`price-${item.id}`, 'workspace', item.id), amountCents: item.priceCents, kind: 'one_time', interval: null })) });
+  const link = salesLinkSchema.parse({ id: 'link', tenantId: 'workspace', slug: 'complete-bundle', title: 'Complete bundle', heading: 'Complete bundle', productIds: products.map((item) => item.id), active: true, revision: 1, createdAt: h.deps.clock.nowIso(), updatedAt: h.deps.clock.nowIso() });
+  h.deps.salesLinks = { list: async () => [link], findById: async (tenantId, id) => tenantId === link.tenantId && id === link.id ? link : null, findBySlug: async () => link, save: async (_, next) => ok(next), delete: async () => ok(undefined) };
+  let transactionCalls = 0;
+  let rejectOrder = false;
+  h.deps.paymentTransaction = { run: async (operation) => {
+    transactionCalls += 1;
+    const membersBefore = [...h.members];
+    const grantsBefore = new Map(h.grants);
+    const ordersBefore = [...h.orders];
+    try {
+      return await operation({ members: h.deps.members, grants: h.deps.grants, orders: { ...h.deps.orders, create: async (tenantId, order) => {
+        if (rejectOrder) throw new Error('Order write failed');
+        await h.deps.orders.create(tenantId, order);
+      } } });
+    } catch (error) {
+      h.members.splice(0, h.members.length, ...membersBefore);
+      h.orders.splice(0, h.orders.length, ...ordersBefore);
+      h.grants.clear();
+      for (const [key, grant] of grantsBefore) h.grants.set(key, grant);
+      throw error;
+    }
+  } };
+  return { ...h, transactionCalls: () => transactionCalls, rejectOrderWrite: () => { rejectOrder = true; } };
+};
+
+it('simulates one mixed-rate bundle payment and grants only its digital products in one transaction', async () => {
+  const h = bundleHarness();
+  const result = await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print', salesLinkId: 'link' }, h.deps);
+  expect(result).toMatchObject({ ok: true, value: { alreadyOwned: false, orderId: expect.any(String) } });
+  expect(h.transactionCalls()).toBe(1);
+  expect(h.members).toHaveLength(1);
+  expect([...h.grants.values()].map((grant) => grant.productId)).toEqual(['download', 'course']);
+  expect(h.purchases.grants).toHaveLength(0);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ salesLinkId: 'link', amountCents: 3360, provider: 'simulated', lines: [
+    { productId: 'print', grossCents: 1050, netCents: 1000, vatCents: 50, vatRate: 5, issuedCount: 0 },
+    { productId: 'download', grossCents: 1080, netCents: 1000, vatCents: 80, vatRate: 8, issuedCount: null },
+    { productId: 'course', grossCents: 1230, netCents: 1000, vatCents: 230, vatRate: 23, issuedCount: null },
+  ] });
+});
+
+it('rolls back simulated member and grants when the bundled order write fails', async () => {
+  const h = bundleHarness();
+  h.rejectOrderWrite();
+  await expect(simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print', salesLinkId: 'link' }, h.deps)).rejects.toThrow('Order write failed');
+  expect(h.transactionCalls()).toBe(1);
+  expect(h.members).toHaveLength(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.orders).toHaveLength(0);
+});
+
+it('rejects foreign and unknown simulated sales links before any write', async () => {
+  const h = bundleHarness();
+  const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+  for (const [tenantId, salesLinkId] of [['foreign', 'link'], ['workspace', 'unknown']]) {
+    expect(await simulatePurchase(tenantId ?? '', { email: 'buyer@example.test', productId: 'print', salesLinkId: salesLinkId ?? '' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  }
+  expect(ensureUser).not.toHaveBeenCalled();
+  expect(h.transactionCalls()).toBe(0);
+});
+
+it('records a standalone physical purchase without creating any access grant', async () => {
+  const h = bundleHarness();
+  expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print' }, h.deps)).toMatchObject({ ok: true });
+  expect(h.transactionCalls()).toBe(1);
+  expect(h.grants.size).toBe(0);
+  expect(h.purchases.grants).toHaveLength(0);
+  expect(h.orders[0]).toMatchObject({ salesLinkId: null, amountCents: 1050, lines: [{ productId: 'print', issuedCount: 0 }] });
 });

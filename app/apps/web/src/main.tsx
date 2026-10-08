@@ -1,3 +1,4 @@
+import { SalesLinksPanel } from './features/home/sales-links/SalesLinksPanel.js';
 import { SurveysPanel } from './features/home/surveys/SurveysPanel.js';
 import { SurveyRoute } from './features/home/surveys/PublicSurveyPage.js';
 import '@fontsource/fraunces/latin-400.css';
@@ -56,7 +57,7 @@ import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { TenantGate } from './features/tenant-not-found/TenantNotFoundPage.js';
-import { CheckoutRoute } from './routes/checkout.js';
+import { CheckoutRoute, SalesLinkOfferRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute, validateLoginSearch } from './routes/login.js';
 import {
@@ -105,6 +106,7 @@ import {
   PanelProductDetailRoute,
   PanelSalesRoute,
   PanelOrderDetailRoute,
+  PanelOrderVerificationRoute,
   PanelCouponsRoute,
   PanelCouponCreateRoute,
   PanelCouponDetailRoute,
@@ -172,6 +174,7 @@ const loginRoute = createRoute({
   validateSearch: validateLoginSearch,
   component: LoginRoute,
 });
+const salesLinkOfferRoute = createRoute({ getParentRoute: () => rootRoute, path: '/offer/$slug', component: SalesLinkOfferRoute });
 const checkoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/checkout/$productRef',
@@ -300,6 +303,7 @@ const panelNotificationsRoute = createRoute({
   validateSearch: validateNotificationsSearch,
   component: PanelNotificationsRoute,
 });
+const panelSalesLinksRoute = createRoute({ getParentRoute: () => panelLayoutRoute, path: 'products/sales-links', component: SalesLinksPanel });
 const panelProductsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'products',
@@ -399,6 +403,16 @@ const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales',
   component: PanelSalesRoute,
+});
+const panelOrderVerificationRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'orders/verify/$token',
+  component: PanelOrderVerificationRoute,
+});
+const panelOrderLookupRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'orders/verify',
+  component: PanelOrderVerificationRoute,
 });
 const panelOrderDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -537,6 +551,7 @@ const router = createRouter({
     publicSurveyRoute,
     loginRoute,
     checkoutRoute,
+    salesLinkOfferRoute,
     registerRoute,
     forgotPasswordRoute,
     resetPasswordRoute,
@@ -562,6 +577,7 @@ const router = createRouter({
       panelIndexRoute,
       panelNotificationsRoute,
       panelProductsRoute,
+      panelSalesLinksRoute,
       panelProductCreateRoute,
       panelProductDetailRoute,
       panelCoursesRoute,
@@ -582,6 +598,8 @@ const router = createRouter({
       panelEventEditRoute,
       panelSalesRoute,
       panelOrderDetailRoute,
+      panelOrderVerificationRoute,
+      panelOrderLookupRoute,
       panelCouponsRoute,
       panelCouponCreateRoute,
       panelCouponDetailRoute,

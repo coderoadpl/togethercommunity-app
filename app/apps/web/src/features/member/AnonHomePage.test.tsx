@@ -141,3 +141,16 @@ describe('AnonHomePage', () => {
     expect(empty).toHaveTextContent(en.anon.emptyBody);
   });
 });
+
+
+it('lists public bundles even when there are no course or space tiles', async () => {
+  server.use(
+    okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+    http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Community' }, contentVersion: 1, products: [], salesLinks: [{ id: 'link-1', slug: 'complete-bundle', heading: 'Complete bundle', description: '', totalCents: 4200, currency: 'PLN' }] } })),
+  );
+  await renderPage();
+  const section = await screen.findByTestId('anon-sales-links');
+  expect(within(section).getByRole('link')).toHaveAttribute('href', '/offer/complete-bundle');
+  expect(section).toHaveTextContent('Complete bundle');
+  expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+});

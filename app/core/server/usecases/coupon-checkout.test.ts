@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { couponCheckoutBreakdownSchema, type Coupon } from '#core/domain/index.js';
 
@@ -195,4 +195,22 @@ describe('validateCouponForCheckout', () => {
     };
     expect(() => couponCheckoutBreakdownSchema.parse(incomplete)).toThrow();
   });
+});
+
+it('discounts the bundle total and combines the lowest price across its lines', async () => {
+  const history = vi.fn(async () => 800);
+  const result = await validateCouponForCheckout('tenant-1', {
+    ...validInput, amountCents: 3000, productIds: ['product-1', 'product-2'],
+    products: [{ productId: 'product-1', priceId: 'current-1', amountCents: 1000 }, { productId: 'product-2', priceId: 'current-2', amountCents: 2000 }],
+  }, deps(baseCoupon, { total: 0, member: 0 }, history));
+  expect(history).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ productId: 'product-1', priceId: 'current-1', currentAmountCents: 1000 }));
+  expect(history).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ productId: 'product-2', priceId: 'current-2', currentAmountCents: 2000 }));
+  expect(result).toMatchObject({ ok: true, value: { breakdown: { originalCents: 3000, discountCents: 1500, finalCents: 1500, lowestPriceLast30DaysCents: 1600 } } });
+});
+
+it('rejects a scoped coupon unless it covers every bundle product', async () => {
+  const result = await validateCouponForCheckout('tenant-1', {
+    ...validInput, productIds: ['product-1', 'product-2'], amountCents: 3000,
+  }, deps({ ...baseCoupon, scope: { kind: 'products', productIds: ['product-1'] } }));
+  expect(result).toEqual({ ok: false, error: { code: 'validation', message: COUPON_UNAVAILABLE_MESSAGE } });
 });

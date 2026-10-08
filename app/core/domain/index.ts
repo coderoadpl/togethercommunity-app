@@ -86,3 +86,6 @@ export * from './operator-tenant.js';
 
 export * from './lesson-editions.js';
 export * from './survey.js';
+
+export { productVatRateSchema, resolveProductVat, defaultProductVat, splitProductGross, type ProductVatRate } from './product-vat.js';
+export * from './sales-link.js';

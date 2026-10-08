@@ -123,9 +123,12 @@
             ],
             "slug": "acme-course",
             "title": "Acme Course",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           }
         ],
+        "salesLinks": [],
         "tenant": {
           "branding": {
             "accentColor": null,

@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
+import { productVatFields } from './product-vat.js';
+
 import { slugify } from './slug.js';
 
 export const currencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter uppercase code');
 
 export const SUPPORTED_CURRENCIES = ['PLN', 'EUR', 'USD'] as const;
 
-export const PRODUCT_TYPES = ['course', 'digital_download', 'membership'] as const;
+export const PRODUCT_TYPES = ['course', 'digital_download', 'membership', 'physical'] as const;
 
 export const productVisibilitySchema = z.enum(['listed', 'unlisted']);
 
@@ -98,6 +100,7 @@ export const productAccessIssuesSchema = z.object({
 export type ProductAccessIssues = z.infer<typeof productAccessIssuesSchema>;
 
 export const productSchema = z.object({
+  ...productVatFields,
   id: z.string(),
   tenantId: z.string(),
   type: productTypeSchema,
@@ -118,6 +121,7 @@ export const productSchema = z.object({
 export type Product = z.infer<typeof productSchema>;
 
 export const newProductSchema = z.object({
+  ...productVatFields,
   type: productTypeSchema.default('course'),
   visibility: productVisibilitySchema.default('listed'),
   slug: productSlugSchema.optional(),
@@ -132,6 +136,7 @@ export const newProductSchema = z.object({
 export type NewProductInput = z.input<typeof newProductSchema>;
 
 export const updateProductInputSchema = z.object({
+  ...productVatFields,
   visibility: productVisibilitySchema.optional(),
   id: z.string().min(1),
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),

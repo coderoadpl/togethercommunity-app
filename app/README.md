@@ -217,7 +217,7 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->511<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->526<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

@@ -4,6 +4,7 @@ import {
   err,
   integrationUnavailable,
   ok,
+  renderFa3Invoice,
   type Invoice,
   type InvoiceEvent,
   type OrderListItem,
@@ -288,6 +289,73 @@ const ctx = {
 };
 
 describe('requestInvoice', () => {
+  it.each(['ifirma', 'ksef'] as const)('freezes mixed-rate discounted positions for %s', async (provider) => {
+    const h = harness({ provider });
+    h.deps.orderDetails.findById = async () => ({ ...order(), amountCents: 20519, discountCents: 2281, lines: [
+      { productId: 'p1', name: 'Printed material', productType: 'physical', grossCents: 10500, netCents: 10000, vatCents: 500, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
+      { productId: 'p2', name: 'Download', productType: 'digital_download', grossCents: 12300, netCents: 10000, vatCents: 2300, vatRate: 23, vatExemptionBasis: null, issuedCount: null },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    const snapshot = h.events.find((event) => event.type === (provider === 'ksef' ? 'frozen' : 'requested'));
+    expect(snapshot?.meta.positions).toEqual([
+      { name: 'Printed material', grossCents: 9450, netCents: 9000, vatCents: 450, vat: { kind: 'rate', percent: 5 } },
+      { name: 'Download', grossCents: 11069, netCents: 8999, vatCents: 2070, vat: { kind: 'rate', percent: 23 } },
+    ]);
+    if (provider === 'ksef') {
+      expect(h.frozenXml()).toContain('<P_15>205.19</P_15>');
+      expect(h.frozenXml()).toContain('<P_6>2026-07-27</P_6>');
+    }
+  });
+
+  it.each(['ifirma', 'ksef'] as const)('uses current Settings for an implicit single-product %s invoice requested later', async (provider) => {
+    const h = harness({ provider });
+    h.deps.orderDetails.findById = async () => ({
+      ...order({ ...billing, nip: null }),
+      lines: [{ productId: 'product-1', name: 'Course', productType: 'course', grossCents: 7900,
+        netCents: 7900, vatCents: 0, vatRate: null, vatExemptionBasis: null, issuedCount: null }],
+    });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    const snapshot = h.events.find((event) => event.type === (provider === 'ksef' ? 'frozen' : 'requested'));
+    expect(snapshot?.meta.vat).toEqual({ kind: 'rate', percent: 23 });
+    expect(snapshot?.meta.positions).toEqual([
+      { name: 'Course', grossCents: 7900, netCents: 6423, vatCents: 1477, vat: { kind: 'rate', percent: 23 } },
+    ]);
+  });
+
+  it.each(['ifirma', 'ksef'] as const)('rejects an invalid exemption in any %s position', async (provider) => {
+    for (const basisKind of [null, 'art_43_1'] as const) {
+      const h = harness({ provider });
+      h.deps.orderDetails.findById = async () => ({ ...order(), lines: [
+        { productId: 'p1', name: 'Taxed material', productType: 'physical', grossCents: 5000,
+          netCents: 4762, vatCents: 238, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
+        { productId: 'p2', name: 'Exempt material', productType: 'course', grossCents: 2900,
+          netCents: 2900, vatCents: 0, vatRate: 'exempt', vatExemptionBasis: 'art. 43 ust. 1',
+          vatExemptionBasisKind: basisKind, issuedCount: null },
+      ] });
+      expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+        ok: false, error: { code: 'invoice_exemption_basis_missing' },
+      });
+      expect(h.calls()).toBe(0);
+      expect(h.frozenXml()).toBeNull();
+    }
+  });
+
+  it('preserves the complete single-product KSeF XML without a sale-date element', async () => {
+    const h = harness({ provider: 'ksef' });
+    h.deps.orderDetails.findById = async () => ({ ...order(), lines: [
+      { productId: 'product-1', name: 'Course', productType: 'course', grossCents: 7900,
+        netCents: 6423, vatCents: 1477, vatRate: null, vatExemptionBasis: null, issuedCount: null },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    expect(h.frozenXml()).toBe(renderFa3Invoice({
+      invoiceNumber: 'FV/2026/000001', issueDate: '2026-07-27', generatedAt: now,
+      seller: { nip: '5555555555', name: 'Together sp. z o.o.', addressLine: 'Prosta 1, 00-001 Warszawa' },
+      buyer: { nip: billing.nip, name: billing.companyName, addressLine: `${billing.address}, ${billing.postalCode} ${billing.city}` },
+      productName: 'Course', grossAmountCents: 7900, discountCents: 0, vat: { kind: 'rate', percent: 23 },
+    }));
+    expect(h.frozenXml()).not.toContain('<P_6>');
+  });
+
   it('requires the declared invoice write capability', async () => {
     const h = harness();
     expect(await requestInvoice(

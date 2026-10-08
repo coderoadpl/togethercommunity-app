@@ -1,4 +1,5 @@
-import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
+import { BundleOfferSummary } from './BundleOfferSummary.js';
+import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -83,12 +84,14 @@ const couponError = (
   }
 };
 
-export const CheckoutPage = ({ productRef }: { productRef: string }) => {
+export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string; salesLinkSlug?: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
-  const offer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage });
+  const singleOffer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage && salesLinkSlug === undefined });
+  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? ''), enabled: !statusPage && salesLinkSlug !== undefined });
+  const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
   const testSession = useMutation({
     ...actions.stripeTestSession,
@@ -125,9 +128,13 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
-  const product = offer.data?.products.find(
+  const bundle = bundleOffer.data;
+  const product = useMemo(() => {
+    const emptyPrices: OfferPrice[] = [];
+    return salesLinkSlug === undefined ? singleOffer.data?.products.find(
     (candidate) => candidate.id === productRef || candidate.slug === productRef,
-  );
+  ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
+  }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
 
@@ -162,13 +169,14 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
       autoAppliedCoupon.current = true;
       couponValidation.mutate({
         productId,
+        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
         ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
         email,
         couponCode: initialCouponCode,
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [couponValidation, email, initialCouponCode, product, productId, selectedPrice]);
+  }, [couponValidation, email, initialCouponCode, product, productId, salesLinkSlug, selectedPrice]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -192,6 +200,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
         productId,
+        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
         email,
         language,
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
@@ -205,6 +214,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
     simulatePurchase.mutate({
       email,
       productId,
+      ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
       language,
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
@@ -271,7 +281,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
     );
   }
 
-  if (offer.isError || paymentConfig.isError) {
+  if ((offer.isError && !(offer.error instanceof ApiError && offer.error.appError.code === 'not_found')) || paymentConfig.isError) {
     return (
       <FocusCard
         brand={<BrandMark size="compact" />}
@@ -361,14 +371,15 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
       onSubmit={submit}
     >
         <Stack useFlexGap spacing="1rem">
-          <CardTitle variant="h1">{product.title}</CardTitle>
-          {product.prices.length <= 1 ? (
+          {bundle === undefined ? <CardTitle variant="h1">{product.title}</CardTitle> : null}
+          {bundle === undefined && product.prices.length <= 1 ? (
             <CheckoutPrice component="p">
               <DataValue>
                 {formatOfferPrice(selectedAmountCents, selectedCurrency, language, t.common.free)}
               </DataValue>
             </CheckoutPrice>
           ) : null}
+          {bundle === undefined && product.vatRate != null ? <Typography variant="body2" color="text.secondary">{t.salesLinks.vatRate}: {product.vatRate === 'exempt' ? t.salesLinks.exempt : `${product.vatRate}%`}{product.vatExemptionBasis ? ` · ${product.vatExemptionBasis}` : ''}</Typography> : null}
           <Cover
             src={product.coverUrl}
             title={product.title}
@@ -378,7 +389,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
             testId="checkout-product-cover"
             fallbackTestId="checkout-product-cover-fallback"
           />
-          <RichTextContent html={product.description} />
+          {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>
@@ -512,6 +523,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                 disabled={couponValidation.isPending || couponCode.trim() === ''}
                 onClick={() => couponValidation.mutate({
                   productId,
+        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(email === '' ? {} : { email }),
                   couponCode,
@@ -610,7 +622,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                 !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {payableCents === 0
+            {bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle({ price: formattedPayable })
@@ -640,6 +652,7 @@ export const CheckoutPage = ({ productRef }: { productRef: string }) => {
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,
+        ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
                   language,
                   ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                   ...consent,

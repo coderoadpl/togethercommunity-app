@@ -8,6 +8,7 @@ import {
   ok,
   renderFa3Invoice,
   resolveInvoiceVat,
+  splitProductGross,
   validateFa3Structure,
   validation,
   type AppError,
@@ -15,6 +16,9 @@ import {
   type Invoice,
   type InvoiceEvent,
   type InvoiceVatResolution,
+  type InvoicePosition,
+  type InvoiceVatTreatment,
+  type TenantSettings,
   type KsefEnvironment,
   type Order,
   type OrderListItem,
@@ -40,6 +44,46 @@ import type {
   TenantRepository,
   TenantSecretRepository,
 } from '../ports.js';
+
+const invoicePositions = (order: Order, fallback: InvoiceVatTreatment): InvoicePosition[] | undefined => {
+  const lines = order.lines;
+  if (lines === undefined) return undefined;
+  const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
+  let allocated = 0;
+  let cumulative = 0;
+  return lines.map((line) => {
+    cumulative += line.grossCents;
+    const next = total === 0 ? 0 : Math.round(cumulative * order.amountCents / total);
+    const grossCents = next - allocated;
+    allocated = next;
+    const vat: InvoiceVatTreatment = line.vatRate === 'exempt'
+      ? { kind: 'exempt', basisKind: line.vatExemptionBasisKind ?? (fallback.kind === 'exempt' ? fallback.basisKind : 'other'), basis: line.vatExemptionBasis ?? (fallback.kind === 'exempt' ? fallback.basis : '') }
+      : line.vatRate === null ? fallback : { kind: 'rate', percent: line.vatRate };
+    return { name: line.name, ...splitProductGross(grossCents, vat.kind === 'exempt' ? 'exempt' : vat.percent), vat };
+  });
+};
+
+const resolveOrderVat = (order: Order, settings: TenantSettings | null): InvoiceVatResolution => {
+  for (const line of order.lines ?? []) {
+    if (line.vatRate !== 'exempt') continue;
+    const resolution = resolveInvoiceVat({
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: line.vatExemptionBasisKind ?? null,
+      invoiceExemptionBasis: line.vatExemptionBasis,
+    });
+    if (!resolution.ok) return resolution;
+  }
+  const first = order.lines?.[0];
+  if (first?.vatRate != null) {
+    if (first.vatRate !== 'exempt') return { ok: true, treatment: { kind: 'rate', percent: first.vatRate } };
+    return resolveInvoiceVat({
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: first.vatExemptionBasisKind ?? null,
+      invoiceExemptionBasis: first.vatExemptionBasis,
+    });
+  }
+  return settings === null ? { ok: false, reason: 'unset' } : resolveInvoiceVat(settings);
+};
 
 export interface InvoiceDeps {
   invoices: InvoiceRepository;
@@ -137,9 +181,7 @@ const issueIfirma = async (
   }
   const createdAt = deps.clock.nowIso();
   const settings = await deps.tenants.findSettings(tenantId);
-  const vatResolution: InvoiceVatResolution = settings === null
-    ? { ok: false, reason: 'unset' as const }
-    : resolveInvoiceVat(settings);
+  const vatResolution = resolveOrderVat(order, settings);
   if (existing !== null && vatResolution.ok) {
     const previous = await deps.invoices.findLatestRequestedEvent(tenantId, existing.id);
     if (!invoiceVatTreatmentsEqual(previous?.meta.vat, vatResolution.treatment)) {
@@ -171,7 +213,7 @@ const issueIfirma = async (
     invoice.id,
     'requested',
     null,
-    vatResolution.ok ? { vat: vatResolution.treatment } : {},
+    vatResolution.ok ? { vat: vatResolution.treatment, positions: invoicePositions(order, vatResolution.treatment) } : {},
   );
   const claimed = existing === null
     ? await deps.invoices.create(tenantId, invoice, requested)
@@ -202,8 +244,9 @@ const issueIfirma = async (
   const issued = await deps.invoicing.issueInvoice({
     order,
     billing,
-    productName: order.productTitle,
+    productName: order.lines?.length === 1 ? order.lines[0]?.name ?? order.productTitle : order.productTitle,
     vat: vatResolution.treatment,
+    ...((order.lines?.length ?? 0) > 1 ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
     providerInvoiceId: invoice.providerInvoiceId,
     onProviderInvoiceCreateUncertain: async () => {
       providerCreateUncertain = true;
@@ -261,7 +304,7 @@ const issueKsef = async (
   if (settings === null) {
     return err(validation('Select a VAT rate or the VAT-exempt option in Settings before issuing invoices.'));
   }
-  const vatResolution = resolveInvoiceVat(settings);
+  const vatResolution = resolveOrderVat(order, settings);
   if (!vatResolution.ok) {
     return err(vatResolution.reason === 'exempt_basis_missing'
       ? appError('invoice_exemption_basis_missing', 'VAT exemption is selected but the legal basis is missing.')
@@ -284,6 +327,7 @@ const issueKsef = async (
   const xml = renderFa3Invoice({
     invoiceNumber: allocated.p2,
     issueDate,
+    ...((order.lines?.length ?? 0) > 1 ? { saleDate: warsawDate(order.createdAt) } : {}),
     generatedAt: createdAt,
     seller: {
       nip: credentials.value.contextNip,
@@ -297,10 +341,11 @@ const issueKsef = async (
           name: billing.companyName,
           addressLine: `${billing.address}, ${billing.postalCode} ${billing.city}`,
         },
-    productName: order.productTitle,
+    productName: order.lines?.length === 1 ? order.lines[0]?.name ?? order.productTitle : order.productTitle,
     grossAmountCents: order.amountCents,
     discountCents: order.discountCents,
     vat: vatResolution.treatment,
+    ...((order.lines?.length ?? 0) > 1 ? { positions: invoicePositions(order, vatResolution.treatment) ?? [] } : {}),
   });
   const structural = validateFa3Structure(xml);
   if (!structural.ok) return err(validation('Generated FA(3) failed local validation', structural.errors));
@@ -362,6 +407,7 @@ const issueKsef = async (
     p2: allocated.p2,
     xmlSha256,
     vat: vatResolution.treatment,
+    positions: invoicePositions(order, vatResolution.treatment),
   });
   const stored = await deps.invoices.createFrozenKsef(
     tenantId,

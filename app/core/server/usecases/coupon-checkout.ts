@@ -32,6 +32,8 @@ export interface CouponCheckoutInput {
   code: string;
   email?: string;
   productId: string;
+  productIds?: string[];
+  products?: { productId: string; priceId?: string | null; amountCents: number }[];
   priceId: string | null;
   priceKind: PriceKind;
   amountCents: number;
@@ -66,19 +68,22 @@ export const validateCouponForCheckout = async (
     totalRedemptions: counts.total,
     memberRedemptions: counts.member,
   });
+  if (coupon.scope.kind === 'products' && input.productIds?.some((id) => coupon.scope.kind === 'products' && !coupon.scope.productIds.includes(id))) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   if (!validated.valid) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
 
   const discountCents = calculateDiscount(input.amountCents, coupon);
   if (discountCents === 0) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   const now = deps.clock.nowIso();
   const since = new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const lowestPriceLast30DaysCents = await deps.priceHistory.lowestSince(tenantId, {
+  const lowestPriceLast30DaysCents = input.products === undefined ? await deps.priceHistory.lowestSince(tenantId, {
     productId: input.productId,
     priceId: input.priceId,
     since,
     through: now,
     currentAmountCents: input.amountCents,
-  });
+  }) : (await Promise.all(input.products.map((product) => deps.priceHistory.lowestSince(tenantId, {
+    productId: product.productId, priceId: product.priceId ?? null, since, through: now, currentAmountCents: product.amountCents,
+  })))).reduce((total, amount) => total + amount, 0);
   const breakdown = couponCheckoutBreakdownSchema.parse({
     couponId: coupon.id,
     code: normalizeCouponCode(coupon.code),

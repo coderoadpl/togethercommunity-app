@@ -1,3 +1,9 @@
+import { renderQrPng } from '#adapters/qr/png.js';
+import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
+import type { OrderVerificationRepository } from '#core/server/index.js';
+import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
+import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
+import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
 import type { SurveyDeps } from '#core/server/index.js';
 import { createLessonEditionRepository, createLessonEditionTransaction } from '#adapters/db/lesson-editions.js';
@@ -399,6 +405,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  renderQrPng?: (url: string) => Promise<Uint8Array>;
   telemetryTenantDirectory: TelemetryTenantDirectory;
   telemetryStore?: TelemetryStoreDeps;
   telemetry: AppErrorTelemetry;
@@ -464,6 +471,7 @@ export interface AppDeps {
   prices: ProductPriceRepository;
   orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
+  orderVerification?: OrderVerificationRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -558,6 +566,9 @@ export interface AppDeps {
   marketing?: MarketingAppDeps;
   marketingContacts?: MarketingContactDeps;
   surveys?: SurveyDeps;
+  salesLinkManagement?: SalesLinkDeps;
+  salesLinks?: SalesLinkRepository;
+  checkoutSnapshots?: CheckoutSnapshotRepository;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -1343,6 +1354,7 @@ export const createDeps = (
   });
 
   const deps: AppDeps = {
+    renderQrPng,
     telemetryTenantDirectory: createTelemetryTenantDirectory(db),
     telemetry: { recordAppError },
     auth,
@@ -1400,6 +1412,7 @@ export const createDeps = (
     prices: createProductPriceRepository(db),
     orders: orderRepository,
     orderDetails: orderRepository,
+    orderVerification: createOrderVerificationRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
@@ -1509,6 +1522,9 @@ export const createDeps = (
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
     surveys: { surveys: createSurveyRepository(db), clock, ids, tokens },
+    salesLinkManagement: { salesLinks: createSalesLinkRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids },
+    salesLinks: createSalesLinkRepository(db),
+    checkoutSnapshots: createCheckoutSnapshotRepository(db),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

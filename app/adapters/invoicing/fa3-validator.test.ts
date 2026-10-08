@@ -63,3 +63,14 @@ describe('FA(3) XSD validator', () => {
     });
   });
 });
+
+it('accepts mixed taxed and exempt FA(3) positions against the official XSD', async () => {
+  const mixed = renderFa3Invoice({ invoiceNumber: 'FV/2026/000003', issueDate: '2026-10-08', saleDate: '2026-10-07', generatedAt: '2026-10-08T10:00:00Z',
+    seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' }, buyer: null, productName: 'Bundle', grossAmountCents: 22800, discountCents: 0, vat: { kind: 'rate', percent: 5 },
+    positions: [
+      { name: 'Printed material', grossCents: 10500, netCents: 10000, vatCents: 500, vat: { kind: 'rate', percent: 5 } },
+      { name: 'Download', grossCents: 12300, netCents: 12300, vatCents: 0, vat: { kind: 'exempt', basisKind: 'other', basis: 'Section 1' } },
+    ],
+  });
+  expect(await createFa3XsdValidator().validate(mixed)).toEqual({ ok: true, value: undefined });
+});

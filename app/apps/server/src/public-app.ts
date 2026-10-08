@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
@@ -13,6 +15,7 @@ import {
 } from '#adapters/auth/create-auth.js';
 import {
   surveyContracts,
+  salesLinkContracts,
   lessonEditionsOutputSchema,
   API_PATHS,
   authResolveRequestSchema,
@@ -67,6 +70,9 @@ import {
   getPublicImageAssetUrl,
   getPublicNavigation,
   getPublicOffer,
+  getPublicOrderQr,
+  getPublicSalesLink,
+  listPublicSalesLinks,
   getPublicSpaceEvent,
   getPublicSpaceEvents,
   getPublicSpaceFeed,
@@ -342,6 +348,20 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     });
   });
 
+  app.get(API_PATHS.publicOrderQr, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    if (deps.orderVerification === undefined || deps.renderQrPng === undefined) return respondPublic(err(notFound('Order not found')));
+    const result = await getPublicOrderQr(tenant.value.tenant, c.req.param('token'), {
+      ...deps, orderVerification: deps.orderVerification, renderQrPng: deps.renderQrPng,
+    });
+    if (!result.ok) return respondPublic(result);
+    return new Response(new Uint8Array(result.value), {
+      headers: { 'content-type': 'image/png', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' },
+    });
+  });
+
   app.get(API_PATHS.publicOffer, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
@@ -350,7 +370,10 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const query = publicOfferQuerySchema.safeParse(c.req.query());
     if (!query.success) return respondPublic(err(validation('Invalid offer query')));
     const productRef = query.data.productRef;
-    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}"`;
+    const listedLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : (await deps.salesLinkManagement.salesLinks.list(tenant.value.tenant.id))
+      .filter((link) => link.listed && salesLinkAvailable(link, deps.clock.nowIso()));
+    const linkVersion = listedLinks.length === 0 ? '' : `-${createHash('sha256').update(JSON.stringify(listedLinks.map((link) => [link.id, link.revision]).sort())).digest('hex')}`;
+    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}"`;
     if (c.req.header('if-none-match') === etag) {
       return respondNotModified(publicHeaders(etag));
     }
@@ -365,7 +388,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       documents: deps.marketing?.documents,
     }, productRef);
     if (!result.ok) return respondPublic(result, etag);
-    const parsed = publicOfferOutputSchema.safeParse(result.value);
+    const salesLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : await listPublicSalesLinks(tenant.value.tenant.id, deps.salesLinkManagement, listedLinks);
+    const parsed = publicOfferOutputSchema.safeParse({ ...result.value, salesLinks });
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
     return respondPublic(ok(parsed.data), etag);
   });
@@ -487,6 +511,24 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return parsed.success
       ? respondPublic(ok(parsed.data))
       : respondPublic(err(internal('Public space event response does not match the contract')));
+  });
+
+  app.get(API_PATHS.getPublicSalesLink, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (tenant.value === null) return respondPublic(err(tenantNotFound()));
+    if (deps.salesLinkManagement === undefined) return respondPublic(err(internal('Sales links are unavailable')));
+    const result = await getPublicSalesLink(tenant.value.tenant.id, c.req.param('slug') ?? '', deps.salesLinkManagement);
+    if (!result.ok) return respondPublic(result);
+    const workspace = tenant.value.tenant;
+    const contexts = await Promise.all(result.value.lines.map(({ productId: productRef }) => getPublicOffer(workspace, {
+      courses: deps.courses, products: deps.products, lessons: deps.lessons, prices: deps.prices, tenants: deps.tenants, definitions: deps.marketing?.definitions, documents: deps.marketing?.documents,
+    }, productRef)));
+    const context = contexts[0];
+    if (context === undefined || !context.ok) return respondPublic(err(internal('Offer context is unavailable')));
+    const consents = contexts.flatMap((item) => item.ok ? item.value.products.flatMap((product) => product.marketingConsents) : []);
+    const parsed = salesLinkContracts.getPublicSalesLink.output.safeParse({ ...result.value, tenant: { ...context.value.tenant, timezone: SALES_LINK_TIME_ZONE }, marketingConsents: consents.filter((consent, index) => consents.findIndex((item) => item.definitionId === consent.definitionId) === index) });
+    return parsed.success ? respondPublic(ok(parsed.data)) : respondPublic(err(internal('Sales-link response does not match the contract')));
   });
 
   app.get(API_PATHS.getPublicSurvey, async (c) => {
@@ -618,8 +660,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         productId: selection.value.product.id,
         priceId: price?.id ?? null,
         priceKind: price?.kind ?? 'one_time',
-        amountCents: price?.amountCents ?? selection.value.product.priceCents,
-        currency: price?.currency ?? selection.value.product.currency,
+        amountCents: selection.value.productPrices?.reduce((sum, selectedPrice) => sum + selectedPrice.amountCents, 0) ?? price?.amountCents ?? selection.value.product.priceCents,
+        ...(selection.value.productPrices === undefined ? {} : { productIds: selection.value.productPrices.map((selectedPrice) => selectedPrice.productId), products: selection.value.productPrices.map((selectedPrice) => ({ productId: selectedPrice.productId, priceId: selectedPrice.id, amountCents: selectedPrice.amountCents })) }),
+        currency: selection.value.productPrices?.[0]?.currency ?? price?.currency ?? selection.value.product.currency,
       },
       {
         coupons: deps.coupons,
@@ -668,7 +711,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       const checkoutConsent = {
         termsAccepted: parsed.data.termsAccepted === true,
         selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        attachedDefinitionIds: [...new Set((selection.value.products ?? [selection.value.product]).flatMap((product) => product.checkoutConsentDefinitionIds ?? []))],
         collectedAt: deps.clock.nowIso(),
         confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
         ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
@@ -715,6 +758,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
             language: parsed.data.language ?? null,
             checkoutConsentCaptureId,
             couponCheckoutSessionId: session.value.couponCheckoutSessionId ?? null,
+            checkoutSnapshotId: session.value.checkoutSnapshotId ?? null,
+            salesLinkId: selection.value.salesLinkId ?? null,
           },
         },
       };

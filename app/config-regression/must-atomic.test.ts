@@ -1,11 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const appRoot = join(import.meta.dirname, '..');
 const doctrine = readFileSync(join(appRoot, 'docs', 'data-atomicity.md'), 'utf8');
-const ports = ['ports.ts', 'download-copy-ports.ts', 'survey-ports.ts']
-  .map((file) => readFileSync(join(appRoot, 'core', 'server', file), 'utf8'))
+const portsRoot = join(appRoot, 'core', 'server');
+const ports = readdirSync(portsRoot)
+  .filter((file) => file === 'ports.ts' || file.endsWith('-ports.ts'))
+  .sort()
+  .map((file) => readFileSync(join(portsRoot, file), 'utf8'))
   .join('\n');
 const vercelConfig: unknown = JSON.parse(readFileSync(join(appRoot, 'vercel.json'), 'utf8'));
 

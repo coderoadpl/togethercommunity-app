@@ -41,14 +41,19 @@ The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`, and to pnpm
 executing gates.
 
 Dependency audit policy (owner decision 2026-10-07): the production dependency
-audit (`pnpm audit --prod --audit-level=moderate`) blocks a merge only for a pull
-request that changes `app/package.json` or `app/pnpm-lock.yaml`, for a promotion
-pull request into `main`, and on `main` itself. On every other run it is advisory:
-a separate CI job reports the finding without blocking. A newly published
-advisory in an unchanged dependency is handled by a dependency bump or an entry
-under the accepted advisories in `app/docs/security.md` before the next
-promotion, so production never receives an unaccepted advisory. Changing this
-policy needs a new dated owner decision here.
+audit (`pnpm audit --prod --audit-level=moderate`) blocks a merge for a pull
+request that changes `app/package.json`, `app/pnpm-lock.yaml`,
+`app/pnpm-workspace.yaml` (advisory allowlist and release-age settings) or
+`app/.pnpmfile.cjs`, for a promotion pull request into `main`, and on `main`
+itself. On every other run it is advisory: a separate CI job reports the finding
+without blocking. Accepting an advisory requires both the `auditConfig.ignoreGhsas`
+entry in `app/pnpm-workspace.yaml` and its written justification under the
+accepted advisories in `app/docs/security.md`; otherwise a newly published
+advisory in an unchanged dependency is handled by a dependency bump before the
+next promotion, so production never receives an unaccepted advisory. Until the
+CI change that implements this split lands, the audit step still blocks inside
+the required `check` job on every run. Changing this policy needs a new dated
+owner decision here.
 
 ## Flake doctrine
 

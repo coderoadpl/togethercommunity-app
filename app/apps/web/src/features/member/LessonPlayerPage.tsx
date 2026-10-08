@@ -38,8 +38,10 @@ import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js
 import {
   DataValue,
   Eyebrow,
+  LessonActionLabel,
   LessonFooterBar,
   LessonMediaFrame,
+  LessonNavLabel,
   LessonPlaceholder,
   LESSON_CARD_BLEED_X,
   LESSON_CARD_OUTDENT_X,
@@ -49,7 +51,7 @@ import {
 } from '../../theme.js';
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon } from './lesson-icons.js';
+import { LinkIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -497,6 +499,7 @@ export const LessonPlayerPage = ({
   const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
+  const compactCompletion = nextHref !== null;
   const previousLesson = neighbours?.previous ?? null;
   const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
   const atCourseEnd = neighbours !== null && neighbours.next === null;
@@ -613,16 +616,16 @@ export const LessonPlayerPage = ({
 
         {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
           <Stack
-            direction={{ xs: 'column', md: 'row' }}
+            direction="row"
             useFlexGap
-            sx={{ flexWrap: 'wrap', alignItems: { md: 'center' }, gap: '0.75rem', '& > span > .MuiButton-root': { width: '100%' } }}
+            sx={{ flexWrap: 'wrap', alignItems: 'center', gap: { xs: '0.5rem', md: '0.75rem' }, '& > span > .MuiButton-root': { width: '100%' } }}
           >
             {neighbours !== null && (
               previousLesson === null || previousLesson.locked ? (
                 <Tooltip title={previousLesson === null ? t.lesson.firstLesson : t.courseTree.lockedTooltip}>
-                  <Box component="span">
+                  <Box component="span" data-slot="compact">
                     <Button variant="outlined" data-testid="prev-lesson" disabled>
-                      {t.lesson.previousLesson}
+                      <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
                     </Button>
                   </Box>
                 </Tooltip>
@@ -632,8 +635,9 @@ export const LessonPlayerPage = ({
                   to={lessonPath(courseId, previousLesson.lessonId)}
                   variant="outlined"
                   data-testid="prev-lesson"
+                  data-slot="compact"
                 >
-                  {t.lesson.previousLesson}
+                  <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
                 </Button>
               )
             )}
@@ -643,8 +647,9 @@ export const LessonPlayerPage = ({
                 to={lessonPath(courseId, nextLesson.lessonId)}
                 variant="outlined"
                 data-testid="skip-to-next-lesson"
+                data-slot="compact"
               >
-                {t.lesson.nextLesson}
+                <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLesson}</LessonNavLabel>
               </Button>
             )}
             <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
@@ -652,36 +657,39 @@ export const LessonPlayerPage = ({
               <Button
                 variant="outlined"
                 data-testid="unmark-complete"
+                data-slot={compactCompletion ? 'compact' : 'fill'}
                 onClick={() => uncomplete.mutate({ lessonId })}
                 disabled={uncomplete.isPending}
                 startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
                 title={t.lesson.unmarkCompletedHint}
               >
-                {t.lesson.unmarkCompleted}
+                {compactCompletion ? <LessonNavLabel>{t.lesson.unmarkCompleted}</LessonNavLabel> : <LessonActionLabel>{t.lesson.unmarkCompleted}</LessonActionLabel>}
               </Button>
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
                 variant={nextHref === null ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
+                data-slot={compactCompletion ? 'compact' : 'fill'}
                 onClick={() => complete.mutate({ lessonId })}
                 disabled={complete.isPending}
               >
-                {t.lesson.markCompleted}
+                {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
               </Button>
             )}
             {continuing ? (
-              <Button variant="contained" data-testid="complete-continue" disabled>
-                {t.lesson.completing}
+              <Button variant="contained" data-testid="complete-continue" data-slot="primary" disabled>
+                <LessonActionLabel>{t.lesson.completing}</LessonActionLabel>
               </Button>
             ) : !completed && nextHref !== null ? (
               <Button
                 variant="contained"
                 data-testid="complete-continue"
+                data-slot="primary"
                 onClick={continueToNext}
                 disabled={complete.isPending}
               >
-                {t.lesson.completeContinue}
+                <LessonActionLabel>{t.lesson.completeContinue}</LessonActionLabel>
               </Button>
             ) : null}
             {!continuing && completed && nextLesson !== null && (
@@ -690,24 +698,25 @@ export const LessonPlayerPage = ({
                 to={lessonPath(courseId, nextLesson.lessonId)}
                 variant="contained"
                 data-testid="next-lesson"
+                data-slot="primary"
               >
-                {t.lesson.next({ name: nextLesson.name })}
+                <LessonActionLabel>{t.lesson.next({ name: nextLesson.name })}</LessonActionLabel>
               </Button>
             )}
             {lockedAhead && (
               <Tooltip title={t.courseTree.lockedTooltip}>
-                <Box component="span">
+                <Box component="span" data-slot="compact">
                   <Button variant="outlined" data-testid="next-locked" disabled>
-                    {t.lesson.nextLocked}
+                    <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLocked}</LessonNavLabel>
                   </Button>
                 </Box>
               </Tooltip>
             )}
             {atCourseEnd && (
               structure.data?.structure.completionStatus === 'fully-completed' ? (
-                <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
+                <Chip data-testid="course-completed" data-slot="status" label={t.lesson.courseCompleted} />
               ) : (
-                <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
+                <Chip variant="outlined" data-testid="course-end" data-slot="status" label={t.lesson.lastLesson} />
               )
             )}
           </Stack>

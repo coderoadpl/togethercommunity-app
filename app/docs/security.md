@@ -116,7 +116,8 @@ only successful public-offer responses opt into revalidated shared caching.
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` blocks merges through `check` only
-when a pull request changes `app/package.json` or `app/pnpm-lock.yaml`,
+when a pull request changes `app/package.json`, `app/pnpm-lock.yaml`,
+`app/pnpm-workspace.yaml`, or `app/.pnpmfile.cjs`,
 targets `main` for promotion, or runs on a push to `main`. The independent
 `dependency-audit` job runs on every CI run and is advisory
 (`continue-on-error`, so it cannot block): a failed run shows as a warning with
@@ -127,7 +128,9 @@ section on the dependency audit): the production dependency audit blocks merges
 only for pull requests that change dependencies and for promotions into main;
 on every other run the advisory `dependency-audit` job reports the
 finding without blocking, and an unaccepted advisory is handled by a dependency
-bump or an entry under Accepted dependency advisories before the next promotion.
+bump or acceptance before the next promotion. Accepting an advisory requires both
+an `auditConfig.ignoreGhsas` entry in `app/pnpm-workspace.yaml` and its written
+justification under Accepted dependency advisories.
 The audit allowlist contains only this reviewed advisory:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production

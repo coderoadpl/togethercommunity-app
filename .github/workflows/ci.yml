@@ -85,7 +85,7 @@ jobs:
             audit_required=true
           elif [ "$EVENT_NAME" = pull_request ]; then
             changed="$(git -C .. diff --name-only "$BASE_SHA...$HEAD_SHA")"
-            if printf '%s\n' "$changed" | grep -Eq '^app/(package\.json|pnpm-lock\.yaml)$'; then
+            if printf '%s\n' "$changed" | grep -Eq '^app/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.pnpmfile\.cjs)$'; then
               audit_required=true
             fi
           fi

@@ -55,12 +55,38 @@ describe('dependency audit policy', () => {
       '  changed="$(git -C .. diff --name-only "$BASE_SHA...$HEAD_SHA")"',
     );
     expect(policyStep?.run).toContain(
-      "if printf '%s\\n' \"$changed\" | grep -Eq '^app/(package\\.json|pnpm-lock\\.yaml)$'; then\n" +
+      "if printf '%s\\n' \"$changed\" | grep -Eq '^app/(package\\.json|pnpm-lock\\.yaml|pnpm-workspace\\.yaml|\\.pnpmfile\\.cjs)$'; then\n" +
       '    audit_required=true',
     );
     expect(policyStep?.run).toContain(
       'echo "audit_required=$audit_required" >> "$GITHUB_OUTPUT"',
     );
+  });
+
+  it.each([
+    'app/package.json',
+    'app/pnpm-lock.yaml',
+    'app/pnpm-workspace.yaml',
+    'app/.pnpmfile.cjs',
+  ])('requires the audit for a pull request changing %s', (changedPath) => {
+    const result = spawnSync('bash', ['-e', '-c',
+      `git() { printf '%s\\n' "$CHANGED_PATH"; }\n${policyStep?.run ?? ''}`,
+    ], {
+      encoding: 'utf8',
+      env: {
+        BASE_REF: 'staging',
+        REF: 'refs/pull/1/merge',
+        EVENT_NAME: 'pull_request',
+        BASE_SHA: 'base',
+        HEAD_SHA: 'head',
+        CHANGED_PATH: changedPath,
+        GITHUB_OUTPUT: '/dev/stdout',
+      },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('audit_required=true\n');
   });
 
   it('gates the blocking audit on the policy output', () => {

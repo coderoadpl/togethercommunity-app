@@ -1391,16 +1391,39 @@ describe('LessonPlayerPage', () => {
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     const primary = screen.getByRole('button', { name: en.lesson.completeContinue });
     expect(primary).toHaveClass('MuiButton-contained');
-    for (const width of [375, 390, 899]) {
-      for (const action of [previous, next, complete, primary]) {
-        const styles = stylesAt(action, width);
-        expect(styles).toMatchObject({ width: '100%', 'min-height': '48px' });
-        expect(Number.parseFloat(styles['min-width'] ?? '0')).toBeGreaterThanOrEqual(44);
-      }
-      expect(stylesAt(complete.parentElement, width)).toMatchObject({ 'flex-direction': 'column', gap: '0.75rem' });
+    expect(stylesAt(complete.parentElement, 390)).toMatchObject({ 'flex-direction': 'row', gap: '0.5rem' });
+    expect(stylesAt(complete.parentElement, 900)).toMatchObject({ 'flex-direction': 'row', gap: '0.75rem' });
+    expect(previous.parentElement).toHaveAttribute('data-slot', 'compact');
+    expect(next).toHaveAttribute('data-slot', 'compact');
+    expect(complete).toHaveAttribute('data-slot', 'compact');
+    expect(primary).toHaveAttribute('data-slot', 'primary');
+    for (const icon of screen.getAllByTestId('lesson-nav-icon')) {
+      expect(stylesAt(icon, 900)).toMatchObject({ display: 'none' });
+      expect(stylesAt(icon, 390)).not.toMatchObject({ display: 'none' });
     }
-    expect(stylesAt(complete.parentElement, 900)).toMatchObject({ 'flex-direction': 'row' });
     expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
+  });
+
+  it('keeps completion compact next to the primary next lesson on mobile', async () => {
+    stubMobileViewport();
+    server.use(okStructure(), okProgress(['l1']), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const complete = await screen.findByTestId('unmark-complete');
+    expect(complete).toHaveAttribute('data-slot', 'compact');
+    expect(complete).toHaveAccessibleName(expect.stringContaining(en.lesson.unmarkCompleted));
+    expect(screen.getByTestId('next-lesson')).toHaveAttribute('data-slot', 'primary');
+  });
+
+  it('gives mark-as-completed the full row on the final lesson', async () => {
+    stubMobileViewport();
+    server.use(okStructureOf(structureOf([entry('l1', 'Final lesson')])), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const complete = await screen.findByTestId('mark-complete');
+    expect(complete).toHaveAttribute('data-slot', 'fill');
+    expect(complete).toHaveClass('MuiButton-contained');
+    expect(screen.getByTestId('course-end')).toHaveAttribute('data-slot', 'status');
   });
 
   it('keeps marking the final lesson complete primary on mobile', async () => {

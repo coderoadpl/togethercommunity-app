@@ -3825,6 +3825,42 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
   },
+  [theme.breakpoints.down('md')]: {
+    marginInline: '-1.25rem',
+    padding: '0.5rem 0.75rem',
+    '& .MuiButton-root': { width: 'auto', minHeight: 44 },
+    '& [data-slot="compact"]': { flex: '0 0 auto' },
+    '& .MuiButton-root[data-slot="compact"], & [data-slot="compact"] > .MuiButton-root': {
+      width: 44,
+      minWidth: 44,
+      padding: 0,
+    },
+    '& [data-slot="compact"] .MuiButton-startIcon': { margin: 0 },
+    '& [data-slot="primary"], & [data-slot="fill"]': {
+      flex: '1 1 0',
+      minWidth: 0,
+      paddingInline: '0.75rem',
+    },
+    '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
+  },
+}));
+
+export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.5rem',
+  [theme.breakpoints.up('md')]: { display: 'none' },
+}));
+
+export const LessonNavLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+    overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+  },
+}));
+
+export const LessonActionLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
 }));
 
 export const LessonBlockIcon = styled(SvgIcon)(({ theme }) => ({

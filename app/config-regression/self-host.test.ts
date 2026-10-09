@@ -64,7 +64,7 @@ describe('production self-host stack', () => {
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));
 
     expect(Object.keys(compose.services)).toEqual(['postgres', 'app', 'caddy']);
-    expect(compose.services.postgres.image).toBe('postgres:16-bookworm');
+    expect(compose.services.postgres.image).toBe('public.ecr.aws/docker/library/postgres:16-bookworm');
     expect(compose.services.postgres.healthcheck.test).toContain('pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}');
     expect(compose.services.postgres.volumes).toContain('postgres_data:/var/lib/postgresql/data');
     expect(compose.services.app.build).toEqual({ context: '.', dockerfile: 'Dockerfile' });

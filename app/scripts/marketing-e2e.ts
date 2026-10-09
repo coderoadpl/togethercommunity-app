@@ -58,7 +58,7 @@ const startPostgres = async (): Promise<void> => {
   const result = await run('docker', [
     'run', '--rm', '-d', '--name', verifyContainer,
     '-e', 'POSTGRES_USER=together', '-e', 'POSTGRES_PASSWORD=together', '-e', 'POSTGRES_DB=together',
-    '-p', `${verifyPort}:5432`, 'postgres:16',
+    '-p', `${verifyPort}:5432`, 'public.ecr.aws/docker/library/postgres:16',
   ]);
   assert(result.code === 0, `Could not start verification Postgres.\n${result.stdout}${result.stderr}`);
 };

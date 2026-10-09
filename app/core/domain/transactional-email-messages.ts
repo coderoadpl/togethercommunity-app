@@ -24,7 +24,19 @@ export interface TransactionalEmailMessages {
     label: string;
     hints: Record<NotificationFooterKind, string>;
   };
-  purchase: { orderNumber: string; lines: string; verification: string; qrAlt: string };
+  purchase: {
+    orderNumber: string;
+    lines: string;
+    item: string;
+    amount: string;
+    vat: string;
+    exempt: string;
+    total: string;
+    notInvoice: string;
+    subject: (orderNumber: string, tenantName: string) => string;
+    verification: string;
+    qrAlt: string;
+  };
   welcomeSignIn: {
     actionLabels: Record<WelcomeSignInProductType, string>;
     render: (input: BrandedInput & {

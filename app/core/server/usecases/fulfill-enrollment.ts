@@ -121,7 +121,11 @@ export const queueEnrollmentWelcome = async (
         orderNumber: order.id,
         verificationUrl: orderVerificationUrl(tenantBaseUrl, order.verificationToken),
         qrImageUrl: new URL(`/api/public/orders/qr/${order.verificationToken}`, tenantBaseUrl).toString(),
-        lines: order.lines?.map((line) => line.name) ?? [product.title],
+        lines: order.lines !== undefined && order.lines.length > 0
+          ? order.lines.map(({ name, grossCents, vatRate }) => ({ name, grossCents, vatRate }))
+          : [{ name: product.title, grossCents: order.amountCents, vatRate: product.vatRate ?? null }],
+        currency: order.currency,
+        totalCents: order.amountCents,
       } }),
       ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
     },

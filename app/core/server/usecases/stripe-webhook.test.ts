@@ -28,6 +28,7 @@ import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../te
 
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
+import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
@@ -2441,7 +2442,9 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
       orderNumber: h.orders[0]?.id,
       verificationUrl: `https://alpha.example.com/panel/orders/verify/${'b'.repeat(64)}`,
       qrImageUrl: `https://alpha.example.com/api/public/orders/qr/${'b'.repeat(64)}`,
-      lines: h.lines.map((line) => line.name),
+      lines: h.lines.map(({ name, grossCents, vatRate }) => ({ name, grossCents, vatRate })),
+      currency: 'PLN',
+      totalCents: 12400,
     },
   });
   expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
@@ -2450,6 +2453,26 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(replay.ok).toBe(true);
   expect(h.orders).toHaveLength(1);
   expect(h.grants.size).toBe(2);
+});
+
+it.each([undefined, []])('queues the paid amount and product VAT when order lines are %j', async (lines) => {
+  const h = bundlePayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const order = h.orders[0];
+  const member = [...h.members.values()][0];
+  if (order === undefined || member === undefined) throw new Error('Expected a fulfilled order and member');
+  for (const vatRate of [5, undefined] as const) {
+    expect((await queueEnrollmentWelcome(tenantA, member, product(tenantA.id, { vatRate }), 'en', h.deps.emailOutbox, h.deps, {
+      ...order, lines, currency: 'EUR', amountCents: 9900,
+    })).ok).toBe(true);
+    expect(h.queued.at(-1)?.payload).toMatchObject({
+      kind: 'welcome-sign-in',
+      purchase: {
+        lines: [{ name: 'Course One', grossCents: 9900, vatRate: vatRate ?? null }],
+        currency: 'EUR', totalCents: 9900,
+      },
+    });
+  }
 });
 
 it.each(['wrong-tenant', 'wrong-total', 'wrong-link', 'missing-snapshot'])(

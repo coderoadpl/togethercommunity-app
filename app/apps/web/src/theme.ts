@@ -19,6 +19,7 @@ import { progressTokens } from './theme-progress.js';
  */
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
+export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 
@@ -3815,7 +3816,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',
-  bottom: 'calc(4.5rem + env(safe-area-inset-bottom))',
+  bottom: `calc(${MEMBER_BOTTOM_BAR_HEIGHT} + env(safe-area-inset-bottom))`,
   zIndex: theme.zIndex.appBar - 1,
   padding: '0.75rem',
   backgroundColor: theme.palette.background.paper,

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
+import { LessonFooterBar, MEMBER_BOTTOM_BAR_HEIGHT } from '../../../theme.js';
 import { MemberBottomBar } from './MemberBottomBar.js';
 import { memberHomePath, memberSearchPath } from './member-nav.js';
 
@@ -56,6 +57,19 @@ describe('MemberBottomBar', () => {
     expect(window.getComputedStyle(screen.getByTestId('member-bottom-nav')).paddingBottom).toContain(
       'safe-area-inset-bottom',
     );
+  });
+
+  it('shares its full safe-area height with the sticky lesson footer offset', async () => {
+    await renderBar('/my');
+    renderWithProviders(<LessonFooterBar data-testid="lesson-footer" />);
+
+    const height = `calc(${MEMBER_BOTTOM_BAR_HEIGHT} + env(safe-area-inset-bottom))`;
+    const barStyle = window.getComputedStyle(screen.getByTestId('member-bottom-nav'));
+    const footerStyle = window.getComputedStyle(screen.getByTestId('lesson-footer'));
+
+    expect(barStyle.boxSizing).toBe('border-box');
+    expect(barStyle.height).toBe(height);
+    expect(footerStyle.bottom).toBe(height);
   });
 
   it('opens the menu sheet from the menu tab', async () => {

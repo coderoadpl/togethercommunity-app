@@ -15,6 +15,7 @@ import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitch
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { isConfiguredBaseDomainHost } from '../../../lib/tenant.js';
 import { NotificationBell } from '../../../NotificationBell.js';
+import { MEMBER_BOTTOM_BAR_HEIGHT } from '../../../theme.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { StudioIcon } from '../account-icons.js';
 import { useCanOpenStudio, useViewerKind } from '../viewer.js';
@@ -351,7 +352,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
               minWidth: 0,
               px: { xs: '1.25rem', md: '1.5rem' },
               pt: { xs: '1.25rem', md: '2rem' },
-              pb: hasMobileNavigation ? 'calc(4.5rem + env(safe-area-inset-bottom))' : '2rem',
+              pb: hasMobileNavigation ? `calc(${MEMBER_BOTTOM_BAR_HEIGHT} + env(safe-area-inset-bottom))` : '2rem',
             }}
           >
             {notices}

@@ -5,4 +5,4 @@ services:
         condition: service_started
 
   mailpit:
-    image: axllent/mailpit:v1.30.0
+    image: ghcr.io/axllent/mailpit:v1.30.0

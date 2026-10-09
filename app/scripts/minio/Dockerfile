@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7 AS downloader
+FROM public.ecr.aws/docker/library/node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7 AS downloader
 
 ARG TARGETARCH
 ARG MINIO_RELEASE
@@ -29,7 +29,7 @@ RUN apt-get update \
     && install --mode=0755 "minio.${MINIO_RELEASE}" /out/minio \
     && install --mode=0755 "mc.${MINIO_CLIENT_RELEASE}" /out/mc
 
-FROM node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7
+FROM public.ecr.aws/docker/library/node:24-bookworm-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7
 
 COPY --from=downloader /out/minio /usr/local/bin/minio
 COPY --from=downloader /out/mc /usr/local/bin/mc

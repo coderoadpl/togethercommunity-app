@@ -2,7 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-together-self-host}
 
 services:
   postgres:
-    image: postgres:16-bookworm
+    image: public.ecr.aws/docker/library/postgres:16-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -34,7 +34,7 @@ services:
       INTERNAL_PORT: '48732'
 
   caddy:
-    image: caddy:2-alpine
+    image: public.ecr.aws/docker/library/caddy:2-alpine
     restart: unless-stopped
     depends_on:
       app:

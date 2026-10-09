@@ -694,7 +694,7 @@ describe('purchase confirmation amounts', () => {
     details.lines.forEach((line, index) => {
       if (typeof line === 'string') throw new Error('Expected a structured purchase line');
       const amount = amounts[index] ?? amounts[3];
-      const escapedName = line.name.replace('<', '&lt;').replace('>', '&gt;');
+      const escapedName = line.name.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
       expect(message.html).toContain(`<tr><td>${escapedName}</td><td>${amount}</td><td>${vats[index]}</td></tr>`);
       const textLine = `- ${line.name} — ${amount}`;
       expect(message.text).toContain(line.vatRate === null ? `${textLine}\n` : `${textLine} (${vats[index]})`);

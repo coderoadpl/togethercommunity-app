@@ -80,7 +80,7 @@ const startPostgres = async (): Promise<void> => {
     'POSTGRES_DB=together',
     '-p',
     '49217:5432',
-    'postgres:16',
+    'public.ecr.aws/docker/library/postgres:16',
   ]);
   assert(
     started.code === 0,

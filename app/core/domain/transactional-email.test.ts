@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -679,25 +679,31 @@ describe('purchase confirmation amounts', () => {
   ] as const)('renders amounts, VAT, total and confirmation copy in %s with %s', (language, currency, amounts, total) => {
     const details = purchaseEmailDetailsSchema.parse({ ...purchase, currency });
     const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    const expected = language === 'pl' ? expectedPurchaseConfirmationPl : {
+      subject: 'Purchase confirmation order-42 — Workspace',
+      total: 'Total',
+      notInvoice: 'This purchase confirmation is not an invoice. If you need an invoice, contact us.',
+    };
     const message = welcomeSignIn(language, {
       tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: details,
     });
-    expect(message.subject).toBe(labels.subject('order-42', 'Workspace'));
-    if (language === 'en') expect(message.subject).toBe('Purchase confirmation order-42 — Workspace');
+    expect(message.subject).toBe(expected.subject);
     expect(message.html).toContain(`<thead><tr><th>${labels.item}</th><th>${labels.amount}</th><th>${labels.vat}</th></tr></thead>`);
     expect(message.html).not.toContain('<ul>');
-    const vats = ['5\u00a0%', '23\u00a0%', '8\u00a0%', labels.exempt, labels.exempt];
+    const vats = ['5\u00a0%', '23\u00a0%', '8\u00a0%', '—', language === 'pl' ? 'zw.' : 'exempt'];
     details.lines.forEach((line, index) => {
       if (typeof line === 'string') throw new Error('Expected a structured purchase line');
       const amount = amounts[index] ?? amounts[3];
       const escapedName = line.name.replace('<', '&lt;').replace('>', '&gt;');
       expect(message.html).toContain(`<tr><td>${escapedName}</td><td>${amount}</td><td>${vats[index]}</td></tr>`);
-      expect(message.text).toContain(`- ${line.name} — ${amount} (${vats[index]})`);
+      const textLine = `- ${line.name} — ${amount}`;
+      expect(message.text).toContain(line.vatRate === null ? `${textLine}\n` : `${textLine} (${vats[index]})`);
+      if (line.vatRate === null) expect(message.text).not.toContain(`${textLine} (`);
     });
-    expect(message.html).toContain(`<tr><td><strong>${labels.total}</strong></td><td><strong>${total}</strong></td><td></td></tr>`);
-    expect(message.text).toContain(`${labels.total}: ${total}`);
-    expect(message.html).toContain(`</table><p>${labels.notInvoice}</p>`);
-    expect(message.text).toContain(`\n\n${labels.notInvoice}\n\n${labels.verification}`);
+    expect(message.html).toContain(`<tr><td><strong>${expected.total}</strong></td><td><strong>${total}</strong></td><td></td></tr>`);
+    expect(message.text).toContain(`${expected.total}: ${total}`);
+    expect(message.html).toContain(`</table><p>${expected.notInvoice}</p>`);
+    expect(message.text).toContain(`\n\n${expected.notInvoice}\n\n${labels.verification}`);
     expect(message.html.indexOf('order-42')).toBeLessThan(message.html.indexOf('<table>'));
     expect(message.html).toContain(`<a href="${details.verificationUrl}"><img src="${details.qrImageUrl}"`);
   });

@@ -71,8 +71,13 @@ subject is "Purchase confirmation <order number> — <workspace name>" in Englis
 or the equivalent in Polish. Without a purchase block, the account-ready subject
 is unchanged. It lists the order number, then a table of purchased item names,
 gross amounts formatted in the order currency, and VAT rates (5, 8 or 23 percent,
-or a localized exemption label). A final bold total row shows the paid amount.
-The text version lists each item with its amount and VAT, followed by the total.
+or a localized exemption label). The amounts use the same discount allocation
+as invoice positions and sum to the paid total. VAT treatment uses explicit
+line rates or exemptions. A line without a rate takes the first line's explicit
+treatment when present, otherwise the tenant default, matching invoice positions.
+An unresolved rate shows a dash in the VAT cell and no VAT parentheses
+in the text version. A final bold total row shows the paid amount. The text
+version lists each item with its amount and resolved VAT, followed by the total.
 Legacy outbox rows with string lines or without currency and total retain the
 item-name list. Both versions add the localized sentence: "This purchase
 confirmation is not an invoice. If you need an invoice, contact us."

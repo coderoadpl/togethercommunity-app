@@ -5,10 +5,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
+  allocateOrderLineGross,
   err,
   internal,
   ok,
   renderEmailOutboxPayload,
+  tenantSettingsSchema,
   validation,
   type Member,
   type TermsConsent,
@@ -678,7 +680,7 @@ const couponHarness = (
       ) {
         return false;
       }
-      h.orders.push(input.order);
+      h.orders.push({ ...input.order, verificationToken: 'b'.repeat(64) });
       redemptions.push(input.redemption);
       return true;
     },
@@ -2455,23 +2457,98 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
   expect(h.grants.size).toBe(2);
 });
 
-it.each([undefined, []])('queues the paid amount and product VAT when order lines are %j', async (lines) => {
+const defaultVatSettings = tenantSettingsSchema.parse({
+  name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23,
+});
+
+it('queues allocated amounts for a coupon-discounted two-line order', async () => {
+  const bundle = bundlePayment();
+  const lines = bundle.lines.slice(0, 2);
+  const h = couponHarness({ session: { originalCents: 10300, discountCents: 5151, finalCents: 5149 } });
+  h.deps.products = bundle.deps.products;
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now }),
+  };
+  const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 5149, discountTotalCents: 5151 });
+  if (event.checkoutSession !== null) {
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+  }
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 5149, discountCents: 5151, lines });
+  const payload = h.enrollmentEmails[0]?.payload;
+  if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
+  const amounts = payload.purchase.lines.map((line) => {
+    if (typeof line === 'string') throw new Error('Expected a structured purchase line');
+    return line.grossCents;
+  });
+  expect(amounts).toEqual([2450, 2699]);
+  expect(amounts).toEqual(allocateOrderLineGross(lines, 5149));
+  expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(h.orders[0]?.amountCents);
+  expect(payload.purchase.totalCents).toBe(5149);
+  expect(h.enrollmentEmails).toHaveLength(1);
+});
+
+it.each([null, { ...defaultVatSettings, invoiceVatMode: null }, defaultVatSettings])('resolves only null structured VAT rates with settings %j', async (settings) => {
+  const h = bundlePayment();
+  h.deps.tenants.findSettings = async () => settings;
+  const first = h.lines[0];
+  const second = h.lines[1];
+  if (first === undefined || second === undefined) throw new Error('Expected bundle lines');
+  first.vatRate = null;
+  second.vatRate = 'exempt';
+  second.netCents = second.grossCents;
+  second.vatCents = 0;
+  second.vatExemptionBasis = 'Statutory exemption';
+  second.vatExemptionBasisKind = 'other';
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({ purchase: { lines: [
+    { name: first.name, grossCents: 4900, vatRate: settings?.invoiceVatMode === 'rate' ? 23 : null },
+    { name: second.name, grossCents: 5400, vatRate: 'exempt' },
+    { name: 'Printed item', grossCents: 2100, vatRate: 5 },
+  ] } });
+});
+
+it.each([8, 'exempt'] as const)('uses the first line VAT treatment %s for later null lines instead of the tenant default', async (vatRate) => {
+  const h = bundlePayment();
+  h.deps.tenants.findSettings = async () => defaultVatSettings;
+  const first = h.lines[0];
+  const second = h.lines[1];
+  if (first === undefined || second === undefined) throw new Error('Expected bundle lines');
+  first.vatRate = vatRate;
+  first.vatExemptionBasis = vatRate === 'exempt' ? 'Statutory exemption' : null;
+  first.vatExemptionBasisKind = vatRate === 'exempt' ? 'other' : null;
+  second.vatRate = null;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({ purchase: { lines: [
+    { name: first.name, grossCents: 4900, vatRate },
+    { name: second.name, grossCents: 5400, vatRate },
+    { name: 'Printed item', grossCents: 2100, vatRate: 5 },
+  ] } });
+});
+
+it.each([undefined, []])('queues the paid amount and resolved product VAT when order lines are %j', async (lines) => {
   const h = bundlePayment();
   expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
   const order = h.orders[0];
   const member = [...h.members.values()][0];
   if (order === undefined || member === undefined) throw new Error('Expected a fulfilled order and member');
-  for (const vatRate of [5, undefined] as const) {
-    expect((await queueEnrollmentWelcome(tenantA, member, product(tenantA.id, { vatRate }), 'en', h.deps.emailOutbox, h.deps, {
-      ...order, lines, currency: 'EUR', amountCents: 9900,
-    })).ok).toBe(true);
-    expect(h.queued.at(-1)?.payload).toMatchObject({
-      kind: 'welcome-sign-in',
-      purchase: {
-        lines: [{ name: 'Course One', grossCents: 9900, vatRate: vatRate ?? null }],
-        currency: 'EUR', totalCents: 9900,
-      },
-    });
+  for (const settings of [null, { ...defaultVatSettings, invoiceVatMode: null }, defaultVatSettings]) {
+    h.deps.tenants.findSettings = async () => settings;
+    for (const vatRate of [5, undefined, 'exempt'] as const) {
+      expect((await queueEnrollmentWelcome(tenantA, member, product(tenantA.id, { vatRate, vatExemptionBasis: vatRate === 'exempt' ? 'Statutory exemption' : null }), 'en', h.deps.emailOutbox, h.deps, {
+        ...order, lines, currency: 'EUR', amountCents: 9900,
+      })).ok).toBe(true);
+      expect(h.queued.at(-1)?.payload).toMatchObject({
+        kind: 'welcome-sign-in',
+        purchase: {
+          lines: [{ name: 'Course One', grossCents: 9900, vatRate: vatRate ?? (settings?.invoiceVatMode === 'rate' ? 23 : null) }],
+          currency: 'EUR', totalCents: 9900,
+        },
+      });
+    }
   }
 });
 

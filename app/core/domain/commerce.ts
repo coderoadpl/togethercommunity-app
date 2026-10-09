@@ -122,6 +122,19 @@ export const orderLineSchema = z.object({
 
 export type OrderLine = z.infer<typeof orderLineSchema>;
 
+export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCents: number): number[] => {
+  const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
+  let allocated = 0;
+  let cumulative = 0;
+  return lines.map((line) => {
+    cumulative += line.grossCents;
+    const next = total === 0 ? 0 : Math.round(cumulative * amountCents / total);
+    const grossCents = next - allocated;
+    allocated = next;
+    return grossCents;
+  });
+};
+
 export const checkoutSnapshotSchema = z.object({
   id: z.string(),
   tenantId: z.string(),

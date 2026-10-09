@@ -155,12 +155,12 @@ const purchaseItems = (
   const lines = purchase.lines.map((line) => ({
     name: line.name,
     amount: formatter.format(line.grossCents / 100),
-    vat: line.vatRate === null || line.vatRate === 'exempt' ? labels.exempt : `${String(line.vatRate)}\u00a0%`,
+    vat: line.vatRate === null ? null : line.vatRate === 'exempt' ? labels.exempt : `${String(line.vatRate)}\u00a0%`,
   }));
   const total = formatter.format(purchase.totalCents / 100);
   return {
-    html: `<table><thead><tr><th>${escapeHtml(labels.item)}</th><th>${escapeHtml(labels.amount)}</th><th>${escapeHtml(labels.vat)}</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.name)}</td><td>${escapeHtml(line.amount)}</td><td>${escapeHtml(line.vat)}</td></tr>`).join('')}<tr><td><strong>${escapeHtml(labels.total)}</strong></td><td><strong>${escapeHtml(total)}</strong></td><td></td></tr></tbody></table>`,
-    text: `${lines.map((line) => `- ${line.name} — ${line.amount} (${line.vat})`).join('\n')}\n${labels.total}: ${total}`,
+    html: `<table><thead><tr><th>${escapeHtml(labels.item)}</th><th>${escapeHtml(labels.amount)}</th><th>${escapeHtml(labels.vat)}</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.name)}</td><td>${escapeHtml(line.amount)}</td><td>${escapeHtml(line.vat ?? '—')}</td></tr>`).join('')}<tr><td><strong>${escapeHtml(labels.total)}</strong></td><td><strong>${escapeHtml(total)}</strong></td><td></td></tr></tbody></table>`,
+    text: `${lines.map((line) => `- ${line.name} — ${line.amount}${line.vat === null ? '' : ` (${line.vat})`}`).join('\n')}\n${labels.total}: ${total}`,
   };
 };
 

@@ -1,4 +1,5 @@
 import {
+  allocateOrderLineGross,
   appError,
   err,
   forbidden,
@@ -7,7 +8,7 @@ import {
   notFound,
   ok,
   renderFa3Invoice,
-  resolveInvoiceVat,
+  resolveOrderVat,
   splitProductGross,
   validateFa3Structure,
   validation,
@@ -15,10 +16,8 @@ import {
   type BillingData,
   type Invoice,
   type InvoiceEvent,
-  type InvoiceVatResolution,
   type InvoicePosition,
   type InvoiceVatTreatment,
-  type TenantSettings,
   type KsefEnvironment,
   type Order,
   type OrderListItem,
@@ -48,41 +47,14 @@ import type {
 const invoicePositions = (order: Order, fallback: InvoiceVatTreatment): InvoicePosition[] | undefined => {
   const lines = order.lines;
   if (lines === undefined) return undefined;
-  const total = lines.reduce((sum, line) => sum + line.grossCents, 0);
-  let allocated = 0;
-  let cumulative = 0;
-  return lines.map((line) => {
-    cumulative += line.grossCents;
-    const next = total === 0 ? 0 : Math.round(cumulative * order.amountCents / total);
-    const grossCents = next - allocated;
-    allocated = next;
+  const amounts = allocateOrderLineGross(lines, order.amountCents);
+  return lines.map((line, index) => {
+    const grossCents = amounts[index] ?? 0;
     const vat: InvoiceVatTreatment = line.vatRate === 'exempt'
       ? { kind: 'exempt', basisKind: line.vatExemptionBasisKind ?? (fallback.kind === 'exempt' ? fallback.basisKind : 'other'), basis: line.vatExemptionBasis ?? (fallback.kind === 'exempt' ? fallback.basis : '') }
       : line.vatRate === null ? fallback : { kind: 'rate', percent: line.vatRate };
     return { name: line.name, ...splitProductGross(grossCents, vat.kind === 'exempt' ? 'exempt' : vat.percent), vat };
   });
-};
-
-const resolveOrderVat = (order: Order, settings: TenantSettings | null): InvoiceVatResolution => {
-  for (const line of order.lines ?? []) {
-    if (line.vatRate !== 'exempt') continue;
-    const resolution = resolveInvoiceVat({
-      invoiceVatMode: 'exempt',
-      invoiceExemptionBasisKind: line.vatExemptionBasisKind ?? null,
-      invoiceExemptionBasis: line.vatExemptionBasis,
-    });
-    if (!resolution.ok) return resolution;
-  }
-  const first = order.lines?.[0];
-  if (first?.vatRate != null) {
-    if (first.vatRate !== 'exempt') return { ok: true, treatment: { kind: 'rate', percent: first.vatRate } };
-    return resolveInvoiceVat({
-      invoiceVatMode: 'exempt',
-      invoiceExemptionBasisKind: first.vatExemptionBasisKind ?? null,
-      invoiceExemptionBasis: first.vatExemptionBasis,
-    });
-  }
-  return settings === null ? { ok: false, reason: 'unset' } : resolveInvoiceVat(settings);
 };
 
 export interface InvoiceDeps {

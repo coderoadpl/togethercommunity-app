@@ -1,3 +1,4 @@
+import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { useState } from 'react';
 import {
   Alert,
@@ -113,6 +114,7 @@ export const SalesPanel = () => {
           ))}
         </Alert>
       ) : null}
+      <ConsumerSalesCard />
       <ListSection
         data-testid="sales-list"
         toolbar={{

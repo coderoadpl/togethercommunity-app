@@ -1,3 +1,4 @@
+import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
@@ -2705,6 +2706,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await listPaidOrdersWithoutGrant(ctxOf(c), parsed.data, deps),
     );
   });
+
+  registerConsumerSalesRoutes(app, deps);
 
   app.get(API_PATHS.ordersExport, async (c) => {
     const query = {

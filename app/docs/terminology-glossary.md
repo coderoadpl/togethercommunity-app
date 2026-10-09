@@ -38,6 +38,8 @@ add it here before using it in either dictionary.
 | Order reference | numer zamówienia | order number | Identifies the paid order in the confirmation email and staff lookup. |
 | Price | cena | price | One-time or recurring; recurring prices have a billing interval. |
 | Recurring purchase | subskrypcja | subscription | Statuses: active, payment past due, canceled. Do not use abonament. |
+| Internal bookkeeping document | dokument wewnętrzny (WEW) | internal document (WEW) | Prepared by the accountant from the sales summary; the summary is not a tax document. |
+| Consumer sales with no issued invoice | sprzedaż konsumencka bez faktury | uninvoiced consumer sales | Paid consumer orders without a NIP, excluding all refunds and issued, in-flight, accepted, or ambiguous invoices. |
 | Sales ledger entry | zamówienie | order | Statuses: paid, pending, failed, refunded; lowercase in tables. |
 | Access entitlement | dostęp | grant | Long form: przyznany dostęp. Verb: przyznać / grant. States include active, expired, and perpetual. |
 | Withdraw an entitlement | cofnąć dostęp | revoke | Keep distinct from claiming free access. Do not use odbierz for revocation. |

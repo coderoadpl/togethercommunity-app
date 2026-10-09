@@ -1,3 +1,4 @@
+import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
@@ -860,6 +861,21 @@ export const refreshInvoiceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...salesScopes.all(), 'invoice-refresh'],
     call: (invoiceId: string) => api.refreshInvoice(invoiceId),
+  });
+
+export const consumerSalesSummaryQuery = (api: ApiClient, input: ConsumerSalesQuery) =>
+  defineQuery({
+    queryKey: [...salesScopes.all(), 'consumer-sales-summary', input],
+    staleTime: 0,
+    call: ({ signal }) => api.consumerSalesSummary(input, signal),
+  });
+
+export const consumerSalesExportQuery = (api: ApiClient, input: ConsumerSalesQuery) =>
+  defineQuery({
+    queryKey: [...salesScopes.all(), 'consumer-sales-export', input],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportConsumerSales(input, signal),
   });
 
 export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>

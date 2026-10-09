@@ -330,6 +330,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
 | `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |
+| `GET /api/orders/consumer-sales-summary` | authenticated | read | consumer sales summary |
 | `GET /api/orders/export` | authenticated | read | orders export |
 | `GET /api/orders/:orderId` | authenticated | read | order |
 | `POST /api/orders/:orderId/invoice` | authenticated | mutating | invoice issue |

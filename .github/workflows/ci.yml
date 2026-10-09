@@ -22,7 +22,7 @@ jobs:
         working-directory: app
     services:
       postgres:
-        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: together
           POSTGRES_PASSWORD: together
@@ -159,7 +159,7 @@ jobs:
         working-directory: app
     services:
       mongodb:
-        image: mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
+        image: public.ecr.aws/docker/library/mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
         ports:
           - 27017:27017
         options: >-
@@ -233,7 +233,7 @@ jobs:
         working-directory: app
     services:
       postgres:
-        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: together
           POSTGRES_PASSWORD: together
@@ -284,7 +284,7 @@ jobs:
         working-directory: app
     services:
       postgres:
-        image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
         env:
           POSTGRES_USER: together
           POSTGRES_PASSWORD: together

@@ -300,7 +300,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           couponId = coupon.id;
         });
         if (couponId === undefined) {
-          checks.push({ resource: 'Promotion Codes', permission: 'write', status: 'error', detail: 'coupon probe failed' });
+          checks.push({ resource: 'Promotion Codes', permission: 'write', status: 'error', reason: 'coupon-probe-failed' });
         } else {
           const coupon = couponId;
           await probe('Promotion Codes', 'write', async () => {

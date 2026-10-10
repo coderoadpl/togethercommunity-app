@@ -738,10 +738,13 @@ describe('probeStripePermissions with an injected Stripe client', () => {
 
   it('reports a coupon 403, skips promotion codes and still probes checkout', async () => {
     const h = permissionProbeHarness({ 'POST /v1/coupons': { status: 403, message: 'Coupon write denied' } });
-    expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
+    const result = await h.run();
+    expect(result).toMatchObject({ ok: true, value: { allOk: false, checks: [
       { status: 'ok' }, { status: 'ok' }, { resource: 'Coupons', status: 'missing', detail: 'Coupon write denied' },
-      { resource: 'Promotion Codes', status: 'error', detail: 'coupon probe failed' }, { status: 'ok' },
+      { resource: 'Promotion Codes', status: 'error', reason: 'coupon-probe-failed' }, { status: 'ok' },
     ] } });
+    if (!result.ok) throw new Error('Probe failed');
+    expect(result.value.checks.find((check) => check.resource === 'Promotion Codes')).not.toHaveProperty('detail');
     expect(h.operations()).toContain('POST /v1/checkout/sessions/cs_probe/expire');
     expect(h.operations()).not.toContain('POST /v1/promotion_codes');
   });

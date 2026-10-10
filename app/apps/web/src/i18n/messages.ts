@@ -1026,6 +1026,7 @@ export interface Messages {
     stripeProbeRead: string;
     stripeProbeWrite: string;
     stripeProbeStatuses: { ok: string; missing: string; error: string };
+    stripeProbeReasons: { 'coupon-probe-failed': string };
     stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string };
     stripeConfigure: string;
     stripeConfiguring: string;

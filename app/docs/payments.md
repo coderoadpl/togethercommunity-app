@@ -41,7 +41,8 @@ Promotion Codes create and deactivate, then Checkout Sessions create and expire.
 Subscription write access cannot be checked without a customer. The coupon is a
 single-use 1% discount and is deleted in cleanup, including after a promotion-code
 failure. If coupon creation fails, Promotion Codes reports `error` with
-`coupon probe failed`; the checkout probe still runs. The checkout is a PLN 1.00
+reason `coupon-probe-failed` and no detail; Studio translates the reason, and the
+checkout probe still runs. The checkout is a PLN 1.00
 payment session with return URLs on the tenant's canonical origin, a 30-minute
 expiry and immediate expiration in cleanup. No purchase is completed.
 

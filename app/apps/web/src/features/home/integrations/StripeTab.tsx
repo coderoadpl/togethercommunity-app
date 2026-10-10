@@ -129,6 +129,7 @@ const StripeConfiguration = ({
           <Typography>{t.integrations.stripeProbeResources[check.resource]} · {check.permission === 'read' ? t.integrations.stripeProbeRead : t.integrations.stripeProbeWrite}</Typography>
           <Chip size="small" color={check.status === 'ok' ? 'success' : check.status === 'missing' ? 'warning' : 'error'}
             label={t.integrations.stripeProbeStatuses[check.status]} />
+          {check.reason === undefined ? null : <Typography variant="caption">{t.integrations.stripeProbeReasons[check.reason]}</Typography>}
           {check.detail === undefined ? null : <Typography variant="caption">{check.detail}</Typography>}
         </Box>
       ))}

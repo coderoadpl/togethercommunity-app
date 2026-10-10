@@ -58,6 +58,7 @@ const stripePermissionCheckSchema = z.object({
   resource: z.enum(['Webhook Endpoints', 'Subscriptions', 'Coupons', 'Promotion Codes', 'Checkout Sessions']),
   permission: z.enum(['write', 'read']),
   status: z.enum(['ok', 'missing', 'error']),
+  reason: z.enum(['coupon-probe-failed']).optional(),
   detail: z.string().optional(),
 });
 export type StripePermissionCheck = z.infer<typeof stripePermissionCheckSchema>;

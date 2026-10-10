@@ -1,13 +1,16 @@
+import type { OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
+  allocateOrderLineGross,
   err,
   internal,
   ok,
   renderEmailOutboxPayload,
+  tenantSettingsSchema,
   validation,
   type Member,
   type TermsConsent,
@@ -27,6 +30,7 @@ import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../te
 
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
+import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
@@ -271,7 +275,7 @@ const harness = (
         return completed;
       },
       create: async (_tenantId, order) => {
-        orders.push(order);
+        orders.push({ ...order, verificationToken: 'b'.repeat(64) });
       },
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
@@ -676,7 +680,7 @@ const couponHarness = (
       ) {
         return false;
       }
-      h.orders.push(input.order);
+      h.orders.push({ ...input.order, verificationToken: 'b'.repeat(64) });
       redemptions.push(input.redemption);
       return true;
     },
@@ -2402,4 +2406,177 @@ it('renews and cancels an adopted subscription without Together checkout metadat
   expect(await fulfillStripeWebhook(tenantA, subscriptionEvent({ id: 'evt-adopted-deleted', type: 'customer.subscription.deleted', subscriptionId: 'sub_existing', status: 'canceled', currentPeriodEnd: '1998-09-14T10:00:00.000Z' }), h.deps)).toEqual(ok({ processed: true }));
   expect(h.subscriptions.get(adopted.value.subscription.id)?.status).toBe('canceled');
   expect(h.errors).toEqual([]);
+});
+
+const bundlePayment = () => {
+  const h = harness();
+  const lines: OrderLine[] = [
+    { productId: 'product-1', name: 'Digital item', productType: 'digital_download', grossCents: 4900, netCents: 3984, vatRate: 23, vatCents: 916, vatExemptionBasis: null, issuedCount: null },
+    { productId: 'product-2', name: 'Course item', productType: 'course', grossCents: 5400, netCents: 5000, vatRate: 8, vatCents: 400, vatExemptionBasis: null, issuedCount: null },
+    { productId: 'product-3', name: 'Printed item', productType: 'physical', grossCents: 2100, netCents: 2000, vatRate: 5, vatCents: 100, vatExemptionBasis: null, issuedCount: 0 },
+  ];
+  h.deps.products.findById = async (tenantId, id) => {
+    const line = lines.find((item) => item.productId === id);
+    return line === undefined ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
+  };
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
+      id, tenantId, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now,
+    } : null,
+  };
+  const event = completedEvent({ amountTotalCents: 12400 });
+  if (event.checkoutSession !== null) {
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+  }
+  return { ...h, event, lines };
+};
+
+it('fulfills a bundle as one payment with immutable VAT lines and no physical grant', async () => {
+  const h = bundlePayment();
+  const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+  expect(result.ok).toBe(true);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ salesLinkId: 'link-1', amountCents: 12400, lines: h.lines });
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({
+    purchase: {
+      orderNumber: h.orders[0]?.id,
+      verificationUrl: `https://alpha.example.com/panel/orders/verify/${'b'.repeat(64)}`,
+      qrImageUrl: `https://alpha.example.com/api/public/orders/qr/${'b'.repeat(64)}`,
+      lines: h.lines.map(({ name, grossCents, vatRate }) => ({ name, grossCents, vatRate })),
+      currency: 'PLN',
+      totalCents: 12400,
+    },
+  });
+  expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
+  expect(h.enrollmentEmails).toHaveLength(1);
+  const replay = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+  expect(replay.ok).toBe(true);
+  expect(h.orders).toHaveLength(1);
+  expect(h.grants.size).toBe(2);
+});
+
+const defaultVatSettings = tenantSettingsSchema.parse({
+  name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null,
+  invoiceVatMode: 'rate', invoiceVatRatePercent: 23,
+});
+
+it('queues allocated amounts for a coupon-discounted two-line order', async () => {
+  const bundle = bundlePayment();
+  const lines = bundle.lines.slice(0, 2);
+  const h = couponHarness({ session: { originalCents: 10300, discountCents: 5151, finalCents: 5149 } });
+  h.deps.products = bundle.deps.products;
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now }),
+  };
+  const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 5149, discountTotalCents: 5151 });
+  if (event.checkoutSession !== null) {
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+  }
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 5149, discountCents: 5151, lines });
+  const payload = h.enrollmentEmails[0]?.payload;
+  if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
+  const amounts = payload.purchase.lines.map((line) => {
+    if (typeof line === 'string') throw new Error('Expected a structured purchase line');
+    return line.grossCents;
+  });
+  expect(amounts).toEqual([2450, 2699]);
+  expect(amounts).toEqual(allocateOrderLineGross(lines, 5149));
+  expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(h.orders[0]?.amountCents);
+  expect(payload.purchase.totalCents).toBe(5149);
+  expect(h.enrollmentEmails).toHaveLength(1);
+});
+
+it.each([null, { ...defaultVatSettings, invoiceVatMode: null }, defaultVatSettings])('resolves only null structured VAT rates with settings %j', async (settings) => {
+  const h = bundlePayment();
+  h.deps.tenants.findSettings = async () => settings;
+  const first = h.lines[0];
+  const second = h.lines[1];
+  if (first === undefined || second === undefined) throw new Error('Expected bundle lines');
+  first.vatRate = null;
+  second.vatRate = 'exempt';
+  second.netCents = second.grossCents;
+  second.vatCents = 0;
+  second.vatExemptionBasis = 'Statutory exemption';
+  second.vatExemptionBasisKind = 'other';
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({ purchase: { lines: [
+    { name: first.name, grossCents: 4900, vatRate: settings?.invoiceVatMode === 'rate' ? 23 : null },
+    { name: second.name, grossCents: 5400, vatRate: 'exempt' },
+    { name: 'Printed item', grossCents: 2100, vatRate: 5 },
+  ] } });
+});
+
+it.each([8, 'exempt'] as const)('uses the first line VAT treatment %s for later null lines instead of the tenant default', async (vatRate) => {
+  const h = bundlePayment();
+  h.deps.tenants.findSettings = async () => defaultVatSettings;
+  const first = h.lines[0];
+  const second = h.lines[1];
+  if (first === undefined || second === undefined) throw new Error('Expected bundle lines');
+  first.vatRate = vatRate;
+  first.vatExemptionBasis = vatRate === 'exempt' ? 'Statutory exemption' : null;
+  first.vatExemptionBasisKind = vatRate === 'exempt' ? 'other' : null;
+  second.vatRate = null;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.enrollmentEmails[0]?.payload).toMatchObject({ purchase: { lines: [
+    { name: first.name, grossCents: 4900, vatRate },
+    { name: second.name, grossCents: 5400, vatRate },
+    { name: 'Printed item', grossCents: 2100, vatRate: 5 },
+  ] } });
+});
+
+it.each([undefined, []])('queues the paid amount and resolved product VAT when order lines are %j', async (lines) => {
+  const h = bundlePayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const order = h.orders[0];
+  const member = [...h.members.values()][0];
+  if (order === undefined || member === undefined) throw new Error('Expected a fulfilled order and member');
+  for (const settings of [null, { ...defaultVatSettings, invoiceVatMode: null }, defaultVatSettings]) {
+    h.deps.tenants.findSettings = async () => settings;
+    for (const vatRate of [5, undefined, 'exempt'] as const) {
+      expect((await queueEnrollmentWelcome(tenantA, member, product(tenantA.id, { vatRate, vatExemptionBasis: vatRate === 'exempt' ? 'Statutory exemption' : null }), 'en', h.deps.emailOutbox, h.deps, {
+        ...order, lines, currency: 'EUR', amountCents: 9900,
+      })).ok).toBe(true);
+      expect(h.queued.at(-1)?.payload).toMatchObject({
+        kind: 'welcome-sign-in',
+        purchase: {
+          lines: [{ name: 'Course One', grossCents: 9900, vatRate: vatRate ?? (settings?.invoiceVatMode === 'rate' ? 23 : null) }],
+          currency: 'EUR', totalCents: 9900,
+        },
+      });
+    }
+  }
+});
+
+it.each(['wrong-tenant', 'wrong-total', 'wrong-link', 'missing-snapshot'])(
+  'rejects a mismatched bundle payment: %s', async (reason) => {
+    const h = bundlePayment();
+    if (h.event.checkoutSession !== null) {
+      if (reason === 'wrong-tenant') h.event.checkoutSession.metadata.tenantId = 'tenant-b';
+      if (reason === 'wrong-total') h.event.checkoutSession.amountTotalCents = 12399;
+      if (reason === 'wrong-link') h.event.checkoutSession.metadata.salesLinkId = 'link-other';
+      if (reason === 'missing-snapshot') h.event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-other';
+    }
+    const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);
+    expect(result.ok).toBe(false);
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants.size).toBe(0);
+  },
+);
+
+it('revokes all nonphysical bundle grants after one full payment refund', async () => {
+  const h = bundlePayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const result = await fulfillStripeWebhook(tenantA, {
+    id: 'bundle-refund', type: 'charge.refunded', objectId: 'charge-1', checkoutSession: null,
+    adjustment: { chargeId: 'charge-1', paymentIntentId: 'pi-1', invoiceId: null,
+      refund: { full: true, amountRefundedCents: 12400, amountCents: 12400 } },
+  }, h.deps);
+  expect(result.ok).toBe(true);
+  expect(h.orders[0]?.status).toBe('refunded');
+  expect([...h.grants.values()].every((grant) => grant.expiresAt === now)).toBe(true);
 });

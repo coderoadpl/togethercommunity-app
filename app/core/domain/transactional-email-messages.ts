@@ -10,7 +10,7 @@ interface RenderedTextParts {
 }
 
 export type NotificationFooterKind = 'thread' | 'space' | 'direct';
-export type WelcomeSignInProductType = 'course' | 'digital_download' | 'membership' | 'unknown';
+export type WelcomeSignInProductType = 'course' | 'digital_download' | 'membership' | 'physical' | 'unknown';
 
 type ReputationStatus = 'warn' | 'critical';
 
@@ -23,6 +23,19 @@ export interface TransactionalEmailMessages {
   manageNotifications: {
     label: string;
     hints: Record<NotificationFooterKind, string>;
+  };
+  purchase: {
+    orderNumber: string;
+    lines: string;
+    item: string;
+    amount: string;
+    vat: string;
+    exempt: string;
+    total: string;
+    notInvoice: string;
+    subject: (orderNumber: string, tenantName: string) => string;
+    verification: string;
+    qrAlt: string;
   };
   welcomeSignIn: {
     actionLabels: Record<WelcomeSignInProductType, string>;

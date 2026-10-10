@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   priceMajorSchema,
   productVisibilitySchema,
+  productVatRateSchema,
   SUPPORTED_CURRENCIES,
   type PriceKind,
   type Product,
@@ -49,6 +50,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [title, setTitle] = useState(product.title);
   const [description, setDescription] = useState(product.description);
   const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
+  const [vatRate, setVatRate] = useState(product.vatRate);
+  const [vatExemptionBasis, setVatExemptionBasis] = useState(product.vatExemptionBasis ?? '');
   const save = useMutation({
     ...actions.updateProduct,
     onSuccess: async () => {
@@ -65,6 +68,8 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       id: product.id,
       title: title.trim(),
       visibility,
+      vatRate,
+      vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -123,6 +128,12 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         </Select>
         <FormHelperText id="product-visibility-helper">{t.products.visibilityHelper}</FormHelperText>
       </FormControl>
+      <TextField select label={t.salesLinks.vatRate} value={vatRate ?? ''} onChange={(event) => { resetFeedback(); setVatRate(event.target.value === '' ? null : productVatRateSchema.parse(event.target.value === 'exempt' ? 'exempt' : Number(event.target.value))); }}>
+        <MenuItem value="">{t.salesLinks.vatDefault}</MenuItem>
+        {[5, 8, 23].map((rate) => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
+        <MenuItem value="exempt">{t.salesLinks.exempt}</MenuItem>
+      </TextField>
+      {vatRate === 'exempt' ? <TextField label={t.salesLinks.exemptionBasis} value={vatExemptionBasis} required onChange={(event) => { resetFeedback(); setVatExemptionBasis(event.target.value); }} /> : null}
       <HtmlEditor
         id="product-description"
         value={description}
@@ -561,9 +572,9 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       </Box>
       {product.type === 'digital_download' ? <><DownloadAssetsSection productId={product.id} /><DownloadCopyLookup productId={product.id} /></> : null}
       <CheckoutConsentsSection product={product} />
-      <SectionCard title={t.access.heading}>
+      {product.type === 'physical' ? null : <SectionCard title={t.access.heading}>
         <ProductAccessEditor product={product} />
-      </SectionCard>
+      </SectionCard>}
     </PanelPage>
   );
 };

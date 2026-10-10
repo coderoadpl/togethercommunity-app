@@ -9,11 +9,25 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       direct: 'w ustawieniach konta możesz wyłączyć wiadomości od innych uczestników',
     },
   },
+  purchase: {
+    orderNumber: 'Numer zamówienia',
+    lines: 'Zakupione pozycje',
+    item: 'Pozycja',
+    amount: 'Kwota',
+    vat: 'VAT',
+    exempt: 'zw.',
+    total: 'Razem',
+    notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
+    subject: (orderNumber, tenantName) => `Potwierdzenie zakupu ${orderNumber} — ${tenantName}`,
+    verification: 'Pokaż ten kod obsłudze podczas odbioru zamówienia',
+    qrAlt: 'Kod QR do weryfikacji zamówienia',
+  },
   welcomeSignIn: {
     actionLabels: {
       course: 'Zaloguj się i otwórz kurs',
       digital_download: 'Zaloguj się i pobierz pliki',
       membership: 'Zaloguj się na swoje konto',
+      physical: 'Zaloguj się na swoje konto',
       unknown: 'Zaloguj się na swoje konto',
     },
     render: ({ header, tenantName, tenantNameHtml, actionUrl, actionLink, actionLabel, socialLinks }) => ({

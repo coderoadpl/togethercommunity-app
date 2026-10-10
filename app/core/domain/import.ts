@@ -1,3 +1,4 @@
+import { productVatFields } from './product-vat.js';
 import { z } from 'zod';
 
 import { lessonEditionInputSchema } from './lesson-editions.js';
@@ -172,6 +173,7 @@ const importAccessItemSchema = z.discriminatedUnion('level', [
 
 export const importProductRecordSchema = z
   .object({
+    ...productVatFields,
     ...importedRecordFields,
     type: productTypeSchema,
     slug: productSlugSchema,

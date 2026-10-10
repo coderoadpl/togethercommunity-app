@@ -20,7 +20,7 @@
 
 | Check | Evidence and limit |
 | --- | --- |
-| `pnpm audit --prod --audit-level=moderate` | Blocks unaccepted moderate-or-higher production advisories in CI. It sees database matches, not application reachability or compensating controls. |
+| `pnpm audit --prod --audit-level=moderate` | Blocks unaccepted moderate-or-higher production advisories through `check` only when a pull request changes `app/package.json`, `app/pnpm-lock.yaml`, `app/pnpm-workspace.yaml`, or `app/.pnpmfile.cjs`, targets `main`, or runs on a push to `main`; elsewhere the advisory `dependency-audit` job reports without blocking. It sees database matches, not application reachability or compensating controls. |
 | `pnpm run lock-lint` | Detects repository-defined lockfile drift. It does not establish artifact provenance. |
 | `pnpm run license-lint` | Enforces the encoded permissive-license policy and documented exceptions. It cannot decide whether a new exception is acceptable. |
 | OpenSSF Scorecard 5.5.0 | Adds advisory dependency-update, pinned-dependency, token-permission, and license signals. Findings require manual triage. |

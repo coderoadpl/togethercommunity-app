@@ -13,14 +13,24 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(412);
-    expect(inventory.useCases).toHaveLength(321);
+    expect(inventory.routes).toHaveLength(421);
+    expect(inventory.useCases).toHaveLength(328);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/download-copies'),
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/verify/:reference'),
+      inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#verifyOrder'),
       inventory.useCases.find((entry) => entry.subject === 'download-copies.ts#listDownloadCopies'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:read', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/lines/:productId/issue'),
+      inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#issueOrderLine'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'order:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
+    expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/orders/qr/:token'))
+      .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);

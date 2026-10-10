@@ -212,7 +212,9 @@
             ],
             "slug": "course-together-101",
             "title": "Together 101 Course",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -232,7 +234,9 @@
             ],
             "slug": "js-full",
             "title": "JavaScript Course - full access",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -252,7 +256,9 @@
             ],
             "slug": "react-full",
             "title": "React in Practice - full access",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -272,7 +278,9 @@
             ],
             "slug": "js-dom-module",
             "title": "DOM Module Pack",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -292,7 +300,9 @@
             ],
             "slug": "free-preview",
             "title": "Free preview",
-            "type": "course"
+            "type": "course",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -319,7 +329,9 @@
             ],
             "slug": "club",
             "title": "Studio Club - subscription",
-            "type": "membership"
+            "type": "membership",
+            "vatExemptionBasis": null,
+            "vatRate": null
           },
           {
             "coverUrl": null,
@@ -339,9 +351,12 @@
             ],
             "slug": "download-workbook",
             "title": "Creator Workbook",
-            "type": "digital_download"
+            "type": "digital_download",
+            "vatExemptionBasis": null,
+            "vatRate": null
           }
         ],
+        "salesLinks": [],
         "tenant": {
           "branding": {
             "accentColor": null,

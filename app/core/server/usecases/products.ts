@@ -1,5 +1,6 @@
 import {
   buildSnapshot,
+  resolveProductVat,
   err,
   newProductSchema,
   notFound,
@@ -26,10 +27,12 @@ import type {
   ProductPriceRepository,
   ProductRepository,
   SpaceRepository,
+  TenantRepository,
 } from '../ports.js';
 import { authorizeTenant } from '../authorize.js';
 
 export interface ProductDeps {
+  tenants?: Pick<TenantRepository, 'findSettings'>;
   products: ProductRepository;
   ids: IdGenerator;
   clock: Clock;
@@ -84,11 +87,21 @@ export const createProduct = async (
   const parsed = newProductSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid product', parsed.error.flatten()));
 
+  if (parsed.data.type === 'physical' && parsed.data.accessItems.length > 0) {
+    return err(validation('Physical products cannot grant access items'));
+  }
+  const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
+  if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
+    return err(validation('VAT exemption requires a legal basis'));
+  }
+  const vat = resolveProductVat(parsed.data, settings);
   const slug = parsed.data.slug ?? productSlugFromTitle(parsed.data.title);
   if (!productSlugSchema.safeParse(slug).success) {
     return err(validation('Product slug must contain lowercase letters, numbers and hyphens only'));
   }
   const product: Product = {
+    vatRate: parsed.data.vatRate ?? null,
+    vatExemptionBasis: parsed.data.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     type: parsed.data.type,
@@ -126,10 +139,21 @@ export const updateProduct = async (
   const existing = await deps.products.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No product "${parsed.data.id}" in this tenant`));
 
+  const vatInput = {
+    vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
+    vatExemptionBasis: parsed.data.vatExemptionBasis === undefined ? existing.vatExemptionBasis : parsed.data.vatExemptionBasis,
+  };
+  const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
+  if (vatInput.vatRate === 'exempt' && resolveProductVat(vatInput, settings) === null) {
+    return err(validation('VAT exemption requires a legal basis'));
+  }
+  const vat = resolveProductVat(vatInput, settings);
   const snapshot = snapshotOf(ctx, existing, deps);
   if (!snapshot.ok) return snapshot;
   const updated: Product = {
     ...existing,
+    vatRate: vatInput.vatRate ?? null,
+    vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,
     title: parsed.data.title ?? existing.title,
     description: parsed.data.description ?? existing.description,
@@ -162,9 +186,10 @@ export const publishProduct = async (
   const hasDelivery = existing.accessItems.length > 0
     || readyDownloads.length > 0
     || spaces.some((space) => space.visibility === 'product' && space.productIds.includes(existing.id));
-  if (!hasDelivery) {
+  if (!hasDelivery && existing.type !== 'physical') {
     return err(validation('Product requires at least one delivery mechanism before publishing'));
   }
+  if (existing.type === 'physical' && !activePrices.some((price) => price.kind === 'one_time')) return err(validation('Physical products require an active one-time price'));
   if (activePrices.length === 0) {
     return err(validation('Product requires an active price before publishing'));
   }

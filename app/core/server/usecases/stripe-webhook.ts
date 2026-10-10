@@ -17,6 +17,7 @@ import {
   type Coupon,
   type CouponCheckoutSession,
   type Order,
+  type CheckoutSnapshot,
   type ProductPrice,
   type StripeMode,
   type MemberSubscription,
@@ -34,10 +35,11 @@ import type {
   PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
+import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import { safeErrorMessage } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
-import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
+import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
   appendOrder,
@@ -50,6 +52,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+  checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   paymentRefunds: PaymentRefundRepository;
@@ -227,6 +230,7 @@ const couponPaymentContext = async (
 const couponStillAttributable = async (
   tenant: Tenant,
   context: CouponPaymentContext,
+  snapshot: CheckoutSnapshot | null,
   deps: StripeWebhookDeps,
 ): Promise<boolean> => {
   if (
@@ -242,6 +246,7 @@ const couponStillAttributable = async (
       code: context.coupon.code,
       email: context.session.memberEmail,
       productId: context.session.productId,
+      ...(snapshot?.salesLinkId == null ? {} : { productIds: snapshot.lines.map((line) => line.productId), products: snapshot.lines.map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
       priceId: context.session.priceId,
       priceKind: context.price?.kind ?? 'one_time',
       amountCents: context.session.originalCents,
@@ -292,6 +297,7 @@ const claimDiscountedOrder = async (
   memberId: string,
   context: CouponPaymentContext,
   billing: Order['billing'],
+  snapshot: CheckoutSnapshot | null,
   deps: StripeWebhookDeps,
 ): Promise<{ order: Order; coupon: Coupon } | null> => {
   if (deps.couponRedemptions === undefined) return null;
@@ -303,7 +309,7 @@ const claimDiscountedOrder = async (
       ? { order: existing, coupon: context.coupon }
       : null;
   }
-  if (!(await couponStillAttributable(tenant, context, deps))) return null;
+  if (!(await couponStillAttributable(tenant, context, snapshot, deps))) return null;
   const amountCents =
     event.checkoutSession?.amountTotalCents ?? context.session.finalCents;
   const discountCents =
@@ -324,6 +330,7 @@ const claimDiscountedOrder = async (
     couponId: context.coupon.id,
     discountCents,
     billing: billing ?? null,
+    ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
     createdAt: deps.clock.nowIso(),
   };
   const redemptionId = deps.ids.nextId();
@@ -368,6 +375,12 @@ const applyCheckoutCompleted = async (
     return err(validation('Stripe checkout metadata does not match the webhook tenant'));
   }
   if (!metadata.productId) return err(validation('Stripe checkout metadata is missing productId'));
+  const snapshot = metadata.checkoutSnapshotId == null ? null : await deps.checkoutSnapshots?.findById(tenant.id, metadata.checkoutSnapshotId) ?? null;
+  if (metadata.checkoutSnapshotId != null && snapshot === null) return err(validation('Checkout snapshot not found'));
+  if (metadata.salesLinkId != null && (snapshot === null || snapshot.salesLinkId !== metadata.salesLinkId)) return err(validation('Sales link checkout snapshot does not match'));
+  if (snapshot !== null && snapshot.lines[0]?.productId !== metadata.productId) return err(validation('Checkout snapshot product does not match'));
+  if (snapshot !== null && event.checkoutSession.amountTotalCents != null &&
+      event.checkoutSession.amountTotalCents + (event.checkoutSession.discountTotalCents ?? 0) !== snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0)) return err(validation('Checkout total does not match its lines'));
   const email = event.checkoutSession.email ?? metadata.memberEmail;
   if (!email) return err(validation('Stripe checkout session is missing the member email'));
 
@@ -405,12 +418,19 @@ const applyCheckoutCompleted = async (
       language: metadata.language ?? null,
       source: provider,
       mode: event.mode ?? 'live',
-      sendEmail: event.mode !== 'test',
+      sendEmail: false,
       allowUnpublished: true,
     },
     deps,
   );
   if (!fulfilled.ok) return fulfilled;
+  for (const line of snapshot?.lines.slice(1) ?? []) {
+    const additional = await fulfillEnrollment(tenant, {
+      email, productId: line.productId, expiresAt: null, language: metadata.language ?? null,
+      source: provider, mode: event.mode ?? 'live', sendEmail: false, allowUnpublished: true,
+    }, deps);
+    if (!additional.ok) return additional;
+  }
   const discounted =
     couponContext === null
       ? null
@@ -421,6 +441,7 @@ const applyCheckoutCompleted = async (
           fulfilled.value.memberId,
           couponContext,
           billing,
+          snapshot,
           deps,
         );
   if (couponCoversFullPrice && discounted === null) {
@@ -446,6 +467,7 @@ const applyCheckoutCompleted = async (
           product?.priceCents ??
           0,
         currency:
+          snapshot?.currency ??
           couponContext?.session.currency ??
           price?.currency ??
           product?.currency ??
@@ -457,9 +479,19 @@ const applyCheckoutCompleted = async (
           couponContext?.session.discountCents ??
           0,
         billing,
+        ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
       },
       deps,
     ));
+
+  if (event.mode !== 'test' && product !== null) {
+    const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
+    if (member === null) return err(internal('Purchased order member is missing'));
+    const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
+    const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, persistedOrder ?? paidOrder));
+    if (!queued.ok) return queued;
+    deps.dispatchEmail();
+  }
 
   if (price?.kind === 'recurring') {
     await startSubscription(
@@ -649,10 +681,12 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
+  const refundedProductIds = order.lines?.filter((line) => line.productType !== 'physical').map((line) => line.productId) ?? [order.productId];
+  for (const productId of refundedProductIds) {
   const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
     tenant.id,
     order.memberId,
-    order.productId,
+    productId,
   );
   let remainingAccess = remainingOrders.some((candidate) => candidate.mode === order.mode && candidate.kind === 'one_time');
   if (!remainingAccess) {
@@ -670,7 +704,7 @@ const applyPaymentAdjustment = async (
       if (
         latest !== null && latest.mode === order.mode && subscription?.mode === order.mode &&
         ACCESS_RETAINING_ORDER_STATUSES.includes(latest.status) &&
-        subscription?.productId === order.productId &&
+        subscription?.productId === productId &&
         subscription.currentPeriodEnd >= deps.clock.nowIso()
       ) {
         remainingAccess = true;
@@ -679,8 +713,10 @@ const applyPaymentAdjustment = async (
     }
   }
   if (!remainingAccess) {
-    const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId, order.mode);
+    const grant = await deps.grants.findGrant(tenant.id, order.memberId, productId, order.mode);
     if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+  }
+
   }
 
   if (subscriptionToCancel !== null) {

@@ -226,3 +226,12 @@ describe('listProductPrices / deactivateProductPrice', () => {
     expect(h.contentVersionBumps).toEqual([]);
   });
 });
+
+
+it('rejects recurring prices for products collected in person', async () => {
+  const h = harness();
+  h.deps.products.findById = async () => ({ ...product, type: 'physical' });
+  const result = await createProductPrice({ identity: identity('owner') }, { productId: product.id, kind: 'recurring', interval: 'month', amountCents: 2900 }, h.deps);
+  expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.prices).toEqual([]);
+});

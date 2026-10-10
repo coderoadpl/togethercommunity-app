@@ -11,6 +11,51 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const LightDesktop: Story = { parameters: { viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };
 export const LightMobile: Story = { parameters: { viewport: { defaultViewport: 'mobile' } }, globals: { viewport: { value: 'mobile' } } };
+const actionFixture = (completed: boolean, next: 'unlocked' | 'locked' | 'none') => ({
+  ...fixture,
+  calls: {
+    ...fixture.calls,
+    'studentProgress:["course-js"]': {
+      ok: true,
+      value: {
+        progress: {
+          ...fixture.calls['studentProgress:["course-js"]'].value.progress,
+          completedLessonIds: completed ? ['lesson-js-variables-1'] : [],
+        },
+      },
+    },
+    'studentCourseStructure:["course-js"]': {
+      ok: true,
+      value: {
+        structure: {
+          ...fixture.calls['studentCourseStructure:["course-js"]'].value.structure,
+          modules: fixture.calls['studentCourseStructure:["course-js"]'].value.structure.modules
+            .filter((module) => next !== 'none' || module.id === 'module-js-basics')
+            .map((module) => ({
+              ...module,
+              chapters: module.chapters
+                .filter((chapter) => next !== 'none' || chapter.id !== 'chapter-js-functions')
+                .map((chapter) => ({
+                  ...chapter,
+                  lessons: chapter.lessons
+                    .filter((lesson) => next !== 'none' || lesson.lessonId !== 'lesson-js-variables-2')
+                    .map((lesson) => ({
+                      ...lesson,
+                      accessStatus: next === 'locked' && lesson.lessonId !== 'lesson-js-variables-1' && lesson.lessonId !== 'lesson-js-demo-video'
+                        ? 'not-accessible' : lesson.accessStatus,
+                    })),
+                })),
+            })),
+        },
+      },
+    },
+  },
+});
+
+export const NotCompleted: Story = { parameters: { fixture: actionFixture(false, 'unlocked') }, globals: { viewport: { value: 'mobile' } } };
+export const Completed: Story = { parameters: { fixture: actionFixture(true, 'unlocked') }, globals: { viewport: { value: 'mobile' } } };
+export const NextLocked: Story = { parameters: { fixture: actionFixture(false, 'locked') }, globals: { viewport: { value: 'mobile' } } };
+export const FinalLesson: Story = { parameters: { fixture: actionFixture(false, 'none') }, globals: { viewport: { value: 'mobile' } } };
 export const Acme: Story = {
   parameters: {
     fixture: {

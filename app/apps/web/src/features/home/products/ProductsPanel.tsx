@@ -333,7 +333,7 @@ export const ProductsPanel = () => {
   return (
     <PanelPage
       title={t.sections.products}
-      action={<Button component={Link} to="/panel/products/new" variant="contained">+ {t.common.add}</Button>}
+      action={<Stack direction="row" spacing={1}><Button component={Link} to="/panel/products/sales-links">{t.salesLinks.heading}</Button><Button component={Link} to="/panel/products/new" variant="contained">+ {t.common.add}</Button></Stack>}
     >
       {accessIssues.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(accessIssues.error, t), retry: { label: t.common.retry, onRetry: () => void accessIssues.refetch() } }} /> : null}
       {spaces.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} /> : null}

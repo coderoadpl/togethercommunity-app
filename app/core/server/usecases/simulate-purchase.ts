@@ -1,16 +1,18 @@
 import {
   err,
   normalizeEmail,
-  notFound,
   ok,
   validation,
   type AppError,
-  type ProductPrice,
   type Result,
   type BillingData,
 } from '#core/domain/index.js';
 
-import type { AuthPort, MemberRepository, ProductRepository, PurchaseRepository } from '../ports.js';
+import type { AuthPort, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import type { SalesLinkRepository } from '../sales-link-ports.js';
+import { buildCheckoutLines } from './checkout-lines.js';
+import { validateCheckoutSelection } from './checkout.js';
+import { createOrRenewGrant } from './grant-window.js';
 import { ensureMember } from './ensure-member.js';
 import { appendOrder, startSubscription, type SubscriptionLifecycleDeps } from './subscription-lifecycle.js';
 
@@ -27,11 +29,18 @@ export interface SimulatePurchaseDeps extends SubscriptionLifecycleDeps {
   purchases: PurchaseRepository;
   members: MemberRepository;
   authPort: AuthPort;
+  tenants?: TenantRepository;
+  salesLinks?: SalesLinkRepository;
+  paymentTransaction?: {
+    run<T>(operation: (transaction: Pick<SimulatePurchaseDeps, 'members' | 'orders' | 'grants'>) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  };
 }
 
 export interface SimulatePurchaseInputData {
   email: string;
   productId: string;
+  salesLinkId?: string;
+  salesLinkSlug?: string;
   priceId?: string;
   billing?: BillingData;
 }
@@ -41,22 +50,28 @@ export const simulatePurchase = async (
   input: SimulatePurchaseInputData,
   deps: SimulatePurchaseDeps,
 ): Promise<Result<SimulatePurchaseResult, AppError>> => {
-  const product = await deps.products.findById(tenantId, input.productId);
-  if (!product || !product.published) {
-    return err(notFound(`No published product "${input.productId}" in this tenant`));
-  }
-
-  let price: ProductPrice | null = null;
-  if (input.priceId !== undefined) {
-    price = await deps.prices.findById(tenantId, input.priceId);
-    if (!price || price.productId !== product.id) {
-      return err(notFound(`No price "${input.priceId}" for this product`));
-    }
-    if (!price.active || price.imported === true) return err(validation('This price is no longer active'));
-  }
-
-  if (product.type === 'membership' && price?.kind !== 'recurring') {
-    return err(validation('Membership products require a recurring price'));
+  const selection = await validateCheckoutSelection(tenantId, input, deps);
+  if (!selection.ok) return selection;
+  const { product, price } = selection.value;
+  const built = await buildCheckoutLines(tenantId, selection.value, deps);
+  if (!built.ok) return built;
+  if (selection.value.salesLinkId !== undefined || product.type === 'physical') {
+    if (deps.paymentTransaction === undefined) return err(validation('Simulated purchase transaction is not configured'));
+    return deps.paymentTransaction.run(async (transaction) => {
+      const member = await ensureMember(tenantId, input.email, { ...deps, members: transaction.members });
+      if (!member.ok) return member;
+      for (const line of built.value.lines) {
+        if (line.productType === 'physical') continue;
+        await createOrRenewGrant(tenantId, { memberId: member.value.id, productId: line.productId, expiresAt: null, source: 'simulated' }, { ...deps, grants: transaction.grants });
+      }
+      const order = await appendOrder(tenantId, {
+        memberId: member.value.id, productId: product.id, priceId: price?.id ?? null,
+        kind: 'one_time', status: 'paid', amountCents: built.value.totalCents, currency: built.value.currency,
+        provider: 'simulated', providerObjectIds: { checkoutSession: `sim_cs_${deps.ids.nextId()}` },
+        billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
+      }, { ...deps, orders: transaction.orders });
+      return ok({ memberId: member.value.id, productId: product.id, alreadyOwned: false, subscriptionId: null, orderId: order.id });
+    });
   }
 
   if (price?.kind === 'recurring') {
@@ -119,7 +134,8 @@ export const simulatePurchase = async (
         priceId: price?.id ?? null,
         kind: 'one_time',
         status: 'paid',
-        amountCents: price?.amountCents ?? product.priceCents,
+        amountCents: built.value.totalCents,
+        lines: built.value.lines,
         currency: price?.currency ?? product.currency,
         provider: 'simulated',
         providerObjectIds: { checkoutSession: `sim_cs_${deps.ids.nextId()}` },

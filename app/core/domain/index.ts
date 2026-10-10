@@ -50,6 +50,7 @@ export * from './tenant-setup.js';
 export * from './stream-video.js';
 export * from './payment.js';
 export * from './commerce.js';
+export * from './order-vat.js';
 export * from './coupon.js';
 export * from './invoice.js';
 export * from './fa3.js';
@@ -86,3 +87,6 @@ export * from './operator-tenant.js';
 
 export * from './lesson-editions.js';
 export * from './survey.js';
+
+export { productVatRateSchema, resolveProductVat, defaultProductVat, splitProductGross, type ProductVatRate } from './product-vat.js';
+export * from './sales-link.js';

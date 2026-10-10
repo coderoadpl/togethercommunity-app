@@ -6,6 +6,7 @@ import { actions } from '../../../api.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { MarkdownEditor } from '../../../components/ui/MarkdownEditor.js';
 import { PostContent } from '../../../components/ui/PostContent.js';
+import { nativeValidityProps } from '../../../components/ui/native-validity.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { SurveyForm } from './SurveyForm.js';
 
@@ -37,9 +38,9 @@ export const SurveyEditor = ({ survey, onSave, onCancel, pending = false, error,
   };
   return <Stack spacing={3} data-testid="survey-editor">
     <SectionCard title={survey === null ? t.surveys.create : t.surveys.edit} description={t.surveys.editHelp}><Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); save(); }}>
-      <TextField label={t.surveys.internalTitle} value={title} onChange={(event) => setTitle(event.target.value)} required slotProps={{ htmlInput: { maxLength: 200 } }} />
-      <TextField label={t.surveys.question} value={question} onChange={(event) => setQuestion(event.target.value)} required slotProps={{ htmlInput: { maxLength: 1000 } }} />
-      <TextField label={t.surveys.slug} value={slug} onChange={(event) => setSlug(event.target.value)} required slotProps={{ htmlInput: { maxLength: 80 } }} />
+      <TextField label={t.surveys.internalTitle} value={title} onChange={(event) => setTitle(event.target.value)} required slotProps={{ htmlInput: { maxLength: 200, ...nativeValidityProps(t.common.requiredField) } }} />
+      <TextField label={t.surveys.question} value={question} onChange={(event) => setQuestion(event.target.value)} required slotProps={{ htmlInput: { maxLength: 1000, ...nativeValidityProps(t.common.requiredField) } }} />
+      <TextField label={t.surveys.slug} value={slug} onChange={(event) => setSlug(event.target.value)} required slotProps={{ htmlInput: { maxLength: 80, ...nativeValidityProps(t.common.requiredField) } }} />
       <TextField select label={t.surveys.type} value={type} onChange={(event) => { const next = event.target.value === 'stars' ? 'stars' : 'nps'; setType(next); setFirstMax(next === 'stars' ? 3 : 6); setSecondMax(next === 'stars' ? 4 : 8); }}><MenuItem value="nps">{t.surveys.nps}</MenuItem><MenuItem value="stars">{t.surveys.stars}</MenuItem></TextField>
       <FormControlLabel control={<Switch checked={commentEnabled} onChange={(_, checked) => setCommentEnabled(checked)} />} label={t.surveys.commentEnabled} />
       {commentEnabled ? <TextField label={t.surveys.commentPrompt} value={commentPrompt} onChange={(event) => setCommentPrompt(event.target.value)} slotProps={{ htmlInput: { maxLength: 500 } }} /> : null}

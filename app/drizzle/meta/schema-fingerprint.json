@@ -1,6 +1,6 @@
 {
-  "hash": "3a243e41988bf7b3bca4a2386ebc3f296c3a8d9419c0051c55c58ab7e873fa2b",
-  "shortId": "3a243e41988b",
+  "hash": "c1ab6fc2d895960ca45b708a3549b0c49e0b4f07a6c8ab011abb794aa991f63b",
+  "shortId": "c1ab6fc2d895",
   "schema": {
     "constraints": [
       {
@@ -54,9 +54,19 @@
         "table": "coupons"
       },
       {
+        "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
+        "name": "sales_links_window_check",
+        "table": "sales_links"
+      },
+      {
         "definition": "CHECK (((value >= 0) AND ((kind <> 'percent'::text) OR (value <= 100))))",
         "name": "coupons_value_check",
         "table": "coupons"
+      },
+      {
+        "definition": "CHECK (((vat_rate IS NULL) OR (vat_rate = ANY (ARRAY['5'::jsonb, '8'::jsonb, '23'::jsonb, '\"exempt\"'::jsonb]))))",
+        "name": "products_vat_rate_check",
+        "table": "products"
       },
       {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
@@ -125,6 +135,11 @@
       },
       {
         "definition": "CHECK ((revision > 0))",
+        "name": "sales_links_revision_check",
+        "table": "sales_links"
+      },
+      {
+        "definition": "CHECK ((revision > 0))",
         "name": "survey_events_revision_check",
         "table": "survey_events"
       },
@@ -152,6 +167,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
+        "name": "sales_link_events_type_check",
+        "table": "sales_link_events"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text])))",
@@ -455,6 +475,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "checkout_snapshots_tenant_id_fkey",
+        "table": "checkout_snapshots"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "consent_confirmation_tokens_tenant_id_tenants_id_fk",
         "table": "consent_confirmation_tokens"
       },
@@ -725,6 +750,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_issue_events_tenant_id_fkey",
+        "table": "order_issue_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "orders_tenant_id_tenants_id_fk",
         "table": "orders"
       },
@@ -777,6 +807,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "products_tenant_id_tenants_id_fk",
         "table": "products"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "sales_link_events_tenant_id_fkey",
+        "table": "sales_link_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "sales_links_tenant_id_fkey",
+        "table": "sales_links"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1150,6 +1190,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "checkout_snapshots_pkey",
+        "table": "checkout_snapshots"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "consent_confirmation_tokens_pkey",
         "table": "consent_confirmation_tokens"
       },
@@ -1405,6 +1450,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "sales_links_pkey",
+        "table": "sales_links"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "scheduler_run_tenants_pkey",
         "table": "scheduler_run_tenants"
       },
@@ -1639,6 +1689,16 @@
         "table": "marketing_member_sync_jobs"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, order_id, product_id, issued_count)",
+        "name": "order_issue_events_pkey",
+        "table": "order_issue_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, sales_link_id, revision)",
+        "name": "sales_link_events_pkey",
+        "table": "sales_link_events"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, snapshot_id, contact_id)",
         "name": "marketing_campaign_audience_contacts_tenant_id_snapshot_id_cont",
         "table": "marketing_campaign_audience_contacts"
@@ -1687,6 +1747,11 @@
       },
       {
         "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION capture_single_order_line() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF NEW.lines = '[]'::jsonb THEN NEW.lines := order_single_product_line(NEW.tenant_id, NEW.product_id, NEW.amount_cents + NEW.discount_cents); END IF; RETURN NEW; END; $function$",
+        "name": "capture_single_order_line"
+      },
+      {
+        "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION marketing_member_directory_changed() RETURNS trigger LANGUAGE plpgsql AS $function$ DECLARE address text; contact record; now_iso text := to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'); BEGIN FOR address IN SELECT DISTINCT value COLLATE \"C\" AS value FROM unnest(ARRAY[lower(btrim(NEW.email)), CASE WHEN TG_OP = 'UPDATE' THEN lower(btrim(OLD.email)) ELSE NULL END]) value WHERE value IS NOT NULL ORDER BY value COLLATE \"C\" LOOP PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':' || address, 0)); END LOOP; FOR contact IN SELECT * FROM marketing_contacts WHERE tenant_id = NEW.tenant_id AND member_id = NEW.id AND (NEW.deleted_at IS NOT NULL OR email <> lower(btrim(NEW.email))) FOR UPDATE LOOP UPDATE marketing_contacts SET member_id = NULL, updated_at = now_iso WHERE tenant_id = NEW.tenant_id AND id = contact.id; PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':contact:' || contact.id, 1)); INSERT INTO marketing_directory_events (id, tenant_id, subject_kind, subject_id, sequence, type, actor, import_id, payload, occurred_at, created_at) SELECT gen_random_uuid()::text, NEW.tenant_id, 'contact', contact.id, coalesce(max(sequence), 0) + 1, 'member_unlinked', 'member_projection', NULL, '{}'::jsonb, now_iso, now_iso FROM marketing_directory_events WHERE tenant_id = NEW.tenant_id AND subject_kind = 'contact' AND subject_id = contact.id; END LOOP; IF NEW.deleted_at IS NULL THEN FOR contact IN SELECT * FROM marketing_contacts WHERE tenant_id = NEW.tenant_id AND email = lower(btrim(NEW.email)) AND member_id IS NULL FOR UPDATE LOOP UPDATE marketing_contacts SET member_id = NEW.id, updated_at = now_iso WHERE tenant_id = NEW.tenant_id AND id = contact.id; PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id || ':contact:' || contact.id, 1)); INSERT INTO marketing_directory_events (id, tenant_id, subject_kind, subject_id, sequence, type, actor, import_id, payload, occurred_at, created_at) SELECT gen_random_uuid()::text, NEW.tenant_id, 'contact', contact.id, coalesce(max(sequence), 0) + 1, 'member_linked', 'member_projection', NULL, '{}'::jsonb, now_iso, now_iso FROM marketing_directory_events WHERE tenant_id = NEW.tenant_id AND subject_kind = 'contact' AND subject_id = contact.id; END LOOP; END IF; INSERT INTO marketing_member_sync_jobs (tenant_id, member_id, revision, status, attempts, next_attempt_at, updated_at) VALUES (NEW.tenant_id, NEW.id, 1, CASE WHEN NEW.deleted_at IS NULL THEN 'pending' ELSE 'completed' END, 0, now_iso, now_iso) ON CONFLICT (tenant_id, member_id) DO UPDATE SET revision = marketing_member_sync_jobs.revision + 1, status = EXCLUDED.status, attempts = 0, next_attempt_at = now_iso, locked_by = NULL, locked_until = NULL, last_error = NULL, updated_at = now_iso; RETURN NEW; END; $function$",
         "name": "marketing_member_directory_changed"
       },
@@ -1704,6 +1769,11 @@
         "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION project_marketing_signup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN UPDATE marketing_signup_submissions SET confirmed_at = NEW.occurred_at WHERE tenant_id = NEW.tenant_id AND consent_id = NEW.previous_id AND confirmed_at IS NULL; RETURN NEW; END; $function$",
         "name": "project_marketing_signup_confirmation"
+      },
+      {
+        "arguments": "order_tenant_id text, order_product_id text, gross_cents integer",
+        "definition": "CREATE OR REPLACE FUNCTION order_single_product_line(order_tenant_id text, order_product_id text, gross_cents integer) RETURNS jsonb LANGUAGE sql STABLE AS $function$ SELECT jsonb_build_array(jsonb_build_object( 'productId', p.id, 'name', p.title, 'productType', p.type, 'grossCents', gross_cents, 'netCents', CASE WHEN vat.rate IN ('5'::jsonb, '8'::jsonb, '23'::jsonb) THEN round(gross_cents::numeric * 100 / (100 + (vat.rate::text)::integer)) ELSE gross_cents END, 'vatRate', vat.rate, 'vatCents', CASE WHEN vat.rate IN ('5'::jsonb, '8'::jsonb, '23'::jsonb) THEN gross_cents - round(gross_cents::numeric * 100 / (100 + (vat.rate::text)::integer)) ELSE 0 END, 'vatExemptionBasis', CASE WHEN vat.rate = '\"exempt\"'::jsonb THEN coalesce(p.vat_exemption_basis, t.invoice_exemption_basis) ELSE NULL END, 'vatExemptionBasisKind', CASE WHEN vat.rate = '\"exempt\"'::jsonb THEN CASE WHEN p.vat_exemption_basis IS NULL OR p.vat_exemption_basis = t.invoice_exemption_basis THEN t.invoice_exemption_basis_kind ELSE 'other' END ELSE NULL END, 'issuedCount', CASE WHEN p.type = 'physical' THEN 0 ELSE NULL END )) FROM products p JOIN tenants t ON t.id = p.tenant_id CROSS JOIN LATERAL (SELECT p.vat_rate AS rate) vat WHERE p.id = order_product_id AND p.tenant_id = order_tenant_id; $function$",
+        "name": "order_single_product_line"
       }
     ],
     "indexes": [
@@ -2193,6 +2263,11 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE INDEX orders_tenant_sales_link_idx ON orders USING btree (tenant_id, sales_link_id)",
+        "name": "orders_tenant_sales_link_idx",
+        "table": "orders"
+      },
+      {
         "definition": "CREATE INDEX platform_audit_events_created_idx ON platform_audit_events USING btree (created_at, id)",
         "name": "platform_audit_events_created_idx",
         "table": "platform_audit_events"
@@ -2598,6 +2673,11 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE UNIQUE INDEX orders_verification_token_uidx ON orders USING btree (verification_token)",
+        "name": "orders_verification_token_uidx",
+        "table": "orders"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX post_reactions_post_user_emoji_uidx ON post_reactions USING btree (post_id, user_id, emoji)",
         "name": "post_reactions_post_user_emoji_uidx",
         "table": "post_reactions"
@@ -2651,6 +2731,11 @@
         "definition": "CREATE UNIQUE INDEX products_tenant_slug_uidx ON products USING btree (tenant_id, slug)",
         "name": "products_tenant_slug_uidx",
         "table": "products"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX sales_links_tenant_slug_uidx ON sales_links USING btree (tenant_id, slug) WHERE (deleted_at IS NULL)",
+        "name": "sales_links_tenant_slug_uidx",
+        "table": "sales_links"
       },
       {
         "definition": "CREATE UNIQUE INDEX scheduler_run_tenants_run_tenant_uidx ON scheduler_run_tenants USING btree (run_id, tenant_id)",
@@ -3178,6 +3263,22 @@
             "name": "title",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "vat_exemption_basis",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "vat_rate",
+            "notNull": false,
+            "type": "jsonb"
           }
         ],
         "name": "products"
@@ -3396,6 +3497,163 @@
           }
         ],
         "name": "course_lessons"
+      },
+      {
+        "columns": [
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "lines",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'live'::text",
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'{}'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "provider_object_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "discount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "replace(((gen_random_uuid())::text || (gen_random_uuid())::text), '-'::text, ''::text)",
+            "generated": "",
+            "identity": "",
+            "name": "verification_token",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "billing",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "coupon_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "price_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "orders"
       },
       {
         "columns": [
@@ -4625,139 +4883,6 @@
           }
         ],
         "name": "tenant_redirects"
-      },
-      {
-        "columns": [
-          {
-            "default": "'live'::text",
-            "generated": "",
-            "identity": "",
-            "name": "mode",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": "'{}'::jsonb",
-            "generated": "",
-            "identity": "",
-            "name": "provider_object_ids",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": "0",
-            "generated": "",
-            "identity": "",
-            "name": "discount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "amount_cents",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "billing",
-            "notNull": false,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "coupon_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "kind",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "member_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "price_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "status",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "orders"
       },
       {
         "columns": [
@@ -8095,6 +8220,131 @@
           }
         ],
         "name": "surveys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "active",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "description",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "heading",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "listed",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "title",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_from",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_to",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "sales_links"
       },
       {
         "columns": [
@@ -11494,6 +11744,59 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lines",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "checkout_snapshots"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "email",
             "notNull": true,
             "type": "text"
@@ -12717,6 +13020,59 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "issued_count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "staff_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_issue_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "last_refill_at",
             "notNull": true,
             "type": "timestamp with time zone"
@@ -12755,6 +13111,59 @@
           }
         ],
         "name": "marketing_throttle_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "sales_link_events"
       },
       {
         "columns": [
@@ -12878,6 +13287,11 @@
         "definition": "CREATE TRIGGER marketing_signup_confirmation_projection AFTER INSERT ON marketing_consents FOR EACH ROW WHEN ((new.status = 'confirmed'::text)) EXECUTE FUNCTION project_marketing_signup_confirmation()",
         "name": "marketing_signup_confirmation_projection",
         "table": "marketing_consents"
+      },
+      {
+        "definition": "CREATE TRIGGER orders_capture_single_line BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION capture_single_order_line()",
+        "name": "orders_capture_single_line",
+        "table": "orders"
       },
       {
         "definition": "CREATE TRIGGER orders_paid_billing_immutable BEFORE UPDATE OF billing ON orders FOR EACH ROW EXECUTE FUNCTION prevent_paid_order_billing_change()",

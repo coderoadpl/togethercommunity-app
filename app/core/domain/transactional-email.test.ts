@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
+import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
   directMessage,
@@ -12,6 +13,7 @@ import {
   lessonQuestion,
   magicLink,
   memberErasureRequestEmail,
+  purchaseEmailDetailsSchema,
   reputationAlertEmail,
   resetPassword,
   spaceEvent,
@@ -619,5 +621,142 @@ describe('directMessage', () => {
   it('names the sender in the subject in both languages', () => {
     expect(directMessage('pl', input)).toEqual(expectedTransactionalEmailPl.directMessage);
     expect(directMessage('en', input).subject).toBe('New message from Alex');
+  });
+});
+
+it.each(['en', 'pl'])('includes escaped purchase lines, an order number and a linked QR in %s', (language) => {
+  const verificationUrl = `https://shop.example.org/panel/orders/verify/${'a'.repeat(64)}`;
+  const qrImageUrl = `https://shop.example.org/api/public/orders/qr/${'a'.repeat(64)}`;
+  const message = welcomeSignIn(language, {
+    tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', productType: 'physical',
+    purchase: { orderNumber: 'order-42', verificationUrl, qrImageUrl, lines: ['Printed <material>', 'Digital companion'] },
+  });
+  expect(message.html).toContain('order-42');
+  expect(message.html).toContain('<li>Printed &lt;material&gt;</li><li>Digital companion</li>');
+  expect(message.html).toContain(`<a href="${verificationUrl}"><img src="${qrImageUrl}"`);
+  expect(message.text).toContain('- Printed <material>\n- Digital companion');
+  expect(message.text).toContain(verificationUrl);
+  expect(message.text).toContain(language === 'en' ? 'Order number' : transactionalEmailMessagesPl.purchase.orderNumber);
+});
+
+it.each(['en', 'pl'])('places the purchase block before the social footer in %s', (language) => {
+  const verificationUrl = `https://shop.example.org/panel/orders/verify/${'a'.repeat(64)}`;
+  const qrImageUrl = `https://shop.example.org/api/public/orders/qr/${'a'.repeat(64)}`;
+  const socialUrl = 'https://social.example.org/workspace';
+  const message = welcomeSignIn(language, {
+    tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', productType: 'physical',
+    purchase: { orderNumber: 'order-42', verificationUrl, qrImageUrl, lines: ['Printed material'] },
+    branding: { logoUrl: null, accentColor: null, socialLinks: [{ label: 'Community profile', url: socialUrl }] },
+  });
+  expect(message.html).toContain(`</a><p style="font-size:12px;margin-top:24px"><a href="${socialUrl}">Community profile</a></p>`);
+  expect(message.html.indexOf(qrImageUrl)).toBeLessThan(message.html.indexOf(socialUrl));
+  expect(message.html.match(/Community profile/g)).toHaveLength(1);
+  expect(message.text).toContain(`${verificationUrl}\n\nCommunity profile: ${socialUrl}`);
+  expect(message.text.match(/Community profile/g)).toHaveLength(1);
+});
+
+describe('purchase confirmation amounts', () => {
+  const purchase = {
+    orderNumber: 'order-42',
+    verificationUrl: 'https://shop.example.org/panel/orders/verify/token',
+    qrImageUrl: 'https://shop.example.org/api/public/orders/qr/token',
+    lines: [
+      { name: 'Printed <material>', grossCents: 4900, vatRate: 5 },
+      { name: 'Digital companion', grossCents: 2100, vatRate: 23 },
+      { name: 'Additional item', grossCents: 1000, vatRate: 8 },
+      { name: 'Included item', grossCents: 0, vatRate: null },
+      { name: 'Exempt item', grossCents: 0, vatRate: 'exempt' },
+    ],
+    currency: 'PLN',
+    totalCents: 8000,
+  };
+
+  it.each([
+    ['pl', 'PLN', ['49,00\u00a0z\u0142', '21,00\u00a0z\u0142', '10,00\u00a0z\u0142', '0,00\u00a0z\u0142'], '80,00\u00a0z\u0142'],
+    ['en', 'PLN', ['PLN\u00a049.00', 'PLN\u00a021.00', 'PLN\u00a010.00', 'PLN\u00a00.00'], 'PLN\u00a080.00'],
+    ['pl', 'EUR', ['49,00\u00a0€', '21,00\u00a0€', '10,00\u00a0€', '0,00\u00a0€'], '80,00\u00a0€'],
+    ['en', 'EUR', ['€49.00', '€21.00', '€10.00', '€0.00'], '€80.00'],
+  ] as const)('renders amounts, VAT, total and confirmation copy in %s with %s', (language, currency, amounts, total) => {
+    const details = purchaseEmailDetailsSchema.parse({ ...purchase, currency });
+    const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    const expected = language === 'pl' ? expectedPurchaseConfirmationPl : {
+      subject: 'Purchase confirmation order-42 — Workspace',
+      total: 'Total',
+      notInvoice: 'This purchase confirmation is not an invoice. If you need an invoice, contact us.',
+    };
+    const message = welcomeSignIn(language, {
+      tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: details,
+    });
+    expect(message.subject).toBe(expected.subject);
+    expect(message.html).toContain(`<thead><tr><th>${labels.item}</th><th>${labels.amount}</th><th>${labels.vat}</th></tr></thead>`);
+    expect(message.html).not.toContain('<ul>');
+    const vats = ['5\u00a0%', '23\u00a0%', '8\u00a0%', '—', language === 'pl' ? 'zw.' : 'exempt'];
+    details.lines.forEach((line, index) => {
+      if (typeof line === 'string') throw new Error('Expected a structured purchase line');
+      const amount = amounts[index] ?? amounts[3];
+      const escapedName = line.name.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+      expect(message.html).toContain(`<tr><td>${escapedName}</td><td>${amount}</td><td>${vats[index]}</td></tr>`);
+      const textLine = `- ${line.name} — ${amount}`;
+      expect(message.text).toContain(line.vatRate === null ? `${textLine}\n` : `${textLine} (${vats[index]})`);
+      if (line.vatRate === null) expect(message.text).not.toContain(`${textLine} (`);
+    });
+    expect(message.html).toContain(`<tr><td><strong>${expected.total}</strong></td><td><strong>${total}</strong></td><td></td></tr>`);
+    expect(message.text).toContain(`${expected.total}: ${total}`);
+    expect(message.html).toContain(`</table><p>${expected.notInvoice}</p>`);
+    expect(message.text).toContain(`\n\n${expected.notInvoice}\n\n${labels.verification}`);
+    expect(message.html.indexOf('order-42')).toBeLessThan(message.html.indexOf('<table>'));
+    expect(message.html).toContain(`<a href="${details.verificationUrl}"><img src="${details.qrImageUrl}"`);
+  });
+
+  it.each(['en', 'pl'])('retains name lists for legacy and mixed lines in %s', (language) => {
+    const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    for (const details of [
+      purchaseEmailDetailsSchema.parse({ ...purchase, currency: undefined, totalCents: undefined }),
+      purchaseEmailDetailsSchema.parse({ ...purchase, lines: ['Printed <material>', purchase.lines[1]] }),
+    ]) {
+      const message = welcomeSignIn(language, {
+        tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: details,
+      });
+      expect(message.html).toContain('<ul><li>Printed &lt;material&gt;</li><li>Digital companion</li>');
+      expect(message.html).not.toContain('<table>');
+      expect(message.text).toContain('- Printed <material>\n- Digital companion');
+      expect(message.subject).toBe(labels.subject('order-42', 'Workspace'));
+      expect(message.html).toContain(`</ul><p>${labels.notInvoice}</p>`);
+      expect(message.text).toContain(labels.notInvoice);
+    }
+  });
+
+  it('escapes the order number, workspace name and purchase URLs in HTML', () => {
+    const details = purchaseEmailDetailsSchema.parse({
+      ...purchase, orderNumber: 'order-<42>',
+      verificationUrl: `${purchase.verificationUrl}?a=1&b=2`,
+      qrImageUrl: `${purchase.qrImageUrl}?a=1&b=2`,
+    });
+    const message = welcomeSignIn('en', {
+      tenantName: 'Workspace <shop>', actionUrl: 'https://shop.example.org/sign-in', purchase: details,
+    });
+    expect(message.html).toContain('Workspace &lt;shop&gt;');
+    expect(message.html).toContain('order-&lt;42&gt;');
+    expect(message.html).toContain(`href="${purchase.verificationUrl}?a=1&amp;b=2"`);
+    expect(message.html).toContain(`src="${purchase.qrImageUrl}?a=1&amp;b=2"`);
+  });
+
+  it.each([
+    { currency: undefined }, { totalCents: undefined }, { currency: 'pln' }, { totalCents: -1 }, { totalCents: 1.5 },
+    { lines: [{ name: '', grossCents: 4900, vatRate: 5 }] },
+    { lines: [{ name: 'Item', grossCents: -1, vatRate: 5 }] },
+    { lines: [{ name: 'Item', grossCents: 1.5, vatRate: 5 }] },
+    { lines: [{ name: 'Item', grossCents: 4900, vatRate: 7 }] },
+  ])('rejects invalid purchase details: %j', (overrides) => {
+    expect(purchaseEmailDetailsSchema.safeParse({ ...purchase, ...overrides }).success).toBe(false);
+  });
+
+  it('accepts legacy strings and structured lines in the queued payload', () => {
+    for (const details of [purchase, { ...purchase, lines: ['Printed material'], currency: undefined, totalCents: undefined }]) {
+      expect(emailOutboxPayloadSchema.safeParse({
+        kind: 'welcome-sign-in', language: 'en', tenantName: 'Workspace',
+        actionUrl: 'https://shop.example.org/sign-in', purchase: details,
+      }).success).toBe(true);
+    }
   });
 });

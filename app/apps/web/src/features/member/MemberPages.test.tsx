@@ -394,3 +394,12 @@ describe('member pages', () => {
     expect(await screen.findByRole('heading', { name: en.student.productWithoutCoursesTitle })).toBeInTheDocument();
   });
 });
+
+it('shows physical purchases as collected in person without an access link', async () => {
+  server.use(http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [{ ...productsBody.products[0], id: 'physical-1', title: 'Printed workbook', type: 'physical', accessItems: [] }] } })));
+  await renderPage(MyProductsPage, '/my/products');
+  const product = within(await screen.findByTestId('my-product-physical-1'));
+  expect(product.getByText(en.salesLinks.collectedInPerson)).toBeVisible();
+  expect(product.queryByRole('link')).toBeNull();
+  expect(product.queryByTestId('grant-status-physical-1')).toBeNull();
+});

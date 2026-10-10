@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Editor } from '@tiptap/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -34,6 +35,21 @@ const ControlledEditor = ({
   );
 };
 
+const editorFromElement = (element: HTMLElement): Editor => {
+  if (!('editor' in element) || !(element.editor instanceof Editor)) {
+    throw new Error('Expected a Tiptap editor element');
+  }
+  return element.editor;
+};
+
+const selectDomText = (element: HTMLElement, from: number, to: number) => {
+  const text = element.querySelector('p')?.firstChild;
+  if (text === null || text === undefined) throw new Error('Expected editor text');
+  const selection = window.getSelection();
+  if (selection === null) throw new Error('Expected a DOM selection');
+  selection.setBaseAndExtent(text, to, text, from);
+};
+
 beforeAll(() => {
   document.elementFromPoint = () => document.activeElement;
   Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
@@ -41,6 +57,99 @@ beforeAll(() => {
 });
 
 describe('MarkdownEditor', () => {
+  it.each(['toolbar', 'shortcut'])('links the DOM selection when the internal selection lags via %s', async (entry) => {
+    const user = userEvent.setup();
+    render(<ControlledEditor initialValue="Text with a safe link" />);
+
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    const editor = editorFromElement(visualEditor);
+    act(() => {
+      visualEditor.focus();
+      editor.commands.setTextSelection({ from: 16, to: 22 });
+    });
+    selectDomText(visualEditor, 12, 21);
+    expect(window.getSelection()?.toString()).toBe('safe link');
+    expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe('e link');
+
+    if (entry === 'toolbar') {
+      const link = screen.getByRole('button', { name: en.markdownEditor.link });
+      fireEvent.mouseDown(link);
+      fireEvent.click(link);
+    } else {
+      fireEvent.keyDown(visualEditor, { key: 'k', ctrlKey: true });
+    }
+    const input = screen.getByRole('textbox', { name: en.markdownEditor.linkUrlLabel });
+    await user.clear(input);
+    await user.type(input, 'https://example.com/community');
+    await user.click(screen.getByRole('button', { name: en.markdownEditor.linkApply }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(visualEditor.querySelector('a')?.textContent).toBe('safe link');
+    expect(screen.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/community');
+    expect(screen.getByTestId('markdown-value').textContent).toBe('Text with a [safe link](https://example.com/community)');
+  });
+
+  it('toggles bold on and off at the caret without leaving a mark', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor initialValue="Text" />);
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    const editor = editorFromElement(visualEditor);
+    act(() => {
+      visualEditor.focus();
+      editor.commands.setTextSelection(5);
+    });
+    selectDomText(visualEditor, 4, 4);
+
+    const bold = screen.getByRole('button', { name: en.markdownEditor.bold });
+    await user.click(bold);
+    expect(bold).toHaveAttribute('aria-pressed', 'true');
+    await user.click(bold);
+    expect(bold).toHaveAttribute('aria-pressed', 'false');
+    await user.keyboard(' plain');
+
+    await waitFor(() => expect(screen.getByTestId('markdown-value').textContent).toBe('Text plain'));
+    expect(visualEditor.querySelector('strong')).toBeNull();
+  });
+
+  it('keeps bold and italic together when toggled before typing at the caret', async () => {
+    const user = userEvent.setup();
+    render(<ControlledEditor initialValue="Text" variant="compact" />);
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    const editor = editorFromElement(visualEditor);
+    act(() => {
+      visualEditor.focus();
+      editor.commands.setTextSelection(5);
+    });
+    selectDomText(visualEditor, 4, 4);
+
+    const bold = screen.getByRole('button', { name: en.markdownEditor.bold });
+    const italic = screen.getByRole('button', { name: en.markdownEditor.italic });
+    await user.click(bold);
+    await user.click(italic);
+    expect(bold).toHaveAttribute('aria-pressed', 'true');
+    expect(italic).toHaveAttribute('aria-pressed', 'true');
+    await user.keyboard('both');
+
+    await waitFor(() => expect(visualEditor.querySelector('strong em, em strong')).toHaveTextContent('both'));
+  });
+
+  it('dispatches no transaction on toolbar mousedown for equal selections', async () => {
+    render(<ControlledEditor initialValue="Text" />);
+    const visualEditor = await screen.findByTestId('markdown-editor-wysiwyg');
+    const editor = editorFromElement(visualEditor);
+    act(() => {
+      visualEditor.focus();
+      editor.commands.setTextSelection({ from: 1, to: 5 });
+    });
+    selectDomText(visualEditor, 0, 4);
+    const dispatch = vi.spyOn(editor.view, 'dispatch');
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: en.markdownEditor.bold }));
+
+    expect(dispatch).not.toHaveBeenCalled();
+    dispatch.mockRestore();
+  });
+
   it('round-trips supported Markdown structures through the visual editor', async () => {
     const value = [
       '# Document title',

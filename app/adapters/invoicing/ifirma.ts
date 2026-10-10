@@ -106,6 +106,9 @@ export const ifirmaInvoicePayload = (
         PKWiU: '',
         TypStawkiVat: 'PRC',
       };
+  const exemptionBases = input.positions === undefined
+    ? (input.vat.kind === 'exempt' ? [input.vat.basis] : [])
+    : [...new Set(input.positions.flatMap((line) => line.vat.kind === 'exempt' ? [line.vat.basis] : []))];
   return {
     Zaplacono: grossAmount,
     ZaplaconoNaDokumencie: grossAmount,
@@ -119,8 +122,10 @@ export const ifirmaInvoicePayload = (
     RodzajPodpisuOdbiorcy: 'BWO',
     WidocznyNumerBdo: false,
     Numer: null,
-    ...(input.vat.kind === 'exempt' ? { Uwagi: `Zwolnienie z VAT: ${input.vat.basis}` } : {}),
-    Pozycje: [position],
+    ...(exemptionBases.length > 0 ? { Uwagi: `Zwolnienie z VAT: ${exemptionBases.join('; ')}` } : {}),
+    Pozycje: input.positions === undefined ? [position] : input.positions.map((line) => line.vat.kind === 'exempt'
+      ? { StawkaVat: null, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: line.vat.basis }
+      : { StawkaVat: line.vat.percent / 100, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' }),
     Kontrahent: billing === null
       ? {
           Nazwa: 'Klient detaliczny',

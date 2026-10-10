@@ -61,6 +61,11 @@ volumes. Back up PostgreSQL before upgrades. To upgrade, check out the intended
 release and run `docker compose up -d --build` again. Inspect health and logs
 with `docker compose ps` and `docker compose logs -f app`.
 
+Images are pulled from the AWS public mirror of Docker official images and from GitHub's registry for Mailpit because Docker Hub rate-limits anonymous pulls.
+ECR Public allows one unauthenticated pull per second, so the quickstart probe,
+Caddyfile test, and browser suites pull images one at a time with retries for
+throttling and transient network failures.
+
 ## Clone-to-panel budget
 
 `pnpm run quickstart:probe` performs a clean local Git clone, builds the real

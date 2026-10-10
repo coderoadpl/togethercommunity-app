@@ -50,6 +50,7 @@ const StripeConfiguration = ({
       await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
     },
   };
+  const probe = useMutation(actions.probeStripePermissions);
   const removeLive = useMutation({ ...actions.deleteStripeSecrets, ...removalCallbacks });
   const removeTest = useMutation({ ...actions.removeStripeTestMode, ...removalCallbacks });
   const remove = slot === 'test' ? removeTest : removeLive;
@@ -112,6 +113,26 @@ const StripeConfiguration = ({
           </Button>
         )}
       </Box>
+      <Button
+        type="button"
+        variant="outlined"
+        data-testid={`stripe-${slot}-probe-permissions`}
+        disabled={maskedPreview === null || mode !== slot || probe.isPending}
+        onClick={() => probe.mutate({ mode: slot })}
+      >
+        {t.integrations.stripeProbePermissions}
+      </Button>
+      <Typography variant="caption" component="p">{t.integrations.stripeProbeNote}</Typography>
+      {probe.isError ? <Alert severity="error">{localizePanelError(probe.error, t)}</Alert> : null}
+      {probe.data?.checks.map((check) => (
+        <Box key={check.resource} sx={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Typography>{t.integrations.stripeProbeResources[check.resource]} · {check.permission === 'read' ? t.integrations.stripeProbeRead : t.integrations.stripeProbeWrite}</Typography>
+          <Chip size="small" color={check.status === 'ok' ? 'success' : check.status === 'missing' ? 'warning' : 'error'}
+            label={t.integrations.stripeProbeStatuses[check.status]} />
+          {check.reason === undefined ? null : <Typography variant="caption">{t.integrations.stripeProbeReasons[check.reason]}</Typography>}
+          {check.detail === undefined ? null : <Typography variant="caption">{check.detail}</Typography>}
+        </Box>
+      ))}
       {configure.isSuccess ? (
         <Typography variant="caption" component="p" data-testid={`stripe-${slot === 'test' ? 'test-' : ''}configured`}>
           {t.integrations.stripeConfigured}

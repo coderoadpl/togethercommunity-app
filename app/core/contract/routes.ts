@@ -153,6 +153,8 @@ import {
   integrationProviderSchema,
   providerDiagnosticSchema,
   configureStripeInputSchema,
+  stripeProbePermissionsInputSchema,
+  stripeProbePermissionsOutputSchema,
   stripeModeSchema,
   postReportSchema,
   reportPostInputSchema,
@@ -1554,6 +1556,8 @@ export const storageConfigureOutputSchema = z.object({
   secret: tenantSecretMaskedSchema,
 });
 
+export { stripeProbePermissionsInputSchema, stripeProbePermissionsOutputSchema };
+
 export const stripeConfigureInputSchema = configureStripeInputSchema;
 
 export type StripeConfigureInput = z.input<typeof stripeConfigureInputSchema>;
@@ -1907,6 +1911,7 @@ export const API_ROUTES = {
   invoiceUpoDownload: { method: 'GET', path: '/api/invoices/:invoiceId/upo' },
   memberInvoiceDownload: { method: 'GET', path: '/api/me/invoices/:invoiceId/download' },
   ordersExport: { method: 'GET', path: '/api/orders/export' },
+  consumerSalesSummary: { method: 'GET', path: '/api/orders/consumer-sales-summary' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   couponStats: { method: 'GET', path: '/api/coupons' },
   couponOptions: { method: 'GET', path: '/api/coupons/options' },
@@ -2051,6 +2056,7 @@ export const API_ROUTES = {
   telemetryDisconnect: { method: 'POST', path: '/api/integrations/telemetry/disconnect' },
   storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
   storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
+  stripeProbePermissions: { method: 'POST', path: '/api/integrations/stripe/probe' },
   stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
@@ -2286,6 +2292,7 @@ export const API_PATHS = {
   invoiceUpoDownload: API_ROUTES.invoiceUpoDownload.path,
   memberInvoiceDownload: API_ROUTES.memberInvoiceDownload.path,
   ordersExport: API_ROUTES.ordersExport.path,
+  consumerSalesSummary: API_ROUTES.consumerSalesSummary.path,
   salesSummary: API_ROUTES.salesSummary.path,
   couponStats: API_ROUTES.couponStats.path,
   couponOptions: API_ROUTES.couponOptions.path,
@@ -2423,6 +2430,7 @@ export const API_PATHS = {
   telemetryDisconnect: API_ROUTES.telemetryDisconnect.path,
   storageProbe: API_ROUTES.storageProbe.path,
   storageConfigure: API_ROUTES.storageConfigure.path,
+  stripeProbePermissions: API_ROUTES.stripeProbePermissions.path,
   stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,

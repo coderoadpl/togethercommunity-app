@@ -2,7 +2,7 @@ import type { ElementType } from 'react';
 import { Box, Button, ButtonBase } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
-import { PanelNavItem } from '../../../theme.js';
+import { MEMBER_BOTTOM_BAR_HEIGHT, PanelNavItem } from '../../../theme.js';
 
 export type ShellLinkProps = {
   component?: ElementType;
@@ -64,6 +64,8 @@ export const IdentityRow = styled(Box)<ShellLinkProps>(({ theme }) => ({
 
 export const TabBar = styled('nav')(({ theme }) => ({
   position: 'fixed',
+  boxSizing: 'border-box',
+  height: `calc(${MEMBER_BOTTOM_BAR_HEIGHT} + env(safe-area-inset-bottom))`,
   bottom: 0,
   left: 0,
   right: 0,

@@ -314,6 +314,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
 | `POST /api/checkout/stripe-test-session` | authenticated | mutating | stripe test session |
 | `POST /api/integrations/stripe/test-mode/remove` | authenticated | mutating | stripe test remove |
+| `POST /api/integrations/stripe/probe` | authenticated | mutating | stripe probe permissions |
 | `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |
@@ -330,6 +331,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
 | `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |
+| `GET /api/orders/consumer-sales-summary` | authenticated | read | consumer sales summary |
 | `GET /api/orders/export` | authenticated | read | orders export |
 | `GET /api/orders/:orderId` | authenticated | read | order |
 | `POST /api/orders/:orderId/invoice` | authenticated | mutating | invoice issue |

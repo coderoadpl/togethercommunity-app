@@ -202,6 +202,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/checkout/stripe-test-session') return 'product:write';
   if (path === '/api/integrations/stripe/test-mode/remove') return 'tenant:secret:write';
+  if (path === '/api/integrations/stripe/probe') return 'tenant:secret:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
@@ -221,6 +222,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
+  if (path === '/api/orders/consumer-sales-summary') return 'order:export';
   if (path === '/api/orders/export') return 'order:export';
   if (path === '/api/sales/summary') return 'sales:read';
   if (path.includes('/invoice') || path.includes('/invoices/')) {
@@ -563,7 +565,7 @@ const beforeForUseCase = (
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
-  if (file === 'configure-stripe.ts') return owner;
+  if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;
   if (file === 'stripe-test-session.ts') return staff;
   if (capability === 'integration:test') return owner;
   if (file === 'community.ts' && name === 'purgePost') return staff;

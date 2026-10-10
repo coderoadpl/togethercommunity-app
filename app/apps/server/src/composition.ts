@@ -1,3 +1,5 @@
+import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
+import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
 import type { OrderVerificationRepository } from '#core/server/index.js';
@@ -405,6 +407,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
   telemetryTenantDirectory: TelemetryTenantDirectory;
   telemetryStore?: TelemetryStoreDeps;
@@ -1411,6 +1414,7 @@ export const createDeps = (
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
     orders: orderRepository,
+    consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),

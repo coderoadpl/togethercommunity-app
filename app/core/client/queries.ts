@@ -1,3 +1,5 @@
+import type { StripeProbePermissionsInput } from '#core/domain/index.js';
+import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
 import type {
@@ -860,6 +862,21 @@ export const refreshInvoiceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...salesScopes.all(), 'invoice-refresh'],
     call: (invoiceId: string) => api.refreshInvoice(invoiceId),
+  });
+
+export const consumerSalesSummaryQuery = (api: ApiClient, input: ConsumerSalesQuery) =>
+  defineQuery({
+    queryKey: [...salesScopes.all(), 'consumer-sales-summary', input],
+    staleTime: 0,
+    call: ({ signal }) => api.consumerSalesSummary(input, signal),
+  });
+
+export const consumerSalesExportQuery = (api: ApiClient, input: ConsumerSalesQuery) =>
+  defineQuery({
+    queryKey: [...salesScopes.all(), 'consumer-sales-export', input],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportConsumerSales(input, signal),
   });
 
 export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>
@@ -2070,3 +2087,9 @@ export const surveyActions = (api: ApiClient) => ({
   preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
 });
+
+export const probeStripePermissionsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'stripe-probe-permissions'],
+    call: (input: StripeProbePermissionsInput) => api.probeStripePermissions(input),
+  });

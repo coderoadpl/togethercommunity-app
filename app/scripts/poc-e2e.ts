@@ -45,6 +45,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { passwordFixture } from './password-fixture.js';
+import { pullImages } from './docker-pull.js';
 
 type Run = RunResult;
 
@@ -66,6 +67,7 @@ function assert(condition: boolean, message: string): asserts condition {
 const startPostgres = async (): Promise<void> => {
   if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
+  await pullImages(['public.ecr.aws/docker/library/postgres:16']);
   const started = await run('docker', [
     'run',
     '--rm',

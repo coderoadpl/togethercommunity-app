@@ -12,6 +12,7 @@ import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { TENANT_HEADER } from '#core/contract/index.js';
 
 import { verifyMarketingSignupBrowser } from './marketing-signup-e2e.js';
+import { pullImages } from './docker-pull.js';
 import {
   bootServer,
   delay,
@@ -55,6 +56,7 @@ const assert: (condition: boolean, message: string) => asserts condition = (cond
 const startPostgres = async (): Promise<void> => {
   if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
+  await pullImages(['public.ecr.aws/docker/library/postgres:16']);
   const result = await run('docker', [
     'run', '--rm', '-d', '--name', verifyContainer,
     '-e', 'POSTGRES_USER=together', '-e', 'POSTGRES_PASSWORD=together', '-e', 'POSTGRES_DB=together',

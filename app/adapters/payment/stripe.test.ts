@@ -1,3 +1,5 @@
+import { probeStripePermissions } from '#core/server/index.js';
+import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { ok } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
@@ -658,4 +660,123 @@ it('reassembles numerically ordered bundle product metadata chunks in a signed w
   }
   const payload = JSON.stringify({ id: 'evt_bundle_chunks', type: 'checkout.session.completed', data: { object: { id: 'cs_bundle_chunks', metadata } } });
   expect(await verify(payload)).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: productList } } } });
+});
+
+const permissionProbeHarness = (failures: Record<string, { status: number; message: string; code?: string }> = {}) => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async (_tenantId, key) => ok(key === 'stripe.testRestrictedKey' ? 'rk_test_probe' : 'rk_live_probe') },
+    clientFactory: (key) => new Stripe(key, {
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        const request = new Request(input, init);
+        requests.push(request);
+        const path = new URL(request.url).pathname;
+        const failed = failures[`${request.method} ${path}`];
+        if (failed !== undefined) return stripeJson({ error: { type: 'invalid_request_error', message: failed.message, code: failed.code } }, failed.status);
+        if (request.method === 'GET') return stripeJson({ object: 'list', data: [], has_more: false });
+        if (path === '/v1/coupons') return stripeJson({ id: 'coupon_probe', object: 'coupon' });
+        if (path === '/v1/promotion_codes') return stripeJson({ id: 'promo_probe', object: 'promotion_code' });
+        if (path === '/v1/checkout/sessions') return stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        return stripeJson({ id: 'probe_cleanup' });
+      }),
+    }),
+  });
+  const run = (mode: 'live' | 'test' = 'live') => probeStripePermissions({ identity: {
+    userId: 'owner-1', email: 'owner@example.test', name: 'Owner', emailVerified: true,
+    tenantAccess: 'staff', tenantId: 'tenant-1', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner',
+    memberId: null, image: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null,
+    memberLanguage: null, memberVideoAutoplay: false,
+  } }, { mode }, {
+    payment, clock: { nowIso: () => '2026-10-10T12:00:00.000Z' },
+    appBaseUrl: 'https://app.example.test', baseDomain: 'example.test', singleTenantMode: false,
+    tenantDomains: tenantDomainRepositoryStub({}),
+  });
+  return { run, requests, operations: () => requests.map((request) => `${request.method} ${new URL(request.url).pathname}`) };
+};
+
+describe('probeStripePermissions with an injected Stripe client', () => {
+  it.each(['live', 'test'] as const)('checks every resource, cleans up and selects the %s key', async (mode) => {
+    const h = permissionProbeHarness();
+    const earliestExpiry = Math.floor(Date.now() / 1000) + 30 * 60;
+    const result = await h.run(mode);
+    expect(result).toMatchObject({ ok: true, value: { mode, allOk: true, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+      { resource: 'Webhook Endpoints', permission: 'write', status: 'ok' },
+      { resource: 'Subscriptions', permission: 'read', status: 'ok' },
+      { resource: 'Coupons', permission: 'write', status: 'ok' },
+      { resource: 'Promotion Codes', permission: 'write', status: 'ok' },
+      { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+    ] } });
+    expect(h.operations()).toEqual([
+      'GET /v1/webhook_endpoints', 'GET /v1/subscriptions', 'POST /v1/coupons',
+      'POST /v1/promotion_codes', 'POST /v1/promotion_codes/promo_probe',
+      'DELETE /v1/coupons/coupon_probe', 'POST /v1/checkout/sessions', 'POST /v1/checkout/sessions/cs_probe/expire',
+    ]);
+    expect(h.requests.every((request) => request.headers.get('authorization') === `Bearer rk_${mode}_probe`)).toBe(true);
+    expect(new URL(h.requests[0]?.url ?? '').searchParams.get('limit')).toBe('1');
+    expect(new URL(h.requests[1]?.url ?? '').searchParams.get('limit')).toBe('1');
+    const bodies = await Promise.all(h.requests.map(async (request) => new URLSearchParams(await request.text())));
+    expect(Object.fromEntries(bodies[2] ?? [])).toMatchObject({
+      percent_off: '1', duration: 'once', max_redemptions: '1', name: 'Together permission probe',
+      'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',
+    });
+    expect(bodies[3]?.get('coupon')).toBe('coupon_probe');
+    expect(bodies[3]?.get('code')).toMatch(/^TOGETHER-PROBE-[A-Z0-9]{8}$/);
+    expect(bodies[3]?.get('max_redemptions')).toBe('1');
+    expect(bodies[3]?.get('active')).toBe('true');
+    expect(bodies[4]?.get('active')).toBe('false');
+    const expiresAt = Number(bodies[6]?.get('expires_at'));
+    expect(expiresAt).toBeGreaterThanOrEqual(earliestExpiry);
+    expect(expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 30 * 60);
+    expect(Object.fromEntries(bodies[6] ?? [])).toMatchObject({
+      mode: 'payment', success_url: 'https://acme.example.test/', cancel_url: 'https://acme.example.test/',
+      'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '100',
+      'line_items[0][price_data][product_data][name]': 'Together permission probe', 'line_items[0][quantity]': '1',
+      'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',
+    });
+  });
+
+  it('reports a coupon 403, skips promotion codes and still probes checkout', async () => {
+    const h = permissionProbeHarness({ 'POST /v1/coupons': { status: 403, message: 'Coupon write denied' } });
+    expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
+      { status: 'ok' }, { status: 'ok' }, { resource: 'Coupons', status: 'missing', detail: 'Coupon write denied' },
+      { resource: 'Promotion Codes', status: 'error', detail: 'coupon probe failed' }, { status: 'ok' },
+    ] } });
+    expect(h.operations()).toContain('POST /v1/checkout/sessions/cs_probe/expire');
+    expect(h.operations()).not.toContain('POST /v1/promotion_codes');
+  });
+
+  it.each([
+    [403, 'Checkout write denied', undefined, 'missing'],
+    [400, 'Denied by code', 'permission_denied', 'missing'],
+    [400, 'The key does not have the required permissions', undefined, 'missing'],
+    [400, 'Invalid request', undefined, 'error'],
+  ] as const)('classifies checkout failure %s %s', async (status, message, code, expected) => {
+    const h = permissionProbeHarness({ 'POST /v1/checkout/sessions': { status, message, ...(code === undefined ? {} : { code }) } });
+    expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
+      { status: 'ok' }, { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
+      { resource: 'Checkout Sessions', status: expected, detail: message },
+    ] } });
+    expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
+    expect(h.operations()).not.toContain('POST /v1/checkout/sessions/cs_probe/expire');
+  });
+
+  it.each(['POST /v1/promotion_codes', 'POST /v1/promotion_codes/promo_probe'])('deletes the coupon when %s throws', async (operation) => {
+    const h = permissionProbeHarness({ [operation]: { status: 400, message: 'Promotion failed' } });
+    expect(await h.run()).toMatchObject({ ok: true, value: { allOk: false, checks: [
+      { status: 'ok' }, { status: 'ok' }, { status: 'ok' },
+      { status: 'error', detail: 'Promotion failed' }, { status: 'ok' },
+    ] } });
+    expect(h.operations()).toContain('DELETE /v1/coupons/coupon_probe');
+    expect(h.operations()).toContain('POST /v1/checkout/sessions/cs_probe/expire');
+  });
+
+  it.each(['DELETE /v1/coupons/coupon_probe', 'POST /v1/checkout/sessions/cs_probe/expire'])('reports cleanup failure in %s', async (operation) => {
+    const h = permissionProbeHarness({ [operation]: { status: 403, message: 'Cleanup denied' } });
+    const result = await h.run();
+    expect(result).toMatchObject({ ok: true, value: { allOk: false } });
+    if (!result.ok) throw new Error('Probe failed');
+    expect(result.value.checks.find((check) => check.resource === (operation.startsWith('DELETE') ? 'Coupons' : 'Checkout Sessions')))
+      .toMatchObject({ status: 'missing', detail: 'Cleanup denied' });
+  });
 });

@@ -1021,6 +1021,12 @@ export interface Messages {
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
+    stripeProbePermissions: string;
+    stripeProbeNote: string;
+    stripeProbeRead: string;
+    stripeProbeWrite: string;
+    stripeProbeStatuses: { ok: string; missing: string; error: string };
+    stripeProbeResources: { 'Webhook Endpoints': string; Subscriptions: string; Coupons: string; 'Promotion Codes': string; 'Checkout Sessions': string };
     stripeConfigure: string;
     stripeConfiguring: string;
     stripeConfigured: string;

@@ -28,6 +28,33 @@ together stripe test-mode remove
 
 Keep credentials out of shared terminal history. Test records are retained as audit history; removal disconnects the integration and does not purge records. Stripe documents the separation between sandbox and live credentials in [API keys](https://docs.stripe.com/keys).
 
+## Permission check
+
+An owner can select **Check key permissions** in either Stripe card, or run
+`together stripe probe-permissions --mode live` (or `--mode test`). The probe uses
+that mode's stored restricted key and returns each resource's permission, status,
+Stripe diagnostic, an `allOk` flag and the check timestamp. Results are not saved.
+
+The checks run in order: Webhook Endpoints list (labelled write, following the
+configuration requirement), Subscriptions list (read only), Coupons create,
+Promotion Codes create and deactivate, then Checkout Sessions create and expire.
+Subscription write access cannot be checked without a customer. The coupon is a
+single-use 1% discount and is deleted in cleanup, including after a promotion-code
+failure. If coupon creation fails, Promotion Codes reports `error` with
+`coupon probe failed`; the checkout probe still runs. The checkout is a PLN 1.00
+payment session with return URLs on the tenant's canonical origin, a 30-minute
+expiry and immediate expiration in cleanup. No purchase is completed.
+
+Stripe cannot delete promotion codes. Each successful check leaves one deactivated
+`TOGETHER-PROBE-<8 uppercase alphanumeric characters>` code. Probe objects carry
+`togetherProbe=1` and `tenantId` metadata. A failed cleanup is reported as a failed
+resource check; an object may remain if Stripe rejects its cleanup.
+
+A Stripe status code of 403, `permission_denied` code, or message containing
+`does not have the required permissions` is classified as `missing`. Other
+failures are `error`, with Stripe's message. `allOk` is true only when every row is
+`ok`. Listing Webhook Endpoints alone does not prove create/delete access.
+
 ## Adopting existing Stripe subscriptions
 
 Adoption connects a live subscription in the tenant's existing Stripe account to

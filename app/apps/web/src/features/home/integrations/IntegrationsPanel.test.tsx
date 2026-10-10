@@ -659,6 +659,7 @@ describe('IntegrationsPanel', () => {
 
     expect(await screen.findByTestId('stripe-live-slot-test-key'))
       .toHaveTextContent(en.integrations.stripeLiveSlotTestKey);
+    expect(screen.getByTestId('stripe-live-probe-permissions')).toBeDisabled();
   });
 
   it('badges the mode a previously configured tenant stored', async () => {
@@ -994,5 +995,40 @@ describe('IntegrationsPanel', () => {
 
     expect(await screen.findByTestId('billing-portal-url')).toBeDisabled();
     expect(screen.queryByTestId('billing-portal-save')).not.toBeInTheDocument();
+  });
+});
+
+describe('Stripe permission check', () => {
+  it('disables both buttons until their mode has a configured key', async () => {
+    renderPanel();
+    expect(await screen.findByTestId('stripe-live-probe-permissions')).toBeDisabled();
+    expect(screen.getByTestId('stripe-test-probe-permissions')).toBeDisabled();
+  });
+
+  it.each(['live', 'test'] as const)('probes the %s slot and renders all three statuses and details', async (mode) => {
+    const submissions: unknown[] = [];
+    server.use(http.post('/api/integrations/stripe/probe', async ({ request }) => {
+      submissions.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { mode, allOk: false, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+        { resource: 'Subscriptions', permission: 'read', status: 'ok' },
+        { resource: 'Coupons', permission: 'write', status: 'missing', detail: 'Coupon write denied' },
+        { resource: 'Promotion Codes', permission: 'write', status: 'error', detail: 'coupon probe failed' },
+      ] } });
+    }));
+    renderPanel([
+      { key: mode === 'live' ? 'stripe.restrictedKey' : 'stripe.testRestrictedKey', maskedPreview: '••••1234', updatedAt: '2026-10-10T12:00:00.000Z' },
+    ], defaultSettings, mode === 'live' ? 'live' : null);
+    const button = await screen.findByTestId(`stripe-${mode}-probe-permissions`);
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent(en.integrations.stripeProbePermissions);
+    expect(screen.getByTestId(`stripe-${mode === 'live' ? 'test' : 'live'}-probe-permissions`)).toBeDisabled();
+    await userEvent.click(button);
+    expect(await screen.findByText(en.integrations.stripeProbeStatuses.missing)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.stripeProbeStatuses.ok)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.stripeProbeStatuses.error)).toBeInTheDocument();
+    expect(screen.getByText('Coupon write denied')).toBeInTheDocument();
+    expect(screen.getByText('coupon probe failed')).toBeInTheDocument();
+    expect(screen.getAllByText(en.integrations.stripeProbeNote)).toHaveLength(2);
+    expect(submissions).toEqual([{ mode }]);
   });
 });

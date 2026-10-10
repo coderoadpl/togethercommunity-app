@@ -1080,6 +1080,12 @@ export const en: Messages = {
     stripeDescription:
       'Enter a restricted key. Together creates the webhook automatically and stores its signing secret.',
     restrictedKeyLabel: 'Restricted key',
+    stripeProbePermissions: 'Check key permissions',
+    stripeProbeNote: 'This check creates and immediately removes a probe coupon and expires a probe checkout session. It leaves one deactivated TOGETHER-PROBE-... promotion code in your Stripe account. Subscriptions are checked for read access only; write access requires a customer.',
+    stripeProbeRead: 'read',
+    stripeProbeWrite: 'write',
+    stripeProbeStatuses: { ok: 'OK', missing: 'Missing permission', error: 'Error' },
+    stripeProbeResources: { 'Webhook Endpoints': 'Webhook Endpoints', Subscriptions: 'Subscriptions', Coupons: 'Coupons', 'Promotion Codes': 'Promotion Codes', 'Checkout Sessions': 'Checkout Sessions' },
     stripeConfigure: 'Save and create webhook',
     stripeConfiguring: 'Creating webhook…',
     stripeConfigured: 'Stripe key saved and webhook created.',

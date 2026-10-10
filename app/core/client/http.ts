@@ -1,3 +1,4 @@
+import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import { consumerSalesSummarySchema } from '#core/contract/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
@@ -192,6 +193,7 @@ import {
   productsUpdateOutputSchema,
   simulatePurchaseOutputSchema,
   stripeConfigureOutputSchema,
+  stripeProbePermissionsOutputSchema,
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
@@ -2424,6 +2426,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  probeStripePermissions: (input: StripeProbePermissionsInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.stripeProbePermissions.method, API_ROUTES.stripeProbePermissions.path, stripeProbePermissionsOutputSchema, input, signal),
   configureStripe: (input: StripeConfigureInput, signal?: AbortSignal) =>
     request(
       options,

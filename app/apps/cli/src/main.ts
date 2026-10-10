@@ -1,3 +1,4 @@
+import { stripeProbePermissionsInputSchema } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -3554,6 +3555,16 @@ stripe
       );
     }),
   );
+
+stripe
+  .command('probe-permissions')
+  .description('Check the stored restricted key permissions and clean up probe objects')
+  .requiredOption('--mode <mode>', 'live or test')
+  .action(withInput(z.tuple([stripeProbePermissionsInputSchema]), async (ctx, [input]) => {
+    emit(await ctx.api.probeStripePermissions(input), ctx.json, (data) =>
+      data.checks.map((check) => `${check.resource} (${check.permission}): ${check.status}${check.detail === undefined ? '' : ` — ${check.detail}`}`).join('\n'),
+    );
+  }));
 
 const stripeTestMode = stripe.command('test-mode').description('Manage the isolated staff Stripe sandbox');
 stripeTestMode.command('status').action(withInput(z.tuple([noOptionsSchema]), async (ctx) => {

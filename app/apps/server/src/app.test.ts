@@ -9313,3 +9313,24 @@ describe('public order QR response', () => {
     expect((await app.request(`/api/public/orders/qr/${token}`, { headers: { host: 'globex.localhost' } })).status).toBe(404);
   });
 });
+
+describe('Stripe permission probe route', () => {
+  it('allows the owner, rejects other principals and validates mode', async () => {
+    const probe = vi.fn(async () => ok([
+      { resource: 'Subscriptions' as const, permission: 'read' as const, status: 'ok' as const },
+    ]));
+    const payment = { ...deps().payment, probeStripePermissions: probe };
+    const request = { method: 'POST', headers: { 'content-type': 'application/json', [TENANT_HEADER]: 'acme' }, body: JSON.stringify({ mode: 'test' }) };
+    const response = await scopedApp('owner', { overrides: { payment } }).request(API_PATHS.stripeProbePermissions, request);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { mode: 'test', allOk: true } });
+    expect(probe).toHaveBeenCalledOnce();
+    for (const scope of ['member', 'staff'] as const) {
+      expect((await scopedApp(scope, { overrides: { payment } }).request(API_PATHS.stripeProbePermissions, request)).status).toBe(403);
+    }
+    expect((await scopedApp('owner', { overrides: { payment } }).request(API_PATHS.stripeProbePermissions, {
+      ...request, body: JSON.stringify({ mode: 'unknown' }),
+    })).status).toBe(400);
+    expect(probe).toHaveBeenCalledOnce();
+  });
+});

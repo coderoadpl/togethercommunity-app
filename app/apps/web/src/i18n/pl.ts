@@ -1088,6 +1088,12 @@ export const pl: Messages = {
     stripeDescription:
       'Podaj klucz ograniczony (restricted key). Together automatycznie utworzy webhook i zapisze jego sekret podpisu.',
     restrictedKeyLabel: 'Klucz ograniczony (restricted key)',
+    stripeProbePermissions: 'Sprawdź uprawnienia klucza',
+    stripeProbeNote: 'Sprawdzenie tworzy i natychmiast usuwa próbny kupon oraz wygasza próbną sesję płatności. Na koncie Stripe pozostaje jeden nieaktywny kod promocyjny TOGETHER-PROBE-... . Subskrypcje sprawdzamy tylko pod kątem odczytu; sprawdzenie zapisu wymaga klienta.',
+    stripeProbeRead: 'odczyt',
+    stripeProbeWrite: 'zapis',
+    stripeProbeStatuses: { ok: 'OK', missing: 'Brak uprawnienia', error: 'Błąd' },
+    stripeProbeResources: { 'Webhook Endpoints': 'Punkty końcowe webhooków', Subscriptions: 'Subskrypcje', Coupons: 'Kupony', 'Promotion Codes': 'Kody promocyjne', 'Checkout Sessions': 'Sesje płatności' },
     stripeConfigure: 'Zapisz i utwórz webhook',
     stripeConfiguring: 'Tworzenie webhooka…',
     stripeConfigured: 'Klucz Stripe został zapisany, a webhook utworzony.',

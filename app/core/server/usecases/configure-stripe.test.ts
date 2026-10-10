@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+import { probeStripePermissions } from './probe-stripe-permissions.js';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
   integrationUnavailable,
   ok,
   type Identity,
+  type StripePermissionCheck,
   type TenantSecret,
 } from '#core/domain/index.js';
 
@@ -333,4 +336,63 @@ it('configures and removes a second endpoint without changing live credentials',
   expect(await removeStripeTestMode({ identity: identity('owner') }, h.deps)).toEqual(ok({ removed: true }));
   expect(deleted).toEqual(['we_2']);
   expect(h.rows).toEqual(live);
+});
+
+describe('probeStripePermissions', () => {
+  const identity: Identity = {
+    userId: 'owner-1', email: 'owner@example.test', name: 'Owner', emailVerified: true,
+    tenantAccess: 'staff', tenantId: 'tenant-1', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner',
+    memberId: null, image: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null,
+    memberLanguage: null, memberVideoAutoplay: false,
+  };
+
+  const harness = (checks: StripePermissionCheck[] = []) => {
+    const probe = vi.fn<NonNullable<PaymentProvider['probeStripePermissions']>>(async () => ok(checks));
+    const payment: PaymentProvider = {
+      probeStripePermissions: probe,
+      createCheckoutSession: async () => { throw new Error('unused'); },
+      expireCheckoutSession: async () => { throw new Error('unused'); },
+      cancelSubscription: async () => { throw new Error('unused'); },
+      verifyWebhookEvent: async () => { throw new Error('unused'); },
+      test: async () => { throw new Error('unused'); },
+    };
+    return { probe, deps: {
+      payment, clock: { nowIso: () => '2026-10-10T12:00:00.000Z' },
+      appBaseUrl: 'https://app.example.test', baseDomain: 'example.test', singleTenantMode: false,
+      tenantDomains: createInMemoryTenantDomainRepository([
+        tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain: 'learn.example.test', verified: true }),
+      ]),
+    } };
+  };
+
+  it('passes the canonical custom origin, tenant and requested mode to the provider', async () => {
+    const h = harness([{ resource: 'Subscriptions', permission: 'read', status: 'ok' }]);
+    expect(await probeStripePermissions({ identity }, { mode: 'test' }, h.deps)).toEqual(ok({
+      mode: 'test', checks: [{ resource: 'Subscriptions', permission: 'read', status: 'ok' }],
+      allOk: true, checkedAt: '2026-10-10T12:00:00.000Z',
+    }));
+    expect(h.probe).toHaveBeenCalledExactlyOnceWith({
+      tenantId: 'tenant-1', mode: 'test', origin: 'https://learn.example.test',
+    });
+  });
+
+  it.each(['missing', 'error'] as const)('makes allOk false for a %s check', async (status) => {
+    const h = harness([{ resource: 'Coupons', permission: 'write', status, detail: 'Rejected' }]);
+    expect(await probeStripePermissions({ identity }, { mode: 'live' }, h.deps))
+      .toMatchObject({ ok: true, value: { allOk: false } });
+  });
+
+  it.each(['admin', null] as const)('rejects role %s before probing Stripe', async (staffRole) => {
+    const h = harness();
+    expect(await probeStripePermissions({ identity: { ...identity, staffRole, tenantAccess: staffRole === null ? 'member' : 'staff' } }, { mode: 'live' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(h.probe).not.toHaveBeenCalled();
+  });
+
+  it('propagates an unavailable stored key', async () => {
+    const h = harness();
+    h.probe.mockResolvedValue(err(integrationUnavailable('The restricted key is not configured')));
+    expect(await probeStripePermissions({ identity }, { mode: 'live' }, h.deps))
+      .toEqual(err(integrationUnavailable('The restricted key is not configured')));
+  });
 });

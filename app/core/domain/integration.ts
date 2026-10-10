@@ -50,3 +50,22 @@ export type ProviderDiagnostic = z.infer<typeof providerDiagnosticSchema>;
 
 export const stripeTestSessionEncryptedSchema = z.object({ ciphertext: z.string(), iv: z.string(), authTag: z.string() });
 export const stripeTestSessionPayloadSchema = z.object({ userId: z.string(), tenantId: z.string(), expiresAt: z.number() });
+
+export const stripeProbePermissionsInputSchema = z.object({ mode: stripeModeSchema });
+export type StripeProbePermissionsInput = z.infer<typeof stripeProbePermissionsInputSchema>;
+
+const stripePermissionCheckSchema = z.object({
+  resource: z.enum(['Webhook Endpoints', 'Subscriptions', 'Coupons', 'Promotion Codes', 'Checkout Sessions']),
+  permission: z.enum(['write', 'read']),
+  status: z.enum(['ok', 'missing', 'error']),
+  detail: z.string().optional(),
+});
+export type StripePermissionCheck = z.infer<typeof stripePermissionCheckSchema>;
+
+export const stripeProbePermissionsOutputSchema = z.object({
+  mode: stripeModeSchema,
+  checks: z.array(stripePermissionCheckSchema),
+  allOk: z.boolean(),
+  checkedAt: z.string().datetime(),
+});
+export type StripeProbePermissionsOutput = z.infer<typeof stripeProbePermissionsOutputSchema>;

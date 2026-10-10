@@ -153,6 +153,8 @@ import {
   integrationProviderSchema,
   providerDiagnosticSchema,
   configureStripeInputSchema,
+  stripeProbePermissionsInputSchema,
+  stripeProbePermissionsOutputSchema,
   stripeModeSchema,
   postReportSchema,
   reportPostInputSchema,
@@ -1554,6 +1556,8 @@ export const storageConfigureOutputSchema = z.object({
   secret: tenantSecretMaskedSchema,
 });
 
+export { stripeProbePermissionsInputSchema, stripeProbePermissionsOutputSchema };
+
 export const stripeConfigureInputSchema = configureStripeInputSchema;
 
 export type StripeConfigureInput = z.input<typeof stripeConfigureInputSchema>;
@@ -2052,6 +2056,7 @@ export const API_ROUTES = {
   telemetryDisconnect: { method: 'POST', path: '/api/integrations/telemetry/disconnect' },
   storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
   storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
+  stripeProbePermissions: { method: 'POST', path: '/api/integrations/stripe/probe' },
   stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
@@ -2425,6 +2430,7 @@ export const API_PATHS = {
   telemetryDisconnect: API_ROUTES.telemetryDisconnect.path,
   storageProbe: API_ROUTES.storageProbe.path,
   storageConfigure: API_ROUTES.storageConfigure.path,
+  stripeProbePermissions: API_ROUTES.stripeProbePermissions.path,
   stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,

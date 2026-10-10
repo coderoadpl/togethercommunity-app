@@ -1,3 +1,4 @@
+import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
@@ -2086,3 +2087,9 @@ export const surveyActions = (api: ApiClient) => ({
   preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
 });
+
+export const probeStripePermissionsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'stripe-probe-permissions'],
+    call: (input: StripeProbePermissionsInput) => api.probeStripePermissions(input),
+  });

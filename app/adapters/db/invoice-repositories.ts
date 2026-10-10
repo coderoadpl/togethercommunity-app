@@ -1,14 +1,38 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { invoiceEventSchema, invoiceSchema } from '#core/domain/index.js';
+import { invoiceEventSchema, invoiceSchema, type AppError, type Invoice, type Result } from '#core/domain/index.js';
 import type { InvoiceRepository, KsefSubmissionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs, orders } from './app-schema.js';
+import { createKsefNumberRepository } from './ksef-repositories.js';
+
+class InvoiceTransactionRejected extends Error {
+  constructor(readonly result: Result<Invoice, AppError>) {
+    super('Invoice transaction rejected');
+  }
+}
 
 export const createInvoiceRepository = (
   db: Db,
 ): InvoiceRepository & KsefSubmissionRepository => ({
+  withKsefInvoiceLock: async (tenantId, orderId, work) => {
+    try {
+      return await db.transaction(async (tx) => {
+        await tx.select({ id: orders.id }).from(orders)
+          .where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId))).for('update');
+        const result = await work({
+          invoices: createInvoiceRepository(tx),
+          numbers: createKsefNumberRepository(tx),
+        });
+        if (!result.ok) throw new InvoiceTransactionRejected(result);
+        return result;
+      });
+    } catch (cause) {
+      if (cause instanceof InvoiceTransactionRejected) return cause.result;
+      throw cause;
+    }
+  },
   findById: async (tenantId, id) => {
     const row = (
       await db
@@ -138,7 +162,17 @@ export const createInvoiceRepository = (
   },
   createFrozenKsef: async (tenantId, invoice, event, artifact, job) =>
     db.transaction(async (tx) => {
-      const inserted = await tx
+      const updated = await tx.update(invoices)
+        .set({
+          status: invoice.status,
+          invoiceNumber: invoice.invoiceNumber,
+          ksef: invoice.ksef,
+          error: invoice.error,
+        })
+        .where(and(eq(invoices.tenantId, tenantId), eq(invoices.id, invoice.id),
+          eq(invoices.orderId, invoice.orderId), sql`${invoices.ksef}->>'state' = 'held'`))
+        .returning({ id: invoices.id });
+      const inserted = updated.length > 0 ? updated : await tx
         .insert(invoices)
         .values({ ...invoice, tenantId })
         .onConflictDoNothing()

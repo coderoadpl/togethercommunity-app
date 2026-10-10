@@ -19,7 +19,7 @@ import type {
   BillingData,
   OrderLine,
   InvoiceEvent,
-  KsefInvoiceData,
+  Invoice,
   CouponScope,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
@@ -84,6 +84,7 @@ export const tenants = pgTable(
     }),
     invoiceExemptionBasis: text('invoice_exemption_basis'),
     invoicingProvider: text('invoicing_provider', { enum: ['ifirma', 'ksef'] }),
+    ksefSubmissionMode: text('ksef_submission_mode', { enum: ['automatic', 'manual'] }).notNull().default('automatic'),
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
   },
@@ -555,7 +556,7 @@ export const invoices = pgTable(
     error: text('error'),
     issuedAt: text('issued_at'),
     createdAt: text('created_at').notNull(),
-    ksef: jsonb('ksef').$type<KsefInvoiceData>(),
+    ksef: jsonb('ksef').$type<Invoice['ksef']>(),
   },
   (table) => [
     index('invoices_tenant_order_idx').on(table.tenantId, table.orderId),
@@ -617,6 +618,7 @@ export const ksefNumberSequences = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
+    environment: text('environment', { enum: ['test', 'production'] }).notNull().default('production'),
     invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
     year: integer('year').notNull(),
     nextValue: integer('next_value').notNull(),
@@ -624,7 +626,7 @@ export const ksefNumberSequences = pgTable(
   },
   (table) => [
     uniqueIndex('ksef_number_sequences_tenant_type_year_uidx')
-      .on(table.tenantId, table.invoiceType, table.year),
+      .on(table.tenantId, table.environment, table.invoiceType, table.year),
   ],
 );
 
@@ -635,6 +637,7 @@ export const ksefNumberAllocations = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
+    environment: text('environment', { enum: ['test', 'production'] }).notNull().default('production'),
     invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
     year: integer('year').notNull(),
     sequence: integer('sequence').notNull(),
@@ -646,11 +649,11 @@ export const ksefNumberAllocations = pgTable(
   },
   (table) => [
     uniqueIndex('ksef_number_allocations_tenant_type_sequence_uidx')
-      .on(table.tenantId, table.invoiceType, table.year, table.sequence),
+      .on(table.tenantId, table.environment, table.invoiceType, table.year, table.sequence),
     uniqueIndex('ksef_number_allocations_tenant_type_p2_uidx')
-      .on(table.tenantId, table.invoiceType, table.p2),
+      .on(table.tenantId, table.environment, table.invoiceType, table.p2),
     uniqueIndex('ksef_number_allocations_tenant_order_uidx')
-      .on(table.tenantId, table.orderId),
+      .on(table.tenantId, table.environment, table.orderId),
   ],
 );
 

@@ -1,28 +1,38 @@
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const { tenant } = usePanelContext();
+  const queryClient = useQueryClient();
+  const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
   const detail = useQuery(actions.order(orderId));
   const issueInvoice = useMutation({
     ...actions.issueInvoice,
-    onSuccess: () => {
-      void detail.refetch();
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const sendInvoice = useMutation({
+    ...actions.sendInvoice,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
   const refreshInvoice = useMutation({
     ...actions.refreshInvoice,
-    onSuccess: () => {
-      void detail.refetch();
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
   const statusLabels = {
@@ -106,6 +116,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           spacing="0.75rem"
           sx={{ alignItems: 'flex-start' }}
         >
+          {detail.data.invoice !== null && order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
           {detail.data.invoice === null ? null : (
             <Chip
               size="small"
@@ -174,9 +185,13 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                 {refreshInvoice.isPending ? t.sales.refreshingInvoice : t.sales.refreshInvoice}
               </Button>
             ) : null}
-          {order.mode === 'live' && order.billing !== null &&
-          order.billing !== undefined &&
-          (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
+          {canWriteInvoice && detail.data.invoice?.ksef?.state === 'held' ? (
+            <Button variant="contained" disabled={sendInvoice.isPending}
+              onClick={() => sendInvoice.mutate(order.id)}>
+              {t.sales.sendToKsef}
+            </Button>
+          ) : null}
+          {canWriteInvoice && (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
             <Button
               variant="contained"
               disabled={issueInvoice.isPending}
@@ -186,6 +201,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
+        {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
         {issueInvoice.isError ? <Alert severity="error">{localizePanelError(issueInvoice.error, t)}</Alert> : null}
         {refreshInvoice.isError ? <Alert severity="error">{localizePanelError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>

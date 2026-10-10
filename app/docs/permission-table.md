@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 423. Exported `Ctx` use-case rows: 330.
+Closed capability count: 123. Route rows: 424. Exported `Ctx` use-case rows: 331.
 
 ## Human-readable diff
 
@@ -358,6 +358,7 @@ no changes
 | `GET /api/orders/export` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/:orderId` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/invoice` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/invoice/send` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/invoices/:invoiceId/refresh` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/download` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/invoices/:invoiceId/upo` | invoice:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -561,6 +562,7 @@ no changes
 | `invoices.ts#downloadMemberInvoice` | invoice:member-read | owner, admin, member | owner, admin, member | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#requestInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
+| `invoices.ts#sendInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
@@ -796,13 +798,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:24` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:196` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1197` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1199` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1221` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1235` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1758` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1758` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:197` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1199` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1201` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1223` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1237` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1760` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1760` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -836,7 +838,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/image-assets.ts:239` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:250` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:317` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/invoices.ts:477` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
+| member-scope | `core/server/usecases/invoices.ts:529` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |

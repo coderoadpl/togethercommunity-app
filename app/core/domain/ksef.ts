@@ -12,8 +12,9 @@ const ksefSubmissionStateSchema = z.enum([
   'numbering_conflict',
 ]);
 
-export const ksefInvoiceDataSchema = z.object({
+const frozenKsefInvoiceDataSchema = z.object({
   environment: ksefEnvironmentSchema,
+  credentialMode: z.enum(['live', 'test']).optional(),
   schemaSystemCode: z.literal('FA (3)'),
   schemaVersion: z.literal('1-0E'),
   contextNip: z.string(),
@@ -50,8 +51,19 @@ export const ksefInvoiceDataSchema = z.object({
   version: z.number().int().nonnegative(),
 });
 
+const heldKsefInvoiceDataSchema = frozenKsefInvoiceDataSchema.extend({
+  state: z.literal('held'),
+  p2: z.null(),
+  issueDate: z.null(),
+  xmlArtifactKey: z.null(),
+  xmlByteSize: z.null(),
+  xmlSha256: z.null(),
+});
+
+export const ksefInvoiceDataSchema = z.union([frozenKsefInvoiceDataSchema, heldKsefInvoiceDataSchema]);
+
 export type KsefEnvironment = z.infer<typeof ksefEnvironmentSchema>;
-export type KsefInvoiceData = z.infer<typeof ksefInvoiceDataSchema>;
+export type KsefInvoiceData = z.infer<typeof frozenKsefInvoiceDataSchema>;
 export type KsefStatus = {
   code: number;
   description: string;

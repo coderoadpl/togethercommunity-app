@@ -700,7 +700,10 @@ export const en: Messages = {
     ksefUpoDownload: 'Download UPO',
     ksefConflictHelp:
       'KSeF found an invoice with the same seller NIP, type, and invoice number (P_2), but it could not be proven to match this frozen document. Do not renumber or resend it. Manual reconciliation is required.',
+    sendToKsef: 'Send to KSeF',
+    sendSelectedToKsef: 'Send selected to KSeF',
     ksefStates: {
+      held: 'Waiting to be sent to KSeF',
       queued: 'Queued',
       session_opened: 'KSeF session opened',
       submitting: 'Submitting to KSeF',
@@ -1181,6 +1184,8 @@ export const en: Messages = {
     ifirmaUsernameLabel: 'iFirma username',
     ifirmaSaveFirst: 'Save the iFirma username and faktura API key first to test the connection.',
     ksefHeading: 'KSeF 2.0',
+    ksefTestHeading: 'KSeF — test environment',
+    ksefTestDescription: 'Invoices for Stripe test-mode orders go to the KSeF test environment. Use a synthetic NIP — the test environment is shared by all integrators.',
     ksefDescription:
       'Provide a KSeF token generated with the InvoiceWrite permission and the NIP of the context it was issued for. Temporary KSeF session tokens are not stored persistently.',
     ksefTokenHelp:
@@ -2438,7 +2443,11 @@ export const en: Messages = {
     allBuyers: 'All orders',
     vatRateUnset: 'Not selected',
     vatRateHint: 'Pick a VAT rate or the exemption before the first invoice is issued.',
-    vatTreatment: 'VAT treatment',
+    vatTreatment: 'Default VAT rate',
+    vatTreatmentHelp: 'Applies to products without their own rate. Products with a rate set use it.',
+    ksefSubmissionMode: 'Submission to KSeF',
+    ksefSubmissionAutomatic: 'Automatically after issuing',
+    ksefSubmissionManual: "Manually — after clicking 'Send to KSeF'",
     vatTreatmentRate: 'VAT rate',
     vatTreatmentExempt: 'VAT exempt (zw)',
     exemptionBasisKind: 'Exemption basis',

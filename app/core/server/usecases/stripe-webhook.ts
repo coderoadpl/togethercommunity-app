@@ -96,7 +96,7 @@ const enqueueAutoInvoice = async (
   deps: StripeWebhookDeps,
   transactionDeps: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<void> => {
-  if (event.objectId === null || event.mode === 'test') return;
+  if (event.objectId === null) return;
   const providerObjectIds =
     event.type === 'invoice.paid'
       ? { invoice: event.objectId }

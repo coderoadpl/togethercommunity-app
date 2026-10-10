@@ -707,7 +707,10 @@ export const pl: Messages = {
     ksefUpoDownload: 'Pobierz UPO',
     ksefConflictHelp:
       'KSeF zgłosił fakturę o tym samym NIP sprzedawcy, rodzaju i numerze faktury (P_2), ale nie można potwierdzić zgodności z tym dokumentem. Nie zmieniaj numeru ani nie wysyłaj ponownie. Wymagana jest ręczna weryfikacja.',
+    sendToKsef: 'Wyślij do KSeF',
+    sendSelectedToKsef: 'Wyślij zaznaczone do KSeF',
     ksefStates: {
+      held: 'Czeka na wysyłkę do KSeF',
       queued: 'Oczekuje w kolejce',
       session_opened: 'Sesja KSeF otwarta',
       submitting: 'Wysyłanie do KSeF',
@@ -1189,6 +1192,8 @@ export const pl: Messages = {
     ifirmaUsernameLabel: 'Login do iFirmy',
     ifirmaSaveFirst: 'Zapisz najpierw login i klucz API „faktura”, aby przetestować połączenie.',
     ksefHeading: 'KSeF 2.0',
+    ksefTestHeading: 'KSeF — środowisko testowe',
+    ksefTestDescription: 'Faktury z zamówień testowych Stripe trafiają do testowego środowiska KSeF. Użyj fikcyjnego NIP — środowisko testowe jest wspólne dla wszystkich integratorów.',
     ksefDescription:
       'Podaj token KSeF wygenerowany z uprawnieniem InvoiceWrite oraz NIP, w którego kontekście go wystawiono. Tymczasowe tokeny sesji KSeF nie są trwale zapisywane.',
     ksefTokenHelp:
@@ -2461,7 +2466,11 @@ export const pl: Messages = {
     allBuyers: 'Wszystkie zamówienia',
     vatRateUnset: 'Nie wybrano',
     vatRateHint: 'Wybierz stawkę VAT albo zwolnienie przed wystawieniem pierwszej faktury.',
-    vatTreatment: 'Rozliczenie VAT',
+    vatTreatment: 'Domyślna stawka VAT',
+    vatTreatmentHelp: 'Dotyczy produktów bez własnej stawki. Produkty z ustawioną stawką używają swojej.',
+    ksefSubmissionMode: 'Wysyłka do KSeF',
+    ksefSubmissionAutomatic: 'Automatycznie po wystawieniu',
+    ksefSubmissionManual: 'Ręcznie — po kliknięciu »Wyślij do KSeF«',
     vatTreatmentRate: 'Stawka VAT',
     vatTreatmentExempt: 'Zwolnienie z VAT (zw)',
     exemptionBasisKind: 'Podstawa zwolnienia',

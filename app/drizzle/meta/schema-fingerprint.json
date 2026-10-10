@@ -1,6 +1,6 @@
 {
-  "hash": "c1ab6fc2d895960ca45b708a3549b0c49e0b4f07a6c8ab011abb794aa991f63b",
-  "shortId": "c1ab6fc2d895",
+  "hash": "6de78450e6e3889fd93ea64c0987b471836182a47ea1902bf6373d7d5f053818",
+  "shortId": "6de78450e6e3",
   "schema": {
     "constraints": [
       {
@@ -2523,22 +2523,22 @@
         "table": "invoices"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_order_uidx ON ksef_number_allocations USING btree (tenant_id, order_id)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_order_uidx ON ksef_number_allocations USING btree (tenant_id, environment, order_id)",
         "name": "ksef_number_allocations_tenant_order_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_p2_uidx ON ksef_number_allocations USING btree (tenant_id, invoice_type, p2)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_p2_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, p2)",
         "name": "ksef_number_allocations_tenant_type_p2_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_sequence_uidx ON ksef_number_allocations USING btree (tenant_id, invoice_type, year, sequence)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_sequence_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, year, sequence)",
         "name": "ksef_number_allocations_tenant_type_sequence_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_sequences_tenant_type_year_uidx ON ksef_number_sequences USING btree (tenant_id, invoice_type, year)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_sequences_tenant_type_year_uidx ON ksef_number_sequences USING btree (tenant_id, environment, invoice_type, year)",
         "name": "ksef_number_sequences_tenant_type_year_uidx",
         "table": "ksef_number_sequences"
       },
@@ -3957,6 +3957,14 @@
             "generated": "",
             "identity": "",
             "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
             "notNull": true,
             "type": "text"
           },
@@ -5590,6 +5598,144 @@
           }
         ],
         "name": "processed_events"
+      },
+      {
+        "columns": [
+          {
+            "default": "'production'::text",
+            "generated": "",
+            "identity": "",
+            "name": "environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "allocated_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "p2",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "year",
+            "notNull": true,
+            "type": "integer"
+          }
+        ],
+        "name": "ksef_number_allocations"
+      },
+      {
+        "columns": [
+          {
+            "default": "'production'::text",
+            "generated": "",
+            "identity": "",
+            "name": "environment",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invoice_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_value",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "year",
+            "notNull": true,
+            "type": "integer"
+          }
+        ],
+        "name": "ksef_number_sequences"
       },
       {
         "columns": [
@@ -8775,75 +8921,6 @@
           }
         ],
         "name": "member_erasure_request_events"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "allocated_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_type",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "order_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "p2",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sequence",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "year",
-            "notNull": true,
-            "type": "integer"
-          }
-        ],
-        "name": "ksef_number_allocations"
       },
       {
         "columns": [
@@ -12923,59 +13000,6 @@
           }
         ],
         "name": "space_event_rsvps"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "invoice_type",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "next_value",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "updated_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "year",
-            "notNull": true,
-            "type": "integer"
-          }
-        ],
-        "name": "ksef_number_sequences"
       },
       {
         "columns": [

@@ -1,5 +1,7 @@
 import { and, eq, lt, lte, sql } from 'drizzle-orm';
 
+import { err, integrationNotConfigured, ok } from '#core/domain/index.js';
+
 import type {
   FiscalArtifactRepository,
   KsefNumberRepository,
@@ -18,8 +20,11 @@ import {
 } from './app-schema.js';
 
 export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
-  allocate: async (tenantId, input) =>
-    db.transaction(async (tx) => {
+  allocate: async (tenantId, input) => {
+    if (input.environment === 'test') {
+      return err(integrationNotConfigured('KSeF TEST numbering is unavailable until the numbering migration is completed'));
+    }
+    return db.transaction(async (tx) => {
       await tx.select({ id: orders.id }).from(orders)
         .where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
       const environment = input.environment ?? 'production';
@@ -34,7 +39,7 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
           ))
           .limit(1)
       )[0];
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) return ok(existing);
       const sequenceId = `${tenantId}:${environment}:${input.invoiceType}:${String(input.year)}`;
       const row = (
         await tx
@@ -75,8 +80,9 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
         orderId: input.orderId,
         allocatedAt: input.allocatedAt,
       });
-      return { p2, sequence: row.allocated };
-    }),
+      return ok({ p2, sequence: row.allocated });
+    });
+  },
 });
 
 export const createFiscalArtifactRepository = (db: Db): FiscalArtifactRepository => ({

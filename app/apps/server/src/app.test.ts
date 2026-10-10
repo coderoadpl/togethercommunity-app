@@ -1255,7 +1255,7 @@ const ksefDeps = (dispatch: NonNullable<AppDeps['ksef']>['dispatch']): NonNullab
       }),
     },
     numbers: {
-      allocate: async () => ({ p2: 'FV/1998/000001', sequence: 1 }),
+      allocate: async () => ok({ p2: 'FV/1998/000001', sequence: 1 }),
     },
     artifacts: {
       findByKey: async () => null,

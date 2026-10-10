@@ -333,13 +333,15 @@ const issueKsef = async (
     return winner === null ? err(validation('KSeF invoice request could not be claimed')) : ok(winner);
   }
   const issueDate = warsawDate(createdAt);
-  const allocated = await deps.ksef.numbers.allocate(tenantId, {
+  const allocation = await deps.ksef.numbers.allocate(tenantId, {
     orderId: order.id,
     environment,
     invoiceType: 'VAT',
     year: Number(issueDate.slice(0, 4)),
     allocatedAt: createdAt,
   });
+  if (!allocation.ok) return allocation;
+  const allocated = allocation.value;
   const invoiceId = existing?.id ?? deps.ids.nextId();
   const xml = renderFa3Invoice({
     invoiceNumber: allocated.p2,

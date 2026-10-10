@@ -191,7 +191,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               {t.sales.sendToKsef}
             </Button>
           ) : null}
-          {canWriteInvoice && (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
+          {canWriteInvoice && order.billing != null && (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
             <Button
               variant="contained"
               disabled={issueInvoice.isPending}

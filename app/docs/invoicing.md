@@ -2,7 +2,7 @@
 
 Together delegates VAT invoice issuance to the tenant's iFirma account. The tenant remains the seller of record. Together stores the paid order ledger, immutable billing snapshot, iFirma document reference, assigned invoice number, and lifecycle events.
 
-Together can also submit FA(3) invoices directly to KSeF 2.0. Direct KSeF uses Together's own immutable per-tenant, per-environment P_2 numbering, stores the exact XML and SHA-256 before transport, and processes every network step asynchronously.
+Together can also submit FA(3) invoices directly to KSeF 2.0. Direct KSeF uses Together's own immutable per-tenant P_2 numbering, stores the exact XML and SHA-256 before transport, and processes every network step asynchronously.
 
 ## Connect iFirma
 
@@ -83,7 +83,7 @@ Do not paste a KSeF access token or refresh token into Together. Those credentia
 
 The provider switch affects new invoice requests only. Existing iFirma invoices remain attached to iFirma, while every already-frozen KSeF invoice continues through its durable KSeF job. Switching providers never moves or reissues a fiscal document.
 
-Together allocates P_2 from an immutable yearly series per tenant and KSeF environment, such as `FV/2026/000001`. TEST allocation never advances or reserves a production number. Migration `0139_ksef_controlled_send.sql` preserves existing production allocation rows and P_2 values. It rebuilds the production counter above the highest remaining production allocation, or at 1 when there are none, removing historical TEST consumption. Historical TEST allocations retain their numbers and initialize the separate TEST counter above their maximum sequence. Existing reservations without a frozen environment remain in the legacy production series. KSeF retains the duplicate key `(seller NIP, invoice type, P_2)` for ten years counted from the end of the invoice year. Never change P_2 or submit a fresh copy to bypass a duplicate.
+Together allocates P_2 from an immutable yearly series per tenant, such as `FV/2026/000001`. Migration `0139_ksef_controlled_send.sql` only adds environment columns with a `production` default and new per-environment unique indexes. It retains every legacy index, allocation, P_2 value, and counter without rewriting historical data. The default is a compatibility value, not a classification of historical invoices. Production allocation remains compatible with the previous application release. TEST allocation is unavailable in this expansion release and returns `integration_not_configured` before reserving a number or writing XML. This also applies to live orders on a TEST deployment. Manual TEST requests may be held, but sending them leaves them held and returns that error. KSeF retains the duplicate key `(seller NIP, invoice type, P_2)` for ten years counted from the end of the invoice year. Never change P_2 or submit a fresh copy to bypass a duplicate.
 
 ### Manual submission gate
 
@@ -131,7 +131,7 @@ Live-mode orders retain the deployment `KSEF_ENVIRONMENT` and use `ksef.token` a
 
 Authentication and session caches are isolated by environment, tenant, credential slot, NIP, and token fingerprint. Matching NIPs or tokens across live and test slots never share cached authentication or session encryption material; replacing a token requires fresh authentication.
 
-Test-mode orders can be invoiced only through KSeF with a configured valid TEST slot. They remain refused for iFirma or an absent TEST slot. Their automatic issuance follows the same enabled and scope settings as live orders, and Studio retains the existing test-mode chip on orders and their invoice rows.
+Test-mode orders can be held only through KSeF with a configured valid TEST slot; numbering and sending remain gated in this expansion release. They remain refused for iFirma or an absent TEST slot. Their automatic issuance follows the same enabled and scope settings as live orders, and Studio retains the existing test-mode chip on orders and their invoice rows.
 
 The durable dispatcher is invoked every minute by the Vercel cron entry for `GET /api/internal/dispatch-ksef`, authenticated with `Authorization: Bearer $CRON_SECRET`. Long-running Node deployments also invoke it every `KSEF_DISPATCH_INTERVAL_MS` (one second by default). Each invocation drains a bounded batch while the repository continues to serialize work per tenant. It respects `Retry-After`, refreshes expired access tokens once, stores every projection transition with an append-only lifecycle event, and persists UPO content rather than its expiring download URL. Operators can also invoke `POST /api/internal/dispatch-ksef` with `x-scheduler-operator-secret: $CRON_SECRET`.
 

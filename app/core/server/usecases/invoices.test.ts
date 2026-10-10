@@ -227,7 +227,7 @@ const harness = (options: {
         allocate: async (_tenantId, input) => {
           allocationCount += 1;
           allocatedYear = input.year;
-          return { p2: `FV/${String(input.year)}/000001`, sequence: 1 };
+          return ok({ p2: `FV/${String(input.year)}/000001`, sequence: 1 });
         },
       },
       artifacts: {

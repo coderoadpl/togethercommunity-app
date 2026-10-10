@@ -1,6 +1,6 @@
 {
-  "hash": "6de78450e6e3889fd93ea64c0987b471836182a47ea1902bf6373d7d5f053818",
-  "shortId": "6de78450e6e3",
+  "hash": "2df9657ec5383e55ad43604cf88a05aa2e7370b80350692678eef9209d10eed6",
+  "shortId": "2df9657ec538",
   "schema": {
     "constraints": [
       {
@@ -2523,22 +2523,42 @@
         "table": "invoices"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_order_uidx ON ksef_number_allocations USING btree (tenant_id, environment, order_id)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_env_order_uidx ON ksef_number_allocations USING btree (tenant_id, environment, order_id)",
+        "name": "ksef_number_allocations_tenant_env_order_uidx",
+        "table": "ksef_number_allocations"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_env_type_p2_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, p2)",
+        "name": "ksef_number_allocations_tenant_env_type_p2_uidx",
+        "table": "ksef_number_allocations"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_env_type_sequence_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, year, sequence)",
+        "name": "ksef_number_allocations_tenant_env_type_sequence_uidx",
+        "table": "ksef_number_allocations"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_order_uidx ON ksef_number_allocations USING btree (tenant_id, order_id)",
         "name": "ksef_number_allocations_tenant_order_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_p2_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, p2)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_p2_uidx ON ksef_number_allocations USING btree (tenant_id, invoice_type, p2)",
         "name": "ksef_number_allocations_tenant_type_p2_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_sequence_uidx ON ksef_number_allocations USING btree (tenant_id, environment, invoice_type, year, sequence)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_allocations_tenant_type_sequence_uidx ON ksef_number_allocations USING btree (tenant_id, invoice_type, year, sequence)",
         "name": "ksef_number_allocations_tenant_type_sequence_uidx",
         "table": "ksef_number_allocations"
       },
       {
-        "definition": "CREATE UNIQUE INDEX ksef_number_sequences_tenant_type_year_uidx ON ksef_number_sequences USING btree (tenant_id, environment, invoice_type, year)",
+        "definition": "CREATE UNIQUE INDEX ksef_number_sequences_tenant_env_type_year_uidx ON ksef_number_sequences USING btree (tenant_id, environment, invoice_type, year)",
+        "name": "ksef_number_sequences_tenant_env_type_year_uidx",
+        "table": "ksef_number_sequences"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX ksef_number_sequences_tenant_type_year_uidx ON ksef_number_sequences USING btree (tenant_id, invoice_type, year)",
         "name": "ksef_number_sequences_tenant_type_year_uidx",
         "table": "ksef_number_sequences"
       },

@@ -12,11 +12,11 @@ afterAll(async () => { await database?.close(); });
 
 describe('controlled KSeF migration', () => {
   it.each([
-    { history: 'TEST only', productionSequence: null, testSequence: 1, reservedSequence: null, productionNext: 1 },
-    { history: 'TEST after production', productionSequence: 7, testSequence: 8, reservedSequence: null, productionNext: 8 },
-    { history: 'production after TEST', productionSequence: 9, testSequence: 8, reservedSequence: null, productionNext: 10 },
-    { history: 'unmatched production reservation', productionSequence: 7, testSequence: 8, reservedSequence: 9, productionNext: 10 },
-  ])('isolates $history without touching production P_2 rows', async ({ productionSequence, testSequence, reservedSequence, productionNext }) => {
+    { history: 'TEST only', productionSequence: null, testSequence: 1, reservedSequence: null },
+    { history: 'TEST after production', productionSequence: 7, testSequence: 8, reservedSequence: null },
+    { history: 'production after TEST', productionSequence: 9, testSequence: 8, reservedSequence: null },
+    { history: 'unmatched production reservation', productionSequence: 7, testSequence: 8, reservedSequence: 9 },
+  ])('expands $history without rewriting fiscal state or breaking legacy allocation', async ({ productionSequence, testSequence, reservedSequence }) => {
     const client = new pg.Client({ connectionString: database.url });
     await client.connect();
     try {
@@ -48,18 +48,24 @@ describe('controlled KSeF migration', () => {
       if (productionSequence !== null) await addAllocation('production-row', productionSequence, 'production');
       if (reservedSequence !== null) await addAllocation('reserved-row', reservedSequence, null);
       await addAllocation('test-row', testSequence, 'test');
-      const before = await client.query("SELECT id, p2, sequence, xmin::text FROM ksef_number_allocations WHERE id <> 'test-row' ORDER BY id");
+      const before = await client.query("SELECT id, p2, sequence, xmin::text FROM ksef_number_allocations ORDER BY id");
+      const beforeCounters = await client.query('SELECT id, next_value, updated_at, xmin::text FROM ksef_number_sequences ORDER BY id');
+      const beforeIndexes = await client.query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) ORDER BY indexname");
       const beforeInvoices = await client.query('SELECT *, xmin::text FROM invoices ORDER BY order_id');
       await client.query(readFileSync('drizzle/0139_ksef_controlled_send.sql', 'utf8'));
       expect((await client.query("SELECT id, p2, sequence, xmin::text FROM ksef_number_allocations WHERE environment = 'production' ORDER BY id")).rows).toEqual(before.rows);
       expect((await client.query('SELECT *, xmin::text FROM invoices ORDER BY order_id')).rows).toEqual(beforeInvoices.rows);
-      expect((await client.query("SELECT next_value FROM ksef_number_sequences WHERE environment = 'production'")).rows).toEqual([{ next_value: productionNext }]);
-      expect((await client.query("SELECT p2, environment FROM ksef_number_allocations WHERE id = 'test-row'")).rows).toEqual([{ p2: `FV/2026/${String(testSequence).padStart(6, '0')}`, environment: 'test' }]);
-      expect((await client.query("SELECT next_value FROM ksef_number_sequences WHERE environment = 'test'")).rows).toEqual([{ next_value: testSequence + 1 }]);
+      expect((await client.query("SELECT next_value FROM ksef_number_sequences WHERE environment = 'production'")).rows).toEqual([{ next_value: nextValue }]);
+      expect((await client.query("SELECT p2, environment FROM ksef_number_allocations WHERE id = 'test-row'")).rows).toEqual([{ p2: `FV/2026/${String(testSequence).padStart(6, '0')}`, environment: 'production' }]);
+      expect((await client.query("SELECT next_value FROM ksef_number_sequences WHERE environment = 'test'")).rows).toEqual([]);
+      expect((await client.query('SELECT id, next_value, updated_at, xmin::text FROM ksef_number_sequences ORDER BY id')).rows).toEqual(beforeCounters.rows);
+      const afterIndexes = await client.query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) ORDER BY indexname");
+      expect(afterIndexes.rows).toEqual(expect.arrayContaining(beforeIndexes.rows));
+      expect(afterIndexes.rows).toHaveLength(beforeIndexes.rows.length + 4);
       expect((await client.query('SELECT ksef_submission_mode FROM tenants')).rows).toEqual([{ ksef_submission_mode: 'automatic' }]);
-      const allocated = await client.query("UPDATE ksef_number_sequences SET next_value = next_value + 1 WHERE environment = 'production' RETURNING next_value - 1 AS sequence");
-      expect(allocated.rows).toEqual([{ sequence: productionNext }]);
-      await client.query("INSERT INTO ksef_number_allocations VALUES ('next-production', 'tenant', 'VAT', 2026, $1, $2, 'new-order', '2026-10-02T00:00:00.000Z', 'production')", [productionNext, `FV/2026/${String(productionNext).padStart(6, '0')}`]);
+      const allocated = await client.query("INSERT INTO ksef_number_sequences (id, tenant_id, invoice_type, year, next_value, updated_at) VALUES ('legacy-next', 'tenant', 'VAT', 2026, 2, '2026-10-02T00:00:00.000Z') ON CONFLICT (tenant_id, invoice_type, year) DO UPDATE SET next_value = ksef_number_sequences.next_value + 1 RETURNING next_value - 1 AS sequence");
+      expect(allocated.rows).toEqual([{ sequence: nextValue }]);
+      await client.query("INSERT INTO ksef_number_allocations VALUES ('next-production', 'tenant', 'VAT', 2026, $1, $2, 'new-order', '2026-10-02T00:00:00.000Z', 'production')", [nextValue, `FV/2026/${String(nextValue).padStart(6, '0')}`]);
     } finally {
       await client.end();
     }

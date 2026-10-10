@@ -1186,7 +1186,7 @@ export interface KsefNumberRepository {
   allocate(
     tenantId: string,
     input: { orderId: string; invoiceType: 'VAT'; year: number; allocatedAt: string; environment?: KsefEnvironment },
-  ): Promise<KsefNumberAllocation>;
+  ): Promise<Result<KsefNumberAllocation, AppError>>;
 }
 
 /** @public */

@@ -437,11 +437,20 @@ const heldInvoice = (orderId: string) => ({
 });
 
 describe('controlled KSeF submission', () => {
-  it('requests a test invoice without billing data and exposes the held send action', async () => {
+  it.each(['live', 'test'])('hides the issue action for a %s order without billing', async (mode) => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+      order: { ...heldOrder('o1'), mode }, invoice: null,
+    } })));
+    await renderOrderDetail();
+    expect(await screen.findByText('Workshop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.sales.issueInvoice })).not.toBeInTheDocument();
+  });
+
+  it('requests a test invoice with billing data and exposes the held send action', async () => {
     let requested = false;
     server.use(
       http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
-        order: heldOrder('o1'), invoice: requested ? heldInvoice('o1') : null,
+        order: { ...heldOrder('o1'), billing: { companyName: 'Sample buyer', nip: '5555555555', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' } }, invoice: requested ? heldInvoice('o1') : null,
       } })),
       http.post('/api/orders/o1/invoice', () => {
         requested = true;

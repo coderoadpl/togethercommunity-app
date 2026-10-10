@@ -626,6 +626,8 @@ export const ksefNumberSequences = pgTable(
   },
   (table) => [
     uniqueIndex('ksef_number_sequences_tenant_type_year_uidx')
+      .on(table.tenantId, table.invoiceType, table.year),
+    uniqueIndex('ksef_number_sequences_tenant_env_type_year_uidx')
       .on(table.tenantId, table.environment, table.invoiceType, table.year),
   ],
 );
@@ -649,10 +651,16 @@ export const ksefNumberAllocations = pgTable(
   },
   (table) => [
     uniqueIndex('ksef_number_allocations_tenant_type_sequence_uidx')
+      .on(table.tenantId, table.invoiceType, table.year, table.sequence),
+    uniqueIndex('ksef_number_allocations_tenant_env_type_sequence_uidx')
       .on(table.tenantId, table.environment, table.invoiceType, table.year, table.sequence),
     uniqueIndex('ksef_number_allocations_tenant_type_p2_uidx')
+      .on(table.tenantId, table.invoiceType, table.p2),
+    uniqueIndex('ksef_number_allocations_tenant_env_type_p2_uidx')
       .on(table.tenantId, table.environment, table.invoiceType, table.p2),
     uniqueIndex('ksef_number_allocations_tenant_order_uidx')
+      .on(table.tenantId, table.orderId),
+    uniqueIndex('ksef_number_allocations_tenant_env_order_uidx')
       .on(table.tenantId, table.environment, table.orderId),
   ],
 );

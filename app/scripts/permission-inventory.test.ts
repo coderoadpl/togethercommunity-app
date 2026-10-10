@@ -13,8 +13,14 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(423);
-    expect(inventory.useCases).toHaveLength(330);
+    expect(inventory.routes).toHaveLength(424);
+    expect(inventory.useCases).toHaveLength(331);
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
+      inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
+    ]) {
+      expect(row).toMatchObject({ capability: 'invoice:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
+    }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/integrations/stripe/probe'),
       inventory.useCases.find((entry) => entry.subject === 'probe-stripe-permissions.ts#probeStripePermissions'),

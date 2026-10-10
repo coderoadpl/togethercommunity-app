@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
 import { assertSafeE2eDatabaseReset } from './e2e-config.js';
+import { pullImages } from './docker-pull.js';
 import { delay, ephemeralPort, rootDir, run, tsxBin } from './server-harness.js';
 
 const PROBE_DB = uniqueTestDatabaseName('together_quickstart_test');
@@ -245,6 +246,26 @@ try {
   const [httpPort, httpsPort] = await Promise.all([ephemeralPort(), ephemeralPort()]);
   assert(httpPort !== httpsPort, 'Could not allocate distinct self-host ports');
   writeFileSync(join(cloneApp, '.env'), createEnvironment(httpPort, httpsPort, project), { mode: 0o600 });
+
+  const config = await compose(cloneApp, project, ['config', '--format', 'json']);
+  assert(config.code === 0, `docker compose config failed\n${config.stdout}${config.stderr}`);
+  const resolvedCompose = z.object({
+    services: z.record(z.object({ image: z.string().optional(), build: z.unknown().optional() })),
+  }).parse(JSON.parse(config.stdout));
+  const images = new Set<string>();
+  for (const service of Object.values(resolvedCompose.services)) {
+    if (service.build === undefined && service.image !== undefined) images.add(service.image);
+  }
+  const stages = new Set<string>();
+  const dockerfile = readFileSync(join(cloneApp, 'Dockerfile'), 'utf8');
+  for (const match of dockerfile.matchAll(/^\s*FROM\s+(?<image>\S+)(?:\s+AS\s+(?<stage>\S+))?/gimu)) {
+    const image = match.groups?.['image'];
+    const stage = match.groups?.['stage'];
+    if (image !== undefined && !stages.has(image.toLowerCase())) images.add(image);
+    if (stage !== undefined) stages.add(stage.toLowerCase());
+  }
+  console.log('quickstart:probe: pulling stack and build images...');
+  await pullImages([...images]);
 
   console.log('quickstart:probe: building the production image...');
   const build = await compose(cloneApp, project, ['build']);

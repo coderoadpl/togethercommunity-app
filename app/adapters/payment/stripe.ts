@@ -1,5 +1,6 @@
 import { checkoutProductIdsMetadata } from './metadata.js';
 import Stripe from 'stripe';
+import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
@@ -17,6 +18,7 @@ import {
   stripeKeyModeConflicts,
   type AppError,
   type Result,
+  type StripePermissionCheck,
 } from '#core/domain/index.js';
 import {
   STRIPE_WEBHOOK_EVENT_TYPES,
@@ -265,6 +267,79 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
   };
 
   return {
+    probeStripePermissions: async (input) => {
+      const resolved = await clientFor(input.tenantId, input.mode);
+      if (!resolved.ok) return resolved;
+      const client = resolved.value;
+      const checks: StripePermissionCheck[] = [];
+      const failure = (resource: StripePermissionCheck['resource'], permission: StripePermissionCheck['permission'], cause: unknown): StripePermissionCheck => {
+        const parsed = stripeCancelErrorSchema.safeParse(cause);
+        const detail = parsed.success && parsed.data.message !== undefined
+          ? parsed.data.message : cause instanceof Error ? cause.message : String(cause);
+        const missing = parsed.success && (parsed.data.statusCode === 403 || parsed.data.code === 'permission_denied')
+          || detail.toLowerCase().includes('does not have the required permissions');
+        return { resource, permission, status: missing ? 'missing' : 'error', detail };
+      };
+      const probe = async (resource: StripePermissionCheck['resource'], permission: StripePermissionCheck['permission'], operation: () => Promise<void>): Promise<void> => {
+        try {
+          await operation();
+          checks.push({ resource, permission, status: 'ok' });
+        } catch (cause) {
+          checks.push(failure(resource, permission, cause));
+        }
+      };
+      await probe('Webhook Endpoints', 'write', async () => { await client.webhookEndpoints.list({ limit: 1 }); });
+      await probe('Subscriptions', 'read', async () => { await client.subscriptions.list({ limit: 1 }); });
+      let couponId: string | undefined;
+      try {
+        await probe('Coupons', 'write', async () => {
+          const coupon = await client.coupons.create({
+            percent_off: 1, duration: 'once', max_redemptions: 1, name: 'Together permission probe',
+            metadata: { togetherProbe: '1', tenantId: input.tenantId },
+          });
+          couponId = coupon.id;
+        });
+        if (couponId === undefined) {
+          checks.push({ resource: 'Promotion Codes', permission: 'write', status: 'error', reason: 'coupon-probe-failed' });
+        } else {
+          const coupon = couponId;
+          await probe('Promotion Codes', 'write', async () => {
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const suffix = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join('');
+            const promotion = await client.promotionCodes.create({
+              coupon, code: `TOGETHER-PROBE-${suffix}`, max_redemptions: 1, active: true,
+              metadata: { togetherProbe: '1', tenantId: input.tenantId },
+            });
+            await client.promotionCodes.update(promotion.id, { active: false });
+          });
+        }
+      } finally {
+        if (couponId !== undefined) {
+          try {
+            await client.coupons.del(couponId);
+          } catch (cause) {
+            const index = checks.findIndex((check) => check.resource === 'Coupons');
+            checks[index] = failure('Coupons', 'write', cause);
+          }
+        }
+      }
+      await probe('Checkout Sessions', 'write', async () => {
+        let sessionId: string | undefined;
+        try {
+          const session = await client.checkout.sessions.create({
+            mode: 'payment',
+            line_items: [{ price_data: { currency: 'pln', unit_amount: 100, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
+            success_url: `${input.origin}/`, cancel_url: `${input.origin}/`,
+            expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+            metadata: { togetherProbe: '1', tenantId: input.tenantId },
+          });
+          sessionId = session.id;
+        } finally {
+          if (sessionId !== undefined) await client.checkout.sessions.expire(sessionId);
+        }
+      });
+      return ok(checks);
+    },
     retrieveStripeSubscription: async (tenantId, subscriptionId) => {
       const client = await clientFor(tenantId);
       if (!client.ok) return client;

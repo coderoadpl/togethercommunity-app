@@ -130,6 +130,7 @@ import {
   spaceSeenInputSchema,
   spaceUpdateInputSchema,
   stripeConfigureInputSchema,
+  stripeProbePermissionsInputSchema,
   stripeTestSessionInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
@@ -202,6 +203,7 @@ import {
   avatarUrlFor,
   cancelCampaign,
   configureStripe,
+  probeStripePermissions,
   removeStripeTestMode,
   createStripeTestSession,
   createCampaign,
@@ -2555,6 +2557,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.post(API_PATHS.stripeTestRemove, async (c) => respond(await removeStripeTestMode(ctxOf(c), deps)));
+
+  app.post(API_PATHS.stripeProbePermissions, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = stripeProbePermissionsInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid Stripe permission probe', parsed.error.flatten())));
+    return respond(await probeStripePermissions(ctxOf(c), parsed.data, deps));
+  });
 
   app.post(API_PATHS.stripeConfigure, async (c) => {
     const body: unknown = await readJson(c.req.raw);

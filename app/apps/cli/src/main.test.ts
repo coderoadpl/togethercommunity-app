@@ -47,6 +47,7 @@ interface Hoisted {
   verifyTotp: ReturnType<typeof vi.fn>;
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
+  probeStripePermissions: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -102,6 +103,7 @@ const h = vi.hoisted(
     verifyTotp: vi.fn(),
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
+    probeStripePermissions: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -182,6 +184,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     updateCourse: h.updateCourse,
     configureStorage: h.configureStorage,
     configureStripe: h.configureStripe,
+    probeStripePermissions: h.probeStripePermissions,
     getTenantRouting: h.getTenantRouting,
     getTenantRedirects: h.getTenantRedirects,
     createTenantRedirect: h.createTenantRedirect,
@@ -1301,4 +1304,15 @@ describe('consumer sales CLI parity', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(process.exitCode).toBe(4);
   });
+});
+
+it.each(['live', 'test'] as const)('emits the %s Stripe permission check envelope', async (mode) => {
+  h.probeStripePermissions.mockReset();
+  const result = { mode, allOk: false, checkedAt: '2026-10-10T12:00:00.000Z', checks: [
+    { resource: 'Coupons', permission: 'write', status: 'missing', detail: 'Coupon write denied' },
+  ] };
+  h.probeStripePermissions.mockResolvedValue(ok(result));
+  await run('--json', 'stripe', 'probe-permissions', '--mode', mode);
+  expect(h.probeStripePermissions).toHaveBeenCalledExactlyOnceWith({ mode });
+  expect(soleJson()).toEqual({ ok: true, data: result });
 });

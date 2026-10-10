@@ -137,6 +137,7 @@ import type {
   MemberActivityQuery,
   StripeSubscriptionSnapshot,
   StripeMode,
+  StripePermissionCheck,
   WipedTable,
 } from '#core/domain/index.js';
 
@@ -1045,6 +1046,11 @@ export interface PaymentWebhookEvent {
 }
 
 export interface PaymentProvider {
+  probeStripePermissions?(input: {
+    tenantId: string;
+    mode: StripeMode;
+    origin: string;
+  }): Promise<Result<StripePermissionCheck[], AppError>>;
   retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
   listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
   configureWebhook?(input: {

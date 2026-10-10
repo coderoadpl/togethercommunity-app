@@ -669,8 +669,10 @@ export interface Messages {
     ksefPdfDownload: string;
     ksefUpoDownload: string;
     ksefConflictHelp: string;
+    sendToKsef: string;
+    sendSelectedToKsef: string;
     ksefStates: Record<
-      'queued' | 'session_opened' | 'submitting' | 'processing' | 'awaiting_upo' | 'succeeded' | 'rejected' | 'numbering_conflict',
+      'held' | 'queued' | 'session_opened' | 'submitting' | 'processing' | 'awaiting_upo' | 'succeeded' | 'rejected' | 'numbering_conflict',
       string
     >;
     invoiceStatuses: Record<
@@ -1108,6 +1110,8 @@ export interface Messages {
     ifirmaUsernameLabel: string;
     ifirmaSaveFirst: string;
     ksefHeading: string;
+    ksefTestHeading: string;
+    ksefTestDescription: string;
     ksefDescription: string;
     ksefTokenHelp: string;
     ksefSaveFirst: string;
@@ -2192,6 +2196,10 @@ export interface Messages {
     vatRateUnset: string;
     vatRateHint: string;
     vatTreatment: string;
+    vatTreatmentHelp: string;
+    ksefSubmissionMode: string;
+    ksefSubmissionAutomatic: string;
+    ksefSubmissionManual: string;
     vatTreatmentRate: string;
     vatTreatmentExempt: string;
     exemptionBasisKind: string;

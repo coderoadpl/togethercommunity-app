@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import {
@@ -10,9 +10,11 @@ import {
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { actions } from '../../../api.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { PanelContextProvider } from '../panel-context.js';
 import { SalesPanel } from './SalesPanel.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
 
@@ -32,7 +34,7 @@ const renderOrderDetail = async () => {
     history: createMemoryHistory({ initialEntries: ['/panel/sales/o1'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
 };
 
 beforeEach(() => {
@@ -139,7 +141,7 @@ describe('SalesPanel', () => {
       history: createMemoryHistory({ initialEntries: ['/panel/sales'] }),
     });
     await router.load();
-    renderWithProviders(<RouterProvider router={router} />);
+    renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
 
     const salesRow = await screen.findByTestId('sales-row');
     expect(salesRow).toHaveTextContent('Workshop');
@@ -206,7 +208,7 @@ describe('SalesPanel', () => {
       history: createMemoryHistory({ initialEntries: ['/panel/sales'] }),
     });
     await router.load();
-    renderWithProviders(<RouterProvider router={router} />);
+    renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
 
     expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-export-csv')).toBeEnabled();
@@ -406,5 +408,126 @@ describe('OrderDetailPage', () => {
     expect(screen.getByText(en.sales.ksefStates.awaiting_upo)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: en.sales.ksefPdfDownload }))
       .toHaveAttribute('href', '/api/invoices/invoice-1/download');
+  });
+});
+
+const heldOrder = (id: string) => ({
+  id, tenantId: 't1', memberId: 'm1', productId: 'p1', priceId: null,
+  kind: 'one_time', status: 'paid', amountCents: 12300, currency: 'PLN',
+  provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+  billing: null, createdAt: '2026-07-28T09:00:00.000Z', memberEmail: 'member@example.com',
+  memberName: 'Ada', productTitle: 'Workshop', couponCode: null, mode: 'test',
+});
+
+const heldInvoice = (orderId: string) => ({
+  id: `invoice-${orderId}`, tenantId: 't1', orderId, status: 'requested', provider: 'ksef',
+  providerInvoiceId: null, invoiceNumber: null, pdfUrl: null, error: null, issuedAt: null,
+  createdAt: '2026-07-28T09:00:00.000Z',
+  ksef: {
+    environment: 'test', credentialMode: 'test', schemaSystemCode: 'FA (3)', schemaVersion: '1-0E',
+    contextNip: '5555555555', sellerName: 'Acme', sellerAddress: 'Main Street 1',
+    p2: null, invoiceType: 'VAT', issueDate: null, xmlArtifactKey: null, xmlByteSize: null,
+    xmlSha256: null, state: 'held', authConfigVersion: 1, sessionReference: null,
+    invoiceReference: null, ksefNumber: null, lastStatusCode: null, lastStatusDescription: null,
+    lastStatusDetails: [], lastStatusExtensions: {}, lastPolledAt: null, acquisitionAt: null,
+    invoicingAt: null, permanentStorageAt: null, upoArtifactKey: null, upoSha256: null,
+    upoRetrievedAt: null, originalSessionReference: null, originalKsefNumber: null,
+    lastTransportError: null, retryAt: null, attempt: 0, correlationChecks: 0, version: 0,
+  },
+});
+
+describe('controlled KSeF submission', () => {
+  it.each(['live', 'test'])('hides the issue action for a %s order without billing', async (mode) => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+      order: { ...heldOrder('o1'), mode }, invoice: null,
+    } })));
+    await renderOrderDetail();
+    expect(await screen.findByText('Workshop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.sales.issueInvoice })).not.toBeInTheDocument();
+  });
+
+  it('requests a test invoice with billing data and exposes the held send action', async () => {
+    let requested = false;
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+        order: { ...heldOrder('o1'), billing: { companyName: 'Sample buyer', nip: '5555555555', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' } }, invoice: requested ? heldInvoice('o1') : null,
+      } })),
+      http.post('/api/orders/o1/invoice', () => {
+        requested = true;
+        return HttpResponse.json({ ok: true, data: { invoice: heldInvoice('o1') } });
+      }),
+    );
+    await renderOrderDetail();
+    await userEvent.click(await screen.findByRole('button', { name: en.sales.issueInvoice }));
+    expect(await screen.findByText(en.sales.ksefStates.held)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.sales.sendToKsef })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.sales.issueInvoice })).not.toBeInTheDocument();
+    expect(requested).toBe(true);
+  });
+
+  it('sends a held test invoice from the detail without showing download links', async () => {
+    const sent: string[] = [];
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+        order: heldOrder('o1'), invoice: heldInvoice('o1'),
+      } })),
+      http.post('/api/orders/:orderId/invoice/send', ({ params }) => {
+        sent.push(String(params.orderId));
+        return HttpResponse.json({ ok: true, data: { invoice: heldInvoice('o1') } });
+      }),
+    );
+    const { queryClient } = await renderOrderDetail();
+    const listKey = actions.orders({ page: 1, pageSize: 25 }).queryKey;
+    queryClient.setQueryDefaults(listKey, { gcTime: Infinity, staleTime: 30_000 });
+    queryClient.setQueryData(listKey, { orders: [{ ...heldOrder('o1'), invoice: heldInvoice('o1') }], total: 1, page: 1, pageSize: 25 });
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
+    expect(await screen.findByText(en.sales.ksefStates.held)).toBeInTheDocument();
+    expect(screen.getAllByText(en.sales.testChip)).toHaveLength(2);
+    expect(screen.queryByRole('link', { name: en.sales.ksefPdfDownload })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.sales.ksefUpoDownload })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.sales.sendToKsef }));
+    await waitFor(() => expect(sent).toEqual(['o1']));
+    await waitFor(() => expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true));
+  });
+
+  it('sends only selected held rows and exposes individual row submission', async () => {
+    const sent: string[] = [];
+    server.use(
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/coupons/options', () => HttpResponse.json({ ok: true, data: { coupons: [] } })),
+      http.get('/api/orders/reconciliation', () => HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-07-28T10:00:00.000Z' } })),
+      http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
+        orders: ['o1', 'o2', 'o3'].map((id) => ({ ...heldOrder(id), invoice: heldInvoice(id) })),
+        total: 3, page: 1, pageSize: 25,
+      } })),
+      http.post('/api/orders/:orderId/invoice/send', ({ params }) => {
+        sent.push(String(params.orderId));
+        return HttpResponse.json({ ok: true, data: { invoice: heldInvoice(String(params.orderId)) } });
+      }),
+    );
+    const rootRoute = createRootRoute();
+    const salesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/sales', component: SalesPanel });
+    const router = createRouter({ routeTree: rootRoute.addChildren([salesRoute]), history: createMemoryHistory({ initialEntries: ['/panel/sales'] }) });
+    await router.load();
+    const { queryClient } = renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
+    const detailKey = actions.order('o1').queryKey;
+    queryClient.setQueryDefaults(detailKey, { gcTime: Infinity, staleTime: 30_000 });
+    queryClient.setQueryData(detailKey, { order: heldOrder('o1'), invoice: heldInvoice('o1') });
+    expect(queryClient.getQueryState(detailKey)?.isInvalidated).toBe(false);
+    const rows = await screen.findAllByTestId('sales-row');
+    const bulk = screen.getByRole('button', { name: en.sales.sendSelectedToKsef });
+    expect(bulk).toBeDisabled();
+    const firstRow = rows[0];
+    const secondRow = rows[1];
+    const thirdRow = rows[2];
+    if (firstRow === undefined || secondRow === undefined || thirdRow === undefined) throw new Error('Expected three invoice rows');
+    await userEvent.click(within(firstRow).getByRole('checkbox'));
+    await userEvent.click(within(thirdRow).getByRole('checkbox'));
+    await userEvent.click(bulk);
+    await waitFor(() => expect(sent).toEqual(['o1', 'o3']));
+    await waitFor(() => expect(queryClient.getQueryState(detailKey)?.isInvalidated).toBe(true));
+    await waitFor(() => expect(bulk).toBeDisabled());
+    await userEvent.click(within(secondRow).getByRole('button', { name: en.sales.sendToKsef }));
+    await waitFor(() => expect(sent).toEqual(['o1', 'o3', 'o2']));
   });
 });

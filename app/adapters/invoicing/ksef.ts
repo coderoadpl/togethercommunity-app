@@ -132,7 +132,13 @@ const responseError = async (response: Response): Promise<AppError> => {
 const sessionKey = (
   environment: KsefEnvironment,
   credentials: KsefCredentials,
-): string => `${environment}:${credentials.tenantId}:${credentials.contextNip}`;
+): string => JSON.stringify([
+  environment,
+  credentials.tenantId,
+  credentials.credentialSlot,
+  credentials.contextNip,
+  digestHex(credentials.token),
+]);
 
 export const createKsefClient = (options: KsefClientOptions): KsefClientPort => {
   const fetcher = options.fetcher ?? fetch;

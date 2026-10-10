@@ -400,7 +400,7 @@ export const runKsefSubmission = async (
   if (invoice?.ksef === null || invoice?.ksef === undefined) {
     return { ok: false, error: integrationUnavailable('KSeF invoice state is unavailable') };
   }
-  if (invoice.ksef.state === 'succeeded' || invoice.ksef.state === 'rejected'
+  if (invoice.ksef.state === 'held' || invoice.ksef.state === 'succeeded' || invoice.ksef.state === 'rejected'
     || invoice.ksef.state === 'numbering_conflict') {
     return { ok: true, value: invoice };
   }
@@ -411,7 +411,7 @@ export const runKsefSubmission = async (
     || new TextEncoder().encode(artifact.content).byteLength !== invoice.ksef.xmlByteSize) {
     return { ok: false, error: integrationUnavailable('Frozen FA(3) artifact integrity check failed') };
   }
-  const resolved = await deps.credentials.resolve(tenantId);
+  const resolved = await deps.credentials.resolve(tenantId, invoice.ksef.credentialMode);
   if (!resolved.ok) return resolved;
   const credentials = resolved.value;
   if (credentials.contextNip !== invoice.ksef.contextNip) {
@@ -429,10 +429,12 @@ export const runKsefSubmission = async (
     }
     ksef = { ...ksef, state: 'session_opened', sessionReference: opened.value.sessionReference };
     invoice = await checkpoint(tenantId, invoice, ksef, deps);
+    if (invoice.ksef?.state === 'held') return { ok: true, value: invoice };
     ksef = invoice.ksef ?? ksef;
   }
   if (ksef.state === 'submitting') {
     invoice = await correlate(tenantId, invoice, ksef, credentials, deps);
+    if (invoice.ksef?.state === 'held') return { ok: true, value: invoice };
     ksef = invoice.ksef ?? ksef;
     if (ksef.invoiceReference === null) return { ok: true, value: invoice };
   }

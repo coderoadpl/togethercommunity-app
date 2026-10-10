@@ -39,15 +39,18 @@ const IfirmaTestConnection = ({ ready }: { ready: boolean }) => {
   );
 };
 
-const KsefTestConnection = ({ ready }: { ready: boolean }) => {
+const KsefTestConnection = ({ ready, slot = 'live' }: { ready: boolean; slot?: 'live' | 'test' }) => {
   const t = useTranslations();
-  const testConnection = useMutation(actions.testKsefConnection);
+  const testLive = useMutation(actions.testKsefConnection);
+  const testSlot = useMutation(actions.testKsefTestConnection);
+  const testConnection = slot === 'test' ? testSlot : testLive;
+  const testId = slot === 'test' ? 'ksef-test-slot' : 'ksef';
   return (
     <Box sx={{ display: 'grid', gap: '0.5rem' }}>
       <Button
         type="button"
         variant="contained"
-        data-testid="ksef-test-connection"
+        data-testid={`${testId}-test-connection`}
         disabled={testConnection.isPending || !ready}
         onClick={() => testConnection.mutate(undefined)}
         sx={{ justifySelf: 'start' }}
@@ -55,17 +58,17 @@ const KsefTestConnection = ({ ready }: { ready: boolean }) => {
         {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
       </Button>
       {!ready ? (
-        <Typography variant="caption" component="p" data-testid="ksef-test-hint">
+        <Typography variant="caption" component="p" data-testid={`${testId}-test-hint`}>
           {t.integrations.ksefSaveFirst}
         </Typography>
       ) : null}
       {testConnection.isSuccess ? (
-        <Typography variant="caption" component="p" data-testid="ksef-test-result">
+        <Typography variant="caption" component="p" data-testid={`${testId}-test-result`}>
           {testConnection.data.diagnostic}
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert severity="error" data-testid="ksef-test-error">{localizePanelError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid={`${testId}-test-error`}>{localizePanelError(testConnection.error, t)}</Alert>
       ) : null}
     </Box>
   );
@@ -83,6 +86,9 @@ export const InvoicingTab = () => {
   const ksefReady =
     previewFor(storedSecrets, 'ksef.token') !== null
     && previewFor(storedSecrets, 'ksef.contextNip') !== null;
+
+  const ksefTestReady = previewFor(storedSecrets, 'ksef.test.token') !== null
+    && previewFor(storedSecrets, 'ksef.test.contextNip') !== null;
 
   return (
     <>
@@ -138,6 +144,34 @@ export const InvoicingTab = () => {
           </Stack>
         )}
         <KsefTestConnection ready={ksefReady} />
+      </SectionCard>
+      <SectionCard
+        title={t.integrations.ksefTestHeading}
+        description={t.integrations.ksefTestDescription}
+      >
+        {secrets.isPending ? (
+          <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+        ) : secrets.isError ? (
+          <StatusView state={{ kind: 'error', message: localizePanelError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
+        ) : (
+          <Stack useFlexGap spacing="1.25rem">
+            <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>
+            <SecretField
+              secretKey="ksef.test.token"
+              label={t.integrations.ksefTokenLabel}
+              maskedPreview={previewFor(secrets.data.secrets, 'ksef.test.token')}
+            />
+            <SecretField
+              secretKey="ksef.test.contextNip"
+              label={t.integrations.ksefContextNipLabel}
+              maskedPreview={previewFor(secrets.data.secrets, 'ksef.test.contextNip')}
+            />
+            <Typography variant="caption" component="p">
+              {ksefTestReady ? t.integrations.configured : t.integrations.notConfigured}
+            </Typography>
+          </Stack>
+        )}
+        <KsefTestConnection ready={ksefTestReady} slot="test" />
       </SectionCard>
     </>
   );

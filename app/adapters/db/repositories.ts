@@ -3353,6 +3353,9 @@ export const createOrderRepository = (
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .where(and(...conditions));
+      const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
+        .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
+        .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
       return {
         orders: rows.map(
           (row): OrderListItem =>
@@ -3363,6 +3366,7 @@ export const createOrderRepository = (
               productTitle: row.productTitle,
               couponCode: row.couponCode,
               salesLinkTitle: row.salesLinkTitle ?? undefined,
+              invoice: invoiceRows.find((invoice) => invoice.orderId === row.order.id) ?? null,
             }),
         ),
         total: totals[0]?.value ?? 0,
@@ -4304,6 +4308,7 @@ export const createTenantRepository = (
         memberVideoAutoplayOverride: tenants.memberVideoAutoplayOverride,
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
+        ksefSubmissionMode: tenants.ksefSubmissionMode,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
         invoiceVatMode: tenants.invoiceVatMode,
         invoiceExemptionBasisKind: tenants.invoiceExemptionBasisKind,
@@ -4343,6 +4348,7 @@ export const createTenantRepository = (
           memberVideoAutoplayOverride: row.memberVideoAutoplayOverride,
           autoIssueInvoices: row.autoIssueInvoices,
           autoIssueInvoiceScope: row.autoIssueInvoiceScope,
+          ksefSubmissionMode: row.ksefSubmissionMode,
           invoiceVatRatePercent:
             row.invoiceVatRatePercent === 5 ||
             row.invoiceVatRatePercent === 8 ||
@@ -4398,6 +4404,7 @@ export const createTenantRepository = (
         memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
+        ksefSubmissionMode: settings.ksefSubmissionMode,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
         invoiceVatMode: settings.invoiceVatMode ?? undefined,
         invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
@@ -4433,6 +4440,7 @@ export const createTenantRepository = (
       memberVideoAutoplayOverride: settings.memberVideoAutoplayOverride,
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
+      ksefSubmissionMode: settings.ksefSubmissionMode,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,
       invoiceVatMode: settings.invoiceVatMode,
       invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,

@@ -369,6 +369,22 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <MenuItem value="ksef">{t.billing.providerKsef}</MenuItem>
         </Select>
       </FormControl>
+      {provider === 'ksef' ? (
+        <FormControl fullWidth>
+          <FormLabel id="ksef-submission-mode-label">{t.billing.ksefSubmissionMode}</FormLabel>
+          <Select
+            labelId="ksef-submission-mode-label"
+            value={settings.data?.settings.ksefSubmissionMode ?? 'automatic'}
+            disabled={!canEdit || settings.isPending || updateSettings.isPending}
+            onChange={(event) => updateSettings.mutate({
+              ksefSubmissionMode: event.target.value === 'manual' ? 'manual' : 'automatic',
+            })}
+          >
+            <MenuItem value="automatic">{t.billing.ksefSubmissionAutomatic}</MenuItem>
+            <MenuItem value="manual">{t.billing.ksefSubmissionManual}</MenuItem>
+          </Select>
+        </FormControl>
+      ) : null}
       <FormControl fullWidth>
         <FormLabel id="invoice-auto-scope-label">{t.billing.autoIssueScope}</FormLabel>
         <Select
@@ -406,6 +422,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <MenuItem value={23}>{t.billing.vatTreatmentRate} 23%</MenuItem>
           <MenuItem value="exempt">{t.billing.vatTreatmentExempt}</MenuItem>
         </Select>
+        <Typography variant="caption" component="p">{t.billing.vatTreatmentHelp}</Typography>
         <Typography variant="caption" component="p">{t.billing.vatRateHint}</Typography>
       </FormControl>
       {treatment === 'exempt' ? (

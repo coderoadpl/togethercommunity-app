@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   err,
   integrationUnavailable,
+  integrationNotConfigured,
   ok,
   renderFa3Invoice,
   type Invoice,
@@ -17,6 +18,7 @@ import {
   downloadMemberInvoice,
   refreshInvoiceStatus,
   requestInvoice,
+  sendInvoice,
   testIfirmaConnection,
   testKsefConnection,
 } from './invoices.js';
@@ -57,6 +59,7 @@ const order = (billingSnapshot: OrderListItem['billing'] = billing): OrderListIt
 
 const harness = (options: {
   auto?: boolean;
+  submissionMode?: 'automatic' | 'manual';
   scope?: 'b2b_only' | 'all';
   fail?: boolean;
   failAfterCreate?: boolean;
@@ -67,6 +70,7 @@ const harness = (options: {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
   let calls = 0;
+  let allocationCount = 0;
   let allocatedYear: number | null = null;
   let frozenXml: string | null = null;
   let testedConfig: { invoiceApiKey: string; username: string } | null = null;
@@ -106,7 +110,9 @@ const harness = (options: {
         events.push(event);
       },
       createFrozenKsef: async (_tenantId, invoice, event, artifact) => {
-        invoices.push(invoice);
+        const index = invoices.findIndex((item) => item.id === invoice.id);
+        if (index < 0) invoices.push(invoice);
+        else invoices[index] = invoice;
         events.push(event);
         frozenXml = artifact.content;
         return true;
@@ -172,6 +178,7 @@ const harness = (options: {
         termsUrl: null,
         privacyUrl: null,
         defaultHomeSpaceId: null,
+        ksefSubmissionMode: options.submissionMode ?? 'automatic',
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
         invoiceVatRatePercent: 23,
@@ -209,16 +216,18 @@ const harness = (options: {
     ksef: {
       environment: 'test',
       credentials: {
-        resolve: async () => ok({
+        resolve: async (_tenantId, mode = 'live') => ok({
           tenantId: 'tenant-1',
+          credentialSlot: mode,
           token: 'ksef-token',
           contextNip: '5555555555',
         }),
       },
       numbers: {
         allocate: async (_tenantId, input) => {
+          allocationCount += 1;
           allocatedYear = input.year;
-          return { p2: `FV/${String(input.year)}/000001`, sequence: 1 };
+          return ok({ p2: `FV/${String(input.year)}/000001`, sequence: 1 });
         },
       },
       artifacts: {
@@ -255,7 +264,12 @@ const harness = (options: {
       },
     },
   };
+  deps.invoices.withKsefInvoiceLock = async (_tenantId, _orderId, work) => {
+    if (deps.ksef === undefined) throw new Error('KSeF test dependencies missing');
+    return work({ invoices: deps.invoices, numbers: deps.ksef.numbers });
+  };
   return {
+    allocationCount: () => allocationCount,
     deps,
     invoices,
     events,
@@ -838,6 +852,7 @@ describe('testKsefConnection', () => {
     });
     expect(h.testedKsefCredentials()).toEqual({
       tenantId: 'tenant-1',
+      credentialSlot: 'live',
       token: 'ksef-token',
       contextNip: '5555555555',
     });
@@ -860,7 +875,7 @@ describe('KSeF artifact downloads', () => {
     const h = harness({ provider: 'ksef' });
     await requestInvoice(ctx, 'order-1', h.deps);
     const frozen = h.invoices[0];
-    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+    if (frozen?.ksef === null || frozen?.ksef === undefined || frozen.ksef.state === 'held' || h.deps.ksef === undefined) {
       throw new Error('Expected a frozen KSeF invoice');
     }
     frozen.status = 'issued';
@@ -904,7 +919,7 @@ describe('KSeF artifact downloads', () => {
     const h = harness({ provider: 'ksef' });
     await requestInvoice(ctx, 'order-1', h.deps);
     const frozen = h.invoices[0];
-    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+    if (frozen?.ksef === null || frozen?.ksef === undefined || frozen.ksef.state === 'held' || h.deps.ksef === undefined) {
       throw new Error('Expected a frozen KSeF invoice');
     }
     frozen.ksef = {
@@ -927,5 +942,92 @@ describe('KSeF artifact downloads', () => {
       ok: true,
       value: { contentType: 'application/xml', filename: 'FV_2026_000001-UPO.xml' },
     });
+  });
+});
+
+
+describe('controlled KSeF submission', () => {
+  it.each(['live', 'test'] as const)('freezes %s orders with their matching credential slot', async (mode) => {
+    const h = harness({ provider: 'ksef' });
+    if (h.deps.ksef === undefined) throw new Error('KSeF test dependencies missing');
+    h.deps.ksef.environment = 'production';
+    const modes: Array<string | undefined> = [];
+    h.deps.ksef.credentials.resolve = async (_tenantId, credentialMode) => {
+      modes.push(credentialMode);
+      return ok({ tenantId: 'tenant-1', credentialSlot: credentialMode ?? 'live', token: `${credentialMode}-token`, contextNip: '5555555555' });
+    };
+    h.deps.orderDetails.findById = async () => ({ ...order(), mode });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true, value: { ksef: { environment: mode === 'test' ? 'test' : 'production', credentialMode: mode } },
+    });
+    expect(modes).toEqual([mode]);
+  });
+
+  it('refuses test orders without their own credential slot', async () => {
+    const h = harness({ provider: 'ksef' });
+    if (h.deps.ksef === undefined) throw new Error('KSeF test dependencies missing');
+    h.deps.orderDetails.findById = async () => ({ ...order(), mode: 'test' });
+    h.deps.ksef.credentials.resolve = async (_tenantId, mode) => mode === 'test'
+      ? err(integrationNotConfigured('Test credentials are missing'))
+      : ok({ tenantId: 'tenant-1', credentialSlot: mode ?? 'live', token: 'live-token', contextNip: '5555555555' });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(h.invoices).toEqual([]);
+    expect(h.allocationCount()).toBe(0);
+  });
+
+  it('holds manual requests without allocating, dating or rendering, then sends once using today', async () => {
+    const h = harness({ provider: 'ksef', submissionMode: 'manual' });
+    const held = await requestInvoice(ctx, 'order-1', h.deps);
+    expect(held).toMatchObject({ ok: true, value: { status: 'requested', invoiceNumber: null, ksef: {
+      state: 'held', p2: null, issueDate: null, xmlArtifactKey: null, xmlSha256: null,
+    } } });
+    expect(h.frozenXml()).toBeNull();
+    expect(h.allocationCount()).toBe(0);
+    h.deps.clock.nowIso = () => '2026-08-02T10:00:00.000Z';
+    const sent = await sendInvoice(ctx, 'order-1', h.deps);
+    expect(sent).toMatchObject({ ok: true, value: { status: 'queued', ksef: { state: 'queued', issueDate: '2026-08-02' } } });
+    expect(await sendInvoice(ctx, 'order-1', h.deps)).toEqual(sent);
+    expect(h.allocationCount()).toBe(1);
+    expect(h.invoices).toHaveLength(1);
+    expect(h.events.filter((event) => event.type === 'frozen')).toMatchObject([
+      { meta: { actorId: 'user-1' }, occurredAt: '2026-08-02T10:00:00.000Z' },
+    ]);
+  });
+
+  it('keeps held invoices when manual mode switches to automatic', async () => {
+    const options = { provider: 'ksef', submissionMode: 'manual', auto: true } as const;
+    const h = harness(options);
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, ksefSubmissionMode: 'automatic' };
+    };
+    await autoIssueOnPayment('tenant-1', order(), h.deps);
+    expect(h.invoices[0]?.ksef?.state).toBe('held');
+    expect(h.allocationCount()).toBe(0);
+  });
+
+  it('honors automatic invoice scope for test orders', async () => {
+    const h = harness({ provider: 'ksef', auto: true, scope: 'b2b_only', submissionMode: 'manual' });
+    const testOrder: OrderListItem = { ...order(), mode: 'test' };
+    h.deps.orderDetails.findById = async () => testOrder;
+    await autoIssueOnPayment('tenant-1', { ...testOrder, billing: { ...billing, nip: null } }, h.deps);
+    expect(h.invoices).toHaveLength(0);
+    await autoIssueOnPayment('tenant-1', testOrder, h.deps);
+    expect(h.invoices[0]?.ksef).toMatchObject({ state: 'held', environment: 'test', credentialMode: 'test' });
+  });
+
+  it('uses test credentials and TEST for the test connection', async () => {
+    const h = harness({ provider: 'ksef' });
+    if (h.deps.ksef === undefined) throw new Error('KSeF test dependencies missing');
+    h.deps.ksef.environment = 'production';
+    h.deps.ksef.credentials.resolve = async (_tenantId, mode) => ok({ tenantId: 'tenant-1', credentialSlot: mode ?? 'live', token: `${mode}-token`, contextNip: '5555555555' });
+    h.deps.ksef.client.validateCredentials = async (input) => {
+      expect(input.environment).toBe('test');
+      expect(input.credentials.token).toBe('test-token');
+      return ok({ diagnostic: 'Configured' });
+    };
+    expect(await testKsefConnection(ctx, h.deps, 'test')).toMatchObject({ ok: true });
   });
 });

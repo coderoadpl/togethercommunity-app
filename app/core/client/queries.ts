@@ -858,6 +858,12 @@ export const issueInvoiceMutation = (api: ApiClient) =>
     call: (orderId: string) => api.issueInvoice(orderId),
   });
 
+export const sendInvoiceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'invoice-send'],
+    call: (orderId: string) => api.sendInvoice(orderId),
+  });
+
 export const refreshInvoiceMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...salesScopes.all(), 'invoice-refresh'],
@@ -1685,6 +1691,12 @@ export const testKsefConnectionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'ksef-test'],
     call: () => api.testKsefConnection(),
+  });
+
+export const testKsefTestConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'ksef-test-slot'],
+    call: () => api.testKsefConnection('test'),
   });
 
 export const bunnyVideosQuery = (api: ApiClient, input: { search?: string; page?: number } = {}) =>

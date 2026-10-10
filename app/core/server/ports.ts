@@ -1148,6 +1148,11 @@ export interface InvoicingPort {
 }
 
 export interface InvoiceRepository {
+  withKsefInvoiceLock?(
+    tenantId: string,
+    orderId: string,
+    work: (repositories: { invoices: InvoiceRepository; numbers: KsefNumberRepository }) => Promise<Result<Invoice, AppError>>,
+  ): Promise<Result<Invoice, AppError>>;
   findById(tenantId: string, id: string): Promise<Invoice | null>;
   findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
   listForMember?(tenantId: string, memberId: string): Promise<Invoice[]>;
@@ -1180,8 +1185,8 @@ export interface KsefNumberAllocation {
 export interface KsefNumberRepository {
   allocate(
     tenantId: string,
-    input: { orderId: string; invoiceType: 'VAT'; year: number; allocatedAt: string },
-  ): Promise<KsefNumberAllocation>;
+    input: { orderId: string; invoiceType: 'VAT'; year: number; allocatedAt: string; environment?: KsefEnvironment },
+  ): Promise<Result<KsefNumberAllocation, AppError>>;
 }
 
 /** @public */
@@ -1233,6 +1238,7 @@ export interface AutoInvoiceJobRepository {
 
 export interface KsefCredentials {
   tenantId: string;
+  credentialSlot: 'live' | 'test';
   token: string;
   contextNip: string;
 }
@@ -1302,7 +1308,7 @@ export interface KsefClientPort {
 }
 
 export interface KsefCredentialResolver {
-  resolve(tenantId: string): Promise<Result<KsefCredentials, AppError>>;
+  resolve(tenantId: string, mode?: 'live' | 'test'): Promise<Result<KsefCredentials, AppError>>;
 }
 
 export interface KsefSubmissionRepository {

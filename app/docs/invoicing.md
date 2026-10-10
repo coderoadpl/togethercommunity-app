@@ -13,13 +13,13 @@ Together can also submit FA(3) invoices directly to KSeF 2.0. Direct KSeF uses T
 5. Save the iFirma username and the `faktura` API key. Both fields are write-only: after saving, Together displays only masked previews.
 6. Select **Test connection**. The test performs an authenticated, read-only invoice-list request and does not create a document.
 7. In **Settings → Automatic invoices**, select 5%, 8%, or 23% VAT, or select VAT exemption and provide its legal basis.
-8. Complete a paid test order with billing data, open it in **Sales**, and select **Issue invoice**.
+8. Complete a paid live-mode order with billing data, open it in **Sales**, and select **Issue invoice**. iFirma does not support test-mode orders.
 
 If the connection test reports rejected credentials, verify the login, confirm that the saved key is the `faktura` key, and generate a replacement key in iFirma if necessary. A validation error means iFirma accepted authentication but rejected the account configuration or document data. An unavailable error indicates a network or iFirma technical failure and can be retried.
 
 ## What Together sends
 
-Together creates a paid domestic VAT invoice in PLN for a Polish billing address. Each position uses the immutable paid-order product name and amount rather than a current product price. Products without an explicit VAT rate store a null override and follow **Settings → Automatic invoices**; creating or editing a product does not freeze that default. For a single-product order without an explicit override, the invoice uses the current Settings treatment at issue time, including B2C invoices requested later. An explicit product rate is frozen on the order line; a sales link freezes every line's resolved rate at checkout. A sales link produces one position per product, with mixed 5%, 8%, 23%, and exempt rates supported by both iFirma and KSeF. The invoice request event freezes the positions; KSeF also freezes the exact XML. Every position is treated as delivered at the time of sale; there is no advance-payment invoice flow. For a single-product order, the existing position discount note and FA(3) XML shape remain unchanged, including omission of `P_6`. Multi-line FA(3) invoices include the sale date in `P_6`. For bundles, a total coupon discount is allocated proportionally across positions using cumulative integer-cent rounding; the position gross amounts sum exactly to the paid order total. Net and VAT amounts are computed separately per discounted position. The buyer comes from the immutable checkout billing snapshot; a B2B buyer includes the NIP, while a B2C buyer does not.
+Together creates a paid domestic VAT invoice in PLN for a Polish billing address. Each position uses the immutable paid-order product name and amount rather than a current product price. Products without an explicit VAT rate store a null override and follow **Settings → Automatic invoices**; creating or editing a product does not freeze that default. For a single-product order without an explicit override, the invoice uses the current Settings treatment at issue time, including B2C invoices requested later. An explicit product rate is frozen on the order line; a sales link freezes every line's resolved rate at checkout. A sales link produces one position per product, with mixed 5%, 8%, 23%, and exempt rates supported by both iFirma and KSeF. The iFirma request event freezes the positions. KSeF captures the positions with its frozen XML when the invoice is queued; in manual mode this happens on the send action. Every position is treated as delivered at the time of sale; there is no advance-payment invoice flow. For a single-product order, the existing position discount note and FA(3) XML shape remain unchanged, including omission of `P_6`. Multi-line FA(3) invoices include the sale date in `P_6`. For bundles, a total coupon discount is allocated proportionally across positions using cumulative integer-cent rounding; the position gross amounts sum exactly to the paid order total. Net and VAT amounts are computed separately per discounted position. The buyer comes from the immutable checkout billing snapshot; a B2B buyer includes the NIP, while a B2C buyer does not.
 
 Naming decision (2026-10-08): single-product invoice positions also use the stored order-line name. New orders capture that name at purchase; pre-existing orders received the product title current when migration `0136_order_lines.sql` backfilled them. Renaming a product afterward does not change the position name on an invoice requested later. This deliberately changes the previous behavior, which used the current product title at invoice issuance, and keeps invoice names consistent with the order ledger.
 
@@ -83,9 +83,30 @@ Do not paste a KSeF access token or refresh token into Together. Those credentia
 
 The provider switch affects new invoice requests only. Existing iFirma invoices remain attached to iFirma, while every already-frozen KSeF invoice continues through its durable KSeF job. Switching providers never moves or reissues a fiscal document.
 
-Together allocates P_2 from an immutable per-tenant yearly series such as `FV/2026/000001`. KSeF retains the duplicate key `(seller NIP, invoice type, P_2)` for ten years counted from the end of the invoice year. Never change P_2 or submit a fresh copy to bypass a duplicate.
+Together allocates P_2 from an immutable yearly series per tenant, such as `FV/2026/000001`. Migration `0139_ksef_controlled_send.sql` only adds environment columns with a `production` default and new per-environment unique indexes. It retains every legacy index, allocation, P_2 value, and counter without rewriting historical data. The default is a compatibility value, not a classification of historical invoices. Production allocation remains compatible with the previous application release. TEST allocation is unavailable in this expansion release and returns `integration_not_configured` before reserving a number or writing XML. This also applies to live orders on a TEST deployment. Manual TEST requests may be held, but sending them leaves them held and returns that error. KSeF retains the duplicate key `(seller NIP, invoice type, P_2)` for ten years counted from the end of the invoice year. Never change P_2 or submit a fresh copy to bypass a duplicate.
+
+### Manual submission gate
+
+**Settings → Automatic invoices → Submission to KSeF** defaults to **Automatically after issuing**, including for existing workspaces. **Manually — after clicking 'Send to KSeF'** applies to both staff requests and automatic issuance. Automatic issuance still follows its enabled setting and B2B/all-orders scope.
+
+Manual requests create a `requested` invoice with KSeF state `held`, shown as **Waiting to be sent to KSeF**. A held invoice has no P_2, issue date, frozen XML, or dispatcher job. Staff with `invoice:write` can select **Send to KSeF** on the order detail or invoice row, or select held rows in Orders and use **Send selected to KSeF**. Each selected order is sent independently; a failure stops the remaining selection and displays the error.
+
+Sending locks the order and, within one database transaction, allocates the environment-specific number, renders and validates the XML with the current Warsaw issue date, freezes the artifact, appends the existing `frozen` invoice event with the acting user ID and timestamp, and queues the durable job. Validation failure rolls back the allocation. Concurrent or repeated send requests return the same invoice and never allocate another number. Switching back to automatic mode leaves the held backlog untouched; those invoices still require an explicit send. The dispatcher ignores held invoices, even if a stale job refers to one.
+
+Buyers receive no invoice link while an invoice is held. Their PDF link becomes available only when issuance has completed. Purchase confirmation email behavior is unchanged. Staff downloads also reject held invoices.
+
+CLI parity:
+
+```bash
+pnpm --silent run cli --tenant acme tenant settings-set --ksef-submission-mode manual
+pnpm --silent run cli --tenant acme invoice send --order-id <order-id>
+```
+
+The VAT setting is labeled **Default VAT rate**. It applies to products without their own rate; an explicit product rate takes precedence.
 
 ### Submission states
+
+- **Waiting to be sent to KSeF** means an unnumbered held invoice awaits a staff send action.
 
 - **Queued** means the canonical FA(3) XML and SHA-256 are already frozen and the durable job is waiting to open a session.
 - **Session opened** means the encrypted online session reference is persisted, but the invoice has not yet been sent.
@@ -104,7 +125,13 @@ Together renders the A4 visualization itself from the frozen FA(3) XML, with no 
 
 ### Environments and operations
 
-`KSEF_ENVIRONMENT` is a deployment setting, not a tenant switch. Use `test` with `https://api-test.ksef.mf.gov.pl/v2` only for synthetic data. TEST is shared between integrators, so never use real personal, commercial, or production secrets there. Production uses `https://api.ksef.mf.gov.pl/v2`.
+The order mode determines the environment when an invoice is frozen. Stripe test-mode orders use KSeF TEST (`https://api-test.ksef.mf.gov.pl/v2`) and the separate write-only tenant secrets `ksef.test.token` and `ksef.test.contextNip`. Configure them in **Integrations → Invoicing → KSeF — test environment**; its connection test always targets TEST. Use a synthetic NIP because TEST is shared between integrators. Both credential cards support saving, masked previews, and removal.
+
+Live-mode orders retain the deployment `KSEF_ENVIRONMENT` and use `ksef.token` and `ksef.contextNip`. Production deployments require the `production` environment (`https://api.ksef.mf.gov.pl/v2`). The frozen invoice stores its environment and credential slot separately: a live order on a TEST deployment still uses the live credential slot. The dispatcher uses that frozen endpoint and slot, without falling back to the other credentials. Existing frozen invoices without a slot continue using the live slot.
+
+Authentication and session caches are isolated by environment, tenant, credential slot, NIP, and token fingerprint. Matching NIPs or tokens across live and test slots never share cached authentication or session encryption material; replacing a token requires fresh authentication.
+
+Test-mode orders can be held only through KSeF with a configured valid TEST slot; numbering and sending remain gated in this expansion release. They remain refused for iFirma or an absent TEST slot. Their automatic issuance follows the same enabled and scope settings as live orders, and Studio retains the existing test-mode chip on orders and their invoice rows.
 
 The durable dispatcher is invoked every minute by the Vercel cron entry for `GET /api/internal/dispatch-ksef`, authenticated with `Authorization: Bearer $CRON_SECRET`. Long-running Node deployments also invoke it every `KSEF_DISPATCH_INTERVAL_MS` (one second by default). Each invocation drains a bounded batch while the repository continues to serialize work per tenant. It respects `Retry-After`, refreshes expired access tokens once, stores every projection transition with an append-only lifecycle event, and persists UPO content rather than its expiring download URL. Operators can also invoke `POST /api/internal/dispatch-ksef` with `x-scheduler-operator-secret: $CRON_SECRET`.
 

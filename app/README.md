@@ -217,7 +217,11 @@ and `custom-domain`. The `auth` job also runs `fixtures:check` and `visual:app`.
 workflow. These gates run for pushes and pull requests targeting `main` and
 `staging`.
 
-The Vitest projects currently discover <!--count:test-files-->526<!--/count-->
+ECR Public allows one unauthenticated pull per second, so the quickstart smoke
+probe, Caddyfile test, and browser suites pull images one at a time with retries
+for throttling and transient network failures.
+
+The Vitest projects currently discover <!--count:test-files-->532<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

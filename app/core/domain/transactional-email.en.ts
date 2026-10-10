@@ -9,7 +9,19 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       direct: 'you can turn off messages from community members in your account settings',
     },
   },
-  purchase: { orderNumber: 'Order number', lines: 'Purchased items', verification: 'Show this code to staff when collecting your order', qrAlt: 'Order verification QR code' },
+  purchase: {
+    orderNumber: 'Order number',
+    lines: 'Purchased items',
+    item: 'Item',
+    amount: 'Amount',
+    vat: 'VAT',
+    exempt: 'exempt',
+    total: 'Total',
+    notInvoice: 'This purchase confirmation is not an invoice. If you need an invoice, contact us.',
+    subject: (orderNumber, tenantName) => `Purchase confirmation ${orderNumber} — ${tenantName}`,
+    verification: 'Show this code to staff when collecting your order',
+    qrAlt: 'Order verification QR code',
+  },
   welcomeSignIn: {
     actionLabels: {
       course: 'Sign in and open your course',

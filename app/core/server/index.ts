@@ -147,3 +147,6 @@ export { captureCheckoutSelection } from './usecases/checkout-lines.js';
 export * from './order-verification-ports.js';
 export * from './usecases/order-verification.js';
 export * from './usecases/public-order-qr.js';
+
+export * from './consumer-sales-ports.js';
+export * from './usecases/consumer-sales.js';

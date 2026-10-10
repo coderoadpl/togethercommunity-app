@@ -62,6 +62,10 @@ const commonHandlers = () => {
       HttpResponse.json({ ok: true, data: { items: [], nextCursor: null, openCount: 3 } })),
     http.get('/api/dm-reports', () =>
       HttpResponse.json({ ok: true, data: { reports: [], nextCursor: null, openCount: 2 } })),
+    http.get('/api/orders/consumer-sales-summary', ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      return HttpResponse.json({ ok: true, data: { from: params.get('from'), to: params.get('to'), timezone: 'Europe/Warsaw', currency: 'PLN', rates: [], totals: { orderCount: 0, lineCount: 0, netCents: 0, vatCents: 0, grossCents: 0 }, orderIds: [], orders: [] } });
+    }),
     http.get('/api/sales/summary', () =>
       HttpResponse.json({
         ok: true,

@@ -1,3 +1,5 @@
+import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
+import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
@@ -393,6 +395,8 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   order: (id: string) => orderQuery(apiClient, id),
   issueInvoice: issueInvoiceMutation(apiClient),
   refreshInvoice: refreshInvoiceMutation(apiClient),
+  consumerSalesSummary: (input: ConsumerSalesQuery) => consumerSalesSummaryQuery(apiClient, input),
+  consumerSalesExport: (input: ConsumerSalesQuery) => consumerSalesExportQuery(apiClient, input),
   ordersExport: (input: OrdersExportQueryInput) => ordersExportQuery(apiClient, input),
   salesSummary: salesSummaryQuery(apiClient),
   couponStats: (input: CouponStatsQueryInput) => couponStatsQuery(apiClient, input),

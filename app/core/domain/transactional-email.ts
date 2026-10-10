@@ -5,7 +5,8 @@ import { deriveLightAccent } from './color.js';
 import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
-import { productTypeSchema } from './product.js';
+import { currencySchema, productTypeSchema } from './product.js';
+import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import type { NotificationFooterKind, TransactionalEmailMessages, WelcomeSignInProductType } from './transactional-email-messages.js';
@@ -23,11 +24,21 @@ export const emailMessageSchema = z.object({
 
 export type EmailMessage = z.output<typeof emailMessageSchema>;
 
+const purchaseLineSchema = z.object({
+  name: z.string().min(1),
+  grossCents: z.number().int().nonnegative(),
+  vatRate: productVatRateSchema.nullable(),
+});
+
 export const purchaseEmailDetailsSchema = z.object({
   orderNumber: z.string().min(1),
   verificationUrl: z.string().url(),
   qrImageUrl: z.string().url(),
-  lines: z.array(z.string().min(1)).min(1),
+  lines: z.array(z.union([z.string().min(1), purchaseLineSchema])).min(1),
+  currency: currencySchema.optional(),
+  totalCents: z.number().int().nonnegative().optional(),
+}).refine((purchase) => (purchase.currency === undefined) === (purchase.totalCents === undefined), {
+  message: 'Currency and total must both be present or both be absent',
 });
 
 export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
@@ -126,6 +137,33 @@ const brandSocialLinks = (
   };
 };
 
+const purchaseItems = (
+  language: string,
+  purchase: z.output<typeof purchaseEmailDetailsSchema>,
+  labels: TransactionalEmailMessages['purchase'],
+): { html: string; text: string } => {
+  if (purchase.currency === undefined || purchase.totalCents === undefined || !purchase.lines.every((line) => typeof line !== 'string')) {
+    const names = purchase.lines.map((line) => typeof line === 'string' ? line : line.name);
+    return {
+      html: `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`,
+      text: names.map((name) => `- ${name}`).join('\n'),
+    };
+  }
+  const formatter = new Intl.NumberFormat(languageOrDefault(language) === 'pl' ? 'pl-PL' : 'en-GB', {
+    style: 'currency', currency: purchase.currency,
+  });
+  const lines = purchase.lines.map((line) => ({
+    name: line.name,
+    amount: formatter.format(line.grossCents / 100),
+    vat: line.vatRate === null ? null : line.vatRate === 'exempt' ? labels.exempt : `${String(line.vatRate)}\u00a0%`,
+  }));
+  const total = formatter.format(purchase.totalCents / 100);
+  return {
+    html: `<table><thead><tr><th>${escapeHtml(labels.item)}</th><th>${escapeHtml(labels.amount)}</th><th>${escapeHtml(labels.vat)}</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.name)}</td><td>${escapeHtml(line.amount)}</td><td>${escapeHtml(line.vat ?? '—')}</td></tr>`).join('')}<tr><td><strong>${escapeHtml(labels.total)}</strong></td><td><strong>${escapeHtml(total)}</strong></td><td></td></tr></tbody></table>`,
+    text: `${lines.map((line) => `- ${line.name} — ${line.amount}${line.vat === null ? '' : ` (${line.vat})`}`).join('\n')}\n${labels.total}: ${total}`,
+  };
+};
+
 export const welcomeSignIn = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding; productType?: WelcomeSignInProductType; purchase?: z.output<typeof purchaseEmailDetailsSchema> },
@@ -149,11 +187,12 @@ export const welcomeSignIn = (
   });
   if (purchase === undefined) return emailMessageSchema.parse(rendered);
   const labels = messages.purchase;
-  const lines = purchase.lines.map((name) => `<li>${escapeHtml(name)}</li>`).join('');
+  const items = purchaseItems(language, purchase, labels);
   return emailMessageSchema.parse({
     ...rendered,
-    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p><ul>${lines}</ul><p>${link(purchase.verificationUrl, labels.verification)}</p><a href="${escapeHtml(purchase.verificationUrl)}"><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" /></a>${socialLinks.html}`,
-    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${purchase.lines.map((name) => `- ${name}`).join('\n')}\n\n${labels.verification}: ${purchase.verificationUrl}${socialLinks.text}`,
+    subject: labels.subject(purchase.orderNumber, input.tenantName),
+    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${link(purchase.verificationUrl, labels.verification)}</p><a href="${escapeHtml(purchase.verificationUrl)}"><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" /></a>${socialLinks.html}`,
+    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}\n\n${labels.notInvoice}\n\n${labels.verification}: ${purchase.verificationUrl}${socialLinks.text}`,
   });
 };
 

@@ -1,3 +1,4 @@
+import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
 import { registerOperatorCommands } from './operator-commands.js';
@@ -1531,6 +1532,28 @@ ordersCommand
       );
     }),
   );
+
+ordersCommand
+  .command('consumer-sales-summary')
+  .description('Summarize uninvoiced consumer sales by VAT rate')
+  .requiredOption('--from <date>', 'first calendar day, YYYY-MM-DD')
+  .requiredOption('--to <date>', 'last calendar day, YYYY-MM-DD')
+  .option('--format <format>', 'json or csv', 'json')
+  .option('--out <file>', 'write the summary to a file instead of stdout')
+  .action(withInput(z.tuple([z.object({ from: z.string(), to: z.string(), format: z.enum(['json', 'csv']).default('json'), out: z.string().optional() })]), async (ctx, [options]) => {
+    const parsed = consumerSalesRequestSchema.safeParse({ from: options.from, to: options.to, format: options.format });
+    if (!parsed.success) return emit(err(validation('Invalid consumer sales query', parsed.error.flatten())), ctx.json, () => '');
+    const query = { from: parsed.data.from, to: parsed.data.to };
+    if (options.format === 'csv') {
+      const result = await ctx.api.exportConsumerSales(query);
+      if (result.ok && options.out !== undefined) await writeFile(options.out, result.value.content);
+      emit(result, ctx.json, (file) => options.out === undefined ? file.content : `wrote ${file.filename} to ${options.out}`);
+    } else {
+      const result = await ctx.api.consumerSalesSummary(query);
+      if (result.ok && options.out !== undefined) await writeFile(options.out, JSON.stringify(result.value, null, 2));
+      emit(result, ctx.json, (summary) => options.out === undefined ? JSON.stringify(summary, null, 2) : `wrote summary to ${options.out}`);
+    }
+  }));
 
 ordersCommand
   .command('reconciliation')

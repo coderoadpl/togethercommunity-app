@@ -388,11 +388,11 @@ const executeAdapterE2e = async (
   );
   await raw.query(
     `insert into ksef_number_sequences
-       (id, tenant_id, invoice_type, year, next_value, updated_at)
-     values ($1, $2, 'VAT', $3, $4, $5)
-     on conflict (tenant_id, invoice_type, year)
+       (id, tenant_id, environment, invoice_type, year, next_value, updated_at)
+     values ($1, $2, 'test', 'VAT', $3, $4, $5)
+     on conflict (tenant_id, environment, invoice_type, year)
      do update set next_value = excluded.next_value, updated_at = excluded.updated_at`,
-    [`${tenantId}:VAT:${String(year)}`, tenantId, year, sequence, now.toISOString()],
+    [`${tenantId}:test:VAT:${String(year)}`, tenantId, year, sequence, now.toISOString()],
   );
 
   const pool = new pg.Pool({ connectionString: databaseUrl });

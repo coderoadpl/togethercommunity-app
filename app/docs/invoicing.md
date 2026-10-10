@@ -42,6 +42,25 @@ A buyer can reveal the invoice fields during checkout and supply a name and addr
 
 If the buyer did not request an invoice during checkout, the paid order has no billing snapshot and Together cannot add or edit one after payment. Handle that exceptional request directly in iFirma within the applicable legal window, using the paid order ledger as the amount source.
 
+## Uninvoiced consumer sales summary
+
+On the Studio Orders page, **Uninvoiced consumer sales** defaults to the previous calendar month. It groups stored order lines by 5%, 8%, 23%, and exempt VAT rates and shows distinct order counts, line counts, net, VAT, and gross in integer cents. Totals count a mixed-rate order once. The paid `amountCents` is allocated proportionally across stored line gross values using cumulative rounding, as for invoice positions. Each allocated gross amount is split into net and VAT at its stored rate. This includes partial and 100% coupon discounts and reconciles gross to the amount paid; current prices and tax settings are never used.
+
+Selection is scoped to the workspace: live paid orders only, with neither full nor partial refunds, no NIP in the immutable billing snapshot (an absent snapshot also qualifies), and no issued, in-flight, accepted, or ambiguous invoice. Invoice rows in `requested`, `queued`, `submitting`, `processing`, `issued`, `delivered`, or `conflict` status exclude the order, including accepted KSeF invoices awaiting UPO and KSeF 440 conflicts. A failed invoice also excludes the order if it has `provider_create_uncertain`, a stored issue timestamp, an iFirma provider invoice ID, or a KSeF number (including the original number). A skipped invoice event, an absent invoice, or a definitive failure without that evidence does not exclude the order. The inclusive calendar-day range uses the order's `createdAt` date in the workspace timezone. There is no configurable workspace timezone; this summary uses `Europe/Warsaw`, the existing Studio sales-link timezone constant. Test-mode orders are excluded, as in the orders export.
+
+The summary is input for the accountant's collective **internal document (WEW)** and is not itself a tax document. It is computed live. An invoice issued later on request removes that order from subsequent summary runs, including a re-run of the original sales month; it does not move the sale into the invoice month. Export once per month after the applicable on-request window, or keep the exported file as the record used for bookkeeping. Invoices handled directly outside Together must be reconciled by the accountant because this summary sees only invoice rows recorded in Together.
+
+**Download CSV** exports one row per rate and a `TOTAL` row, then a second section with included order numbers (order IDs), Warsaw calendar dates, allocated paid gross amounts, and JSON rate breakdowns. The file records the range, timezone, currency, counts, and integer-cent amounts. JSON also includes the list of included order IDs. If eligible orders have missing lines or unresolved stored VAT rates, the summary returns a validation error identifying the orders; it does not guess a rate or omit them. A period containing multiple currencies also returns a validation error rather than summing different currencies. A positive payment with zero stored line gross cannot be allocated and is also rejected.
+
+**Known historical VAT gap:** single-product checkouts that inherit workspace VAT can store a null line rate. Although the subscription lifecycle supplies no lines, migration 0136's insert trigger captures a single product line; that migration also backfills older orders. Both copy the product VAT rate, which can be null when it inherits the workspace default. Explicit product rates therefore work for subscriptions, but unresolved rates or missing lines on any eligible order block the entire period: the Studio card and CSV cannot provide that month’s summary. Orders contain no historical workspace VAT-setting snapshot, and backfilled product rates reflect migration time rather than a verified payment-time snapshot. Current settings and product VAT can differ from those at payment, and an uninvoiced order need not have a frozen invoice treatment. No fallback has been selected: reliable historical VAT data or an explicit owner decision about fallback treatment is required before blocked periods can be summarized.
+
+The endpoint is `GET /api/orders/consumer-sales-summary?from=YYYY-MM-DD&to=YYYY-MM-DD`; `format=csv` returns a downloadable CSV. Both formats require `order:export`. CLI parity:
+
+```bash
+pnpm --silent run cli --json --tenant acme orders consumer-sales-summary --from 2026-09-01 --to 2026-09-30
+pnpm --silent run cli --tenant acme orders consumer-sales-summary --from 2026-09-01 --to 2026-09-30 --format csv --out consumer-sales.csv
+```
+
 ## Retention and erasure
 
 Paid-order billing snapshots are immutable. Invoices and their append-only lifecycle events are fiscal records. Member erasure pseudonymizes the member but does not delete invoice rows or their order relationship.

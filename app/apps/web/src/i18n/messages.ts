@@ -611,6 +611,19 @@ export interface Messages {
     diagnostics: string;
   };
   sales: {
+    consumerSalesTitle: string;
+    consumerSalesHint: string;
+    consumerSalesFrom: string;
+    consumerSalesTo: string;
+    consumerSalesRate: string;
+    consumerSalesOrders: string;
+    consumerSalesLines: string;
+    consumerSalesNet: string;
+    consumerSalesVat: string;
+    consumerSalesGross: string;
+    consumerSalesTotal: string;
+    consumerSalesExempt: string;
+    consumerSalesDownload: string;
     mode: string;
     testChip: string;
     loading: string;

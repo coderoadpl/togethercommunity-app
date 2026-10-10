@@ -1,3 +1,5 @@
+import { consumerSalesSummarySchema } from '#core/contract/index.js';
+import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { telemetryStoreOutputSchema } from '#core/contract/index.js';
 import { operatorTenantReadinessSchema, provisionTenantOutputSchema, type ProvisionTenantInput } from '#core/contract/index.js';
 import { activitySummarySchema, memberActivitySchema, type activitySummaryQuerySchema, type memberActivityQuerySchema } from '#core/contract/index.js';
@@ -406,7 +408,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean; redactErrors?: boolean },
+  raw?: { body?: BodyInit; headers: Record<string, string>; multipart?: boolean; redactErrors?: boolean; responseFilename?: string },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -435,6 +437,12 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
         : 'Operator request failed'
       : `Network error calling ${path}: ${String(cause)}`;
     return err(internal(message));
+  }
+
+  if (response.ok && raw?.responseFilename !== undefined) {
+    if (!response.headers.get('content-type')?.startsWith('text/csv')) return err(internal('Invalid CSV response content type'));
+    const parsed = outputSchema.safeParse({ filename: raw.responseFilename, mimeType: response.headers.get('content-type') ?? 'text/csv', content: await response.text() });
+    return parsed.success ? ok(parsed.data) : err(internal('Invalid export response'));
   }
 
   let payload: unknown;
@@ -1236,6 +1244,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  consumerSalesSummary: (input: ConsumerSalesQuery, signal?: AbortSignal) => request(
+    options, API_ROUTES.consumerSalesSummary.method,
+    `${API_ROUTES.consumerSalesSummary.path}?${new URLSearchParams(input).toString()}`,
+    consumerSalesSummarySchema, undefined, signal,
+  ),
+  exportConsumerSales: (input: ConsumerSalesQuery, signal?: AbortSignal) => request(
+    options, API_ROUTES.consumerSalesSummary.method,
+    `${API_ROUTES.consumerSalesSummary.path}?${new URLSearchParams({ ...input, format: 'csv' }).toString()}`,
+    ordersExportOutputSchema, undefined, signal,
+    { headers: {}, responseFilename: `consumer-sales-${input.from}-${input.to}.csv` },
+  ),
   exportOrders: (input: OrdersExportQueryInput, signal?: AbortSignal) => {
     const params = new URLSearchParams({ format: input.format });
     if (input.status !== undefined) params.set('status', input.status);

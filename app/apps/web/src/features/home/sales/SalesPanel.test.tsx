@@ -8,7 +8,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -34,6 +34,13 @@ const renderOrderDetail = async () => {
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
 };
+
+beforeEach(() => {
+  server.use(http.get('/api/orders/consumer-sales-summary', ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    return HttpResponse.json({ ok: true, data: { from: params.get('from'), to: params.get('to'), timezone: 'Europe/Warsaw', currency: 'PLN', rates: [], totals: { orderCount: 0, lineCount: 0, netCents: 0, vatCents: 0, grossCents: 0 }, orderIds: [], orders: [] } });
+  }));
+});
 
 describe('SalesPanel', () => {
   it('renders orders, applies a server filter, and exports all filtered rows without page parameters', async () => {

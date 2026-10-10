@@ -90,3 +90,5 @@ export * from './survey.js';
 
 export { productVatRateSchema, resolveProductVat, defaultProductVat, splitProductGross, type ProductVatRate } from './product-vat.js';
 export * from './sales-link.js';
+
+export * from './consumer-sales.js';

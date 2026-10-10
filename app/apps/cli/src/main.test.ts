@@ -11,6 +11,8 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  consumerSalesSummary: ReturnType<typeof vi.fn>;
+  exportConsumerSales: ReturnType<typeof vi.fn>;
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
@@ -57,6 +59,8 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    consumerSalesSummary: vi.fn(),
+    exportConsumerSales: vi.fn(),
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
     provisionOperatorTenant: vi.fn(),
@@ -151,6 +155,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    consumerSalesSummary: h.consumerSalesSummary,
+    exportConsumerSales: h.exportConsumerSales,
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
     provisionOperatorTenant: h.provisionOperatorTenant,
@@ -229,6 +235,8 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.consumerSalesSummary.mockReset().mockResolvedValue(ok({ totals: { grossCents: 105 } }));
+  h.exportConsumerSales.mockReset().mockResolvedValue(ok({ filename: 'consumer-sales.csv', mimeType: 'text/csv', content: 'rate,gross_cents\n5,105' }));
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
@@ -1256,6 +1264,40 @@ describe('order verification commands', () => {
   it('preserves the forbidden exit code for an unauthorized issue', async () => {
     h.issueOrderLine.mockResolvedValue(err(appError('forbidden', 'order:write is not permitted')));
     await run('--json', 'orders', 'issue', 'order-number', 'physical');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+});
+
+
+describe('consumer sales CLI parity', () => {
+  it('emits one summary envelope and forwards the calendar range', async () => {
+    await run('--json', 'orders', 'consumer-sales-summary', '--from', '2026-09-01', '--to', '2026-09-30');
+    expect(h.consumerSalesSummary).toHaveBeenCalledExactlyOnceWith({ from: '2026-09-01', to: '2026-09-30' });
+    expect(soleJson()).toEqual({ ok: true, data: { totals: { grossCents: 105 } } });
+  });
+  it('exports CSV through the matching client method', async () => {
+    await run('orders', 'consumer-sales-summary', '--from', '2026-09-01', '--to', '2026-09-30', '--format', 'csv');
+    expect(h.exportConsumerSales).toHaveBeenCalledExactlyOnceWith({ from: '2026-09-01', to: '2026-09-30' });
+    expect(logSpy).toHaveBeenCalledWith('rate,gross_cents\n5,105');
+  });
+  it('rejects reversed dates before calling either transport', async () => {
+    await run('--json', 'orders', 'consumer-sales-summary', '--from', '2026-09-30', '--to', '2026-09-01');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid consumer sales query', details: { formErrors: ['Date range is reversed'], fieldErrors: {} } } });
+    expect(h.consumerSalesSummary).not.toHaveBeenCalled();
+    expect(h.exportConsumerSales).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+  it('includes flattened field issues for an invalid calendar day', async () => {
+    await run('--json', 'orders', 'consumer-sales-summary', '--from', '2026-09-31', '--to', '2026-10-01');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid consumer sales query', details: { formErrors: [], fieldErrors: { from: ['Invalid calendar day'] } } } });
+    expect(h.consumerSalesSummary).not.toHaveBeenCalled();
+    expect(h.exportConsumerSales).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+  it('preserves forbidden taxonomy for the export', async () => {
+    h.exportConsumerSales.mockResolvedValue(err(appError('forbidden', 'Export is not permitted')));
+    await run('--json', 'orders', 'consumer-sales-summary', '--from', '2026-09-01', '--to', '2026-09-30', '--format', 'csv');
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(process.exitCode).toBe(4);
   });

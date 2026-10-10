@@ -50,6 +50,7 @@ export * from './tenant-setup.js';
 export * from './stream-video.js';
 export * from './payment.js';
 export * from './commerce.js';
+export * from './order-vat.js';
 export * from './coupon.js';
 export * from './invoice.js';
 export * from './fa3.js';

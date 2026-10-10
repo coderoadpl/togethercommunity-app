@@ -1,5 +1,11 @@
 import type { EmailMessage } from './transactional-email.js';
 
+export const expectedPurchaseConfirmationPl = {
+  subject: 'Potwierdzenie zakupu order-42 — Workspace',
+  total: 'Razem',
+  notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
+};
+
 export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
   welcomeSignIn: {
     subject: 'Twoje konto na platformie Acme Courses jest gotowe',

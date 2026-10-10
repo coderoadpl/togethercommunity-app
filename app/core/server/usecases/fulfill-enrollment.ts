@@ -1,9 +1,12 @@
 import {
+  allocateOrderLineGross,
   emailBrandingFrom,
   err,
   notFound,
   ok,
   resolveEmailLanguage,
+  resolveOrderVat,
+  resolveProductVat,
   type AppError,
   type GrantSource,
   type Member,
@@ -95,6 +98,12 @@ export const queueEnrollmentWelcome = async (
 ) => {
   const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
   const settings = await deps.tenants.findSettings(tenant.id);
+  const fallbackVat = order === undefined ? null : resolveOrderVat(order, settings);
+  const fallbackRate = fallbackVat?.ok
+    ? fallbackVat.treatment.kind === 'rate' ? fallbackVat.treatment.percent : 'exempt'
+    : null;
+  const productVat = resolveProductVat(product, settings);
+  const amounts = allocateOrderLineGross(order?.lines ?? [], order?.amountCents ?? 0);
   const language = resolveEmailLanguage(
     member.language,
     inputLanguage,
@@ -121,7 +130,11 @@ export const queueEnrollmentWelcome = async (
         orderNumber: order.id,
         verificationUrl: orderVerificationUrl(tenantBaseUrl, order.verificationToken),
         qrImageUrl: new URL(`/api/public/orders/qr/${order.verificationToken}`, tenantBaseUrl).toString(),
-        lines: order.lines?.map((line) => line.name) ?? [product.title],
+        lines: order.lines !== undefined && order.lines.length > 0
+          ? order.lines.map(({ name, vatRate }, index) => ({ name, grossCents: amounts[index] ?? 0, vatRate: vatRate ?? fallbackRate }))
+          : [{ name: product.title, grossCents: order.amountCents, vatRate: productVat === null ? null : productVat.kind === 'rate' ? productVat.percent : 'exempt' }],
+        currency: order.currency,
+        totalCents: order.amountCents,
       } }),
       ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
     },

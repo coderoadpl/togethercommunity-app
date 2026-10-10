@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { pullImages } from '../scripts/docker-pull.js';
+
 const appRoot = join(import.meta.dirname, '..');
 const read = (path: string): string => readFileSync(join(appRoot, path), 'utf8');
 
@@ -64,7 +66,7 @@ describe('production self-host stack', () => {
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));
 
     expect(Object.keys(compose.services)).toEqual(['postgres', 'app', 'caddy']);
-    expect(compose.services.postgres.image).toBe('postgres:16-bookworm');
+    expect(compose.services.postgres.image).toBe('public.ecr.aws/docker/library/postgres:16-bookworm');
     expect(compose.services.postgres.healthcheck.test).toContain('pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}');
     expect(compose.services.postgres.volumes).toContain('postgres_data:/var/lib/postgresql/data');
     expect(compose.services.app.build).toEqual({ context: '.', dockerfile: 'Dockerfile' });
@@ -113,8 +115,9 @@ describe('production self-host stack', () => {
     expect(targets).not.toContain(48732);
   });
 
-  it.skipIf(!dockerAvailable)('adapts the Caddyfile with the image the stack ships', () => {
+  it.skipIf(!dockerAvailable)('adapts the Caddyfile with the image the stack ships', async () => {
     const compose = composeSchema.parse(parse(read('docker-compose.yml')));
+    await pullImages([compose.services.caddy.image]);
     const output = docker([
       'run', '--rm', '--network', 'none',
       '--volume', `${join(appRoot, 'Caddyfile')}:/etc/caddy/Caddyfile:ro`,
@@ -136,6 +139,7 @@ describe('production self-host stack', () => {
     const workflow = workflowSchema.parse(parse(read('../.github/workflows/ci.yml')));
     const probe = read('scripts/quickstart-probe.ts');
 
+    expect(probe).toContain("import { pullImages } from './docker-pull.js'");
     expect(workflow.jobs.smoke.steps.some((step) => step.run === 'pnpm run quickstart:probe')).toBe(true);
     expect(probe).toContain("'NODE_ENV=production'");
     expect(probe).toContain("'APP_ENV=self-host'");

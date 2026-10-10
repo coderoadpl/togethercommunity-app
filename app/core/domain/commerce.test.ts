@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
+  allocateOrderLineGross,
   billingDataSchema,
   exportOrdersQuerySchema,
   graceExpiresAt,
@@ -10,6 +11,23 @@ import {
   nextPeriodEnd,
   productPriceSchema,
 } from './commerce.js';
+
+describe('allocateOrderLineGross', () => {
+  it.each([
+    [[4900, 5400], 5149, [2450, 2699]],
+    [[1, 1, 1], 2, [1, 0, 1]],
+    [[101, 202, 303], 100, [17, 33, 50]],
+  ])('allocates uneven splits %j to %i cents', (grossAmounts, amountCents, expected) => {
+    const amounts = allocateOrderLineGross(grossAmounts.map((grossCents) => ({ grossCents })), amountCents);
+    expect(amounts).toEqual(expected);
+    expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(amountCents);
+  });
+
+  it('returns zeros for a zero total', () => {
+    expect(allocateOrderLineGross([{ grossCents: 0 }, { grossCents: 0 }], 100)).toEqual([0, 0]);
+    expect(allocateOrderLineGross([], 100)).toEqual([]);
+  });
+});
 
 describe('billingDataSchema', () => {
   it.each([

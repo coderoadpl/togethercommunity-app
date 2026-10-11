@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(424);
-    expect(inventory.useCases).toHaveLength(331);
+    expect(inventory.routes).toHaveLength(427);
+    expect(inventory.useCases).toHaveLength(334);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
@@ -54,6 +54,22 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('keeps catalog cleanup staff-only at both boundaries', () => {
+    const inventory = collectPermissionInventory();
+    for (const [route, useCase, capability] of [
+      ['POST /api/courses/archive', 'course-management.ts#archiveCourse', 'course:write'],
+      ['POST /api/courses/restore', 'course-management.ts#restoreCourse', 'course:write'],
+      ['POST /api/products/delete', 'product-drafts.ts#deleteProductDraft', 'product:write'],
+    ]) {
+      for (const row of [
+        inventory.routes.find((entry) => entry.subject === route),
+        inventory.useCases.find((entry) => entry.subject === useCase),
+      ]) {
+        expect(row).toMatchObject({ capability, before: ['owner', 'admin'], after: ['owner', 'admin'] });
+      }
+    }
   });
 
   it('keeps survey management staff-only and public answering open', () => {

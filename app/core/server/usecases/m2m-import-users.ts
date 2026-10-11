@@ -127,9 +127,15 @@ const resolveReference = async (
   deps: M2mImportUsersReaders,
 ): Promise<Result<string, AppError>> => {
   const inCall = references[kind].get(key);
-  if (inCall !== undefined) return ok(inCall);
+  if (inCall !== undefined) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
+    return ok(inCall);
+  }
   const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
   if (audit !== null) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
     const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
     if (imported !== null) return ok(imported.id);
   }

@@ -16,6 +16,43 @@ const jsonResponse = (body: unknown, status = 200): Response =>
   });
 
 describe('createApiClient', () => {
+  it.each(['archive', 'restore'] as const)('posts the course %s action and preserves refusal details', async (action) => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe(`https://api.example.test/api/courses/${action}`);
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ courseId: 'course-1' }));
+      return jsonResponse({ ok: false, error: { code: 'validation', message: 'Referenced by Sample product' } }, 400);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    const result = action === 'archive'
+      ? await client.archiveCourse({ courseId: 'course-1' })
+      : await client.restoreCourse({ courseId: 'course-1' });
+    expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Referenced by Sample product' } });
+  });
+
+  it('selects archived courses without changing the active list request', async () => {
+    const paths: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      paths.push(String(input));
+      return jsonResponse({ ok: true, data: { courses: [] } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await client.listCourses();
+    await client.listCourses(undefined, { archived: true });
+    expect(paths).toEqual(['https://api.example.test/api/courses', 'https://api.example.test/api/courses?archived=true']);
+  });
+
+  it('deletes a product draft through the typed contract', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/products/delete');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ productId: 'draft-1' }));
+      return jsonResponse({ ok: true, data: { deleted: true } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.deleteProductDraft({ productId: 'draft-1' })).resolves.toEqual(ok({ deleted: true }));
+  });
+
   it.each(['live', 'test'] as const)('selects the %s KSeF credential slot for a connection test', async (mode) => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('https://api.example.test/api/integrations/ksef/test');

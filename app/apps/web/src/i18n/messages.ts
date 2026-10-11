@@ -1172,6 +1172,8 @@ export interface Messages {
     storageProbeUnavailable: string;
   };
   products: {
+    deleteDraft: string;
+    deleteDraftBody: string;
     visibilityLabel: string;
     visibilityHelper: string;
     listed: string;
@@ -1326,6 +1328,10 @@ export interface Messages {
     updateItem: string;
   };
   courses: {
+    archived: string;
+    restore: string;
+    archiveCourse: string;
+    archiveBody: string;
     treeTab: string;
     lessonsTab: string;
     tabsAria: string;

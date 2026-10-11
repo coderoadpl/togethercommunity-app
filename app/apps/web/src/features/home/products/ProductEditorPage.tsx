@@ -21,6 +21,9 @@ import {
   TextField,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+
+import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 
 import {
   priceMajorSchema,
@@ -563,9 +566,14 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
 
 export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
+  const navigate = useNavigate();
 
   return (
-    <PanelPage title={product.title} backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}>
+    <PanelPage
+      title={product.title}
+      backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}
+      action={<DeleteProductDraftAction product={product} onDeleted={() => void navigate({ to: '/panel/products' })} />}
+    >
       <ProductDetailsSection product={product} />
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />

@@ -201,6 +201,7 @@ const pCourseC2 = product('p-course-c2', [{ level: 'course', courseId: 'c2' }]);
 const clock: Clock = { nowIso: () => NOW };
 
 const deps = (input: {
+  courses?: Course[];
   members?: Member[];
   products?: Product[];
   grants?: ProductGrant[];
@@ -248,7 +249,7 @@ const deps = (input: {
   };
 
   const coursesRepo: CourseRepository = {
-    list: async () => allCourses,
+    list: async () => input.courses ?? allCourses,
     findById: async (_t, id) => allCourses.find((c) => c.id === id) ?? null,
     findByIds: async (_t, ids) => allCourses.filter((c) => ids.includes(c.id)),
     create: async () => undefined,
@@ -454,4 +455,14 @@ describe('getMemberLearningSummary', () => {
       },
     });
   });
+});
+
+
+it('hides archived courses from member learning summaries and restores them', async () => {
+  const courses: Course[] = [{ ...course('c1'), archivedAt: NOW }];
+  const p = product('p1', [{ level: 'course', courseId: 'c1' }]);
+  const d = deps({ courses, products: [p], grants: [grant('g1', 'p1', null)] });
+  expect(await getMemberLearningSummary(staff(), 'mem1', d)).toMatchObject({ ok: true, value: { courses: [] } });
+  courses[0] = course('c1');
+  expect(await getMemberLearningSummary(staff(), 'mem1', d)).toMatchObject({ ok: true, value: { courses: [{ courseId: 'c1' }] } });
 });

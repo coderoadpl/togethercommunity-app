@@ -740,6 +740,14 @@ describe('getAccessibleLesson', () => {
     });
   });
 
+  it('hides anonymous previews of archived public courses until restored', async () => {
+    const courses: Course[] = [{ ...c1, publiclyVisible: true, archivedAt: NOW }];
+    const d = deps([], [], courses, [m1, m2], [], previewLessons);
+    expect(await getAccessibleLesson(anonymous, 'l4', d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    courses[0] = { ...c1, publiclyVisible: true, archivedAt: null };
+    expect(await getAccessibleLesson(anonymous, 'l4', d)).toMatchObject({ ok: true, value: { id: 'l4' } });
+  });
+
   it('is forbidden for an anonymous visitor when no containing course is publicly visible', async () => {
     const withPrivateCourse = deps([], [], [c1], [m1, m2], [], previewLessons);
 
@@ -911,4 +919,16 @@ describe('reader lesson editions', () => {
       ok: true, value: { versionId: matches ? 'latest-version' : 'current-version' },
     });
   });
+});
+
+
+it('hides archived courses from member lists while preserving granted lesson access', async () => {
+  const courses: Course[] = [{ ...c1, archivedAt: NOW }];
+  const d = deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse], courses);
+  expect(await listMyCourses(ctx({}), d)).toEqual({ ok: true, value: [] });
+  expect(await isLessonAccessible(ctx({}), 'l1', d)).toEqual({ ok: true, value: undefined });
+  expect(await getCourseStructureWithAccess(ctx({}), 'c1', d)).toMatchObject({ ok: true });
+  expect(await getNextLesson(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { id: 'l2' } });
+  courses[0] = c1;
+  expect(await listMyCourses(ctx({}), d)).toMatchObject({ ok: true, value: [{ id: 'c1' }] });
 });

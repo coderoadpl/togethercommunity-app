@@ -231,14 +231,14 @@ export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
-  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken'>;
+  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken' | 'course_unavailable'>;
   updateAccessItems(
     tenantId: string,
     id: string,
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
     checkoutConsentDefinitionIds?: string[],
-  ): Promise<Product | null>;
+  ): Promise<Product | null | 'course_unavailable'>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
 }
@@ -258,6 +258,19 @@ export interface CourseRepository {
   create(tenantId: string, course: Course): Promise<void>;
   update(tenantId: string, course: Course, version?: EntityVersionRecord): Promise<Course | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseArchiveRepository {
+  setArchived(
+    tenantId: string,
+    courseId: string,
+    archivedAt: string | null,
+    version: EntityVersionRecord,
+  ): Promise<
+    | { kind: 'saved'; course: Course }
+    | { kind: 'not_found' }
+    | { kind: 'referenced'; productTitles: string[] }
+  >;
 }
 
 export interface CourseModuleRepository {

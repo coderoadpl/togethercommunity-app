@@ -474,3 +474,21 @@ describe('m2m redirect import', () => {
     });
   });
 });
+
+it.each([
+  { kind: 'course', importKey: 'course-source' },
+  { kind: 'module-as-course', importKey: 'module-source' },
+  { kind: 'lesson', importKey: 'lesson-source', courseKey: 'course-source' },
+])('rejects archived courses in imported $kind redirects until restored', async (target) => {
+  const h = harness();
+  const archived: Course = { ...course, archivedAt: NOW };
+  h.deps.courses.findById = async () => archived;
+  const input = write([redirectRecord({ target })]);
+  expect(await importM2mRedirects(ctx, apiKey, input, h.deps)).toMatchObject({
+    ok: true, value: { results: [{ action: 'error', error: { code: 'conflict' } }], summary: { failed: 1 } },
+  });
+  archived.archivedAt = null;
+  expect(await importM2mRedirects(ctx, apiKey, input, h.deps)).toMatchObject({
+    ok: true, value: { summary: { created: 1 } },
+  });
+});

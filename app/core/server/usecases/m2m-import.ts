@@ -319,9 +319,15 @@ const resolveReference = async (
   deps: ImportReaders,
 ): Promise<Result<string, AppError>> => {
   const inCall = references[kind].get(key);
-  if (inCall !== undefined) return ok(inCall);
+  if (inCall !== undefined) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
+    return ok(inCall);
+  }
   const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
   if (audit !== null) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
     const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
     if (imported !== null) return ok(imported.id);
   }
@@ -392,6 +398,7 @@ const prepareCourse = async (
   if (!moduleOrder.ok) return moduleOrder;
   const predicted = await predictAction(tenantId, 'course', record.importKey, payloadHash, deps, reachable);
   if (!predicted.ok) return predicted;
+  const existing = await deps.courses.findById(tenantId, predicted.value.id);
   return ok({
     kind: 'course',
     importKey: record.importKey,
@@ -405,6 +412,7 @@ const prepareCourse = async (
       imageUrl: record.imageUrl,
       moduleOrder: moduleOrder.value,
       publiclyVisible: false,
+      archivedAt: existing?.archivedAt ?? null,
       legacyId: record.legacyId ?? null,
       createdAt: record.createdAt ?? predicted.value.createdAt ?? now,
     },

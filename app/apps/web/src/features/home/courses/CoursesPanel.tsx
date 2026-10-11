@@ -97,7 +97,21 @@ export const CoursesListPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
-  const courses = useQuery(actions.courses);
+  const [archived, setArchived] = useState(false);
+  const courses = useQuery(actions.coursesByStatus(archived));
+  const queryClient = useQueryClient();
+  const restoreCourse = useMutation({
+    ...actions.restoreCourse,
+    onSuccess: async ({ course }) => {
+      await Promise.all([
+        queryClient.invalidateQueries(actions.coursesInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+        queryClient.invalidateQueries(actions.studentCourseInvalidates()),
+        queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+        queryClient.invalidateQueries(actions.publicCourseStructure(course.id)),
+      ]);
+    },
+  });
   const modules = useQuery(actions.modules);
   const [search, setSearch] = useState('');
   const [structureFilter, setStructureFilter] = useState<'all' | 'with-modules' | 'without-modules'>('all');
@@ -116,7 +130,7 @@ export const CoursesListPanel = () => {
       if (structureFilter === 'all') return true;
       return structureFilter === 'with-modules' ? moduleCount(course) > 0 : moduleCount(course) === 0;
     });
-  const paged = usePagedList(visibleCourses, `${query}|${structureFilter}`);
+  const paged = usePagedList(visibleCourses, `${query}|${structureFilter}|${archived}`);
   const filterLabels = {
     all: t.courses.filterAll,
     'with-modules': t.courses.filterWithModules,
@@ -129,6 +143,17 @@ export const CoursesListPanel = () => {
       action={<Button component={Link} to="/panel/courses/new" variant="contained">+ {t.common.add}</Button>}
     >
       {modules.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} /> : null}
+      {restoreCourse.isError ? <MutationError error={restoreCourse.error} /> : null}
+      <Chip
+        sx={{ width: 'fit-content' }}
+        size="small"
+        clickable
+        variant={archived ? 'filled' : 'outlined'}
+        color={archived ? 'primary' : 'default'}
+        label={t.courses.archived}
+        aria-pressed={archived}
+        onClick={() => setArchived(!archived)}
+      />
       <ListSection
         toolbar={{
           search: (
@@ -174,9 +199,15 @@ export const CoursesListPanel = () => {
                 data-testid="course-row"
                 title={course.name}
                 actions={
-                  <Button size="small" variant="text" onClick={() => openCourse(course.id)}>
-                    {t.courses.manage}
-                  </Button>
+                  archived ? (
+                    <Button size="small" disabled={restoreCourse.isPending} onClick={() => restoreCourse.mutate({ courseId: course.id })}>
+                      {t.courses.restore}
+                    </Button>
+                  ) : (
+                    <Button size="small" variant="text" onClick={() => openCourse(course.id)}>
+                      {t.courses.manage}
+                    </Button>
+                  )
                 }
                 meta={
                   <>

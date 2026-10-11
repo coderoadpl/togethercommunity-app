@@ -282,16 +282,31 @@ export const deleteProductDownloadAsset = async (
   if (!configuration.ok) return configuration;
   const deleted = await deps.downloadAssets.delete(tenant.value, assetId);
   if (!deleted) return err(notFound(`No download asset "${assetId}" on this product`));
-  const deletedObject = await deps.storage.delete({
-    url: deps.storage.objectUrl(configuration.value, asset.storageKey).toString(),
-    accessKeyId: configuration.value.accessKeyId,
-    secretAccessKey: configuration.value.secretAccessKey,
-    region: configuration.value.region,
-  });
-  if (!deletedObject.ok) {
-    deps.logger.error(
-      `[product-download] warning: detached asset "${asset.id}" but could not delete storage object "${asset.storageKey}": ${deletedObject.error.message}`,
-    );
-  }
+  await deleteStoredProductDownload(tenant.value, asset, deps);
   return ok({ deleted: true });
+};
+
+export const deleteStoredProductDownload = async (
+  tenantId: string,
+  asset: ProductDownloadAsset,
+  deps: Pick<ProductDownloadDeps, 'logger' | 'secretResolver' | 'storage'>,
+): Promise<void> => {
+  try {
+    const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+    if (!configuration.ok) {
+      deps.logger.error(`[product-download] could not delete storage object "${asset.storageKey}": ${configuration.error.message}`);
+      return;
+    }
+    const deletedObject = await deps.storage.delete({
+      url: deps.storage.objectUrl(configuration.value, asset.storageKey).toString(),
+      accessKeyId: configuration.value.accessKeyId,
+      secretAccessKey: configuration.value.secretAccessKey,
+      region: configuration.value.region,
+    });
+    if (!deletedObject.ok) {
+      deps.logger.error(`[product-download] detached asset "${asset.id}" but could not delete storage object "${asset.storageKey}": ${deletedObject.error.message}`);
+    }
+  } catch (cause) {
+    deps.logger.error(`[product-download] could not delete storage object "${asset.storageKey}": ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
 };

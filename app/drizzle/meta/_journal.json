@@ -981,6 +981,20 @@
       "when": 1790964000011,
       "tag": "0139_ksef_controlled_send",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1790964000012,
+      "tag": "0140_course_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1790964000013,
+      "tag": "0141_product_publication_history",
+      "breakpoints": true
     }
   ]
 }

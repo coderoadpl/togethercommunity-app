@@ -464,3 +464,16 @@ it('excludes unlisted products from discovery and resolves only the requested ch
     expect(direct.ok && direct.value.products).toEqual([]);
   }
 });
+
+
+it('hides archived course previews from the offer and restores them', async () => {
+  const courses: Course[] = [{ ...course('course-1', true), archivedAt: '2026-10-11T00:00:00.000Z' }];
+  const input = {
+    products: fakeProducts([]), prices: noPrices, tenants: fakeTenants(),
+    courses: fakeCourses(courses),
+    lessons: { listPreviews: async () => [{ id: 'preview', name: 'Preview', courseId: 'course-1' }] },
+  };
+  expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [] } });
+  courses[0] = course('course-1', true);
+  expect(await getPublicOffer(tenant, input)).toMatchObject({ ok: true, value: { previewLessons: [{ id: 'preview' }] } });
+});

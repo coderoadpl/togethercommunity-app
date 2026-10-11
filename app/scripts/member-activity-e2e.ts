@@ -182,7 +182,7 @@ const pollUntil = async (
   throw new E2eFailure(`${label} timed out after ${String(timeoutMs)}ms.\n${lastError}`);
 };
 
-const setEnglish = async (context: BrowserContext): Promise<void> => {
+const prepareBrowserContext = async (context: BrowserContext): Promise<void> => {
   await context.route('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Local video fixture</title>' }),
   );
@@ -368,7 +368,7 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   const t0 = Date.now();
   const readSnapshot = (
     stage: string,
-    expected?: { text: string; from: number; to: number; toolbarLabel: string; click: boolean },
+    expected?: { text: string; from: number; to: number; observeToolbarLabel?: string },
   ) => page.evaluate(async ({ stage, t0, expected }) => {
     if (expected !== undefined) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const editorElement = document.querySelector('[data-testid="space-composer-input"]');
@@ -433,34 +433,32 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
       ),
       editorHtml: editorElement?.innerHTML.slice(0, 300) ?? '',
     };
-    let toolbarClicked = false;
-    let toolbarMouseDownPrevented: boolean | null = null;
-    let selectionAfterMouseDown: { from: number; to: number } | null = null;
-    if (matchesDomExpected && expected?.click === true) {
+    if (matchesExpected && expected?.observeToolbarLabel !== undefined) {
       const button = Array.from(
         editorElement?.closest('[data-testid="space-composer"]')?.querySelectorAll('button') ?? [],
-      ).find((candidate) => candidate.getAttribute('aria-label') === expected.toolbarLabel);
-      if (button instanceof HTMLButtonElement && !button.disabled) {
-        // Keep DOM verification and the production selection-sync handler in one task, before selectionchange can intervene.
-        const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 });
-        button.dispatchEvent(mouseDown);
-        toolbarMouseDownPrevented = mouseDown.defaultPrevented;
-        const updatedState = typeof selectionSource === 'object' && selectionSource !== null
-          && 'state' in selectionSource ? selectionSource.state : undefined;
-        const updatedSelection = typeof updatedState === 'object' && updatedState !== null && 'selection' in updatedState
-          ? updatedState.selection : undefined;
-        if (typeof updatedSelection === 'object' && updatedSelection !== null
-          && 'from' in updatedSelection && typeof updatedSelection.from === 'number'
-          && 'to' in updatedSelection && typeof updatedSelection.to === 'number') {
-          selectionAfterMouseDown = { from: updatedSelection.from, to: updatedSelection.to };
-        }
-        button.click();
-        toolbarClicked = true;
+      ).find((candidate) => candidate.getAttribute('aria-label') === expected.observeToolbarLabel);
+      if (button instanceof HTMLButtonElement) {
+        // Observe after React's delegated handler without changing native focus or selection behavior.
+        document.addEventListener('mousedown', (event) => {
+          button.dataset['mouseDownTrusted'] = String(event.isTrusted && event.target instanceof Node && button.contains(event.target));
+          button.dataset['mouseDownPrevented'] = String(event.defaultPrevented);
+          button.dataset['mouseDownDomSelection'] = document.getSelection()?.toString() ?? '';
+          const updatedState = typeof selectionSource === 'object' && selectionSource !== null
+            && 'state' in selectionSource ? selectionSource.state : undefined;
+          const updatedSelection = typeof updatedState === 'object' && updatedState !== null && 'selection' in updatedState
+            ? updatedState.selection : undefined;
+          if (typeof updatedSelection === 'object' && updatedSelection !== null
+            && 'from' in updatedSelection && typeof updatedSelection.from === 'number'
+            && 'to' in updatedSelection && typeof updatedSelection.to === 'number') {
+            button.dataset['mouseDownFrom'] = String(updatedSelection.from);
+            button.dataset['mouseDownTo'] = String(updatedSelection.to);
+          }
+        }, { once: true, passive: true });
       }
     }
-    return { ...snapshot, toolbarClicked, toolbarMouseDownPrevented, selectionAfterMouseDown };
+    return snapshot;
   }, { stage, t0, expected });
-  const timeline: Awaited<ReturnType<typeof readSnapshot>>[] = [];
+  const timeline: Record<string, unknown>[] = [];
   const capture = async (stage: string): Promise<void> => {
     timeline.push(await readSnapshot(stage));
   };
@@ -476,6 +474,9 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
     toolbarLabel: string;
     name: string;
   }): Promise<void> => {
+    const toolbar = composer.getByRole('button', { name: toolbarLabel, exact: true, includeHidden: true });
+    await toolbar.waitFor({ state: 'visible', timeout: 15000 });
+    assert(await toolbar.isEnabled(), `Markdown editor ${name} toolbar button is disabled`);
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       await editor.focus();
       await page.keyboard.press(edge);
@@ -486,19 +487,40 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
       while (Date.now() < deadline) {
         read += 1;
         const snapshot = await readSnapshot(`${name}-selection-${attempt}-read-${read}`, {
-          text, from, to, toolbarLabel, click: previouslyMatched,
+          text, from, to,
+          ...(previouslyMatched ? { observeToolbarLabel: toolbarLabel } : {}),
         });
         timeline.push(snapshot);
-        if (snapshot.toolbarClicked) {
-          assert(snapshot.toolbarMouseDownPrevented === true,
+        if (previouslyMatched && snapshot.matchesExpected) {
+          timeline.push({ ...snapshot, stage: `before-${name}-toolbar-click` });
+          try {
+            await toolbar.click();
+          } catch (cause) {
+            await capture(`${name}-toolbar-click-failure`);
+            throw new E2eFailure(
+              `Markdown editor ${name} toolbar click failed.\n${String(cause)}\nEditor timeline (JSON per line):\n${timelineJson()}`,
+            );
+          }
+          const mouseDown = await toolbar.evaluate((button) => ({
+            toolbarMouseDownTrusted: button.getAttribute('data-mouse-down-trusted') === 'true',
+            toolbarMouseDownPrevented: button.getAttribute('data-mouse-down-prevented') === 'true',
+            domSelectionAfterMouseDown: button.getAttribute('data-mouse-down-dom-selection'),
+            selectionAfterMouseDown: {
+              from: Number(button.getAttribute('data-mouse-down-from')),
+              to: Number(button.getAttribute('data-mouse-down-to')),
+            },
+          }));
+          timeline.push({ ...await readSnapshot(`after-${name}-toolbar-click`), ...mouseDown });
+          assert(mouseDown.toolbarMouseDownTrusted,
+            `Markdown editor ${name} toolbar did not receive a trusted mousedown.\nEditor timeline (JSON per line):\n${timelineJson()}`);
+          assert(mouseDown.toolbarMouseDownPrevented && mouseDown.domSelectionAfterMouseDown === text,
             `Markdown editor ${name} toolbar did not preserve the DOM selection on mousedown.\nEditor timeline (JSON per line):\n${timelineJson()}`);
-          assert(snapshot.selectionAfterMouseDown?.from === from && snapshot.selectionAfterMouseDown.to === to,
+          assert(mouseDown.selectionAfterMouseDown.from === from && mouseDown.selectionAfterMouseDown.to === to,
             `Markdown editor ${name} toolbar did not synchronize the DOM selection on mousedown.\nEditor timeline (JSON per line):\n${timelineJson()}`);
-          timeline.push({ ...snapshot, stage: name === 'link' ? 'after-select' : 'after-bold-select' });
           return;
         }
         if (!snapshot.matchesDomExpected) break;
-        previouslyMatched = snapshot.matchesDomExpected;
+        previouslyMatched = snapshot.matchesExpected;
       }
     }
     throw new E2eFailure(
@@ -562,6 +584,7 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
       `Markdown editor did not reach the authored bold state.\n${String(cause)}\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(editor)}\nEditor timeline (JSON per line):\n${timelineJson()}`,
     );
   }
+  console.log(`member-activity-e2e: editor timeline (JSON per line):\n${timelineJson()}`);
 };
 
 const createMarkdownPost = async (
@@ -888,10 +911,10 @@ try {
   const memberBContext = await browser.newContext();
   const anonymousContext = await browser.newContext();
   await Promise.all([
-    setEnglish(creatorContext),
-    setEnglish(memberAContext),
-    setEnglish(memberBContext),
-    setEnglish(anonymousContext),
+    prepareBrowserContext(creatorContext),
+    prepareBrowserContext(memberAContext),
+    prepareBrowserContext(memberBContext),
+    prepareBrowserContext(anonymousContext),
   ]);
   const creatorPage = await creatorContext.newPage();
   const memberAPage = await memberAContext.newPage();

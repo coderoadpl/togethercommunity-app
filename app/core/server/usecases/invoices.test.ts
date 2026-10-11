@@ -947,20 +947,25 @@ describe('KSeF artifact downloads', () => {
 
 
 describe('controlled KSeF submission', () => {
-  it.each(['live', 'test'] as const)('freezes %s orders with their matching credential slot', async (mode) => {
+  it.each([
+    { mode: 'live', deployment: 'production', environment: 'production' },
+    { mode: 'live', deployment: 'test', environment: 'test' },
+    { mode: 'test', deployment: 'production', environment: 'test' },
+    { mode: 'test', deployment: 'test', environment: 'test' },
+  ] as const)('allocates $mode orders on $deployment using the $environment sequence', async ({ mode, deployment, environment }) => {
     const h = harness({ provider: 'ksef' });
     if (h.deps.ksef === undefined) throw new Error('KSeF test dependencies missing');
-    h.deps.ksef.environment = 'production';
-    const modes: Array<string | undefined> = [];
-    h.deps.ksef.credentials.resolve = async (_tenantId, credentialMode) => {
-      modes.push(credentialMode);
-      return ok({ tenantId: 'tenant-1', credentialSlot: credentialMode ?? 'live', token: `${credentialMode}-token`, contextNip: '5555555555' });
-    };
+    h.deps.ksef.environment = deployment;
     h.deps.orderDetails.findById = async () => ({ ...order(), mode });
+    const allocate = h.deps.ksef.numbers.allocate;
+    h.deps.ksef.numbers.allocate = async (tenantId, input) => {
+      expect(input.environment).toBe(environment);
+      return allocate(tenantId, input);
+    };
     expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
-      ok: true, value: { ksef: { environment: mode === 'test' ? 'test' : 'production', credentialMode: mode } },
+      ok: true, value: { ksef: { environment, credentialMode: mode } },
     });
-    expect(modes).toEqual([mode]);
+    expect(h.allocationCount()).toBe(1);
   });
 
   it('refuses test orders without their own credential slot', async () => {

@@ -1,6 +1,6 @@
 import { and, eq, lt, lte, sql } from 'drizzle-orm';
 
-import { err, integrationNotConfigured, ok } from '#core/domain/index.js';
+import { ok } from '#core/domain/index.js';
 
 import type {
   FiscalArtifactRepository,
@@ -21,13 +21,10 @@ import {
 
 export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
   allocate: async (tenantId, input) => {
-    if (input.environment === 'test') {
-      return err(integrationNotConfigured('KSeF TEST numbering is unavailable until the numbering migration is completed'));
-    }
     return db.transaction(async (tx) => {
       await tx.select({ id: orders.id }).from(orders)
         .where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
-      const environment = input.environment ?? 'production';
+      const invoiceType = input.environment === 'test' ? `${input.invoiceType}_TEST` as const : input.invoiceType;
       const existing = (
         await tx
           .select({ p2: ksefNumberAllocations.p2, sequence: ksefNumberAllocations.sequence })
@@ -35,20 +32,18 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
           .where(and(
             eq(ksefNumberAllocations.tenantId, tenantId),
             eq(ksefNumberAllocations.orderId, input.orderId),
-            eq(ksefNumberAllocations.environment, environment),
           ))
           .limit(1)
       )[0];
       if (existing !== undefined) return ok(existing);
-      const sequenceId = `${tenantId}:${environment}:${input.invoiceType}:${String(input.year)}`;
+      const sequenceId = `${tenantId}:${invoiceType}:${String(input.year)}`;
       const row = (
         await tx
           .insert(ksefNumberSequences)
           .values({
             id: sequenceId,
             tenantId,
-            environment,
-            invoiceType: input.invoiceType,
+            invoiceType,
             year: input.year,
             nextValue: 2,
             updatedAt: input.allocatedAt,
@@ -56,7 +51,6 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
           .onConflictDoUpdate({
             target: [
               ksefNumberSequences.tenantId,
-              ksefNumberSequences.environment,
               ksefNumberSequences.invoiceType,
               ksefNumberSequences.year,
             ],
@@ -72,8 +66,7 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
       await tx.insert(ksefNumberAllocations).values({
         id: `${sequenceId}:${String(row.allocated)}`,
         tenantId,
-        environment,
-        invoiceType: input.invoiceType,
+        invoiceType,
         year: input.year,
         sequence: row.allocated,
         p2,

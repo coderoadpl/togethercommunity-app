@@ -68,7 +68,7 @@ beforeAll(async () => {
     currency: 'PLN',
     createdAt: now,
   });
-  await db.insert(orders).values(Array.from({ length: 25 }, (_, index) => ({
+  await db.insert(orders).values(Array.from({ length: 30 }, (_, index) => ({
     id: `order-${String(index + 1)}`,
     tenantId: 'tenant-ksef',
     memberId: 'member-ksef',
@@ -90,6 +90,7 @@ describe('KSeF invoice numbering', () => {
         repository.allocate('tenant-ksef', {
           orderId: `order-${String(index + 1)}`,
           invoiceType: 'VAT',
+          environment: 'production',
           year: 2026,
           allocatedAt: now,
         })),
@@ -102,9 +103,31 @@ describe('KSeF invoice numbering', () => {
     expect(await repository.allocate('tenant-ksef', {
       orderId: 'order-1',
       invoiceType: 'VAT',
+      environment: 'production',
       year: 2026,
       allocatedAt: now,
     })).toEqual(allocated[0]);
+  });
+
+  it('starts TEST at one without changing the production sequence', async () => {
+    const repository = createKsefNumberRepository(db);
+    const liveBefore = await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'));
+    const input = {
+      orderId: 'order-26', invoiceType: 'VAT', environment: 'test', year: 2026, allocatedAt: now,
+    } as const;
+    const results = await Promise.all([
+      repository.allocate('tenant-ksef', input),
+      repository.allocate('tenant-ksef', input),
+    ]);
+    expect(results).toEqual([
+      ok({ p2: 'FV/2026/000001', sequence: 1 }),
+      ok({ p2: 'FV/2026/000001', sequence: 1 }),
+    ]);
+    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, input.orderId)))
+      .toMatchObject([{ invoiceType: 'VAT_TEST', sequence: 1 }]);
+    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT_TEST')))
+      .toMatchObject([{ nextValue: 2 }]);
+    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'))).toEqual(liveBefore);
   });
 });
 
@@ -262,27 +285,81 @@ describe('controlled KSeF send persistence', () => {
     expect(listed.orders.find((order) => order.id === 'order-21')?.invoice).toMatchObject({ id: held.value.id, ksef: { state: 'queued' } });
   });
 
-  it('refuses TEST allocation without changing numbering and rolls back failed XML validation', async () => {
-    const before = await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.environment, 'production'));
-    const deps = invoiceDeps();
-    await db.update(orders).set({ mode: 'test' }).where(eq(orders.id, 'order-22'));
-    expect(await requestInvoice(ownerContext, 'order-22', deps)).toMatchObject({ ok: false,
-      error: { code: 'integration_not_configured' } });
-    expect(await deps.invoices.findCurrentByOrder('tenant-ksef', 'order-22')).toBeNull();
-    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, 'order-22'))).toEqual([]);
-    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.environment, 'test'))).toEqual([]);
-    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.environment, 'production'))).toEqual(before);
-    await db.update(tenants).set({ ksefSubmissionMode: 'manual' }).where(eq(tenants.id, 'tenant-ksef'));
-    const held = await requestInvoice(ownerContext, 'order-22', deps);
-    expect(held).toMatchObject({ ok: true, value: { ksef: { state: 'held' } } });
-    expect(await sendInvoice(ownerContext, 'order-22', deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
-    expect(await deps.invoices.findCurrentByOrder('tenant-ksef', 'order-22')).toEqual(held.ok ? held.value : null);
+  it.each(['live', 'test'] as const)('freezes %s orders with their matching credential slot', async (mode) => {
     await db.update(tenants).set({ ksefSubmissionMode: 'automatic' }).where(eq(tenants.id, 'tenant-ksef'));
+    const orderId = mode === 'test' ? 'order-22' : 'order-27';
+    await db.update(orders).set({ mode }).where(eq(orders.id, orderId));
+    const liveBefore = await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'));
+    const deps = invoiceDeps();
+    if (deps.ksef === undefined) throw new Error('Expected KSeF dependencies');
+    const modes: Array<string | undefined> = [];
+    deps.ksef.credentials.resolve = async (_tenantId, credentialMode) => {
+      modes.push(credentialMode);
+      return ok({ tenantId: 'tenant-ksef', credentialSlot: credentialMode ?? 'live', token: `${credentialMode}-token`, contextNip: '5555555555' });
+    };
+    const frozen = await requestInvoice(ownerContext, orderId, deps);
+    expect(frozen).toMatchObject({ ok: true, value: { ksef: {
+      state: 'queued', invoiceType: 'VAT', environment: mode === 'test' ? 'test' : 'production', credentialMode: mode,
+    } } });
+    expect(modes).toEqual([mode]);
+    expect(await requestInvoice(ownerContext, orderId, deps)).toEqual(frozen);
+    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, orderId)))
+      .toMatchObject([{ invoiceType: mode === 'test' ? 'VAT_TEST' : 'VAT' }]);
+    if (!frozen.ok) throw new Error('Expected frozen invoice');
+    const artifacts = await db.select().from(fiscalArtifacts).where(eq(fiscalArtifacts.invoiceId, frozen.value.id));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.content).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+    expect(artifacts[0]?.content).not.toContain('VAT_TEST');
+    if (mode === 'test') {
+      expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'))).toEqual(liveBefore);
+    }
+  });
+
+  it('shares TEST numbering across concurrent live and test orders with the same seller NIP', async () => {
+    const deps = invoiceDeps();
+    if (deps.ksef === undefined) throw new Error('Expected KSeF dependencies');
+    deps.ksef.environment = 'test';
+    await db.update(orders).set({ mode: 'test' }).where(eq(orders.id, 'order-30'));
+    const productionBefore = await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'));
+    const testBefore = await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT_TEST'));
+    const nextValue = testBefore[0]?.nextValue;
+    if (nextValue === undefined) throw new Error('Expected TEST sequence');
+    const results = await Promise.all([
+      requestInvoice(ownerContext, 'order-28', deps),
+      requestInvoice(ownerContext, 'order-30', deps),
+    ]);
+    expect(results).toMatchObject([
+      { ok: true, value: { ksef: { state: 'queued', environment: 'test', credentialMode: 'live', contextNip: '5555555555' } } },
+      { ok: true, value: { ksef: { state: 'queued', environment: 'test', credentialMode: 'test', contextNip: '5555555555' } } },
+    ]);
+    expect(new Set(results.map((result) => result.ok ? result.value.ksef?.p2 : null)).size).toBe(2);
+    const allocations = await Promise.all(['order-28', 'order-30'].map((orderId) =>
+      db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, orderId))));
+    expect(allocations.flat().map((allocation) => allocation.sequence).sort((a, b) => a - b))
+      .toEqual([nextValue, nextValue + 1]);
+    expect(allocations.flat().map((allocation) => allocation.invoiceType)).toEqual(['VAT_TEST', 'VAT_TEST']);
+    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.invoiceType, 'VAT'))).toEqual(productionBefore);
+    expect(await requestInvoice(ownerContext, 'order-28', deps)).toEqual(results[0]);
+  });
+
+  it.each(['live', 'test'] as const)('rolls back %s numbering and invoice writes when XML validation fails', async (mode) => {
+    const orderId = mode === 'test' ? 'order-29' : 'order-23';
+    await db.update(orders).set({ mode }).where(eq(orders.id, orderId));
+    await db.update(tenants).set({ ksefSubmissionMode: 'automatic' }).where(eq(tenants.id, 'tenant-ksef'));
+    const before = await db.select().from(ksefNumberSequences).orderBy(ksefNumberSequences.id);
+    const deps = invoiceDeps();
     if (deps.ksef === undefined) throw new Error('Expected KSeF dependencies');
     deps.ksef.validator = { validate: async () => err(validation('Synthetic invalid XML')) };
-    expect(await requestInvoice(ownerContext, 'order-23', deps)).toMatchObject({ ok: false });
-    expect(await db.select().from(ksefNumberSequences).where(eq(ksefNumberSequences.environment, 'production'))).toEqual(before);
-    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, 'order-23'))).toEqual([]);
-    expect(await deps.invoices.findCurrentByOrder('tenant-ksef', 'order-23')).toBeNull();
+    expect(await requestInvoice(ownerContext, orderId, deps)).toMatchObject({ ok: false });
+    expect(await db.select().from(ksefNumberSequences).orderBy(ksefNumberSequences.id)).toEqual(before);
+    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, orderId))).toEqual([]);
+    expect(await deps.invoices.findCurrentByOrder('tenant-ksef', orderId)).toBeNull();
+    await db.update(tenants).set({ ksefSubmissionMode: 'manual' }).where(eq(tenants.id, 'tenant-ksef'));
+    const held = await requestInvoice(ownerContext, orderId, deps);
+    expect(held).toMatchObject({ ok: true, value: { ksef: { state: 'held' } } });
+    expect(await sendInvoice(ownerContext, orderId, deps)).toMatchObject({ ok: false });
+    expect(await deps.invoices.findCurrentByOrder('tenant-ksef', orderId)).toEqual(held.ok ? held.value : null);
+    expect(await db.select().from(ksefNumberSequences).orderBy(ksefNumberSequences.id)).toEqual(before);
+    expect(await db.select().from(ksefNumberAllocations).where(eq(ksefNumberAllocations.orderId, orderId))).toEqual([]);
   });
 });

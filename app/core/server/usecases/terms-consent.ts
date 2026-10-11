@@ -36,8 +36,12 @@ export const validateTermsConsent = async (
   tenantId: string,
   accepted: boolean | undefined,
   tenants: TenantRepository,
+  options: { requireLegalUrls?: boolean } = {},
 ): Promise<Result<{ required: boolean }, AppError>> => {
   const legal = tenantLegalUrls(await tenants.findSettings(tenantId));
+  if (options.requireLegalUrls === true && (!legal?.termsUrl || !legal.privacyUrl)) {
+    return err(validation('Configure terms and privacy URLs before starting checkout'));
+  }
   if (legal === null) return ok({ required: false });
   return accepted === true
     ? ok({ required: true })

@@ -1,4 +1,5 @@
 import {
+  archiveCourseInputSchema,
   attachModuleToCourseInputSchema,
   buildSnapshot,
   computeCourseModuleName,
@@ -10,6 +11,7 @@ import {
   newCourseSchema,
   notFound,
   ok,
+  restoreCourseInputSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
@@ -39,6 +41,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  CourseArchiveRepository,
   EntityVersionRecord,
   IdGenerator,
   LessonAttachmentRepository,
@@ -148,10 +151,64 @@ const validateChapterLessons = async (
 export const listCourses = async (
   ctx: Ctx,
   deps: CourseManagementDeps,
+  query: { archived?: boolean } = {},
 ): Promise<Result<Course[], AppError>> => {
   const tenant = requireStaffTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
-  return ok(await deps.courses.list(tenant.value));
+  const courses = await deps.courses.list(tenant.value);
+  return ok(courses.filter((course) => Boolean(course.archivedAt) === (query.archived === true)));
+};
+
+interface CourseArchiveDeps extends CourseManagementDeps {
+  courses: CourseRepository & CourseArchiveRepository;
+}
+
+const changeCourseArchive = async (
+  ctx: Ctx,
+  courseId: string,
+  archived: boolean,
+  deps: CourseArchiveDeps,
+): Promise<Result<Course, AppError>> => {
+  const tenant = requireStaffTenant(ctx, 'course:write');
+  if (!tenant.ok) return tenant;
+  const existing = await deps.courses.findById(tenant.value, courseId);
+  if (existing === null) return err(notFound(`No course "${courseId}" in this tenant`));
+  if (Boolean(existing.archivedAt) === archived) return ok(existing);
+  const snapshot = snapshotOf(ctx, 'course', existing.id, existing, deps);
+  if (!snapshot.ok) return snapshot;
+  const saved = await deps.courses.setArchived(
+    tenant.value, courseId, archived ? deps.clock.nowIso() : null, snapshot.value,
+  );
+  if (saved.kind === 'not_found') return err(notFound(`No course "${courseId}" in this tenant`));
+  if (saved.kind === 'referenced') {
+    return err(validation(`Course is referenced by products: ${saved.productTitles.join(', ')}`));
+  }
+  await deps.products.bumpContentVersion(tenant.value);
+  return ok(saved.course);
+};
+
+export const archiveCourse = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CourseArchiveDeps,
+): Promise<Result<Course, AppError>> => {
+  const tenant = requireStaffTenant(ctx, 'course:write');
+  if (!tenant.ok) return tenant;
+  const parsed = archiveCourseInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid course archive', parsed.error.flatten()));
+  return changeCourseArchive(ctx, parsed.data.courseId, true, deps);
+};
+
+export const restoreCourse = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CourseArchiveDeps,
+): Promise<Result<Course, AppError>> => {
+  const tenant = requireStaffTenant(ctx, 'course:write');
+  if (!tenant.ok) return tenant;
+  const parsed = restoreCourseInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid course restore', parsed.error.flatten()));
+  return changeCourseArchive(ctx, parsed.data.courseId, false, deps);
 };
 
 export const listModules = async (
@@ -191,6 +248,7 @@ export const createCourse = async (
     salesUrl: parsed.data.salesUrl ?? null,
     moduleOrder: [],
     publiclyVisible: parsed.data.publiclyVisible,
+    archivedAt: null,
     legacyId: parsed.data.legacyId,
     createdAt: deps.clock.nowIso(),
   };
@@ -596,8 +654,8 @@ export const updateProductAccessItems = async (
 
   const courseIds = unique(parsed.data.accessItems.map((item) => item.courseId));
   const courses = await deps.courses.findByIds(tenant.value, courseIds);
-  if (courses.length !== courseIds.length) {
-    return err(validation('Product access items may only reference existing courses'));
+  if (courses.length !== courseIds.length || courses.some((course) => course.archivedAt)) {
+    return err(validation('Product access items may only reference existing, active courses'));
   }
 
   for (const item of parsed.data.accessItems) {
@@ -640,6 +698,9 @@ export const updateProductAccessItems = async (
     snapshot.value,
     parsed.data.checkoutConsentDefinitionIds,
   );
+  if (updated === 'course_unavailable') {
+    return err(validation('Product access items may only reference existing, active courses'));
+  }
   if (updated && parsed.data.checkoutConsentDefinitionIds !== undefined) {
     await deps.products.bumpContentVersion(tenant.value);
   }

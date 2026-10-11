@@ -51,6 +51,7 @@ export const fulfillEnrollment = async (
   input: {
     mode?: 'live' | 'test';
     email: string;
+    name?: string | null;
     productId: string;
     expiresAt: string | null;
     language: string | null;
@@ -66,7 +67,7 @@ export const fulfillEnrollment = async (
   }
 
   const completed = await deps.enrollmentTransaction.run(async (transaction) => {
-    const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members });
+    const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members }, input.name);
     if (!member.ok) return member;
     const grant = product.type === 'physical' ? { grantId: '', renewed: false } : await createOrRenewGrant(
       tenant.id,

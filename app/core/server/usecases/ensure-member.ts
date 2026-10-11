@@ -13,6 +13,7 @@ export const ensureMember = async (
   tenantId: string,
   email: string,
   deps: EnsureMemberDeps,
+  displayName?: string | null,
 ): Promise<Result<Member, AppError>> => {
   const normalizedEmail = normalizeEmail(email);
   const existing = await deps.members.findByEmail(tenantId, normalizedEmail);
@@ -24,7 +25,7 @@ export const ensureMember = async (
     tenantId,
     userId,
     email: normalizedEmail,
-    displayName: null,
+    displayName: displayName ?? null,
     tags: [],
     marketingConsents: {},
     externalCustomerIds: {},

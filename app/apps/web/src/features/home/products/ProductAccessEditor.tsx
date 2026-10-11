@@ -243,7 +243,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
         <MenuItem value="">
           <em>{t.access.selectCourse}</em>
         </MenuItem>
-        {courses.data.courses.map((course) => (
+        {courses.data.courses.filter((course) => !course.archivedAt).map((course) => (
           <MenuItem key={course.id} value={course.id}>
             {course.name}
           </MenuItem>

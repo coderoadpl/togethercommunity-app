@@ -38,6 +38,7 @@ import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
 import { DEEP_HEALTH_CACHE_TTL_MS } from './deep-health-route.js';
+import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
 import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-route-manifest.js';
@@ -606,6 +607,7 @@ const deps = (input: {
     devMagicLinks: {
       findByEmail: async () => null,
     },
+    productDrafts: { deleteDraft: async () => ({ kind: 'not_found' }) },
     products: {
       listByTenant: async (tenantId) => products.filter((candidate) => candidate.tenantId === tenantId),
       listPublishedByTenant: async (tenantId) =>
@@ -621,6 +623,7 @@ const deps = (input: {
       bumpContentVersion: async () => undefined,
     },
     courses: {
+      setArchived: async () => ({ kind: 'not_found' }),
       list: async () => [],
       findById: async () => null,
       findByIds: async () => [],
@@ -4402,6 +4405,19 @@ describe('new route authorization', () => {
     'content-type': 'application/json',
   };
 
+  it('allows only owners to change checkout appearance through tenant settings', async () => {
+    for (const role of ['owner', 'staff', 'member', 'none'] as const) {
+      const response = await scopedApp(role).request(API_PATHS.tenantSettingsUpdate, {
+        method: 'POST', headers,
+        body: JSON.stringify({ checkoutAppearance: { displayName: 'Studio', buttonColor: '#123456' } }),
+      });
+      expect(response.status).toBe(role === 'owner' ? 200 : 403);
+      if (role === 'owner') expect(await response.json()).toMatchObject({
+        ok: true, data: { settings: { checkoutAppearance: { displayName: 'Studio', buttonColor: '#123456' } } },
+      });
+    }
+  });
+
   it('serves a tenant-scoped import audit only to the owner', async () => {
     const base = deps();
     const key: TenantApiKey = {
@@ -5004,6 +5020,7 @@ describe('public route manifest', () => {
       'Amazon SNS delivery webhook',
       'Stripe payment webhook',
       'Checkout session start',
+      'Rate-limited direct sales-link checkout session creation',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
       'Rate-limited survey responses with form token and honeypot checks',
@@ -5327,9 +5344,36 @@ describe('tenant crawler files', () => {
   });
 });
 
+it('hides archived courses from the sitemap until restored', async () => {
+  const base = deps();
+  const course: Course = {
+    id: 'archived-course', tenantId: acme.id, name: 'Archived course', description: '',
+    imageUrl: null, moduleOrder: [], publiclyVisible: true, legacyId: null,
+    createdAt: '2026-10-11T00:00:00.000Z', archivedAt: '2026-10-11T00:00:00.000Z',
+  };
+  const app = buildApp({ ...base, courses: { ...base.courses, list: async () => [course] } });
+  const request = () => app.request('/sitemap.xml', { headers: { host: 'acme.localhost:48730' } });
+  expect(await (await request()).text()).not.toContain('/my/courses/archived-course');
+  course.archivedAt = null;
+  expect(await (await request()).text()).toContain('/my/courses/archived-course');
+});
+
 describe('tenant redirects', () => {
   const coursePagePath = '/my/courses/acme-course-js';
   const lessonPagePath = `${coursePagePath}/lessons/acme-lesson-let`;
+
+  const redirectCourse: Course = {
+    id: 'acme-course-js',
+    tenantId: acme.id,
+    name: 'JavaScript course',
+    description: '',
+    imageUrl: null,
+    moduleOrder: [],
+    publiclyVisible: true,
+    archivedAt: null,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
 
   const storedRedirects: TenantRedirect[] = [
     {
@@ -5450,6 +5494,9 @@ describe('tenant redirects', () => {
     increments?: string[];
     warnings?: string[];
     failIncrement?: boolean;
+    course?: Course | null;
+    targetKind?: TenantRedirect['targetKind'];
+    targetPath?: string;
     hitLimit?: number;
     hitClaims?: Array<{ scope: string; key: string; limit: number }>;
   }) => {
@@ -5477,9 +5524,21 @@ describe('tenant redirects', () => {
         },
       }),
     });
-    const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
+    const owned = storedRedirects.map((redirect) => ({
+      ...redirect,
+      tenantId: owner.id,
+      targetKind: tracking?.targetKind ?? redirect.targetKind,
+      targetPath: tracking?.targetPath ?? redirect.targetPath,
+    }));
     return buildApp({
       ...base,
+      courses: {
+        ...base.courses,
+        findById: async (tenantId, id) => {
+          const course = tracking?.course === undefined ? redirectCourse : tracking.course;
+          return course !== null && course.tenantId === tenantId && course.id === id ? course : null;
+        },
+      },
       publicRateLimitPolicies: {
         ...base.publicRateLimitPolicies,
         redirectHitsPerRedirect: {
@@ -5586,6 +5645,74 @@ describe('tenant redirects', () => {
       expect(increments).toEqual(['redirect-link']);
     },
   );
+
+  it.each(['course', 'lesson', 'module-as-course', 'path'] as const)(
+    'suppresses %s redirects while their course is archived and restores them afterward',
+    async (targetKind) => {
+      const course: Course = { ...redirectCourse, archivedAt: '2026-10-11T00:00:00.000Z' };
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+      const app = redirectApp(acme, { course, targetKind, increments, hitClaims });
+      const headers = { host: 'acme.localhost:48730' };
+
+      const shortLink = await app.request('/link/guide', { headers });
+      const oldPath = await app.request('/course/javascript', { headers });
+
+      expect(shortLink.status).toBe(302);
+      expect(shortLink.headers.get('location')).toBe('/');
+      expect(oldPath.status).toBe(404);
+      expect(oldPath.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+
+      course.archivedAt = null;
+      const restored = await app.request('/link/guide', { headers });
+      expect(restored.status).toBe(302);
+      expect(restored.headers.get('location')).toBe(lessonPagePath);
+      expect(increments).toEqual(['redirect-link']);
+    },
+  );
+
+  it.each([
+    '/offer/../my/courses/acme-course-js',
+    '/offer/%2e%2e/my/courses/acme-course-js',
+    '/my//courses/acme-course-js',
+    '/MY/COURSES/acme-course-js',
+    '/%6dy/%63ourses/acme-course-js',
+    '/my/courses/%61cme-course-js/lessons/acme-lesson-let',
+    '/my\\courses\\acme-course-js',
+  ])('checks the normalized course target of %s', async (targetPath) => {
+    const course: Course = { ...redirectCourse, archivedAt: '2026-10-11T00:00:00.000Z' };
+    const increments: string[] = [];
+    const app = redirectApp(acme, { course, targetKind: 'path', targetPath, increments });
+    const headers = { host: 'acme.localhost:48730' };
+
+    const archived = await app.request('/link/guide', { headers });
+    expect(archived.status).toBe(302);
+    expect(archived.headers.get('location')).toBe('/');
+    expect(increments).toEqual([]);
+
+    course.archivedAt = null;
+    const restored = await app.request('/link/guide', { headers });
+    expect(restored.status).toBe(302);
+    expect(restored.headers.get('location')).toBe(targetPath);
+    expect(increments).toEqual(['redirect-link']);
+  });
+
+  it('uses the same fallback for redirects whose course no longer exists', async () => {
+    const increments: string[] = [];
+    const app = redirectApp(acme, { course: null, increments });
+    const headers = { host: 'acme.localhost:48730' };
+
+    const shortLink = await app.request('/link/guide', { headers });
+    const oldPath = await app.request('/course/javascript', { headers });
+
+    expect(shortLink.status).toBe(302);
+    expect(shortLink.headers.get('location')).toBe('/');
+    expect(oldPath.status).toBe(404);
+    expect(oldPath.headers.get('location')).toBeNull();
+    expect(increments).toEqual([]);
+  });
 
   it('sends a short link configured for another tenant to the workspace home without counting a hit', async () => {
     const increments: string[] = [];
@@ -8612,7 +8739,7 @@ describe('content history HTTP surface', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       data: {
-        version: { ordinal: 2, currentSchemaVersion: 5 },
+        version: { ordinal: 2, currentSchemaVersion: 6 },
         preview: {
           fields: expect.arrayContaining([
             { name: 'title', value: { kind: 'text', value: 'Older name' } },
@@ -8918,7 +9045,7 @@ describe('staff Stripe test mode routes', () => {
       }) },
     } });
     const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
-      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', termsAccepted: true }) });
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', salesLinkTest: true, termsAccepted: true }) });
     expect(response.status).toBe(200);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }));
   });
@@ -9386,5 +9513,319 @@ describe('Stripe permission probe route', () => {
       ...request, body: JSON.stringify({ mode: 'unknown' }),
     })).status).toBe(400);
     expect(probe).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('catalog cleanup authorization', () => {
+  const headers = { [TENANT_HEADER]: acme.slug, 'content-type': 'application/json' };
+  const course: Course = {
+    id: 'catalog-course', tenantId: acme.id, name: 'Catalog course', description: '',
+    imageUrl: null, salesUrl: null, moduleOrder: [], publiclyVisible: true,
+    legacyId: null, createdAt: '2026-10-01T00:00:00.000Z', archivedAt: null,
+  };
+
+  it.each(['archive', 'restore'] as const)('allows staff and refuses members for course %s', async (action) => {
+    const base = deps();
+    const setArchived = vi.fn<AppDeps['courses']['setArchived']>(async (_tenantId, _id, archivedAt) => ({ kind: 'saved', course: { ...course, archivedAt } }));
+    const overrides: Partial<AppDeps> = {
+      courses: { ...base.courses, findById: async () => action === 'archive' ? course : { ...course, archivedAt: '2026-10-02T00:00:00.000Z' }, setArchived },
+      products: { ...base.products, listByTenant: async () => [] },
+    };
+    const path = action === 'archive' ? API_PATHS.coursesArchive : API_PATHS.coursesRestore;
+    const request = { method: 'POST', headers, body: JSON.stringify({ courseId: course.id }) };
+    expect((await scopedApp('member', { overrides }).request(path, request)).status).toBe(403);
+    expect(setArchived).not.toHaveBeenCalled();
+    expect((await scopedApp('staff', { overrides }).request(path, request)).status).toBe(200);
+    expect(setArchived).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows staff to delete drafts and refuses members before persistence', async () => {
+    const deleteDraft = vi.fn<AppDeps['productDrafts']['deleteDraft']>(async () => ({ kind: 'deleted', assets: [] }));
+    const overrides = { productDrafts: { deleteDraft } };
+    const request = { method: 'POST', headers, body: JSON.stringify({ productId: 'draft-1' }) };
+    expect((await scopedApp('member', { overrides }).request(API_PATHS.productsDelete, request)).status).toBe(403);
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect((await scopedApp('staff', { overrides }).request(API_PATHS.productsDelete, request)).status).toBe(200);
+    expect(deleteDraft).toHaveBeenCalledExactlyOnceWith(acme.id, 'draft-1');
+  });
+
+  it('selects archived courses and rejects invalid filter input', async () => {
+    const base = deps();
+    const archived = { ...course, id: 'archived-course', archivedAt: '2026-10-02T00:00:00.000Z' };
+    const app = scopedApp('staff', { overrides: { courses: { ...base.courses, list: async () => [course, archived] } } });
+    const activeResponse = await app.request(API_PATHS.courses, { headers });
+    expect(await activeResponse.json()).toMatchObject({ ok: true, data: { courses: [{ id: course.id }] } });
+    const archivedResponse = await app.request(`${API_PATHS.courses}?archived=true`, { headers });
+    expect(await archivedResponse.json()).toMatchObject({ ok: true, data: { courses: [{ id: archived.id }] } });
+    expect((await app.request(`${API_PATHS.courses}?archived=invalid`, { headers })).status).toBe(400);
+  });
+});
+
+const directSalesLinkApp = async () => {
+  const h = simulatedBundleApp();
+  const settings = await h.base.tenants.findSettings(acme.id);
+  if (settings === null) throw new Error('Missing test settings');
+  h.base.tenants.findSettings = async () => ({ ...settings, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', faviconUrl: 'https://acme.example/icon.png' });
+  h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  const create = vi.fn(h.base.payment.createCheckoutSession);
+  h.base.payment.createCheckoutSession = create;
+  h.base.tenantSecrets.findByKey = async (tenantId, key) => key.startsWith('stripe.test') ? null : ({ id: `secret-${key}`, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+  return { ...h, create, settings };
+};
+
+describe('direct public sales-link checkout', () => {
+  it.each(['unknown', 'inactive', 'expired'] as const)('renders an HTML error for an %s offer without checkout actions', async (state) => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, defaultLanguage: 'pl' });
+    h.salesLinks.findBySlug = async () => state === 'unknown' ? null : {
+      ...h.link,
+      ...(state === 'inactive' ? { active: false } : { validTo: h.base.clock.nowIso() }),
+    };
+    const response = await h.app.request(`/offer/${state === 'unknown' ? 'unknown-slug' : 'bundle'}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const html = await response.text();
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('<html lang="pl">');
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.checkoutUnavailable}</p>`);
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('<form');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('renders missing legal URLs in the workspace language', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, defaultLanguage: 'pl', termsUrl: null, privacyUrl: null });
+    const response = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await response.text();
+    expect(html).toContain('<html lang="pl">');
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.legalUrlsMissing}</p>`);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('serves escaped offer metadata, a nonce script and noscript form without creating a session on GET', async () => {
+    const h = await directSalesLinkApp();
+    const response = await h.app.request('/offer/bundle?test=anything', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('<title>Complete bundle</title>');
+    expect(html).toContain('property="og:title" content="Complete bundle"');
+    expect(html).toContain('rel="icon" href="https://acme.example/icon.png"');
+    expect(html).toContain('<noscript><form method="post" action="/api/public/sales-links/bundle/checkout">');
+    expect(html).toContain('name="mode" value="live"');
+    expect(html).toContain('location.replace(result.data.url)');
+    expect(html).toContain('<script nonce="');
+    expect(response.headers.get('content-security-policy')).toContain("'nonce-");
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['facebookexternalhit', 'Twitterbot', 'LinkedInBot', 'Slackbot', 'Discordbot', 'WhatsApp', 'TelegramBot', 'Googlebot', 'redditbot', 'Applebot'])('does not expose checkout actions to %s', async (userAgent) => {
+    const h = await directSalesLinkApp();
+    const headers = { host: 'acme.localhost', 'user-agent': userAgent };
+    for (const query of ['', '?checkout=together', '?status=success', '?status=cancelled']) {
+      const response = await h.app.request(`/offer/bundle${query}`, { headers });
+      const html = await response.text();
+      expect(response.status).toBe(200);
+      expect(html).toContain('property="og:title" content="Complete bundle"');
+      expect(html).not.toContain('<script');
+      expect(html).not.toContain('<form');
+    }
+    const submission = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    expect(submission.status).toBe(403);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('creates one live session when test mode has no key and redirects noscript submissions', async () => {
+    const h = await directSalesLinkApp();
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/x-www-form-urlencoded' }, body: 'mode=test' });
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('https://checkout.local/cs');
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      mode: 'live', language: 'en', salesLinkId: 'bundle-link',
+      directCheckout: { termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', termsAcceptanceMessage: 'I accept the [Terms](https://acme.example/terms) and the [Privacy policy](https://acme.example/privacy).' },
+      cancelUrl: expect.stringContaining('status=cancelled'),
+      lines: [expect.objectContaining({ productId: 'print' }), expect.objectContaining({ productId: 'digital' })],
+    }));
+  });
+
+  it.each(['staff', 'anonymous', 'no-session', 'revoked', 'other-tenant'] as const)('binds full direct test checkout to the staff session: %s', async (actor) => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
+    const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
+    h.base.tenantAccess.findStaffGrant = staffGrant;
+    h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    const payload = { userId: 'staff-user', tenantId: actor === 'other-tenant' ? 'another-tenant' : acme.id, expiresAt: Date.parse(h.base.clock.nowIso()) + 60_000 };
+    const cookie = `together_stripe_test=${encodeURIComponent(JSON.stringify({ ciphertext: JSON.stringify(payload), iv: 'iv', authTag: 'tag' }))}`;
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json', ...(actor === 'no-session' ? {} : { cookie }) };
+    const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
+    const createMember = vi.spyOn(h.base.members, 'create');
+    const page = await h.app.request('/offer/bundle?test=anything', { headers });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain(`name="mode" value="${actor === 'staff' ? 'test' : 'live'}"`);
+    expect(h.create).not.toHaveBeenCalled();
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"test"}' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: actor === 'staff' ? 'test' : 'live', directCheckout: expect.objectContaining({ termsUrl: 'https://acme.example/terms' }) }));
+    if (actor === 'staff') {
+      expect(staffGrant).toHaveBeenCalledWith('staff-user', { tenantId: acme.id });
+      expect(ensureUser).toHaveBeenCalledExactlyOnceWith('staff@example.test');
+      expect(createMember).toHaveBeenCalledOnce();
+      expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ customerEmail: 'staff@example.test' }));
+      expect(h.orders).toMatchObject([{ tenantId: acme.id, mode: 'test', status: 'pending', salesLinkId: 'bundle-link', providerObjectIds: { checkoutSession: 'cs' }, lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
+      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'test', providerSessionId: 'cs' }]);
+      expect(response.headers.get('set-cookie')).toContain('together_stripe_test=;');
+    } else {
+      expect(ensureUser).not.toHaveBeenCalled();
+      expect(createMember).not.toHaveBeenCalled();
+      expect(h.orders).toHaveLength(0);
+      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'live', providerSessionId: 'cs' }]);
+    }
+    expect(h.grants).toHaveLength(0);
+  });
+
+  it('returns a JSON checkout URL and rate-limits creation per IP', async () => {
+    const h = await directSalesLinkApp();
+    h.base.publicRateLimitPolicies.writesPerIp = { limit: 1, windowMs: 60_000 };
+    let ipClaims = 0;
+    h.base.rateLimitBuckets.claim = async ({ scope, limit }) => scope !== 'public-write:ip' || ++ipClaims <= limit;
+    const request = () => h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    const response = await request();
+    expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
+    expect((await request()).status).toBe(429);
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['unreadable', 'live-key'] as const)('ignores unauthorized test selection with a %s stored test key', async (failure) => {
+    const h = await directSalesLinkApp();
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key, iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    h.base.secretCrypto.decrypt = (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
+      ? err(internal('Stored secret failed integrity verification'))
+      : ok('rk_live_available');
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    for (const [path, payload] of [
+      ['/api/public/sales-links/bundle/checkout', { mode: 'test' }],
+      [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }],
+    ] as const) {
+      expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(200);
+    }
+    expect(h.create).toHaveBeenCalledTimes(2);
+    expect(h.create.mock.calls.every(([input]) => input.mode === 'live')).toBe(true);
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants).toHaveLength(0);
+    const live = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' });
+    expect(live.status).toBe(200);
+    expect(h.create).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps consent-bearing offers on the Together checkout and return pages out of redirect loops', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?checkout=together');
+    for (const query of ['checkout=together', 'status=success', 'status=cancelled']) {
+      const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+      expect(await page.text()).toBe('<main>Existing checkout</main>');
+    }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('ignores anonymous test selection through the consent fallback with configured key: %s', async (configured) => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    if (configured) {
+      h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    }
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
+    const createMember = vi.spyOn(h.base.members, 'create');
+    const fallback = await h.app.request('/offer/bundle?test=anything', { headers });
+    expect(fallback.headers.get('location')).toBe('/offer/bundle?test=anything&checkout=together');
+    const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: false } });
+    const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
+      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }),
+    });
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live', customerEmail: 'buyer@example.test' }));
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(createMember).not.toHaveBeenCalled();
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants).toHaveLength(0);
+  });
+
+  it.each([false, true])('never provisions the supplied third-party identity with the staff test switch enabled: %s', async (enabled) => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
+    h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
+    h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json', cookie: 'session=staff' };
+    const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
+    const createMember = vi.spyOn(h.base.members, 'create');
+    if (enabled) {
+      const response = await h.app.request(API_PATHS.stripeTestSession, { method: 'POST', headers, body: '{"enabled":true}' });
+      expect(response.status).toBe(200);
+      headers.cookie = response.headers.get('set-cookie')?.split(';')[0] ?? '';
+    }
+    const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
+      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'third-party@example.test', termsAccepted: true }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: enabled ? 'test' : 'live', customerEmail: enabled ? 'staff@example.test' : 'third-party@example.test' }));
+    expect(ensureUser).not.toHaveBeenCalledWith('third-party@example.test');
+    expect(createMember).not.toHaveBeenCalledWith(acme.id, expect.objectContaining({ email: 'third-party@example.test' }));
+    if (enabled) {
+      expect(ensureUser).toHaveBeenCalledWith('staff@example.test');
+      expect(createMember).toHaveBeenCalledWith(acme.id, expect.objectContaining({ email: 'staff@example.test' }));
+      expect(h.orders).toMatchObject([{ mode: 'test', status: 'pending', salesLinkId: 'bundle-link' }]);
+    } else {
+      expect(ensureUser).not.toHaveBeenCalled();
+      expect(createMember).not.toHaveBeenCalled();
+      expect(h.orders).toHaveLength(0);
+    }
+  });
+
+  it.each(['both', 'terms', 'privacy'] as const)('blocks every sales-link checkout when %s legal URLs are missing', async (missing) => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings,
+      termsUrl: missing === 'privacy' ? 'https://acme.example/terms' : null,
+      privacyUrl: missing === 'terms' ? 'https://acme.example/privacy' : null,
+    });
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const createMember = vi.spyOn(h.base.members, 'create');
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    for (const query of ['', '?checkout=together']) {
+      const response = await h.app.request(`/offer/bundle${query}`, { headers });
+      expect(response.status).toBe(503);
+      const html = await response.text();
+      expect(html).toContain('terms and privacy URLs');
+      expect(html).not.toContain('<script');
+      expect(html).not.toContain('<form');
+    }
+    for (const payload of [{ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true },
+      { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', termsAccepted: true }]) {
+      const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers, body: JSON.stringify(payload) });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect((await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' })).status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+    expect(createMember).not.toHaveBeenCalled();
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants).toHaveLength(0);
   });
 });

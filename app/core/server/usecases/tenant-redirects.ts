@@ -74,7 +74,7 @@ const resolveTarget = async (
     return ok({ targetKind: 'path', targetId: null, targetPath: target.path, targetAnchor: null });
   }
   const course = await deps.courses.findById(tenantId, target.courseId);
-  if (course === null) return err(notFound('Course not found'));
+  if (course === null || course.archivedAt) return err(notFound('Course not found'));
   if (target.kind === 'course') {
     return ok({
       targetKind: 'course',

@@ -223,6 +223,7 @@ import {
   updatePostInputSchema,
   updateProductAccessItemsInputSchema,
   billingDataSchema,
+  orderBillingDataSchema,
 } from '#core/domain/index.js';
 import type { PublicSpaceEventRef, PublicSpaceThreadInput } from '#core/domain/index.js';
 
@@ -357,7 +358,7 @@ export const memberBillingOrdersOutputSchema = z.object({
   orders: z.array(z.object({
     id: z.string(),
     createdAt: z.string().datetime(),
-    billing: billingDataSchema.nullable(),
+    billing: orderBillingDataSchema.nullable(),
     invoice: invoiceSchema.pick({ id: true, status: true, provider: true }).nullable().default(null),
   })),
   total: z.number().int().nonnegative(),
@@ -447,6 +448,7 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicPaymentConfigOutputSchema = z.object({
   canTest: z.boolean().default(false),
   testConfigured: z.boolean().default(false),
+  salesLinkTestConfigured: z.boolean().default(false),
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
@@ -1901,6 +1903,7 @@ export const API_ROUTES = {
   productsUpdate: { method: 'POST', path: '/api/products/update' },
   productsPublish: { method: 'POST', path: '/api/products/publish' },
   productsUnpublish: { method: 'POST', path: '/api/products/unpublish' },
+  productsDelete: { method: 'POST', path: '/api/products/delete' },
   productsAccessItems: { method: 'POST', path: '/api/products/access-items' },
   productsAccessIssues: { method: 'GET', path: '/api/products/access-issues' },
   productPricesCreate: { method: 'POST', path: '/api/products/prices' },
@@ -1925,6 +1928,8 @@ export const API_ROUTES = {
   couponArchive: { method: 'POST', path: '/api/coupons/archive' },
   couponStatsExport: { method: 'GET', path: '/api/coupons/export' },
   courses: { method: 'GET', path: '/api/courses' },
+  coursesArchive: { method: 'POST', path: '/api/courses/archive' },
+  coursesRestore: { method: 'POST', path: '/api/courses/restore' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
   coursesHistory: { method: 'GET', path: '/api/courses/history' },
@@ -2157,6 +2162,7 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
@@ -2283,6 +2289,7 @@ export const API_PATHS = {
   productsUpdate: API_ROUTES.productsUpdate.path,
   productsPublish: API_ROUTES.productsPublish.path,
   productsUnpublish: API_ROUTES.productsUnpublish.path,
+  productsDelete: API_ROUTES.productsDelete.path,
   productsAccessItems: API_ROUTES.productsAccessItems.path,
   productsAccessIssues: API_ROUTES.productsAccessIssues.path,
   productPricesCreate: API_ROUTES.productPricesCreate.path,
@@ -2307,6 +2314,8 @@ export const API_PATHS = {
   couponArchive: API_ROUTES.couponArchive.path,
   couponStatsExport: API_ROUTES.couponStatsExport.path,
   courses: API_ROUTES.courses.path,
+  coursesArchive: API_ROUTES.coursesArchive.path,
+  coursesRestore: API_ROUTES.coursesRestore.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   coursesHistory: API_ROUTES.coursesHistory.path,
   coursesHistoryVersion: API_ROUTES.coursesHistoryVersion.path,

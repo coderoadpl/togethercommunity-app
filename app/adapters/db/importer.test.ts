@@ -233,6 +233,41 @@ beforeAll(async () => {
 }, 60000);
 
 describe('importer', () => {
+  it('imports products with unmapped course references and records their anomalies', async () => {
+    const tenantId = 'tenant-import-unmapped-course';
+    const tenantSlug = 'import-unmapped-course';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantSlug, name: 'Unmapped Course', createdAt: nowIso() });
+    const bundle: TenantBundle = {
+      users: [], courses: [], modules: [], lessons: [], members: [], grants: [], progress: [],
+      products: [{ legacyId: 'unmapped-product', title: 'Imported product', accessItems: [{ level: 'course', courseId: 'missing-course' }] }],
+    };
+    const target = {
+      tenant: { bundleSlug: tenantSlug, tenantId, tenantSlug, tenantName: 'Unmapped Course', created: false },
+      bundle,
+    };
+
+    for (const operation of ['create', 'update'] as const) {
+      bundle.products[0] = {
+        legacyId: 'unmapped-product', title: `Imported product ${operation}`,
+        accessItems: [{ level: 'course', courseId: 'missing-course' }],
+      };
+      const result = await runImport(db, gateway, [target], { apply: true, nowIso, emailHmac });
+      expect(reportByKind(result.tenants[0]?.kinds ?? [], 'products')).toMatchObject({
+        [operation]: 1,
+        anomalies: [{
+          kind: 'product-course-ref-unmapped',
+          subject: 'products/unmapped-product',
+          detail: 'referenced id missing-course is not part of the import; kept verbatim',
+        }],
+      });
+      expect(await db.select().from(products).where(eq(products.tenantId, tenantId))).toMatchObject([{
+        title: `Imported product ${operation}`,
+        accessItems: [{ level: 'course', courseId: 'missing-course' }],
+      }]);
+      expect(result.verification?.pass).toBe(true);
+    }
+  });
+
   it('backfills owner admin and domain when a prior tenant-only creation is resumed', async () => {
     const tenantId = 'tenant-import-resume';
     const tenantSlug = 'import-resume';

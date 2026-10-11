@@ -676,3 +676,26 @@ describe('lesson edition imports', () => {
     expect(h.mutations.at(-1)?.version).toBeDefined();
   });
 });
+
+
+it('rejects new references to archived imported courses while allowing course updates', async () => {
+  const h = harness();
+  await importM2mContent(ctx, apiKey, 'course', {
+    datasetVersion: 'together-import/v1', records: [courseRecord()],
+  }, h.deps);
+  const stored = h.courses.get('course-source');
+  if (stored === undefined) throw new Error('Expected imported course');
+  h.courses.set(stored.id, { ...stored, archivedAt: NOW });
+  const reference = await importM2mContent(ctx, apiKey, 'module', {
+    datasetVersion: 'together-import/v1', records: [{ ...moduleRecord(), chapters: [] }],
+  }, h.deps);
+  expect(reference).toMatchObject({ ok: true, value: { results: [{ action: 'error', error: { code: 'conflict', message: 'Referenced course "course-source" is archived' } }], summary: { failed: 1 } } });
+  expect(await importM2mContent(ctx, apiKey, 'course', {
+    datasetVersion: 'together-import/v1', records: [courseRecord('Updated archived course')],
+  }, h.deps)).toMatchObject({ ok: true });
+  expect(h.courses.get(stored.id)).toMatchObject({ name: 'Updated archived course', archivedAt: NOW });
+  h.courses.set(stored.id, { ...stored, archivedAt: null });
+  expect(await importM2mContent(ctx, apiKey, 'module', {
+    datasetVersion: 'together-import/v1', records: [{ ...moduleRecord(), chapters: [] }],
+  }, h.deps)).toMatchObject({ ok: true });
+});

@@ -4,6 +4,8 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
+  orderBillingDataSchema,
+  nipSchema,
   err,
   ok,
   refundCoverage,
@@ -17,6 +19,7 @@ import {
   validation,
   stripeKeyModeConflicts,
   type AppError,
+  type CheckoutBranding,
   type Result,
   type StripePermissionCheck,
 } from '#core/domain/index.js';
@@ -59,6 +62,21 @@ export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readon
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
+const checkoutBrandingParams = (branding: CheckoutBranding | undefined): Stripe.Checkout.SessionCreateParams => {
+  if (branding === undefined || Object.keys(branding).length === 0) return {};
+  return {
+    branding_settings: {
+      ...(branding.displayName === undefined ? {} : { display_name: branding.displayName }),
+      ...(branding.logoUrl === undefined ? {} : { logo: { type: 'url', url: branding.logoUrl } }),
+      ...(branding.iconUrl === undefined ? {} : { icon: { type: 'url', url: branding.iconUrl } }),
+      ...(branding.backgroundColor === undefined ? {} : { background_color: branding.backgroundColor }),
+      ...(branding.buttonColor === undefined ? {} : { button_color: branding.buttonColor }),
+      ...(branding.fontFamily === undefined ? {} : { font_family: branding.fontFamily }),
+      ...(branding.borderStyle === undefined ? {} : { border_style: branding.borderStyle }),
+    },
+  };
+};
+
 export const stripeCouponParams = (
   input: EnsureCouponRequest,
 ): Stripe.CouponCreateParams => ({
@@ -69,6 +87,20 @@ export const stripeCouponParams = (
     ? { percent_off: input.value }
     : { amount_off: input.value, currency: input.currency.toLowerCase() }),
 });
+
+const legalUrlMetadata = (key: string, value: string): Record<string, string> => {
+  if (value.length <= 500) return { [key]: value };
+  const chunks: Record<string, string> = {};
+  for (let offset = 0; offset < value.length; offset += 500) chunks[`${key}_${offset / 500}`] = value.slice(offset, offset + 500);
+  return chunks;
+};
+
+const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): string | null => {
+  if (metadata[key] !== undefined) return metadata[key];
+  const chunks: string[] = [];
+  for (let index = 0; metadata[`${key}_${index}`] !== undefined; index += 1) chunks.push(metadata[`${key}_${index}`] ?? '');
+  return chunks.length === 0 ? null : chunks.join('');
+};
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
@@ -81,7 +113,17 @@ export const stripeCheckoutSessionParams = (
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
   return {
+    ...checkoutBrandingParams(input.checkoutBranding),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
+    ...(input.recurringInterval === undefined ? {} : {
+      subscription_data: { billing_mode: { type: 'classic' as const } },
+    }),
+    ...(input.directCheckout === undefined ? {} : {
+      consent_collection: { terms_of_service: 'required' as const },
+      custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
+      tax_id_collection: { enabled: true },
+      allow_promotion_codes: false,
+    }),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
@@ -96,6 +138,11 @@ export const stripeCheckoutSessionParams = (
       },
     })),
     metadata: {
+      ...(input.directCheckout === undefined ? {} : {
+        directCheckout: 'true',
+        ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
+        ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
+      }),
       ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
       ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
       ...productMetadata,
@@ -128,6 +175,24 @@ const idOrNull = (value: unknown): string | null => {
   return null;
 };
 
+const checkoutBilling = (details: Stripe.Checkout.Session.CustomerDetails | null) => {
+  if (details === null) return null;
+  const nip = details.tax_ids
+    ?.filter((item) => item.type === 'eu_vat' && item.value?.startsWith('PL'))
+    .map((item) => nipSchema.safeParse(item.value?.replace(/\D/g, '')))
+    .find((parsed) => parsed.success)?.data ?? null;
+  if (details.address == null && nip === null) return null;
+  const billing = orderBillingDataSchema.safeParse({
+    companyName: details.name ?? '',
+    address: [details.address?.line1, details.address?.line2].filter(Boolean).join(', '),
+    postalCode: details.address?.postal_code ?? '',
+    city: details.address?.city ?? '',
+    country: details.address?.country ?? (nip === null ? '' : 'PL'),
+    nip,
+  });
+  return billing.success ? billing.data : null;
+};
+
 const toCheckoutSessionEvent = (
   eventId: string,
   type: string,
@@ -138,6 +203,9 @@ const toCheckoutSessionEvent = (
   objectId: session.id,
   checkoutSession: {
     email: session.customer_details?.email ?? session.customer_email ?? null,
+    customerName: session.customer_details?.name ?? null,
+    billing: checkoutBilling(session.customer_details ?? null),
+    termsAccepted: session.consent?.terms_of_service === 'accepted',
     paymentStatus: session.payment_status,
     subscriptionId: idOrNull(session.subscription),
     paymentIntentId: idOrNull(session.payment_intent),
@@ -146,6 +214,11 @@ const toCheckoutSessionEvent = (
     discountTotalCents: session.total_details?.amount_discount ?? null,
     metadata: {
       tenantId: session.metadata?.tenantId ?? null,
+      ...(session.metadata?.directCheckout !== 'true' ? {} : {
+        directCheckout: true,
+        termsUrl: legalUrlFromMetadata(session.metadata, 'termsUrl'),
+        privacyUrl: legalUrlFromMetadata(session.metadata, 'privacyUrl'),
+      }),
       productId: session.metadata?.productId ?? null,
       priceId: session.metadata?.priceId || null,
       memberEmail: session.metadata?.memberEmail || null,
@@ -307,7 +380,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
             const suffix = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join('');
             const promotion = await client.promotionCodes.create({
-              coupon, code: `TOGETHER-PROBE-${suffix}`, max_redemptions: 1, active: true,
+              promotion: { type: 'coupon', coupon }, code: `TOGETHER-PROBE-${suffix}`, max_redemptions: 1, active: true,
               metadata: { togetherProbe: '1', tenantId: input.tenantId },
             });
             await client.promotionCodes.update(promotion.id, { active: false });
@@ -455,7 +528,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         let stripePromotionCodeId = input.stripePromotionCodeId;
         if (stripePromotionCodeId === null) {
           const created = await client.value.promotionCodes.create({
-            coupon: stripeCouponId,
+            promotion: { type: 'coupon', coupon: stripeCouponId },
             code: input.code,
             metadata: { tenantId: input.tenantId, couponId: input.couponId },
           });

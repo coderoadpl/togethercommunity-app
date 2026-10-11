@@ -105,6 +105,14 @@ export const billingDataSchema = z.object({
 
 export type BillingData = z.output<typeof billingDataSchema>;
 
+export const orderBillingDataSchema = billingDataSchema.extend({
+  country: z.string().trim().length(2).transform((value) => value.toUpperCase()),
+  companyName: z.string().trim().max(200),
+  address: z.string().trim().max(300),
+  postalCode: z.string().trim().max(30),
+  city: z.string().trim().max(120),
+});
+
 export const orderLineSchema = z.object({
   priceId: z.string().min(1).optional(),
   productId: z.string().min(1),
@@ -137,6 +145,8 @@ export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCe
 };
 
 export const checkoutSnapshotSchema = z.object({
+  mode: stripeModeSchema.nullable().optional(),
+  providerSessionId: z.string().nullable().optional(),
   id: z.string(),
   tenantId: z.string(),
   salesLinkId: z.string().nullable(),
@@ -162,7 +172,7 @@ export const orderSchema = z.object({
   providerObjectIds: z.record(z.string()),
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
-  billing: billingDataSchema.nullable().optional(),
+  billing: orderBillingDataSchema.nullable().optional(),
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),

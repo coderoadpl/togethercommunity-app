@@ -130,7 +130,7 @@ export const getPublicNavigation = async (
       products: productSummariesForIds(space.productIds),
     })),
     courses: courses
-      .filter((course) => course.publiclyVisible)
+      .filter((course) => course.publiclyVisible && !course.archivedAt)
       .map((course) => ({
         id: course.id,
         name: course.name,
@@ -165,7 +165,7 @@ export const getPublicCourseStructure = async (
 ): Promise<Result<CourseStructureWithAccess, AppError>> => {
   if (!courseId) return err(validation('courseId is required'));
   const course = await deps.courses.findById(tenant.id, courseId);
-  if (course === null || !course.publiclyVisible) {
+  if (course === null || course.archivedAt || !course.publiclyVisible) {
     return err(notFound(`No course "${courseId}" in this tenant`));
   }
   const [modules, lessons, publishedProducts] = await Promise.all([

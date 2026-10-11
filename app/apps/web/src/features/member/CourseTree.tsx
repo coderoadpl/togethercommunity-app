@@ -8,7 +8,6 @@ import {
   Typography,
 } from '@mui/material';
 import { useForkRef } from '@mui/material/utils';
-import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import type { TreeItemProps } from '@mui/x-tree-view/TreeItem';
 import type { UseTreeItemContentSlotOwnProps } from '@mui/x-tree-view/useTreeItem';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,10 +26,12 @@ import { actions } from '../../api.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
+  COURSE_TREE_SCROLL_PADDING_REM,
   CourseTreeChapterTitle,
   CourseTreeItem,
   CourseTreeItemContent,
   CourseTreeModuleTitle,
+  CourseTreeRoot,
   LessonDurationText,
   TreeLessonTitle,
   TreeProgressCount,
@@ -42,7 +43,6 @@ import { Caret, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js'
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
-const SCROLL_PADDING_REM = 0.5;
 type RowConfig = {
   title: string;
   testId: string;
@@ -186,7 +186,7 @@ const nearestModuleHeader = (node: HTMLElement): HTMLElement | null => {
 
 const scrollPaddingPx = (): number => {
   const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(rootFontSize) ? rootFontSize * SCROLL_PADDING_REM : 8;
+  return (Number.isFinite(rootFontSize) ? rootFontSize : 16) * COURSE_TREE_SCROLL_PADDING_REM;
 };
 
 const isComfortablyVisible = (node: HTMLElement, scroller: HTMLElement): boolean => {
@@ -467,7 +467,7 @@ export const CourseTree = ({
             </Typography>
           </Box>
         ) : (
-          <SimpleTreeView
+          <CourseTreeRoot
             disabledItemsFocusable
             aria-label={structure.name}
             data-testid="course-tree"
@@ -489,7 +489,7 @@ export const CourseTree = ({
                 scrollLessonId={scrollLessonId}
               />
             ))}
-          </SimpleTreeView>
+          </CourseTreeRoot>
         )}
       </Box>
     </Box>

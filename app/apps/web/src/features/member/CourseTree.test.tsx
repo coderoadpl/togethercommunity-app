@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ThemeProvider } from '@mui/material';
+import { ListItemButton, ThemeProvider } from '@mui/material';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -353,6 +353,11 @@ describe('CourseTree', () => {
   it('offsets lesson scroll targets below the sticky module header', async () => {
     await renderTree();
 
+    expect(screen.getByRole('tree')).toHaveStyle({ paddingTop: '0.5rem' });
+    expect(screen.getByTestId('module-toggle-m1')).toHaveStyle({
+      position: 'sticky',
+      top: '0.5rem',
+    });
     expect(await screen.findByTestId('lesson-button-l1')).toHaveStyle({
       scrollMarginTop: 'calc(46px + 0.5rem)',
     });
@@ -401,10 +406,20 @@ describe('CourseTree', () => {
     await renderNode(
       <ThemeProvider theme={createThemeForMode('shadcn', undefined, scheme, 'member')}>
         <CourseTree courseId="course-1" structure={structure} currentLessonId="l1" expandAll />
+        <ListItemButton selected data-testid="previous-selected-row">Selected lesson</ListItemButton>
       </ThemeProvider>,
     );
 
     expect(treeItem('lesson-button-l1')).toHaveAttribute('aria-selected', 'true');
+    const selectedRow = screen.getByTestId('lesson-button-l1');
+    const unselectedRow = screen.getByTestId('lesson-button-l2');
+    expect(selectedRow).toHaveAttribute('data-selected');
+    expect(unselectedRow).not.toHaveAttribute('data-selected');
+    expect(treeItem('lesson-button-l2')).toHaveAttribute('aria-selected', 'false');
+    expect(getComputedStyle(selectedRow).backgroundColor).not.toBe(getComputedStyle(unselectedRow).backgroundColor);
+    expect(getComputedStyle(selectedRow).backgroundColor).toBe(
+      getComputedStyle(screen.getByTestId('previous-selected-row')).backgroundColor,
+    );
     for (const testId of ['module-toggle-m1', 'chapter-toggle-c1', 'lesson-button-l1']) {
       const row = screen.getByTestId(testId);
       treeItem(testId).focus();

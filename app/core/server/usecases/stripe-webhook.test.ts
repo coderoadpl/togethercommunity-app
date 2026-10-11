@@ -2654,10 +2654,11 @@ it('rejects direct checkout without accepted consent and rolls back fulfillment'
   expect(h.consents).toHaveLength(0);
 });
 
-it.each(['matching', 'live-mode', 'wrong-session', 'wrong-total'] as const)('correlates anonymous direct test checkout with its persisted snapshot (%s)', async (variant) => {
+it.each(['matching', 'consent-fallback', 'live-mode', 'wrong-session', 'wrong-total'] as const)('correlates anonymous sales-link test checkout with its persisted snapshot (%s)', async (variant) => {
   const h = await directBundlePayment();
   h.event.mode = 'test';
   h.event.livemode = false;
+  if (variant === 'consent-fallback' && h.event.checkoutSession !== null) delete h.event.checkoutSession.metadata.directCheckout;
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
@@ -2665,8 +2666,9 @@ it.each(['matching', 'live-mode', 'wrong-session', 'wrong-total'] as const)('cor
       providerSessionId: variant === 'wrong-session' ? 'cs-other' : 'cs-1' }),
   };
   if (variant === 'wrong-total' && h.event.checkoutSession !== null) h.event.checkoutSession.amountTotalCents = 1;
-  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: variant === 'matching' }));
-  expect(h.orders).toHaveLength(variant === 'matching' ? 1 : 0);
+  const matching = variant === 'matching' || variant === 'consent-fallback';
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: matching }));
+  expect(h.orders).toHaveLength(matching ? 1 : 0);
   expect(h.orders.every((order) => order.mode === 'test')).toBe(true);
   expect([...h.grants.values()].every((grant) => grant.mode === 'test')).toBe(true);
   expect(h.enrollmentEmails).toHaveLength(0);

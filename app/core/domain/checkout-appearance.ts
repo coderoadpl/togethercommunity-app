@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import type { TenantSettings } from './tenant.js';
-
 export const CHECKOUT_FONTS = [
   'be_vietnam_pro', 'bitter', 'chakra_petch', 'default', 'hahmlet', 'inconsolata',
   'inter', 'lato', 'lora', 'm_plus_1_code', 'montserrat', 'noto_sans', 'noto_sans_jp',
@@ -37,7 +35,13 @@ const httpsAsset = (value: string | null | undefined, baseUrl: string): string |
 };
 
 export const resolveCheckoutBranding = (
-  settings: Pick<TenantSettings, 'checkoutAppearance' | 'name' | 'logoUrl' | 'accentColor' | 'faviconUrl'>,
+  settings: {
+    checkoutAppearance?: CheckoutAppearance | null | undefined;
+    name: string;
+    logoUrl: string | null;
+    accentColor: string | null;
+    faviconUrl: string | null;
+  },
   baseUrl: string,
 ): CheckoutBranding | undefined => {
   const appearance = settings.checkoutAppearance;

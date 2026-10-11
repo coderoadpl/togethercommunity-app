@@ -73,6 +73,10 @@ If the stored test key cannot be decrypted or belongs to live mode, checkout
 returns an error without creating a session or switching to live credentials.
 Cancellation retains test mode for an explicit retry through the server handoff;
 anonymous success returns display the TEST notice without requiring a staff session.
+Public test checkout, including the purchase-consent fallback, creates no auth
+user, member or pending order before payment. A snapshot bound to the Stripe
+session and test mode supplies the webhook correlation. The staff test switch
+continues to assign its pending order to the signed-in staff account.
 
 Stripe collects the buyer email, name, billing address when provided, and tax
 IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only

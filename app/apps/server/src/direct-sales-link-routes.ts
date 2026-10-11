@@ -1,6 +1,6 @@
 import type { Hono } from 'hono';
 
-import { API_PATHS, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
+import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
 import { err, forbidden, internal, tenantNotFound, validation } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getDirectSalesLinkMode, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
 
@@ -25,36 +25,43 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const tenant = resolved.value.tenant;
     const slug = c.req.param('slug');
     const offer = await getPublicSalesLink(tenant.id, slug, deps.salesLinkManagement);
-    if (!offer.ok) return respond(offer);
     const settings = await deps.tenants.findSettings(tenant.id);
+    const page = {
+      heading: offer.ok ? offer.value.salesLink.heading : directSalesLinkCopy(settings?.defaultLanguage ?? 'en').checkoutUnavailable,
+      description: offer.ok ? offer.value.salesLink.description : '',
+      tenantName: tenant.name,
+      faviconUrl: settings?.faviconUrl ?? null,
+      canonicalUrl: `${await authLinkBaseUrl(resolved.value, deps)}/offer/${encodeURIComponent(slug)}`,
+      language: settings?.defaultLanguage ?? 'en',
+      endpoint: API_PATHS.directSalesLinkCheckout.replace(':slug', encodeURIComponent(slug)),
+      crawler: SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? ''),
+      nonce: c.get('secureHeadersNonce') ?? '',
+    };
+    const headers = { 'cache-control': 'no-store', vary: 'User-Agent' };
+    if (!offer.ok) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+      status: HTTP_STATUS_BY_ERROR_CODE[offer.error.code], headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
+    });
     const products = await deps.products.findByIds(tenant.id, offer.value.lines.map((line) => line.productId));
-    const crawler = SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? '');
     const missingLegal = settings?.termsUrl == null || settings.privacyUrl === null;
     if (!missingLegal && c.req.query('checkout') === 'together') {
       await next();
       return;
     }
-    if (!crawler && !missingLegal && products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
+    if (!page.crawler && !missingLegal && products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
       const query = new URLSearchParams(new URL(c.req.url).search);
       query.set('checkout', 'together');
       return c.redirect(`/offer/${encodeURIComponent(slug)}?${query}`, 302);
     }
     const mode = await getDirectSalesLinkMode(tenant.id, c.req.query('test') === undefined ? 'live' : 'test', deps);
-    if (!mode.ok) return respond(mode);
+    if (!mode.ok) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+      status: HTTP_STATUS_BY_ERROR_CODE[mode.error.code], headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
+    });
     c.set('signupRedirectOrigin', 'https://checkout.stripe.com');
     return c.html(renderDirectSalesLinkPage({
-      heading: offer.value.salesLink.heading,
-      description: offer.value.salesLink.description,
-      tenantName: tenant.name,
-      faviconUrl: settings?.faviconUrl ?? null,
-      canonicalUrl: `${await authLinkBaseUrl(resolved.value, deps)}/offer/${encodeURIComponent(slug)}`,
-      language: settings?.defaultLanguage ?? 'en',
+      ...page,
       mode: mode.value,
-      endpoint: API_PATHS.directSalesLinkCheckout.replace(':slug', encodeURIComponent(slug)),
-      crawler,
-      nonce: c.get('secureHeadersNonce') ?? '',
-      ...(missingLegal ? { error: 'Checkout is unavailable until terms and privacy URLs are configured.' } : {}),
-    }), missingLegal ? 503 : 200, { 'cache-control': 'no-store', vary: 'User-Agent' });
+      ...(missingLegal ? { error: 'legalUrlsMissing' as const } : {}),
+    }), missingLegal ? 503 : 200, headers);
   });
 
   app.post(API_PATHS.directSalesLinkCheckout, async (c) => {

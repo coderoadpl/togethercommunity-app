@@ -713,9 +713,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       const rejected = testCheckoutRejection(parsed.data, selection.value);
       if (rejected !== null) return respondPublic(err(rejected));
     }
-    const testEmail = salesLinkTestMode ? parsed.data.email : identity?.email;
+    const testEmail = staffTestMode ? identity.email : parsed.data.email;
     if (testMode && testEmail === undefined) return respondPublic(err(validation('An email is required for test checkout')));
-    const testMember = testMode && testEmail !== undefined ? await ensureMember(tenant.value.tenant.id, testEmail, deps) : null;
+    const testMember = staffTestMode ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
     if (testMember !== null && !testMember.ok) return respondPublic(testMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsentCaptureId = deps.ids.nextId();
@@ -742,7 +742,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       selection.value,
       deps,
       testMode ? undefined : checkoutConsentCaptureId,
-      testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
+      testMode ? { mode: 'test', ...(testMember?.ok === true ? { memberId: testMember.value.id } : {}) } : undefined,
     );
     if (
       session.ok &&

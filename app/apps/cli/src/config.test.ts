@@ -1,3 +1,4 @@
+import type * as NodeFs from 'node:fs';
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,10 +48,24 @@ let config: ConfigModule;
 beforeAll(async () => {
   process.env['HOME'] = testHome;
   vi.resetModules();
+  vi.doMock('node:fs', async () => {
+    const filesystem = await vi.importActual<typeof NodeFs>('node:fs');
+    return {
+      ...filesystem,
+      readFileSync: (path: string, encoding: 'utf8') => {
+        const fixturePath = relative(testHome, path);
+        if (fixturePath === '..' || fixturePath.startsWith(`..${sep}`) || isAbsolute(fixturePath)) {
+          throw Object.assign(new Error('Path is outside the isolated configuration fixture'), { code: 'ENOENT' });
+        }
+        return filesystem.readFileSync(path, encoding);
+      },
+    };
+  });
   config = await import('./config.js');
 });
 
 afterAll(() => {
+  vi.doUnmock('node:fs');
   if (originalHome === undefined) delete process.env['HOME'];
   else process.env['HOME'] = originalHome;
   rmSync(testHome, { recursive: true, force: true });

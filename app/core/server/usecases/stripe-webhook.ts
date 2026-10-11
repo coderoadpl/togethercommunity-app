@@ -417,7 +417,7 @@ const applyCheckoutCompleted = async (
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
     ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
   });
-  if (event.mode === 'test' && completedTestOrder === null && !await directTestCheckoutMatches(tenant, event, deps)) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
+  if (event.mode === 'test' && completedTestOrder === null && !await salesLinkTestCheckoutMatches(tenant, event, deps)) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const fulfilled = await fulfillEnrollment(
     tenant,
     {
@@ -857,13 +857,13 @@ const processCheckoutConsent = async (
   return ok(reason);
 };
 
-const directTestCheckoutMatches = async (
+const salesLinkTestCheckoutMatches = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
 ): Promise<boolean> => {
   const checkout = event.checkoutSession;
-  if (event.mode !== 'test' || event.livemode !== false || checkout?.metadata.directCheckout !== true ||
+  if (event.mode !== 'test' || event.livemode !== false || checkout === null ||
       checkout.metadata.tenantId !== tenant.id || !checkout.metadata.checkoutSnapshotId ||
       !checkout.metadata.salesLinkId || !event.objectId) return false;
   const snapshot = await deps.checkoutSnapshots?.findById(tenant.id, checkout.metadata.checkoutSnapshotId);
@@ -919,7 +919,7 @@ const paymentModeMatches = async (
     }
   }
   if (mode === 'live') return true;
-  if (order === null && await directTestCheckoutMatches(tenant, event, deps)) return true;
+  if (order === null && await salesLinkTestCheckoutMatches(tenant, event, deps)) return true;
   if (!matched) return ignore('no matching test record');
   if (event.checkoutSession !== null && order?.providerObjectIds.checkoutSession !== event.objectId) {
     return ignore('no matching test checkout');

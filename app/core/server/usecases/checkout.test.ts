@@ -731,6 +731,32 @@ it('expires a direct session when its durable correlation cannot be stored', asy
   expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'bundle-session', mode: 'live' });
 });
 
+it.each([false, true])('stores consent-fallback test correlation after session creation and expires on storage failure: %s', async (storageFails) => {
+  const h = await directCheckout();
+  const { startCheckoutSession, validateCheckoutSelection } = await import('./checkout.js');
+  const input = { productId: product.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test' };
+  const selection = await validateCheckoutSelection(tenant.id, input, h.deps);
+  if (!selection.ok || h.deps.checkoutSnapshots === undefined) throw new Error('Missing checkout fixture');
+  const storeSnapshot = h.deps.checkoutSnapshots.create;
+  h.deps.checkoutSnapshots.create = async (tenantId, snapshot) => {
+    expect(h.calls).toHaveLength(1);
+    if (storageFails) throw new Error('Storage unavailable');
+    await storeSnapshot(tenantId, snapshot);
+  };
+  const expire = vi.spyOn(h.deps.payment, 'expireCheckoutSession');
+  const result = startCheckoutSession(tenant, 'https://workspace.example.com', input, selection.value, h.deps, undefined, { mode: 'test' });
+  if (storageFails) {
+    await expect(result).rejects.toThrow('Storage unavailable');
+    expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'bundle-session', mode: 'test' });
+    expect(h.snapshots).toHaveLength(0);
+  } else {
+    expect(await result).toMatchObject({ ok: true });
+    expect(h.snapshots).toMatchObject([{ mode: 'test', providerSessionId: 'bundle-session', salesLinkId: h.link.id }]);
+    expect(h.snapshots).toHaveLength(1);
+    expect(expire).not.toHaveBeenCalled();
+  }
+});
+
 it('applies tenant checkout appearance to existing single-product and subscription sessions', async () => {
   const h = await directCheckout();
   const { createCheckoutSession } = await import('./checkout.js');

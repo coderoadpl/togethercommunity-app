@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import configuration from '../../../vercel.json' with { type: 'json' };
 import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
@@ -12,6 +12,35 @@ const page = {
 };
 
 describe('direct sales-link page', () => {
+  it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('localizes the Polish %s error without checkout actions', (error) => {
+    const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error });
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl[error]}</p>`);
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('<form');
+  });
+
+  it.each(['validation', 'malformed', 'network'] as const)('localizes a %s failure without exposing server or network messages', async (failure) => {
+    const html = renderDirectSalesLinkPage({ ...page, language: 'pl' });
+    const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+    if (script === undefined) throw new Error('Missing checkout script');
+    const status = { textContent: '' };
+    const replace = vi.fn();
+    const fetch = vi.fn(async () => {
+      if (failure === 'network') throw new Error('Network failure');
+      return { ok: false, json: async () => failure === 'malformed' ? null : { ok: false, error: { message: 'Stripe is not configured for this tenant' } } };
+    });
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
+      { querySelector: (selector: string) => selector === 'main'
+        ? { dataset: { endpoint: page.endpoint, mode: page.mode, checkoutUnavailable: directSalesLinkCopyPl.checkoutUnavailable } }
+        : status },
+      fetch,
+      { replace },
+    );
+    expect(status.textContent).toBe(directSalesLinkCopyPl.checkoutUnavailable);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it('escapes public metadata and localizes the redirect and form', () => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl', mode: 'test' });
     expect(html).toContain('<title>Offer &quot;&lt;name&gt;</title>');

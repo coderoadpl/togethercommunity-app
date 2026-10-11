@@ -8,6 +8,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { ToastProvider } from '../../components/ui/Toast.js';
 import { en } from '../../i18n/en.js';
+import { readLessonTextAutoExpand } from './lesson-reading-preference.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -606,12 +607,46 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
   });
 
-  it('hides playback when the creator disallows overriding autoplay', async () => {
+  it('keeps lesson text preferences available when the creator disallows overriding autoplay', async () => {
     server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=playback');
 
-    await screen.findByTestId('account-email');
+    expect(await screen.findByTestId('account-lesson-reading')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.account.lessonTextAutoExpandLabel })).toBeInTheDocument();
     expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.account.playbackIntro)).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: en.account.lessonTextAutoExpandLabel })).not.toBeChecked();
+    expect(screen.queryByRole('switch', { name: en.account.videoAutoplayLabel })).not.toBeInTheDocument();
+  });
+
+  it('remembers the lesson text preference in this browser for the next mount without updating the profile', async () => {
+    let profileUpdates = 0;
+    server.use(
+      stubMe(),
+      stubSettings(null, false, true),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', () => {
+        profileUpdates += 1;
+        return HttpResponse.json({ ok: true, data: {} });
+      }),
+    );
+    const { unmount } = await renderAccount('/account?tab=playback');
+    const toggle = await screen.findByRole('switch', { name: en.account.lessonTextAutoExpandLabel });
+
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(en.account.lessonTextAutoExpandHint);
+    await userEvent.click(toggle);
+    expect(readLessonTextAutoExpand()).toBe(true);
+    expect(window.localStorage.getItem('together-lesson-text-auto-expand')).toBe('true');
+    unmount();
+
+    await renderAccount('/account?tab=playback');
+    const rememberedToggle = await screen.findByRole('switch', { name: en.account.lessonTextAutoExpandLabel });
+    expect(rememberedToggle).toBeChecked();
+    await userEvent.click(rememberedToggle);
+    expect(readLessonTextAutoExpand()).toBe(false);
+    expect(window.localStorage.getItem('together-lesson-text-auto-expand')).toBe('false');
+    expect(profileUpdates).toBe(0);
   });
 
   it('hides playback without a member row even when the creator allows overrides', async () => {

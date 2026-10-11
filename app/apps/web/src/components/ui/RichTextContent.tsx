@@ -14,8 +14,9 @@ interface LightboxImage {
 
 export const RichTextContent = ({
   html,
+  centered = false,
   ...rest
-}: { html: string; 'data-testid'?: string }) => {
+}: { html: string; centered?: boolean; 'data-testid'?: string }) => {
   const t = useTranslations();
   const captionId = useId();
   const [selected, setSelected] = useState<LightboxImage | null>(null);
@@ -50,6 +51,7 @@ export const RichTextContent = ({
   return <>
     <LessonHtmlContent
       {...rest}
+      sx={{ marginInline: centered ? 'auto' : 0 }}
       dangerouslySetInnerHTML={content}
       onClick={(event) => openImage(event.target)}
       onKeyDown={(event) => {

@@ -134,6 +134,8 @@ For isolated staff purchases, see [Test mode for staff](docs/payments.md#test-mo
 See [CLI usage](docs/cli.md) for lesson preview controls and the parity inventory.
 See [Member lessons](docs/member-lessons.md) for reading and enlarging lesson images.
 
+See [Reading lesson text](docs/lessons.md) for the centred column, collapsible text, and browser preference.
+
 ```bash
 pnpm --silent run cli login --email kontakt+smoke-creator@togethercommunity.app --password demo-password-15
 pnpm --silent run cli tenant list
@@ -222,7 +224,7 @@ ECR Public allows one unauthenticated pull per second, so the quickstart smoke
 probe, Caddyfile test, and browser suites pull images one at a time with retries
 for throttling and transient network failures.
 
-The Vitest projects currently discover <!--count:test-files-->539<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->541<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

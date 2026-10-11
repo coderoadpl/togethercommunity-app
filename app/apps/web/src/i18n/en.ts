@@ -2075,6 +2075,7 @@ export const en: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
+    enlargeImage: 'Enlarge image',
     editionLabel: ({ number }) => format('Edition {number}', { number }),
     previousEditions: 'Previous editions',
     editionMenu: 'Lesson options',

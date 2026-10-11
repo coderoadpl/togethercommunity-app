@@ -132,6 +132,7 @@ delivery events, and an English transactional outbox sample.
 For isolated staff purchases, see [Test mode for staff](docs/payments.md#test-mode-for-staff).
 
 See [CLI usage](docs/cli.md) for lesson preview controls and the parity inventory.
+See [Member lessons](docs/member-lessons.md) for reading and enlarging lesson images.
 
 ```bash
 pnpm --silent run cli login --email kontakt+smoke-creator@togethercommunity.app --password demo-password-15

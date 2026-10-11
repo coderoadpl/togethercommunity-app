@@ -434,17 +434,31 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
       editorHtml: editorElement?.innerHTML.slice(0, 300) ?? '',
     };
     let toolbarClicked = false;
-    if (matchesExpected && expected?.click === true) {
+    let toolbarMouseDownPrevented: boolean | null = null;
+    let selectionAfterMouseDown: { from: number; to: number } | null = null;
+    if (matchesDomExpected && expected?.click === true) {
       const button = Array.from(
         editorElement?.closest('[data-testid="space-composer"]')?.querySelectorAll('button') ?? [],
       ).find((candidate) => candidate.getAttribute('aria-label') === expected.toolbarLabel);
       if (button instanceof HTMLButtonElement && !button.disabled) {
-        // Keep the verified selection and the click in one task, before another selectionchange can intervene.
+        // Keep DOM verification and the production selection-sync handler in one task, before selectionchange can intervene.
+        const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 });
+        button.dispatchEvent(mouseDown);
+        toolbarMouseDownPrevented = mouseDown.defaultPrevented;
+        const updatedState = typeof selectionSource === 'object' && selectionSource !== null
+          && 'state' in selectionSource ? selectionSource.state : undefined;
+        const updatedSelection = typeof updatedState === 'object' && updatedState !== null && 'selection' in updatedState
+          ? updatedState.selection : undefined;
+        if (typeof updatedSelection === 'object' && updatedSelection !== null
+          && 'from' in updatedSelection && typeof updatedSelection.from === 'number'
+          && 'to' in updatedSelection && typeof updatedSelection.to === 'number') {
+          selectionAfterMouseDown = { from: updatedSelection.from, to: updatedSelection.to };
+        }
         button.click();
         toolbarClicked = true;
       }
     }
-    return { ...snapshot, toolbarClicked };
+    return { ...snapshot, toolbarClicked, toolbarMouseDownPrevented, selectionAfterMouseDown };
   }, { stage, t0, expected });
   const timeline: Awaited<ReturnType<typeof readSnapshot>>[] = [];
   const capture = async (stage: string): Promise<void> => {
@@ -476,12 +490,15 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
         });
         timeline.push(snapshot);
         if (snapshot.toolbarClicked) {
+          assert(snapshot.toolbarMouseDownPrevented === true,
+            `Markdown editor ${name} toolbar did not preserve the DOM selection on mousedown.\nEditor timeline (JSON per line):\n${timelineJson()}`);
+          assert(snapshot.selectionAfterMouseDown?.from === from && snapshot.selectionAfterMouseDown.to === to,
+            `Markdown editor ${name} toolbar did not synchronize the DOM selection on mousedown.\nEditor timeline (JSON per line):\n${timelineJson()}`);
           timeline.push({ ...snapshot, stage: name === 'link' ? 'after-select' : 'after-bold-select' });
           return;
         }
-        // Re-selecting a correct DOM range restarts native selectionchange processing before the editor catches up.
         if (!snapshot.matchesDomExpected) break;
-        previouslyMatched = snapshot.matchesExpected;
+        previouslyMatched = snapshot.matchesDomExpected;
       }
     }
     throw new E2eFailure(

@@ -17,6 +17,8 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: '/offer/:slug', methods: ['GET'], mutating: false, why: 'Sales-link metadata and checkout redirect without creating sessions for crawlers' },
+  { path: API_PATHS.directSalesLinkCheckout, methods: ['POST'], mutating: true, why: 'Rate-limited direct sales-link checkout session creation' },
   { path: API_PATHS.publicOrderQr, methods: ['GET'], mutating: false, why: 'Opaque order token QR image without order or buyer details; verification requires staff authorization' },
   { path: API_PATHS.getPublicSalesLink, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Active workspace sales-link offer and product VAT lines' },
   { path: API_PATHS.getPublicSurvey, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Active workspace survey definition without an account' },

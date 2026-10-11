@@ -1087,6 +1087,16 @@ export const pl: Messages = {
     reportKeysScope: 'Raporty (tylko odczyt)',
     reportKeysHint: 'Umożliwia odczyt raportów aktywności. Nie można łączyć z uprawnieniami do zapisu. Klucz nie wygasa — unieważnij go, gdy nie będzie już potrzebny.',
     tabApiKeys: 'Klucze API',
+    checkoutAppearance: {
+      heading: 'Wygląd strony płatności',
+      displayName: 'Nazwa wyświetlana',
+      logoUrl: 'Logo (adres URL)',
+      iconUrl: 'Ikona (adres URL)',
+      backgroundColor: 'Kolor tła',
+      buttonColor: 'Kolor przycisku',
+      fontFamily: 'Czcionka',
+      borderStyle: 'Zaokrąglenia',
+    },
     stripeHeading: 'Stripe',
     stripeDescription:
       'Podaj klucz ograniczony (restricted key). Together automatycznie utworzy webhook i zapisze jego sekret podpisu.',

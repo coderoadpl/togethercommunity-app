@@ -1079,6 +1079,16 @@ export const en: Messages = {
     reportKeysScope: 'Reports (read only)',
     reportKeysHint: 'Reads tenant activity reports. Cannot be combined with write scopes. No expiry; revoke when no longer needed.',
     tabApiKeys: 'API keys',
+    checkoutAppearance: {
+      heading: 'Checkout appearance',
+      displayName: 'Display name',
+      logoUrl: 'Logo (URL)',
+      iconUrl: 'Icon (URL)',
+      backgroundColor: 'Background colour',
+      buttonColor: 'Button colour',
+      fontFamily: 'Font',
+      borderStyle: 'Corners',
+    },
     stripeHeading: 'Stripe',
     stripeDescription:
       'Enter a restricted key. Together creates the webhook automatically and stores its signing secret.',

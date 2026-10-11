@@ -1100,7 +1100,7 @@ invoices can be checked locally.
 - [strip-indent@4.1.1](https://github.com/sindresorhus/strip-indent#readme) - MIT
 - [strip-json-comments@3.1.1](https://github.com/sindresorhus/strip-json-comments#readme) - MIT
 - [strip-json-comments@5.0.3](https://github.com/sindresorhus/strip-json-comments#readme) - MIT
-- [stripe@18.5.0](https://github.com/stripe/stripe-node) - MIT
+- [stripe@19.0.0](https://github.com/stripe/stripe-node) - MIT
 - [stylis@4.2.0](https://github.com/thysultan/stylis.js) - MIT
 - [supports-color@7.2.0](https://github.com/chalk/supports-color#readme) - MIT
 - [supports-preserve-symlinks-flag@1.0.0](https://github.com/inspect-js/node-supports-preserve-symlinks-flag#readme) - MIT

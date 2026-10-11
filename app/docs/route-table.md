@@ -7,6 +7,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
+| `GET /offer/:slug` | public | read | Sales-link metadata and checkout redirect without creating sessions for crawlers |
+| `POST /api/public/sales-links/:slug/checkout` | public | mutating | Rate-limited direct sales-link checkout session creation |
 | `GET /manifest.webmanifest` | public | read | PWA web app manifest with tenant name |
 | `GET /robots.txt` | public | read | Tenant crawler policy must bypass the SPA and social preview fallback |
 | `GET /sitemap.xml` | public | read | Tenant public navigation must be discoverable at its canonical origin |

@@ -1,6 +1,6 @@
 {
-  "hash": "fd1cece65620775a2a1f85c32c897510834b68941fde50d81a531edf72d5a4dc",
-  "shortId": "fd1cece65620",
+  "hash": "84cf3a27e17037b6e156ca00771277a8a72a3241628e716b7f9b69a442996faa",
+  "shortId": "84cf3a27e170",
   "schema": {
     "constraints": [
       {
@@ -102,6 +102,11 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "checkout_snapshots_mode_check",
+        "table": "checkout_snapshots"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -2438,6 +2443,11 @@
         "table": "campaign_sends"
       },
       {
+        "definition": "CREATE UNIQUE INDEX checkout_snapshots_provider_session_idx ON checkout_snapshots USING btree (tenant_id, provider_session_id) WHERE (provider_session_id IS NOT NULL)",
+        "name": "checkout_snapshots_provider_session_idx",
+        "table": "checkout_snapshots"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX consent_confirmation_tokens_token_uidx ON consent_confirmation_tokens USING btree (token)",
         "name": "consent_confirmation_tokens_token_uidx",
         "table": "consent_confirmation_tokens"
@@ -4108,6 +4118,14 @@
             "name": "bunny_stream_library_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_appearance",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -11792,6 +11810,22 @@
             "name": "lines",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

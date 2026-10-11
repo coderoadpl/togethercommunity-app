@@ -150,7 +150,8 @@ const UNATTRIBUTED_IP_KEY = 'unattributed';
 const emailBodySchema = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
 
 const isPublicWritePath = (path: string): boolean =>
-  path === API_PATHS.checkoutSession
+  /^\/api\/public\/sales-links\/[^/]+\/checkout$/.test(path)
+  || path === API_PATHS.checkoutSession
   || path === API_PATHS.couponCheckoutValidation
   || isPublicFormPath(path)
   || isSurveySubmissionPath(path);

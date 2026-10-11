@@ -49,6 +49,7 @@ export * from './usecases/storage-configuration.js';
 export * from './usecases/configure-stripe.js';
 export * from './usecases/bunny-videos.js';
 export * from './usecases/checkout.js';
+export * from './usecases/direct-sales-link-checkout.js';
 export * from './usecases/coupon-checkout.js';
 export * from './usecases/coupon-management.js';
 export * from './usecases/coupon-stats.js';

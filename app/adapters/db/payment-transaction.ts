@@ -7,6 +7,7 @@ import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import {
   createMemberRepository,
+  createCheckoutConsentCaptureRepository,
   createMemberSubscriptionRepository,
   createOrderRepository,
   createPaymentRefundRepository,
@@ -62,6 +63,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           checkoutConsentJobs: createCheckoutConsentJobRepository(tx),
           consentTransaction: createPaymentTransactionPort(tx),
           consents: createTermsConsentRepository(tx),
+          checkoutConsentCaptures: createCheckoutConsentCaptureRepository(tx),
           marketingConsents: createMarketingConsentRepository(tx),
           confirmations: createConsentConfirmationTokenRepository(tx),
           processedPaymentEvents: createProcessedPaymentEventRepository(tx),

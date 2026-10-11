@@ -41,7 +41,7 @@ describe('product draft deletion persistence', () => {
       await client.query('SET search_path TO publication_migration');
       await client.query('CREATE TABLE products (id text PRIMARY KEY, published boolean NOT NULL)');
       await client.query("INSERT INTO products VALUES ('old-draft', false), ('published', true)");
-      await client.query(readFileSync('drizzle/0141_product_publication_history.sql', 'utf8'));
+      await client.query(readFileSync('drizzle/0143_product_publication_history.sql', 'utf8'));
       await client.query("INSERT INTO products (id, published) VALUES ('new-draft', false), ('new-published', true)");
       expect((await client.query('SELECT id, ever_published FROM products ORDER BY id')).rows).toEqual([
         { id: 'new-draft', ever_published: false },

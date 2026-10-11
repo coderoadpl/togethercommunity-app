@@ -13,7 +13,7 @@ import {
   SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
-  billingDataSchema,
+  orderBillingDataSchema,
   courseLessonSchema,
   lessonAttachmentSchema,
   courseModuleSchema,
@@ -31,6 +31,7 @@ import {
   memberSubscriptionSchema,
   normalizeEmail,
   tenantSchema,
+  checkoutAppearanceSchema,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -3265,6 +3266,7 @@ export const createOrderRepository = (
     completeTestCheckout: async (tenantId, order) => db.transaction(async (tx) => {
       const [row] = await tx.update(orders).set({
         status: 'paid', providerObjectIds: order.providerObjectIds,
+        billing: order.billing ?? null,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
       if (row === undefined) return null;
@@ -3451,7 +3453,7 @@ export const createOrderRepository = (
         orders: rows.map((row) => ({
           id: row.id,
           createdAt: row.createdAt,
-          billing: row.billing === null ? null : billingDataSchema.parse(row.billing),
+          billing: row.billing === null ? null : orderBillingDataSchema.parse(row.billing),
           invoice: row.invoiceId === null
             ? null
             : {
@@ -4317,6 +4319,7 @@ export const createTenantRepository = (
         logoUrl: tenants.logoUrl,
         logoDarkUrl: tenants.logoDarkUrl,
         signInNotice: tenants.signInNotice,
+        checkoutAppearance: tenants.checkoutAppearance,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
@@ -4357,6 +4360,7 @@ export const createTenantRepository = (
           logoUrl: row.logoUrl,
           logoDarkUrl: row.logoDarkUrl,
           signInNotice: row.signInNotice,
+          checkoutAppearance: row.checkoutAppearance === null ? null : checkoutAppearanceSchema.parse(row.checkoutAppearance),
           accentColor: row.accentColor,
           accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
@@ -4413,6 +4417,7 @@ export const createTenantRepository = (
         logoUrl: settings.logoUrl,
         logoDarkUrl: settings.logoDarkUrl,
         signInNotice: settings.signInNotice,
+        checkoutAppearance: settings.checkoutAppearance,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
@@ -4449,6 +4454,7 @@ export const createTenantRepository = (
       logoUrl: settings.logoUrl,
       logoDarkUrl: settings.logoDarkUrl,
       signInNotice: settings.signInNotice,
+      checkoutAppearance: settings.checkoutAppearance,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,

@@ -3,6 +3,7 @@ import {
   err,
   notFound,
   ok,
+  resolveCheckoutBranding,
   stripeKeyModeConflicts,
   validation,
   type AppError,
@@ -140,6 +141,7 @@ export const startCheckoutSession = async (
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
   testSession?: { mode: 'test'; memberId: string },
+  directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string },
 ): Promise<Result<{
   url: string;
   coupon?: CouponCheckoutBreakdown;
@@ -148,7 +150,7 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, directCheckout !== undefined);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
@@ -156,7 +158,7 @@ export const startCheckoutSession = async (
     const rejected = testCheckoutRejection(input, selection);
     if (rejected !== null) return err(rejected);
   }
-  if (mode === 'test' && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
+  if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
   const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
@@ -256,9 +258,13 @@ export const startCheckoutSession = async (
     if (!configured.ok) return configured;
     if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
   }
+  const tenantSettings = await deps.tenants?.findSettings(tenant.id);
+  const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
+    ...(directCheckout === undefined ? {} : { directCheckout }),
     productId: product.id,
     productName: product.title,
     ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
@@ -267,7 +273,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${checkoutQuery}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${mode === 'test' && selection.salesLinkId !== undefined ? '&test=1' : ''}${checkoutQuery}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -283,6 +289,17 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
+  if (directCheckout !== undefined && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
+    try {
+      await deps.checkoutSnapshots.create(tenant.id, {
+        id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: selection.salesLinkId ?? null,
+        lines, currency, mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
+      });
+    } catch (cause) {
+      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      throw cause;
+    }
+  }
   if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
     try {
       await deps.orders.create(tenant.id, {

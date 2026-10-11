@@ -1070,13 +1070,13 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               tenant.value.tenant.id,
               { checkoutSession: objectId },
             );
-            const subscription = order === null
+            const subscription = order === null || order.memberId === null
               ? undefined
               : (await deps.subscriptions.listForMember(
                 tenant.value.tenant.id,
                 order.memberId,
               )).find((candidate) => candidate.productId === selection.value.product.id);
-            result = order === null
+            result = order === null || order.memberId === null
               ? err(internal('Coupon fulfillment did not create an order'))
               : ok({
                 memberId: order.memberId,

@@ -1,5 +1,85 @@
 # Payments
 
+## Direct sales-link checkout
+
+Public `/offer/<slug>` URLs send buyers straight to Stripe Checkout. The server
+renders the sales-link title, description, Open Graph metadata and tenant favicon,
+then posts to `/api/public/sales-links/<slug>/checkout` and replaces the page with
+the returned URL. A noscript POST button supports browsers without JavaScript.
+The existing public-write limiter limits the POST per IP and tenant. GET requests
+do not create sessions. `/link/<key>` redirects into the same flow.
+
+The crawler user agents listed by the edge (facebookexternalhit, Twitterbot,
+LinkedInBot, Slackbot, Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and
+Applebot) receive metadata without a script or form. Checkout POSTs from those
+agents are refused as well. This also applies to `?checkout=together` and
+`status=success|cancelled` URLs: the edge forwards crawlers before the browser
+fallback rewrites.
+
+Stripe receives one line per product, the tenant language, tax ID collection and
+a mandatory terms checkbox. Promotion codes are disabled in this direct flow.
+Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
+account-level setting even when Together overrides the acceptance message with
+links to the tenant's terms and privacy policy. Together records accepted consent
+against the exact URLs saved in session metadata. Missing tenant legal URLs show
+an error page and prevent session creation.
+
+Webhook fulfillment uses the session customer details for email, name, billing
+address when supplied, and tax IDs. Polish `eu_vat` IDs starting with `PL` are
+stored as digits-only billing NIP even when the optional address is incomplete.
+Foreign and incomplete addresses are retained even without a Polish NIP.
+Invoice issuance still requires complete Polish billing details; unsupported or
+incomplete billing records an invoice validation failure instead of silently
+skipping B2B classification. Live order lines, grants and confirmation email
+continue through the existing fulfillment flow.
+
+`?test` with any value selects the tenant's configured test key only when the
+request carries the existing server-side Stripe test session bound to the
+signed-in account and tenant. Checkout rechecks tenant staff membership.
+Without that verified staff session or a configured test key, the selector is
+ignored and checkout stays live. This also applies to the purchase-consent
+fallback. An unreadable stored test key or a live key in the test slot returns
+an error for an authorized test checkout instead of switching to live credentials.
+
+Staff test checkout stores a pending order for the signed-in staff account
+before returning the Stripe URL. Fulfillment preserves the member and test
+grants while suppressing purchase confirmation email and magic links. Test
+purchases retain the TEST indicator, never unlock real access and remain
+excluded from revenue. A return query alone does not enable the TEST indicator
+for anonymous visitors.
+
+A sales link with product purchase consent checkboxes keeps the Together page at
+`?checkout=together`, because Stripe has no custom checkbox field. Its existing
+billing and coupon flow remains available. Both tenant legal URLs are required
+on this fallback page and its checkout endpoint too. Success and cancellation return to the
+Together page and cannot restart the automatic redirect. The single-product
+checkout page retains its existing behavior.
+
+## Checkout appearance
+
+Owners can configure **Integrations → Stripe → Checkout appearance**. Available
+overrides are display name, logo URL, icon URL, background colour, button colour,
+font and corners (`pill`, `rounded`, `rectangular`). Colours must be `#RRGGBB` and
+image URLs must use HTTPS. The font selector contains Stripe's supported font
+families and defaults to `default`.
+
+Empty fields fall back to the tenant branding in Settings: name, logo, accent
+colour for the button and favicon for the icon. Every sales-link, single-product
+and subscription Checkout Session receives the resolved `branding_settings` in
+both live and test mode. If neither overrides nor tenant branding supply a value,
+Together omits the appearance settings and Stripe uses its account appearance.
+
+The Stripe SDK is pinned to **19.0.0**, using API **2025-09-30.clover**, which
+natively supports `branding_settings`. Both promotion-code creation paths use
+`promotion: { type: 'coupon', coupon: <id> }`. Clover exposes a discount's
+coupon through `source`; Together reads the Checkout Session's aggregate
+`total_details.amount_discount` and its own coupon metadata, so it does not
+need to inspect discount sources. Subscription checkout explicitly selects
+`subscription_data.billing_mode.type = 'classic'` to preserve existing billing
+behavior instead of adopting Clover's new flexible default. Subscription and
+invoice webhook handling continues to use item billing periods and invoice
+subscription references.
+
 ## Test mode for staff
 
 A tenant owner can configure an independent Stripe sandbox in Studio → Integrations → Stripe → Test mode. Create a restricted key in the tenant's Stripe sandbox and enter the `rk_test_` key in this card. Grant the same checkout, subscription and webhook permissions shown for the live integration. The live card accepts only `rk_live_` keys; the test card accepts only `rk_test_` keys, including when credentials are saved through the API.
@@ -12,11 +92,11 @@ Sign in as an owner or admin on the tenant's own domain, open a public product c
 
 Select a paid one-time or recurring price. The coupon field and the free-purchase action are disabled while the switch is on, and the server refuses a coupon or a zero price before it creates anything. The purchase is assigned to the signed-in staff account. Complete Stripe Checkout with a [Stripe test card](https://docs.stripe.com/testing), for example `4242 4242 4242 4242`, a future expiry date and a three-digit CVC. The return page identifies the purchase as a test for staff of the same tenant only. This banner confirms the checkout mode; webhook delivery completes fulfilment.
 
-Test orders, subscriptions and grants carry `mode=test`. Studio sales and member details identify them with **TEST** and provide a payment-mode filter. Test grants do not unlock member access or change an existing live grant. Test rows are excluded from revenue, sales counts, active-subscription counts, reconciliation and exports. Test checkout records no consent capture and does not redeem coupons or send Together transactional or marketing-consent email to members; diagnostic messages go to the platform log. Test orders can be invoiced only through KSeF with a configured test slot in the KSeF TEST environment. iFirma and tenants without a configured test slot continue to refuse invoice issuance for test orders. Coupons and free purchases use the ordinary checkout flow.
+Test orders, subscriptions and grants carry `mode=test`. Studio sales and member details identify them with **TEST** and provide a payment-mode filter. Test grants do not unlock member access or change an existing live grant. Test rows are excluded from revenue, sales counts, active-subscription counts, reconciliation and exports. Single-product staff test checkout records no consent capture and does not redeem coupons or send Together transactional or marketing-consent email to members; diagnostic messages go to the platform log. Sales-link staff test checkout preserves the member and test grants while suppressing purchase confirmation email and magic links. Automatic and manual invoice issuance are disabled for test orders. Coupons and free purchases use the ordinary checkout flow.
 
 A pre-existing unique index still constrains `product_grants` to one row per tenant, member and product regardless of mode. A staff test purchase of a product the staff account already holds live is a no-op: it records the test order (and subscription, if any) but skips the test grant, so the existing live grant is untouched. The reverse direction is handled the other way around because it involves real money: a live purchase, manual grant or subscription renewal for a member+product that a prior staff test purchase already granted reclaims the row from the stray test grant and writes the live one. The bulk member-grant importer does not: it still fails that one row as a conflict, so clear a stray test grant first if an import reports one. Testing a product the staff account does not already own live, in either mode, is unaffected. Lifting the underlying index constraint requires a follow-up, owner-reviewed migration that drops the old index once no previous release still relies on it.
 
-Each endpoint verifies its own signing secret and checks Stripe's signed `livemode` value. Every correlated order and subscription must match the endpoint mode. Test checkout events additionally require a recorded test checkout session; unknown test events and all cross-mode correlations are acknowledged with `processed:false` and a logged reason. A pending order is stored before the checkout URL is returned, so an unrelated sandbox event cannot create access.
+Each endpoint verifies its own signing secret and checks Stripe's signed `livemode` value. Every correlated order and subscription must match the endpoint mode. Test checkout events additionally require a recorded test checkout session; unknown test events and all cross-mode correlations are acknowledged with `processed:false` and a logged reason. Staff test checkout stores a pending order for the signed-in staff account before returning the URL. A test event for one tenant cannot fulfill a checkout for another tenant.
 
 The CLI offers the same configuration operations:
 

@@ -1087,6 +1087,16 @@ export const pl: Messages = {
     reportKeysScope: 'Raporty (tylko odczyt)',
     reportKeysHint: 'Umożliwia odczyt raportów aktywności. Nie można łączyć z uprawnieniami do zapisu. Klucz nie wygasa — unieważnij go, gdy nie będzie już potrzebny.',
     tabApiKeys: 'Klucze API',
+    checkoutAppearance: {
+      heading: 'Wygląd strony płatności',
+      displayName: 'Nazwa wyświetlana',
+      logoUrl: 'Logo (adres URL)',
+      iconUrl: 'Ikona (adres URL)',
+      backgroundColor: 'Kolor tła',
+      buttonColor: 'Kolor przycisku',
+      fontFamily: 'Czcionka',
+      borderStyle: 'Zaokrąglenia',
+    },
     stripeHeading: 'Stripe',
     stripeDescription:
       'Podaj klucz ograniczony (restricted key). Together automatycznie utworzy webhook i zapisze jego sekret podpisu.',
@@ -1267,6 +1277,9 @@ export const pl: Messages = {
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
+    deleteDraft: 'Usuń szkic',
+    deleteDraftBody: 'Szkic produktu zostanie trwale usunięty.',
+
     visibilityLabel: 'Widoczność',
     listed: 'Widoczny w ofercie',
     unlisted: 'Ukryty w ofercie',
@@ -1432,6 +1445,11 @@ export const pl: Messages = {
     updateItem: 'Zapisz pozycję',
   },
   courses: {
+    archived: 'Archiwalne',
+    restore: 'Przywróć',
+    archiveCourse: 'Archiwizuj kurs',
+    archiveBody: 'Kurs zniknie z list, oferty i wyboru dostępu. Możesz go przywrócić w filtrze Archiwalne.',
+
     treeTab: 'Struktura kursu',
     lessonsTab: 'Lekcje',
     tabsAria: 'Struktura kursu lub lekcje',
@@ -2078,6 +2096,7 @@ export const pl: Messages = {
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
   },
   lesson: {
+    enlargeImage: 'Powiększ obraz',
     editionLabel: ({ number }) => format('Wydanie {number}', { number }),
     previousEditions: 'Poprzednie wydania',
     editionMenu: 'Opcje lekcji',
@@ -2703,6 +2722,8 @@ export const pl: Messages = {
     testModeHint: 'Zakup zostanie przypisany do Twojego konta pracownika. Wybierz płatną ofertę bez kuponu i użyj testowej karty Stripe.',
     testModeCouponBlocked: 'Kupony i oferty bezpłatne działają tylko w trybie produkcyjnym. Wyłącz tryb testowy, aby z nich skorzystać.',
     testModeUnavailable: 'Ta społeczność nie ma jeszcze klucza testowego Stripe. Wyłącz tryb testowy, aby zapłacić, albo skonfiguruj go w Studio.',
+    testSessionEnded: 'Twoja sesja testowa pracownika wygasła. Włącz tryb testowy Stripe, aby ponowić zakup testowy, albo wybierz „Przejdź do prawdziwej płatności”, aby zapłacić prawdziwymi pieniędzmi.',
+    continueLivePayment: 'Przejdź do prawdziwej płatności',
     loading: 'Ładowanie płatności…',
     checkoutEyebrow: 'Płatność',
     eyebrow: ({ tenant }) => format('Płatność · {tenant}', { tenant }),

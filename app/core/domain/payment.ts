@@ -19,6 +19,8 @@ export const checkoutSessionInputSchema = z.object({
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
 
 export type CheckoutConsentCapture = {
+  termsUrl?: string;
+  privacyUrl?: string;
   termsAccepted: boolean;
   selectedDefinitionIds: string[];
   attachedDefinitionIds: string[];
@@ -82,6 +84,16 @@ export const stripeInvoiceObjectSchema = z.object({
   amount_due: z.number().int().optional(),
   charge: z.unknown().optional(),
   payment_intent: z.unknown().optional(),
+  payments: z.object({
+    data: z.array(z.object({
+      status: z.string(),
+      created: z.number().optional(),
+      payment: z.object({
+        charge: z.unknown().optional(),
+        payment_intent: z.unknown().optional(),
+      }),
+    })),
+  }).nullable().optional(),
   currency: z.string().optional(),
   period_end: z.number().nullable().optional(),
   lines: z

@@ -835,6 +835,21 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const queryClient = useQueryClient();
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const archiveCourse = useMutation({
+    ...actions.archiveCourse,
+    onSuccess: async () => {
+      setArchiveOpen(false);
+      onBack();
+      await Promise.all([
+        queryClient.invalidateQueries(actions.coursesInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+        queryClient.invalidateQueries(actions.studentCourseInvalidates()),
+        queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+        queryClient.invalidateQueries(actions.publicCourseStructure(course.id)),
+      ]);
+    },
+  });
   const [moduleToDetach, setModuleToDetach] = useState<CourseModule | null>(null);
   const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
   const [moduleDropTargetId, setModuleDropTargetId] = useState<string | null>(null);
@@ -930,6 +945,17 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
         </Button>
       }
     >
+      <Button color="error" onClick={() => setArchiveOpen(true)}>{t.courses.archiveCourse}</Button>
+      <ConfirmDialog
+        open={archiveOpen}
+        title={t.courses.archiveCourse}
+        body={<Stack spacing={1}><Typography>{t.courses.archiveBody}</Typography>{archiveCourse.isError ? <MutationError error={archiveCourse.error} /> : null}</Stack>}
+        cancelLabel={t.common.cancel}
+        confirmLabel={t.courses.archiveCourse}
+        pending={archiveCourse.isPending}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={() => archiveCourse.mutate({ courseId: course.id })}
+      />
       <CourseDetailsSection course={course} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
       <HistoryPanel courseId={course.id} />

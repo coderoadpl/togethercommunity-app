@@ -1,8 +1,8 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -16,11 +16,12 @@ const renderOffer = () => {
 };
 const offer = {
   salesLink: sampleSalesLink, descriptionHtml: '<p>All items together.</p>', lines: sampleBundleLines.map((line) => ({ ...line, type: 'course' })), currency: 'PLN', totalCents: 18660,
-  tenant: { slug: 'acme', name: 'Community', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: null }, support: { url: null }, timezone: 'Europe/Warsaw' }, marketingConsents: [],
+  tenant: { slug: 'acme', name: 'Community', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' }, support: { url: null }, timezone: 'Europe/Warsaw' }, marketingConsents: [],
 };
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/offer/complete-bundle');
+  server.use(http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Community' }, contentVersion: 1, products: [] } })));
   server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } })));
 });
 
@@ -47,4 +48,117 @@ it('shows unavailable notice for an unknown or inactive offer', async () => {
   renderOffer();
   expect(await screen.findByText(en.checkout.unavailableTitle)).toBeVisible();
   expect(screen.queryByRole('button', { name: en.salesLinks.buyBundle })).toBeNull();
+});
+
+it.each([
+  { termsUrl: null, privacyUrl: null },
+  { termsUrl: 'https://example.test/terms', privacyUrl: null },
+  { termsUrl: null, privacyUrl: 'https://example.test/privacy' },
+])('shows an error without a fallback form when legal URLs are incomplete: %j', async (legal) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({
+    ok: true, data: { ...offer, tenant: { ...offer.tenant, legal } },
+  })));
+  renderOffer();
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.checkout.unavailableTitle);
+  expect(screen.queryByLabelText(en.checkout.emailLabel)).toBeNull();
+  expect(screen.queryByRole('button', { name: en.salesLinks.buyBundle })).toBeNull();
+  expect(document.querySelector('form')).toBeNull();
+});
+
+it.each([true, false])('honours the consent fallback test selector only with a staff test session: %s', async (staffTestSession) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=anything');
+  let payload: unknown;
+  server.use(
+    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: true, salesLinkTestConfigured: staffTestSession,
+      canTest: staffTestSession, testConfigured: staffTestSession, testEnabled: staffTestSession,
+    } })),
+    http.post('/api/public/checkout/session', async ({ request }) => {
+      payload = await request.json();
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout fixture submitted' } }, { status: 400 });
+    }),
+  );
+  renderOffer();
+  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+  await userEvent.click(screen.getByRole('checkbox'));
+  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(staffTestSession);
+  if (staffTestSession) expect(screen.queryByText(en.checkout.simulatedPaymentNote)).toBeNull();
+  expect(screen.getByRole('button', { name: en.checkout.couponReveal }).hasAttribute('disabled')).toBe(staffTestSession);
+  await userEvent.click(screen.getByRole('button', { name: staffTestSession ? en.salesLinks.buyBundle : en.checkout.continueLivePayment }));
+  await screen.findByText(en.errors.messageValidation);
+  expect(payload).toMatchObject({ salesLinkSlug: 'complete-bundle', email: 'buyer@example.test', termsAccepted: true });
+  expect(payload).not.toHaveProperty('salesLinkTest');
+});
+
+it.each([true, false])('shows the sales-link test success notice only to staff: %s', async (canTest) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=success&test_purchase=1');
+  server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+    stripeConfigured: true, simulatedPaymentsEnabled: false, canTest, testConfigured: canTest, testEnabled: canTest,
+  } })));
+  renderOffer();
+  expect(await screen.findByText(canTest ? en.checkout.testPurchaseBody : en.checkout.successBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(canTest);
+  expect(screen.queryByText(canTest ? en.checkout.successBody : en.checkout.testPurchaseBody)).toBeNull();
+});
+
+it('retries a live sales link through the server handoff after cancellation', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled');
+  renderOffer();
+  expect(await screen.findByRole('link', { name: en.checkout.retry })).toHaveAttribute('href', '/offer/complete-bundle');
+});
+
+it.each(['live', 'test'] as const)('stops a cancelled test checkout after its staff cookie is consumed until an explicit %s action', async (retryMode) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=1');
+  let testEnabled = true;
+  const modes: string[] = [];
+  const assign = vi.fn();
+  const location = window.location;
+  const locationSpy = vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
+  server.use(
+    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: false, canTest: true,
+      testConfigured: true, testEnabled, salesLinkTestConfigured: testEnabled,
+    } })),
+    http.post('/api/checkout/stripe-test-session', () => {
+      testEnabled = true;
+      return HttpResponse.json({ ok: true, data: { enabled: true } });
+    }),
+    http.post('/api/public/checkout/session', () => {
+      modes.push(testEnabled ? 'test' : 'live');
+      testEnabled = false;
+      return HttpResponse.json({ ok: true, data: { url: 'https://checkout.stripe.com/session' } });
+    }),
+  );
+
+  const initial = renderOffer();
+  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'staff@example.test');
+  await userEvent.click(screen.getByRole('checkbox'));
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
+  await waitFor(() => expect(assign).toHaveBeenCalledOnce());
+  expect(modes).toEqual(['test']);
+  initial.unmount();
+
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled&test=1');
+  renderOffer();
+  await userEvent.click(await screen.findByRole('button', { name: en.checkout.retry }));
+  expect(await screen.findByText(en.checkout.testSessionEnded)).toBeVisible();
+  expect(window.location.search).toBe('?checkout=together&test=1');
+  expect(screen.queryByRole('link', { name: en.checkout.retry })).toBeNull();
+  expect(modes).toEqual(['test']);
+  expect(assign).toHaveBeenCalledOnce();
+
+  if (retryMode === 'test') {
+    await userEvent.click(screen.getByTestId('checkout-test-mode-switch'));
+    expect(await screen.findByText(en.checkout.testPurchase)).toBeVisible();
+    expect(screen.queryByText(en.checkout.testSessionEnded)).toBeNull();
+  }
+  await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'staff@example.test');
+  await userEvent.click(screen.getByRole('checkbox'));
+  await userEvent.click(screen.getByRole('button', { name: retryMode === 'test' ? en.salesLinks.buyBundle : en.checkout.continueLivePayment }));
+  await waitFor(() => expect(assign).toHaveBeenCalledTimes(2));
+  expect(modes).toEqual(['test', retryMode]);
+  locationSpy.mockRestore();
 });

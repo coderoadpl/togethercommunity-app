@@ -61,6 +61,8 @@ describe('fake Stripe webhook verification', () => {
 
   it('accepts a valid Stripe-style HMAC and preserves checkout metadata', async () => {
     const result = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: payload,
       signatureHeader: signature(payload),
       webhookSecret: secret,
@@ -106,6 +108,8 @@ describe('fake Stripe webhook verification', () => {
       data: { object: { id: 'ch_123', payment_intent: 'pi_123', invoice: 'in_123' } },
     });
     const refund = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: refundPayload,
       signatureHeader: signature(refundPayload),
       webhookSecret: secret,
@@ -125,6 +129,8 @@ describe('fake Stripe webhook verification', () => {
       data: { object: { id: 'dp_123', charge: 'ch_123', payment_intent: 'pi_123' } },
     });
     const dispute = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: disputePayload,
       signatureHeader: signature(disputePayload),
       webhookSecret: secret,
@@ -154,6 +160,8 @@ describe('fake Stripe webhook verification', () => {
       },
     });
     const invoiceResult = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: invoicePayload,
       signatureHeader: signature(invoicePayload),
       webhookSecret: secret,
@@ -185,6 +193,8 @@ describe('fake Stripe webhook verification', () => {
       },
     });
     const subscriptionResult = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: subscriptionPayload,
       signatureHeader: signature(subscriptionPayload),
       webhookSecret: secret,
@@ -206,11 +216,15 @@ describe('fake Stripe webhook verification', () => {
 
   it('rejects changed payloads and signatures made with another secret', async () => {
     const changed = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: `${payload} `,
       signatureHeader: signature(payload),
       webhookSecret: secret,
     });
     const wrongSecret = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'live',
       payloadRaw: payload,
       signatureHeader: signature(payload, 'whsec_wrong'),
       webhookSecret: secret,
@@ -224,5 +238,5 @@ describe('fake Stripe webhook verification', () => {
 
 it('reassembles bundle product metadata chunks in fake webhooks', async () => {
   const body = JSON.stringify({ id: 'evt_bundle_chunks', type: 'checkout.session.completed', data: { object: { id: 'cs_bundle_chunks', metadata: { productIds_1: ',"second"]', productIds_0: '["first"' } } } });
-  expect(await provider.verifyWebhookEvent({ payloadRaw: body, signatureHeader: signature(body), webhookSecret: secret })).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: '["first","second"]' } } } });
+  expect(await provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live', payloadRaw: body, signatureHeader: signature(body), webhookSecret: secret })).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: '["first","second"]' } } } });
 });

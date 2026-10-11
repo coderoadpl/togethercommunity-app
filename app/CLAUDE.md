@@ -115,6 +115,11 @@ site can answer. The platform owns the prefixes, never the keys: keys stay
 workspace data and `link` is not a reserved redirect root. Adding a forwarded
 prefix needs a dated owner decision here.
 
+Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
+so public sales links can render the server checkout handoff and crawler metadata.
+The explicit `checkout=together` fallback and `status=success|cancelled` return
+pages serve the existing web app and never restart the automatic handoff.
+
 `pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
 patterns across every tracked file. An exception needs a line in
 `.tenant-neutral-allow` with a written justification.

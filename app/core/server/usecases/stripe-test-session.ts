@@ -18,7 +18,7 @@ export const createStripeTestSession = (
 };
 
 export const hasStripeTestSession = (
-  identity: Identity | null,
+  identity: Pick<Identity, 'userId' | 'tenantId' | 'staffRole'> | null,
   cookie: string | undefined,
   deps: { secretCrypto: SecretCrypto; clock: Clock },
 ): boolean => {

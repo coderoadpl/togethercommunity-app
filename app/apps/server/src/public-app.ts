@@ -64,6 +64,7 @@ import {
   authLinkBaseUrl,
   fulfillStripeWebhook,
   getPaymentConfig,
+  getDirectSalesLinkMode,
   testCheckoutRejection,
   getPlayableLesson,
   getPublicCourseStructure,
@@ -95,6 +96,8 @@ import { readJson, requireJsonContentType } from './read-json.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
+import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
+import { registerDirectSalesLinkRoutes } from './direct-sales-link-routes.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
@@ -280,6 +283,7 @@ const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
 };
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
+  registerDirectSalesLinkRoutes(app, deps);
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);
@@ -625,9 +629,11 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
+    const salesLinkTestIdentity = await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
+    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id, salesLinkTestIdentity === null ? 'live' : 'test', deps);
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+        ? ok({ ...config.value, canTest, salesLinkTestConfigured: !salesLinkMode.ok || salesLinkMode.value === 'test', testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );
@@ -685,31 +691,42 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
-    const identity = await checkoutIdentity(c, deps);
-    const testMode = identity?.tenantId === tenant.value.tenant.id &&
-      hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const body: unknown = await readJson(c.req.raw);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);
+    const identity = selection.value.salesLinkId === undefined
+      ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
+    const staffTestMode = identity?.tenantId === tenant.value.tenant.id &&
+      hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
+    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id,
+      selection.value.salesLinkId !== undefined && staffTestMode ? 'test' : 'live', deps);
+    if (!salesLinkMode.ok) return respondPublic(salesLinkMode);
+    const testMode = selection.value.salesLinkId === undefined ? staffTestMode : salesLinkMode.value === 'test';
     const consent = await validateTermsConsent(
       tenant.value.tenant.id,
       parsed.data.termsAccepted,
       deps.tenants,
+      { requireLegalUrls: selection.value.salesLinkId !== undefined },
     );
     if (!consent.ok) return respondPublic(consent);
     if (testMode) {
       const rejected = testCheckoutRejection(parsed.data, selection.value);
       if (rejected !== null) return respondPublic(err(rejected));
     }
-    const staffMember = testMode && identity !== null ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
-    if (staffMember !== null && !staffMember.ok) return respondPublic(staffMember);
+    const testEmail = testMode && identity !== null ? identity.email : parsed.data.email;
+    const testMember = testMode && identity !== null ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
+    if (testMember !== null && !testMember.ok) return respondPublic(testMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsentCaptureId = deps.ids.nextId();
-    if (!testMode) {
+    const captureConsent = !testMode || selection.value.salesLinkId !== undefined;
+    if (captureConsent) {
+      const legal = testMode ? await deps.tenants.findSettings(tenant.value.tenant.id) : null;
       const checkoutConsent = {
         termsAccepted: parsed.data.termsAccepted === true,
+        ...(legal?.termsUrl == null ? {} : { termsUrl: legal.termsUrl }),
+        ...(legal?.privacyUrl == null ? {} : { privacyUrl: legal.privacyUrl }),
         selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
         attachedDefinitionIds: [...new Set((selection.value.products ?? [selection.value.product]).flatMap((product) => product.checkoutConsentDefinitionIds ?? []))],
         collectedAt: deps.clock.nowIso(),
@@ -726,11 +743,11 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const session = await startCheckoutSession(
       tenant.value.tenant,
       baseUrl,
-      testMode && identity !== null ? { ...parsed.data, email: identity.email } : parsed.data,
+      testMode && testEmail !== undefined ? { ...parsed.data, email: testEmail } : parsed.data,
       selection.value,
       deps,
-      testMode ? undefined : checkoutConsentCaptureId,
-      staffMember?.ok === true ? { mode: 'test', memberId: staffMember.value.id } : undefined,
+      captureConsent ? checkoutConsentCaptureId : undefined,
+      testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
     );
     if (
       session.ok &&
@@ -870,6 +887,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!webhookSecret.ok) return respond(webhookSecret);
     const payloadRaw = await c.req.text();
     const event = await deps.payment.verifyWebhookEvent({
+      tenantId,
+      mode,
       payloadRaw,
       signatureHeader: c.req.header('stripe-signature') ?? '',
       webhookSecret: webhookSecret.value,

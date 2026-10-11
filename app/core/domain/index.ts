@@ -41,6 +41,7 @@ export * from './member-routes.js';
 export * from './tenant-redirect.js';
 export * from './heading-id.js';
 export * from './tenant.js';
+export * from './checkout-appearance.js';
 export * from './tenant-creation.js';
 export * from './support.js';
 export * from './consent.js';

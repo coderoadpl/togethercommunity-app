@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import { TENANT_HEADER } from '#core/contract/index.js';
-import { normalizeRedirectPath } from '#core/domain/index.js';
+import { coursePath, normalizeRedirectPath, type TenantRedirect } from '#core/domain/index.js';
 import { claimRateLimitWindow, resolveTenant } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -21,6 +21,26 @@ const isAssetRequest = (path: string): boolean => {
   const lastSegment = path.slice(path.lastIndexOf('/') + 1);
   const extension = lastSegment.includes('.') ? lastSegment.split('.').at(-1) : undefined;
   return extension !== undefined && staticAssetExtensions.has(extension.toLowerCase());
+};
+
+const hasAvailableCourseTarget = async (
+  tenantId: string,
+  redirect: TenantRedirect,
+  deps: AppDeps,
+): Promise<boolean> => {
+  let segments: string[];
+  try {
+    segments = new URL(redirect.targetPath, 'http://localhost').pathname
+      .split('/').filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return false;
+  }
+  const prefix = coursePath('').split('/').filter(Boolean);
+  if (!prefix.every((segment, index) => segments[index]?.toLowerCase() === segment)) return true;
+  const courseId = segments[prefix.length];
+  if (!courseId) return false;
+  const course = await deps.courses.findById(tenantId, courseId);
+  return course !== null && !course.archivedAt;
 };
 
 export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void => {
@@ -59,7 +79,7 @@ export const registerTenantRedirects = (app: Hono<AppVars>, deps: AppDeps): void
       tenant.value.tenant.id,
       requestPath,
     );
-    if (redirect === null) {
+    if (redirect === null || !await hasAvailableCourseTarget(tenant.value.tenant.id, redirect, deps)) {
       if (isPlatformShortLinkPath(requestPath)) return c.redirect('/', 302);
       await next();
       return;

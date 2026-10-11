@@ -1276,6 +1276,20 @@ product
   );
 
 product
+  .command('delete <id>')
+  .description('Permanently delete an eligible product draft')
+  .option('--confirm', 'confirm permanent deletion')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.object({ confirm: z.boolean().optional() })]), async (ctx, [productId, options]) => {
+      if (options.confirm !== true) {
+        emit(err(validation('Product deletion requires --confirm')), ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.deleteProductDraft({ productId }), ctx.json, () => 'deleted product draft');
+    }),
+  );
+
+product
   .command('publish <id>')
   .description('Publish a product')
   .action(
@@ -1796,13 +1810,25 @@ subscriptionCommand
 
 const course = program.command('course').description('Courses in the active tenant (staff only)');
 
-course.command('list').description('List courses').action(
-  withCtx(async (ctx) => {
-    emit(await ctx.api.listCourses(), ctx.json, (data) =>
+course.command('list').description('List courses').option('--archived', 'list archived courses').action(
+  withInput(z.tuple([z.object({ archived: z.boolean().optional() })]), async (ctx, [options]) => {
+    emit(await ctx.api.listCourses(undefined, { archived: options.archived === true }), ctx.json, (data) =>
       data.courses.length === 0
         ? 'no courses'
         : data.courses.map((item) => `- ${item.name}  (${item.id.slice(0, 8)})`).join('\n'),
     );
+  }),
+);
+
+course.command('archive <id>').description('Archive a course').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
+    emit(await ctx.api.archiveCourse({ courseId }), ctx.json, (data) => `archived course: ${data.course.name}`);
+  }),
+);
+
+course.command('restore <id>').description('Restore an archived course').action(
+  withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
+    emit(await ctx.api.restoreCourse({ courseId }), ctx.json, (data) => `restored course: ${data.course.name}`);
   }),
 );
 
@@ -1909,7 +1935,7 @@ course
   );
 
 course
-  .command('restore <versionId>')
+  .command('restore-version <versionId>')
   .description('Re-apply a stored snapshot as a new save (staff only)')
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [versionId]) => {

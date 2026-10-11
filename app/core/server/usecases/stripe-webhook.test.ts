@@ -1,7 +1,7 @@
-import type { OrderLine } from '#core/domain/index.js';
+import type { CheckoutConsentCapture, OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
@@ -1961,6 +1961,71 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
   });
 
+  it.each([
+    ['charge.refunded', 'paymentIntent'],
+    ['charge.refunded', 'charge'],
+    ['charge.dispute.created', 'paymentIntent'],
+    ['charge.dispute.created', 'charge'],
+  ] as const)(
+    'handles %s for a renewal correlated only by %s and revokes access',
+    async (type, correlation) => {
+      const h = await subscribedHarness();
+      const chargeId = correlation === 'charge' ? 'ch-renewal' : null;
+      const paymentIntentId = correlation === 'paymentIntent' ? 'pi-renewal' : null;
+      const renewal: PaymentWebhookEvent = {
+        id: 'evt-renewal-correlation',
+        type: 'invoice.paid',
+        objectId: 'in-renewal',
+        checkoutSession: null,
+        invoice: {
+          subscriptionId: 'sub-1',
+          chargeId,
+          paymentIntentId,
+          amountCents: 2900,
+          currency: 'PLN',
+          periodEnd: '1998-09-14T10:00:00.000Z',
+        },
+      };
+
+      expect(await fulfillStripeWebhook(tenantA, renewal, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders).toHaveLength(2);
+      expect(h.orders[1]?.status).toBe('paid');
+      expect(h.orders[1]?.providerObjectIds).toEqual({
+        invoice: 'in-renewal',
+        subscription: 'sub-1',
+        [correlation]: chargeId ?? paymentIntentId,
+      });
+      expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
+
+      const adjustment: PaymentWebhookEvent = {
+        id: 'evt-renewal-adjustment',
+        type,
+        objectId: type === 'charge.refunded' ? 'ch-renewal' : 'dp-renewal',
+        checkoutSession: null,
+        adjustment: {
+          chargeId,
+          paymentIntentId,
+          invoiceId: null,
+          ...(type === 'charge.refunded'
+            ? { refund: { full: true, amountRefundedCents: 2900, amountCents: 2900 } }
+            : {}),
+        },
+      };
+
+      expect(await fulfillStripeWebhook(tenantA, adjustment, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
+      expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
+      expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+      expect(h.refundTransitions()).toBe(1);
+      expect(h.providerCancellations).toEqual([{
+        tenantId: tenantA.id,
+        providerSubscriptionId: 'sub-1',
+        mode: 'live',
+        idempotencyKey: `payment-adjustment-evt-renewal-adjustment-${h.subscription.id}`,
+      }]);
+    },
+  );
+
   it('applies a subscription deletion that lands after a refund-driven cancellation', async () => {
     const h = await subscribedHarness();
     await fulfillStripeWebhook(
@@ -2589,4 +2654,146 @@ it('revokes all nonphysical bundle grants after one full payment refund', async 
   expect(result.ok).toBe(true);
   expect(h.orders[0]?.status).toBe('refunded');
   expect([...h.grants.values()].every((grant) => grant.expiresAt === now)).toBe(true);
+});
+
+const directBundlePayment = async () => {
+  const h = bundlePayment();
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
+      currency: 'PLN', createdAt: now, mode: 'live', providerSessionId: 'cs-1' }),
+  };
+  const captures = new Map<string, CheckoutConsentCapture>();
+  h.deps.checkoutConsentCaptures = {
+    create: async (_tenantId, input) => { captures.set(input.id, input.capture); },
+    findById: async (_tenantId, id) => captures.get(id) ?? null,
+  };
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.metadata.directCheckout = true;
+  h.event.checkoutSession.metadata.termsUrl = 'https://example.com/terms-at-checkout';
+  h.event.checkoutSession.metadata.privacyUrl = 'https://example.com/privacy-at-checkout';
+  h.event.checkoutSession.termsAccepted = true;
+  h.event.checkoutSession.customerName = 'Buyer Name';
+  h.event.checkoutSession.billing = { companyName: 'Buyer Company', nip: '5260250274', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+  return { ...h, captures };
+};
+
+it.each(['one_time', 'recurring'] as const)('preserves the existing %s member name default when Stripe provides a billing name', async (kind) => {
+  const h = harness({ prices: kind === 'recurring' ? [monthlyPrice(tenantA.id)] : [] });
+  const event = completedEvent(kind === 'recurring' ? { priceId: 'price-monthly', subscriptionId: 'sub-1' } : undefined);
+  if (event.checkoutSession === null) throw new Error('Missing session');
+  event.checkoutSession.customerName = 'Stripe Billing Name';
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect([...h.members.values()][0]?.displayName).toBeNull();
+});
+
+it('preserves the direct checkout NIP on the order and invoice job with an incomplete optional address', async () => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.billing = { companyName: 'Buyer Company', nip: '5260250274', address: '', postalCode: '00-001', city: '', country: 'PL' };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.billing).toEqual(h.event.checkoutSession.billing);
+  expect(h.autoInvoiceJobs).toHaveLength(1);
+});
+
+it.each([
+  { companyName: 'Buyer Name', nip: null, address: '', postalCode: '00-001', city: '', country: 'PL' },
+  { companyName: 'Buyer Name', nip: null, address: 'Main 1', postalCode: '10115', city: 'Berlin', country: 'DE' },
+])('retains direct checkout billing without a Polish NIP ($country)', async (billing) => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.billing = billing;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.billing).toEqual(billing);
+  expect(h.enrollmentEmails).toHaveLength(1);
+});
+
+it('fulfills direct checkout with buyer details and consent URLs from checkout, once', async () => {
+  const h = await directBundlePayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ billing: { nip: '5260250274' } });
+  expect([...h.members.values()][0]?.displayName).toBe('Buyer Name');
+  expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
+    termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
+  expect([...h.captures.values()]).toMatchObject([{ termsAccepted: true, termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.consents).toHaveLength(1);
+  expect(h.captures.size).toBe(1);
+});
+
+it('rejects direct checkout without accepted consent and rolls back fulfillment', async () => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession !== null) h.event.checkoutSession.termsAccepted = false;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.orders).toHaveLength(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.consents).toHaveLength(0);
+});
+
+const directTestPayment = async () => {
+  const h = await directBundlePayment();
+  h.event.mode = 'test';
+  h.event.livemode = false;
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
+      ? { id, tenantId, salesLinkId: 'link-1', lines: h.lines, currency: 'PLN', createdAt: now,
+        mode: 'test', providerSessionId: 'cs-1' } : null,
+  };
+  return h;
+};
+
+it.each(['direct', 'fallback'])('fulfills a staff %s test pending order with test grants and no purchase email', async (flow) => {
+  const h = await directTestPayment();
+  const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
+  const magicLink = vi.spyOn(h.deps.authPort, 'createEnrollmentMagicLink');
+  if (flow === 'fallback') {
+    if (h.event.checkoutSession === null) throw new Error('Missing session');
+    delete h.event.checkoutSession.metadata.directCheckout;
+    h.event.checkoutSession.metadata.checkoutConsentCaptureId = 'staff-fallback';
+    h.captures.set('staff-fallback', {
+      termsAccepted: true, termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy',
+      selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: now, confirmationBaseUrl: 'https://example.com',
+      ...(h.event.checkoutSession.billing == null ? {} : { billing: h.event.checkoutSession.billing }),
+    });
+  }
+  const member = memberSchema.parse({ id: 'staff-member', tenantId: tenantA.id, userId: 'staff-user',
+    email: 'buyer@example.com', displayName: 'Staff', createdAt: now, tags: [], marketingConsents: {}, externalCustomerIds: {}, deletedAt: null });
+  await h.deps.members.create(tenantA.id, member);
+  h.orders.push({ id: 'staff-test-order', tenantId: tenantA.id, mode: 'test', memberId: member.id,
+    productId: 'product-1', priceId: null, kind: 'one_time', status: 'pending', amountCents: 12400,
+    currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs-1' },
+    couponId: null, discountCents: 0, billing: null, lines: h.lines, salesLinkId: 'link-1', createdAt: now,
+    verificationToken: 'b'.repeat(64) });
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.members.size).toBe(1);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', billing: { nip: '5260250274' } });
+  expect([...h.grants.values()].map((grant) => grant.mode)).toEqual(['test', 'test']);
+  expect(h.enrollmentEmails).toEqual([]);
+  expect(h.queued).toEqual([]);
+  expect(h.sent).toEqual([]);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(magicLink).not.toHaveBeenCalled();
+  expect(h.autoInvoiceJobs).toHaveLength(1);
+  expect(h.consents).toHaveLength(1);
+  expect(await fulfillStripeWebhook(tenantA, { ...h.event, id: 'staff-retry' }, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.enrollmentEmails).toEqual([]);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(magicLink).not.toHaveBeenCalled();
+});
+
+it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded'])('ignores %s test checkout without a staff pending order', async (type) => {
+  const h = await directTestPayment();
+  h.event.type = type;
+  const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+  const createOrder = vi.spyOn(h.deps.orders, 'create');
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(ensureUser).not.toHaveBeenCalled();
+  expect(createOrder).not.toHaveBeenCalled();
+  expect(h.orders).toEqual([]);
+  expect(h.members.size).toBe(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.consents).toEqual([]);
+  expect(h.autoInvoiceJobs).toEqual([]);
 });

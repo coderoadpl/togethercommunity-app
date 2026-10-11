@@ -1,6 +1,6 @@
 {
-  "hash": "7ec3097d089d824d652e6c6297a84afb15b7104a03c088eee8743c941151979f",
-  "shortId": "7ec3097d089d",
+  "hash": "84cf3a27e17037b6e156ca00771277a8a72a3241628e716b7f9b69a442996faa",
+  "shortId": "84cf3a27e170",
   "schema": {
     "constraints": [
       {
@@ -102,6 +102,11 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "checkout_snapshots_mode_check",
+        "table": "checkout_snapshots"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -1757,6 +1762,11 @@
       },
       {
         "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION preserve_product_publication_history() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF NEW.published THEN NEW.ever_published := true; ELSIF TG_OP = 'UPDATE' THEN NEW.ever_published := OLD.ever_published; END IF; RETURN NEW; END; $function$",
+        "name": "preserve_product_publication_history"
+      },
+      {
+        "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
       },
@@ -2431,6 +2441,11 @@
         "definition": "CREATE UNIQUE INDEX campaign_sends_tenant_campaign_email_uidx ON campaign_sends USING btree (tenant_id, campaign_id, email) WHERE ((campaign_id IS NOT NULL) AND (source = 'broadcast'::text))",
         "name": "campaign_sends_tenant_campaign_email_uidx",
         "table": "campaign_sends"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX checkout_snapshots_provider_session_idx ON checkout_snapshots USING btree (tenant_id, provider_session_id) WHERE (provider_session_id IS NOT NULL)",
+        "name": "checkout_snapshots_provider_session_idx",
+        "table": "checkout_snapshots"
       },
       {
         "definition": "CREATE UNIQUE INDEX consent_confirmation_tokens_token_uidx ON consent_confirmation_tokens USING btree (token)",
@@ -3180,6 +3195,14 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "ever_published",
+            "notNull": false,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "published",
             "notNull": true,
             "type": "boolean"
@@ -3677,6 +3700,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "created_at",
             "notNull": true,
             "type": "text"
@@ -4087,6 +4118,14 @@
             "name": "bunny_stream_library_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_appearance",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -11776,6 +11815,22 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "mode",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
@@ -13315,6 +13370,11 @@
         "definition": "CREATE TRIGGER product_prices_history_after_write AFTER INSERT OR UPDATE OF amount_cents ON product_prices FOR EACH ROW EXECUTE FUNCTION append_product_price_history()",
         "name": "product_prices_history_after_write",
         "table": "product_prices"
+      },
+      {
+        "definition": "CREATE TRIGGER products_preserve_publication_history BEFORE INSERT OR UPDATE ON products FOR EACH ROW EXECUTE FUNCTION preserve_product_publication_history()",
+        "name": "products_preserve_publication_history",
+        "table": "products"
       },
       {
         "definition": "CREATE TRIGGER products_price_history_after_write AFTER INSERT OR UPDATE OF price_cents ON products FOR EACH ROW EXECUTE FUNCTION append_product_base_price_history()",

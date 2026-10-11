@@ -6,7 +6,7 @@ import { courseLessonSchema, courseModuleSchema, courseSchema } from './course.j
 import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema, productSlugFromTitle } from './product.js';
-import { courseSnapshotV5Schema, type CourseSnapshotV5 } from './snapshots/course/v5.js';
+import { courseSnapshotV6Schema, type CourseSnapshotV6 } from './snapshots/course/v6.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { upcastLegacyVideoEmbedUrlV4 } from './snapshots/course_lesson/v4.js';
 import { courseLessonSnapshotV5Schema } from './snapshots/course_lesson/v5.js';
@@ -36,7 +36,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 
 /** Frozen schema for the CURRENT version of each kind (bump adds a new file). */
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
-  course: courseSnapshotV5Schema,
+  course: courseSnapshotV6Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV7Schema,
   product: productSnapshotV6Schema,
@@ -44,7 +44,7 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
 
 /** Typed readers for the current frozen schema; a bump repoints these too. */
 export const currentSnapshotParsers = {
-  course: (payload: unknown): CourseSnapshotV5 => courseSnapshotV5Schema.parse(payload),
+  course: (payload: unknown): CourseSnapshotV6 => courseSnapshotV6Schema.parse(payload),
   course_module: (payload: unknown): CourseModuleSnapshotV1 => courseModuleSnapshotV1Schema.parse(payload),
   course_lesson: (payload: unknown): CourseLessonSnapshotV7 => courseLessonSnapshotV7Schema.parse(payload),
   product: (payload: unknown): ProductSnapshotV6 => productSnapshotV6Schema.parse(payload),
@@ -59,7 +59,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 };
 
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
-  course: 5,
+  course: 6,
   course_module: 1,
   course_lesson: 7,
   product: 6,
@@ -101,6 +101,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
     2: (payload) => payload,
     3: (payload) => ({ ...z.object({}).passthrough().parse(payload), publiclyVisible: false }),
     4: (payload) => payload,
+    5: (payload) => ({ ...z.object({}).passthrough().parse(payload), archivedAt: null }),
   },
   course_module: {},
   // v1 payloads (pdfUrl restricted to absolute URLs) are a strict subset of v2,
@@ -281,7 +282,7 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
  * in `shapeGuardInstructions`. Updating this map is the LAST step of a bump.
  */
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
-  course: '70b6397d',
+  course: '9ef30ced',
   course_module: 'db069353',
   course_lesson: '20a239d8',
   product: '8900ee6e',

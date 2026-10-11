@@ -98,7 +98,7 @@ export const getPublicOffer = async (
     ? product.visibility === 'listed'
     : product.id === productRef || product.slug === productRef));
   const publicCourseIds = new Set(
-    courses.filter((course) => course.publiclyVisible).map((course) => course.id),
+    courses.filter((course) => course.publiclyVisible && !course.archivedAt).map((course) => course.id),
   );
   const activePrices = await deps.prices.listActiveByProducts(
     tenant.id,

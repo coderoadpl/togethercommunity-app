@@ -227,6 +227,7 @@ const tenantsRepo = (directMessagesEnabled: boolean): TenantRepository => ({
 });
 
 const deps = (input: {
+  courses?: Course[];
   spaces?: Space[];
   products?: Product[];
   grants?: ProductGrant[];
@@ -336,7 +337,7 @@ const deps = (input: {
   };
 
   const coursesRepo: CourseRepository = {
-    list: async () => allCourses,
+    list: async () => input.courses ?? allCourses,
     findById: async (_t, id) => allCourses.find((row) => row.id === id) ?? null,
     findByIds: async (_t, ids) => allCourses.filter((row) => ids.includes(row.id)),
     create: async () => undefined,
@@ -719,4 +720,13 @@ it('hides unlisted purchase suggestions while preserving spaces already owned', 
   } });
   if (!result.ok) throw new Error('Expected navigation');
   expect(result.value.spaces.flatMap((entry) => entry.products)).toEqual([]);
+});
+
+
+it('hides archived courses from member navigation and restores them', async () => {
+  const courses: Course[] = [{ ...course('c1'), archivedAt: NOW }];
+  const d = deps({ ...entitledToModuleM1, courses });
+  expect(await getMemberNavigation(memberCtx(), d)).toMatchObject({ ok: true, value: { courses: [] } });
+  courses[0] = course('c1');
+  expect(await getMemberNavigation(memberCtx(), d)).toMatchObject({ ok: true, value: { courses: [{ courseId: 'c1' }] } });
 });

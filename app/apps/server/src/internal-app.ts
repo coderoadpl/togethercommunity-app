@@ -23,6 +23,10 @@ import {
   markLessonEditionInputSchema, unmarkLessonEditionInputSchema,
   API_KEY_HEADER,
   API_PATHS,
+  courseArchiveInputSchema,
+  courseRestoreInputSchema,
+  coursesListQuerySchema,
+  productDeleteInputSchema,
   ksefTestConnectionInputSchema,
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
@@ -210,6 +214,9 @@ import {
   createCampaign,
   createCoupon,
   createCourse,
+  archiveCourse,
+  restoreCourse,
+  deleteProductDraft,
   createLesson,
   createMarketingConsentDefinition,
   createModule,
@@ -2497,6 +2504,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       {
         appBaseUrl: deps.appBaseUrl,
         corsOrigins: await probeCorsOrigins(c.req, deps),
+        baseDomain: deps.baseDomain,
+        singleTenantMode: deps.singleTenantMode,
+        tenantDomains: deps.tenantDomains,
         email: deps.email,
         emailSender: deps.emailSender,
         emailTransports: deps.emailTransports,
@@ -2634,6 +2644,12 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     const result = await updateProduct(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productsDelete, async (c) => {
+    const parsed = productDeleteInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid product deletion payload', parsed.error.flatten())));
+    return respond(await deleteProductDraft(ctxOf(c), parsed.data, deps));
   });
 
   app.post(API_PATHS.productsPublish, async (c) => {
@@ -3005,7 +3021,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   });
 
   app.get(API_PATHS.courses, async (c) => {
-    const result = await listCourses(ctxOf(c), deps);
+    const parsed = coursesListQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) return respond(err(validation('Invalid course list query', parsed.error.flatten())));
+    const result = await listCourses(ctxOf(c), deps, parsed.data);
     return respond(result.ok ? ok({ courses: result.value }) : result);
   });
 
@@ -3014,6 +3032,20 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const parsed = courseCreateInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid course payload', parsed.error.flatten())));
     const result = await createCourse(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ course: result.value }) : result);
+  });
+
+  app.post(API_PATHS.coursesArchive, async (c) => {
+    const parsed = courseArchiveInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid course archive payload', parsed.error.flatten())));
+    const result = await archiveCourse(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ course: result.value }) : result);
+  });
+
+  app.post(API_PATHS.coursesRestore, async (c) => {
+    const parsed = courseRestoreInputSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return respond(err(validation('Invalid course restore payload', parsed.error.flatten())));
+    const result = await restoreCourse(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ course: result.value }) : result);
   });
 

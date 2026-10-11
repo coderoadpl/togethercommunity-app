@@ -25,6 +25,8 @@ const pageScreenNames = new Set([
   'product-stub',
   'account',
   'lesson',
+  'lesson-lightbox-light',
+  'lesson-lightbox-dark',
   'community',
   'space-feed',
   'panel-spaces',
@@ -78,6 +80,9 @@ export const serverHtmlScreenNames = new Set([
 ]);
 
 export const pageStoryId = (screen: string, viewport: string): string => {
+  if (screen === 'lesson-lightbox-light' || screen === 'lesson-lightbox-dark') {
+    return `pages-lessonplayer--lightbox-${screen.endsWith('dark') ? 'dark' : 'light'}-${viewport}`;
+  }
   // The active-named goldens came from a same-document navigation that retained pending DNS.
   if (screen === 'panel-settings-domains-active') return `panel-settings-domains--shadcn--${viewport}`;
   const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];

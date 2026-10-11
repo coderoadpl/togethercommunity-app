@@ -126,31 +126,18 @@ export const ifirmaInvoicePayload = (
     Pozycje: input.positions === undefined ? [position] : input.positions.map((line) => line.vat.kind === 'exempt'
       ? { StawkaVat: null, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', TypStawkiVat: 'ZW', PodstawaPrawna: line.vat.basis }
       : { StawkaVat: line.vat.percent / 100, Ilosc: 1, CenaJednostkowa: line.grossCents / 100, NazwaPelna: line.name, Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' }),
-    Kontrahent: billing === null
-      ? {
-          Nazwa: 'Klient detaliczny',
-          Identyfikator: null,
-          PrefiksUE: null,
-          NIP: null,
-          Ulica: '',
-          KodPocztowy: '00-000',
-          Kraj: 'Polska',
-          KodKraju: 'PL',
-          Miejscowosc: 'Nie podano',
-          OsobaFizyczna: true,
-        }
-      : {
-          Nazwa: billing.companyName,
-          Identyfikator: null,
-          PrefiksUE: null,
-          NIP: billing.nip,
-          Ulica: billing.address,
-          KodPocztowy: billing.postalCode,
-          Kraj: 'Polska',
-          KodKraju: 'PL',
-          Miejscowosc: billing.city,
-          OsobaFizyczna: billing.nip === null,
-        },
+    Kontrahent: {
+      Nazwa: billing?.companyName || 'Klient detaliczny',
+      Identyfikator: null,
+      PrefiksUE: null,
+      NIP: billing?.nip ?? null,
+      Ulica: billing?.address ?? '',
+      KodPocztowy: billing?.postalCode || '00-000',
+      Kraj: 'Polska',
+      KodKraju: billing?.country ?? 'PL',
+      Miejscowosc: billing?.city || 'Nie podano',
+      OsobaFizyczna: billing?.nip == null,
+    },
   };
 };
 

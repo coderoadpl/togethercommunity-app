@@ -2,9 +2,9 @@
 
 A product remains one sellable item. A sales link combines an ordered set of
 products into one offer at `/offer/<slug>` on the workspace host. The buyer cannot
-remove a line or change its quantity. Each product appears once, with its name,
-VAT rate, net amount, VAT amount and gross amount. The total is the sum of the
-gross amounts. Descriptions use the shared sanitized Markdown renderer.
+remove a line or change its quantity. Each product appears once in Stripe Checkout, with quantity one. The total is
+the sum of the gross amounts. The Together fallback page also shows each VAT
+rate and the net, VAT and gross amounts, with sanitized Markdown descriptions.
 
 Create and manage links in **Products → Sales links**. The internal title helps
 staff distinguish offers; the heading and description address buyers. Copy the
@@ -53,10 +53,66 @@ stored paid amount plus the stored discount, without consulting today's price. F
 with one paid order and grants every nonphysical product through the existing
 enrollment behavior. Refunds and reconciliation continue to count one payment.
 
-Coupons apply to the total. A product-scoped coupon must cover every included
-product; unsupported coupons use the existing rejection message. Billing fields,
-terms acceptance and optional marketing consents retain their existing behavior;
-attached marketing consents are combined across included products.
+Opening `/offer/<slug>` now serves a minimal server-rendered handoff with the
+sales-link heading and description in its title and Open Graph tags, plus the
+tenant favicon. Its script immediately posts to
+`/api/public/sales-links/<slug>/checkout` and replaces the page with the Stripe
+Checkout URL. Without JavaScript, the page offers a POST form. The POST uses the
+existing per-IP and per-tenant public-write limiter. A `/link/<key>` redirect to
+an offer follows the same flow. GET requests never create a payment session.
+
+User agents matching the edge crawler list receive the same metadata without
+scripts or forms: facebookexternalhit, Twitterbot, LinkedInBot, Slackbot,
+Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and Applebot. The checkout
+POST also refuses these crawlers. The edge forwards crawler requests before
+browser fallbacks, including `?checkout=together` and `status=success|cancelled`.
+
+`?test` with any value selects the configured Stripe test key only for a request
+carrying the existing server-side Stripe test session bound to the signed-in
+account and tenant, with tenant staff membership checked again at checkout.
+Without that verified session or a configured test key, checkout stays live.
+The same rule applies to the purchase-consent fallback. An unreadable stored
+test key or a live key in the test slot returns an error for an authorized test
+checkout instead of switching to live credentials.
+Retry after a cancelled test checkout stays on the Together page. An ended staff
+test session shows a notice and requires an explicit live-payment choice before
+another live session can be created.
+
+Staff test checkout stores a pending order before returning the Stripe URL.
+Fulfillment keeps the member and test grants while suppressing purchase
+confirmation email and magic links. Test payments keep the TEST indicator,
+do not unlock real access and are excluded from revenue. A return query alone
+does not enable the TEST indicator for anonymous visitors. A test event for
+one tenant cannot fulfill a checkout for another tenant.
+
+Stripe collects the buyer email, name, billing address when provided, and tax
+IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only
+NIP. Foreign and incomplete billing addresses are retained without a Polish NIP.
+The All-orders invoice scope accepts consumer country-and-postcode-only billing
+and preserves the other collected fields. A NIP is optional; the B2B-only scope
+continues to skip orders without one. iFirma supports domestic addresses only.
+Stripe requires terms acceptance; Together records that acceptance with the
+exact terms and privacy URLs stored in session metadata. Set a valid account
+terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
+linking the tenant's terms and privacy URLs. A tenant missing either legal URL
+receives an error page without a checkout session, including on the Together
+fallback; its checkout endpoint also enforces both URLs. Promotion codes are disabled
+in direct checkout.
+
+If any included product has purchase consent checkboxes configured, the offer
+uses the existing Together checkout at `?checkout=together`. Attached marketing
+consents are combined across all products. Its existing billing fields and
+coupons remain available; a product-scoped coupon must cover every included
+product. Success and cancellation return to the Together page without restarting
+the automatic handoff.
+
+Owners configure **Integrations → Stripe → Checkout appearance**: display name,
+HTTPS logo and icon URLs, background and button hex colours, font and corners.
+Empty overrides use the tenant branding in Settings (name, logo, accent colour
+and favicon). Sales links, single-product checkout and subscriptions send these
+resolved `branding_settings` to Stripe in both live and test mode. If all
+overrides and branding defaults are empty, Stripe uses its account appearance.
+See [Payments](payments.md).
 
 Invoices contain one position per order line with its own treatment. Coupon
 discounts are allocated deterministically across invoice positions so their
@@ -108,6 +164,10 @@ the order's financial amounts nor the invoice's sale-time tax point.
 
 The `sales-link` commands mirror Studio: `list`, `show`, `create`, `update`,
 `activate`, `deactivate`, `delete --confirm`, and `offer <slug>`.
+`sales-link checkout <slug> --mode live|test` starts the direct Stripe handoff
+and returns its URL using the same public endpoint as the server-rendered page.
+Test mode still requires the verified staff Stripe test session; the mode option
+alone does not authorize it.
 Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. `checkout session` and the local `simulate-purchase` command
 accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.

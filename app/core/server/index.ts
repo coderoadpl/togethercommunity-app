@@ -49,6 +49,7 @@ export * from './usecases/storage-configuration.js';
 export * from './usecases/configure-stripe.js';
 export * from './usecases/bunny-videos.js';
 export * from './usecases/checkout.js';
+export * from './usecases/direct-sales-link-checkout.js';
 export * from './usecases/coupon-checkout.js';
 export * from './usecases/coupon-management.js';
 export * from './usecases/coupon-stats.js';
@@ -151,3 +152,6 @@ export * from './usecases/public-order-qr.js';
 export * from './consumer-sales-ports.js';
 export * from './usecases/consumer-sales.js';
 export * from './usecases/probe-stripe-permissions.js';
+
+export * from './product-draft-ports.js';
+export * from './usecases/product-drafts.js';

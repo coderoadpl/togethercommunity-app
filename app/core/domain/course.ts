@@ -245,6 +245,10 @@ export type LessonBlock = z.infer<typeof lessonBlockSchema>;
 
 const salesUrlSchema = z.string().trim().url().regex(/^https:\/\//iu, 'Sales URL must use HTTPS');
 
+export const archiveCourseInputSchema = z.object({ courseId: z.string().min(1) });
+
+export const restoreCourseInputSchema = z.object({ courseId: z.string().min(1) });
+
 export const courseSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -254,6 +258,7 @@ export const courseSchema = z.object({
   salesUrl: salesUrlSchema.nullable().optional(),
   moduleOrder: z.array(z.string()),
   publiclyVisible: z.boolean().default(false),
+  archivedAt: z.string().datetime().nullable().optional(),
   legacyId: z.string().nullable(),
   createdAt: z.string().datetime(),
 });

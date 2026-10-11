@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
 
 import type { EmailIntegrationTransport, Identity, Language, StaffRole } from '#core/domain/index.js';
 import { err, integrationAuth, notFound, ok, tenantSettingsSchema } from '#core/domain/index.js';
@@ -65,6 +66,10 @@ const fakeDeps = (
   } = {},
 ): TestIntegrationDeps => ({
   appBaseUrl: 'https://acme.example.com',
+  baseDomain: 'example.com', singleTenantMode: false,
+  tenantDomains: createInMemoryTenantDomainRepository([
+    tenantDomainFixture({ id: 'domain-1', tenantId: 't1', domain: 'learn.example.com', verified: true }),
+  ]),
   payment: fakePayment(tested, options),
   email: {
     send: async () => ok({ messageId: 'message-1' }),
@@ -134,6 +139,21 @@ const fakeDeps = (
 });
 
 describe('testIntegration', () => {
+  it('resolves checkout appearance and canonical tenant branding for the payment connection test', async () => {
+    const deps = fakeDeps([]);
+    deps.tenants.findSettings = async () => tenantSettingsSchema.parse({
+      name: 'Studio', billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/logo.png', faviconUrl: '/favicon.png', accentColor: '#112233',
+      checkoutAppearance: { displayName: 'Store', backgroundColor: '#ffffff' },
+    });
+    const test = vi.spyOn(deps.payment, 'test');
+    expect(await testIntegration(ctx('owner'), { provider: 'payment' }, deps)).toMatchObject({ ok: true });
+    expect(test).toHaveBeenCalledExactlyOnceWith({
+      tenantId: 't1', appBaseUrl: 'https://acme.example.com',
+      checkoutBranding: { displayName: 'Store', logoUrl: 'https://learn.example.com/logo.png',
+        iconUrl: 'https://learn.example.com/favicon.png', buttonColor: '#112233', backgroundColor: '#ffffff' },
+    });
+  });
+
   it('dispatches storage, email and payment through the same diagnostic result', async () => {
     const tested: string[] = [];
     const deps = fakeDeps(tested, { tenantTransports: [] });

@@ -1,4 +1,4 @@
-import { fireEvent, within } from 'storybook/test';
+import { fireEvent, userEvent, within } from 'storybook/test';
 import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -11,6 +11,42 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const LightDesktop: Story = { parameters: { viewport: { defaultViewport: 'desktop' } }, globals: { viewport: { value: 'desktop' } } };
 export const LightMobile: Story = { parameters: { viewport: { defaultViewport: 'mobile' } }, globals: { viewport: { value: 'mobile' } } };
+const lightboxFixture = (html: string) => ({
+  ...fixture,
+  calls: {
+    ...fixture.calls,
+    'studentLesson:["lesson-js-variables-1"]': {
+      ok: true,
+      value: {
+        ...fixture.calls['studentLesson:["lesson-js-variables-1"]'].value,
+        lesson: {
+          ...fixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson,
+          contents: [{ type: 'html', html }],
+        },
+      },
+    },
+  },
+});
+export const LightboxLightDesktop: Story = {
+  parameters: {
+    fixture: lightboxFixture('<h3>Image reference</h3><p>Select the figure to inspect it at a larger size.</p><figure><img src="/brand/together-horizontal-light.svg" alt="Together wordmark"><figcaption>A vector image stays sharp when enlarged.</figcaption></figure>'),
+    colorScheme: 'light',
+  },
+  globals: { viewport: { value: 'desktop' } },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole('button', { name: en.lesson.enlargeImage }));
+    await within(document.body).findByRole('dialog', { name: en.lesson.enlargeImage });
+  },
+};
+export const LightboxLightMobile: Story = { ...LightboxLightDesktop, globals: { viewport: { value: 'mobile' } } };
+export const LightboxDarkDesktop: Story = {
+  ...LightboxLightDesktop,
+  parameters: {
+    fixture: lightboxFixture('<h3>Image reference</h3><p>Select the image to inspect it at a larger size.</p><img src="/brand/og-image-1200x630.png" alt="Together community illustration">'),
+    colorScheme: 'dark',
+  },
+};
+export const LightboxDarkMobile: Story = { ...LightboxDarkDesktop, globals: { viewport: { value: 'mobile' } } };
 const actionFixture = (completed: boolean, next: 'unlocked' | 'locked' | 'none') => ({
   ...fixture,
   calls: {

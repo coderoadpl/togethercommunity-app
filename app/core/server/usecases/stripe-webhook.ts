@@ -384,7 +384,7 @@ const applyCheckoutCompleted = async (
       snapshot.providerSessionId !== event.objectId || !metadata.salesLinkId)) {
     return err(validation('Direct checkout does not match its recorded session'));
   }
-  if (metadata.directCheckout === true && event.mode !== 'test' &&
+  if (metadata.directCheckout === true &&
       (event.checkoutSession.termsAccepted !== true || !metadata.termsUrl || !metadata.privacyUrl)) {
     return err(validation('Direct checkout consent evidence is missing'));
   }
@@ -414,10 +414,30 @@ const applyCheckoutCompleted = async (
     : null;
   if (pending !== null && pending.mode !== 'test') return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
   if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
+  if (event.mode === 'test' && pending === null) {
+    if (!await anonymousTestCheckoutMatches(tenant, event, deps) || snapshot === null) {
+      return ignorePaymentMode(tenant, event, deps, 'no recorded anonymous test checkout');
+    }
+    const paidOrder = await appendOrder(tenant.id, {
+      mode: 'test', memberId: null, productId: metadata.productId, priceId: null,
+      kind: 'one_time', status: 'paid', amountCents: event.checkoutSession.amountTotalCents ?? 0,
+      currency: snapshot.currency, provider, providerObjectIds: providerObjectIdsForCheckout(event),
+      billing, customerDetails: {
+        ...(event.checkoutSession.customerDetails ?? {
+          name: event.checkoutSession.customerName ?? null, address: null, taxIds: [],
+        }),
+        email,
+      },
+      lines: snapshot.lines, salesLinkId: snapshot.salesLinkId,
+    }, deps);
+    return ok({ processed: true, paidOrder });
+  }
+  if (pending !== null && pending.memberId === null) return ignorePaymentMode(tenant, event, deps, 'test order has no staff member');
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
     ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
+    ...(metadata.salesLinkId != null ? { billing } : {}),
   });
-  if (event.mode === 'test' && completedTestOrder === null && !await salesLinkTestCheckoutMatches(tenant, event, deps)) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
+  if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const fulfilled = await fulfillEnrollment(
     tenant,
     {
@@ -691,6 +711,7 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
+  if (order.memberId === null) return ok({ processed: true });
   const refundedProductIds = order.lines?.filter((line) => line.productType !== 'physical').map((line) => line.productId) ?? [order.productId];
   for (const productId of refundedProductIds) {
   const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
@@ -810,7 +831,6 @@ const processCheckoutConsent = async (
   deps: StripeWebhookDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<Result<string | null, AppError>> => {
-  if (event.mode === 'test') return ok(null);
   const direct = event.checkoutSession;
   if (direct?.metadata.directCheckout === true) {
     if (direct.termsAccepted !== true || !direct.metadata.termsUrl || !direct.metadata.privacyUrl) {
@@ -838,6 +858,22 @@ const processCheckoutConsent = async (
     });
     return ok(null);
   }
+  if (event.mode === 'test') {
+    const checkout = event.checkoutSession;
+    if (checkout?.metadata.salesLinkId == null) return ok(null);
+    const captureId = checkout.metadata.checkoutConsentCaptureId;
+    const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+    const capture = captureId == null ? null : await captures?.findById(tenant.id, captureId);
+    if (capture?.termsAccepted !== true || !capture.termsUrl || !capture.privacyUrl) {
+      return err(validation('Test sales link checkout consent evidence is missing'));
+    }
+    await transaction.consents.record(tenant.id, {
+      id: deps.ids.nextId(), tenantId: tenant.id, userId: null,
+      email: checkout.email ?? checkout.metadata.memberEmail, source: 'checkout',
+      termsUrl: capture.termsUrl, privacyUrl: capture.privacyUrl, acceptedAt: capture.collectedAt,
+    });
+    return ok(null);
+  }
   if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
   const consent = await transaction.consentTransaction.run((repositories) =>
     recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
@@ -856,7 +892,7 @@ const processCheckoutConsent = async (
   return ok(reason);
 };
 
-const salesLinkTestCheckoutMatches = async (
+const anonymousTestCheckoutMatches = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
@@ -900,7 +936,11 @@ const paymentModeMatches = async (
   if (await findOrder(mode === 'live' ? 'test' : 'live') !== null) return ignore('order mode mismatch');
   const order = mode === 'test' ? await findOrder('test') : null;
   let matched = order !== null;
-  if (order !== null && event.checkoutSession !== null) {
+  if (mode === 'test' && event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenant.id) return ignore('checkout tenant mismatch');
+  if (order !== null && event.checkoutSession !== null && order.memberId === null) {
+    return order.mode === 'test' && await anonymousTestCheckoutMatches(tenant, event, deps);
+  }
+  if (order !== null && event.checkoutSession !== null && order.memberId !== null) {
     const member = await deps.members.findById(tenant.id, order.memberId);
     if (order.productId !== event.checkoutSession.metadata.productId ||
       order.priceId !== event.checkoutSession.metadata.priceId ||
@@ -918,7 +958,7 @@ const paymentModeMatches = async (
     }
   }
   if (mode === 'live') return true;
-  if (order === null && await salesLinkTestCheckoutMatches(tenant, event, deps)) return true;
+  if (order === null && await anonymousTestCheckoutMatches(tenant, event, deps)) return true;
   if (!matched) return ignore('no matching test record');
   if (event.checkoutSession !== null && order?.providerObjectIds.checkoutSession !== event.objectId) {
     return ignore('no matching test checkout');
@@ -994,7 +1034,7 @@ export const fulfillStripeWebhook = async (
                 ? await applyPaymentAdjustment(tenant, event, branchDeps)
                 : await applySubscriptionEvent(tenant, event, branchDeps);
       if (result.ok && (result.value.processed || result.value.consumed === true)) {
-        if (result.value.processed) await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
+        if (result.value.processed && result.value.paidOrder?.memberId !== null) await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
         await transactionDeps.processedPaymentEvents.finalize(
           tenant.id,
           event.id,

@@ -1,6 +1,6 @@
 import { err, notFound, ok, resolveCheckoutBranding, stripeKeyModeConflicts, validation, type AppError, type Result, type Tenant } from '#core/domain/index.js';
 import { buildCheckoutLines } from './checkout-lines.js';
-import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
+import { getPaymentConfig, startCheckoutSession, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
 
 export const getDirectSalesLinkMode = async (
   tenantId: string,
@@ -11,10 +11,9 @@ export const getDirectSalesLinkMode = async (
   const key = await deps.tenantSecrets.findByKey(tenantId, 'stripe.testRestrictedKey');
   if (key === null) return ok('live');
   const decrypted = deps.secretCrypto?.decrypt(key);
-  if (decrypted !== undefined) {
-    if (!decrypted.ok) return decrypted;
-    if (stripeKeyModeConflicts(decrypted.value, 'test')) return err(validation('The configured test key is not a Stripe test key'));
-  }
+  if (decrypted === undefined) return err(validation('Stripe test key decryption is not configured'));
+  if (!decrypted.ok) return decrypted;
+  if (stripeKeyModeConflicts(decrypted.value, 'test')) return err(validation('The configured test key is not a Stripe test key'));
   return ok('test');
 };
 
@@ -27,6 +26,7 @@ export const createDirectSalesLinkCheckout = async (
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
   },
   deps: CheckoutDeps,
+  staffTestSession?: { memberId: string; email: string },
 ) => {
   const link = await deps.salesLinks?.findBySlug(tenant.id, input.slug);
   const productId = link?.productIds[0];
@@ -50,11 +50,15 @@ export const createDirectSalesLinkCheckout = async (
   const built = await buildCheckoutLines(tenant.id, selection.value, deps);
   if (!built.ok) return built;
   if (mode === 'test' && built.value.totalCents === 0) return err(validation('Test checkout requires a paid price without a coupon'));
-  const checkoutSnapshotId = deps.ids.nextId();
   const language = settings.defaultLanguage ?? 'en';
   const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
   const termsAcceptanceMessage = input.termsAcceptanceMessage(legal, language);
   if (termsAcceptanceMessage.length > 1200) return err(validation('Checkout terms acceptance text exceeds 1200 characters'));
+  if (mode === 'test' && staffTestSession !== undefined) {
+    return startCheckoutSession(tenant, tenantBaseUrl, { productId, email: staffTestSession.email, language }, selection.value, deps, undefined,
+      { mode: 'test', memberId: staffTestSession.memberId }, { ...legal, termsAcceptanceMessage });
+  }
+  const checkoutSnapshotId = deps.ids.nextId();
   const checkoutBranding = resolveCheckoutBranding(settings, tenantBaseUrl);
   const checkoutPath = `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}`;
   const checkoutQuery = `&salesLinkId=${encodeURIComponent(link.id)}`;

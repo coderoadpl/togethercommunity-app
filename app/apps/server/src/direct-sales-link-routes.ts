@@ -1,8 +1,9 @@
 import type { Hono } from 'hono';
+import { deleteCookie } from 'hono/cookie';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
 import { err, forbidden, internal, tenantNotFound, validation } from '#core/domain/index.js';
-import { authLinkBaseUrl, createDirectSalesLinkCheckout, getDirectSalesLinkMode, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
+import { authLinkBaseUrl, createDirectSalesLinkCheckout, ensureMember, getDirectSalesLinkMode, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
@@ -10,11 +11,13 @@ import { directSalesLinkCopy, renderDirectSalesLinkPage } from './direct-sales-l
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import { SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
+import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
 
 export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   app.get('/offer/:slug', async (c, next) => {
+    const crawler = SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? '');
     const status = c.req.query('status');
-    if (status === 'success' || status === 'cancelled') {
+    if (!crawler && (status === 'success' || status === 'cancelled')) {
       await next();
       return;
     }
@@ -34,7 +37,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       canonicalUrl: `${await authLinkBaseUrl(resolved.value, deps)}/offer/${encodeURIComponent(slug)}`,
       language: settings?.defaultLanguage ?? 'en',
       endpoint: API_PATHS.directSalesLinkCheckout.replace(':slug', encodeURIComponent(slug)),
-      crawler: SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? ''),
+      crawler,
       nonce: c.get('secureHeadersNonce') ?? '',
     };
     const headers = { 'cache-control': 'no-store', vary: 'User-Agent' };
@@ -43,7 +46,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     });
     const products = await deps.products.findByIds(tenant.id, offer.value.lines.map((line) => line.productId));
     const missingLegal = settings?.termsUrl == null || settings.privacyUrl === null;
-    if (!missingLegal && c.req.query('checkout') === 'together') {
+    if (!crawler && !missingLegal && c.req.query('checkout') === 'together') {
       await next();
       return;
     }
@@ -76,18 +79,27 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     if (origin !== undefined && (!URL.canParse(origin) || new URL(origin).host !== (c.req.header('host') ?? new URL(c.req.url).host))) return respond(err(forbidden('Checkout must start from this workspace')));
     const parsed = salesLinkContracts.directSalesLinkCheckout.input.safeParse(form ? Object.fromEntries(new URLSearchParams(await c.req.text())) : await readJson(c.req.raw));
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
+    const identity = parsed.data.mode === 'test' ? await stripeTestCheckoutIdentity(c, resolved.value.tenant.id, deps) : null;
+    const staffTest = identity !== null;
+    const selectedMode = await getDirectSalesLinkMode(resolved.value.tenant.id, parsed.data.mode, deps);
+    if (!selectedMode.ok) return respond(selectedMode);
+    const member = staffTest && identity !== null && selectedMode.value === 'test' ? await ensureMember(resolved.value.tenant.id, identity.email, deps) : null;
+    if (member !== null && !member.ok) return respond(member);
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
       mode: parsed.data.mode,
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
-    }, deps);
+    }, deps, member?.ok === true && identity !== null ? { memberId: member.value.id, email: identity.email } : undefined);
     if (!result.ok) return respond(result);
     const output = salesLinkContracts.directSalesLinkCheckout.output.safeParse(result.value);
     if (!output.success) return respond(err(internal('Checkout response does not match the contract')));
     if (form) {
       c.set('signupRedirectOrigin', new URL(output.data.url).origin);
-      return c.redirect(output.data.url, 303);
+      c.res = c.redirect(output.data.url, 303);
+    } else {
+      c.res = respond({ ok: true, value: output.data }, { headers: { 'cache-control': 'no-store' } });
     }
-    return respond({ ok: true, value: output.data }, { headers: { 'cache-control': 'no-store' } });
+    if (staffTest) deleteCookie(c, 'together_stripe_test', { path: '/' });
+    return c.res;
   });
 };

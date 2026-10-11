@@ -168,7 +168,7 @@ describe('SalesPanel', () => {
     expect(exportQueries[0]).not.toContain('pageSize=');
   });
 
-  it('filters the sandbox rows and blocks the exports while the test mode is selected', async () => {
+  it.each(['m1', null])('filters sandbox rows and blocks exports with member %s', async (memberId) => {
     const user = userEvent.setup();
     const listQueries: string[] = [];
     server.use(
@@ -184,7 +184,7 @@ describe('SalesPanel', () => {
           ok: true,
           data: {
             orders: [{
-              id: 'o-test', tenantId: 't1', memberId: 'm1', productId: 'p1', priceId: null,
+              id: 'o-test', tenantId: 't1', memberId: search.includes('mode=test') ? memberId : 'm1', productId: 'p1', priceId: null,
               mode: search.includes('mode=test') ? 'test' : 'live',
               kind: 'one_time', status: 'paid', amountCents: 4900, currency: 'PLN',
               provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
@@ -218,6 +218,9 @@ describe('SalesPanel', () => {
 
     await waitFor(() => expect(listQueries.some((query) => query.includes('mode=test'))).toBe(true));
     await waitFor(() => expect(screen.getByTestId('sales-row')).toHaveTextContent(en.sales.testChip));
+    expect(screen.getByRole('cell', { name: 'Ada' })).toHaveTextContent('Ada');
+    if (memberId === null) expect(screen.queryByRole('link', { name: 'Ada' })).not.toBeInTheDocument();
+    else expect(screen.getByRole('link', { name: 'Ada' })).toHaveAttribute('href', '/panel/members/m1');
     expect(screen.getByTestId('sales-export-csv')).toBeDisabled();
     expect(screen.getByTestId('sales-export-json')).toBeDisabled();
   });

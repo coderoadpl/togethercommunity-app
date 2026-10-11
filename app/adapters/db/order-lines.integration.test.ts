@@ -54,6 +54,30 @@ describe('order and checkout snapshots', () => {
     expect(await repository.findById('other', 'order-a')).toBeNull();
   });
 
+  it('records anonymous test orders without membership and exposes their checkout buyer in staff lists', async () => {
+    const repository = createOrderRepository(database.db);
+    const customerDetails = { email: 'anonymous@example.org', name: 'Anonymous buyer', address: null, taxIds: [] };
+    const anonymousOrder = orderSchema.parse({ ...order('anonymous-test'), memberId: null, mode: 'test', customerDetails });
+    await repository.create('workspace', anonymousOrder);
+    expect(await repository.findById('workspace', anonymousOrder.id)).toMatchObject({
+      memberId: null, mode: 'test', memberEmail: customerDetails.email, memberName: customerDetails.name, customerDetails,
+    });
+    const page = await repository.list('workspace', { page: 1, pageSize: 100, mode: 'test', search: 'anonymous@example.org' });
+    expect(page.total).toBe(1);
+    expect(page.orders).toMatchObject([{ id: anonymousOrder.id, memberId: null, mode: 'test', memberEmail: customerDetails.email }]);
+    expect((await repository.list('workspace', { page: 1, pageSize: 100, mode: 'live' })).orders.some((row) => row.id === anonymousOrder.id)).toBe(false);
+    expect(await repository.findById('other', anonymousOrder.id)).toBeNull();
+    expect((await repository.list('other', { page: 1, pageSize: 100, mode: 'test' })).total).toBe(0);
+    expect(await database.db.select().from(members).where(eq(members.email, customerDetails.email))).toEqual([]);
+    expect(await database.db.select().from(user).where(eq(user.email, customerDetails.email))).toEqual([]);
+    expect(await repository.listPaidWithoutGrant('workspace', { paidBefore: now, limit: 100 })).not.toEqual(expect.arrayContaining([expect.objectContaining({ orderId: anonymousOrder.id })]));
+  });
+
+  it('refuses an anonymous live order at the database boundary', async () => {
+    await expect(database.db.insert(orders).values({ ...order('anonymous-live'), memberId: null, mode: 'live' }))
+      .rejects.toMatchObject({ cause: { code: '23514', constraint: 'orders_member_required_for_live' } });
+  });
+
   it('captures a single line and physical issue count for inserts from the previous release', async () => {
     const [physical] = await database.db.insert(orders).values({ id: 'old-physical', tenantId: 'workspace', memberId: 'member', productId: 'physical-legacy', kind: 'one_time', status: 'paid', amountCents: 12300, currency: 'PLN', provider: 'simulated', createdAt: now }).returning();
     expect(physical?.lines).toMatchObject([{ productId: 'physical-legacy', productType: 'physical', grossCents: 12300, vatRate: 23, netCents: 10000, vatCents: 2300, issuedCount: 0 }]);

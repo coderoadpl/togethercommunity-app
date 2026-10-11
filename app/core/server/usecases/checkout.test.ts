@@ -638,6 +638,11 @@ it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects i
 
 const directCheckout = async () => {
   const h = bundleCheckout();
+  h.deps.secretCrypto = {
+    encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
+    decrypt: (stored) => ok(stored.ciphertext === 'stripe.testRestrictedKey' ? 'rk_test_available' : 'rk_live_available'),
+  };
+  h.deps.tenantSecrets.findByKey = async (_tenantId, key) => ({ ...secret(key), ciphertext: key });
   const { tenantSettingsSchema } = await import('#core/domain/index.js');
   const settings = tenantSettingsSchema.parse({
     name: 'Workspace', billingPortalUrl: null, bunnyStreamLibraryId: null,
@@ -686,6 +691,15 @@ it('stores anonymous test session correlation and the test return marker', async
     cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&test=1&salesLinkId=link-1',
   });
   expect(h.snapshots[0]).toMatchObject({ mode: 'test', providerSessionId: 'bundle-session' });
+});
+
+it('refuses configured test mode when key decryption is unavailable', async () => {
+  const h = await directCheckout();
+  delete h.deps.secretCrypto;
+  expect(await h.start('test')).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.calls).toHaveLength(0);
+  expect(h.snapshots).toHaveLength(0);
+  expect(await h.start('live')).toMatchObject({ ok: true });
 });
 
 it.each(['unreadable', 'live-key'] as const)('rejects a requested test checkout with a %s test key even when live credentials work', async (failure) => {

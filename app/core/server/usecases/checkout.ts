@@ -141,6 +141,7 @@ export const startCheckoutSession = async (
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
   testSession?: { mode: 'test'; memberId?: string },
+  directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string },
 ): Promise<Result<{
   url: string;
   coupon?: CouponCheckoutBreakdown;
@@ -153,7 +154,7 @@ export const startCheckoutSession = async (
   if (publicTestSession && (selection.salesLinkId === undefined || deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Sales link test checkout is not configured'));
   }
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, publicTestSession);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, publicTestSession || directCheckout !== undefined);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
@@ -267,6 +268,7 @@ export const startCheckoutSession = async (
     tenantId: tenant.id,
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
+    ...(directCheckout === undefined ? {} : { directCheckout }),
     productId: product.id,
     productName: product.title,
     ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
@@ -291,14 +293,14 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
-  if (publicTestSession && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
+  if ((publicTestSession || directCheckout !== undefined) && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
     try {
       await deps.checkoutSnapshots.create(tenant.id, {
         id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: selection.salesLinkId ?? null,
-        lines, currency, mode: 'test', providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
+        lines, currency, mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
       });
     } catch (cause) {
-      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode: 'test' });
+      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
       throw cause;
     }
   }

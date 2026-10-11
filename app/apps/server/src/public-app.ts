@@ -96,6 +96,7 @@ import { readJson, requireJsonContentType } from './read-json.js';
 import type { AppVars } from './app-vars.js';
 import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
+import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
 import { registerDirectSalesLinkRoutes } from './direct-sales-link-routes.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
@@ -689,14 +690,15 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
-    const identity = await checkoutIdentity(c, deps);
-    const staffTestMode = identity?.tenantId === tenant.value.tenant.id &&
-      hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const body: unknown = await readJson(c.req.raw);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);
+    const identity = selection.value.salesLinkId === undefined
+      ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
+    const staffTestMode = identity?.tenantId === tenant.value.tenant.id &&
+      hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id,
       selection.value.salesLinkId !== undefined && parsed.data.salesLinkTest === true ? 'test' : 'live', deps);
     if (!salesLinkMode.ok) return respondPublic(salesLinkMode);
@@ -719,9 +721,13 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (testMember !== null && !testMember.ok) return respondPublic(testMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsentCaptureId = deps.ids.nextId();
-    if (!testMode) {
+    const captureConsent = !testMode || selection.value.salesLinkId !== undefined;
+    if (captureConsent) {
+      const legal = testMode ? await deps.tenants.findSettings(tenant.value.tenant.id) : null;
       const checkoutConsent = {
         termsAccepted: parsed.data.termsAccepted === true,
+        ...(legal?.termsUrl == null ? {} : { termsUrl: legal.termsUrl }),
+        ...(legal?.privacyUrl == null ? {} : { privacyUrl: legal.privacyUrl }),
         selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
         attachedDefinitionIds: [...new Set((selection.value.products ?? [selection.value.product]).flatMap((product) => product.checkoutConsentDefinitionIds ?? []))],
         collectedAt: deps.clock.nowIso(),
@@ -741,7 +747,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       testMode && testEmail !== undefined ? { ...parsed.data, email: testEmail } : parsed.data,
       selection.value,
       deps,
-      testMode ? undefined : checkoutConsentCaptureId,
+      captureConsent ? checkoutConsentCaptureId : undefined,
       testMode ? { mode: 'test', ...(testMember?.ok === true ? { memberId: testMember.value.id } : {}) } : undefined,
     );
     if (

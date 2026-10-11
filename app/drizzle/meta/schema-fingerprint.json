@@ -1,6 +1,6 @@
 {
-  "hash": "4128725eff86ad0f1c8fec31f7ab827674118b78f6821ea5c94b471f648a2a12",
-  "shortId": "4128725eff86",
+  "hash": "7fc97f74dd1dd81d0081e73308de6944aabed8e7136153757c634efa90b26e95",
+  "shortId": "7fc97f74dd1d",
   "schema": {
     "constraints": [
       {
@@ -37,6 +37,11 @@
         "definition": "CHECK (((length(display_name) <= 200) AND (length(first_name) <= 200) AND (length(last_name) <= 200) AND ((length(source) >= 1) AND (length(source) <= 120))))",
         "name": "marketing_contacts_names_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK (((member_id IS NOT NULL) OR (mode = 'test'::text)))",
+        "name": "orders_member_required_for_live",
+        "table": "orders"
       },
       {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
@@ -3619,7 +3624,7 @@
             "generated": "",
             "identity": "",
             "name": "member_id",
-            "notNull": true,
+            "notNull": false,
             "type": "text"
           },
           {

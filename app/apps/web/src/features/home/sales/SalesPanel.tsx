@@ -334,12 +334,12 @@ export const SalesPanel = () => {
                       </MuiLink>
                     </TableCell>
                     <TableCell>
-                      <MuiLink
+                      {order.memberId === null ? order.memberName ?? order.memberEmail : <MuiLink
                         component={Link}
                         to={`/panel/members/${order.memberId}`}
                       >
                         {order.memberName ?? order.memberEmail}
-                      </MuiLink>
+                      </MuiLink>}
                     </TableCell>
                     <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>

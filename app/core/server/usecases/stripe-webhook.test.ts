@@ -1,7 +1,7 @@
 import type { CheckoutConsentCapture, OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
@@ -2632,6 +2632,18 @@ it('preserves the direct checkout NIP on the order and invoice job with an incom
   expect(h.autoInvoiceJobs).toHaveLength(1);
 });
 
+it.each([
+  { companyName: 'Buyer Name', nip: null, address: '', postalCode: '00-001', city: '', country: 'PL' },
+  { companyName: 'Buyer Name', nip: null, address: 'Main 1', postalCode: '10115', city: 'Berlin', country: 'DE' },
+])('retains direct checkout billing without a Polish NIP ($country)', async (billing) => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.billing = billing;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.billing).toEqual(billing);
+  expect(h.enrollmentEmails).toHaveLength(1);
+});
+
 it('fulfills direct checkout with buyer details and consent URLs from checkout, once', async () => {
   const h = await directBundlePayment();
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
@@ -2655,24 +2667,172 @@ it('rejects direct checkout without accepted consent and rolls back fulfillment'
   expect(h.consents).toHaveLength(0);
 });
 
-it.each(['matching', 'consent-fallback', 'live-mode', 'wrong-session', 'wrong-total'] as const)('correlates anonymous sales-link test checkout with its persisted snapshot (%s)', async (variant) => {
+const anonymousTestPayment = async () => {
   const h = await directBundlePayment();
   h.event.mode = 'test';
   h.event.livemode = false;
-  if (variant === 'consent-fallback' && h.event.checkoutSession !== null) delete h.event.checkoutSession.metadata.directCheckout;
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
-    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
-      currency: 'PLN', createdAt: now, mode: variant === 'live-mode' ? 'live' : 'test',
-      providerSessionId: variant === 'wrong-session' ? 'cs-other' : 'cs-1' }),
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
+      ? { id, tenantId, salesLinkId: 'link-1', lines: h.lines, currency: 'PLN', createdAt: now,
+        mode: 'test', providerSessionId: 'cs-1' } : null,
   };
-  if (variant === 'wrong-total' && h.event.checkoutSession !== null) h.event.checkoutSession.amountTotalCents = 1;
-  const matching = variant === 'matching' || variant === 'consent-fallback';
-  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: matching }));
-  expect(h.orders).toHaveLength(matching ? 1 : 0);
-  expect(h.orders.every((order) => order.mode === 'test')).toBe(true);
-  expect([...h.grants.values()].every((grant) => grant.mode === 'test')).toBe(true);
-  expect(h.enrollmentEmails).toHaveLength(0);
-  expect(h.consents).toHaveLength(0);
-  expect(h.captures.size).toBe(0);
+  return h;
+};
+
+it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded'])(
+  'records anonymous test %s without identity, access or email', async (type) => {
+    const h = await anonymousTestPayment();
+    h.event.type = type;
+    const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+    const createMember = vi.spyOn(h.deps.members, 'create');
+    const enroll = vi.spyOn(h.deps.enrollmentTransaction, 'run');
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ mode: 'test', memberId: null, status: 'paid', lines: h.lines,
+      billing: { nip: '5260250274' }, customerDetails: { email: 'buyer@example.com', name: 'Buyer Name' } });
+    expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
+      termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
+    expect(h.captures.size).toBe(1);
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(createMember).not.toHaveBeenCalled();
+    expect(enroll).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(h.members.size).toBe(0);
+    expect(h.grants.size).toBe(0);
+    expect(h.sent).toEqual([]);
+    expect(h.queued).toEqual([]);
+    expect(h.autoInvoiceJobs).toEqual([]);
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, { ...h.event, id: 'another-test-event' }, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.consents).toHaveLength(1);
+  },
+);
+
+it.each(['live-mode', 'wrong-session', 'wrong-total', 'wrong-tenant'] as const)(
+  'rejects an uncorrelated anonymous test checkout (%s)', async (variant) => {
+    const h = await anonymousTestPayment();
+    if (h.event.checkoutSession === null) throw new Error('Missing session');
+    if (variant === 'wrong-total') h.event.checkoutSession.amountTotalCents = 1;
+    h.deps.checkoutSnapshots = {
+      create: async () => undefined,
+      findById: async () => ({ id: 'snapshot-1', tenantId: variant === 'wrong-tenant' ? 'tenant-b' : tenantA.id,
+        salesLinkId: 'link-1', lines: h.lines, currency: 'PLN', createdAt: now,
+        mode: variant === 'live-mode' ? 'live' : 'test', providerSessionId: variant === 'wrong-session' ? 'cs-other' : 'cs-1' }),
+    };
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toEqual([]);
+    expect(h.members.size).toBe(0);
+    expect(h.grants.size).toBe(0);
+    expect(h.enrollmentEmails).toEqual([]);
+    expect(h.consents).toEqual([]);
+  },
+);
+
+it.each(['direct', 'fallback'])('fulfills a staff %s test pending order with test grants and no purchase email', async (flow) => {
+  const h = await anonymousTestPayment();
+  const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
+  const magicLink = vi.spyOn(h.deps.authPort, 'createEnrollmentMagicLink');
+  if (flow === 'fallback') {
+    if (h.event.checkoutSession === null) throw new Error('Missing session');
+    delete h.event.checkoutSession.metadata.directCheckout;
+    h.event.checkoutSession.metadata.checkoutConsentCaptureId = 'staff-fallback';
+    h.captures.set('staff-fallback', {
+      termsAccepted: true, termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy',
+      selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: now, confirmationBaseUrl: 'https://example.com',
+      ...(h.event.checkoutSession.billing == null ? {} : { billing: h.event.checkoutSession.billing }),
+    });
+  }
+  const member = memberSchema.parse({ id: 'staff-member', tenantId: tenantA.id, userId: 'staff-user',
+    email: 'buyer@example.com', displayName: 'Staff', createdAt: now, tags: [], marketingConsents: {}, externalCustomerIds: {}, deletedAt: null });
+  await h.deps.members.create(tenantA.id, member);
+  h.orders.push({ id: 'staff-test-order', tenantId: tenantA.id, mode: 'test', memberId: member.id,
+    productId: 'product-1', priceId: null, kind: 'one_time', status: 'pending', amountCents: 12400,
+    currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs-1' },
+    couponId: null, discountCents: 0, billing: null, lines: h.lines, salesLinkId: 'link-1', createdAt: now,
+    verificationToken: 'b'.repeat(64) });
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.members.size).toBe(1);
+  expect(h.orders).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', billing: { nip: '5260250274' } });
+  expect([...h.grants.values()].map((grant) => grant.mode)).toEqual(['test', 'test']);
+  expect(h.enrollmentEmails).toEqual([]);
+  expect(h.queued).toEqual([]);
+  expect(h.sent).toEqual([]);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(magicLink).not.toHaveBeenCalled();
+  expect(h.autoInvoiceJobs).toHaveLength(1);
+  expect(h.consents).toHaveLength(1);
+  expect(await fulfillStripeWebhook(tenantA, { ...h.event, id: 'staff-retry' }, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.enrollmentEmails).toEqual([]);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(magicLink).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('never applies tenant A test events to tenant B (recorded order: %s)', async (recorded) => {
+  const h = await anonymousTestPayment();
+  if (recorded) expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  const before = structuredClone(h.orders);
+  const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+  const createMember = vi.spyOn(h.deps.members, 'create');
+  const createOrder = vi.spyOn(h.deps.orders, 'create');
+  const eventClaim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+  expect(await fulfillStripeWebhook({ ...tenantA, id: 'tenant-b', slug: 'beta' }, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(ensureUser).not.toHaveBeenCalled();
+  expect(createMember).not.toHaveBeenCalled();
+  expect(createOrder).not.toHaveBeenCalled();
+  expect(eventClaim).not.toHaveBeenCalled();
+  expect(h.orders).toEqual(before);
+  expect(h.members.size).toBe(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.enrollmentEmails).toEqual([]);
+});
+
+it('records anonymous fallback test consent and billing without marketing enrollment or email', async () => {
+  const h = await anonymousTestPayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  delete h.event.checkoutSession.metadata.directCheckout;
+  h.event.checkoutSession.metadata.checkoutConsentCaptureId = 'fallback-capture';
+  const billing = h.event.checkoutSession.billing;
+  h.captures.set('fallback-capture', {
+    termsAccepted: true, termsUrl: 'https://example.com/fallback-terms', privacyUrl: 'https://example.com/fallback-privacy',
+    selectedDefinitionIds: ['marketing'], attachedDefinitionIds: ['marketing'], collectedAt: now,
+    confirmationBaseUrl: 'https://example.com/marketing/confirm', ...(billing == null ? {} : { billing }),
+  });
+  const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+  const enroll = vi.spyOn(h.deps.enrollmentTransaction, 'run');
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ mode: 'test', memberId: null, billing });
+  expect(h.consents).toMatchObject([{ termsUrl: 'https://example.com/fallback-terms', privacyUrl: 'https://example.com/fallback-privacy' }]);
+  expect(ensureUser).not.toHaveBeenCalled();
+  expect(enroll).not.toHaveBeenCalled();
+  expect(h.members.size).toBe(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.sent).toEqual([]);
+  expect(h.queued).toEqual([]);
+  expect(h.autoInvoiceJobs).toEqual([]);
+});
+
+it('keeps the checkout email on an anonymous test order when customer details omit it', async () => {
+  const h = await anonymousTestPayment();
+  if (h.event.checkoutSession?.customerDetails == null) throw new Error('Missing buyer details');
+  h.event.checkoutSession.customerDetails.email = null;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.customerDetails?.email).toBe('buyer@example.com');
+  expect(h.members.size).toBe(0);
+});
+
+it('rejects anonymous test fulfillment without consent before any order or identity is created', async () => {
+  const h = await anonymousTestPayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.termsAccepted = false;
+  const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.orders).toEqual([]);
+  expect(h.members.size).toBe(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.enrollmentEmails).toEqual([]);
+  expect(ensureUser).not.toHaveBeenCalled();
 });

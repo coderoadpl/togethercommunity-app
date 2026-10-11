@@ -64,7 +64,8 @@ an offer follows the same flow. GET requests never create a payment session.
 User agents matching the edge crawler list receive the same metadata without
 scripts or forms: facebookexternalhit, Twitterbot, LinkedInBot, Slackbot,
 Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and Applebot. The checkout
-POST also refuses these crawlers.
+POST also refuses these crawlers. The edge forwards crawler requests before
+browser fallbacks, including `?checkout=together` and `status=success|cancelled`.
 
 `?test` with any value selects the configured Stripe test key; without a test
 key it stays live. Test payments keep the TEST indicator, do not unlock real
@@ -73,14 +74,28 @@ If the stored test key cannot be decrypted or belongs to live mode, checkout
 returns an error without creating a session or switching to live credentials.
 Cancellation retains test mode for an explicit retry through the server handoff;
 anonymous success returns display the TEST notice without requiring a staff session.
-Public test checkout, including the purchase-consent fallback, creates no auth
-user, member or pending order before payment. A snapshot bound to the Stripe
-session and test mode supplies the webhook correlation. The staff test switch
-continues to assign its pending order to the signed-in staff account.
+Test fulfillment has two paths, including on the purchase-consent fallback:
+
+- **Staff test:** the request carries the existing server-side Stripe test session
+  bound to the signed-in account and tenant, and checkout rechecks tenant staff
+  membership. The existing staff path stores a pending test order before returning
+  the Stripe URL. Fulfillment keeps the member and test grant while suppressing purchase
+  confirmation email and magic links.
+- **Anonymous test:** without that verified staff session, the configured,
+  readable test key permits checkout without creating an auth user, member or
+  pending order. A snapshot bound to the tenant, Stripe session and test mode
+  correlates the payment. The webhook records only the test order, lines, consent
+  and billing snapshot. It creates no auth user or member, issues no grant and
+  sends no email. A snapshot match never authorizes identity or access creation.
+
+Signing in without the staff test session does not enable full test fulfillment.
+A test event for one tenant cannot fulfill a checkout for another tenant. Both
+paths retain the TEST badge and revenue exclusion; live checkout is unchanged.
 
 Stripe collects the buyer email, name, billing address when provided, and tax
 IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only
-NIP. Stripe requires terms acceptance; Together records that acceptance with the
+NIP. Foreign and incomplete billing addresses are retained without a Polish NIP.
+Stripe requires terms acceptance; Together records that acceptance with the
 exact terms and privacy URLs stored in session metadata. Set a valid account
 terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
 linking the tenant's terms and privacy URLs. A tenant missing either legal URL
@@ -98,10 +113,9 @@ the automatic handoff.
 Owners configure **Integrations → Stripe → Checkout appearance**: display name,
 HTTPS logo and icon URLs, background and button hex colours, font and corners.
 Empty overrides use the tenant branding in Settings (name, logo, accent colour
-and favicon). Settings are saved, but appearance overrides are currently inactive:
-the installed Stripe SDK does not declare support for `branding_settings`, so
-sales links, single-product checkout and subscriptions use Stripe account
-appearance until a supported SDK or API version is verified.
+and favicon). Sales links, single-product checkout and subscriptions send these
+resolved settings to Stripe in both live and test mode. If all overrides and
+branding defaults are empty, Stripe uses its account appearance.
 See [Payments](payments.md).
 
 Invoices contain one position per order line with its own treatment. Coupon

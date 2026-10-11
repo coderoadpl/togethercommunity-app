@@ -288,6 +288,7 @@
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
           "bunnyStreamCdnHostname": null,
           "bunnyStreamLibraryId": null,
+          "checkoutAppearance": null,
           "defaultHomeSpaceId": "space-studio-community",
           "defaultLanguage": "en",
           "directMessagesEnabled": true,

@@ -4,7 +4,6 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
-  billingDataSchema,
   orderBillingDataSchema,
   nipSchema,
   checkoutCustomerDetailsSchema,
@@ -21,6 +20,7 @@ import {
   validation,
   stripeKeyModeConflicts,
   type AppError,
+  type CheckoutBranding,
   type Result,
   type StripePermissionCheck,
 } from '#core/domain/index.js';
@@ -63,6 +63,34 @@ export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readon
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
+// The installed SDK predates the session branding fields supported by Stripe.
+type BrandedCheckoutSessionParams = Stripe.Checkout.SessionCreateParams & {
+  branding_settings?: {
+    display_name?: string;
+    logo?: { type: 'url'; url: string };
+    icon?: { type: 'url'; url: string };
+    background_color?: string;
+    button_color?: string;
+    font_family?: NonNullable<CheckoutBranding['fontFamily']>;
+    border_style?: NonNullable<CheckoutBranding['borderStyle']>;
+  };
+};
+
+const checkoutBrandingParams = (branding: CheckoutBranding | undefined): BrandedCheckoutSessionParams => {
+  if (branding === undefined || Object.keys(branding).length === 0) return {};
+  return {
+    branding_settings: {
+      ...(branding.displayName === undefined ? {} : { display_name: branding.displayName }),
+      ...(branding.logoUrl === undefined ? {} : { logo: { type: 'url', url: branding.logoUrl } }),
+      ...(branding.iconUrl === undefined ? {} : { icon: { type: 'url', url: branding.iconUrl } }),
+      ...(branding.backgroundColor === undefined ? {} : { background_color: branding.backgroundColor }),
+      ...(branding.buttonColor === undefined ? {} : { button_color: branding.buttonColor }),
+      ...(branding.fontFamily === undefined ? {} : { font_family: branding.fontFamily }),
+      ...(branding.borderStyle === undefined ? {} : { border_style: branding.borderStyle }),
+    },
+  };
+};
+
 export const stripeCouponParams = (
   input: EnsureCouponRequest,
 ): Stripe.CouponCreateParams => ({
@@ -90,7 +118,7 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
-): Stripe.Checkout.SessionCreateParams => {
+): BrandedCheckoutSessionParams => {
   const locale = localeFor(input.language);
   const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
   const productMetadata: Record<string, string> = {};
@@ -99,6 +127,7 @@ export const stripeCheckoutSessionParams = (
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
   return {
+    ...checkoutBrandingParams(input.checkoutBranding),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
@@ -163,13 +192,13 @@ const checkoutBilling = (details: Stripe.Checkout.Session.CustomerDetails | null
     ?.filter((item) => item.type === 'eu_vat' && item.value?.startsWith('PL'))
     .map((item) => nipSchema.safeParse(item.value?.replace(/\D/g, '')))
     .find((parsed) => parsed.success)?.data ?? null;
-  if (details.address?.country !== 'PL' && nip === null) return null;
-  const billing = (nip === null ? billingDataSchema : orderBillingDataSchema).safeParse({
+  if (details.address == null && nip === null) return null;
+  const billing = orderBillingDataSchema.safeParse({
     companyName: details.name ?? '',
     address: [details.address?.line1, details.address?.line2].filter(Boolean).join(', '),
     postalCode: details.address?.postal_code ?? '',
     city: details.address?.city ?? '',
-    country: details.address?.country ?? 'PL',
+    country: details.address?.country ?? (nip === null ? '' : 'PL'),
     nip,
   });
   return billing.success ? billing.data : null;

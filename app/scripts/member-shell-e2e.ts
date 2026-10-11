@@ -100,8 +100,8 @@ const assertText = async (locator: Locator, expected: string, label: string): Pr
 };
 
 const assertSelected = async (locator: Locator, label: string): Promise<void> => {
-  const classes = await locator.getAttribute('class');
-  assert(classes?.includes('Mui-selected') === true, `${label}: expected the row to be selected`);
+  const selected = await locator.getAttribute('data-selected');
+  assert(selected !== null, `${label}: expected the row to be selected`);
 };
 
 const runMobileStartAndSearchJourney = async (page: Page, baseUrl: string): Promise<void> => {

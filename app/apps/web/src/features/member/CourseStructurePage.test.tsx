@@ -294,7 +294,7 @@ describe('CourseStructurePage', () => {
     expect(within(inlineProgram).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
     expect(screen.getAllByTestId('course-tree')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('lesson-search')).toBeInTheDocument();
-    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+    expect(within(inlineProgram).getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -308,11 +308,11 @@ describe('CourseStructurePage', () => {
 
     const inlineProgram = await screen.findByTestId('course-tree-inline');
 
-    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+    expect(within(inlineProgram).getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute(
       'aria-expanded',
       'true',
     );
-    expect(within(inlineProgram).getByTestId('module-toggle-m1')).toHaveAttribute(
+    expect(within(inlineProgram).getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -327,11 +327,11 @@ describe('CourseStructurePage', () => {
 
     const inlineProgram = await screen.findByTestId('course-tree-inline');
 
-    expect(within(inlineProgram).getByTestId('module-toggle-m1')).toHaveAttribute(
+    expect(within(inlineProgram).getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
-    expect(within(inlineProgram).getByTestId('module-toggle-m2')).toHaveAttribute(
+    expect(within(inlineProgram).getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -565,7 +565,7 @@ describe('CourseStructurePage', () => {
       en.anon.lockedCourseHint,
     );
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
     expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
@@ -662,13 +662,13 @@ describe('CourseStructurePage', () => {
     await renderPage(<CourseStructurePage courseId="course-1" />);
     const user = userEvent.setup();
     const module = await screen.findByTestId('module-toggle-m1');
-    expect(module).toHaveAttribute('aria-expanded', 'false');
+    expect(module.closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(module).toHaveTextContent(`3 ${en.courseOverview.statLessons({ count: 3 })}`);
     await user.click(module);
-    expect(await screen.findByTestId('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'true');
+    expect((await screen.findByTestId('chapter-toggle-c1')).closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
     expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(en.anon.previewChip);
     expect(screen.getByTestId('lesson-button-l1')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
-    expect(screen.getByTestId('lesson-button-l2')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('lesson-button-l2').closest('[role="treeitem"]')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('lesson-button-l2')).not.toHaveAttribute('href');
     expect(screen.queryByTestId('unlock-lesson-l2')).not.toBeInTheDocument();
   });

@@ -1,5 +1,0 @@
-Progress: resolved 0, reused 1, downloaded 0, added 0
- WARN  deprecated eslint@9.39.4: This version is no longer supported. Please see https://eslint.org/version-support for other options.
- ERR_PNPM_NO_OFFLINE_META  Failed to resolve stripe@19.0.0 in package mirror /Users/chomamateusz/Library/Caches/pnpm/metadata-ff-v1.3/registry.npmjs.org/stripe.json
-
-This error happened while installing a direct dependency of /Users/chomamateusz/repositories/together-wt-direct-stripe/app

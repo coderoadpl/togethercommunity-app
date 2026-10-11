@@ -9417,7 +9417,7 @@ const directSalesLinkApp = async () => {
 };
 
 describe('direct public sales-link checkout', () => {
-  it.each(['unknown', 'inactive', 'expired'] as const)('renders a localized HTML error for an %s offer without checkout actions', async (state) => {
+  it.each(['unknown', 'inactive', 'expired'] as const)('renders an HTML error for an %s offer without checkout actions', async (state) => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, defaultLanguage: 'pl' });
     h.salesLinks.findBySlug = async () => state === 'unknown' ? null : {

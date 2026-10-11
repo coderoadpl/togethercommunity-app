@@ -42,7 +42,6 @@ describe('deleteProductDraft', () => {
     ['checkout_snapshots', 'checkout snapshot'],
     ['coupon_checkout_sessions', 'coupon checkout session'],
     ['subscriptions', 'subscriptions'],
-    ['price_history', 'price history'],
   ] as const)('refuses %s with a specific validation reason', async (reason, message) => {
     const { deps, remove } = depsFor({ kind: 'refused', reason });
     expect(await deleteProductDraft(ctx, { productId: 'draft' }, deps)).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining(message), details: { productDraftRefusal: reason } } });

@@ -19,7 +19,6 @@ const refusalMessages = {
   checkout_snapshots: 'This product is referenced by a checkout snapshot and cannot be deleted',
   coupon_checkout_sessions: 'This product is referenced by a coupon checkout session and cannot be deleted',
   subscriptions: 'This product has subscriptions and cannot be deleted',
-  price_history: 'This product has recorded price history and cannot be deleted',
 };
 
 export const deleteProductDraft = async (

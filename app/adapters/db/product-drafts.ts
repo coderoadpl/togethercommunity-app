@@ -34,11 +34,10 @@ export const createProductDraftRepository = (db: Db): ProductDraftRepository => 
     const [subscription] = await tx.select({ id: memberSubscriptions.id }).from(memberSubscriptions)
       .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.productId, productId))).limit(1);
     if (subscription !== undefined) return { kind: 'refused', reason: 'subscriptions' };
-    const [history] = await tx.select({ id: productPriceHistory.id }).from(productPriceHistory)
-      .where(and(eq(productPriceHistory.tenantId, tenantId), eq(productPriceHistory.productId, productId))).limit(1);
-    if (history !== undefined) return { kind: 'refused', reason: 'price_history' };
     const assets = await tx.delete(productDownloadAssets)
       .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).returning();
+    await tx.delete(productPriceHistory)
+      .where(and(eq(productPriceHistory.tenantId, tenantId), eq(productPriceHistory.productId, productId)));
     await tx.delete(productPrices).where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId)));
     await tx.delete(products).where(and(eq(products.tenantId, tenantId), eq(products.id, productId)));
     return { kind: 'deleted', assets: assets.map((asset) => productDownloadAssetSchema.parse(asset)) };

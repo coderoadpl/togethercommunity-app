@@ -1261,7 +1261,6 @@ export const en: Messages = {
   products: {
     deleteDraft: 'Delete draft',
     deleteDraftBody: 'The product draft will be permanently deleted.',
-    deleteDraftPriceHistory: 'This draft has recorded price history and cannot be deleted.',
 
     visibilityLabel: 'Visibility',
     listed: 'Listed',

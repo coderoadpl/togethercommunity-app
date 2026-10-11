@@ -1174,7 +1174,6 @@ export interface Messages {
   products: {
     deleteDraft: string;
     deleteDraftBody: string;
-    deleteDraftPriceHistory: string;
     visibilityLabel: string;
     visibilityHelper: string;
     listed: string;

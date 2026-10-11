@@ -144,8 +144,5 @@ export const localizeError = (error: unknown, t: Messages): string => {
 
 export const localizePanelError = (error: unknown, t: Messages): string => {
   const code = errorCodeOf(error);
-  if (code === 'validation' && stringDetailOf(error, 'productDraftRefusal') === 'price_history') {
-    return t.products.deleteDraftPriceHistory;
-  }
   return code === null ? t.errors.messageUnknown : localizeErrorCodeForPanel(code, t);
 };

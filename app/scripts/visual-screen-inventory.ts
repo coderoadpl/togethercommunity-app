@@ -490,11 +490,13 @@ export const SCREENS: readonly ScreenSpec[] = [
   {
     name: 'lesson',
     auth: 'member',
+    fullPage: true,
     path: '/my/courses/course-js/lessons/lesson-js-variables-1',
     ready: async (page) => {
       await page.getByTestId('member-breadcrumbs').waitFor(visible);
       await page.getByTestId('discussion-composer-input').waitFor(visible);
       await page.getByTestId('author-chip-post-js-variables-q-r2').waitFor(visible);
+      await page.getByTestId('lesson-reading-preview').waitFor(visible);
     },
   },
   ...['light', 'dark'].map((colorScheme): ScreenSpec => ({

@@ -223,6 +223,7 @@ import {
   updatePostInputSchema,
   updateProductAccessItemsInputSchema,
   billingDataSchema,
+  orderBillingDataSchema,
 } from '#core/domain/index.js';
 import type { PublicSpaceEventRef, PublicSpaceThreadInput } from '#core/domain/index.js';
 
@@ -357,7 +358,7 @@ export const memberBillingOrdersOutputSchema = z.object({
   orders: z.array(z.object({
     id: z.string(),
     createdAt: z.string().datetime(),
-    billing: billingDataSchema.nullable(),
+    billing: orderBillingDataSchema.nullable(),
     invoice: invoiceSchema.pick({ id: true, status: true, provider: true }).nullable().default(null),
   })),
   total: z.number().int().nonnegative(),
@@ -447,6 +448,7 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicPaymentConfigOutputSchema = z.object({
   canTest: z.boolean().default(false),
   testConfigured: z.boolean().default(false),
+  salesLinkTestConfigured: z.boolean().default(false),
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
@@ -2157,6 +2159,7 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,

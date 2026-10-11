@@ -1020,6 +1020,7 @@ export interface Messages {
     reportKeysScope: string;
     reportKeysHint: string;
     tabApiKeys: string;
+    checkoutAppearance: { heading: string; displayName: string; logoUrl: string; iconUrl: string; backgroundColor: string; buttonColor: string; fontFamily: string; borderStyle: string };
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;

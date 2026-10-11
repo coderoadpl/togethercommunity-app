@@ -107,7 +107,7 @@ export const AnonHomePage = () => {
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
         {salesLinks.length === 0 ? null : <TileSection title={t.salesLinks.heading} testId="anon-sales-links">
-          {salesLinks.map((salesLink) => <CourseCardRoot key={salesLink.id} component={Link} to={`/offer/${encodeURIComponent(salesLink.slug)}`}><Box sx={{ p: '1.25rem', display: 'grid', gap: '0.6rem' }}><Typography variant="h2" component="h3">{salesLink.heading}</Typography><Typography>{formatPrice(salesLink.totalCents, salesLink.currency, language)}</Typography><Typography>{t.salesLinks.buyBundle}</Typography></Box></CourseCardRoot>)}
+          {salesLinks.map((salesLink) => <CourseCardRoot key={salesLink.id} component="a" href={`/offer/${encodeURIComponent(salesLink.slug)}`}><Box sx={{ p: '1.25rem', display: 'grid', gap: '0.6rem' }}><Typography variant="h2" component="h3">{salesLink.heading}</Typography><Typography>{formatPrice(salesLink.totalCents, salesLink.currency, language)}</Typography><Typography>{t.salesLinks.buyBundle}</Typography></Box></CourseCardRoot>)}
         </TileSection>}
         {tileSpaces.length === 0 ? null : (
           <TileSection title={t.anon.spacesSection} id={anchorFor('spaces')} testId="anon-spaces">

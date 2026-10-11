@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(424);
+    expect(inventory.routes).toHaveLength(426);
     expect(inventory.useCases).toHaveLength(331);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
@@ -54,6 +54,17 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('classifies sales-link handoffs as public reads and session creation as checkout start', () => {
+    const inventory = collectPermissionInventory();
+    for (const [subject, capability] of [
+      ['GET /offer/:slug', 'offer:read'],
+      ['POST /api/public/sales-links/:slug/checkout', 'checkout:start'],
+    ]) {
+      expect(inventory.routes.find((row) => row.subject === subject))
+        .toMatchObject({ capability, before: ['public'], after: ['public'], evidence: 'public route manifest' });
+    }
   });
 
   it('keeps survey management staff-only and public answering open', () => {

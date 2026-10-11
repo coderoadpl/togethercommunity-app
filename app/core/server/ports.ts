@@ -93,6 +93,7 @@ import type {
   CampaignResults,
   CampaignSend,
   CheckoutConsentCapture,
+  CheckoutBranding,
   Coupon,
   CouponOption,
   CouponCheckoutSession,
@@ -999,6 +1000,9 @@ export interface PaymentWebhookEvent {
   createdAt?: string | null;
   checkoutSession: {
     email: string | null;
+    customerName?: string | null;
+    billing?: Order['billing'];
+    termsAccepted?: boolean;
     paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;
     subscriptionId: string | null;
     paymentIntentId?: string | null;
@@ -1014,6 +1018,9 @@ export interface PaymentWebhookEvent {
       checkoutConsentCaptureId?: string | null;
       couponCheckoutSessionId?: string | null;
       checkoutSnapshotId?: string | null;
+      directCheckout?: boolean;
+      termsUrl?: string | null;
+      privacyUrl?: string | null;
       salesLinkId?: string | null;
       productIds?: string | null;
     };
@@ -1069,6 +1076,8 @@ export interface PaymentProvider {
     productName: string;
     salesLinkId?: string;
     checkoutSnapshotId?: string;
+    checkoutBranding?: CheckoutBranding;
+    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
     lines?: { productId: string; name: string; grossCents: number }[];
     priceCents: number;
     currency: string;
@@ -1757,6 +1766,7 @@ export interface PaymentTransactionPort {
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;
+      checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
       marketingConsents: MarketingConsentRepository;
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;

@@ -98,7 +98,7 @@ describe('Vercel platform entry boundary', () => {
     const cspFor = (source: string) => vercel.headers
       .find((entry) => entry.source === source)
       ?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
-    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/).*)');
+    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/|offer/).*)');
     expect(spaCsp).toContain("default-src 'self'");
     expect(spaCsp).toContain("connect-src 'self' https:;");
   });

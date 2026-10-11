@@ -709,6 +709,7 @@ describe('autoIssueOnPayment', () => {
     { scope: 'b2b_only' as const, billingSnapshot: null, issued: 0, skipped: 1 },
     { scope: 'b2b_only' as const, billingSnapshot: { ...billing, nip: null }, issued: 0, skipped: 1 },
     { scope: 'b2b_only' as const, billingSnapshot: billing, issued: 1, skipped: 0 },
+    { scope: 'b2b_only' as const, billingSnapshot: { ...billing, address: '', city: '', postalCode: '' }, issued: 0, skipped: 0 },
     { scope: 'all' as const, billingSnapshot: null, issued: 1, skipped: 0 },
   ])('applies the $scope scope', async ({ scope, billingSnapshot, issued, skipped }) => {
     const h = harness({ auto: true, scope });
@@ -717,6 +718,24 @@ describe('autoIssueOnPayment', () => {
     await autoIssueOnPayment('tenant-1', paidOrder, h.deps);
     expect(h.calls()).toBe(issued);
     expect(h.events.filter((event) => event.type === 'skipped')).toHaveLength(skipped);
+  });
+
+  it.each([
+    { provider: 'ifirma' as const, billingSnapshot: { ...billing, address: '', city: '', postalCode: '' } },
+    { provider: 'ksef' as const, billingSnapshot: { ...billing, address: '', city: '', postalCode: '' } },
+    { provider: 'ifirma' as const, billingSnapshot: { ...billing, country: 'DE' } },
+    { provider: 'ksef' as const, billingSnapshot: { ...billing, country: 'DE' } },
+  ])('records unsupported B2B billing for $provider as failure rather than skipping the order', async ({ provider, billingSnapshot }) => {
+    const h = harness({ auto: true, scope: 'b2b_only', provider });
+    const paidOrder = order(billingSnapshot);
+    h.deps.orderDetails.findById = async () => paidOrder;
+    await autoIssueOnPayment('tenant-1', paidOrder, h.deps);
+    expect(h.calls()).toBe(0);
+    expect(h.frozenXml()).toBeNull();
+    expect(h.events.filter((event) => event.type === 'failed')).toMatchObject([{ error: 'validation',
+      meta: { message: 'Invoicing requires complete billing details and a Polish billing address' } }]);
+    expect(h.events.filter((event) => event.type === 'skipped')).toHaveLength(0);
+    if (provider === 'ifirma') expect(h.invoices).toMatchObject([{ status: 'failed', error: 'validation' }]);
   });
 
   it('records a skipped event when no invoicing provider is chosen', async () => {

@@ -141,6 +141,7 @@ invoices can be checked locally.
 - [@babel/template@7.29.7](https://babel.dev/docs/en/next/babel-template) - MIT
 - [@babel/traverse@7.29.7](https://babel.dev/docs/en/next/babel-traverse) - MIT
 - [@babel/types@7.29.7](https://babel.dev/docs/en/next/babel-types) - MIT
+- [@base-ui/utils@0.4.0](https://github.com/mui/base-ui#readme) - MIT
 - [@bcoe/v8-coverage@1.0.2](https://github.com/bcoe/v8-coverage#readme) - MIT
 - [@better-auth/core@1.6.25](https://www.better-auth.com) - MIT
 - [@better-auth/drizzle-adapter@1.6.25](https://www.better-auth.com/docs/adapters/drizzle) - MIT
@@ -334,7 +335,11 @@ invoices can be checked locally.
 - [@mui/styled-engine@9.1.1](https://mui.com/system/styled/) - MIT
 - [@mui/system@9.2.0](https://mui.com/system/getting-started/) - MIT
 - [@mui/types@9.1.1](https://github.com/mui/material-ui/tree/master/packages/mui-types) - MIT
+- [@mui/types@9.4.0](https://github.com/mui/material-ui/tree/master/packages/mui-types) - MIT
 - [@mui/utils@9.2.0](https://github.com/mui/material-ui/tree/master/packages/mui-utils) - MIT
+- [@mui/utils@9.4.0](https://github.com/mui/material-ui/tree/master/packages/mui-utils) - MIT
+- [@mui/x-internals@9.15.0](https://mui.com/x/) - MIT
+- [@mui/x-tree-view@9.15.0](https://mui.com/x/react-tree-view/) - MIT
 - [@napi-rs/wasm-runtime@1.1.6](https://napi.rs/) - MIT
 - [@neondatabase/serverless@1.1.0](https://neon.com) - MIT
 - [@noble/ciphers@2.2.0](https://paulmillr.com/noble/) - MIT
@@ -1024,6 +1029,7 @@ invoices can be checked locally.
 - [react-is@16.13.1](https://react.dev/) - MIT
 - [react-is@17.0.2](https://react.dev/) - MIT
 - [react-is@19.2.7](https://react.dev/) - MIT
+- [react-is@19.3.0](https://react.dev/) - MIT
 - [react-refresh@0.17.0](https://react.dev/) - MIT
 - [react-transition-group@4.4.5](https://github.com/reactjs/react-transition-group#readme) - BSD-3-Clause
 - [react@19.2.8](https://react.dev/) - MIT
@@ -1038,6 +1044,7 @@ invoices can be checked locally.
 - [require-from-string@2.0.2](https://github.com/floatdrop/require-from-string#readme) - MIT
 - [require-main-filename@2.0.0](https://github.com/yargs/require-main-filename#readme) - ISC
 - [requireindex@1.1.0](https://github.com/stephenhandley/requireindex#readme) - MIT
+- [reselect@5.3.0](https://github.com/reduxjs/reselect#readme) - MIT
 - [resolve-from@4.0.0](https://github.com/sindresorhus/resolve-from#readme) - MIT
 - [resolve-pkg-maps@1.0.0](https://github.com/privatenumber/resolve-pkg-maps#readme) - MIT
 - [resolve@1.22.12](https://github.com/browserify/resolve#readme) - MIT

@@ -240,6 +240,10 @@ const toInvoiceEvent = (eventId: string, type: string, object: unknown): Payment
     idOrNull(invoice.data.parent?.subscription_details?.subscription);
   const amount = type === 'invoice.paid' ? invoice.data.amount_paid : invoice.data.amount_due;
   const linePeriodEnd = invoice.data.lines?.data[0]?.period?.end;
+  const payment = invoice.data.payments?.data.toSorted((left, right) =>
+    Number(right.status === 'paid') - Number(left.status === 'paid')
+      || (right.created ?? 0) - (left.created ?? 0),
+  )[0]?.payment;
   return {
     id: eventId,
     type,
@@ -247,8 +251,8 @@ const toInvoiceEvent = (eventId: string, type: string, object: unknown): Payment
     checkoutSession: null,
     invoice: {
       subscriptionId,
-      chargeId: idOrNull(invoice.data.charge),
-      paymentIntentId: idOrNull(invoice.data.payment_intent),
+      chargeId: idOrNull(payment?.charge) ?? idOrNull(invoice.data.charge),
+      paymentIntentId: idOrNull(payment?.payment_intent) ?? idOrNull(invoice.data.payment_intent),
       amountCents: amount ?? null,
       currency: invoice.data.currency?.toUpperCase() ?? null,
       periodEnd: epochToIso(linePeriodEnd ?? invoice.data.period_end),
@@ -400,6 +404,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         let sessionId: string | undefined;
         try {
           const session = await client.checkout.sessions.create({
+            ...checkoutBrandingParams(input.checkoutBranding),
             mode: 'payment',
             line_items: [{ price_data: { currency: 'pln', unit_amount: 100, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
             success_url: `${input.origin}/`, cancel_url: `${input.origin}/`,
@@ -499,6 +504,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         const session = await client.value.checkout.sessions.create(
           stripeCheckoutSessionParams({
             tenantId: input.tenantId,
+            ...(input.checkoutBranding === undefined ? {} : { checkoutBranding: input.checkoutBranding }),
             productId: 'connection-test',
             productName: 'Stripe connection test',
             priceCents: 100,
@@ -583,47 +589,64 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       // constructEvent verifies the HMAC locally and never calls the API, so a
       // throwaway key is enough to build the instance for signature checking.
       const client = new Stripe('sk_webhook_verifier_unused');
+      let event: Stripe.Event;
       try {
-        const event = await client.webhooks.constructEventAsync(
+        event = await client.webhooks.constructEventAsync(
           input.payloadRaw,
           input.signatureHeader,
           input.webhookSecret,
         );
-        if (
-          event.type === 'checkout.session.completed' ||
-          event.type === 'checkout.session.async_payment_succeeded' ||
-          event.type === 'checkout.session.async_payment_failed'
-        ) {
-          return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
-        }
-        if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
-          const mapped = toInvoiceEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-          const mapped = toSubscriptionEvent(
-            event.id,
-            event.type,
-            event.data.object,
-            epochToIso(event.created),
-          );
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
-          const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        const object = event.data.object;
-        return ok({
-          livemode: event.livemode,
-          id: event.id,
-          type: event.type,
-          objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
-          checkoutSession: null,
-        });
       } catch (cause) {
         return err(asDiagnostic('Stripe webhook signature verification failed', cause));
       }
+      if (
+        event.type === 'checkout.session.completed' ||
+        event.type === 'checkout.session.async_payment_succeeded' ||
+        event.type === 'checkout.session.async_payment_failed'
+      ) {
+        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
+      }
+      if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
+        const invoice = stripeInvoiceObjectSchema.safeParse(event.data.object);
+        if (invoice.success) {
+          let payments = invoice.data.payments;
+          if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
+            const paymentClient = await clientFor(input.tenantId, input.mode);
+            if (!paymentClient.ok) return paymentClient;
+            const retrieved = stripeInvoiceObjectSchema.parse(await paymentClient.value.invoices.retrieve(
+              invoice.data.id,
+              { expand: ['payments'] },
+            ));
+            if (retrieved.id !== invoice.data.id || retrieved.payments == null) {
+              throw new Error('Stripe invoice lookup returned no matching payment list');
+            }
+            payments = retrieved.payments;
+          }
+          const mapped = toInvoiceEvent(event.id, event.type, { ...invoice.data, payments });
+          if (mapped) return ok({ ...mapped, livemode: event.livemode });
+        }
+      }
+      if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+        const mapped = toSubscriptionEvent(
+          event.id,
+          event.type,
+          event.data.object,
+          epochToIso(event.created),
+        );
+        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+      }
+      if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+        const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
+        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+      }
+      const object = event.data.object;
+      return ok({
+        livemode: event.livemode,
+        id: event.id,
+        type: event.type,
+        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
+        checkoutSession: null,
+      });
     },
   };
 };

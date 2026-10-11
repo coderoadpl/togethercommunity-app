@@ -127,6 +127,26 @@ describe('ifirmaInvoicePayload', () => {
     });
   });
 
+  it('preserves country and postcode from a partial consumer billing snapshot', () => {
+    const retailBuyer = ifirmaInvoicePayload({ ...input, billing: null }, '2026-07-27').Kontrahent;
+    const payload = ifirmaInvoicePayload({
+      ...input,
+      billing: { nip: null, companyName: '', address: '', postalCode: '00-123', city: '', country: 'PL' },
+    }, '2026-07-27');
+
+    expect(payload.Kontrahent).toEqual({ ...retailBuyer, KodPocztowy: '00-123' });
+  });
+
+  it('preserves every collected consumer billing field without requiring a NIP', () => {
+    expect(ifirmaInvoicePayload({
+      ...input,
+      billing: { nip: null, companyName: 'John Smith', address: '2 Test St', postalCode: '00-123', city: 'Warsaw', country: 'PL' },
+    }, '2026-07-27').Kontrahent).toMatchObject({
+      Nazwa: 'John Smith', NIP: null, Ulica: '2 Test St', KodPocztowy: '00-123',
+      Miejscowosc: 'Warsaw', KodKraju: 'PL', OsobaFizyczna: true,
+    });
+  });
+
   it('maps an exempt position and mirrors its basis in notes', () => {
     const payload = ifirmaInvoicePayload({
       ...input,

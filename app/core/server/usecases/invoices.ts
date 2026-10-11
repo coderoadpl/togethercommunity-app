@@ -8,6 +8,7 @@ import {
   invoiceVatTreatmentsEqual,
   notFound,
   ok,
+  orderBillingDataSchema,
   renderFa3Invoice,
   resolveOrderVat,
   splitProductGross,
@@ -209,7 +210,7 @@ const issueIfirma = async (
     await deps.invoices.update(tenantId, failed, failedEvent);
     return err(failure);
   };
-  if (billing !== null && !billingDataSchema.safeParse(billing).success) {
+  if (billing !== null && !(billing.nip === null ? orderBillingDataSchema : billingDataSchema).safeParse(billing).success) {
     return fail(validation('Invoicing requires complete billing details and a Polish billing address'));
   }
   const config = await invoicingConfig(tenantId, deps);
@@ -294,7 +295,7 @@ const issueKsef = async (
   if (existing !== null && existing.provider !== 'ksef') return ok(existing);
   if (existing !== null && (existing.ksef?.state !== 'held' || actorId === undefined)) return ok(existing);
   if (order.currency !== 'PLN') return err(validation('KSeF invoices require an order ledger amount in PLN'));
-  if (billing !== null && !billingDataSchema.safeParse(billing).success) {
+  if (billing !== null && !(billing.nip === null ? orderBillingDataSchema : billingDataSchema).safeParse(billing).success) {
     const failure = validation('Invoicing requires complete billing details and a Polish billing address');
     await deps.invoices.appendEvent(tenantId, eventFor(deps, tenantId, order.id, existing?.id ?? null, 'failed', failure.code, { message: failure.message }));
     return err(failure);
@@ -364,7 +365,8 @@ const issueKsef = async (
       : {
           nip: billing.nip,
           name: billing.companyName,
-          addressLine: `${billing.address}, ${billing.postalCode} ${billing.city}`,
+          addressLine: [billing.address, [billing.postalCode, billing.city].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+          country: billing.country,
         },
     productName: order.lines?.length === 1 ? order.lines[0]?.name ?? order.productTitle : order.productTitle,
     grossAmountCents: order.amountCents,

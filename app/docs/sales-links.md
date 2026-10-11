@@ -74,6 +74,9 @@ Without that verified session or a configured test key, checkout stays live.
 The same rule applies to the purchase-consent fallback. An unreadable stored
 test key or a live key in the test slot returns an error for an authorized test
 checkout instead of switching to live credentials.
+Retry after a cancelled test checkout stays on the Together page. An ended staff
+test session shows a notice and requires an explicit live-payment choice before
+another live session can be created.
 
 Staff test checkout stores a pending order before returning the Stripe URL.
 Fulfillment keeps the member and test grants while suppressing purchase
@@ -85,6 +88,9 @@ one tenant cannot fulfill a checkout for another tenant.
 Stripe collects the buyer email, name, billing address when provided, and tax
 IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only
 NIP. Foreign and incomplete billing addresses are retained without a Polish NIP.
+The All-orders invoice scope accepts consumer country-and-postcode-only billing
+and preserves the other collected fields. A NIP is optional; the B2B-only scope
+continues to skip orders without one. iFirma supports domestic addresses only.
 Stripe requires terms acceptance; Together records that acceptance with the
 exact terms and privacy URLs stored in session metadata. Set a valid account
 terms URL once in the Stripe Dashboard. Together supplies a per-session agreement

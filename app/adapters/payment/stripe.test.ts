@@ -1,6 +1,6 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
-import { ok } from '#core/domain/index.js';
+import { ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 
@@ -60,6 +60,44 @@ const stripeJson = (body: unknown, status = 200): Response =>
     status,
     headers: { 'content-type': 'application/json', 'request-id': 'req_123' },
   });
+
+const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payments?: unknown, livemode = true): string =>
+  JSON.stringify({
+    id: 'evt_clover_renewal', type, api_version: '2025-09-30.clover', livemode,
+    data: { object: {
+      id: 'in_renewal', payments,
+      parent: { subscription_details: { subscription: 'sub_1' } },
+      amount_paid: 4900, amount_due: 5900, currency: 'pln',
+      lines: { data: [{ period: { end: 916_387_200 } }] },
+    } },
+  });
+
+const invoiceProviderOverHttp = (respond: (request: Request) => Response) => {
+  const requests: Request[] = [];
+  const resolvedSecrets: Array<{ tenantId: string; key: string }> = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async (tenantId, key) => {
+      resolvedSecrets.push({ tenantId, key });
+      return ok(key === 'stripe.testRestrictedKey' ? 'rk_test_unused' : 'rk_live_unused');
+    } },
+    clientFactory: (key) => new Stripe(key, {
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        return respond(request);
+      }),
+    }),
+  });
+  return {
+    requests, resolvedSecrets,
+    verify: (payloadRaw: string, mode: 'live' | 'test' = 'live', signedPayload = payloadRaw) =>
+      payment.verifyWebhookEvent({
+        tenantId: 'tenant-a', mode, payloadRaw, webhookSecret,
+        signatureHeader: stripe.webhooks.generateTestHeaderString({ payload: signedPayload, secret: webhookSecret }),
+      }),
+  };
+};
 
 describe('configureWebhook', () => {
   it('creates the endpoint through the Stripe client using a mocked HTTP transport', async () => {
@@ -218,7 +256,7 @@ const verify = (
   secret = webhookSecret,
   signedPayload = payload,
   timestamp?: number,
-) => provider.verifyWebhookEvent({
+) => provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live',
   payloadRaw: payload,
   signatureHeader: stripe.webhooks.generateTestHeaderString({
     payload: signedPayload,
@@ -445,7 +483,7 @@ describe('verifyWebhookEvent', () => {
       ok: false,
       error: { code: 'validation' },
     });
-    await expect(provider.verifyWebhookEvent({
+    await expect(provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live',
       payloadRaw: payload,
       signatureHeader: 'garbage',
       webhookSecret,
@@ -464,7 +502,7 @@ describe('verifyWebhookEvent', () => {
       charge: 'ch_1',
       payment_intent: 'pi_1',
       period_end: 916_387_200,
-    }, { invoice: { subscriptionId: 'sub_1', amountCents: 4900, currency: 'PLN' } }],
+    }, { invoice: { subscriptionId: 'sub_1', chargeId: 'ch_1', paymentIntentId: 'pi_1', amountCents: 4900, currency: 'PLN' } }],
     ['invoice.payment_failed', {
       id: 'in_2',
       amount_due: 4900,
@@ -508,6 +546,168 @@ describe('verifyWebhookEvent', () => {
       ok: true,
       value: { type, objectId: object.id, checkoutSession: null, ...expected },
     });
+  });
+
+  it.each([
+    ['payment intent', { type: 'payment_intent', payment_intent: 'pi_renewal' }, null, 'pi_renewal'],
+    ['expanded payment intent', { type: 'payment_intent', payment_intent: { id: 'pi_renewal' } }, null, 'pi_renewal'],
+    ['charge', { type: 'charge', charge: 'ch_renewal' }, 'ch_renewal', null],
+    ['expanded charge', { type: 'charge', charge: { id: 'ch_renewal' } }, 'ch_renewal', null],
+  ] as const)('maps a Clover renewal invoice with a %s', async (_name, payment, chargeId, paymentIntentId) => {
+    const payload = JSON.stringify({
+      id: 'evt_clover_renewal',
+      type: 'invoice.paid',
+      api_version: '2025-09-30.clover',
+      data: { object: {
+        id: 'in_renewal',
+        parent: { subscription_details: { subscription: { id: 'sub_1' } } },
+        amount_paid: 4900,
+        currency: 'pln',
+        lines: { data: [{ period: { end: 916_387_200 } }] },
+        payments: { data: [{ status: 'paid', created: 916_000_000, payment }] },
+      } },
+    });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: {
+        objectId: 'in_renewal',
+        invoice: {
+          subscriptionId: 'sub_1', chargeId, paymentIntentId,
+          amountCents: 4900, currency: 'PLN', periodEnd: '1999-01-15T08:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it.each([
+    ['invoice.paid', 'paid'],
+    ['invoice.payment_failed', 'open'],
+  ] as const)('selects the newest %s payment independently of list order', async (type, status) => {
+    const payload = JSON.stringify({
+      id: 'evt_clover_payment_selection', type,
+      data: { object: {
+        id: 'in_renewal',
+        amount_paid: 4900, amount_due: 4900,
+        charge: 'ch_legacy', payment_intent: 'pi_legacy',
+        payments: { data: [
+          { status, created: 100, payment: { payment_intent: 'pi_older', charge: 'ch_older' } },
+          { status: 'canceled', created: 150, payment: { payment_intent: 'pi_canceled' } },
+          { status, created: 200, payment: { payment_intent: 'pi_latest', charge: 'ch_latest' } },
+          ...(status === 'paid' ? [{ status: 'open', created: 300, payment: { payment_intent: 'pi_unpaid' } }] : []),
+        ] },
+      } },
+    });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: { invoice: { chargeId: 'ch_latest', paymentIntentId: 'pi_latest', amountCents: 4900 } },
+    });
+  });
+
+  describe.each(['invoice.paid', 'invoice.payment_failed'] as const)('%s invoice payment lookup', (type) => {
+    it.each([
+      ['missing', undefined], ['null', null], ['empty', { data: [] }],
+    ] as const)('loads %s payments from a Clover invoice using the tenant key', async (_label, payments) => {
+      const payment = { type: 'payment_intent', payment_intent: 'pi_renewal' };
+      const api = invoiceProviderOverHttp(() => stripeJson({
+        id: 'in_renewal', amount_paid: 9900, amount_due: 0, currency: 'usd',
+        parent: { subscription_details: { subscription: 'sub_later' } },
+        lines: { data: [{ period: { end: 1_900_000_000 } }] },
+        payments: { data: [{ status: type === 'invoice.paid' ? 'paid' : 'open', payment }] },
+      }));
+      expect(await api.verify(invoiceWebhook(type, payments))).toEqual(ok({
+        id: 'evt_clover_renewal', type, objectId: 'in_renewal', livemode: true, checkoutSession: null,
+        invoice: {
+          subscriptionId: 'sub_1', chargeId: null, paymentIntentId: 'pi_renewal',
+          amountCents: type === 'invoice.paid' ? 4900 : 5900,
+          currency: 'PLN', periodEnd: '1999-01-15T08:00:00.000Z',
+        },
+      }));
+      expect(api.resolvedSecrets).toEqual([{ tenantId: 'tenant-a', key: 'stripe.restrictedKey' }]);
+      expect(api.requests).toHaveLength(1);
+      const request = api.requests[0];
+      expect(request?.method).toBe('GET');
+      expect(request?.url).toBe('https://api.stripe.com/v1/invoices/in_renewal?expand[0]=payments');
+      expect(request?.headers.get('authorization')).toBe('Bearer rk_live_unused');
+      expect(request?.headers.get('stripe-version')).toBe('2025-09-30.clover');
+    });
+
+    it('loads charge correlation with the test slot credentials', async () => {
+      const api = invoiceProviderOverHttp(() => stripeJson({
+        id: 'in_renewal', payments: { data: [{
+          status: type === 'invoice.paid' ? 'paid' : 'open',
+          payment: { type: 'charge', charge: 'ch_renewal' },
+        }] },
+      }));
+      expect(await api.verify(invoiceWebhook(type, undefined, false), 'test')).toMatchObject({
+        ok: true, value: { livemode: false, invoice: { chargeId: 'ch_renewal', paymentIntentId: null } },
+      });
+      expect(api.resolvedSecrets).toEqual([{ tenantId: 'tenant-a', key: 'stripe.testRestrictedKey' }]);
+      expect(api.requests).toHaveLength(1);
+      expect(api.requests[0]?.headers.get('authorization')).toBe('Bearer rk_test_unused');
+    });
+
+    it('does not fetch payments already included in the verified event', async () => {
+      const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
+      expect(await api.verify(invoiceWebhook(type, { data: [{
+        status: 'paid', payment: { payment_intent: 'pi_included' },
+      }] }))).toMatchObject({ ok: true, value: { invoice: { paymentIntentId: 'pi_included' } } });
+      expect(api.resolvedSecrets).toEqual([]);
+      expect(api.requests).toEqual([]);
+    });
+
+    it.each([403, 500])('propagates lookup HTTP %i failures for webhook retry', async (status) => {
+      const api = invoiceProviderOverHttp(() => stripeJson({
+        error: { type: 'api_error', message: 'Invoice payment lookup unavailable' },
+      }, status));
+      await expect(api.verify(invoiceWebhook(type))).rejects.toThrow('Invoice payment lookup unavailable');
+      expect(api.requests).toHaveLength(1);
+    });
+
+    it.each([
+      { id: 'in_renewal' },
+      { id: 'in_renewal', payments: null },
+      { id: 'in_wrong', payments: { data: [] } },
+    ])('rejects an unusable lookup response %j', async (response) => {
+      const api = invoiceProviderOverHttp(() => stripeJson(response));
+      await expect(api.verify(invoiceWebhook(type))).rejects.toThrow('Stripe invoice lookup returned no matching payment list');
+    });
+
+    it('allows invoices with no associated payment after lookup', async () => {
+      const api = invoiceProviderOverHttp(() => stripeJson({ id: 'in_renewal', payments: { data: [] } }));
+      expect(await api.verify(invoiceWebhook(type))).toMatchObject({
+        ok: true, value: { invoice: { chargeId: null, paymentIntentId: null } },
+      });
+      expect(api.requests).toHaveLength(1);
+    });
+  });
+
+  it('rejects an invalid invoice signature before resolving credentials or fetching payments', async () => {
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
+    const payload = invoiceWebhook('invoice.paid');
+    expect(await api.verify(payload.replace('in_renewal', 'in_tampered'), 'live', payload))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it.each(['live', 'test'] as const)('leaves mismatched events for fulfillment to ignore on the %s slot', async (mode) => {
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
+    expect(await api.verify(invoiceWebhook('invoice.paid', undefined, mode !== 'live'), mode))
+      .toMatchObject({ ok: true, value: { livemode: mode !== 'live' } });
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('retains pre-Clover invoice IDs when the expanded payment list is empty', async () => {
+    const api = invoiceProviderOverHttp(() => stripeJson({ id: 'in_legacy', payments: { data: [] } }));
+    const payload = JSON.stringify({
+      id: 'evt_legacy_payment', type: 'invoice.paid', api_version: '2024-06-20', livemode: true,
+      data: { object: { id: 'in_legacy', charge: { id: 'ch_legacy' }, payment_intent: { id: 'pi_legacy' } } },
+    });
+    expect(await api.verify(payload)).toMatchObject({
+      ok: true, value: { invoice: { chargeId: 'ch_legacy', paymentIntentId: 'pi_legacy' } },
+    });
+    expect(api.requests).toHaveLength(1);
   });
 
   it.each([
@@ -617,7 +817,7 @@ it.each([true, false])('preserves the signed event livemode=%s', async (livemode
   const payloadRaw = JSON.stringify({ id: 'evt_mode', object: 'event', type: 'customer.subscription.deleted', livemode,
     data: { object: { id: 'sub_mode', status: 'canceled' } } });
   const signatureHeader = stripe.webhooks.generateTestHeaderString({ payload: payloadRaw, secret: webhookSecret });
-  expect(await provider.verifyWebhookEvent({ payloadRaw, signatureHeader, webhookSecret }))
+  expect(await provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live', payloadRaw, signatureHeader, webhookSecret }))
     .toMatchObject({ ok: true, value: { livemode } });
 });
 
@@ -663,7 +863,7 @@ it('maps a legacy invoice.paid without metadata by subscription id', async () =>
   const payload = JSON.stringify({ id: 'evt_legacy', type: 'invoice.paid', created: 904608000,
     data: { object: { id: 'in_legacy', subscription: 'sub_existing', amount_paid: 3500, currency: 'eur', lines: { data: [{ period: { end: 904608000 } }] } } } });
   const signatureHeader = stripe.webhooks.generateTestHeaderString({ payload, secret: webhookSecret });
-  expect(await provider.verifyWebhookEvent({ payloadRaw: payload, signatureHeader, webhookSecret }))
+  expect(await provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live', payloadRaw: payload, signatureHeader, webhookSecret }))
     .toMatchObject({ ok: true, value: { checkoutSession: null, invoice: { subscriptionId: 'sub_existing', amountCents: 3500, currency: 'EUR' } } });
 });
 
@@ -720,11 +920,35 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
     memberLanguage: null, memberVideoAutoplay: false,
   } }, { mode }, {
     payment, clock: { nowIso: () => '2026-10-10T12:00:00.000Z' },
+    tenants: { findSettings: async () => tenantSettingsSchema.parse({
+      name: 'Studio', billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/logo.png', accentColor: '#112233',
+      checkoutAppearance: { displayName: 'Store', backgroundColor: '#ffffff' },
+    }) },
     appBaseUrl: 'https://app.example.test', baseDomain: 'example.test', singleTenantMode: false,
     tenantDomains: tenantDomainRepositoryStub({}),
   });
-  return { run, requests, operations: () => requests.map((request) => `${request.method} ${new URL(request.url).pathname}`) };
+  return { run, payment, requests, operations: () => requests.map((request) => `${request.method} ${new URL(request.url).pathname}`) };
 };
+
+it('sends tenant checkout branding with connection-test sessions and expires them', async () => {
+  const h = permissionProbeHarness();
+  expect(await h.payment.test({
+    tenantId: 'tenant-1', appBaseUrl: 'https://app.example.test',
+    checkoutBranding: { displayName: 'Store', logoUrl: 'https://assets.example.test/logo.png',
+      iconUrl: 'https://assets.example.test/icon.png', backgroundColor: '#ffffff',
+      buttonColor: '#112233', fontFamily: 'inter', borderStyle: 'rounded' },
+  })).toMatchObject({ ok: true });
+  expect(h.operations()).toEqual(['POST /v1/checkout/sessions', 'POST /v1/checkout/sessions/cs_probe/expire']);
+  const request = h.requests[0];
+  if (request === undefined) throw new Error('Checkout request missing');
+  expect(Object.fromEntries(new URLSearchParams(await request.text()))).toMatchObject({
+    'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
+    'branding_settings[logo][url]': 'https://assets.example.test/logo.png',
+    'branding_settings[icon][type]': 'url', 'branding_settings[icon][url]': 'https://assets.example.test/icon.png',
+    'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
+    'branding_settings[font_family]': 'inter', 'branding_settings[border_style]': 'rounded',
+  });
+});
 
 describe('probeStripePermissions with an injected Stripe client', () => {
   it.each(['live', 'test'] as const)('checks every resource, cleans up and selects the %s key', async (mode) => {
@@ -763,6 +987,9 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     expect(expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 30 * 60);
     expect(Object.fromEntries(bodies[6] ?? [])).toMatchObject({
       mode: 'payment', success_url: 'https://acme.example.test/', cancel_url: 'https://acme.example.test/',
+      'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
+      'branding_settings[logo][url]': 'https://acme.example.test/logo.png',
+      'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
       'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '100',
       'line_items[0][price_data][product_data][name]': 'Together permission probe', 'line_items[0][quantity]': '1',
       'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',

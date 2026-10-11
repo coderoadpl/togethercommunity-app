@@ -400,6 +400,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         let sessionId: string | undefined;
         try {
           const session = await client.checkout.sessions.create({
+            ...checkoutBrandingParams(input.checkoutBranding),
             mode: 'payment',
             line_items: [{ price_data: { currency: 'pln', unit_amount: 100, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
             success_url: `${input.origin}/`, cancel_url: `${input.origin}/`,
@@ -499,6 +500,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         const session = await client.value.checkout.sessions.create(
           stripeCheckoutSessionParams({
             tenantId: input.tenantId,
+            ...(input.checkoutBranding === undefined ? {} : { checkoutBranding: input.checkoutBranding }),
             productId: 'connection-test',
             productName: 'Stripe connection test',
             priceCents: 100,

@@ -2417,6 +2417,8 @@ export interface Messages {
     testModeHint: string;
     testModeCouponBlocked: string;
     testModeUnavailable: string;
+    testSessionEnded: string;
+    continueLivePayment: string;
     loading: string;
     checkoutEyebrow: string;
     eyebrow: (params: { tenant: string }) => string;

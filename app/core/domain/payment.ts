@@ -7,7 +7,6 @@ export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),
-  salesLinkTest: z.boolean().optional(),
   priceId: z.string().min(1).optional(),
   email: z.string().email().optional(),
   language: languageSchema.optional(),

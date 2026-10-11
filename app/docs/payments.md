@@ -28,9 +28,11 @@ Webhook fulfillment uses the session customer details for email, name, billing
 address when supplied, and tax IDs. Polish `eu_vat` IDs starting with `PL` are
 stored as digits-only billing NIP even when the optional address is incomplete.
 Foreign and incomplete addresses are retained even without a Polish NIP.
-Invoice issuance still requires complete Polish billing details; unsupported or
-incomplete billing records an invoice validation failure instead of silently
-skipping B2B classification. Live order lines, grants and confirmation email
+Under the All-orders invoice scope, consumer invoices retain the collected name,
+country, postcode, city and street address, including country-and-postcode-only
+billing. A NIP remains optional. The B2B-only scope still skips orders without a
+NIP; orders with a NIP still require complete Polish billing details. iFirma
+retains its domestic-address restriction. Live order lines, grants and confirmation email
 continue through the existing fulfillment flow.
 
 `?test` with any value selects the tenant's configured test key only when the
@@ -40,6 +42,9 @@ Without that verified staff session or a configured test key, the selector is
 ignored and checkout stays live. This also applies to the purchase-consent
 fallback. An unreadable stored test key or a live key in the test slot returns
 an error for an authorized test checkout instead of switching to live credentials.
+After a cancelled test checkout, Retry stays on the Together page. If the staff
+test session has ended, the page shows a notice and requires an explicit choice
+to continue with a live payment; Retry cannot restart the automatic handoff.
 
 Staff test checkout stores a pending order for the signed-in staff account
 before returning the Stripe URL. Fulfillment preserves the member and test
@@ -66,7 +71,8 @@ families and defaults to `default`.
 Empty fields fall back to the tenant branding in Settings: name, logo, accent
 colour for the button and favicon for the icon. Every sales-link, single-product
 and subscription Checkout Session receives the resolved `branding_settings` in
-both live and test mode. If neither overrides nor tenant branding supply a value,
+both live and test mode, including permission probes and connection tests.
+If neither overrides nor tenant branding supply a value,
 Together omits the appearance settings and Stripe uses its account appearance.
 
 The Stripe SDK is pinned to **19.0.0**, using API **2025-09-30.clover**, which

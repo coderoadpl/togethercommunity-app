@@ -8933,7 +8933,7 @@ describe('staff Stripe test mode routes', () => {
       }) },
     } });
     const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
-      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', salesLinkTest: true, termsAccepted: true }) });
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', termsAccepted: true }) });
     expect(response.status).toBe(200);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }));
   });
@@ -9552,7 +9552,7 @@ describe('direct public sales-link checkout', () => {
     const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
     for (const [path, payload] of [
       ['/api/public/sales-links/bundle/checkout', { mode: 'test' }],
-      [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }],
+      [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true }],
     ] as const) {
       expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(200);
     }
@@ -9597,7 +9597,7 @@ describe('direct public sales-link checkout', () => {
     const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
     expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: false } });
     const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
-      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }),
+      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true }),
     });
     expect(await response.json()).toMatchObject({ ok: true });
     expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live', customerEmail: 'buyer@example.test' }));
@@ -9623,7 +9623,7 @@ describe('direct public sales-link checkout', () => {
       headers.cookie = response.headers.get('set-cookie')?.split(';')[0] ?? '';
     }
     const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
-      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'third-party@example.test', termsAccepted: true }),
+      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'third-party@example.test', termsAccepted: true }),
     });
     expect(response.status).toBe(200);
     expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: enabled ? 'test' : 'live', customerEmail: enabled ? 'staff@example.test' : 'third-party@example.test' }));

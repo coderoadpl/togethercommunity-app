@@ -1,6 +1,6 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
-import { ok } from '#core/domain/index.js';
+import { ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 
@@ -720,11 +720,35 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
     memberLanguage: null, memberVideoAutoplay: false,
   } }, { mode }, {
     payment, clock: { nowIso: () => '2026-10-10T12:00:00.000Z' },
+    tenants: { findSettings: async () => tenantSettingsSchema.parse({
+      name: 'Studio', billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/logo.png', accentColor: '#112233',
+      checkoutAppearance: { displayName: 'Store', backgroundColor: '#ffffff' },
+    }) },
     appBaseUrl: 'https://app.example.test', baseDomain: 'example.test', singleTenantMode: false,
     tenantDomains: tenantDomainRepositoryStub({}),
   });
-  return { run, requests, operations: () => requests.map((request) => `${request.method} ${new URL(request.url).pathname}`) };
+  return { run, payment, requests, operations: () => requests.map((request) => `${request.method} ${new URL(request.url).pathname}`) };
 };
+
+it('sends tenant checkout branding with connection-test sessions and expires them', async () => {
+  const h = permissionProbeHarness();
+  expect(await h.payment.test({
+    tenantId: 'tenant-1', appBaseUrl: 'https://app.example.test',
+    checkoutBranding: { displayName: 'Store', logoUrl: 'https://assets.example.test/logo.png',
+      iconUrl: 'https://assets.example.test/icon.png', backgroundColor: '#ffffff',
+      buttonColor: '#112233', fontFamily: 'inter', borderStyle: 'rounded' },
+  })).toMatchObject({ ok: true });
+  expect(h.operations()).toEqual(['POST /v1/checkout/sessions', 'POST /v1/checkout/sessions/cs_probe/expire']);
+  const request = h.requests[0];
+  if (request === undefined) throw new Error('Checkout request missing');
+  expect(Object.fromEntries(new URLSearchParams(await request.text()))).toMatchObject({
+    'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
+    'branding_settings[logo][url]': 'https://assets.example.test/logo.png',
+    'branding_settings[icon][type]': 'url', 'branding_settings[icon][url]': 'https://assets.example.test/icon.png',
+    'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
+    'branding_settings[font_family]': 'inter', 'branding_settings[border_style]': 'rounded',
+  });
+});
 
 describe('probeStripePermissions with an injected Stripe client', () => {
   it.each(['live', 'test'] as const)('checks every resource, cleans up and selects the %s key', async (mode) => {
@@ -763,6 +787,9 @@ describe('probeStripePermissions with an injected Stripe client', () => {
     expect(expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 30 * 60);
     expect(Object.fromEntries(bodies[6] ?? [])).toMatchObject({
       mode: 'payment', success_url: 'https://acme.example.test/', cancel_url: 'https://acme.example.test/',
+      'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
+      'branding_settings[logo][url]': 'https://acme.example.test/logo.png',
+      'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
       'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '100',
       'line_items[0][price_data][product_data][name]': 'Together permission probe', 'line_items[0][quantity]': '1',
       'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',

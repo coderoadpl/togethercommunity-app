@@ -2,6 +2,7 @@ import {
   emailTransportTest,
   integrationNotConfigured,
   ok,
+  resolveCheckoutBranding,
   resolveEmailLanguage,
   type AppError,
   type EmailIntegrationTransport,
@@ -20,11 +21,11 @@ import type {
   TenantRepository,
   TransactionalEmailSender,
 } from '../ports.js';
+import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 import { authorizeTenant } from '../authorize.js';
 import { resolveTenantTransactionalTransport } from './layered-transactional-email.js';
 
-export interface TestIntegrationDeps {
-  appBaseUrl: string;
+export interface TestIntegrationDeps extends TenantOriginDeps {
   corsOrigins?: string[] | undefined;
   email: EmailPort;
   emailSender: TransactionalEmailSender;
@@ -77,6 +78,21 @@ const testEmailTransport = async (
   return sent.ok ? ok({ ...diagnostic.value, details: { transport: tested.transport } }) : sent;
 };
 
+const testPayment = async (
+  ctx: Ctx,
+  tenantId: string,
+  deps: TestIntegrationDeps,
+): Promise<Result<ProviderDiagnostic, AppError>> => {
+  const settings = await deps.tenants.findSettings(tenantId);
+  const origin = await resolveTenantOrigin({ id: tenantId, slug: ctx.identity.tenantSlug }, deps);
+  const checkoutBranding = settings === null ? undefined : resolveCheckoutBranding(settings, origin);
+  return deps.payment.test({
+    tenantId,
+    appBaseUrl: deps.appBaseUrl,
+    ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
+  });
+};
+
 export const testIntegration = async (
   ctx: Ctx,
   input: {
@@ -98,6 +114,6 @@ export const testIntegration = async (
             { transport: input.emailTransport, language: input.language },
             deps,
           )
-        : await deps.payment.test({ tenantId: tenant.value, appBaseUrl: deps.appBaseUrl });
+        : await testPayment(ctx, tenant.value, deps);
   return tested.ok ? ok({ diagnostic: tested.value }) : tested;
 };

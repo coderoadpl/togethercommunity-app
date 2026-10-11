@@ -2713,6 +2713,8 @@ export const pl: Messages = {
     testModeHint: 'Zakup zostanie przypisany do Twojego konta pracownika. Wybierz płatną ofertę bez kuponu i użyj testowej karty Stripe.',
     testModeCouponBlocked: 'Kupony i oferty bezpłatne działają tylko w trybie produkcyjnym. Wyłącz tryb testowy, aby z nich skorzystać.',
     testModeUnavailable: 'Ta społeczność nie ma jeszcze klucza testowego Stripe. Wyłącz tryb testowy, aby zapłacić, albo skonfiguruj go w Studio.',
+    testSessionEnded: 'Your staff test session has ended. Enable Stripe test mode to retry a test purchase, or choose Continue to live payment to pay with real money.',
+    continueLivePayment: 'Continue to live payment',
     loading: 'Ładowanie płatności…',
     checkoutEyebrow: 'Płatność',
     eyebrow: ({ tenant }) => format('Płatność · {tenant}', { tenant }),

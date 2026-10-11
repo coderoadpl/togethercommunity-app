@@ -1057,6 +1057,7 @@ export interface PaymentProvider {
     tenantId: string;
     mode: StripeMode;
     origin: string;
+    checkoutBranding?: CheckoutBranding;
   }): Promise<Result<StripePermissionCheck[], AppError>>;
   retrieveStripeSubscription?(tenantId: string, subscriptionId: string): Promise<Result<StripeSubscriptionSnapshot, AppError>>;
   listStripeSubscriptions?(tenantId: string, input: ListStripeSubscriptionsInput): Promise<Result<{ subscriptions: { id: string; status: string; providerPriceId: string | null }[]; nextCursor: string | null }, AppError>>;
@@ -1121,6 +1122,7 @@ export interface PaymentProvider {
   test(input: {
     tenantId: string;
     appBaseUrl: string;
+    checkoutBranding?: CheckoutBranding;
   }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 

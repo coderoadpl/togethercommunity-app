@@ -50,6 +50,7 @@ interface StoredSettings {
   termsUrl: string | null;
   privacyUrl: string | null;
   invoicingProvider?: 'ifirma' | 'ksef';
+  ksefSubmissionMode?: 'automatic' | 'manual';
   invoiceVatMode?: 'rate' | 'exempt';
   invoiceVatRatePercent?: 5 | 8 | 23 | null;
   invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
@@ -1093,6 +1094,23 @@ describe('SettingsPanel e-mail language', () => {
 });
 
 describe('SettingsPanel direct KSeF', () => {
+  it('defaults to automatic KSeF submission and saves the manual gate', async () => {
+    const { updates } = renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+    const picker = await screen.findByRole('combobox', { name: en.billing.ksefSubmissionMode });
+    expect(picker).toHaveTextContent(en.billing.ksefSubmissionAutomatic);
+    await userEvent.click(picker);
+    await userEvent.click(await screen.findByRole('option', { name: en.billing.ksefSubmissionManual }));
+    await waitFor(() => expect(updates).toContainEqual({ ksefSubmissionMode: 'manual' }));
+    expect(screen.getByRole('combobox', { name: 'Default VAT rate' })).toBeInTheDocument();
+    expect(screen.getByText(en.billing.vatTreatmentHelp)).toBeInTheDocument();
+  });
+
+  it('hides KSeF submission mode for iFirma', async () => {
+    renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ifirma' });
+    await screen.findByRole('combobox', { name: en.billing.invoicingProvider });
+    expect(screen.queryByRole('combobox', { name: en.billing.ksefSubmissionMode })).not.toBeInTheDocument();
+  });
+
   it('points the KSeF credentials at the invoicing integration instead of duplicating them', async () => {
     renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
 

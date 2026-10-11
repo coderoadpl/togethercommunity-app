@@ -32,7 +32,7 @@ export const dispatchKsefJob = async (
       return submitted;
     }
     const state = submitted.value.ksef?.state;
-    if (state === 'succeeded' || state === 'rejected' || state === 'numbering_conflict') {
+    if (state === 'held' || state === 'succeeded' || state === 'rejected' || state === 'numbering_conflict') {
       await deps.jobs.complete(job.tenantId, job.id);
     } else {
       await deps.jobs.reschedule(job.tenantId, job.id, {

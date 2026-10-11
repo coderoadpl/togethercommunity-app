@@ -17,6 +17,101 @@ const json = (value: unknown, status = 200, headers: Record<string, string> = {}
   });
 
 describe('KSeF API client', () => {
+  it.each([
+    { scenario: 'different tokens in live and test slots', credentialSlot: 'test' as const, token: 'test-token', rejected: false },
+    { scenario: 'the same token in live and test slots', credentialSlot: 'test' as const, token: 'live-token', rejected: false },
+    { scenario: 'a rotated token in the same slot', credentialSlot: 'live' as const, token: 'rotated-token', rejected: false },
+    { scenario: 'an invalid test token after live authentication', credentialSlot: 'test' as const, token: 'invalid-token', rejected: true },
+  ])('isolates authentication and session material for $scenario on TEST', async ({ credentialSlot, token, rejected }) => {
+    let authenticationCount = 0;
+    let sessionCount = 0;
+    const submissions: Array<{ path: string; authorization: string | null }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const authorization = new Headers(init?.headers).get('authorization');
+      if (url.pathname.endsWith('/auth/challenge')) {
+        return json({ challenge: 'challenge', timestampMs: 1785186000000 });
+      }
+      if (url.pathname.endsWith('/security/public-key-certificates')) {
+        return json([{
+          certificate,
+          publicKeyId: 'public-key-id',
+          validFrom: '1998-01-01T00:00:00Z',
+          validTo: '1999-01-01T00:00:00Z',
+          usage: ['KsefTokenEncryption', 'SymmetricKeyEncryption'],
+        }]);
+      }
+      if (url.pathname.endsWith('/auth/ksef-token')) {
+        authenticationCount += 1;
+        if (rejected && authenticationCount > 1) return json({ title: 'Invalid token' }, 401);
+        return json({
+          referenceNumber: 'auth-ref',
+          authenticationToken: { token: 'operation-jwt', validUntil: '1998-07-27T11:00:00Z' },
+        }, 202);
+      }
+      if (url.pathname.endsWith('/auth/auth-ref')) {
+        return json({ status: { code: 200, description: 'ok' } });
+      }
+      if (url.pathname.endsWith('/auth/token/redeem')) {
+        return json({
+          accessToken: { token: `access-${String(authenticationCount)}`, validUntil: '1998-07-27T11:00:00Z' },
+          refreshToken: { token: `refresh-${String(authenticationCount)}`, validUntil: '1998-08-03T10:00:00Z' },
+        });
+      }
+      if (url.pathname.endsWith('/sessions/online')) {
+        sessionCount += 1;
+        return json({ referenceNumber: `session-${String(sessionCount)}`, validUntil: '1998-07-27T22:00:00Z' }, 201);
+      }
+      if (url.pathname.endsWith('/invoices')) {
+        submissions.push({ path: url.pathname, authorization });
+        return json({ referenceNumber: 'invoice-ref' }, 202);
+      }
+      if (url.pathname.endsWith('/close')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const client = createKsefClient({
+      fetcher,
+      baseUrls: { test: 'https://test.example.com/v2', production: 'https://production.example.com/v2' },
+      now: () => new Date('1998-07-27T10:00:00Z'),
+      wait: async () => undefined,
+    });
+    const live = {
+      environment: 'test' as const,
+      credentials: { tenantId: 'tenant-1', credentialSlot: 'live' as const, token: 'live-token', contextNip: '5555555555' },
+    };
+    const other = { ...live, credentials: { ...live.credentials, credentialSlot, token } };
+    expect((await client.validateCredentials(live)).ok).toBe(true);
+    expect(await client.openSession(live)).toEqual({ ok: true, value: { sessionReference: 'session-1' } });
+    const validated = await client.validateCredentials(other);
+    expect(authenticationCount).toBe(2);
+    if (rejected) {
+      expect(validated).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
+      expect(await client.openSession(other)).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
+      expect(authenticationCount).toBe(3);
+      expect(sessionCount).toBe(1);
+      expect(await client.openSession(live)).toEqual({ ok: true, value: { sessionReference: 'session-1' } });
+      return;
+    }
+    expect(validated.ok).toBe(true);
+    const xml = '<Faktura>frozen</Faktura>';
+    const invoiceHashHex = createHash('sha256').update(xml).digest('hex');
+    expect(await client.submitInvoice({ ...other, sessionReference: 'session-1', xml, invoiceHashHex }))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(submissions).toHaveLength(0);
+    expect(await client.openSession(other)).toEqual({ ok: true, value: { sessionReference: 'session-2' } });
+    for (const [input, sessionReference] of [[live, 'session-1'], [other, 'session-2']] as const) {
+      expect((await client.submitInvoice({ ...input, sessionReference, xml, invoiceHashHex })).ok).toBe(true);
+    }
+    expect(submissions).toEqual([
+      { path: '/v2/sessions/online/session-1/invoices', authorization: 'Bearer access-1' },
+      { path: '/v2/sessions/online/session-2/invoices', authorization: 'Bearer access-2' },
+    ]);
+    expect((await client.closeSession({ ...other, sessionReference: 'session-2' })).ok).toBe(true);
+    expect(await client.openSession(live)).toEqual({ ok: true, value: { sessionReference: 'session-1' } });
+    expect(authenticationCount).toBe(2);
+    expect(sessionCount).toBe(2);
+  });
+
   it('authenticates with an encrypted BYO token, isolates tenant sessions, and refreshes access', async () => {
     const requests: Array<{ path: string; authorization: string | null; body: unknown }> = [];
     let statusCalls = 0;
@@ -91,7 +186,7 @@ describe('KSeF API client', () => {
     });
     const input = {
       environment: 'test' as const,
-      credentials: { tenantId: 'tenant-1', token: 'tenant-ksef-token', contextNip: '5555555555' },
+      credentials: { tenantId: 'tenant-1', credentialSlot: 'live' as const, token: 'tenant-ksef-token', contextNip: '5555555555' },
     };
 
     expect((await client.validateCredentials(input)).ok).toBe(true);
@@ -227,6 +322,7 @@ describe('KSeF API client', () => {
       environment: 'test' as const,
       credentials: {
         tenantId: 'tenant-1',
+        credentialSlot: 'live' as const,
         token: 'tenant-ksef-token',
         contextNip: '5555555555',
       },

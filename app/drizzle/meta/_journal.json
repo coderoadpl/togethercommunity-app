@@ -974,6 +974,13 @@
       "when": 1790964000010,
       "tag": "0138_order_issues",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1790964000011,
+      "tag": "0139_ksef_controlled_send",
+      "breakpoints": true
     }
   ]
 }

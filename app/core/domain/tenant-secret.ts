@@ -27,6 +27,8 @@ export const tenantSecretKeySchema = z.enum([
   'ifirma.username',
   'ksef.token',
   'ksef.contextNip',
+  'ksef.test.token',
+  'ksef.test.contextNip',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

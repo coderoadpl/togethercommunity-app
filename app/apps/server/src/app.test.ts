@@ -1243,22 +1243,19 @@ const importM2mApp = (options: {
   return { app: buildApp(configured), mutations, userMutations };
 };
 
-const ksefApp = (
-  dispatch: NonNullable<AppDeps['ksef']>['dispatch'],
-  rateLimitBuckets?: AppDeps['rateLimitBuckets'],
-): ReturnType<typeof buildApp> => {
-  const configured = deps(rateLimitBuckets === undefined ? {} : { rateLimitBuckets });
-  configured.ksef = {
+const ksefDeps = (dispatch: NonNullable<AppDeps['ksef']>['dispatch']): NonNullable<AppDeps['ksef']> => {
+  return {
     environment: 'test',
     credentials: {
-      resolve: async () => ok({
+      resolve: async (_tenantId, mode = 'live') => ok({
         tenantId: 't-acme',
+        credentialSlot: mode,
         token: 'token',
         contextNip: '5555555555',
       }),
     },
     numbers: {
-      allocate: async () => ({ p2: 'FV/1998/000001', sequence: 1 }),
+      allocate: async () => ok({ p2: 'FV/1998/000001', sequence: 1 }),
     },
     artifacts: {
       findByKey: async () => null,
@@ -1294,8 +1291,15 @@ const ksefApp = (
     dispatchSecret: 'test-ksef-cron-secret',
     dispatch,
   };
-  return buildApp(configured);
 };
+
+const ksefApp = (
+  dispatch: NonNullable<AppDeps['ksef']>['dispatch'],
+  rateLimitBuckets?: AppDeps['rateLimitBuckets'],
+): ReturnType<typeof buildApp> => buildApp({
+  ...deps(rateLimitBuckets === undefined ? {} : { rateLimitBuckets }),
+  ksef: ksefDeps(dispatch),
+});
 
 const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
   const marketing = marketingDeps();
@@ -2752,6 +2756,56 @@ describe('marketing HTTP surfaces', () => {
 });
 
 describe('KSeF HTTP surfaces', () => {
+  it.each([undefined, 'live', 'test'] as const)('tests the intended credential slot for mode %s', async (mode) => {
+    const configured = ksefDeps(async () => ok({ processed: false, invoiceId: null, processedCount: 0 }));
+    configured.environment = 'production';
+    const resolve = vi.fn(async (_tenantId: string, slot?: 'live' | 'test') => ok({
+      tenantId: 't-acme', credentialSlot: slot ?? 'live', token: `${slot}-token`, contextNip: '5555555555',
+    }));
+    const validateCredentials = vi.fn(async () => ok({ diagnostic: 'Connected' }));
+    configured.credentials = { resolve };
+    configured.client = { ...configured.client, validateCredentials };
+    const app = scopedApp('owner', { overrides: { ksef: configured } });
+    const response = await app.request(API_PATHS.ksefTestConnection, {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', ...(mode === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(mode === undefined ? {} : { body: JSON.stringify({ mode }) }),
+    });
+    expect(response.status).toBe(200);
+    expect(resolve).toHaveBeenCalledWith('t-acme', mode ?? 'live');
+    expect(validateCredentials).toHaveBeenCalledWith({
+      environment: mode === 'test' ? 'test' : 'production',
+      credentials: { tenantId: 't-acme', credentialSlot: mode ?? 'live', token: `${mode ?? 'live'}-token`, contextNip: '5555555555' },
+    });
+  });
+
+  it('rejects malformed KSeF credential modes before testing credentials', async () => {
+    const configured = ksefDeps(async () => ok({ processed: false, invoiceId: null, processedCount: 0 }));
+    const resolve = vi.fn(configured.credentials.resolve);
+    configured.credentials = { resolve };
+    const app = scopedApp('owner', { overrides: { ksef: configured } });
+    const response = await app.request(API_PATHS.ksefTestConnection, {
+      method: 'POST', headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'invalid' }),
+    });
+    expect(response.status).toBe(400);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+
+  it.each(['member', 'staff', 'owner'] as const)('checks invoice:write before sending as %s', async (scope) => {
+    const findById = vi.fn(async () => null);
+    const app = scopedApp(scope, { overrides: { orderDetails: { findById } } });
+    const response = await app.request(API_PATHS.invoiceSend.replace(':orderId', 'order-1'), {
+      method: 'POST',
+      headers: { [TENANT_HEADER]: 'acme', 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(response.status).toBe(scope === 'member' ? 403 : 404);
+    if (scope === 'member') expect(findById).not.toHaveBeenCalled();
+  });
+
+
   it('runs the durable dispatcher only for the configured cron bearer', async () => {
     const dispatch = vi.fn(async () => ok({
       processed: false,

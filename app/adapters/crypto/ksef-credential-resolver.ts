@@ -10,16 +10,16 @@ import type { KsefCredentialResolver, TenantSecretResolver } from '#core/server/
 export const createKsefCredentialResolver = (
   secrets: TenantSecretResolver,
 ): KsefCredentialResolver => ({
-  resolve: async (tenantId) => {
+  resolve: async (tenantId, mode = 'live') => {
     const [token, contextNip] = await Promise.all([
-      secrets.resolve(tenantId, 'ksef.token'),
-      secrets.resolve(tenantId, 'ksef.contextNip'),
+      secrets.resolve(tenantId, mode === 'test' ? 'ksef.test.token' : 'ksef.token'),
+      secrets.resolve(tenantId, mode === 'test' ? 'ksef.test.contextNip' : 'ksef.contextNip'),
     ]);
     if (!token.ok || !contextNip.ok) {
       return err(integrationNotConfigured('Save the KSeF token and context NIP in Integrations → Invoicing'));
     }
     const parsedNip = nipSchema.safeParse(contextNip.value);
     if (!parsedNip.success) return err(validation('The KSeF context NIP is invalid'));
-    return ok({ tenantId, token: token.value, contextNip: parsedNip.data });
+    return ok({ tenantId, credentialSlot: mode, token: token.value, contextNip: parsedNip.data });
   },
 });

@@ -2273,7 +2273,7 @@ describe('Stripe payment mode isolation', () => {
     expect(h.warnings.some((message) => message.includes('ignored'))).toBe(true);
   });
 
-  it('fulfills a recorded test checkout with an isolated grant, no email, consent or invoice', async () => {
+  it('fulfills a recorded test checkout and queues one invoice job without email or consent', async () => {
     const { h, event, liveOrder } = await testCheckout();
     const liveGrant = structuredClone([...h.grants.values()][0]);
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
@@ -2285,9 +2285,11 @@ describe('Stripe payment mode isolation', () => {
     expect(h.sent).toHaveLength(1);
     expect(h.queued).toEqual([]);
     expect(h.consents).toEqual([]);
-    expect(h.autoInvoiceJobs).toHaveLength(1);
+    expect(h.autoInvoiceJobs).toHaveLength(2);
+    expect(h.autoInvoiceJobs[1]).toMatchObject({ orderId: 'test-order', webhookEventId: `test:${event.id}`, status: 'queued' });
     expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-test-repeat' }, h.deps)).toEqual(ok({ processed: false }));
     expect(h.orders).toHaveLength(2);
+    expect(h.autoInvoiceJobs).toHaveLength(2);
     expect(h.sent).toHaveLength(1);
   });
 
@@ -2320,6 +2322,14 @@ describe('Stripe payment mode isolation', () => {
       h.subscriptions.set(subscription.id, subscription);
       expect(await fulfillStripeWebhook(tenantA, { ...next, mode: 'test', livemode: false }, h.deps)).toEqual(ok({ processed: true }));
       expect(h.orders.filter((order) => order.id !== h.orders[0]?.id).every((order) => order.mode === 'test')).toBe(true);
+      if (type === 'invoice.paid') {
+        const renewalOrder = h.orders.find((order) => order.providerObjectIds['invoice'] === 'in-test');
+        expect(renewalOrder).toBeDefined();
+        expect(h.autoInvoiceJobs).toHaveLength(3);
+        expect(h.autoInvoiceJobs[2]).toMatchObject({ orderId: renewalOrder?.id, webhookEventId: `test:${next.id}`, status: 'queued' });
+      } else {
+        expect(h.autoInvoiceJobs).toHaveLength(2);
+      }
       expect(h.sent).toHaveLength(1);
       expect(h.queued).toEqual([]);
     },

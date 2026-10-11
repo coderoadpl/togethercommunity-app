@@ -1,6 +1,6 @@
 {
-  "hash": "c1ab6fc2d895960ca45b708a3549b0c49e0b4f07a6c8ab011abb794aa991f63b",
-  "shortId": "c1ab6fc2d895",
+  "hash": "7ec3097d089d824d652e6c6297a84afb15b7104a03c088eee8743c941151979f",
+  "shortId": "7ec3097d089d",
   "schema": {
     "constraints": [
       {
@@ -3957,6 +3957,14 @@
             "generated": "",
             "identity": "",
             "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'automatic'::text",
+            "generated": "",
+            "identity": "",
+            "name": "ksef_submission_mode",
             "notNull": true,
             "type": "text"
           },

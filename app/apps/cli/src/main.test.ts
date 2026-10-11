@@ -11,6 +11,7 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  sendInvoice: ReturnType<typeof vi.fn>;
   consumerSalesSummary: ReturnType<typeof vi.fn>;
   exportConsumerSales: ReturnType<typeof vi.fn>;
   verifyOrder: ReturnType<typeof vi.fn>;
@@ -60,6 +61,7 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    sendInvoice: vi.fn(),
     consumerSalesSummary: vi.fn(),
     exportConsumerSales: vi.fn(),
     verifyOrder: vi.fn(),
@@ -157,6 +159,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    sendInvoice: h.sendInvoice,
     consumerSalesSummary: h.consumerSalesSummary,
     exportConsumerSales: h.exportConsumerSales,
     verifyOrder: h.verifyOrder,
@@ -238,6 +241,8 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.sendInvoice.mockReset();
+  h.updateTenantSettings.mockReset();
   h.consumerSalesSummary.mockReset().mockResolvedValue(ok({ totals: { grossCents: 105 } }));
   h.exportConsumerSales.mockReset().mockResolvedValue(ok({ filename: 'consumer-sales.csv', mimeType: 'text/csv', content: 'rate,gross_cents\n5,105' }));
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
@@ -1315,4 +1320,34 @@ it.each(['live', 'test'] as const)('emits the %s Stripe permission check envelop
   await run('--json', 'stripe', 'probe-permissions', '--mode', mode);
   expect(h.probeStripePermissions).toHaveBeenCalledExactlyOnceWith({ mode });
   expect(soleJson()).toEqual({ ok: true, data: result });
+});
+
+
+describe('KSeF controlled submission', () => {
+  it('submits an invoice by order ID and prints one result envelope', async () => {
+    const invoice = { id: 'invoice-1', status: 'queued', invoiceNumber: 'FV/2026/000001' };
+    h.sendInvoice.mockResolvedValue(ok({ invoice }));
+    await run('--json', 'invoice', 'send', '--order-id', 'order-1');
+    expect(h.sendInvoice).toHaveBeenCalledWith('order-1');
+    expect(soleJson()).toEqual({ ok: true, data: { invoice } });
+  });
+
+  it('preserves the forbidden exit code when a member tries to send', async () => {
+    h.sendInvoice.mockResolvedValue(err(appError('forbidden', 'Forbidden')));
+    await run('--json', 'invoice', 'send', '--order-id', 'order-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+
+  it.each(['manual', 'automatic'])('updates the KSeF submission mode to %s', async (mode) => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { ksefSubmissionMode: mode } }));
+    await run('--json', 'tenant', 'settings-set', '--ksef-submission-mode', mode);
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({ ksefSubmissionMode: mode });
+  });
+
+  it('rejects an invalid KSeF submission mode before calling the server', async () => {
+    await run('--json', 'tenant', 'settings-set', '--ksef-submission-mode', 'later');
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });

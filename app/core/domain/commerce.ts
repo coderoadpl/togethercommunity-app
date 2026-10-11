@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
 
 import { currencySchema, productTypeSchema } from './product.js';
@@ -171,6 +172,7 @@ export const orderSchema = z.object({
 export type Order = z.infer<typeof orderSchema>;
 
 export const orderListItemSchema = orderSchema.extend({
+  invoice: invoiceSchema.nullable().optional(),
   lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),

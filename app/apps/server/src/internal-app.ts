@@ -23,6 +23,7 @@ import {
   markLessonEditionInputSchema, unmarkLessonEditionInputSchema,
   API_KEY_HEADER,
   API_PATHS,
+  ksefTestConnectionInputSchema,
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   apiKeyImportAuditQuerySchema,
@@ -378,6 +379,7 @@ import {
   removeMember,
   reportPost,
   requestInvoice,
+  sendInvoice,
   resetMemberCourseProgress,
   listTenantAuditEvents,
   resolveIdentity,
@@ -2589,12 +2591,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     respond(await testIfirmaConnection(ctxOf(c), deps)),
   );
 
-  app.post(API_PATHS.ksefTestConnection, async (c) =>
-    respond(await testKsefConnection(
+  app.post(API_PATHS.ksefTestConnection, async (c) => {
+    const body: unknown = c.req.raw.body === null ? {} : await readJson(c.req.raw);
+    const parsed = ksefTestConnectionInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid KSeF connection test payload', parsed.error.flatten())));
+    return respond(await testKsefConnection(
       ctxOf(c),
       { ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }) },
-    )),
-  );
+      parsed.data.mode,
+    ));
+  });
 
   app.get(API_PATHS.bunnyVideos, async (c) => {
     const parsed = bunnyVideosInputSchema.safeParse({
@@ -2760,8 +2766,31 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
-    if (result.ok && result.value.provider === 'ksef' && deps.ksef !== undefined) {
+    if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
       dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue');
+    }
+    return respond(result.ok ? ok({ invoice: result.value }) : result);
+  });
+
+  app.post(API_PATHS.invoiceSend, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await sendInvoice(
+      ctxOf(c),
+      c.req.param('orderId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
+      },
+    );
+    if (result.ok && result.value.provider === 'ksef' && result.value.ksef?.state === 'queued' && deps.ksef !== undefined) {
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice send');
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });

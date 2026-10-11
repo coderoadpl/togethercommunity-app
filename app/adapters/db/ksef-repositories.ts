@@ -1,5 +1,7 @@
 import { and, eq, lt, lte, sql } from 'drizzle-orm';
 
+import { ok } from '#core/domain/index.js';
+
 import type {
   FiscalArtifactRepository,
   KsefNumberRepository,
@@ -14,11 +16,15 @@ import {
   ksefNumberSequences,
   ksefSubmissionJobs,
   tenants,
+  orders,
 } from './app-schema.js';
 
 export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
-  allocate: async (tenantId, input) =>
-    db.transaction(async (tx) => {
+  allocate: async (tenantId, input) => {
+    return db.transaction(async (tx) => {
+      await tx.select({ id: orders.id }).from(orders)
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
+      const invoiceType = input.environment === 'test' ? `${input.invoiceType}_TEST` as const : input.invoiceType;
       const existing = (
         await tx
           .select({ p2: ksefNumberAllocations.p2, sequence: ksefNumberAllocations.sequence })
@@ -29,15 +35,15 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
           ))
           .limit(1)
       )[0];
-      if (existing !== undefined) return existing;
-      const sequenceId = `${tenantId}:${input.invoiceType}:${String(input.year)}`;
+      if (existing !== undefined) return ok(existing);
+      const sequenceId = `${tenantId}:${invoiceType}:${String(input.year)}`;
       const row = (
         await tx
           .insert(ksefNumberSequences)
           .values({
             id: sequenceId,
             tenantId,
-            invoiceType: input.invoiceType,
+            invoiceType,
             year: input.year,
             nextValue: 2,
             updatedAt: input.allocatedAt,
@@ -60,15 +66,16 @@ export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
       await tx.insert(ksefNumberAllocations).values({
         id: `${sequenceId}:${String(row.allocated)}`,
         tenantId,
-        invoiceType: input.invoiceType,
+        invoiceType,
         year: input.year,
         sequence: row.allocated,
         p2,
         orderId: input.orderId,
         allocatedAt: input.allocatedAt,
       });
-      return { p2, sequence: row.allocated };
-    }),
+      return ok({ p2, sequence: row.allocated });
+    });
+  },
 });
 
 export const createFiscalArtifactRepository = (db: Db): FiscalArtifactRepository => ({

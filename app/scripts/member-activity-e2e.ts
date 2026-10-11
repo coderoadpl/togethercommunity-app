@@ -183,6 +183,9 @@ const pollUntil = async (
 };
 
 const setEnglish = async (context: BrowserContext): Promise<void> => {
+  await context.route('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Local video fixture</title>' }),
+  );
   await context.addInitScript(() => {
     window.localStorage.setItem('together-language', 'en');
   });
@@ -363,30 +366,65 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   const fullText = `${bold} <script>alert(1)</script> with a ${label}`;
   const editor = composer.getByTestId('space-composer-input');
   const t0 = Date.now();
-  const readSnapshot = (stage: string) => page.evaluate(({ stage, t0 }) => {
+  const readSnapshot = (
+    stage: string,
+    expected?: { text: string; from: number; to: number; toolbarLabel: string; click: boolean },
+  ) => page.evaluate(async ({ stage, t0, expected }) => {
+    if (expected !== undefined) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const editorElement = document.querySelector('[data-testid="space-composer-input"]');
     const viewDesc = editorElement !== null && 'pmViewDesc' in editorElement
       ? editorElement.pmViewDesc : undefined;
-    const view = typeof viewDesc === 'object' && viewDesc !== null && 'view' in viewDesc
+    const describedView = typeof viewDesc === 'object' && viewDesc !== null && 'view' in viewDesc
       ? viewDesc.view : undefined;
     const tiptapEditor = editorElement !== null && 'editor' in editorElement
       ? editorElement.editor : undefined;
+    const view = describedView ?? (
+      typeof tiptapEditor === 'object' && tiptapEditor !== null && 'view' in tiptapEditor
+        ? tiptapEditor.view : undefined
+    );
     const selectionSource = view ?? tiptapEditor;
     const state = typeof selectionSource === 'object' && selectionSource !== null
       && 'state' in selectionSource ? selectionSource.state : undefined;
     const selection = typeof state === 'object' && state !== null && 'selection' in state
       ? state.selection : undefined;
-    return {
+    const domSelection = document.getSelection();
+    let domRange: { from: number; to: number } | null = null;
+    if (
+      domSelection !== null && domSelection.rangeCount > 0
+      && domSelection.anchorNode !== null && domSelection.focusNode !== null
+      && editorElement?.contains(domSelection.anchorNode) === true
+      && editorElement.contains(domSelection.focusNode)
+      && typeof view === 'object' && view !== null
+      && 'posAtDOM' in view && typeof view.posAtDOM === 'function'
+    ) {
+      const anchor: unknown = view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset);
+      const head: unknown = view.posAtDOM(domSelection.focusNode, domSelection.focusOffset);
+      if (typeof anchor === 'number' && typeof head === 'number') {
+        domRange = { from: Math.min(anchor, head), to: Math.max(anchor, head) };
+      }
+    }
+    const internalSelection = typeof selection === 'object' && selection !== null
+      && 'from' in selection && typeof selection.from === 'number'
+      && 'to' in selection && typeof selection.to === 'number'
+      && 'anchor' in selection && typeof selection.anchor === 'number'
+      && 'head' in selection && typeof selection.head === 'number'
+      ? { from: selection.from, to: selection.to, anchor: selection.anchor, head: selection.head }
+      : null;
+    const editorFocused = editorElement !== null && document.activeElement === editorElement;
+    const matchesDomExpected = expected !== undefined && editorFocused
+      && domSelection?.toString() === expected.text
+      && domRange?.from === expected.from && domRange.to === expected.to;
+    const matchesExpected = matchesDomExpected && expected !== undefined
+      && internalSelection?.from === expected.from && internalSelection.to === expected.to;
+    const snapshot = {
       stage,
       at: Date.now() - t0,
-      domSelection: document.getSelection()?.toString() ?? '',
-      internalSelection: typeof selection === 'object' && selection !== null
-        && 'from' in selection && typeof selection.from === 'number'
-        && 'to' in selection && typeof selection.to === 'number'
-        && 'anchor' in selection && typeof selection.anchor === 'number'
-        && 'head' in selection && typeof selection.head === 'number'
-        ? { from: selection.from, to: selection.to, anchor: selection.anchor, head: selection.head }
-        : 'n/a',
+      domSelection: domSelection?.toString() ?? '',
+      domRange,
+      internalSelection,
+      editorFocused,
+      matchesDomExpected,
+      matchesExpected,
       activeElement: document.activeElement?.outerHTML.slice(0, 300) ?? null,
       pressedToolbar: Array.from(
         editorElement?.closest('[data-testid="space-composer"]')
@@ -395,28 +433,78 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
       ),
       editorHtml: editorElement?.innerHTML.slice(0, 300) ?? '',
     };
-  }, { stage, t0 });
+    let toolbarClicked = false;
+    if (matchesExpected && expected?.click === true) {
+      const button = Array.from(
+        editorElement?.closest('[data-testid="space-composer"]')?.querySelectorAll('button') ?? [],
+      ).find((candidate) => candidate.getAttribute('aria-label') === expected.toolbarLabel);
+      if (button instanceof HTMLButtonElement && !button.disabled) {
+        // Keep the verified selection and the click in one task, before another selectionchange can intervene.
+        button.click();
+        toolbarClicked = true;
+      }
+    }
+    return { ...snapshot, toolbarClicked };
+  }, { stage, t0, expected });
   const timeline: Awaited<ReturnType<typeof readSnapshot>>[] = [];
   const capture = async (stage: string): Promise<void> => {
     timeline.push(await readSnapshot(stage));
   };
   const timelineJson = (): string => timeline.map((entry) => JSON.stringify(entry)).join('\n');
+  const selectAndClickToolbar = async ({
+    text, from, to, edge, key, toolbarLabel, name,
+  }: {
+    text: string;
+    from: number;
+    to: number;
+    edge: 'Home' | 'End';
+    key: 'Shift+ArrowLeft' | 'Shift+ArrowRight';
+    toolbarLabel: string;
+    name: string;
+  }): Promise<void> => {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await editor.focus();
+      await page.keyboard.press(edge);
+      await pressRepeatedly(page, key, text.length);
+      const deadline = Date.now() + 3000;
+      let previouslyMatched = false;
+      let read = 0;
+      while (Date.now() < deadline) {
+        read += 1;
+        const snapshot = await readSnapshot(`${name}-selection-${attempt}-read-${read}`, {
+          text, from, to, toolbarLabel, click: previouslyMatched,
+        });
+        timeline.push(snapshot);
+        if (snapshot.toolbarClicked) {
+          timeline.push({ ...snapshot, stage: name === 'link' ? 'after-select' : 'after-bold-select' });
+          return;
+        }
+        // Re-selecting a correct DOM range restarts native selectionchange processing before the editor catches up.
+        if (!snapshot.matchesDomExpected) break;
+        previouslyMatched = snapshot.matchesExpected;
+      }
+    }
+    throw new E2eFailure(
+      `Markdown editor ${name} selection did not stabilize at ${from}–${to} for ${JSON.stringify(text)}.\nEditor timeline (JSON per line):\n${timelineJson()}`,
+    );
+  };
   await editor.click();
   await page.keyboard.type(fullText);
+  assert(await editor.textContent() === fullText, 'Markdown editor did not retain the complete authored text');
 
   // Formatting a range re-renders it, which makes Home/End navigation over that range
   // unreliable afterwards, so the link (applied to the trailing text) runs before the bold
   // (applied to the leading text) — each selection is made on text no prior step has touched.
   await capture('before-select');
-  let selectedText = '';
-  for (let attempt = 0; attempt < 3 && selectedText !== label; attempt += 1) {
-    await page.keyboard.press('End');
-    await pressRepeatedly(page, 'Shift+ArrowLeft', label.length);
-    selectedText = await page.evaluate(() => document.getSelection()?.toString() ?? '');
-  }
-  assert(selectedText === label, `Markdown editor link selection was ${JSON.stringify(selectedText)}, expected ${JSON.stringify(label)}`);
-  await capture('after-select');
-  await composer.getByRole('button', { name: en.markdownEditor.link }).click();
+  await selectAndClickToolbar({
+    text: label,
+    from: fullText.length - label.length + 1,
+    to: fullText.length + 1,
+    edge: 'End',
+    key: 'Shift+ArrowLeft',
+    toolbarLabel: en.markdownEditor.link,
+    name: 'link',
+  });
   await page.getByRole('dialog').waitFor({ state: 'visible', timeout: 15000 });
   await capture('after-toolbar-click');
   await page.getByLabel(en.markdownEditor.linkUrlLabel).fill('https://example.com/community');
@@ -424,26 +512,31 @@ const authorWithToolbar = async (page: Page, composer: Locator, suffix: string):
   await page.getByRole('button', { name: en.markdownEditor.linkApply }).click();
   await page.getByRole('dialog').waitFor({ state: 'detached', timeout: 15000 });
   await capture('after-dialog-detached');
-  await delay(500);
-  await capture('after-500ms');
   const authoredLink = editor.locator('a[href="https://example.com/community"]', { hasText: label });
   try {
     await authoredLink.waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForFunction(() => {
+      const editorElement = document.querySelector('[data-testid="space-composer-input"]');
+      return editorElement !== null && document.activeElement === editorElement;
+    }, undefined, { timeout: 15000 });
+    await capture('after-link-focused');
   } catch {
+    await capture('link-state-failure');
     throw new E2eFailure(
       `Markdown editor did not reach the authored link state.\nRelevant HTML (first 500 chars):\n${await htmlExcerpt(editor)}\nEditor timeline (JSON per line):\n${timelineJson()}`,
     );
   }
 
   try {
-    selectedText = '';
-    for (let attempt = 0; attempt < 3 && selectedText !== bold; attempt += 1) {
-      await page.keyboard.press('Home');
-      await pressRepeatedly(page, 'Shift+ArrowRight', bold.length);
-      selectedText = await page.evaluate(() => document.getSelection()?.toString() ?? '');
-    }
-    assert(selectedText === bold, `Markdown editor bold selection was ${JSON.stringify(selectedText)}, expected ${JSON.stringify(bold)}`);
-    await composer.getByRole('button', { name: en.markdownEditor.bold }).click();
+    await selectAndClickToolbar({
+      text: bold,
+      from: 1,
+      to: bold.length + 1,
+      edge: 'Home',
+      key: 'Shift+ArrowRight',
+      toolbarLabel: en.markdownEditor.bold,
+      name: 'bold',
+    });
     await composer.getByRole('button', { name: en.markdownEditor.bold, pressed: true }).waitFor({ state: 'visible', timeout: 15000 });
     await editor.locator('strong').getByText(bold, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     await authoredLink.waitFor({ state: 'visible', timeout: 15000 });

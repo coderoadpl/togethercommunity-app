@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import configuration from '../../../vercel.json' with { type: 'json' };
+import { directSalesLinkCopyEn } from './direct-sales-link-copy.en.js';
 import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
 import { renderDirectSalesLinkPage } from './direct-sales-link-page.js';
 import { SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
@@ -12,9 +13,10 @@ const page = {
 };
 
 describe('direct sales-link page', () => {
-  it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('uses the English fallback for an unspecified Polish %s error without checkout actions', (error) => {
+  it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('renders the Polish %s error without checkout actions', (error) => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error });
     expect(html).toContain('<html lang="pl">');
+    expect(directSalesLinkCopyPl[error]).not.toBe(directSalesLinkCopyEn[error]);
     expect(html).toContain(`<p role="status">${directSalesLinkCopyPl[error]}</p>`);
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');

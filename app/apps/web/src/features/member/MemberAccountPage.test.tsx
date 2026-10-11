@@ -611,7 +611,10 @@ describe('MemberAccountPage', () => {
     server.use(stubMe(true, { videoAutoplay: true }), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=playback');
 
-    expect(await screen.findByTestId('account-playback')).toBeInTheDocument();
+    expect(await screen.findByTestId('account-lesson-reading')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: en.account.lessonTextAutoExpandLabel })).toBeInTheDocument();
+    expect(screen.queryByTestId('account-playback')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.account.playbackIntro)).not.toBeInTheDocument();
     expect(screen.getByRole('switch', { name: en.account.lessonTextAutoExpandLabel })).not.toBeChecked();
     expect(screen.queryByRole('switch', { name: en.account.videoAutoplayLabel })).not.toBeInTheDocument();
   });
@@ -634,7 +637,7 @@ describe('MemberAccountPage', () => {
     expect(toggle).toHaveAccessibleDescription(en.account.lessonTextAutoExpandHint);
     await userEvent.click(toggle);
     expect(readLessonTextAutoExpand()).toBe(true);
-    expect(window.localStorage.getItem('together:lesson-text-auto-expand')).toBe('true');
+    expect(window.localStorage.getItem('together-lesson-text-auto-expand')).toBe('true');
     unmount();
 
     await renderAccount('/account?tab=playback');
@@ -642,7 +645,7 @@ describe('MemberAccountPage', () => {
     expect(rememberedToggle).toBeChecked();
     await userEvent.click(rememberedToggle);
     expect(readLessonTextAutoExpand()).toBe(false);
-    expect(window.localStorage.getItem('together:lesson-text-auto-expand')).toBe('false');
+    expect(window.localStorage.getItem('together-lesson-text-auto-expand')).toBe('false');
     expect(profileUpdates).toBe(0);
   });
 

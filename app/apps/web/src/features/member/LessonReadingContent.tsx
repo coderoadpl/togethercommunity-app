@@ -30,7 +30,12 @@ export const LessonReadingContent = ({ html }: { html: string }) => {
           fadeEnd = Math.min(fadeEnd, Math.max(0, rect.top - top));
         }
       }
-      setPreview({ long: element.scrollHeight > height, height, fadeEnd, fadeStart: Math.max(0, fadeEnd - rem * 4) });
+      const long = element.scrollHeight > height;
+      const fadeStart = Math.max(0, fadeEnd - rem * 4);
+      setPreview((previous) => previous.long === long && previous.height === height &&
+        previous.fadeEnd === fadeEnd && previous.fadeStart === fadeStart
+        ? previous
+        : { long, height, fadeEnd, fadeStart });
     };
     const reveal = () => setExpanded(true);
     measure();
@@ -51,7 +56,7 @@ export const LessonReadingContent = ({ html }: { html: string }) => {
         id={contentId}
         data-testid="lesson-reading-preview"
         data-collapsed={collapsed}
-        onFocusCapture={() => setExpanded(true)}
+        onFocusCapture={collapsed ? () => setExpanded(true) : undefined}
         sx={collapsed ? {
           maxHeight: preview.height,
           overflow: 'hidden',

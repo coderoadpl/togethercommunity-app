@@ -3798,7 +3798,7 @@ export const LessonPlaceholder = styled(Box)(({ theme }) => ({
 export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   maxWidth: '44rem',
-  marginInline: 'auto',
+  marginInline: 0,
   textAlign: 'left',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& img[role="button"]': { cursor: 'zoom-in' },

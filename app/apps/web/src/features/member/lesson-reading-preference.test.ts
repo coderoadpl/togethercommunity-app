@@ -8,13 +8,13 @@ describe('lesson text preference', () => {
   });
 
   it.each(['broken', 'null', '1', '"true"'])('ignores invalid stored preference %s', (value) => {
-    window.localStorage.setItem('together:lesson-text-auto-expand', value);
+    window.localStorage.setItem('together-lesson-text-auto-expand', value);
     expect(readLessonTextAutoExpand()).toBe(false);
   });
 
   it.each([true, false])('remembers a boolean preference %s', (value) => {
     writeLessonTextAutoExpand(value);
     expect(readLessonTextAutoExpand()).toBe(value);
-    expect(window.localStorage.getItem('together:lesson-text-auto-expand')).toBe(String(value));
+    expect(window.localStorage.getItem('together-lesson-text-auto-expand')).toBe(String(value));
   });
 });

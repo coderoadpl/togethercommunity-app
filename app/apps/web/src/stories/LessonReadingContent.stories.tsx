@@ -65,6 +65,5 @@ export const CollapsedInteractive: Story = {
     await userEvent.click(canvas.getByRole('link', { name: 'Read the example' }));
     await expect(window.location.hash).toBe('#interactive-section');
     await expect(preview).toHaveAttribute('data-collapsed', 'false');
-    canvasElement.dataset['interactiveVerified'] = 'true';
   },
 };

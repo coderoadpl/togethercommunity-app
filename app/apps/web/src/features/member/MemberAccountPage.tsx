@@ -568,33 +568,40 @@ export const MemberAccountPage = () => {
         {selectedTab === 'notifications' ? <SectionCard title={t.account.appearanceHeading} description={t.account.appearanceDescription}><ColorSchemeSwitcher /></SectionCard> : null}
 
         {selectedTab === 'playback' && !impersonating && me.data.tenant?.memberId != null ? (
-          <Box data-account-wide><SectionCard icon={<PlayIcon />}
-            title={t.account.playbackHeading}
-            description={t.account.playbackIntro}
-            data-testid="account-playback"
-            headerActions={memberVideoAutoplayOverride ? (
-              <FormControlLabel
-                control={<Switch checked={videoAutoplay} disabled={updatePlayback.isPending} onChange={(event) => updatePlayback.mutate({ videoAutoplay: event.target.checked })} />}
-                label={t.account.videoAutoplayLabel}
-              />
-            ) : null}
-          >
-            {memberVideoAutoplayOverride ? <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText> : null}
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={lessonTextAutoExpand}
-                  onChange={(event) => {
-                    writeLessonTextAutoExpand(event.target.checked);
-                    setLessonTextAutoExpand(event.target.checked);
-                  }}
-                  slotProps={{ input: { 'aria-describedby': 'lesson-text-auto-expand-hint' } }}
+          <Stack data-account-wide spacing="1.5rem">
+            {memberVideoAutoplayOverride ? <SectionCard icon={<PlayIcon />}
+              title={t.account.playbackHeading}
+              description={t.account.playbackIntro}
+              data-testid="account-playback"
+              headerActions={(
+                <FormControlLabel
+                  control={<Switch checked={videoAutoplay} disabled={updatePlayback.isPending} onChange={(event) => updatePlayback.mutate({ videoAutoplay: event.target.checked })} />}
+                  label={t.account.videoAutoplayLabel}
                 />
               )}
-              label={t.account.lessonTextAutoExpandLabel}
-            />
-            <FormHelperText id="lesson-text-auto-expand-hint">{t.account.lessonTextAutoExpandHint}</FormHelperText>
-          </SectionCard></Box>
+            >
+              <FormHelperText>{t.account.videoAutoplayHint}</FormHelperText>
+            </SectionCard> : null}
+            <SectionCard
+              title={t.account.lessonTextAutoExpandLabel}
+              description={<span id="lesson-text-auto-expand-hint">{t.account.lessonTextAutoExpandHint}</span>}
+              data-testid="account-lesson-reading"
+            >
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={lessonTextAutoExpand}
+                    onChange={(event) => {
+                      writeLessonTextAutoExpand(event.target.checked);
+                      setLessonTextAutoExpand(event.target.checked);
+                    }}
+                    slotProps={{ input: { 'aria-describedby': 'lesson-text-auto-expand-hint' } }}
+                  />
+                )}
+                label={t.account.lessonTextAutoExpandLabel}
+              />
+            </SectionCard>
+          </Stack>
         ) : null}
 
         {selectedTab === 'profile' && (billingPortalUrl || !impersonating) ? <Stack data-account-compact useFlexGap spacing="1.5rem">

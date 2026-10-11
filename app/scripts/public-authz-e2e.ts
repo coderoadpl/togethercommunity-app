@@ -305,7 +305,7 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
     const toggle = page.getByTestId(`module-toggle-${module.id}`);
     await toggle.waitFor({ state: 'visible' });
     assert(
-      await toggle.getAttribute('aria-expanded') === 'false',
+      await toggle.locator('xpath=ancestor::*[@role="treeitem"][1]').getAttribute('aria-expanded') === 'false',
       `guest module ${module.id} was not initially collapsed`,
     );
   }
@@ -328,7 +328,10 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
     `/my/courses/${publicCourseId}/lessons/${previewLessonId}`,
   );
   await locked.waitFor({ state: 'visible' });
-  assert(await locked.isDisabled(), 'non-preview lesson was enabled in the public course program');
+  assert(
+    await locked.locator('xpath=ancestor::*[@role="treeitem"][1]').isDisabled(),
+    'non-preview lesson was enabled in the public course program',
+  );
   assert(await locked.getAttribute('href') === null, 'non-preview lesson exposed a navigation link');
 
   await preview.click();

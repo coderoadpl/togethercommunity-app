@@ -34,3 +34,12 @@ descriptors, and cache invalidation helpers are outside this API method table.
 Missing methods are report-only and do not cause a nonzero exit status.
 
 See [CLI usage and lesson preview commands](cli.md).
+
+## Course outline UI
+
+The member course outline uses the MIT-licensed `@mui/x-tree-view` community
+package alongside Material UI 9. `SimpleTreeView` and `TreeItem` provide
+accessible tree semantics and keyboard navigation. The application retains
+branch expansion, lesson links, access and progress indicators, and theme
+styles. Modules with exactly one chapter show lessons directly beneath the
+module; modules with multiple chapters retain their chapter rows.

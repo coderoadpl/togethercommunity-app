@@ -214,8 +214,8 @@ describe('CourseSidebar', () => {
     await renderSidebar('l2');
 
     const program = await screen.findByTestId('course-tree');
-    expect(within(program).getByTestId('lesson-button-l2')).toHaveClass('Mui-selected');
-    expect(within(program).getByTestId('lesson-button-l1')).not.toHaveClass('Mui-selected');
+    expect(within(program).getByTestId('lesson-button-l2')).toHaveAttribute('data-selected');
+    expect(within(program).getByTestId('lesson-button-l1')).not.toHaveAttribute('data-selected');
     expect(screen.getByTestId('course-sidebar-overview')).not.toHaveAttribute('aria-current');
   });
 
@@ -225,8 +225,8 @@ describe('CourseSidebar', () => {
     await renderSidebar('l2');
 
     expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('lesson-button-l3')).not.toBeInTheDocument();
   });
 
@@ -236,8 +236,8 @@ describe('CourseSidebar', () => {
     await renderSidebar(null);
 
     expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
   });
 
@@ -247,8 +247,8 @@ describe('CourseSidebar', () => {
     await renderSidebar(null);
 
     expect(await screen.findByTestId('lesson-button-l1')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('opens a deep-linked lesson branch without waiting for the progress query', async () => {
@@ -257,8 +257,8 @@ describe('CourseSidebar', () => {
     await renderSidebar('l3');
 
     expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('holds every module closed on the overview until the last viewed lesson is known', async () => {
@@ -266,8 +266,8 @@ describe('CourseSidebar', () => {
 
     await renderSidebar(null);
 
-    expect(await screen.findByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect((await screen.findByTestId('module-toggle-m1')).closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
   });
 

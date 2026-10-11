@@ -54,6 +54,9 @@ those screens alternated between two antialias states for the same geometry, and
 forcing a re-raster once the chrome is final made them byte-stable. Each repaint
 first waits for its target, so a selector that stops matching fails the capture
 instead of silently skipping the re-raster.
+The mobile long-curriculum capture moves the pointer off the program button after
+dismissing its sheet and asserts that the trigger is no longer hovered, so prior
+interactions cannot change its captured background.
 The email integration story preserves the initial font-loading sequence used
 by its recorded tab-underline measurement through `preloadFonts: false`.
 The lesson-attachment scenario explicitly scrolls its HTML

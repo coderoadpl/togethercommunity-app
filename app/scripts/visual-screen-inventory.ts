@@ -439,7 +439,12 @@ export const SCREENS: readonly ScreenSpec[] = [
         await page.getByTestId('course-program-sheet').waitFor({ state: 'hidden' });
       }
       await page.evaluate(() => window.scrollTo(0, 0));
+      if (!desktop) await page.mouse.move(0, 0);
       await waitForPaint(page);
+      if (!desktop) {
+        assert(await page.getByTestId('program-button').evaluate((button) => !button.matches(':hover')),
+          'The closed program sheet trigger must not remain hovered during capture');
+      }
       await repaintUnreadBadge(page);
     },
   },

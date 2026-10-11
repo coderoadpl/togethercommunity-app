@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ThemeProvider } from '@mui/material';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -15,6 +16,7 @@ import type { CourseStructureWithAccess } from '#core/domain/index.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { createThemeForMode } from '../../theme.js';
 import { CourseTree } from './CourseTree.js';
 
 const structure: CourseStructureWithAccess = {
@@ -112,7 +114,7 @@ const renderNode = async (node: ReactNode) => {
     history: createMemoryHistory({ initialEntries: ['/my/courses/course-1'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
 const renderTree = async (body: CourseStructureWithAccess = structure) =>
@@ -131,14 +133,136 @@ const renderFocusedTree = async (focusLessonId: string | null) =>
 const renderCollapsedTree = async () =>
   renderNode(<CourseTree courseId="course-1" structure={structure} focusLessonId="l1" />);
 
+const treeItem = (testId: string) => {
+  const item = screen.getByTestId(testId).closest('[role="treeitem"]');
+  if (!(item instanceof HTMLElement)) throw new Error(`Missing tree item for ${testId}`);
+  return item;
+};
+
 describe('CourseTree', () => {
   it('renders every node as a teaser regardless of access', async () => {
     await renderTree();
 
     expect(await screen.findByText('01 - Fundamentals')).toBeInTheDocument();
     expect(screen.getByText('02 - Advanced')).toBeInTheDocument();
-    expect(screen.getByText('Locked chapter')).toBeInTheDocument();
+    expect(screen.getByText('Preview chapter')).toBeInTheDocument();
     expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
+  });
+
+  it('flattens a single chapter while preserving lesson order and module counts', async () => {
+    await renderTree({
+      ...structure,
+      modules: structure.modules.slice(0, 1).map((module) => ({
+        ...module,
+        chapters: module.chapters.slice(0, 1),
+      })),
+    });
+
+    expect(screen.queryByText('Getting started')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chapter-toggle-c1')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('module-toggle-m1')).getByText('1/2')).toBeInTheDocument();
+    const lessons = within(treeItem('module-toggle-m1')).getAllByRole('treeitem');
+    expect(lessons).toHaveLength(2);
+    expect(lessons[0]).toContainElement(screen.getByTestId('lesson-button-l1'));
+    expect(lessons[1]).toContainElement(screen.getByTestId('lesson-button-l2'));
+  });
+
+  it('keeps both chapter rows for a module with two chapters', async () => {
+    await renderTree();
+
+    expect(treeItem('chapter-toggle-c1')).toContainElement(screen.getByTestId('lesson-button-l1'));
+    expect(treeItem('chapter-toggle-c2')).toContainElement(screen.getByTestId('lesson-button-l3'));
+    expect(treeItem('module-toggle-m1')).toContainElement(screen.getByTestId('chapter-toggle-c1'));
+    expect(treeItem('module-toggle-m1')).toContainElement(screen.getByTestId('chapter-toggle-c2'));
+  });
+
+  it('supports repeated lesson placements with unique items and route-driven selection', async () => {
+    const user = userEvent.setup();
+    await renderNode(
+      <CourseTree
+        courseId="course-1"
+        structure={{
+          ...structure,
+          modules: structure.modules.map((module) => ({
+            ...module,
+            chapters: module.chapters.map((chapter) => ({
+              ...chapter,
+              lessons: chapter.lessons.map((lesson) => lesson.lessonId === 'l3'
+                ? { ...lesson, lessonId: 'l1', name: 'Intro revisited' }
+                : lesson),
+            })),
+          })),
+        }}
+        currentLessonId="l1"
+        expandAll
+      />,
+    );
+
+    const placements = screen.getAllByTestId('lesson-button-l1');
+    expect(placements).toHaveLength(2);
+    const items = placements.map((placement) => placement.closest('[role="treeitem"]'));
+    expect(new Set(items.map((item) => item?.id)).size).toBe(2);
+    for (const placement of placements) {
+      expect(placement).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+      expect(placement.closest('[role="treeitem"]')).toHaveAttribute('aria-selected', 'true');
+    }
+    treeItem('lesson-button-l2').focus();
+    await user.keyboard(' ');
+    expect(treeItem('lesson-button-l2')).toHaveAttribute('aria-selected', 'false');
+    for (const item of items) expect(item).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(items[1]).toHaveFocus();
+  });
+
+  it('names each tree item from its own title, progress, duration and status marks', async () => {
+    await renderTree({
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((lesson) => lesson.lessonId === 'l3'
+            ? { ...lesson, completionStatus: 'partially-completed' }
+            : lesson),
+        })),
+      })),
+    });
+
+    expect(treeItem('module-toggle-m1')).toHaveAccessibleName('01 - Fundamentals 1/3');
+    expect(treeItem('chapter-toggle-c1')).toHaveAccessibleName('Getting started 1/2');
+    expect(treeItem('chapter-toggle-c2')).toHaveAccessibleName(
+      `Preview chapter 0/1 ${en.courseTree.accessPartiallyUnlocked}`,
+    );
+    expect(treeItem('lesson-button-l1')).toHaveAccessibleName(
+      `Intro to Variables 12 min ${en.courseTree.completionComplete}`,
+    );
+    expect(treeItem('lesson-button-l3')).toHaveAccessibleName(
+      `Scope Basics ${en.courseTree.completionPartial} ${en.courseTree.accessPartiallyUnlocked}`,
+    );
+    expect(treeItem('lesson-button-l4')).toHaveAccessibleName(
+      `Closures Deep Dive 30 min ${en.courseTree.accessLocked}`,
+    );
+  });
+
+  it('keeps the chapter level when a filter leaves one of several chapters visible', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await user.type(screen.getByTestId('lesson-search'), 'Scope');
+
+    expect(screen.getByTestId('chapter-toggle-c2')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('chapter-toggle-c1')).not.toBeInTheDocument());
+    expect(treeItem('chapter-toggle-c2')).toContainElement(screen.getByTestId('lesson-button-l3'));
+    expect(within(screen.getByTestId('module-toggle-m1')).getByText('1/3')).toBeInTheDocument();
+  });
+
+  it('opens the focused lesson directly beneath a single-chapter module', async () => {
+    await renderFocusedTree('l4');
+
+    expect(await screen.findByTestId('lesson-button-l4')).toBeInTheDocument();
+    expect(treeItem('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByTestId('chapter-toggle-c3')).not.toBeInTheDocument();
+    expect(treeItem('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('does not render modules or chapters without lessons', async () => {
@@ -193,7 +317,7 @@ describe('CourseTree', () => {
 
     const locked = screen.getByTestId('lesson-button-l4');
     expect(locked.tagName).not.toBe('A');
-    expect(locked).toHaveClass('Mui-disabled');
+    expect(treeItem('lesson-button-l4')).toHaveAttribute('aria-disabled', 'true');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
     expect(within(locked).getByText(en.courseTree.accessLocked)).toBeInTheDocument();
   });
@@ -213,8 +337,8 @@ describe('CourseTree', () => {
     const chapter = screen.getByTestId('chapter-toggle-c1');
     expect(within(chapter).getByText('1/2')).toBeInTheDocument();
 
-    const untouchedChapter = screen.getByTestId('chapter-toggle-c3');
-    expect(within(untouchedChapter).getByText('0/2')).toBeInTheDocument();
+    const untouchedModule = screen.getByTestId('module-toggle-m2');
+    expect(within(untouchedModule).getByText('0/2')).toBeInTheDocument();
   });
 
   it('stretches the module, chapter and lesson rows across the full sidebar width', async () => {
@@ -239,10 +363,10 @@ describe('CourseTree', () => {
     await renderTree();
 
     expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
-    const toggle = screen.getByTestId('module-toggle-m1');
-    expect(toggle.tagName).toBe('BUTTON');
+    const toggle = treeItem('module-toggle-m1');
+    expect(toggle).toHaveAttribute('role', 'treeitem');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const disclosure = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    const disclosure = within(toggle).getAllByRole('group')[0];
     expect(disclosure).toContainElement(screen.getByText('Intro to Variables'));
     toggle.focus();
     await user.keyboard('{Enter}');
@@ -251,6 +375,47 @@ describe('CourseTree', () => {
     await user.keyboard(' ');
     expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('moves through tree items with arrow keys and follows the lesson link with Enter', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderTree();
+
+    expect(screen.getByRole('tree')).toBeInTheDocument();
+    treeItem('module-toggle-m1').focus();
+    await user.keyboard('{ArrowDown}');
+    expect(treeItem('chapter-toggle-c1')).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(treeItem('lesson-button-l1')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(treeItem('lesson-button-l2')).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(treeItem('lesson-button-l1')).toHaveFocus();
+    await user.keyboard('{ArrowLeft}');
+    expect(treeItem('chapter-toggle-c1')).toHaveFocus();
+    await user.keyboard('{ArrowRight}{Enter}');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1'));
+  });
+
+  it.each(['light', 'dark'] as const)('keeps selected row styling inside its box in %s mode', async (scheme) => {
+    await renderNode(
+      <ThemeProvider theme={createThemeForMode('shadcn', undefined, scheme, 'member')}>
+        <CourseTree courseId="course-1" structure={structure} currentLessonId="l1" expandAll />
+      </ThemeProvider>,
+    );
+
+    expect(treeItem('lesson-button-l1')).toHaveAttribute('aria-selected', 'true');
+    for (const testId of ['module-toggle-m1', 'chapter-toggle-c1', 'lesson-button-l1']) {
+      const row = screen.getByTestId(testId);
+      treeItem(testId).focus();
+      await waitFor(() => expect(row).toHaveAttribute('data-focused'));
+      const style = getComputedStyle(row);
+      expect(style.boxShadow).toContain('inset 0 0 0 2px');
+      expect(Number.parseFloat(style.marginTop || '0')).toBeGreaterThanOrEqual(0);
+      expect(Number.parseFloat(style.marginBottom || '0')).toBeGreaterThanOrEqual(0);
+      expect(style.transform === '' || style.transform === 'none').toBe(true);
+      expect(style.boxSizing).toBe('border-box');
+    }
   });
 
   it('filters to matching lessons, auto-expands and highlights the match', async () => {
@@ -277,7 +442,7 @@ describe('CourseTree', () => {
     expect(screen.getByTestId('lesson-search-hint')).toHaveTextContent(en.courseTree.filterHint);
     expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
 
-    await user.type(screen.getByTestId('lesson-search'), 'nieistniejaca');
+    await user.type(screen.getByTestId('lesson-search'), 'nonexistent');
 
     const empty = await screen.findByTestId('tree-no-results');
     expect(empty).toHaveTextContent(en.courseTree.noMatches);
@@ -316,10 +481,10 @@ describe('CourseTree', () => {
     await renderFocusedTree('l3');
 
     expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
-    expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('chapter-toggle-c2')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    expect(treeItem('module-toggle-m1')).toHaveAttribute('aria-expanded', 'true');
+    expect(treeItem('chapter-toggle-c2')).toHaveAttribute('aria-expanded', 'true');
+    expect(treeItem('chapter-toggle-c1')).toHaveAttribute('aria-expanded', 'false');
+    expect(treeItem('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
   });
@@ -327,8 +492,9 @@ describe('CourseTree', () => {
   it('keeps every module closed when there is no lesson to focus', async () => {
     await renderFocusedTree(null);
 
-    expect(await screen.findByTestId('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    await screen.findByTestId('module-toggle-m1');
+    expect(treeItem('module-toggle-m1')).toHaveAttribute('aria-expanded', 'false');
+    expect(treeItem('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('scrolls the focused lesson into view', async () => {
@@ -389,13 +555,12 @@ describe('CourseTree', () => {
     const user = userEvent.setup();
     await renderCollapsedTree();
 
-    expect(await screen.findByTestId('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
+    await screen.findByTestId('module-toggle-m2');
+    expect(treeItem('module-toggle-m2')).toHaveAttribute('aria-expanded', 'false');
     await user.click(screen.getByTestId('module-toggle-m2'));
 
-    const chapter = await screen.findByTestId('chapter-toggle-c3');
-    expect(chapter).toHaveAttribute('aria-expanded', 'false');
-    expect(within(chapter).getByText('0/2')).toBeInTheDocument();
-    await user.click(chapter);
+    expect(within(screen.getByTestId('module-toggle-m2')).getByText('0/2')).toBeInTheDocument();
+    expect(screen.queryByTestId('chapter-toggle-c3')).not.toBeInTheDocument();
 
     const locked = await screen.findByTestId('lesson-button-l4');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
@@ -411,7 +576,8 @@ describe('CourseTree', () => {
     await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
 
     await user.click(screen.getByTestId('module-toggle-m2'));
-    expect(await screen.findByTestId('chapter-toggle-c3')).toHaveAttribute('aria-expanded', 'false');
+    expect(await screen.findByTestId('lesson-button-l4')).toBeInTheDocument();
+    expect(treeItem('module-toggle-m2')).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('expands every match while filtering and restores the focused branch afterwards', async () => {
@@ -436,7 +602,7 @@ describe('CourseTree', () => {
     );
     expect(screen.getByTestId('module-toggle-m1')).toHaveAttribute('title', '01 - Fundamentals');
     expect(screen.getByTestId('chapter-toggle-c1')).toHaveAttribute('title', 'Getting started');
-    expect(screen.getByTestId('lesson-button-l4').parentElement).toHaveAttribute(
+    expect(screen.getByTestId('lesson-button-l4')).toHaveAttribute(
       'title',
       en.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
     );
@@ -459,7 +625,7 @@ describe('CourseTree', () => {
   it('does not add a separate unlock row for locked lessons', async () => {
     await renderTree();
 
-    expect(screen.getByTestId('lesson-button-l4')).toHaveAttribute('aria-disabled', 'true');
+    expect(treeItem('lesson-button-l4')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.queryByTestId('unlock-lesson-l4')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l5')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlock-lesson-l1')).not.toBeInTheDocument();

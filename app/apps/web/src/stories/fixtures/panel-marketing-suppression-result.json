@@ -87,6 +87,7 @@
           "invoiceVatMode": "rate",
           "invoiceVatRatePercent": null,
           "invoicingProvider": null,
+          "ksefSubmissionMode": "automatic",
           "logoDarkUrl": null,
           "logoUrl": null,
           "memberVideoAutoplayOverride": false,

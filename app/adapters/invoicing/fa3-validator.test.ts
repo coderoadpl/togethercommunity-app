@@ -28,6 +28,20 @@ describe('FA(3) XSD validator', () => {
     });
   });
 
+  it.each([
+    { nip: null, name: '', country: 'PL', addressLine: '00-123' },
+    { nip: null, name: 'John Smith', country: 'DE', addressLine: '10115' },
+    { nip: null, name: 'John Smith', country: 'PL', addressLine: '' },
+  ])('accepts partial consumer details against the official XSD: $country / $addressLine', async (buyer) => {
+    const consumerXml = renderFa3Invoice({
+      invoiceNumber: 'FV/2026/000004', issueDate: '2026-10-11', generatedAt: '2026-10-11T10:00:00Z',
+      seller: { nip: '5555555555', name: 'Seller', addressLine: '1 Simple St' },
+      buyer, productName: 'Course', grossAmountCents: 7900, discountCents: 0, vat: { kind: 'rate', percent: 23 },
+    });
+
+    expect(await createFa3XsdValidator().validate(consumerXml)).toEqual({ ok: true, value: undefined });
+  });
+
   it.each(['art_113_1', 'other'] as const)('accepts exempt XML for %s', async (basisKind) => {
     const exemptXml = renderFa3Invoice({
       ...{

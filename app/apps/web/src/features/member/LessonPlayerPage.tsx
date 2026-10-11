@@ -30,7 +30,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
-import { RichTextContent } from '../../components/ui/RichTextContent.js';
+import { LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
 import { lessonHeadingDocument } from '../../components/ui/lesson-heading-document.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
@@ -172,7 +172,7 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumb
     return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
-  return <RichTextContent html={html ?? block.html} data-testid="lesson-html" />;
+  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} />;
 };
 
 const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
@@ -407,21 +407,29 @@ export const LessonPlayerPage = ({
     [groups],
   );
   const headingIdKey = headingDocument.headings.map((heading) => heading.id).join('\n');
-  const contentMounted = lesson.data !== undefined && !(authenticated && tenantSettings.isPending);
+  const contentMounted = lesson.data !== undefined && !lesson.isPlaceholderData && !(authenticated && tenantSettings.isPending);
   useEffect(() => {
     if (!contentMounted) return;
+    let frame: number | undefined;
     const scrollToHash = () => {
       const hash = window.location.hash.slice(1);
       if (!/^[a-z0-9-]{1,80}$/.test(hash)) return;
       const heading = document.getElementById(hash);
       if (heading === null) return;
+      heading.dispatchEvent(new Event(LESSON_TEXT_REVEAL_EVENT, { bubbles: true }));
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      heading.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        heading.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      });
     };
     scrollToHash();
     window.addEventListener('hashchange', scrollToHash);
-    return () => window.removeEventListener('hashchange', scrollToHash);
-  }, [lessonId, headingIdKey, contentMounted]);
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      window.removeEventListener('hashchange', scrollToHash);
+    };
+  }, [lessonId, editionNumber, headingIdKey, contentMounted]);
 
   const nextLesson = neighbours?.nextUnlocked ?? null;
   useEffect(() => {

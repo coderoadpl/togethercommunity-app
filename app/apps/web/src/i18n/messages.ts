@@ -1881,6 +1881,8 @@ export interface Messages {
     labelDocument: string;
     labelEmbed: string;
     labelReading: string;
+    showAll: string;
+    collapseText: string;
     labelSandbox: (params: { provider: string }) => string;
     linksHeading: string;
     openInNewTab: string;
@@ -2099,6 +2101,8 @@ export interface Messages {
     playbackHeading: string;
     playbackIntro: string;
     videoAutoplayLabel: string;
+    lessonTextAutoExpandLabel: string;
+    lessonTextAutoExpandHint: string;
     videoAutoplayHint: string;
     videoAutoplaySaved: string;
     dataExportHeading: string;

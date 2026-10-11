@@ -19,6 +19,8 @@ The catalogue currently covers 216 captures in Shadcn, the maintained base theme
 described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
+Lesson player captures derive long text in the page story from the unchanged recorded fixture and show the full page, including the centred reading preview, its control, and the discussion below it at desktop and both mobile widths.
+
 ## Storybook
 
 The shared screen inventory in `scripts/visual-screen-inventory.ts` defines

@@ -150,6 +150,7 @@ const changePasswordOptionsSchema = z.object({
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
+  ksefSubmissionMode: z.enum(['automatic', 'manual']).optional(),
   accentColor: z.string().optional(),
   accentLight: z.string().optional(),
   clearAccentColor: z.boolean().optional(),
@@ -930,6 +931,7 @@ tenant.command('settings').description('Show tenant settings').action(
         `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
         `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
         `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+        `KSeF submission mode: ${data.settings.ksefSubmissionMode ?? 'automatic'}`,
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
       ].join('\n'),
@@ -940,6 +942,7 @@ tenant.command('settings').description('Show tenant settings').action(
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner only)')
+  .option('--ksef-submission-mode <mode>', 'automatic or manual')
   .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
   .option('--accent-light <hex>', 'optional light-scheme accent (#RRGGBB)')
   .option('--clear-accent-color', 'use the platform accent')
@@ -957,7 +960,8 @@ tenant
         accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
-        options.memberVideoAutoplayOverride === undefined
+        options.memberVideoAutoplayOverride === undefined &&
+        options.ksefSubmissionMode === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -967,6 +971,7 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...(options.ksefSubmissionMode === undefined ? {} : { ksefSubmissionMode: options.ksefSubmissionMode }),
         ...(accentColor === undefined ? {} : { accentColor }),
         ...(accentLight === undefined ? {} : { accentLight }),
         ...(billingPortalUrl === undefined ? {} : { billingPortalUrl }),
@@ -981,6 +986,7 @@ tenant
           `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
           `light accent: ${data.settings.accentLight ?? '(automatic)'}`,
           `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+          `KSeF submission mode: ${data.settings.ksefSubmissionMode ?? 'automatic'}`,
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
         ].join('\n'),
@@ -1533,6 +1539,18 @@ ordersCommand
       );
     }),
   );
+
+const invoiceCommand = program.command('invoice').description('Issue and submit invoices');
+
+invoiceCommand
+  .command('send')
+  .description('Send a held invoice to KSeF')
+  .requiredOption('--order-id <id>', 'order identifier')
+  .action(withInput(z.tuple([z.object({ orderId: z.string().min(1) })]), async (ctx, [options]) => {
+    emit(await ctx.api.sendInvoice(options.orderId), ctx.json, (data) =>
+      `${data.invoice.id}\t${data.invoice.status}\t${data.invoice.invoiceNumber ?? ''}`,
+    );
+  }));
 
 ordersCommand
   .command('consumer-sales-summary')

@@ -121,8 +121,9 @@ const harness = (initial = invoice()) => {
       },
     },
     credentials: {
-      resolve: async () => ok({
+      resolve: async (_tenantId, mode = 'live') => ok({
         tenantId: 'tenant-1',
+        credentialSlot: mode,
         token: 'secret-token',
         contextNip: '5555555555',
       }),
@@ -414,8 +415,9 @@ describe('KSeF durable submission state machine', () => {
 
   it('refuses a changed credential context and a tampered frozen artifact', async () => {
     const changedContext = harness();
-    changedContext.deps.credentials.resolve = async () => ok({
+    changedContext.deps.credentials.resolve = async (_tenantId, mode = 'live') => ok({
       tenantId: 'tenant-1',
+      credentialSlot: mode,
       token: 'secret-token',
       contextNip: '1111111111',
     });
@@ -530,5 +532,35 @@ describe('KSeF durable submission state machine', () => {
       error: 'ksef_numbering_conflict',
       ksef: { state: 'numbering_conflict' },
     });
+  });
+});
+
+
+describe('held KSeF invoices', () => {
+  it.each(['live', 'test'] as const)('uses the frozen %s credential slot even with a TEST URL', async (credentialMode) => {
+    const h = harness(invoice(ksefData({ environment: 'test', credentialMode })));
+    const selected: Array<string | undefined> = [];
+    h.deps.credentials.resolve = async (_tenantId, mode) => {
+      selected.push(mode);
+      return ok({ tenantId: 'tenant-1', credentialSlot: mode ?? 'live', token: `${mode}-token`, contextNip: '5555555555' });
+    };
+    h.deps.ksef.openSession = async (input) => {
+      expect(input.environment).toBe('test');
+      expect(input.credentials.token).toBe(`${credentialMode}-token`);
+      return ok({ sessionReference: 'session-1' });
+    };
+    expect(await runKsefSubmission('tenant-1', 'invoice-1', h.deps)).toMatchObject({ ok: true });
+    expect(selected).toEqual([credentialMode]);
+  });
+
+  it('does not resolve credentials, read artifacts or contact KSeF while held', async () => {
+    const held: Invoice = { ...invoice(), status: 'requested', invoiceNumber: null, ksef: {
+      ...ksefData(), state: 'held', p2: null, issueDate: null, xmlArtifactKey: null, xmlByteSize: null, xmlSha256: null,
+    } };
+    const h = harness(held);
+    h.deps.credentials.resolve = async () => { throw new Error('Held invoices must not resolve credentials'); };
+    h.deps.artifacts.findByKey = async () => { throw new Error('Held invoices have no artifact'); };
+    expect(await runKsefSubmission('tenant-1', 'invoice-1', h.deps)).toMatchObject({ ok: true, value: held });
+    expect(h.calls).toEqual([]);
   });
 });

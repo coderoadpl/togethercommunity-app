@@ -19,7 +19,7 @@ import type {
   BillingData,
   OrderLine,
   InvoiceEvent,
-  KsefInvoiceData,
+  Invoice,
   CouponScope,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
@@ -84,6 +84,7 @@ export const tenants = pgTable(
     }),
     invoiceExemptionBasis: text('invoice_exemption_basis'),
     invoicingProvider: text('invoicing_provider', { enum: ['ifirma', 'ksef'] }),
+    ksefSubmissionMode: text('ksef_submission_mode', { enum: ['automatic', 'manual'] }).notNull().default('automatic'),
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
   },
@@ -555,7 +556,7 @@ export const invoices = pgTable(
     error: text('error'),
     issuedAt: text('issued_at'),
     createdAt: text('created_at').notNull(),
-    ksef: jsonb('ksef').$type<KsefInvoiceData>(),
+    ksef: jsonb('ksef').$type<Invoice['ksef']>(),
   },
   (table) => [
     index('invoices_tenant_order_idx').on(table.tenantId, table.orderId),
@@ -617,7 +618,7 @@ export const ksefNumberSequences = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
+    invoiceType: text('invoice_type', { enum: ['VAT', 'VAT_TEST'] }).notNull(),
     year: integer('year').notNull(),
     nextValue: integer('next_value').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -635,7 +636,7 @@ export const ksefNumberAllocations = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
+    invoiceType: text('invoice_type', { enum: ['VAT', 'VAT_TEST'] }).notNull(),
     year: integer('year').notNull(),
     sequence: integer('sequence').notNull(),
     p2: text('p2').notNull(),

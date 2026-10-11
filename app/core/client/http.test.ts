@@ -16,6 +16,29 @@ const jsonResponse = (body: unknown, status = 200): Response =>
   });
 
 describe('createApiClient', () => {
+  it.each(['live', 'test'] as const)('selects the %s KSeF credential slot for a connection test', async (mode) => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/integrations/ksef/test');
+      expect(init?.body).toBe(JSON.stringify({ mode }));
+      return jsonResponse({ ok: true, data: { ok: true, diagnostic: 'Connected' } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.testKsefConnection(mode)).resolves.toEqual(ok({ ok: true, diagnostic: 'Connected' }));
+  });
+
+  it('sends an invoice through the order route and preserves an authorization failure', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2Fone/invoice/send');
+      expect(init?.method).toBe('POST');
+      return jsonResponse({ ok: false, error: { code: 'forbidden', message: 'Forbidden' } }, 403);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.sendInvoice('order/one')).resolves.toEqual({
+      ok: false, error: { code: 'forbidden', message: 'Forbidden' },
+    });
+  });
+
+
   it('parses a successful envelope through the route output schema', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('https://api.example.test/api/health');

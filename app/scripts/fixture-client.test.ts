@@ -1,8 +1,33 @@
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { publicOfferOutputSchema } from '#core/contract/index.js';
+import { publicOfferOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
+import { tenantSettingsSchema } from '#core/domain/index.js';
+import { z } from 'zod';
 import bootSplash from '../apps/web/src/stories/fixtures/boot-splash.json';
 import login from '../apps/web/src/stories/fixtures/login.json';
 import { fixtureClient, fixtureErrors, fixtureExpectationErrors, fixturePendingCalls, fixtureQueriesReady, selectFixture } from '../apps/web/src/stories/fixture-client.js';
+
+const fixturesDirectory = new URL('../apps/web/src/stories/fixtures/', import.meta.url);
+
+describe('recorded tenant settings', () => {
+  it.each(readdirSync(fixturesDirectory).filter((name) => name.endsWith('.json')))('%s records the automatic KSeF submission default', (name) => {
+    const fixture = z.object({
+      calls: z.record(z.unknown()).optional(),
+      brand: z.object({ settings: z.unknown() }).optional(),
+    }).parse(JSON.parse(readFileSync(new URL(name, fixturesDirectory), 'utf8')));
+    if (fixture.brand !== undefined) {
+      const parsed = tenantSettingsSchema.parse(fixture.brand.settings);
+      expect(fixture.brand.settings).toEqual(parsed);
+      expect(parsed.ksefSubmissionMode).toBe('automatic');
+    }
+    const settings = fixture.calls?.['getTenantSettings:[]'];
+    if (settings === undefined) return;
+    const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(settings);
+    const parsed = tenantSettingsOutputSchema.parse(response.value);
+    expect(response.value).toEqual(parsed);
+    expect(parsed.settings.ksefSubmissionMode).toBe('automatic');
+  });
+});
 
 describe('page fixture client', () => {
   it('holds the splash identity while resolving the seed public offer', async () => {

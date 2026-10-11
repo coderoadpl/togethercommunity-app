@@ -847,6 +847,29 @@ describe('IntegrationsPanel', () => {
     );
   });
 
+  it('keeps KSeF test credentials separate and probes the test slot', async () => {
+    renderPanel([
+      { key: 'ksef.test.token', maskedPreview: '••••6789', updatedAt: '1998-07-12T10:00:00.000Z' },
+      { key: 'ksef.test.contextNip', maskedPreview: '••••5555', updatedAt: '1998-07-12T10:00:00.000Z' },
+    ]);
+    let probes = 0;
+    server.use(http.post('/api/integrations/ksef/test', async ({ request }) => {
+      expect(await request.json()).toEqual({ mode: 'test' });
+      probes += 1;
+      return HttpResponse.json({ ok: true, data: { ok: true, diagnostic: 'Test credentials accepted.' } });
+    }));
+    await openTab(en.integrations.tabInvoicing);
+    expect(await screen.findByText(en.integrations.ksefTestHeading)).toBeInTheDocument();
+    expect(screen.getByText(en.integrations.ksefTestDescription)).toBeInTheDocument();
+    expect(screen.getByTestId('ksef-test-connection')).toBeDisabled();
+    const testSlot = screen.getByTestId('ksef-test-slot-test-connection');
+    await waitFor(() => expect(testSlot).toBeEnabled());
+    await userEvent.click(testSlot);
+    expect(await screen.findByTestId('ksef-test-slot-test-result')).toHaveTextContent('Test credentials accepted.');
+    expect(probes).toBe(1);
+    expect(screen.getByTestId('secret-input-ksef.test.token')).toHaveValue('');
+  });
+
   it('guards the KSeF test until the token and context NIP are stored', async () => {
     renderPanel();
     await openTab(en.integrations.tabInvoicing);

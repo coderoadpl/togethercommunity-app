@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Chip,
+  Checkbox,
   FormControl,
   InputLabel,
   Link as MuiLink,
@@ -18,7 +19,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
@@ -28,6 +29,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -35,6 +37,10 @@ export const SalesPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const { tenant } = usePanelContext();
+  const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
+  const [selected, setSelected] = useState<string[]>([]);
+  const [sendingSelected, setSendingSelected] = useState(false);
   const products = useQuery(actions.products);
   const coupons = useQuery(actions.couponOptions);
   const [search, setSearch] = useState('');
@@ -60,7 +66,30 @@ export const SalesPanel = () => {
   const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
   const reconciliation = useQuery(actions.orderReconciliation);
 
-  const resetPage = () => setPage(0);
+  const sendInvoice = useMutation({
+    ...actions.sendInvoice,
+    onSuccess: async (_invoice, orderId) => {
+      setSelected((current) => current.filter((id) => id !== orderId));
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const sendSelected = async (orderIds: string[]) => {
+    setSendingSelected(true);
+    try {
+      for (const orderId of orderIds) {
+        await sendInvoice.mutateAsync(orderId);
+      }
+    } catch {
+      return;
+    } finally {
+      setSendingSelected(false);
+    }
+  };
+  const selectedHeld = (orders.data?.orders ?? [])
+    .filter((order) => order.invoice?.ksef?.state === 'held' && selected.includes(order.id))
+    .map((order) => order.id);
+  const sending = sendInvoice.isPending || sendingSelected;
+  const resetPage = () => { setPage(0); setSelected([]); };
   const download = async (format: OrderExportFormat) => {
     setExporting(format);
     setExportError(null);
@@ -222,6 +251,12 @@ export const SalesPanel = () => {
           ),
           actions: (
             <Stack direction="row" useFlexGap spacing="0.5rem">
+              {canWriteInvoice ? (
+                <Button variant="contained" disabled={sending || selectedHeld.length === 0}
+                  onClick={() => void sendSelected(selectedHeld)}>
+                  {t.sales.sendSelectedToKsef}
+                </Button>
+              ) : null}
               <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
                 {exporting === 'csv' ? t.sales.exporting : t.sales.exportCsv}
               </Button>
@@ -271,6 +306,7 @@ export const SalesPanel = () => {
             <Table>
               <TableHead>
                 <TableRow>
+                  {canWriteInvoice ? <TableCell>{t.sales.sendSelectedToKsef}</TableCell> : null}
                   <TableCell>{t.sales.date}</TableCell>
                   <TableCell>{t.sales.member}</TableCell>
                   <TableCell>{t.sales.product}</TableCell>
@@ -278,11 +314,20 @@ export const SalesPanel = () => {
                   <TableCell>{t.sales.amount}</TableCell>
                   <TableCell>{t.sales.coupon}</TableCell>
                   <TableCell>{t.sales.status}</TableCell>
+                  <TableCell>{t.sales.invoiceStatus}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.data.orders.map((order) => (
                   <TableRow key={order.id} data-testid="sales-row">
+                    {canWriteInvoice ? <TableCell>
+                      {order.invoice?.ksef?.state === 'held' ? (
+                        <Checkbox checked={selected.includes(order.id)} disabled={sending}
+                          slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
+                          onChange={(event) => setSelected((current) => event.target.checked
+                            ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+                      ) : null}
+                    </TableCell> : null}
                     <TableCell>
                       <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
                         {formatDateTime(order.createdAt, language)}
@@ -301,6 +346,19 @@ export const SalesPanel = () => {
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>
                     <TableCell><Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} /></TableCell>
+                    <TableCell>
+                      {order.invoice == null ? null : <Stack useFlexGap spacing="0.5rem">
+                        <Typography variant="body2">{order.invoice.ksef == null
+                          ? t.sales.invoiceStatuses[order.invoice.status]
+                          : t.sales.ksefStates[order.invoice.ksef.state]}</Typography>
+                        {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+                        {canWriteInvoice && order.invoice.ksef?.state === 'held' ? (
+                          <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
+                            {t.sales.sendToKsef}
+                          </Button>
+                        ) : null}
+                      </Stack>}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -308,6 +366,7 @@ export const SalesPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
+      {sendInvoice.isError ? <Alert severity="error">{localizePanelError(sendInvoice.error, t)}</Alert> : null}
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>
   );

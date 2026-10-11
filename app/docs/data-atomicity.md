@@ -40,9 +40,12 @@ at all.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,
-  `KsefNumberRepository.allocate`, and
+  `InvoiceRepository.withKsefInvoiceLock`, `KsefNumberRepository.allocate`, and
   `KsefSubmissionJobRepository.claimDue` keep projections, events, immutable
-  artifacts, sequence allocation, and jobs consistent.
+  artifacts, sequence allocation, and jobs consistent. `withKsefInvoiceLock` is an interactive transaction that
+  serializes on the tenant-scoped order row with `FOR UPDATE`, so number
+  allocation, held-row update, frozen artifact, lifecycle event, and dispatcher
+  job commit together and sends stay idempotent.
 - Coupons: `CouponManagementRepository.create`,
   `CouponManagementRepository.archive`, and
   `CouponRedemptionRepository.createOrderAndClaim` keep coupon projections,

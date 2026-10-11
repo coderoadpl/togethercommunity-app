@@ -335,6 +335,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/orders/export` | authenticated | read | orders export |
 | `GET /api/orders/:orderId` | authenticated | read | order |
 | `POST /api/orders/:orderId/invoice` | authenticated | mutating | invoice issue |
+| `POST /api/orders/:orderId/invoice/send` | authenticated | mutating | invoice send |
 | `POST /api/invoices/:invoiceId/refresh` | authenticated | mutating | invoice refresh |
 | `GET /api/invoices/:invoiceId/download` | authenticated | read | invoice download |
 | `GET /api/invoices/:invoiceId/upo` | authenticated | read | invoice upo download |

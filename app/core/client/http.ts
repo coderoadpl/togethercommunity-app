@@ -1237,6 +1237,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  sendInvoice: (orderId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invoiceSend.method,
+      API_ROUTES.invoiceSend.path.replace(':orderId', encodeURIComponent(orderId)),
+      invoiceOutputSchema,
+      {},
+      signal,
+    ),
   refreshInvoice: (invoiceId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -2446,13 +2455,13 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
-  testKsefConnection: (signal?: AbortSignal) =>
+  testKsefConnection: (mode: 'live' | 'test' = 'live', signal?: AbortSignal) =>
     request(
       options,
       API_ROUTES.ksefTestConnection.method,
       API_ROUTES.ksefTestConnection.path,
       ksefTestConnectionOutputSchema,
-      {},
+      { mode },
       signal,
     ),
   listBunnyVideos: (input: { search?: string; page?: number } = {}, signal?: AbortSignal) => {

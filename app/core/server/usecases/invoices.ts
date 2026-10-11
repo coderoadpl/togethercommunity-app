@@ -22,6 +22,7 @@ import {
   type Order,
   type OrderListItem,
   type Result,
+  type TenantSettings,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -36,6 +37,7 @@ import type {
   InvoicingPort,
   OrderDetailRepository,
   KsefCredentialResolver,
+  KsefCredentials,
   KsefClientPort,
   KsefInvoicePdf,
   KsefNumberRepository,
@@ -256,23 +258,42 @@ const issueIfirma = async (
   return ok(completed);
 };
 
+interface KsefInvoiceConfiguration {
+  settings: TenantSettings | null;
+  credentials: Result<KsefCredentials, AppError>;
+}
+
+const prepareKsefInvoice = async (
+  tenantId: string,
+  order: OrderListItem,
+  deps: InvoiceDeps,
+  settings: TenantSettings | null,
+): Promise<KsefInvoiceConfiguration> => ({
+  settings,
+  credentials: deps.ksef === undefined
+    ? err(integrationNotConfigured('KSeF submission is unavailable in this deployment'))
+    : await deps.ksef.credentials.resolve(tenantId, order.mode === 'test' ? 'test' : 'live'),
+});
+
 const issueKsef = async (
   tenantId: string,
   order: OrderListItem,
   billing: BillingData | null,
   deps: InvoiceDeps,
+  configuration: KsefInvoiceConfiguration,
+  actorId?: string,
 ): Promise<Result<Invoice, AppError>> => {
   if (deps.ksef === undefined || deps.invoices.createFrozenKsef === undefined) {
     return err(integrationNotConfigured('KSeF submission is unavailable in this deployment'));
   }
   const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
   if (existing !== null && existing.provider !== 'ksef') return ok(existing);
-  if (existing !== null) return ok(existing);
+  if (existing !== null && (existing.ksef?.state !== 'held' || actorId === undefined)) return ok(existing);
   if (order.currency !== 'PLN') return err(validation('KSeF invoices require an order ledger amount in PLN'));
   if (billing?.country !== undefined && billing.country !== 'PL') {
     return err(validation('KSeF domestic invoices require a Polish billing address'));
   }
-  const settings = await deps.tenants.findSettings(tenantId);
+  const { settings, credentials } = configuration;
   if (settings === null) {
     return err(validation('Select a VAT rate or the VAT-exempt option in Settings before issuing invoices.'));
   }
@@ -285,17 +306,43 @@ const issueKsef = async (
   if (settings.invoiceSellerName == null || settings.invoiceSellerAddress == null) {
     return err(validation('Set the invoice seller name and address before issuing through KSeF'));
   }
-  const credentials = await deps.ksef.credentials.resolve(tenantId);
+  const credentialMode = order.mode === 'test' ? 'test' : 'live';
+  const environment = order.mode === 'test' ? 'test' : deps.ksef.environment;
   if (!credentials.ok) return credentials;
   const createdAt = deps.clock.nowIso();
+  if (actorId === undefined && settings.ksefSubmissionMode === 'manual') {
+    const invoice: Invoice = {
+      id: deps.ids.nextId(), tenantId, orderId: order.id, provider: 'ksef', status: 'requested',
+      providerInvoiceId: null, invoiceNumber: null, pdfUrl: null, error: null, issuedAt: null, createdAt,
+      ksef: {
+        environment, credentialMode, schemaSystemCode: 'FA (3)', schemaVersion: '1-0E',
+        contextNip: credentials.value.contextNip, sellerName: settings.invoiceSellerName,
+        sellerAddress: settings.invoiceSellerAddress, invoiceType: 'VAT', state: 'held',
+        p2: null, issueDate: null, xmlArtifactKey: null, xmlByteSize: null, xmlSha256: null,
+        authConfigVersion: 1, sessionReference: null, invoiceReference: null, ksefNumber: null,
+        lastStatusCode: null, lastStatusDescription: null, lastStatusDetails: [], lastStatusExtensions: {},
+        lastPolledAt: null, acquisitionAt: null, invoicingAt: null, permanentStorageAt: null,
+        upoArtifactKey: null, upoSha256: null, upoRetrievedAt: null, originalSessionReference: null,
+        originalKsefNumber: null, lastTransportError: null, retryAt: null, attempt: 0,
+        correlationChecks: 0, version: 0,
+      },
+    };
+    const stored = await deps.invoices.create(tenantId, invoice, eventFor(deps, tenantId, order.id, invoice.id, 'requested'));
+    if (stored) return ok(invoice);
+    const winner = await deps.invoices.findCurrentByOrder(tenantId, order.id);
+    return winner === null ? err(validation('KSeF invoice request could not be claimed')) : ok(winner);
+  }
   const issueDate = warsawDate(createdAt);
-  const allocated = await deps.ksef.numbers.allocate(tenantId, {
+  const allocation = await deps.ksef.numbers.allocate(tenantId, {
     orderId: order.id,
+    environment,
     invoiceType: 'VAT',
     year: Number(issueDate.slice(0, 4)),
     allocatedAt: createdAt,
   });
-  const invoiceId = deps.ids.nextId();
+  if (!allocation.ok) return allocation;
+  const allocated = allocation.value;
+  const invoiceId = existing?.id ?? deps.ids.nextId();
   const xml = renderFa3Invoice({
     invoiceNumber: allocated.p2,
     issueDate,
@@ -336,9 +383,10 @@ const issueKsef = async (
     pdfUrl: null,
     error: null,
     issuedAt: null,
-    createdAt,
+    createdAt: existing?.createdAt ?? createdAt,
     ksef: {
-      environment: deps.ksef.environment,
+      environment,
+      credentialMode,
       schemaSystemCode: 'FA (3)',
       schemaVersion: '1-0E',
       contextNip: credentials.value.contextNip,
@@ -376,6 +424,7 @@ const issueKsef = async (
     },
   };
   const frozen = eventFor(deps, tenantId, order.id, invoice.id, 'frozen', null, {
+    ...(actorId === undefined ? {} : { actorId }),
     p2: allocated.p2,
     xmlSha256,
     vat: vatResolution.treatment,
@@ -423,9 +472,14 @@ const issue = async (
   if (provider === null) {
     return err(integrationNotConfigured('Choose an invoice provider in Settings → Company before issuing invoices'));
   }
-  return provider === 'ksef'
-    ? issueKsef(tenantId, order, billing, deps)
-    : issueIfirma(tenantId, order, billing, deps);
+  if (order.mode === 'test' && provider !== 'ksef') return err(validation('Test orders cannot be invoiced'));
+  if (provider !== 'ksef') return issueIfirma(tenantId, order, billing, deps);
+  const configuration = await prepareKsefInvoice(tenantId, order, deps, settings);
+  if (deps.invoices.withKsefInvoiceLock !== undefined && deps.ksef !== undefined) {
+    const ksef = deps.ksef;
+    return deps.invoices.withKsefInvoiceLock(tenantId, order.id, (repositories) => issueKsef(tenantId, order, billing, { ...deps, invoices: repositories.invoices, ksef: { ...ksef, numbers: repositories.numbers } }, configuration));
+  }
+  return issueKsef(tenantId, order, billing, deps, configuration);
 };
 
 export const downloadInvoice = async (
@@ -438,7 +492,7 @@ export const downloadInvoice = async (
   const invoice = await deps.invoices.findById(tenant.value, invoiceId);
   if (invoice === null) return err(notFound('Invoice was not found'));
   if (invoice.provider === 'ksef') {
-    if (invoice.ksef === null || invoice.ksef === undefined || deps.ksef?.pdf === undefined) {
+    if (invoice.ksef === null || invoice.ksef === undefined || invoice.ksef.state === 'held' || deps.ksef?.pdf === undefined) {
       return err(validation('The KSeF invoice visualization is unavailable'));
     }
     const artifact = await deps.ksef.artifacts.findByKey(
@@ -487,7 +541,7 @@ export const downloadMemberInvoice = async (
   if (invoice.status !== 'issued' && invoice.status !== 'delivered') {
     return err(validation('The invoice has not been issued yet'));
   }
-  if (invoice.provider !== 'ksef' || invoice.ksef === null || invoice.ksef === undefined
+  if (invoice.provider !== 'ksef' || invoice.ksef === null || invoice.ksef === undefined || invoice.ksef.state === 'held'
     || deps.ksef?.pdf === undefined) {
     return err(validation('The member invoice visualization is unavailable'));
   }
@@ -513,7 +567,7 @@ export const downloadInvoiceUpo = async (
   const tenant = authorizeTenant(ctx, 'invoice:read');
   if (!tenant.ok) return tenant;
   const invoice = await deps.invoices.findById(tenant.value, invoiceId);
-  if (invoice?.ksef?.upoArtifactKey == null || invoice.ksef.upoSha256 === null
+  if (invoice?.ksef?.state === 'held' || invoice?.ksef?.upoArtifactKey == null || invoice.ksef.upoSha256 === null
     || deps.ksef === undefined) {
     return err(notFound('KSeF UPO was not found'));
   }
@@ -540,9 +594,33 @@ export const requestInvoice = async (
   const tenant = authorizeTenant(ctx, 'invoice:write');
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
-  if (order?.mode === 'test') return err(validation('Test orders cannot be invoiced'));
   if (order === null) return err(notFound('Order was not found'));
   return issue(tenant.value, order, order.billing ?? null, deps);
+};
+
+export const sendInvoice = async (
+  ctx: Ctx,
+  orderId: string,
+  deps: InvoiceDeps,
+): Promise<Result<Invoice, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'invoice:write');
+  if (!tenant.ok) return tenant;
+  const order = await deps.orderDetails.findById(tenant.value, orderId);
+  if (order === null) return err(notFound('Order was not found'));
+  if (deps.invoices.withKsefInvoiceLock === undefined || deps.ksef === undefined) {
+    return err(integrationNotConfigured('KSeF submission is unavailable in this deployment'));
+  }
+  const ksef = deps.ksef;
+  const settings = await deps.tenants.findSettings(tenant.value);
+  const configuration = await prepareKsefInvoice(tenant.value, order, deps, settings);
+  return deps.invoices.withKsefInvoiceLock(tenant.value, orderId, async (repositories) => {
+    const invoice = await repositories.invoices.findCurrentByOrder(tenant.value, orderId);
+    if (invoice === null || invoice.provider !== 'ksef') return err(validation('Request a KSeF invoice before sending it'));
+    if (invoice.ksef?.state !== 'held') return ok(invoice);
+    return issueKsef(tenant.value, order, order.billing ?? null, {
+      ...deps, invoices: repositories.invoices, ksef: { ...ksef, numbers: repositories.numbers },
+    }, configuration, ctx.identity.userId);
+  });
 };
 
 export const issueAutoInvoiceOnPayment = async (
@@ -550,7 +628,6 @@ export const issueAutoInvoiceOnPayment = async (
   order: Order,
   deps: InvoiceDeps,
 ): Promise<void> => {
-  if (order.mode === 'test') return;
   const settings = await deps.tenants.findSettings(tenantId);
   if (settings?.autoIssueInvoices !== true) return;
   const skip = async (reason: string) => {
@@ -633,16 +710,17 @@ export const testIfirmaConnection = async (
 export const testKsefConnection = async (
   ctx: Ctx,
   deps: Pick<InvoiceDeps, 'ksef'>,
+  mode: 'live' | 'test' = 'live',
 ): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'integration:test');
   if (!tenant.ok) return tenant;
   if (deps.ksef === undefined) {
     return err(integrationNotConfigured('KSeF is unavailable in this deployment'));
   }
-  const credentials = await deps.ksef.credentials.resolve(tenant.value);
+  const credentials = await deps.ksef.credentials.resolve(tenant.value, mode);
   if (!credentials.ok) return credentials;
   const tested = await deps.ksef.client.validateCredentials({
-    environment: deps.ksef.environment,
+    environment: mode === 'test' ? 'test' : deps.ksef.environment,
     credentials: credentials.value,
   });
   return tested.ok ? ok({ ok: true, diagnostic: tested.value.diagnostic }) : tested;

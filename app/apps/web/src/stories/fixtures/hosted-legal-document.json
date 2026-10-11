@@ -19,6 +19,7 @@
       "invoiceVatMode": "rate",
       "invoiceVatRatePercent": null,
       "invoicingProvider": null,
+      "ksefSubmissionMode": "automatic",
       "logoDarkUrl": null,
       "logoUrl": "/assets/akademia-wordmark.svg",
       "memberVideoAutoplayOverride": false,

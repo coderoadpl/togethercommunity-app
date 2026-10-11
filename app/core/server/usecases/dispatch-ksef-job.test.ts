@@ -61,7 +61,7 @@ const succeededInvoice = (invoiceId: string): Invoice => ({
 });
 
 describe('dispatchKsefJob', () => {
-  it('drains multiple due jobs in one invocation', async () => {
+  it.each(['succeeded', 'held'] as const)('drains %s jobs without submitting them', async (state) => {
     const due = ['invoice-1', 'invoice-2', 'invoice-3'];
     const completed: string[] = [];
     let claims = 0;
@@ -90,7 +90,11 @@ describe('dispatchKsefJob', () => {
         reschedule: async () => undefined,
       },
       invoices: {
-        findById: async (_tenantId, invoiceId) => succeededInvoice(invoiceId),
+        findById: async (_tenantId, invoiceId) => state === 'succeeded' ? succeededInvoice(invoiceId) : {
+          ...succeededInvoice(invoiceId), status: 'requested', invoiceNumber: null,
+          ksef: { ...succeededKsef(invoiceId), state: 'held', p2: null, issueDate: null,
+            xmlArtifactKey: null, xmlByteSize: null, xmlSha256: null },
+        },
         checkpointKsef: async () => null,
       },
       artifacts: {
@@ -98,15 +102,16 @@ describe('dispatchKsefJob', () => {
         store: async () => true,
       },
       credentials: {
-        resolve: async () => ok({
+        resolve: async (_tenantId, mode = 'live') => ok({
           tenantId: 'tenant-1',
+          credentialSlot: mode,
           token: 'token',
           contextNip: '5555555555',
         }),
       },
       ksef: {
         validateCredentials: async () => ok({ diagnostic: 'ok' }),
-        openSession: async () => ok({ sessionReference: 'session-1' }),
+        openSession: async () => { throw new Error('Terminal and held invoices must not open a session'); },
         submitInvoice: async () => ok({ invoiceReference: 'invoice-1' }),
         listSessionInvoices: async () => ok([]),
         getInvoiceStatus: async () => ok({

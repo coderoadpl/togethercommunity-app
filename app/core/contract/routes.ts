@@ -1572,6 +1572,10 @@ export const ifirmaTestConnectionOutputSchema = z.object({
   diagnostic: z.string(),
 });
 
+export const ksefTestConnectionInputSchema = z.object({
+  mode: z.enum(['live', 'test']).default('live'),
+});
+
 export const ksefTestConnectionOutputSchema = z.object({
   ok: z.literal(true),
   diagnostic: z.string(),
@@ -1906,6 +1910,7 @@ export const API_ROUTES = {
   ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
+  invoiceSend: { method: 'POST', path: '/api/orders/:orderId/invoice/send' },
   invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
   invoiceDownload: { method: 'GET', path: '/api/invoices/:invoiceId/download' },
   invoiceUpoDownload: { method: 'GET', path: '/api/invoices/:invoiceId/upo' },
@@ -2287,6 +2292,7 @@ export const API_PATHS = {
   ordersReconciliation: API_ROUTES.ordersReconciliation.path,
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
+  invoiceSend: API_ROUTES.invoiceSend.path,
   invoiceRefresh: API_ROUTES.invoiceRefresh.path,
   invoiceDownload: API_ROUTES.invoiceDownload.path,
   invoiceUpoDownload: API_ROUTES.invoiceUpoDownload.path,

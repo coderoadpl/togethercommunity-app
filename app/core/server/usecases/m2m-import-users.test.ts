@@ -525,3 +525,30 @@ describe('m2m users import', () => {
     expect(h.commits).toEqual([]);
   });
 });
+
+it('rejects new progress references to an archived course until restored', async () => {
+  const h = harness();
+  const archived: Course = { ...course, archivedAt: NOW };
+  h.deps.courses.findById = async () => archived;
+  h.members.set('member-native', {
+    id: 'member-native', tenantId: TENANT_ID, userId: 'user-native',
+    email: 'native@example.test', displayName: 'Native', legacyId: null, createdAt: NOW,
+  });
+  for (const [kind, key] of [['member', 'member-native'], ['course', 'course-native']] as const) {
+    h.audits.set(`${kind}:${key}`, {
+      id: `audit-${kind}`, tenantId: TENANT_ID, apiKeyId: apiKey.id, kind,
+      importKey: key, resourceId: key, action: 'created', payloadHash: kind, at: NOW,
+    });
+  }
+  const input = { datasetVersion: 'together-import/v1' as const, records: [{
+    importKey: 'progress-archived', memberKey: 'member-native', courseKey: 'course-native',
+    completedLessonKeys: [], updatedAt: NOW,
+  }] };
+  expect(await importM2mUsers(ctx, apiKey, 'progress', input, h.deps)).toMatchObject({
+    ok: true, value: { results: [{ action: 'error', error: { code: 'conflict' } }], summary: { failed: 1 } },
+  });
+  archived.archivedAt = null;
+  expect(await importM2mUsers(ctx, apiKey, 'progress', input, h.deps)).toMatchObject({
+    ok: true, value: { summary: { created: 1 } },
+  });
+});

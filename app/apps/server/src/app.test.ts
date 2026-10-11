@@ -607,6 +607,7 @@ const deps = (input: {
     devMagicLinks: {
       findByEmail: async () => null,
     },
+    productDrafts: { deleteDraft: async () => ({ kind: 'not_found' }) },
     products: {
       listByTenant: async (tenantId) => products.filter((candidate) => candidate.tenantId === tenantId),
       listPublishedByTenant: async (tenantId) =>
@@ -622,6 +623,7 @@ const deps = (input: {
       bumpContentVersion: async () => undefined,
     },
     courses: {
+      setArchived: async () => ({ kind: 'not_found' }),
       list: async () => [],
       findById: async () => null,
       findByIds: async () => [],
@@ -5342,9 +5344,36 @@ describe('tenant crawler files', () => {
   });
 });
 
+it('hides archived courses from the sitemap until restored', async () => {
+  const base = deps();
+  const course: Course = {
+    id: 'archived-course', tenantId: acme.id, name: 'Archived course', description: '',
+    imageUrl: null, moduleOrder: [], publiclyVisible: true, legacyId: null,
+    createdAt: '2026-10-11T00:00:00.000Z', archivedAt: '2026-10-11T00:00:00.000Z',
+  };
+  const app = buildApp({ ...base, courses: { ...base.courses, list: async () => [course] } });
+  const request = () => app.request('/sitemap.xml', { headers: { host: 'acme.localhost:48730' } });
+  expect(await (await request()).text()).not.toContain('/my/courses/archived-course');
+  course.archivedAt = null;
+  expect(await (await request()).text()).toContain('/my/courses/archived-course');
+});
+
 describe('tenant redirects', () => {
   const coursePagePath = '/my/courses/acme-course-js';
   const lessonPagePath = `${coursePagePath}/lessons/acme-lesson-let`;
+
+  const redirectCourse: Course = {
+    id: 'acme-course-js',
+    tenantId: acme.id,
+    name: 'JavaScript course',
+    description: '',
+    imageUrl: null,
+    moduleOrder: [],
+    publiclyVisible: true,
+    archivedAt: null,
+    legacyId: null,
+    createdAt: '1998-07-12T00:00:00.000Z',
+  };
 
   const storedRedirects: TenantRedirect[] = [
     {
@@ -5465,6 +5494,9 @@ describe('tenant redirects', () => {
     increments?: string[];
     warnings?: string[];
     failIncrement?: boolean;
+    course?: Course | null;
+    targetKind?: TenantRedirect['targetKind'];
+    targetPath?: string;
     hitLimit?: number;
     hitClaims?: Array<{ scope: string; key: string; limit: number }>;
   }) => {
@@ -5492,9 +5524,21 @@ describe('tenant redirects', () => {
         },
       }),
     });
-    const owned = storedRedirects.map((redirect) => ({ ...redirect, tenantId: owner.id }));
+    const owned = storedRedirects.map((redirect) => ({
+      ...redirect,
+      tenantId: owner.id,
+      targetKind: tracking?.targetKind ?? redirect.targetKind,
+      targetPath: tracking?.targetPath ?? redirect.targetPath,
+    }));
     return buildApp({
       ...base,
+      courses: {
+        ...base.courses,
+        findById: async (tenantId, id) => {
+          const course = tracking?.course === undefined ? redirectCourse : tracking.course;
+          return course !== null && course.tenantId === tenantId && course.id === id ? course : null;
+        },
+      },
       publicRateLimitPolicies: {
         ...base.publicRateLimitPolicies,
         redirectHitsPerRedirect: {
@@ -5601,6 +5645,74 @@ describe('tenant redirects', () => {
       expect(increments).toEqual(['redirect-link']);
     },
   );
+
+  it.each(['course', 'lesson', 'module-as-course', 'path'] as const)(
+    'suppresses %s redirects while their course is archived and restores them afterward',
+    async (targetKind) => {
+      const course: Course = { ...redirectCourse, archivedAt: '2026-10-11T00:00:00.000Z' };
+      const increments: string[] = [];
+      const hitClaims: Array<{ scope: string; key: string; limit: number }> = [];
+      const app = redirectApp(acme, { course, targetKind, increments, hitClaims });
+      const headers = { host: 'acme.localhost:48730' };
+
+      const shortLink = await app.request('/link/guide', { headers });
+      const oldPath = await app.request('/course/javascript', { headers });
+
+      expect(shortLink.status).toBe(302);
+      expect(shortLink.headers.get('location')).toBe('/');
+      expect(oldPath.status).toBe(404);
+      expect(oldPath.headers.get('location')).toBeNull();
+      expect(increments).toEqual([]);
+      expect(hitClaims).toEqual([]);
+
+      course.archivedAt = null;
+      const restored = await app.request('/link/guide', { headers });
+      expect(restored.status).toBe(302);
+      expect(restored.headers.get('location')).toBe(lessonPagePath);
+      expect(increments).toEqual(['redirect-link']);
+    },
+  );
+
+  it.each([
+    '/offer/../my/courses/acme-course-js',
+    '/offer/%2e%2e/my/courses/acme-course-js',
+    '/my//courses/acme-course-js',
+    '/MY/COURSES/acme-course-js',
+    '/%6dy/%63ourses/acme-course-js',
+    '/my/courses/%61cme-course-js/lessons/acme-lesson-let',
+    '/my\\courses\\acme-course-js',
+  ])('checks the normalized course target of %s', async (targetPath) => {
+    const course: Course = { ...redirectCourse, archivedAt: '2026-10-11T00:00:00.000Z' };
+    const increments: string[] = [];
+    const app = redirectApp(acme, { course, targetKind: 'path', targetPath, increments });
+    const headers = { host: 'acme.localhost:48730' };
+
+    const archived = await app.request('/link/guide', { headers });
+    expect(archived.status).toBe(302);
+    expect(archived.headers.get('location')).toBe('/');
+    expect(increments).toEqual([]);
+
+    course.archivedAt = null;
+    const restored = await app.request('/link/guide', { headers });
+    expect(restored.status).toBe(302);
+    expect(restored.headers.get('location')).toBe(targetPath);
+    expect(increments).toEqual(['redirect-link']);
+  });
+
+  it('uses the same fallback for redirects whose course no longer exists', async () => {
+    const increments: string[] = [];
+    const app = redirectApp(acme, { course: null, increments });
+    const headers = { host: 'acme.localhost:48730' };
+
+    const shortLink = await app.request('/link/guide', { headers });
+    const oldPath = await app.request('/course/javascript', { headers });
+
+    expect(shortLink.status).toBe(302);
+    expect(shortLink.headers.get('location')).toBe('/');
+    expect(oldPath.status).toBe(404);
+    expect(oldPath.headers.get('location')).toBeNull();
+    expect(increments).toEqual([]);
+  });
 
   it('sends a short link configured for another tenant to the workspace home without counting a hit', async () => {
     const increments: string[] = [];
@@ -8627,7 +8739,7 @@ describe('content history HTTP surface', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       data: {
-        version: { ordinal: 2, currentSchemaVersion: 5 },
+        version: { ordinal: 2, currentSchemaVersion: 6 },
         preview: {
           fields: expect.arrayContaining([
             { name: 'title', value: { kind: 'text', value: 'Older name' } },
@@ -9401,6 +9513,52 @@ describe('Stripe permission probe route', () => {
       ...request, body: JSON.stringify({ mode: 'unknown' }),
     })).status).toBe(400);
     expect(probe).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('catalog cleanup authorization', () => {
+  const headers = { [TENANT_HEADER]: acme.slug, 'content-type': 'application/json' };
+  const course: Course = {
+    id: 'catalog-course', tenantId: acme.id, name: 'Catalog course', description: '',
+    imageUrl: null, salesUrl: null, moduleOrder: [], publiclyVisible: true,
+    legacyId: null, createdAt: '2026-10-01T00:00:00.000Z', archivedAt: null,
+  };
+
+  it.each(['archive', 'restore'] as const)('allows staff and refuses members for course %s', async (action) => {
+    const base = deps();
+    const setArchived = vi.fn<AppDeps['courses']['setArchived']>(async (_tenantId, _id, archivedAt) => ({ kind: 'saved', course: { ...course, archivedAt } }));
+    const overrides: Partial<AppDeps> = {
+      courses: { ...base.courses, findById: async () => action === 'archive' ? course : { ...course, archivedAt: '2026-10-02T00:00:00.000Z' }, setArchived },
+      products: { ...base.products, listByTenant: async () => [] },
+    };
+    const path = action === 'archive' ? API_PATHS.coursesArchive : API_PATHS.coursesRestore;
+    const request = { method: 'POST', headers, body: JSON.stringify({ courseId: course.id }) };
+    expect((await scopedApp('member', { overrides }).request(path, request)).status).toBe(403);
+    expect(setArchived).not.toHaveBeenCalled();
+    expect((await scopedApp('staff', { overrides }).request(path, request)).status).toBe(200);
+    expect(setArchived).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows staff to delete drafts and refuses members before persistence', async () => {
+    const deleteDraft = vi.fn<AppDeps['productDrafts']['deleteDraft']>(async () => ({ kind: 'deleted', assets: [] }));
+    const overrides = { productDrafts: { deleteDraft } };
+    const request = { method: 'POST', headers, body: JSON.stringify({ productId: 'draft-1' }) };
+    expect((await scopedApp('member', { overrides }).request(API_PATHS.productsDelete, request)).status).toBe(403);
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect((await scopedApp('staff', { overrides }).request(API_PATHS.productsDelete, request)).status).toBe(200);
+    expect(deleteDraft).toHaveBeenCalledExactlyOnceWith(acme.id, 'draft-1');
+  });
+
+  it('selects archived courses and rejects invalid filter input', async () => {
+    const base = deps();
+    const archived = { ...course, id: 'archived-course', archivedAt: '2026-10-02T00:00:00.000Z' };
+    const app = scopedApp('staff', { overrides: { courses: { ...base.courses, list: async () => [course, archived] } } });
+    const activeResponse = await app.request(API_PATHS.courses, { headers });
+    expect(await activeResponse.json()).toMatchObject({ ok: true, data: { courses: [{ id: course.id }] } });
+    const archivedResponse = await app.request(`${API_PATHS.courses}?archived=true`, { headers });
+    expect(await archivedResponse.json()).toMatchObject({ ok: true, data: { courses: [{ id: archived.id }] } });
+    expect((await app.request(`${API_PATHS.courses}?archived=invalid`, { headers })).status).toBe(400);
   });
 });
 

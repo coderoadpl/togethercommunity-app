@@ -32,6 +32,10 @@ interface Hoisted {
   saved: CliConfig[];
   createProduct: ReturnType<typeof vi.fn>;
   updateProduct: ReturnType<typeof vi.fn>;
+  archiveCourse: ReturnType<typeof vi.fn>;
+  restoreCourse: ReturnType<typeof vi.fn>;
+  restoreContentVersion: ReturnType<typeof vi.fn>;
+  deleteProductDraft: ReturnType<typeof vi.fn>;
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
@@ -89,6 +93,10 @@ const h = vi.hoisted(
     saved: [],
     createProduct: vi.fn(),
     updateProduct: vi.fn(),
+    archiveCourse: vi.fn(),
+    restoreCourse: vi.fn(),
+    restoreContentVersion: vi.fn(),
+    deleteProductDraft: vi.fn(),
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
@@ -177,6 +185,10 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     createMarketingSignupForm: h.createMarketingSignupForm,
     createProduct: h.createProduct,
     updateProduct: h.updateProduct,
+    archiveCourse: h.archiveCourse,
+    restoreCourse: h.restoreCourse,
+    restoreContentVersion: h.restoreContentVersion,
+    deleteProductDraft: h.deleteProductDraft,
     listCourses: h.listCourses,
     listModules: h.listModules,
     listLessons: h.listLessons,
@@ -255,6 +267,10 @@ beforeEach(() => {
   h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
   h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
+  h.archiveCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
+  h.restoreCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
+  h.restoreContentVersion.mockReset().mockResolvedValue(ok({ restored: { entityKind: 'course', entityId: 'course-1', restoredFromOrdinal: 2 } }));
+  h.deleteProductDraft.mockReset().mockResolvedValue(ok({ deleted: true }));
   h.listCourses.mockReset();
   h.listModules.mockReset();
   h.listLessons.mockReset();
@@ -1349,5 +1365,41 @@ describe('KSeF controlled submission', () => {
     await run('--json', 'tenant', 'settings-set', '--ksef-submission-mode', 'later');
     expect(h.updateTenantSettings).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+
+describe('catalog cleanup commands', () => {
+  it.each(['archive', 'restore'] as const)('runs course %s with the course ID', async (action) => {
+    await run('--json', 'course', action, 'course-1');
+    expect(action === 'archive' ? h.archiveCourse : h.restoreCourse).toHaveBeenCalledExactlyOnceWith({ courseId: 'course-1' });
+    expect(soleJson()).toMatchObject({ ok: true, data: { course: { id: 'course-1' } } });
+  });
+
+  it('restores a content snapshot through its explicit command', async () => {
+    await run('--json', 'course', 'restore-version', 'version-1');
+    expect(h.restoreContentVersion).toHaveBeenCalledExactlyOnceWith({ versionId: 'version-1' });
+    expect(h.restoreCourse).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: true, data: { restored: { entityId: 'course-1' } } });
+  });
+
+  it('lists archived courses', async () => {
+    h.listCourses.mockResolvedValue(ok({ courses: [] }));
+    await run('--json', 'course', 'list', '--archived');
+    expect(h.listCourses).toHaveBeenCalledExactlyOnceWith(undefined, { archived: true });
+    expect(soleJson()).toEqual({ ok: true, data: { courses: [] } });
+  });
+
+  it('requires confirmation before deleting a product draft', async () => {
+    await run('--json', 'product', 'delete', 'draft-1');
+    expect(h.deleteProductDraft).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product deletion requires --confirm' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('deletes a product draft after explicit confirmation', async () => {
+    await run('--json', 'product', 'delete', 'draft-1', '--confirm');
+    expect(h.deleteProductDraft).toHaveBeenCalledExactlyOnceWith({ productId: 'draft-1' });
+    expect(soleJson()).toEqual({ ok: true, data: { deleted: true } });
   });
 });

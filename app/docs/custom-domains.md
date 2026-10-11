@@ -130,15 +130,16 @@ they mean, and one at a time from Settings → Addresses → Redirects.
 
 | Entry | Redirected to | Status |
 |---|---|---|
-| a source path under a forwarded prefix marked permanent | its destination | `301` |
-| a source path under a forwarded prefix left temporary | its destination | `302` |
+| a source path under a forwarded prefix marked permanent, with an available target | its destination | `301` |
+| a source path under a forwarded prefix left temporary, with an available target | its destination | `302` |
+| an entry whose course or lesson target resolves to an archived or missing course | same as no entry for that path: the workspace home (`/`) for `/link/<key>`, or the not-found answer under `/courses/` for a browser; crawler behavior follows the no-entry rows below | same as no entry |
 | a `/link/<key>` with no entry | the workspace home (`/`) | `302` |
-| a path with an entry outside the forwarded prefixes | unchanged for a browser — the web app serves it; a listed crawler gets the entry's destination | — / `301` / `302` |
+| a path with an entry and an available target outside the forwarded prefixes | unchanged for a browser — the web app serves it; a listed crawler gets the entry's destination | — / `301` / `302` |
 | a path with no entry outside the forwarded prefixes | unchanged — the web app serves it; a listed crawler gets the social-preview document for an extensionless path and `404` for a document-extension path such as `.html` | — |
 | a path with no entry under `/courses/` | the server's not-found answer for a browser; a listed crawler gets the social-preview document for an extensionless path and `404` for a document-extension path | `404` |
 | a static file path (`/assets/…`, `.js`, `.css`, `.png`, `.svg`, `.ico`, fonts) — under a forwarded prefix too | never redirected; under `/courses/` or `/link/` the server answers `404`, elsewhere the web build serves it; a listed crawler gets `404` for a static path the web build does not contain | — |
 
-An unknown short link counts no hit.
+An unknown short link, or a stored redirect whose course or lesson target resolves to an archived or missing course, counts no hit. See [course management](courses.md) for archive and restore rules.
 
 Document extensions are not static file paths: the `.html` and `.php` links a
 previous site minted by the thousand redirect like any other source path under

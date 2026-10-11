@@ -1,3 +1,4 @@
+import { lockActiveCourses } from './course-reference-lock.js';
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
@@ -1330,6 +1331,11 @@ const importTenant = async (
       }
     });
     await db.transaction(async (tx) => {
+      const courseIds = [...productPlan.creates, ...productPlan.updates.map((update) => update.patch)]
+        .flatMap((product) => product.accessItems.map((item) => item.courseId));
+      if (!await lockActiveCourses(tx, tenantId, courseIds)) {
+        throw new ImportFailure('Product access items may only reference existing, active courses');
+      }
       for (const batch of chunk(productPlan.creates, 100)) await tx.insert(products).values(batch);
       for (const update of productPlan.updates) {
         await tx

@@ -51,6 +51,7 @@
       "value": {
         "courses": [
           {
+            "archivedAt": null,
             "createdAt": "2026-07-01T12:00:02.000Z",
             "description": "A complete JavaScript course, from variables, functions, and the DOM to your first project.",
             "id": "course-js",
@@ -63,6 +64,7 @@
             "tenantId": "tenant-studio"
           },
           {
+            "archivedAt": null,
             "createdAt": "2026-07-01T12:00:03.000Z",
             "description": "Build interfaces in React with components, state, hooks, and advanced patterns.",
             "id": "course-react",

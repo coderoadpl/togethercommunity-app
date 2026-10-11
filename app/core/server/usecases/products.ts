@@ -119,6 +119,9 @@ export const createProduct = async (
     createdAt: deps.clock.nowIso(),
   };
   const inserted = await deps.products.create(tenant.value, product);
+  if (inserted === 'course_unavailable') {
+    return err(validation('Product access items may only reference existing, active courses'));
+  }
   if (inserted === 'slug_taken') {
     return err(slugReserved(`A product with slug "${slug}" already exists`));
   }

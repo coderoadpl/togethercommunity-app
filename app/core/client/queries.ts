@@ -1071,10 +1071,28 @@ export const devMagicLinkQuery = (api: ApiClient, email: string) =>
     call: ({ signal }) => api.devMagicLink(email, signal),
   });
 
-export const coursesQuery = (api: ApiClient) =>
+export const coursesQuery = (api: ApiClient, query?: { archived?: boolean }) =>
   defineQuery({
-    queryKey: coursesScopes.lists(),
-    call: ({ signal }) => api.listCourses(signal),
+    queryKey: query?.archived === true ? [...coursesScopes.lists(), 'archived'] : coursesScopes.lists(),
+    call: ({ signal }) => api.listCourses(signal, query),
+  });
+
+export const archiveCourseMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...coursesScopes.all(), 'archive'],
+    call: (input: { courseId: string }) => api.archiveCourse(input),
+  });
+
+export const restoreCourseMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...coursesScopes.all(), 'restore'],
+    call: (input: { courseId: string }) => api.restoreCourse(input),
+  });
+
+export const deleteProductDraftMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productsScopes.all(), 'delete'],
+    call: (input: { productId: string }) => api.deleteProductDraft(input),
   });
 
 export const createCourseMutation = (api: ApiClient) =>

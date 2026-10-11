@@ -1269,6 +1269,9 @@ export const en: Messages = {
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
+    deleteDraft: 'Delete draft',
+    deleteDraftBody: 'The product draft will be permanently deleted.',
+
     visibilityLabel: 'Visibility',
     listed: 'Listed',
     unlisted: 'Unlisted',
@@ -1428,6 +1431,11 @@ export const en: Messages = {
     updateItem: 'Save item',
   },
   courses: {
+    archived: 'Archived',
+    restore: 'Restore',
+    archiveCourse: 'Archive course',
+    archiveBody: 'The course disappears from lists, the offer and the access picker. You can restore it from the Archived filter.',
+
     treeTab: 'Course tree',
     lessonsTab: 'Lessons',
     tabsAria: 'Course tree or lessons',

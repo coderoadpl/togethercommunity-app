@@ -1,3 +1,4 @@
+import { lockActiveCourses } from './course-reference-lock.js';
 import { and, eq } from 'drizzle-orm';
 
 import {
@@ -163,6 +164,9 @@ export const createImportContentRepository = (db: Db): ImportContentRepository =
   commit: async (tenantId, mutation) => {
     try {
       return await db.transaction(async (tx) => {
+        if (mutation.kind === 'product' && !await lockActiveCourses(
+          tx, tenantId, productSchema.parse(mutation.resource).accessItems.map((item) => item.courseId),
+        )) return 'conflict';
         if (mutation.action === 'created') await createResource(tx, tenantId, mutation);
         if (mutation.action === 'updated' && !await updateResource(tx, tenantId, mutation)) return 'conflict';
         if (mutation.kind === 'lesson' && mutation.edition !== undefined) {

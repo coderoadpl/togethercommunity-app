@@ -77,7 +77,7 @@ const previewOpenToAnonymous = async (
   deps: Pick<CourseAccessDeps, 'courses' | 'modules'>,
 ): Promise<boolean> => {
   const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
-  return coursesContainingLesson(lessonId, courses, modules).some((course) => course.publiclyVisible);
+  return coursesContainingLesson(lessonId, courses, modules).some((course) => course.publiclyVisible && !course.archivedAt);
 };
 
 export const resolveMemberEntitlements = async (
@@ -227,7 +227,7 @@ export const listMyCourses = async (
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
 
-  const courses = await deps.courses.list(tenant.value);
+  const courses = (await deps.courses.list(tenant.value)).filter((course) => !course.archivedAt);
   if (isStaff(ctx)) return ok(courses);
   if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));
 

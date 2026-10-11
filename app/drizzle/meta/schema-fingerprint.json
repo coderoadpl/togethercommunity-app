@@ -1,6 +1,6 @@
 {
-  "hash": "f5d631ee245eb1feb0d7104280c7c7d9ea8a1ef6c72089046a30e959cc359739",
-  "shortId": "f5d631ee245e",
+  "hash": "84cf3a27e17037b6e156ca00771277a8a72a3241628e716b7f9b69a442996faa",
+  "shortId": "84cf3a27e170",
   "schema": {
     "constraints": [
       {
@@ -1762,6 +1762,11 @@
       },
       {
         "arguments": "",
+        "definition": "CREATE OR REPLACE FUNCTION preserve_product_publication_history() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF NEW.published THEN NEW.ever_published := true; ELSIF TG_OP = 'UPDATE' THEN NEW.ever_published := OLD.ever_published; END IF; RETURN NEW; END; $function$",
+        "name": "preserve_product_publication_history"
+      },
+      {
+        "arguments": "",
         "definition": "CREATE OR REPLACE FUNCTION prevent_paid_order_billing_change() RETURNS trigger LANGUAGE plpgsql AS $function$ BEGIN IF OLD.status = 'paid' AND NEW.billing IS DISTINCT FROM OLD.billing THEN RAISE EXCEPTION 'paid order billing snapshot is immutable'; END IF; RETURN NEW; END; $function$",
         "name": "prevent_paid_order_billing_change"
       },
@@ -3190,6 +3195,14 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "ever_published",
+            "notNull": false,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "published",
             "notNull": true,
             "type": "boolean"
@@ -3682,6 +3695,14 @@
             "name": "publicly_visible",
             "notNull": true,
             "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "archived_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,
@@ -13349,6 +13370,11 @@
         "definition": "CREATE TRIGGER product_prices_history_after_write AFTER INSERT OR UPDATE OF amount_cents ON product_prices FOR EACH ROW EXECUTE FUNCTION append_product_price_history()",
         "name": "product_prices_history_after_write",
         "table": "product_prices"
+      },
+      {
+        "definition": "CREATE TRIGGER products_preserve_publication_history BEFORE INSERT OR UPDATE ON products FOR EACH ROW EXECUTE FUNCTION preserve_product_publication_history()",
+        "name": "products_preserve_publication_history",
+        "table": "products"
       },
       {
         "definition": "CREATE TRIGGER products_price_history_after_write AFTER INSERT OR UPDATE OF price_cents ON products FOR EACH ROW EXECUTE FUNCTION append_product_base_price_history()",

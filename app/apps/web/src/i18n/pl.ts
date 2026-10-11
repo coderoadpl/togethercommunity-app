@@ -1277,6 +1277,9 @@ export const pl: Messages = {
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
+    deleteDraft: 'Usuń szkic',
+    deleteDraftBody: 'Szkic produktu zostanie trwale usunięty.',
+
     visibilityLabel: 'Widoczność',
     listed: 'Widoczny w ofercie',
     unlisted: 'Ukryty w ofercie',
@@ -1442,6 +1445,11 @@ export const pl: Messages = {
     updateItem: 'Zapisz pozycję',
   },
   courses: {
+    archived: 'Archiwalne',
+    restore: 'Przywróć',
+    archiveCourse: 'Archiwizuj kurs',
+    archiveBody: 'Kurs zniknie z list, oferty i wyboru dostępu. Możesz go przywrócić w filtrze Archiwalne.',
+
     treeTab: 'Struktura kursu',
     lessonsTab: 'Lekcje',
     tabsAria: 'Struktura kursu lub lekcje',

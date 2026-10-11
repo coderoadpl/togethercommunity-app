@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 426. Exported `Ctx` use-case rows: 331.
+Closed capability count: 123. Route rows: 429. Exported `Ctx` use-case rows: 334.
 
 ## Human-readable diff
 
@@ -347,6 +347,7 @@ no changes
 | `POST /api/integrations/bunny/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/products` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/update` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/products/delete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/publish` | product:publish | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/unpublish` | product:publish | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/access-items` | product:access:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -374,6 +375,8 @@ no changes
 | `GET /api/coupons/:couponId` | coupon:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/courses` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/courses/archive` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/courses/restore` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/history/edition/mark` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/courses/history/edition/unmark` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -501,6 +504,8 @@ no changes
 | `coupon-stats.ts#getCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts authorization call |
 | `coupon-stats.ts#exportCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts authorization call |
 | `course-management.ts#listCourses` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
+| `course-management.ts#archiveCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
+| `course-management.ts#restoreCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `course-management.ts#listModules` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `course-management.ts#listLessons` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `course-management.ts#createCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
@@ -721,6 +726,7 @@ no changes
 | `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#getProductDownload` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#deleteProductDownloadAsset` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-drafts.ts#deleteProductDraft` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-drafts.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#deactivateProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -800,13 +806,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:24` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:197` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1199` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1201` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1223` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1237` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1760` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1760` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:201` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1206` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1208` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1230` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1244` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

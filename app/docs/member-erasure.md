@@ -28,10 +28,22 @@ identity remain tombstoned, so nobody can log in with that restored grant and
 the paid-without-grant reconciliation report remains empty. Provider
 reconciliation must therefore finish before the next billing cycle.
 
-Direct checkout uses Stripe customer details to populate the member's e-mail
-and display name and the order's validated billing fields. It does not retain
-the raw customer-details snapshot on the order. The nullable
-`orders.customer_details` column from migration `0141` is unused.
+Live direct checkout uses Stripe customer details to populate the member's
+e-mail and display name and the order's validated billing fields. Anonymous
+test checkout creates no member and uses the e-mail only for consent evidence;
+it retains the validated billing fields on the test order. Neither path retains
+the raw customer-details snapshot on the order: repository writes leave the
+nullable `orders.customer_details` column from migration `0141` null. Staff
+order lists therefore show no member e-mail or display name for anonymous test
+orders.
+
+Anonymous test orders have no member id, so member erasure cannot select them.
+Their validated billing fields and checkout consent captures remain stored
+without a scheduled purge. Consent evidence keeps the buyer's e-mail; its
+retention period below starts only if erasure matches a member with that e-mail.
+Without that match, its `retention_started_at` stays null and the scheduled
+consent purge does not select it. A data-subject request for these member-less
+records requires owner-executed identification and cleanup.
 
 `MemberErasurePort.pseudonymize` then runs. The implementation in
 `adapters/db/repositories.ts` performs one transaction that:

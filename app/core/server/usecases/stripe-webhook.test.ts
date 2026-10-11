@@ -2691,7 +2691,8 @@ it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded
     expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
     expect(h.orders).toHaveLength(1);
     expect(h.orders[0]).toMatchObject({ mode: 'test', memberId: null, status: 'paid', lines: h.lines,
-      billing: { nip: '5260250274' }, customerDetails: { email: 'buyer@example.com', name: 'Buyer Name' } });
+      billing: { nip: '5260250274' } });
+    expect(h.orders[0]).not.toHaveProperty('customerDetails');
     expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
       termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
     expect(h.captures.size).toBe(1);
@@ -2815,12 +2816,13 @@ it('records anonymous fallback test consent and billing without marketing enroll
   expect(h.autoInvoiceJobs).toEqual([]);
 });
 
-it('keeps the checkout email on an anonymous test order when customer details omit it', async () => {
+it('uses the checkout email for anonymous test consent without retaining customer details on the order', async () => {
   const h = await anonymousTestPayment();
   if (h.event.checkoutSession?.customerDetails == null) throw new Error('Missing buyer details');
   h.event.checkoutSession.customerDetails.email = null;
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
-  expect(h.orders[0]?.customerDetails?.email).toBe('buyer@example.com');
+  expect(h.consents).toMatchObject([{ email: 'buyer@example.com' }]);
+  expect(h.orders[0]).not.toHaveProperty('customerDetails');
   expect(h.members.size).toBe(0);
 });
 

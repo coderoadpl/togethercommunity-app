@@ -3221,8 +3221,8 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
 export const createOrderRepository = (
   db: Db,
 ): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
-  const buyerEmail = sql<string>`coalesce(${members.email}, ${orders.customerDetails}->>'email')`;
-  const buyerName = sql<string | null>`coalesce(${members.displayName}, ${orders.customerDetails}->>'name')`;
+  const buyerEmail = sql<string>`coalesce(${members.email}, '')`;
+  const buyerName = members.displayName;
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
@@ -3279,7 +3279,7 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
-          customerDetails: order.mode === 'test' && order.memberId === null ? order.customerDetails ?? null : null,
+          customerDetails: null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),

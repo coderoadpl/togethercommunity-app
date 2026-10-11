@@ -54,17 +54,23 @@ describe('order and checkout snapshots', () => {
     expect(await repository.findById('other', 'order-a')).toBeNull();
   });
 
-  it('records anonymous test orders without membership and exposes their checkout buyer in staff lists', async () => {
+  it('records anonymous test orders without membership or a stored customer-details snapshot', async () => {
     const repository = createOrderRepository(database.db);
-    const customerDetails = { email: 'anonymous@example.org', name: 'Anonymous buyer', address: null, taxIds: [] };
+    const customerDetails = { email: 'anonymous@example.org', name: 'Anonymous buyer',
+      address: { line1: 'Main 1', line2: null, city: 'Warsaw', postalCode: '00-001', state: null, country: 'PL' },
+      taxIds: [{ type: 'eu_vat', value: 'PL5260250274' }] };
     const anonymousOrder = orderSchema.parse({ ...order('anonymous-test'), memberId: null, mode: 'test', customerDetails });
     await repository.create('workspace', anonymousOrder);
-    expect(await repository.findById('workspace', anonymousOrder.id)).toMatchObject({
-      memberId: null, mode: 'test', memberEmail: customerDetails.email, memberName: customerDetails.name, customerDetails,
-    });
-    const page = await repository.list('workspace', { page: 1, pageSize: 100, mode: 'test', search: 'anonymous@example.org' });
+    const storedOrder = await repository.findById('workspace', anonymousOrder.id);
+    expect(storedOrder).toMatchObject({ memberId: null, mode: 'test', memberEmail: '', memberName: null });
+    expect(storedOrder).not.toHaveProperty('customerDetails');
+    expect(await database.db.select({ customerDetails: orders.customerDetails }).from(orders).where(eq(orders.id, anonymousOrder.id)))
+      .toEqual([{ customerDetails: null }]);
+    const page = await repository.list('workspace', { page: 1, pageSize: 100, mode: 'test' });
     expect(page.total).toBe(1);
-    expect(page.orders).toMatchObject([{ id: anonymousOrder.id, memberId: null, mode: 'test', memberEmail: customerDetails.email }]);
+    expect(page.orders).toMatchObject([{ id: anonymousOrder.id, memberId: null, mode: 'test', memberEmail: '', memberName: null }]);
+    expect(page.orders[0]).not.toHaveProperty('customerDetails');
+    expect((await repository.list('workspace', { page: 1, pageSize: 100, mode: 'test', search: customerDetails.email })).total).toBe(0);
     expect((await repository.list('workspace', { page: 1, pageSize: 100, mode: 'live' })).orders.some((row) => row.id === anonymousOrder.id)).toBe(false);
     expect(await repository.findById('other', anonymousOrder.id)).toBeNull();
     expect((await repository.list('other', { page: 1, pageSize: 100, mode: 'test' })).total).toBe(0);

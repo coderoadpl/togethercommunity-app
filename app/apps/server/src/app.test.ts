@@ -9443,7 +9443,9 @@ describe('direct public sales-link checkout', () => {
     const response = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
     expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).toContain('text/html');
-    expect(await response.text()).toContain(`<p role="status">${directSalesLinkCopyPl.legalUrlsMissing}</p>`);
+    const html = await response.text();
+    expect(html).toContain('<html lang="pl">');
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.legalUrlsMissing}</p>`);
     expect(h.create).not.toHaveBeenCalled();
   });
 

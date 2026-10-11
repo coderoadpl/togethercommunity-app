@@ -1,4 +1,4 @@
-import { directSalesLinkCopyEn } from './direct-sales-link-copy.en.js';
+import { directSalesLinkCopyEn, type DirectSalesLinkMessages } from './direct-sales-link-copy.en.js';
 
 export const directSalesLinkCopyPl = {
   redirecting: 'Przekierowujemy do bezpiecznej płatności…',
@@ -7,4 +7,4 @@ export const directSalesLinkCopyPl = {
   legalUrlsMissing: directSalesLinkCopyEn.legalUrlsMissing,
   termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }): string =>
     `Akceptuję [Regulamin](${legal.termsUrl}) i [Politykę prywatności](${legal.privacyUrl}).`,
-};
+} satisfies DirectSalesLinkMessages;

@@ -14,6 +14,7 @@ const page = {
 describe('direct sales-link page', () => {
   it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('localizes the Polish %s error without checkout actions', (error) => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error });
+    expect(html).toContain('<html lang="pl">');
     expect(html).toContain(`<p role="status">${directSalesLinkCopyPl[error]}</p>`);
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');
@@ -21,6 +22,7 @@ describe('direct sales-link page', () => {
 
   it.each(['validation', 'malformed', 'network'] as const)('localizes a %s failure without exposing server or network messages', async (failure) => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl' });
+    expect(html).toContain(`data-checkout-unavailable="${directSalesLinkCopyPl.checkoutUnavailable}"`);
     const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
     if (script === undefined) throw new Error('Missing checkout script');
     const status = { textContent: '' };

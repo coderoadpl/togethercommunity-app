@@ -422,12 +422,7 @@ const applyCheckoutCompleted = async (
       mode: 'test', memberId: null, productId: metadata.productId, priceId: null,
       kind: 'one_time', status: 'paid', amountCents: event.checkoutSession.amountTotalCents ?? 0,
       currency: snapshot.currency, provider, providerObjectIds: providerObjectIdsForCheckout(event),
-      billing, customerDetails: {
-        ...(event.checkoutSession.customerDetails ?? {
-          name: event.checkoutSession.customerName ?? null, address: null, taxIds: [],
-        }),
-        email,
-      },
+      billing,
       lines: snapshot.lines, salesLinkId: snapshot.salesLinkId,
     }, deps);
     return ok({ processed: true, paidOrder });

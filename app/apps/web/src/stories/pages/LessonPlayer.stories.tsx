@@ -3,8 +3,28 @@ import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import acmeFixture from '../fixtures/acme-lesson.json';
-import fixture from '../fixtures/lesson.json';
+import recordedFixture from '../fixtures/lesson.json';
 import { withPage } from '../page-decorators.js';
+
+const longTextExamples = Array.from({ length: 12 }, (_, index) => `<h3>Example ${String(index + 1)}</h3><p>A variable gives a value a name. Choose a clear name that describes what the value represents. Read the example, compare the results, and use the discussion below to share your observations.</p>`).join('');
+const fixture = {
+  ...recordedFixture,
+  calls: {
+    ...recordedFixture.calls,
+    'studentLesson:["lesson-js-variables-1"]': {
+      ...recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'],
+      value: {
+        ...recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value,
+        lesson: {
+          ...recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson,
+          contents: recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson.contents.map((content) => 'html' in content
+            ? { ...content, html: `${content.html}${longTextExamples}<figure><pre>const total = price * quantity;</pre><figcaption>Calculate the total from the price and quantity.</figcaption></figure>` }
+            : content),
+        },
+      },
+    },
+  },
+};
 
 const meta = { title: 'Pages/LessonPlayer', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
 export default meta;

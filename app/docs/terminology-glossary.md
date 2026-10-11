@@ -73,6 +73,8 @@ add it here before using it in either dictionary.
 | Group inside a module | rozdział | chapter | Contains lessons. |
 | Learning unit | lekcja | lesson | Contains content blocks. |
 | Lesson building block | blok treści | content block | Short form: blok / block. |
+| Collapsible lesson reading preview | `lesson.showAll` / `lesson.collapseText` in the Polish dictionary | Show all / Collapse text | Reveals the full lesson text or returns to the clipped reading preview; distinct from collapsing an embedded editor. |
+| Embedded editor collapse action | `lesson.collapseEmbed` in the Polish dictionary | Collapse the editor | Applies only to the embedded editor, not the lesson reading preview. |
 | Course outline | program kursu | course curriculum | Eyebrow: course syllabus. |
 | Connect or disconnect a module | podepnij / odepnij | attach / detach | Use the same pair throughout. Do not use podłącz / odłącz for this concept. |
 | Publication state | wersja robocza / opublikowany | draft / published | Use consistently for state labels. |
@@ -103,6 +105,8 @@ add it here before using it in either dictionary.
 |---|---|---|---|
 | Tenant | platforma | workspace | Never expose tenant in user-facing copy. The Polish workspace term is distinct from the community-space term. |
 | Login identity | konto | account | Shared authentication identity. |
+| Automatic lesson text expansion | `account.lessonTextAutoExpandLabel` in the Polish dictionary | Expand lesson text automatically | A member preference for the initial reading-preview state, independent of video autoplay policy. |
+| Browser-local preference help | `account.lessonTextAutoExpandHint` in the Polish dictionary | Remembered in this browser. | Applies to the current browser only, not every device signed in to the account. |
 | Passwordless login URL | magiczny link | magic link | Use the canonical localized word order. |
 | Passwordless credential | klucz dostępu | passkey | Keep distinct from an API key. |
 | Additional sign-in factor | uwierzytelnianie dwuskładnikowe | two-factor authentication | Spell it out in action labels. |

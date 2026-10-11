@@ -4,8 +4,16 @@ import { describe, expect, it } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { RichTextContent } from './RichTextContent.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 
 describe('RichTextContent', () => {
+  it('keeps shared previews left aligned unless centring is requested', () => {
+    const view = render(<RichTextContent data-testid="content" html="<p>Product description.</p>" />);
+    expect(stylesAt(screen.getByTestId('content'), 1440)['margin-inline']).toBe('0px');
+    view.rerender(<RichTextContent centered data-testid="content" html="<p>Lesson reading.</p>" />);
+    expect(stylesAt(screen.getByTestId('content'), 1440)['margin-inline']).toBe('auto');
+  });
+
   it('removes forms, associated controls, and submission attributes', () => {
     render(<RichTextContent data-testid="content" html={`
       <form id="mutation" action="/api/tenant-secrets" method="post">

@@ -2726,8 +2726,6 @@ export const pl: Messages = {
     testModeHint: 'Zakup zostanie przypisany do Twojego konta pracownika. Wybierz płatną ofertę bez kuponu i użyj testowej karty Stripe.',
     testModeCouponBlocked: 'Kupony i oferty bezpłatne działają tylko w trybie produkcyjnym. Wyłącz tryb testowy, aby z nich skorzystać.',
     testModeUnavailable: 'Ta społeczność nie ma jeszcze klucza testowego Stripe. Wyłącz tryb testowy, aby zapłacić, albo skonfiguruj go w Studio.',
-    testSessionEnded: 'Twoja sesja testowa pracownika wygasła. Włącz tryb testowy Stripe, aby ponowić zakup testowy, albo wybierz „Przejdź do prawdziwej płatności”, aby zapłacić prawdziwymi pieniędzmi.',
-    continueLivePayment: 'Przejdź do prawdziwej płatności',
     loading: 'Ładowanie płatności…',
     checkoutEyebrow: 'Płatność',
     eyebrow: ({ tenant }) => format('Płatność · {tenant}', { tenant }),

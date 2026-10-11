@@ -64,7 +64,6 @@ import {
   authLinkBaseUrl,
   fulfillStripeWebhook,
   getPaymentConfig,
-  getDirectSalesLinkMode,
   testCheckoutRejection,
   getPlayableLesson,
   getPublicCourseStructure,
@@ -629,11 +628,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
-    const salesLinkTestIdentity = await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
-    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id, salesLinkTestIdentity === null ? 'live' : 'test', deps);
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, canTest, salesLinkTestConfigured: !salesLinkMode.ok || salesLinkMode.value === 'test', testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );
@@ -698,12 +695,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!selection.ok) return respondPublic(selection);
     const identity = selection.value.salesLinkId === undefined
       ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
-    const staffTestMode = identity?.tenantId === tenant.value.tenant.id &&
+    const testMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
-    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id,
-      selection.value.salesLinkId !== undefined && staffTestMode ? 'test' : 'live', deps);
-    if (!salesLinkMode.ok) return respondPublic(salesLinkMode);
-    const testMode = selection.value.salesLinkId === undefined ? staffTestMode : salesLinkMode.value === 'test';
     const consent = await validateTermsConsent(
       tenant.value.tenant.id,
       parsed.data.termsAccepted,

@@ -141,7 +141,6 @@ export const startCheckoutSession = async (
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
   testSession?: { mode: 'test'; memberId: string },
-  directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string },
 ): Promise<Result<{
   url: string;
   coupon?: CouponCheckoutBreakdown;
@@ -150,7 +149,7 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, directCheckout !== undefined);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
@@ -264,7 +263,6 @@ export const startCheckoutSession = async (
     tenantId: tenant.id,
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
-    ...(directCheckout === undefined ? {} : { directCheckout }),
     productId: product.id,
     productName: product.title,
     ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }),
@@ -273,7 +271,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${mode === 'test' && selection.salesLinkId !== undefined ? '&test=1' : ''}${checkoutQuery}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${mode === 'test' && selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -289,17 +287,6 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
-  if (directCheckout !== undefined && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
-    try {
-      await deps.checkoutSnapshots.create(tenant.id, {
-        id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: selection.salesLinkId ?? null,
-        lines, currency, mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
-      });
-    } catch (cause) {
-      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
-      throw cause;
-    }
-  }
   if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
     try {
       await deps.orders.create(tenant.id, {

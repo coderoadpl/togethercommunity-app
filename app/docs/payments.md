@@ -2,12 +2,20 @@
 
 ## Direct sales-link checkout
 
-Public `/offer/<slug>` URLs send buyers straight to Stripe Checkout. The server
+Public `/offer/<slug>` URLs send buyers straight to live Stripe Checkout. The server
 renders the sales-link title, description, Open Graph metadata and tenant favicon,
-then posts to `/api/public/sales-links/<slug>/checkout` and replaces the page with
-the returned URL. A noscript POST button supports browsers without JavaScript.
+then posts `{}` to `/api/public/sales-links/<slug>/checkout` and replaces the page
+with the returned URL. The endpoint always creates live sessions and rejects a
+`mode` field, including `mode: "test"` or `mode: "live"`, with a 400 validation
+error. It does not read the staff test session. A noscript POST button supports
+browsers without JavaScript.
 The existing public-write limiter limits the POST per IP and tenant. GET requests
 do not create sessions. `/link/<key>` redirects into the same flow.
+
+The redirect page shows a centred card with the tenant's resolved checkout display
+name, HTTPS logo when configured, button colour as its accent and background colour
+when set. It includes a CSS spinner and status text, follows the system light or
+dark preference and uses system fonts without external font requests.
 
 The crawler user agents listed by the edge (facebookexternalhit, Twitterbot,
 LinkedInBot, Slackbot, Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and
@@ -35,16 +43,16 @@ NIP; orders with a NIP still require complete Polish billing details. iFirma
 retains its domestic-address restriction. Live order lines, grants and confirmation email
 continue through the existing fulfillment flow.
 
-`?test` with any value selects the tenant's configured test key only when the
-request carries the existing server-side Stripe test session bound to the
-signed-in account and tenant. Checkout rechecks tenant staff membership.
-Without that verified staff session or a configured test key, the selector is
-ignored and checkout stays live. This also applies to the purchase-consent
-fallback. An unreadable stored test key or a live key in the test slot returns
-an error for an authorized test checkout instead of switching to live credentials.
-After a cancelled test checkout, Retry stays on the Together page. If the staff
-test session has ended, the page shows a notice and requires an explicit choice
-to continue with a live payment; Retry cannot restart the automatic handoff.
+Staff test purchases use the Together checkout page at `/checkout/<productRef>`
+or `/offer/<slug>?checkout=together` and its **Stripe test mode** switch.
+These pages never hand off automatically. The switch uses the tenant's configured
+test key and the existing server-side Stripe test session bound to the signed-in
+account and tenant. Checkout rechecks tenant staff membership. An unreadable
+stored test key or a live key in the test slot returns an error for an authorized
+test checkout instead of switching to live credentials.
+Cancelled staff test checkout returns to `?checkout=together`. Retry stays on the
+Together page and requires a manual checkout action. The switch reflects the
+staff test session; enable it again before starting another test purchase.
 
 Staff test checkout stores a pending order for the signed-in staff account
 before returning the Stripe URL. Fulfillment preserves the member and test

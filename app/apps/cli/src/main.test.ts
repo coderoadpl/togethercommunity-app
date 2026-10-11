@@ -11,6 +11,7 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
   consumerSalesSummary: ReturnType<typeof vi.fn>;
   exportConsumerSales: ReturnType<typeof vi.fn>;
@@ -65,6 +66,7 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    directSalesLinkCheckout: vi.fn(),
     sendInvoice: vi.fn(),
     consumerSalesSummary: vi.fn(),
     exportConsumerSales: vi.fn(),
@@ -167,6 +169,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    directSalesLinkCheckout: h.directSalesLinkCheckout,
     sendInvoice: h.sendInvoice,
     consumerSalesSummary: h.consumerSalesSummary,
     exportConsumerSales: h.exportConsumerSales,
@@ -253,6 +256,7 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.sendInvoice.mockReset();
   h.updateTenantSettings.mockReset();
   h.consumerSalesSummary.mockReset().mockResolvedValue(ok({ totals: { grossCents: 105 } }));
@@ -337,6 +341,22 @@ afterEach(() => {
 
 afterAll(() => {
   process.argv = originalArgv;
+});
+
+describe('sales-link checkout CLI', () => {
+  it.each([{ options: [] }, { options: ['--mode', 'live'] }])('starts live checkout with options $options', async ({ options }) => {
+    await run('--json', 'sales-link', 'checkout', 'offer-one', ...options);
+    expect(h.directSalesLinkCheckout).toHaveBeenCalledExactlyOnceWith({ slug: 'offer-one' });
+    expect(soleJson()).toEqual({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('rejects test mode before starting checkout', async () => {
+    await run('--json', 'sales-link', 'checkout', 'offer-one', '--mode', 'test');
+    expect(h.directSalesLinkCheckout).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
 });
 
 describe('one-envelope discipline', () => {

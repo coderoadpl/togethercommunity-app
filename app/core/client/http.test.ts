@@ -609,13 +609,26 @@ describe('survey transport', () => {
   });
 });
 
-it('starts direct sales-link checkout with an encoded slug and mode-only body', async () => {
+it('starts direct sales-link checkout with an encoded slug and empty body', async () => {
   const fetchImpl: typeof fetch = async (input, init) => {
     expect(input).toBe('https://api.example.test/api/public/sales-links/offer%2Fone/checkout');
     expect(init?.method).toBe('POST');
-    expect(init?.body).toBe(JSON.stringify({ mode: 'test' }));
+    expect(init?.body).toBe('{}');
     return jsonResponse({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
   };
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
-  await expect(client.directSalesLinkCheckout({ slug: 'offer/one', mode: 'test' })).resolves.toEqual(ok({ url: 'https://checkout.stripe.test/session' }));
+  await expect(client.directSalesLinkCheckout({ slug: 'offer/one' })).resolves.toEqual(ok({ url: 'https://checkout.stripe.test/session' }));
+});
+
+it.each(['test', 'live'])('preserves obsolete direct checkout mode %s for server rejection', async (mode) => {
+  const refusal = { ok: false, error: { code: 'validation', message: 'Invalid checkout payload' } };
+  const fetchImpl: typeof fetch = async (input, init) => {
+    expect(input).toBe('https://api.example.test/api/public/sales-links/offer%2Fone/checkout');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe(JSON.stringify({ mode }));
+    return jsonResponse(refusal, 400);
+  };
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+  const input = { slug: 'offer/one', mode };
+  await expect(client.directSalesLinkCheckout(input)).resolves.toEqual(refusal);
 });

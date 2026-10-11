@@ -44,7 +44,6 @@ export const captureCheckoutSelection = async (
   tenantId: string,
   selection: CheckoutSelection,
   deps: CheckoutLineDeps,
-  deferPersistence = false,
 ): Promise<Result<{ lines: OrderLine[]; totalCents: number; currency: string; checkoutSnapshotId?: string }, AppError>> => {
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
@@ -52,8 +51,6 @@ export const captureCheckoutSelection = async (
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const checkoutSnapshotId = deps.ids.nextId();
-  if (!deferPersistence) {
-    await deps.checkoutSnapshots.create(tenantId, { id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
-  }
+  await deps.checkoutSnapshots.create(tenantId, { id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
   return ok({ ...built.value, checkoutSnapshotId });
 };

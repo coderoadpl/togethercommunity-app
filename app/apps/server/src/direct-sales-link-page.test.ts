@@ -13,6 +13,84 @@ const page = {
 };
 
 describe('direct sales-link page', () => {
+  it('renders checkout branding and escapes interpolated HTML attributes and names', () => {
+    const html = renderDirectSalesLinkPage({
+      ...page,
+      branding: {
+        displayName: 'Acme <"Studio">',
+        logoUrl: 'https://example.test/logo.png?label="<brand>"&size=2',
+        buttonColor: '#123456',
+        backgroundColor: '#abcdef',
+      },
+      tenantName: 'Fallback <"name">',
+      endpoint: '/checkout?label="<value>"&source=offer',
+      canonicalUrl: 'https://example.test/offer?label="<value>"&source=offer',
+      faviconUrl: 'https://example.test/favicon.png?label="<value>"&size=2',
+      nonce: 'nonce"<value>',
+    });
+    expect(html).toContain('<h1>Acme &lt;&quot;Studio&quot;&gt;</h1>');
+    expect(html).toContain('<img class="logo" src="https://example.test/logo.png?label=&quot;&lt;brand&gt;&quot;&amp;size=2" alt="">');
+    expect(html).toContain('style="--accent: #123456; --background: #abcdef"');
+    expect(html).toContain('content="Fallback &lt;&quot;name&quot;&gt;"');
+    expect(html).toContain('data-endpoint="/checkout?label=&quot;&lt;value&gt;&quot;&amp;source=offer"');
+    expect(html).toContain('href="https://example.test/offer?label=&quot;&lt;value&gt;&quot;&amp;source=offer"');
+    expect(html).toContain('href="https://example.test/favicon.png?label=&quot;&lt;value&gt;&quot;&amp;size=2"');
+    expect(html).toContain('<script nonce="nonce&quot;&lt;value&gt;">');
+    expect(html).not.toContain('<brand>');
+    expect(html).not.toContain('<value>');
+    expect(html).not.toContain('<"Studio">');
+  });
+
+  it('uses the tenant name without a configured logo and supports system color schemes', () => {
+    const html = renderDirectSalesLinkPage(page);
+    expect(html).toContain('<h1>Acme</h1>');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('font-family: system-ui');
+    expect(html).toContain('prefers-color-scheme: dark');
+    expect(html).toContain('prefers-reduced-motion: reduce');
+    expect(html).toContain('<div class="spinner" aria-hidden="true"></div>');
+    expect(html).not.toContain('<strong>TEST</strong>');
+    expect(html).not.toContain('name="mode"');
+  });
+
+  it.each([
+    { language: 'en', copy: directSalesLinkCopyEn },
+    { language: 'pl', copy: directSalesLinkCopyPl },
+  ] as const)('renders the $language status copy and working fallback form', ({ language, copy }) => {
+    const html = renderDirectSalesLinkPage({ ...page, language });
+    expect(html).toContain(`<p role="status">${copy.redirecting}</p>`);
+    expect(html).toContain(`<form method="post" action="${page.endpoint}"><button type="submit">${copy.continueToPayment}</button></form>`);
+  });
+
+  it('posts an empty body and redirects to the checkout response URL', async () => {
+    const html = renderDirectSalesLinkPage(page);
+    const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+    if (script === undefined) throw new Error('Missing checkout script');
+    const status = { textContent: directSalesLinkCopyEn.redirecting };
+    const replace = vi.fn();
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
+      { querySelector: (selector: string) => selector === 'main'
+        ? { dataset: { endpoint: page.endpoint, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } }
+        : status },
+      fetch,
+      { replace },
+    );
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    });
+    expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
+    expect(status.textContent).toBe(directSalesLinkCopyEn.redirecting);
+  });
+
+  it('renders crawler metadata without automatic checkout or a spinner', () => {
+    const html = renderDirectSalesLinkPage({ ...page, crawler: true });
+    expect(html).toContain('property="og:site_name" content="Acme"');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('<div class="spinner"');
+  });
+
   it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('renders the Polish %s error without checkout actions', (error) => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error });
     expect(html).toContain('<html lang="pl">');
@@ -35,7 +113,7 @@ describe('direct sales-link page', () => {
     });
     await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
       { querySelector: (selector: string) => selector === 'main'
-        ? { dataset: { endpoint: page.endpoint, mode: page.mode, checkoutUnavailable: directSalesLinkCopyPl.checkoutUnavailable } }
+        ? { dataset: { endpoint: page.endpoint, checkoutUnavailable: directSalesLinkCopyPl.checkoutUnavailable } }
         : status },
       fetch,
       { replace },

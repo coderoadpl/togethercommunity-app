@@ -2702,8 +2702,6 @@ export const en: Messages = {
     testModeHint: 'This checkout uses your staff account. Use a paid price without a coupon and a Stripe test card.',
     testModeCouponBlocked: 'Coupons and free offers stay in live mode. Turn test mode off to use them.',
     testModeUnavailable: 'This community has no Stripe sandbox key yet. Turn test mode off to pay, or configure the sandbox in Studio.',
-    testSessionEnded: 'Your staff test session has ended. Enable Stripe test mode to retry a test purchase, or choose Continue to live payment to pay with real money.',
-    continueLivePayment: 'Continue to live payment',
     loading: 'Loading checkout…',
     checkoutEyebrow: 'Checkout',
     eyebrow: ({ tenant }) => format('Checkout · {tenant}', { tenant }),

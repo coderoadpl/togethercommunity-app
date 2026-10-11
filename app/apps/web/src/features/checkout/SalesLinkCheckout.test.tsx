@@ -66,32 +66,6 @@ it.each([
   expect(document.querySelector('form')).toBeNull();
 });
 
-it.each([true, false])('honours the consent fallback test selector only with a staff test session: %s', async (staffTestSession) => {
-  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=anything');
-  let payload: unknown;
-  server.use(
-    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
-    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
-      stripeConfigured: true, simulatedPaymentsEnabled: true, salesLinkTestConfigured: staffTestSession,
-      canTest: staffTestSession, testConfigured: staffTestSession, testEnabled: staffTestSession,
-    } })),
-    http.post('/api/public/checkout/session', async ({ request }) => {
-      payload = await request.json();
-      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout fixture submitted' } }, { status: 400 });
-    }),
-  );
-  renderOffer();
-  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
-  await userEvent.click(screen.getByRole('checkbox'));
-  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(staffTestSession);
-  if (staffTestSession) expect(screen.queryByText(en.checkout.simulatedPaymentNote)).toBeNull();
-  expect(screen.getByRole('button', { name: en.checkout.couponReveal }).hasAttribute('disabled')).toBe(staffTestSession);
-  await userEvent.click(screen.getByRole('button', { name: staffTestSession ? en.salesLinks.buyBundle : en.checkout.continueLivePayment }));
-  await screen.findByText(en.errors.messageValidation);
-  expect(payload).toMatchObject({ salesLinkSlug: 'complete-bundle', email: 'buyer@example.test', termsAccepted: true });
-  expect(payload).not.toHaveProperty('salesLinkTest');
-});
-
 it.each([true, false])('shows the sales-link test success notice only to staff: %s', async (canTest) => {
   window.history.replaceState(null, '', '/offer/complete-bundle?status=success&test_purchase=1');
   server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
@@ -109,9 +83,9 @@ it('retries a live sales link through the server handoff after cancellation', as
   expect(await screen.findByRole('link', { name: en.checkout.retry })).toHaveAttribute('href', '/offer/complete-bundle');
 });
 
-it.each(['live', 'test'] as const)('stops a cancelled test checkout after its staff cookie is consumed until an explicit %s action', async (retryMode) => {
-  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=1');
-  let testEnabled = true;
+it('keeps staff test checkout and cancellation retries on the manual checkout page', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  let testEnabled = false;
   const modes: string[] = [];
   const assign = vi.fn();
   const location = window.location;
@@ -120,7 +94,7 @@ it.each(['live', 'test'] as const)('stops a cancelled test checkout after its st
     http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
       stripeConfigured: true, simulatedPaymentsEnabled: false, canTest: true,
-      testConfigured: true, testEnabled, salesLinkTestConfigured: testEnabled,
+      testConfigured: true, testEnabled,
     } })),
     http.post('/api/checkout/stripe-test-session', () => {
       testEnabled = true;
@@ -134,31 +108,32 @@ it.each(['live', 'test'] as const)('stops a cancelled test checkout after its st
   );
 
   const initial = renderOffer();
-  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'staff@example.test');
-  await userEvent.click(screen.getByRole('checkbox'));
+  await userEvent.click(await screen.findByTestId('checkout-test-mode-switch'));
+  expect(await screen.findByTestId('checkout-test-mode-hint')).toHaveTextContent(en.checkout.testModeHint);
+  expect(modes).toEqual([]);
+  await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'staff@example.test');
+  await userEvent.click(screen.getByLabelText(/I accept/));
   await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
   await waitFor(() => expect(assign).toHaveBeenCalledOnce());
   expect(modes).toEqual(['test']);
   initial.unmount();
 
-  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled&test=1');
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled&checkout=together');
   renderOffer();
   await userEvent.click(await screen.findByRole('button', { name: en.checkout.retry }));
-  expect(await screen.findByText(en.checkout.testSessionEnded)).toBeVisible();
-  expect(window.location.search).toBe('?checkout=together&test=1');
+  expect(await screen.findByTestId('checkout-test-mode-switch')).toBeVisible();
+  expect(screen.queryByTestId('checkout-test-mode-hint')).toBeNull();
+  expect(window.location.search).toBe('?checkout=together');
   expect(screen.queryByRole('link', { name: en.checkout.retry })).toBeNull();
   expect(modes).toEqual(['test']);
   expect(assign).toHaveBeenCalledOnce();
 
-  if (retryMode === 'test') {
-    await userEvent.click(screen.getByTestId('checkout-test-mode-switch'));
-    expect(await screen.findByText(en.checkout.testPurchase)).toBeVisible();
-    expect(screen.queryByText(en.checkout.testSessionEnded)).toBeNull();
-  }
+  await userEvent.click(screen.getByTestId('checkout-test-mode-switch'));
+  expect(await screen.findByTestId('checkout-test-mode-hint')).toHaveTextContent(en.checkout.testModeHint);
   await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'staff@example.test');
-  await userEvent.click(screen.getByRole('checkbox'));
-  await userEvent.click(screen.getByRole('button', { name: retryMode === 'test' ? en.salesLinks.buyBundle : en.checkout.continueLivePayment }));
+  await userEvent.click(screen.getByLabelText(/I accept/));
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
   await waitFor(() => expect(assign).toHaveBeenCalledTimes(2));
-  expect(modes).toEqual(['test', retryMode]);
+  expect(modes).toEqual(['test', 'test']);
   locationSpy.mockRestore();
 });

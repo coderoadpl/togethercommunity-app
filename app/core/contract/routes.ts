@@ -448,7 +448,6 @@ export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 export const publicPaymentConfigOutputSchema = z.object({
   canTest: z.boolean().default(false),
   testConfigured: z.boolean().default(false),
-  salesLinkTestConfigured: z.boolean().default(false),
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),

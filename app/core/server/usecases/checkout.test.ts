@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   err,
   integrationUnavailable,
-  internal,
   ok,
   type Coupon,
   type Order,
@@ -655,10 +654,10 @@ const directCheckout = async () => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
-  const start = (mode: 'live' | 'test' = 'live', staffTestSession?: { memberId: string; email: string }) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
-    slug: h.link.slug, mode,
+  const start = () => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+    slug: h.link.slug,
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
-  }, h.deps, staffTestSession);
+  }, h.deps);
   return { ...h, settings, start };
 };
 
@@ -676,44 +675,15 @@ it('creates an anonymous direct session using tenant language, legal URLs and br
   expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session', salesLinkId: h.link.id });
 });
 
-it('ignores direct test selection without a staff test session even with a configured key', async () => {
+it('uses only live credentials for direct checkout even when a test key exists', async () => {
   const h = await directCheckout();
-  expect(await h.start('test')).toMatchObject({ ok: true });
+  const findKey = vi.spyOn(h.deps.tenantSecrets, 'findByKey');
+  expect(await h.start()).toMatchObject({ ok: true });
   expect(h.calls[0]).toMatchObject({ mode: 'live' });
   expect(h.calls[0]?.successUrl).not.toContain('test_purchase');
+  expect(h.calls[0]?.cancelUrl).not.toContain('test=');
+  expect(findKey.mock.calls.every(([, key]) => !key.startsWith('stripe.test'))).toBe(true);
   expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session' });
-});
-
-it('keeps direct checkout live when the tenant has no test key', async () => {
-  const h = await directCheckout();
-  h.deps.tenantSecrets.findByKey = async (_tenantId, key) => key === 'stripe.testRestrictedKey' ? null : secret(key);
-  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: true });
-  expect(h.calls[0]?.mode).toBe('live');
-});
-
-it('refuses staff test mode when key decryption is unavailable', async () => {
-  const h = await directCheckout();
-  delete h.deps.secretCrypto;
-  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: false, error: { code: 'validation' } });
-  expect(h.calls).toHaveLength(0);
-  expect(h.snapshots).toHaveLength(0);
-  expect(await h.start('live')).toMatchObject({ ok: true });
-});
-
-it.each(['unreadable', 'live-key'] as const)('rejects a requested test checkout with a %s test key even when live credentials work', async (failure) => {
-  const h = await directCheckout();
-  h.deps.tenantSecrets.findByKey = async (_tenantId, key) => ({ ...secret(key), ciphertext: key });
-  h.deps.secretCrypto = {
-    encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
-    decrypt: (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
-      ? err(internal('Stored secret failed integrity verification'))
-      : ok('rk_live_available'),
-  };
-  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: false, error: { code: failure === 'unreadable' ? 'internal' : 'validation' } });
-  expect(h.calls).toHaveLength(0);
-  expect(h.snapshots).toHaveLength(0);
-  expect(await h.start('live')).toMatchObject({ ok: true });
-  expect(h.calls[0]?.mode).toBe('live');
 });
 
 it.each(['termsUrl', 'privacyUrl'] as const)('rejects direct checkout without %s before creating a session', async (field) => {

@@ -31,7 +31,6 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'hasStripeTestSession',
   'fulfillStripeWebhook',
   'getPaymentConfig',
-  'getDirectSalesLinkMode',
   'getPlayableLesson',
   'listLessonEditions',
   'getPublicCourseStructure',

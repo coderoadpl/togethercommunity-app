@@ -34,7 +34,6 @@ describe('recorded tenant settings', () => {
       const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(paymentConfig);
       const parsed = publicPaymentConfigOutputSchema.parse(response.value);
       expect(response.value).toEqual(parsed);
-      expect(parsed.salesLinkTestConfigured).toBe(false);
     }
   });
 });

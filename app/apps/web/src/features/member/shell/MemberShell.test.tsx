@@ -910,7 +910,7 @@ describe('MemberShell', () => {
 
     const currentLesson = await screen.findByTestId('lesson-button-l1');
     expect(screen.getByTestId('course-sidebar')).toContainElement(currentLesson);
-    expect(currentLesson).toHaveClass('Mui-selected');
+    expect(currentLesson).toHaveAttribute('data-selected');
   });
 
   it('keeps the bell and the avatar menu in the app bar on a lesson page', async () => {
@@ -1170,7 +1170,7 @@ describe('MemberShell', () => {
     await user.click(await screen.findByTestId('program-button'));
 
     const sheet = await screen.findByTestId('course-program-sheet');
-    expect(await within(sheet).findByTestId('lesson-button-l1')).toHaveClass('Mui-selected');
+    expect(await within(sheet).findByTestId('lesson-button-l1')).toHaveAttribute('data-selected');
     expect(within(sheet).getByTestId('course-sidebar-back')).toHaveAttribute(
       'href',
       memberHomePath(),

@@ -1,6 +1,7 @@
 import type { ElementType } from 'react';
 import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
-import type { ListItemButtonProps } from '@mui/material/ListItemButton';
+import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
+import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
@@ -20,6 +21,7 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 
@@ -3335,10 +3337,62 @@ export const CourseTreeModuleTitle = styled(TreeModuleTitle)<AsElement>({
   lineHeight: 1.4,
 });
 
-export const CourseTreeModuleButton = styled(ListItemButton)<ListItemButtonProps>(({ theme }) => ({
-  backgroundColor: theme.palette.background.paper,
-  '&:hover': {
-    backgroundColor: theme.palette.action.hover,
+export const CourseTreeRoot = styled(SimpleTreeView)({
+  paddingTop: `${COURSE_TREE_SCROLL_PADDING_REM}rem`,
+});
+
+export const CourseTreeItemContent = styled(TreeItemContent)<{ to?: string | undefined }>({
+  color: 'inherit',
+  textDecoration: 'none',
+});
+
+export const CourseTreeItem = styled(TreeItem, {
+  shouldForwardProp: (prop) => prop !== 'kind',
+})<{ kind: 'module' | 'chapter' | 'lesson' }>(({ theme, kind }) => ({
+  '& > .MuiTreeItem-content': {
+    width: '100%',
+    margin: 0,
+    borderRadius: 0,
+    overflow: 'hidden',
+    paddingRight: '0.75rem',
+    paddingLeft: 'calc(0.75rem + 0.65rem * var(--TreeView-itemDepth))',
+    paddingTop: kind === 'module' ? '0.5rem' : kind === 'chapter' ? '0.45rem' : '0.4rem',
+    paddingBottom: kind === 'module' ? '0.5rem' : kind === 'chapter' ? '0.45rem' : '0.4rem',
+    minHeight: kind === 'module' ? 46 : 44,
+    gap: '0.4rem',
+    '&[data-focused]': {
+      ...(kind === 'module' ? { backgroundColor: theme.palette.action.focus } : {}),
+      boxShadow: `inset 0 0 0 2px ${theme.focusRing ?? theme.palette.primary.main}`,
+    },
+    '&[data-selected]': {
+      backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity),
+      '&[data-focused]': {
+        backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity + theme.palette.action.focusOpacity),
+      },
+      '&:hover': {
+        backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity + theme.palette.action.hoverOpacity),
+        '@media (hover: none)': {
+          backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity),
+        },
+      },
+    },
+    ...(kind === 'module' ? {
+      position: 'sticky',
+      top: `${COURSE_TREE_SCROLL_PADDING_REM}rem`,
+      zIndex: 1,
+      backgroundColor: theme.palette.background.paper,
+      '&:hover': { backgroundColor: theme.palette.action.hover },
+    } : {}),
+    ...(kind === 'lesson' ? {
+      scrollMarginTop: `calc(46px + ${COURSE_TREE_SCROLL_PADDING_REM}rem)`,
+      '& > .MuiTreeItem-iconContainer': { display: 'none' },
+      '&[data-disabled]': { opacity: 0.6 },
+    } : {}),
+    '& > .MuiTreeItem-label': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.35rem',
+    },
   },
 }));
 

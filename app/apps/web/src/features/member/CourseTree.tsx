@@ -1,15 +1,15 @@
-import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useState, type ComponentProps } from 'react';
 import {
   Box,
-  Collapse,
   Chip,
-  List,
-  ListItemButton,
   OutlinedInput,
   Stack,
   Tooltip,
   Typography,
 } from '@mui/material';
+import { useForkRef } from '@mui/material/utils';
+import type { TreeItemProps } from '@mui/x-tree-view/TreeItem';
+import type { UseTreeItemContentSlotOwnProps } from '@mui/x-tree-view/useTreeItem';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -26,9 +26,12 @@ import { actions } from '../../api.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
+  COURSE_TREE_SCROLL_PADDING_REM,
   CourseTreeChapterTitle,
-  CourseTreeModuleButton,
+  CourseTreeItem,
+  CourseTreeItemContent,
   CourseTreeModuleTitle,
+  CourseTreeRoot,
   LessonDurationText,
   TreeLessonTitle,
   TreeProgressCount,
@@ -40,32 +43,56 @@ import { Caret, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js'
 
 const TITLE_TOOLTIP_DELAY_MS = 500;
 
-const SCROLL_PADDING_REM = 0.5;
-const STICKY_MODULE_HEADER_HEIGHT_PX = 46;
-const LESSON_SCROLL_MARGIN_TOP = `calc(${STICKY_MODULE_HEADER_HEIGHT_PX}px + ${SCROLL_PADDING_REM}rem)`;
+type RowConfig = {
+  title: string;
+  testId: string;
+  to?: string;
+  ref?: (node: HTMLElement | null) => void;
+  prefetch?: () => void;
+};
 
-const ROW_SX = { width: '100%', pr: '0.75rem' } as const;
-const MODULE_ROW_SX = {
-  ...ROW_SX,
-  pl: '0.75rem',
-  py: '0.5rem',
-  minHeight: STICKY_MODULE_HEADER_HEIGHT_PX,
-  columnGap: '0.4rem',
-} as const;
-const CHAPTER_ROW_SX = { ...ROW_SX, pl: '1.4rem', py: '0.45rem', minHeight: 44, columnGap: '0.4rem' } as const;
-const LESSON_ROW_SX = {
-  ...ROW_SX,
-  pl: '2rem',
-  py: '0.4rem',
-  minHeight: 44,
-  scrollMarginTop: LESSON_SCROLL_MARGIN_TOP,
-} as const;
+const RowContext = createContext<RowConfig>({ title: '', testId: '' });
 
-const RowTooltip = ({ title, children }: { title: string; children: ReactElement }) => (
-  <Tooltip describeChild title={title} enterDelay={TITLE_TOOLTIP_DELAY_MS} enterNextDelay={TITLE_TOOLTIP_DELAY_MS}>
-    {children}
-  </Tooltip>
-);
+const RowContent = (props: ComponentProps<typeof CourseTreeItemContent> & Pick<UseTreeItemContentSlotOwnProps, 'data-focused'>) => {
+  const row = useContext(RowContext);
+  const ref = useForkRef<HTMLDivElement>(props.ref, row.ref);
+  const focused = props['data-focused'] !== undefined;
+  const [tooltip, setTooltip] = useState({ focused, open: focused });
+  if (tooltip.focused !== focused) setTooltip({ focused, open: focused });
+  return (
+    <Tooltip
+      describeChild
+      title={row.title}
+      open={tooltip.open}
+      onOpen={() => setTooltip({ focused, open: true })}
+      onClose={() => setTooltip({ focused, open: false })}
+      enterDelay={TITLE_TOOLTIP_DELAY_MS}
+      enterNextDelay={TITLE_TOOLTIP_DELAY_MS}
+    >
+      <CourseTreeItemContent
+        {...props}
+        as={row.to === undefined ? 'div' : Link}
+        to={row.to}
+        tabIndex={-1}
+        ref={ref}
+        data-testid={row.testId}
+        onMouseEnter={row.prefetch}
+      />
+    </Tooltip>
+  );
+};
+
+const ExpandIcon = () => <Caret open={false} />;
+const CollapseIcon = () => <Caret open />;
+const ITEM_SLOTS = { content: RowContent, expandIcon: ExpandIcon, collapseIcon: CollapseIcon };
+const ITEM_SLOT_PROPS = { groupTransition: { unmountOnExit: true } };
+
+const toggleWithKeyboard = (toggle: () => void): NonNullable<TreeItemProps['onKeyDown']> => (event) => {
+  if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+  event.defaultMuiPrevented = true;
+  event.preventDefault();
+  toggle();
+};
 
 const AccessMark = ({ status }: { status: AccessStatus }) => {
   const t = useTranslations();
@@ -126,6 +153,7 @@ type VisibleChapter = CourseStructureChapter & { allLessons: CourseStructureLess
 type VisibleModule = Omit<CourseStructureModule, 'chapters'> & {
   chapters: VisibleChapter[];
   allLessons: CourseStructureLesson[];
+  singleChapter: boolean;
 };
 
 const filterModules = (
@@ -135,6 +163,7 @@ const filterModules = (
   modules
     .map((module) => ({
       ...module,
+      singleChapter: module.chapters.length === 1,
       allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
       chapters: module.chapters
         .map((chapter) => ({
@@ -157,7 +186,7 @@ const nearestModuleHeader = (node: HTMLElement): HTMLElement | null => {
 
 const scrollPaddingPx = (): number => {
   const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(rootFontSize) ? rootFontSize * SCROLL_PADDING_REM : 8;
+  return (Number.isFinite(rootFontSize) ? rootFontSize : 16) * COURSE_TREE_SCROLL_PADDING_REM;
 };
 
 const isComfortablyVisible = (node: HTMLElement, scroller: HTMLElement): boolean => {
@@ -188,19 +217,18 @@ const LessonRow = ({
   lesson,
   courseId,
   search,
-  currentLessonId,
   scrollIntoView,
   guest,
 }: {
   lesson: CourseStructureLesson;
   courseId: string;
   search: string;
-  currentLessonId?: string | undefined;
   scrollIntoView: boolean;
   guest: boolean;
 }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const labelId = useId();
   const rowRef = useScrollIntoViewWhen(scrollIntoView);
   const prefetch = () => {
     if (guest) return;
@@ -222,186 +250,133 @@ const LessonRow = ({
           {t.courseTree.lessonDuration({ minutes: lesson.durationMinutes })}
         </LessonDurationText>
       )}
+      {' '}
       {guest && lesson.isPreview ? <Chip size="small" label={t.anon.previewChip} color="primary" variant="outlined" /> : null}
+      {' '}
       <LessonCompletion status={lesson.completionStatus} />
+      {' '}
       <AccessMark status={lesson.accessStatus} />
     </Stack>
   );
 
-  if (lesson.accessStatus === 'not-accessible' || (guest && !lesson.isPreview)) {
-    return (
-      <RowTooltip title={t.courseTree.lockedLessonTooltip({ name: lesson.name })}>
-        <Box component="span" sx={{ display: 'block' }}>
-          <ListItemButton
-            disabled
-            ref={rowRef}
-            data-testid={`lesson-button-${lesson.lessonId}`}
-            sx={{ ...LESSON_ROW_SX, opacity: 0.6 }}
-          >
-            {label}
-            {marks}
-          </ListItemButton>
-        </Box>
-      </RowTooltip>
-    );
-  }
-
+  const locked = lesson.accessStatus === 'not-accessible' || (guest && !lesson.isPreview);
   return (
-    <RowTooltip title={lesson.name}>
-      <ListItemButton
-        component={Link}
-        ref={rowRef}
-        to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`}
-        selected={lesson.lessonId === currentLessonId}
-        data-testid={`lesson-button-${lesson.lessonId}`}
-        onMouseEnter={prefetch}
-        onFocus={prefetch}
-        sx={LESSON_ROW_SX}
-      >
-        {label}
-        {marks}
-      </ListItemButton>
-    </RowTooltip>
+    <RowContext value={{
+      title: locked ? t.courseTree.lockedLessonTooltip({ name: lesson.name }) : lesson.name,
+      testId: `lesson-button-${lesson.lessonId}`,
+      ...(locked ? {} : { to: `/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`, prefetch }),
+      ref: rowRef,
+    }}>
+      <CourseTreeItem
+        itemId={`lesson:${lesson.contentId}`}
+        kind="lesson"
+        disabled={locked}
+        aria-labelledby={labelId}
+        aria-description={locked ? t.courseTree.lockedLessonTooltip({ name: lesson.name }) : undefined}
+        slots={ITEM_SLOTS}
+        slotProps={{ label: { id: labelId } }}
+        onFocusCapture={locked ? undefined : prefetch}
+        onKeyDown={(event) => {
+          if (locked || event.key !== 'Enter' || event.target !== event.currentTarget) return;
+          event.defaultMuiPrevented = true;
+          event.preventDefault();
+          event.currentTarget.querySelector('a')?.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey,
+          }));
+        }}
+        label={<>{label}{' '}{marks}</>}
+      />
+    </RowContext>
   );
 };
 
-const ChapterNode = ({
-  chapter,
-  courseId,
-  search,
-  open,
-  onToggle,
-  currentLessonId,
-  scrollLessonId,
-  guest,
-}: {
-  chapter: VisibleChapter;
+type BranchProps = {
   courseId: string;
   search: string;
-  open: boolean;
-  onToggle: () => void;
-  currentLessonId?: string | undefined;
-  scrollLessonId: string | null;
-  guest: boolean;
-}) => {
-  const contentId = useId();
-  return (
-    <Box component="li" sx={{ listStyle: 'none' }}>
-      <RowTooltip title={chapter.name}>
-        <ListItemButton
-          component="button"
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-controls={contentId}
-          data-testid={`chapter-toggle-${chapter.id}`}
-          sx={CHAPTER_ROW_SX}
-        >
-          <Caret open={open} />
-          <CourseTreeChapterTitle noWrap sx={{ flex: 1, minWidth: 0 }}>
-            {chapter.name}
-          </CourseTreeChapterTitle>
-          <Stack
-            direction="row"
-            useFlexGap
-            sx={{ alignItems: 'center', columnGap: '0.35rem', flexShrink: 0 }}
-          >
-            <ProgressMark lessons={chapter.allLessons} guest={guest} />
-            <AccessMark status={chapter.accessStatus} />
-          </Stack>
-        </ListItemButton>
-      </RowTooltip>
-      <Collapse id={contentId} in={open} unmountOnExit>
-        <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
-          {chapter.lessons.map((lesson) => (
-            <Box component="li" key={lesson.contentId} sx={{ listStyle: 'none' }}>
-              <LessonRow
-                guest={guest}
-                lesson={lesson}
-                courseId={courseId}
-                search={search}
-                currentLessonId={currentLessonId}
-                scrollIntoView={lesson.lessonId === scrollLessonId}
-              />
-            </Box>
-          ))}
-        </List>
-      </Collapse>
-    </Box>
-  );
-};
-
-const ModuleNode = ({
-  module,
-  courseId,
-  search,
-  isOpen,
-  onToggle,
-  currentLessonId,
-  scrollLessonId,
-  guest,
-}: {
-  module: VisibleModule;
-  courseId: string;
-  search: string;
-  isOpen: (id: string) => boolean;
   onToggle: (id: string) => void;
-  currentLessonId?: string | undefined;
   scrollLessonId: string | null;
   guest: boolean;
-}) => {
-  const open = isOpen(module.id);
-  const contentId = useId();
+};
+
+const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChapter }) => {
+  const labelId = useId();
   return (
-    <Box component="li" data-course-tree-module="" sx={{ listStyle: 'none' }}>
-      <RowTooltip title={module.name}>
-        <CourseTreeModuleButton
-          component="button"
-          type="button"
-          onClick={() => onToggle(module.id)}
-          aria-expanded={open}
-          aria-controls={contentId}
-          data-testid={`module-toggle-${module.id}`}
-          data-course-tree-module-header=""
-          sx={{
-            ...MODULE_ROW_SX,
-            position: 'sticky',
-            top: `${SCROLL_PADDING_REM}rem`,
-            zIndex: 1,
-          }}
-        >
-          <Caret open={open} />
-          <CourseTreeModuleTitle noWrap sx={{ flex: 1, minWidth: 0 }}>
-            {module.name}
-          </CourseTreeModuleTitle>
-          <Stack
-            direction="row"
-            useFlexGap
-            sx={{ alignItems: 'center', columnGap: '0.35rem', flexShrink: 0 }}
-          >
-            <ProgressMark lessons={module.allLessons} guest={guest} />
+    <RowContext value={{ title: chapter.name, testId: `chapter-toggle-${chapter.id}` }}>
+      <CourseTreeItem
+        itemId={chapter.id}
+        kind="chapter"
+        disableSelection
+        aria-labelledby={labelId}
+        slots={ITEM_SLOTS}
+        slotProps={{ ...ITEM_SLOT_PROPS, label: { id: labelId } }}
+        onKeyDown={toggleWithKeyboard(() => props.onToggle(chapter.id))}
+        label={
+          <>
+            <CourseTreeChapterTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
+              {chapter.name}
+            </CourseTreeChapterTitle>
+            {' '}
+            <ProgressMark lessons={chapter.allLessons} guest={props.guest} />
+            {' '}
+            <AccessMark status={chapter.accessStatus} />
+          </>
+        }
+      >
+        {chapter.lessons.map((lesson) => (
+          <LessonRow
+            key={lesson.contentId}
+            {...props}
+            lesson={lesson}
+            scrollIntoView={lesson.lessonId === props.scrollLessonId}
+          />
+        ))}
+      </CourseTreeItem>
+    </RowContext>
+  );
+};
+
+const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule }) => {
+  const labelId = useId();
+  return (
+    <RowContext value={{ title: module.name, testId: `module-toggle-${module.id}` }}>
+      <CourseTreeItem
+        itemId={module.id}
+        kind="module"
+        disableSelection
+        aria-labelledby={labelId}
+        data-course-tree-module=""
+        slots={ITEM_SLOTS}
+        slotProps={{ ...ITEM_SLOT_PROPS, label: { id: labelId }, content: { ...{ 'data-course-tree-module-header': '' } } }}
+        onKeyDown={toggleWithKeyboard(() => props.onToggle(module.id))}
+        label={
+          <>
+            <CourseTreeModuleTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
+              {module.name}
+            </CourseTreeModuleTitle>
+            {' '}
+            <ProgressMark lessons={module.allLessons} guest={props.guest} />
+            {' '}
             <AccessMark status={module.accessStatus} />
-          </Stack>
-        </CourseTreeModuleButton>
-      </RowTooltip>
-      <Collapse id={contentId} in={open} unmountOnExit>
-        <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
-          {module.chapters.map((chapter) => (
-            <ChapterNode
-              key={chapter.id}
-              guest={guest}
-              chapter={chapter}
-              courseId={courseId}
-              search={search}
-              open={isOpen(chapter.id)}
-              onToggle={() => onToggle(chapter.id)}
-              currentLessonId={currentLessonId}
-              scrollLessonId={scrollLessonId}
+          </>
+        }
+      >
+        {module.singleChapter
+          ? module.chapters.flatMap((chapter) => chapter.lessons).map((lesson) => (
+            <LessonRow
+              key={lesson.contentId}
+              {...props}
+              lesson={lesson}
+              scrollIntoView={lesson.lessonId === props.scrollLessonId}
             />
-          ))}
-        </List>
-      </Collapse>
-    </Box>
+          ))
+          : module.chapters.map((chapter) => <ChapterNode key={chapter.id} {...props} chapter={chapter} />)}
+      </CourseTreeItem>
+    </RowContext>
   );
 };
 
@@ -492,7 +467,17 @@ export const CourseTree = ({
             </Typography>
           </Box>
         ) : (
-          <List disablePadding component="ul" sx={{ m: 0, p: 0 }} data-testid="course-tree">
+          <CourseTreeRoot
+            disabledItemsFocusable
+            aria-label={structure.name}
+            data-testid="course-tree"
+            expandedItems={modules.flatMap((module) => [module.id, ...(module.singleChapter ? [] : module.chapters.map((chapter) => chapter.id))]).filter(isOpen)}
+            onItemExpansionToggle={(_event, id) => toggle(id)}
+            multiSelect
+            selectedItems={modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons))
+              .filter((lesson) => lesson.lessonId === currentLessonId)
+              .map((lesson) => `lesson:${lesson.contentId}`)}
+          >
             {modules.map((module) => (
               <ModuleNode
                 key={module.id}
@@ -500,13 +485,11 @@ export const CourseTree = ({
                 module={module}
                 courseId={courseId}
                 search={searchActive ? search : ''}
-                isOpen={isOpen}
                 onToggle={toggle}
-                currentLessonId={currentLessonId}
                 scrollLessonId={scrollLessonId}
               />
             ))}
-          </List>
+          </CourseTreeRoot>
         )}
       </Box>
     </Box>

@@ -50,6 +50,32 @@
       "destination": "/api/index"
     },
     {
+      "source": "/offer/(.*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "checkout",
+          "value": "together"
+        }
+      ],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/offer/(.*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success|cancelled"
+        }
+      ],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/offer/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/(.*)",
       "has": [
         {
@@ -76,7 +102,55 @@
       ]
     },
     {
-      "source": "/((?!api/|u/|marketing/|legal/).*)",
+      "source": "/((?!api/|u/|marketing/|legal/|offer/).*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/offer/(.*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "checkout",
+          "value": "together"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/offer/(.*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success|cancelled"
+        }
+      ],
       "headers": [
         {
           "key": "Content-Security-Policy",

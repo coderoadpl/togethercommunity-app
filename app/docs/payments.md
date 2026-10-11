@@ -1,5 +1,67 @@
 # Payments
 
+## Direct sales-link checkout
+
+Public `/offer/<slug>` URLs send buyers straight to Stripe Checkout. The server
+renders the sales-link title, description, Open Graph metadata and tenant favicon,
+then posts to `/api/public/sales-links/<slug>/checkout` and replaces the page with
+the returned URL. A noscript POST button supports browsers without JavaScript.
+The existing public-write limiter limits the POST per IP and tenant. GET requests
+do not create sessions. `/link/<key>` redirects into the same flow.
+
+The crawler user agents listed by the edge (facebookexternalhit, Twitterbot,
+LinkedInBot, Slackbot, Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and
+Applebot) receive metadata without a script or form. Checkout POSTs from those
+agents are refused as well.
+
+Stripe receives one line per product, the tenant language, tax ID collection and
+a mandatory terms checkbox. Promotion codes are disabled in this direct flow.
+Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
+account-level setting even when Together overrides the acceptance message with
+links to the tenant's terms and privacy policy. Together records accepted consent
+against the exact URLs saved in session metadata. Missing tenant legal URLs show
+an error page and prevent session creation.
+
+Webhook fulfillment uses the session customer details for email, name, billing
+address when supplied, and tax IDs. Polish `eu_vat` IDs starting with `PL` are
+stored as digits-only billing NIP even when the optional address is incomplete.
+Invoice issuance still requires complete Polish billing details; unsupported or
+incomplete billing records an invoice validation failure instead of silently
+skipping B2B classification. Order lines, grants and confirmation email continue
+through the existing fulfillment flow.
+
+`?test` with any value selects the tenant's configured test key. Without a test
+key, it is ignored and checkout stays live. Test sales retain the TEST indicator,
+never grant real access and remain excluded from revenue. This public sales-link
+selector is separate from the staff switch on the single-product page described
+below. The selector also applies to the purchase-consent fallback.
+An unreadable stored test key or a live key in the test slot returns an error;
+a requested test checkout never switches to live credentials in those cases.
+Cancellation retains test mode for an explicit retry through the server handoff;
+anonymous success returns display the TEST notice without requiring a staff session.
+
+A sales link with product purchase consent checkboxes keeps the Together page at
+`?checkout=together`, because Stripe has no custom checkbox field. Its existing
+billing and coupon flow remains available. Both tenant legal URLs are required
+on this fallback page and its checkout endpoint too. Success and cancellation return to the
+Together page and cannot restart the automatic redirect. The single-product
+checkout page retains its existing behavior.
+
+## Checkout appearance
+
+Owners can configure **Integrations → Stripe → Checkout appearance**. Available
+overrides are display name, logo URL, icon URL, background colour, button colour,
+font and corners (`pill`, `rounded`, `rectangular`). Colours must be `#RRGGBB` and
+image URLs must use HTTPS. The font selector contains Stripe's supported font
+families and defaults to `default`.
+
+Empty fields fall back to the tenant branding in Settings: name, logo, accent
+colour for the button and favicon for the icon. Fully empty resolved settings
+send no `branding_settings`. Every new tenant Checkout Session receives the
+resolved appearance, including sales links, single-product purchases and
+subscriptions. Stripe's account name can still appear in terms and receipts;
+the display-name override changes the checkout heading only.
+
 ## Test mode for staff
 
 A tenant owner can configure an independent Stripe sandbox in Studio → Integrations → Stripe → Test mode. Create a restricted key in the tenant's Stripe sandbox and enter the `rk_test_` key in this card. Grant the same checkout, subscription and webhook permissions shown for the live integration. The live card accepts only `rk_live_` keys; the test card accepts only `rk_test_` keys, including when credentials are saved through the API.

@@ -1,6 +1,6 @@
 {
-  "hash": "7ec3097d089d824d652e6c6297a84afb15b7104a03c088eee8743c941151979f",
-  "shortId": "7ec3097d089d",
+  "hash": "4128725eff86ad0f1c8fec31f7ab827674118b78f6821ea5c94b471f648a2a12",
+  "shortId": "4128725eff86",
   "schema": {
     "constraints": [
       {
@@ -102,6 +102,11 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
+        "name": "checkout_snapshots_mode_check",
+        "table": "checkout_snapshots"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -2433,6 +2438,11 @@
         "table": "campaign_sends"
       },
       {
+        "definition": "CREATE UNIQUE INDEX checkout_snapshots_provider_session_idx ON checkout_snapshots USING btree (tenant_id, provider_session_id) WHERE (provider_session_id IS NOT NULL)",
+        "name": "checkout_snapshots_provider_session_idx",
+        "table": "checkout_snapshots"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX consent_confirmation_tokens_token_uidx ON consent_confirmation_tokens USING btree (token)",
         "name": "consent_confirmation_tokens_token_uidx",
         "table": "consent_confirmation_tokens"
@@ -3584,6 +3594,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "customer_details",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -4087,6 +4105,14 @@
             "name": "bunny_stream_library_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_appearance",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -11771,6 +11797,22 @@
             "name": "lines",
             "notNull": true,
             "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

@@ -3,6 +3,7 @@ import {
   err,
   notFound,
   ok,
+  resolveCheckoutBranding,
   stripeKeyModeConflicts,
   validation,
   type AppError,
@@ -256,8 +257,11 @@ export const startCheckoutSession = async (
     if (!configured.ok) return configured;
     if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
   }
+  const tenantSettings = await deps.tenants?.findSettings(tenant.id);
+  const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
     productId: product.id,
     productName: product.title,
@@ -267,7 +271,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${checkoutQuery}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${mode === 'test' && selection.salesLinkId !== undefined ? '&test=1' : ''}${checkoutQuery}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),

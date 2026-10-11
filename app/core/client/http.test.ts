@@ -571,3 +571,14 @@ describe('survey transport', () => {
     expect((await client.getSurveyResults({ id: 'one', page: 2, pageSize: 10 })).ok).toBe(true);
   });
 });
+
+it('starts direct sales-link checkout with an encoded slug and mode-only body', async () => {
+  const fetchImpl: typeof fetch = async (input, init) => {
+    expect(input).toBe('https://api.example.test/api/public/sales-links/offer%2Fone/checkout');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe(JSON.stringify({ mode: 'test' }));
+    return jsonResponse({ ok: true, data: { url: 'https://checkout.stripe.test/session' } });
+  };
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+  await expect(client.directSalesLinkCheckout({ slug: 'offer/one', mode: 'test' })).resolves.toEqual(ok({ url: 'https://checkout.stripe.test/session' }));
+});

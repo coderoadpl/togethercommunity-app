@@ -9,6 +9,7 @@ const publicTenantSchema = z.object({
 });
 const marketingConsentSchema = z.object({ definitionId: z.string(), label: z.string(), doubleOptIn: z.boolean(), documentUrl: z.string().nullable() });
 export const salesLinkContracts = {
+  directSalesLinkCheckout: { input: z.object({ mode: z.enum(['test', 'live']) }).strict(), output: z.object({ url: z.string().url() }) },
   listSalesLinks: { input: z.object({}).strict(), output: z.object({ salesLinks: z.array(salesLinkSchema) }) },
   getSalesLink: { input: idInput, output: z.object({ salesLink: salesLinkSchema }) },
   createSalesLink: { input: salesLinkInputSchema, output: z.object({ salesLink: salesLinkSchema }) },
@@ -17,6 +18,7 @@ export const salesLinkContracts = {
   getPublicSalesLink: { input: z.object({ slug: z.string().min(1) }).strict(), output: salesLinkOfferSchema.extend({ tenant: publicTenantSchema, marketingConsents: z.array(marketingConsentSchema) }) },
 } as const;
 export const SALES_LINK_ROUTES = {
+  directSalesLinkCheckout: { method: 'POST', path: '/api/public/sales-links/:slug/checkout' },
   listSalesLinks: { method: 'GET', path: '/api/sales-links' },
   createSalesLink: { method: 'POST', path: '/api/sales-links' },
   getSalesLink: { method: 'GET', path: '/api/sales-links/:id' },

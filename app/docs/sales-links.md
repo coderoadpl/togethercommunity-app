@@ -2,9 +2,9 @@
 
 A product remains one sellable item. A sales link combines an ordered set of
 products into one offer at `/offer/<slug>` on the workspace host. The buyer cannot
-remove a line or change its quantity. Each product appears once, with its name,
-VAT rate, net amount, VAT amount and gross amount. The total is the sum of the
-gross amounts. Descriptions use the shared sanitized Markdown renderer.
+remove a line or change its quantity. Each product appears once in Stripe Checkout, with quantity one. The total is
+the sum of the gross amounts. The Together fallback page also shows each VAT
+rate and the net, VAT and gross amounts, with sanitized Markdown descriptions.
 
 Create and manage links in **Products → Sales links**. The internal title helps
 staff distinguish offers; the heading and description address buyers. Copy the
@@ -53,10 +53,50 @@ stored paid amount plus the stored discount, without consulting today's price. F
 with one paid order and grants every nonphysical product through the existing
 enrollment behavior. Refunds and reconciliation continue to count one payment.
 
-Coupons apply to the total. A product-scoped coupon must cover every included
-product; unsupported coupons use the existing rejection message. Billing fields,
-terms acceptance and optional marketing consents retain their existing behavior;
-attached marketing consents are combined across included products.
+Opening `/offer/<slug>` now serves a minimal server-rendered handoff with the
+sales-link heading and description in its title and Open Graph tags, plus the
+tenant favicon. Its script immediately posts to
+`/api/public/sales-links/<slug>/checkout` and replaces the page with the Stripe
+Checkout URL. Without JavaScript, the page offers a POST form. The POST uses the
+existing per-IP and per-tenant public-write limiter. A `/link/<key>` redirect to
+an offer follows the same flow. GET requests never create a payment session.
+
+User agents matching the edge crawler list receive the same metadata without
+scripts or forms: facebookexternalhit, Twitterbot, LinkedInBot, Slackbot,
+Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and Applebot. The checkout
+POST also refuses these crawlers.
+
+`?test` with any value selects the configured Stripe test key; without a test
+key it stays live. Test payments keep the TEST indicator, do not unlock real
+access and are excluded from revenue. The default is live checkout. The selector also applies to the purchase-consent fallback.
+If the stored test key cannot be decrypted or belongs to live mode, checkout
+returns an error without creating a session or switching to live credentials.
+Cancellation retains test mode for an explicit retry through the server handoff;
+anonymous success returns display the TEST notice without requiring a staff session.
+
+Stripe collects the buyer email, name, billing address when provided, and tax
+IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only
+NIP. Stripe requires terms acceptance; Together records that acceptance with the
+exact terms and privacy URLs stored in session metadata. Set a valid account
+terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
+linking the tenant's terms and privacy URLs. A tenant missing either legal URL
+receives an error page without a checkout session, including on the Together
+fallback; its checkout endpoint also enforces both URLs. Promotion codes are disabled
+in direct checkout.
+
+If any included product has purchase consent checkboxes configured, the offer
+uses the existing Together checkout at `?checkout=together`. Attached marketing
+consents are combined across all products. Its existing billing fields and
+coupons remain available; a product-scoped coupon must cover every included
+product. Success and cancellation return to the Together page without restarting
+the automatic handoff.
+
+Owners configure **Integrations → Stripe → Checkout appearance**: display name,
+HTTPS logo and icon URLs, background and button hex colours, font and corners.
+Empty overrides use the tenant branding in Settings (name, logo, accent colour
+and favicon). If every resulting field is empty, no branding override is sent.
+These settings apply to sales links, single-product checkout and subscriptions.
+See [Payments](payments.md).
 
 Invoices contain one position per order line with its own treatment. Coupon
 discounts are allocated deterministically across invoice positions so their
@@ -108,6 +148,8 @@ the order's financial amounts nor the invoice's sale-time tax point.
 
 The `sales-link` commands mirror Studio: `list`, `show`, `create`, `update`,
 `activate`, `deactivate`, `delete --confirm`, and `offer <slug>`.
+`sales-link checkout <slug> --mode live|test` starts the direct Stripe handoff
+and returns its URL using the same public endpoint as the server-rendered page.
 Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. `checkout session` and the local `simulate-purchase` command
 accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.

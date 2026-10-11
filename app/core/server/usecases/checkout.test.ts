@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   err,
   integrationUnavailable,
+  internal,
   ok,
   type Coupon,
   type Order,
@@ -633,4 +634,113 @@ it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects i
   expect(await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps)).toMatchObject({ ok: false });
   expect(h.snapshots).toHaveLength(0);
   expect(h.calls).toHaveLength(0);
+});
+
+const directCheckout = async () => {
+  const h = bundleCheckout();
+  const { tenantSettingsSchema } = await import('#core/domain/index.js');
+  const settings = tenantSettingsSchema.parse({
+    name: 'Workspace', billingPortalUrl: null, bunnyStreamLibraryId: null,
+    defaultLanguage: 'en', termsUrl: 'https://workspace.example.com/terms',
+    privacyUrl: 'https://workspace.example.com/privacy', accentColor: '#112233',
+  });
+  h.deps.tenants = {
+    findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
+    findSettings: async () => settings, updateSettings: async (_tenantId, value) => value,
+    createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
+  };
+  const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
+  const start = (mode: 'live' | 'test' = 'live') => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+    slug: h.link.slug, mode,
+    termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
+  }, h.deps);
+  return { ...h, settings, start };
+};
+
+it('creates an anonymous direct session using tenant language, legal URLs and branding', async () => {
+  const h = await directCheckout();
+  expect(await h.start()).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]).toMatchObject({
+    mode: 'live', language: 'en', checkoutBranding: { displayName: 'Workspace', buttonColor: '#112233' },
+    directCheckout: { termsUrl: h.settings.termsUrl, privacyUrl: h.settings.privacyUrl,
+      termsAcceptanceMessage: 'I accept the [Terms](https://workspace.example.com/terms) and the [Privacy policy](https://workspace.example.com/privacy).' },
+    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1',
+  });
+  expect(h.calls[0]).not.toHaveProperty('customerEmail');
+  expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session', salesLinkId: h.link.id });
+});
+
+it('keeps direct checkout live when the tenant has no test key', async () => {
+  const h = await directCheckout();
+  h.deps.tenantSecrets.findByKey = async (_tenantId, key) => key === 'stripe.testRestrictedKey' ? null : secret(key);
+  expect(await h.start('test')).toMatchObject({ ok: true });
+  expect(h.calls[0]?.mode).toBe('live');
+});
+
+it('stores anonymous test session correlation and the test return marker', async () => {
+  const h = await directCheckout();
+  expect(await h.start('test')).toMatchObject({ ok: true });
+  expect(h.calls[0]).toMatchObject({
+    mode: 'test', successUrl: expect.stringContaining('test_purchase=1'),
+    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&test=1&salesLinkId=link-1',
+  });
+  expect(h.snapshots[0]).toMatchObject({ mode: 'test', providerSessionId: 'bundle-session' });
+});
+
+it.each(['unreadable', 'live-key'] as const)('rejects a requested test checkout with a %s test key even when live credentials work', async (failure) => {
+  const h = await directCheckout();
+  h.deps.tenantSecrets.findByKey = async (_tenantId, key) => ({ ...secret(key), ciphertext: key });
+  h.deps.secretCrypto = {
+    encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
+    decrypt: (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
+      ? err(internal('Stored secret failed integrity verification'))
+      : ok('rk_live_available'),
+  };
+  expect(await h.start('test')).toMatchObject({ ok: false, error: { code: failure === 'unreadable' ? 'internal' : 'validation' } });
+  expect(h.calls).toHaveLength(0);
+  expect(h.snapshots).toHaveLength(0);
+  expect(await h.start('live')).toMatchObject({ ok: true });
+  expect(h.calls[0]?.mode).toBe('live');
+});
+
+it.each(['termsUrl', 'privacyUrl'] as const)('rejects direct checkout without %s before creating a session', async (field) => {
+  const h = await directCheckout();
+  h.settings[field] = null;
+  expect(await h.start()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.calls).toHaveLength(0);
+  expect(h.snapshots).toHaveLength(0);
+});
+
+it('requires the Together fallback when any bundle product has purchase consents', async () => {
+  const h = await directCheckout();
+  const second = h.products[1];
+  if (second === undefined) throw new Error('Missing product fixture');
+  second.checkoutConsentDefinitionIds = ['marketing-1'];
+  expect(await h.start()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.calls).toHaveLength(0);
+});
+
+it('expires a direct session when its durable correlation cannot be stored', async () => {
+  const h = await directCheckout();
+  const expire = vi.fn(h.deps.payment.expireCheckoutSession);
+  h.deps.payment.expireCheckoutSession = expire;
+  if (h.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+  h.deps.checkoutSnapshots.create = async () => { throw new Error('Storage unavailable'); };
+  await expect(h.start()).rejects.toThrow('Storage unavailable');
+  expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'bundle-session', mode: 'live' });
+});
+
+it('applies tenant checkout appearance to existing single-product and subscription sessions', async () => {
+  const h = await directCheckout();
+  const { createCheckoutSession } = await import('./checkout.js');
+  h.deps.prices.findById = async () => recurringPrice;
+  await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id }, h.deps);
+  await createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, priceId: recurringPrice.id }, h.deps);
+  expect(h.calls).toHaveLength(2);
+  for (const call of h.calls) {
+    expect(call.checkoutBranding).toMatchObject({ displayName: 'Workspace', buttonColor: '#112233' });
+    expect(call).not.toHaveProperty('directCheckout');
+  }
+  expect(h.calls[1]?.recurringInterval).toBe('month');
 });

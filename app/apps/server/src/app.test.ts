@@ -4402,6 +4402,19 @@ describe('new route authorization', () => {
     'content-type': 'application/json',
   };
 
+  it('allows only owners to change checkout appearance through tenant settings', async () => {
+    for (const role of ['owner', 'staff', 'member', 'none'] as const) {
+      const response = await scopedApp(role).request(API_PATHS.tenantSettingsUpdate, {
+        method: 'POST', headers,
+        body: JSON.stringify({ checkoutAppearance: { displayName: 'Studio', buttonColor: '#123456' } }),
+      });
+      expect(response.status).toBe(role === 'owner' ? 200 : 403);
+      if (role === 'owner') expect(await response.json()).toMatchObject({
+        ok: true, data: { settings: { checkoutAppearance: { displayName: 'Studio', buttonColor: '#123456' } } },
+      });
+    }
+  });
+
   it('serves a tenant-scoped import audit only to the owner', async () => {
     const base = deps();
     const key: TenantApiKey = {
@@ -5004,6 +5017,7 @@ describe('public route manifest', () => {
       'Amazon SNS delivery webhook',
       'Stripe payment webhook',
       'Checkout session start',
+      'Rate-limited direct sales-link checkout session creation',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',
       'Rate-limited survey responses with form token and honeypot checks',
@@ -8918,7 +8932,7 @@ describe('staff Stripe test mode routes', () => {
       }) },
     } });
     const response = await app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
-      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', termsAccepted: true }) });
+      body: JSON.stringify({ productId: 'acme-published', email: 'buyer@example.test', mode: 'test', salesLinkTest: true, termsAccepted: true }) });
     expect(response.status).toBe(200);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live' }));
   });
@@ -9386,5 +9400,173 @@ describe('Stripe permission probe route', () => {
       ...request, body: JSON.stringify({ mode: 'unknown' }),
     })).status).toBe(400);
     expect(probe).toHaveBeenCalledOnce();
+  });
+});
+
+const directSalesLinkApp = async () => {
+  const h = simulatedBundleApp();
+  const settings = await h.base.tenants.findSettings(acme.id);
+  if (settings === null) throw new Error('Missing test settings');
+  h.base.tenants.findSettings = async () => ({ ...settings, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', faviconUrl: 'https://acme.example/icon.png' });
+  h.base.salesLinkManagement = { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids };
+  const create = vi.fn(h.base.payment.createCheckoutSession);
+  h.base.payment.createCheckoutSession = create;
+  h.base.tenantSecrets.findByKey = async (tenantId, key) => key.startsWith('stripe.test') ? null : ({ id: `secret-${key}`, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+  return { ...h, create, settings };
+};
+
+describe('direct public sales-link checkout', () => {
+  it('serves escaped offer metadata, a nonce script and noscript form without creating a session on GET', async () => {
+    const h = await directSalesLinkApp();
+    const response = await h.app.request('/offer/bundle?test=anything', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('<title>Complete bundle</title>');
+    expect(html).toContain('property="og:title" content="Complete bundle"');
+    expect(html).toContain('rel="icon" href="https://acme.example/icon.png"');
+    expect(html).toContain('<noscript><form method="post" action="/api/public/sales-links/bundle/checkout">');
+    expect(html).toContain('name="mode" value="live"');
+    expect(html).toContain('location.replace(result.data.url)');
+    expect(html).toContain('<script nonce="');
+    expect(response.headers.get('content-security-policy')).toContain("'nonce-");
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['facebookexternalhit', 'Twitterbot', 'LinkedInBot', 'Slackbot', 'Discordbot', 'WhatsApp', 'TelegramBot', 'Googlebot', 'redditbot', 'Applebot'])('does not expose checkout actions to %s', async (userAgent) => {
+    const h = await directSalesLinkApp();
+    const headers = { host: 'acme.localhost', 'user-agent': userAgent };
+    const response = await h.app.request('/offer/bundle', { headers });
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('property="og:title" content="Complete bundle"');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('<form');
+    const submission = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    expect(submission.status).toBe(403);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('creates one live session when test mode has no key and redirects noscript submissions', async () => {
+    const h = await directSalesLinkApp();
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/x-www-form-urlencoded' }, body: 'mode=test' });
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('https://checkout.local/cs');
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      mode: 'live', language: 'en', salesLinkId: 'bundle-link',
+      directCheckout: { termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', termsAcceptanceMessage: 'I accept the [Terms](https://acme.example/terms) and the [Privacy policy](https://acme.example/privacy).' },
+      cancelUrl: expect.stringContaining('status=cancelled'),
+      lines: [expect.objectContaining({ productId: 'print' }), expect.objectContaining({ productId: 'digital' })],
+    }));
+  });
+
+  it('returns a JSON checkout URL and rate-limits creation per IP', async () => {
+    const h = await directSalesLinkApp();
+    h.base.publicRateLimitPolicies.writesPerIp = { limit: 1, windowMs: 60_000 };
+    let ipClaims = 0;
+    h.base.rateLimitBuckets.claim = async ({ scope, limit }) => scope !== 'public-write:ip' || ++ipClaims <= limit;
+    const request = () => h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    const response = await request();
+    expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
+    expect((await request()).status).toBe(429);
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['unreadable', 'live-key'] as const)('rejects test requests with a %s stored test key without creating a live session', async (failure) => {
+    const h = await directSalesLinkApp();
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key, iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    h.base.secretCrypto.decrypt = (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
+      ? err(internal('Stored secret failed integrity verification'))
+      : ok('rk_live_available');
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    const expectedStatus = failure === 'unreadable' ? 500 : 400;
+    const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ ok: true, data: { stripeConfigured: true, salesLinkTestConfigured: true } });
+    expect((await h.app.request('/offer/bundle?test', { headers })).status).toBe(expectedStatus);
+    for (const [path, payload] of [
+      ['/api/public/sales-links/bundle/checkout', { mode: 'test' }],
+      [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }],
+    ] as const) {
+      expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(expectedStatus);
+    }
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants).toHaveLength(0);
+    const live = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' });
+    expect(live.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live' }));
+  });
+
+  it('keeps consent-bearing offers on the Together checkout and return pages out of redirect loops', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?checkout=together');
+    for (const query of ['checkout=together', 'status=success', 'status=cancelled']) {
+      const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+      expect(await page.text()).toBe('<main>Existing checkout</main>');
+    }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('preserves anonymous test selection through the consent fallback with configured key: %s', async (configured) => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    if (configured) {
+      h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    }
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    const fallback = await h.app.request('/offer/bundle?test=anything', { headers });
+    expect(fallback.headers.get('location')).toBe('/offer/bundle?test=anything&checkout=together');
+    const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: configured } });
+    const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
+      body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }),
+    });
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: configured ? 'test' : 'live', customerEmail: 'buyer@example.test' }));
+    if (configured) {
+      expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ cancelUrl: expect.stringContaining('status=cancelled&test=1'), successUrl: expect.stringContaining('test_purchase=1') }));
+      expect(h.orders).toMatchObject([{ mode: 'test', status: 'pending', salesLinkId: 'bundle-link' }]);
+    } else {
+      expect(h.orders).toHaveLength(0);
+    }
+    expect(h.grants).toHaveLength(0);
+  });
+
+  it.each(['both', 'terms', 'privacy'] as const)('blocks every sales-link checkout when %s legal URLs are missing', async (missing) => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings,
+      termsUrl: missing === 'privacy' ? 'https://acme.example/terms' : null,
+      privacyUrl: missing === 'terms' ? 'https://acme.example/privacy' : null,
+    });
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const createMember = vi.spyOn(h.base.members, 'create');
+    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+    for (const query of ['', '?checkout=together']) {
+      const response = await h.app.request(`/offer/bundle${query}`, { headers });
+      expect(response.status).toBe(503);
+      const html = await response.text();
+      expect(html).toContain('terms and privacy URLs');
+      expect(html).not.toContain('<script');
+      expect(html).not.toContain('<form');
+    }
+    for (const payload of [{ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true },
+      { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', termsAccepted: true }]) {
+      const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers, body: JSON.stringify(payload) });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect((await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' })).status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+    expect(createMember).not.toHaveBeenCalled();
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants).toHaveLength(0);
   });
 });

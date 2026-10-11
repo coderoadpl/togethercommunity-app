@@ -119,6 +119,29 @@ describe('enforceTermsConsent', () => {
 });
 
 describe('validateTermsConsent', () => {
+  it.each([
+    null,
+    settings(),
+    settings({ termsUrl: 'https://acme.test/terms' }),
+    settings({ privacyUrl: 'https://acme.test/privacy' }),
+  ])('rejects sales-link checkout when either legal URL is missing: %j', async (stored) => {
+    const h = harness(stored);
+    await expect(validateTermsConsent('tenant-a', true, h.deps.tenants, { requireLegalUrls: true })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'Configure terms and privacy URLs before starting checkout' },
+    });
+    expect(h.recorded).toEqual([]);
+  });
+
+  it.each([undefined, false, true])('requires acceptance for a sales link with both legal URLs: %s', async (accepted) => {
+    const h = harness(settings({ termsUrl: 'https://acme.test/terms', privacyUrl: 'https://acme.test/privacy' }));
+    const result = await validateTermsConsent('tenant-a', accepted, h.deps.tenants, { requireLegalUrls: true });
+    expect(result).toMatchObject(accepted === true
+      ? { ok: true, value: { required: true } }
+      : { ok: false, error: { code: 'validation', message: 'Accepting the terms and privacy policy is required' } });
+    expect(h.recorded).toEqual([]);
+  });
+
   it('reports whether acceptance is required without recording evidence', async () => {
     const optional = harness(settings());
     await expect(validateTermsConsent('tenant-a', undefined, optional.deps.tenants)).resolves.toEqual({

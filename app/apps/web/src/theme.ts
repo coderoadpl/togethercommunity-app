@@ -3404,7 +3404,7 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
+export const CourseCardRoot = styled(Box)<AsElement & { to?: string; href?: string }>(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
   height: '100%',

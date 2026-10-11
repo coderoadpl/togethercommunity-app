@@ -16,11 +16,12 @@ const renderOffer = () => {
 };
 const offer = {
   salesLink: sampleSalesLink, descriptionHtml: '<p>All items together.</p>', lines: sampleBundleLines.map((line) => ({ ...line, type: 'course' })), currency: 'PLN', totalCents: 18660,
-  tenant: { slug: 'acme', name: 'Community', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: null }, support: { url: null }, timezone: 'Europe/Warsaw' }, marketingConsents: [],
+  tenant: { slug: 'acme', name: 'Community', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' }, support: { url: null }, timezone: 'Europe/Warsaw' }, marketingConsents: [],
 };
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/offer/complete-bundle');
+  server.use(http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Community' }, contentVersion: 1, products: [] } })));
   server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } })));
 });
 
@@ -47,4 +48,60 @@ it('shows unavailable notice for an unknown or inactive offer', async () => {
   renderOffer();
   expect(await screen.findByText(en.checkout.unavailableTitle)).toBeVisible();
   expect(screen.queryByRole('button', { name: en.salesLinks.buyBundle })).toBeNull();
+});
+
+it.each([
+  { termsUrl: null, privacyUrl: null },
+  { termsUrl: 'https://example.test/terms', privacyUrl: null },
+  { termsUrl: null, privacyUrl: 'https://example.test/privacy' },
+])('shows an error without a fallback form when legal URLs are incomplete: %j', async (legal) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({
+    ok: true, data: { ...offer, tenant: { ...offer.tenant, legal } },
+  })));
+  renderOffer();
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.checkout.unavailableTitle);
+  expect(screen.queryByLabelText(en.checkout.emailLabel)).toBeNull();
+  expect(screen.queryByRole('button', { name: en.salesLinks.buyBundle })).toBeNull();
+  expect(document.querySelector('form')).toBeNull();
+});
+
+
+it.each([true, false])('submits the consent fallback with its public test selector when configured: %s', async (configured) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=anything');
+  let payload: unknown;
+  server.use(
+    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: true, salesLinkTestConfigured: configured,
+      canTest: false, testConfigured: false, testEnabled: false,
+    } })),
+    http.post('/api/public/checkout/session', async ({ request }) => {
+      payload = await request.json();
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout fixture submitted' } }, { status: 400 });
+    }),
+  );
+  renderOffer();
+  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+  await userEvent.click(screen.getByRole('checkbox'));
+  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(configured);
+  if (configured) expect(screen.queryByText(en.checkout.simulatedPaymentNote)).toBeNull();
+  expect(screen.getByRole('button', { name: en.checkout.couponReveal }).hasAttribute('disabled')).toBe(configured);
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
+  await screen.findByText(en.errors.messageValidation);
+  expect(payload).toMatchObject({ salesLinkSlug: 'complete-bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true });
+});
+
+it('shows the TEST notice immediately on anonymous sales-link success returns', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=success&test_purchase=1');
+  renderOffer();
+  expect(await screen.findByText(en.checkout.testPurchase)).toBeVisible();
+  expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successBody)).toBeNull();
+});
+
+it.each(['?status=cancelled&test=1', '?status=cancelled'])('retries a sales link through the server handoff after cancellation: %s', async (query) => {
+  window.history.replaceState(null, '', `/offer/complete-bundle${query}`);
+  renderOffer();
+  expect(await screen.findByRole('link', { name: en.checkout.retry })).toHaveAttribute('href', `/offer/complete-bundle${query.includes('test=1') ? '?test=1' : ''}`);
 });

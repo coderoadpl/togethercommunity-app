@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { checkoutAppearanceSchema } from './checkout-appearance.js';
+
 import {
   domainDnsRecordStatusSchema,
   type DomainDnsRecord,
@@ -145,6 +147,7 @@ export const signInNoticeSchema = z.object({
 });
 
 export const tenantSettingsSchema = z.object({
+  checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
   defaultLanguage: languageSchema.optional(),
@@ -206,6 +209,7 @@ const clearableText = (max: number) => z
 
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
+  checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.optional(),
   name: tenantSchema.shape.name.optional(),
   defaultLanguage: languageSchema.optional(),

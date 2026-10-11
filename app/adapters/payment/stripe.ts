@@ -4,6 +4,11 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
+  billingDataSchema,
+  orderBillingDataSchema,
+  nipSchema,
+  checkoutCustomerDetailsSchema,
+  type CheckoutBranding,
   err,
   ok,
   refundCoverage,
@@ -70,10 +75,37 @@ export const stripeCouponParams = (
     : { amount_off: input.value, currency: input.currency.toLowerCase() }),
 });
 
+type CheckoutSessionParams = Stripe.Checkout.SessionCreateParams & {
+  branding_settings?: {
+    display_name?: string;
+    logo?: { type: 'url'; url: string };
+    icon?: { type: 'url'; url: string };
+    background_color?: string;
+    button_color?: string;
+    font_family?: CheckoutBranding['fontFamily'];
+    border_style?: CheckoutBranding['borderStyle'];
+  };
+};
+
+const legalUrlMetadata = (key: string, value: string): Record<string, string> => {
+  if (value.length <= 500) return { [key]: value };
+  const chunks: Record<string, string> = {};
+  for (let offset = 0; offset < value.length; offset += 500) chunks[`${key}_${offset / 500}`] = value.slice(offset, offset + 500);
+  return chunks;
+};
+
+const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): string | null => {
+  if (metadata[key] !== undefined) return metadata[key];
+  const chunks: string[] = [];
+  for (let index = 0; metadata[`${key}_${index}`] !== undefined; index += 1) chunks.push(metadata[`${key}_${index}`] ?? '');
+  return chunks.length === 0 ? null : chunks.join('');
+};
+
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
-): Stripe.Checkout.SessionCreateParams => {
+): CheckoutSessionParams => {
   const locale = localeFor(input.language);
+  const branding = input.checkoutBranding;
   const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
   const productMetadata: Record<string, string> = {};
   if (productList !== undefined) {
@@ -82,6 +114,21 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
+    ...(branding === undefined ? {} : { branding_settings: {
+      ...(branding.displayName === undefined ? {} : { display_name: branding.displayName }),
+      ...(branding.logoUrl === undefined ? {} : { logo: { type: 'url' as const, url: branding.logoUrl } }),
+      ...(branding.iconUrl === undefined ? {} : { icon: { type: 'url' as const, url: branding.iconUrl } }),
+      ...(branding.backgroundColor === undefined ? {} : { background_color: branding.backgroundColor }),
+      ...(branding.buttonColor === undefined ? {} : { button_color: branding.buttonColor }),
+      ...(branding.fontFamily === undefined ? {} : { font_family: branding.fontFamily }),
+      ...(branding.borderStyle === undefined ? {} : { border_style: branding.borderStyle }),
+    } }),
+    ...(input.directCheckout === undefined ? {} : {
+      consent_collection: { terms_of_service: 'required' as const },
+      custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
+      tax_id_collection: { enabled: true },
+      allow_promotion_codes: false,
+    }),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
@@ -96,6 +143,11 @@ export const stripeCheckoutSessionParams = (
       },
     })),
     metadata: {
+      ...(input.directCheckout === undefined ? {} : {
+        directCheckout: 'true',
+        ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
+        ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
+      }),
       ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
       ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
       ...productMetadata,
@@ -128,6 +180,24 @@ const idOrNull = (value: unknown): string | null => {
   return null;
 };
 
+const checkoutBilling = (details: Stripe.Checkout.Session.CustomerDetails | null) => {
+  if (details === null) return null;
+  const nip = details.tax_ids
+    ?.filter((item) => item.type === 'eu_vat' && item.value?.startsWith('PL'))
+    .map((item) => nipSchema.safeParse(item.value?.replace(/\D/g, '')))
+    .find((parsed) => parsed.success)?.data ?? null;
+  if (details.address?.country !== 'PL' && nip === null) return null;
+  const billing = (nip === null ? billingDataSchema : orderBillingDataSchema).safeParse({
+    companyName: details.name ?? '',
+    address: [details.address?.line1, details.address?.line2].filter(Boolean).join(', '),
+    postalCode: details.address?.postal_code ?? '',
+    city: details.address?.city ?? '',
+    country: details.address?.country ?? 'PL',
+    nip,
+  });
+  return billing.success ? billing.data : null;
+};
+
 const toCheckoutSessionEvent = (
   eventId: string,
   type: string,
@@ -138,6 +208,22 @@ const toCheckoutSessionEvent = (
   objectId: session.id,
   checkoutSession: {
     email: session.customer_details?.email ?? session.customer_email ?? null,
+    customerName: session.customer_details?.name ?? null,
+    billing: checkoutBilling(session.customer_details ?? null),
+    termsAccepted: session.consent?.terms_of_service === 'accepted',
+    customerDetails: session.customer_details == null ? null : checkoutCustomerDetailsSchema.parse({
+      email: session.customer_details.email,
+      name: session.customer_details.name ?? null,
+      address: session.customer_details.address == null ? null : {
+        line1: session.customer_details.address.line1,
+        line2: session.customer_details.address.line2,
+        postalCode: session.customer_details.address.postal_code,
+        city: session.customer_details.address.city,
+        state: session.customer_details.address.state,
+        country: session.customer_details.address.country,
+      },
+      taxIds: (session.customer_details.tax_ids ?? []).map(({ type, value }) => ({ type, value })),
+    }),
     paymentStatus: session.payment_status,
     subscriptionId: idOrNull(session.subscription),
     paymentIntentId: idOrNull(session.payment_intent),
@@ -146,6 +232,11 @@ const toCheckoutSessionEvent = (
     discountTotalCents: session.total_details?.amount_discount ?? null,
     metadata: {
       tenantId: session.metadata?.tenantId ?? null,
+      ...(session.metadata?.directCheckout !== 'true' ? {} : {
+        directCheckout: true,
+        termsUrl: legalUrlFromMetadata(session.metadata, 'termsUrl'),
+        privacyUrl: legalUrlFromMetadata(session.metadata, 'privacyUrl'),
+      }),
       productId: session.metadata?.productId ?? null,
       priceId: session.metadata?.priceId || null,
       memberEmail: session.metadata?.memberEmail || null,

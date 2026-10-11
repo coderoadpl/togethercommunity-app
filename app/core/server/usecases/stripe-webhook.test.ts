@@ -1,4 +1,4 @@
-import type { OrderLine } from '#core/domain/index.js';
+import type { CheckoutConsentCapture, OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
@@ -2589,4 +2589,87 @@ it('revokes all nonphysical bundle grants after one full payment refund', async 
   expect(result.ok).toBe(true);
   expect(h.orders[0]?.status).toBe('refunded');
   expect([...h.grants.values()].every((grant) => grant.expiresAt === now)).toBe(true);
+});
+
+const directBundlePayment = async () => {
+  const h = bundlePayment();
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
+      currency: 'PLN', createdAt: now, mode: 'live', providerSessionId: 'cs-1' }),
+  };
+  const captures = new Map<string, CheckoutConsentCapture>();
+  h.deps.checkoutConsentCaptures = {
+    create: async (_tenantId, input) => { captures.set(input.id, input.capture); },
+    findById: async (_tenantId, id) => captures.get(id) ?? null,
+  };
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.metadata.directCheckout = true;
+  h.event.checkoutSession.metadata.termsUrl = 'https://example.com/terms-at-checkout';
+  h.event.checkoutSession.metadata.privacyUrl = 'https://example.com/privacy-at-checkout';
+  h.event.checkoutSession.termsAccepted = true;
+  h.event.checkoutSession.customerName = 'Buyer Name';
+  h.event.checkoutSession.customerDetails = { email: 'buyer@example.com', name: 'Buyer Name', address: null, taxIds: [] };
+  h.event.checkoutSession.billing = { companyName: 'Buyer Company', nip: '5260250274', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+  return { ...h, captures };
+};
+
+it.each(['one_time', 'recurring'] as const)('preserves the existing %s member name default when Stripe provides a billing name', async (kind) => {
+  const h = harness({ prices: kind === 'recurring' ? [monthlyPrice(tenantA.id)] : [] });
+  const event = completedEvent(kind === 'recurring' ? { priceId: 'price-monthly', subscriptionId: 'sub-1' } : undefined);
+  if (event.checkoutSession === null) throw new Error('Missing session');
+  event.checkoutSession.customerName = 'Stripe Billing Name';
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect([...h.members.values()][0]?.displayName).toBeNull();
+});
+
+it('preserves the direct checkout NIP on the order and invoice job with an incomplete optional address', async () => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.billing = { companyName: 'Buyer Company', nip: '5260250274', address: '', postalCode: '00-001', city: '', country: 'PL' };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.billing).toEqual(h.event.checkoutSession.billing);
+  expect(h.autoInvoiceJobs).toHaveLength(1);
+});
+
+it('fulfills direct checkout with buyer details and consent URLs from checkout, once', async () => {
+  const h = await directBundlePayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ customerDetails: { name: 'Buyer Name' }, billing: { nip: '5260250274' } });
+  expect([...h.members.values()][0]?.displayName).toBe('Buyer Name');
+  expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
+    termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
+  expect([...h.captures.values()]).toMatchObject([{ termsAccepted: true, termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.consents).toHaveLength(1);
+  expect(h.captures.size).toBe(1);
+});
+
+it('rejects direct checkout without accepted consent and rolls back fulfillment', async () => {
+  const h = await directBundlePayment();
+  if (h.event.checkoutSession !== null) h.event.checkoutSession.termsAccepted = false;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(h.orders).toHaveLength(0);
+  expect(h.grants.size).toBe(0);
+  expect(h.consents).toHaveLength(0);
+});
+
+it.each(['matching', 'live-mode', 'wrong-session', 'wrong-total'] as const)('correlates anonymous direct test checkout with its persisted snapshot (%s)', async (variant) => {
+  const h = await directBundlePayment();
+  h.event.mode = 'test';
+  h.event.livemode = false;
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
+      currency: 'PLN', createdAt: now, mode: variant === 'live-mode' ? 'live' : 'test',
+      providerSessionId: variant === 'wrong-session' ? 'cs-other' : 'cs-1' }),
+  };
+  if (variant === 'wrong-total' && h.event.checkoutSession !== null) h.event.checkoutSession.amountTotalCents = 1;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: variant === 'matching' }));
+  expect(h.orders).toHaveLength(variant === 'matching' ? 1 : 0);
+  expect(h.orders.every((order) => order.mode === 'test')).toBe(true);
+  expect([...h.grants.values()].every((grant) => grant.mode === 'test')).toBe(true);
+  expect(h.enrollmentEmails).toHaveLength(0);
+  expect(h.consents).toHaveLength(0);
+  expect(h.captures.size).toBe(0);
 });

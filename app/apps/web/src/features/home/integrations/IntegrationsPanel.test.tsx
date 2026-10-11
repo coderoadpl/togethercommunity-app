@@ -11,6 +11,7 @@ import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { apiKeyCreateInputSchema } from '#core/contract/index.js';
+import { checkoutAppearanceSchema, type CheckoutAppearance } from '#core/domain/index.js';
 import type { StripeMode, TenantApiKeyPublic, TenantSecretMasked } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
@@ -21,6 +22,7 @@ import { PanelContextProvider } from '../panel-context.js';
 import { IntegrationsPanel } from './IntegrationsPanel.js';
 
 interface TestSettings {
+  checkoutAppearance?: CheckoutAppearance;
   name: string;
   socialLinks: [];
   billingPortalUrl: string | null;
@@ -206,6 +208,10 @@ const renderPanel = (
       }
       if (typeof body === 'object' && body !== null && 'bunnyStreamCdnHostname' in body) {
         settings = { ...settings, bunnyStreamCdnHostname: body.bunnyStreamCdnHostname === null ? null : String(body.bunnyStreamCdnHostname) };
+      }
+      if (typeof body === 'object' && body !== null && 'checkoutAppearance' in body) {
+        settings = { ...settings, checkoutAppearance: checkoutAppearanceSchema.parse(body.checkoutAppearance) };
+        settingsSubmissions.push(body);
       }
       if (typeof body === 'object' && body !== null && 'billingPortalUrl' in body) {
         settings = { ...settings, billingPortalUrl: body.billingPortalUrl === null ? null : String(body.billingPortalUrl) };
@@ -996,6 +1002,32 @@ describe('IntegrationsPanel', () => {
       'stripe.restrictedKey',
       'stripe.webhookEndpointId',
     ]);
+  });
+
+  it('edits and saves checkout appearance in the Stripe section', async () => {
+    const { settingsSubmissions } = renderPanel();
+    expect(await screen.findByText(en.integrations.checkoutAppearance.heading)).toBeInTheDocument();
+    const displayName = await screen.findByTestId('checkout-appearance-displayName');
+    await waitFor(() => expect(displayName).toBeEnabled());
+    await userEvent.type(displayName, 'Studio Checkout');
+    await userEvent.type(screen.getByTestId('checkout-appearance-logoUrl'), 'https://cdn.example.test/logo.png');
+    await userEvent.type(screen.getByTestId('checkout-appearance-buttonColor'), '#123456');
+    await userEvent.click(screen.getByRole('combobox', { name: en.integrations.checkoutAppearance.fontFamily }));
+    await userEvent.click(screen.getByRole('option', { name: 'inter' }));
+    await userEvent.click(screen.getByRole('combobox', { name: en.integrations.checkoutAppearance.borderStyle }));
+    await userEvent.click(screen.getByRole('option', { name: 'pill' }));
+    await userEvent.click(screen.getByTestId('checkout-appearance-save'));
+    expect(await screen.findByTestId('checkout-appearance-saved')).toBeInTheDocument();
+    expect(settingsSubmissions).toEqual([{ checkoutAppearance: {
+      displayName: 'Studio Checkout', logoUrl: 'https://cdn.example.test/logo.png',
+      buttonColor: '#123456', fontFamily: 'inter', borderStyle: 'pill',
+    } }]);
+  });
+
+  it('keeps checkout appearance read-only for administrators', async () => {
+    renderPanel([], defaultSettings, null, 'success', [], 'admin');
+    expect(await screen.findByTestId('checkout-appearance-displayName')).toBeDisabled();
+    expect(screen.queryByTestId('checkout-appearance-save')).not.toBeInTheDocument();
   });
 
   it('saves the member billing portal URL alongside the Stripe credentials', async () => {

@@ -783,3 +783,146 @@ describe('probeStripePermissions with an injected Stripe client', () => {
       .toMatchObject({ status: 'missing', detail: 'Cleanup denied' });
   });
 });
+
+it.each([undefined, 'month'] as const)('maps tenant branding for payment and subscription sessions (%s)', (recurringInterval) => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    ...(recurringInterval === undefined ? {} : { recurringInterval }),
+    checkoutBranding: { displayName: 'Studio', logoUrl: 'https://assets.example.com/logo.png',
+      iconUrl: 'https://assets.example.com/icon.png', backgroundColor: '#FFFFFF', buttonColor: '#123456',
+      fontFamily: 'inter', borderStyle: 'pill' },
+  });
+  expect(params.branding_settings).toEqual({ display_name: 'Studio', logo: { type: 'url', url: 'https://assets.example.com/logo.png' },
+    icon: { type: 'url', url: 'https://assets.example.com/icon.png' }, background_color: '#FFFFFF', button_color: '#123456',
+    font_family: 'inter', border_style: 'pill' });
+  expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
+  expect(params.consent_collection).toBeUndefined();
+});
+
+it('creates direct checkout with required consent, tax IDs and exact lines without requiring an address', () => {
+  const message = 'I accept the [Terms](https://example.com/terms) and the [Privacy policy](https://example.com/privacy).';
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', language: 'en', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
+    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message },
+    lines: [{ productId: 'product-1', name: 'Course One', grossCents: 4900 }, { productId: 'product-2', name: 'Book', grossCents: 2100 }],
+  });
+  expect(params).toEqual({
+    mode: 'payment', locale: 'en', success_url: 'https://alpha.example.com/success', cancel_url: 'https://alpha.example.com/',
+    consent_collection: { terms_of_service: 'required' },
+    custom_text: { terms_of_service_acceptance: { message } }, tax_id_collection: { enabled: true }, allow_promotion_codes: false,
+    line_items: [
+      { quantity: 1, price_data: { currency: 'pln', unit_amount: 4900, product_data: { name: 'Course One' } } },
+      { quantity: 1, price_data: { currency: 'pln', unit_amount: 2100, product_data: { name: 'Book' } } },
+    ],
+    metadata: { tenantId: 'tenant-a', productId: 'product-1', priceId: '', memberEmail: '', language: 'en',
+      directCheckout: 'true', termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy',
+      salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', productIds: '["product-1","product-2"]' },
+  });
+});
+
+it('maps customer details, Polish VAT ID and accepted consent directly from a signed session', async () => {
+  const result = await verify(JSON.stringify({
+    id: 'evt_direct', type: 'checkout.session.completed', data: { object: {
+      id: 'cs_direct', customer_details: { email: 'buyer@example.test', name: 'Example Company',
+        address: { line1: 'Main 1', line2: null, postal_code: '00-001', city: 'Warsaw', state: null, country: 'PL' },
+        tax_ids: [{ type: 'eu_vat', value: 'PL5260250274' }] },
+      consent: { terms_of_service: 'accepted' }, metadata: { tenantId: 'tenant-a', productId: 'product-1',
+        directCheckout: 'true', termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
+    } },
+  }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    email: 'buyer@example.test', customerName: 'Example Company', termsAccepted: true,
+    billing: { companyName: 'Example Company', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL', nip: '5260250274' },
+    customerDetails: { taxIds: [{ type: 'eu_vat', value: 'PL5260250274' }] },
+    metadata: { directCheckout: true, termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
+  } } });
+});
+
+it.each([
+  { line1: null, line2: null, postal_code: '00-001', city: null, state: null, country: 'PL' },
+  null,
+])('preserves Polish VAT billing when the optional address is incomplete (%j)', async (address) => {
+  const result = await verify(JSON.stringify({ id: 'evt_partial', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_partial', customer_details: { email: 'buyer@example.test', name: 'Example Company', address,
+      tax_ids: [{ type: 'eu_vat', value: 'PL5260250274' }] },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    billing: { companyName: 'Example Company', nip: '5260250274', address: '',
+      postalCode: address?.postal_code ?? '', city: '', country: 'PL' },
+    customerDetails: { address: address === null ? null : { line1: null, postalCode: '00-001', city: null } },
+  } } });
+});
+
+it('retains a Polish VAT ID with the supplied foreign billing country', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_foreign_pl_vat', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_foreign_pl_vat', customer_details: { email: 'buyer@example.test', name: 'Example Company',
+      address: { line1: 'Main 1', line2: null, postal_code: '10115', city: 'Berlin', state: null, country: 'DE' },
+      tax_ids: [{ type: 'eu_vat', value: 'PL5260250274' }] },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    billing: { nip: '5260250274', country: 'DE', city: 'Berlin' },
+  } } });
+});
+
+it('ignores invalid VAT IDs without losing a complete billing address or a later valid NIP', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_tax_ids', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_tax_ids', customer_details: { email: 'buyer@example.test', name: 'Example Company',
+      address: { line1: 'Main 1', line2: null, postal_code: '00-001', city: 'Warsaw', state: null, country: 'PL' },
+      tax_ids: [{ type: 'eu_vat', value: 'PL1234567890' }, { type: 'eu_vat', value: 'PL5260250274' }] },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { billing: { nip: '5260250274' } } } });
+});
+
+it('preserves incomplete foreign customer details without inventing billing data', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_foreign', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_foreign', customer_details: { email: 'buyer@example.test', name: 'Buyer',
+      address: { line1: null, line2: null, postal_code: null, city: null, state: null, country: 'DE' },
+      tax_ids: [{ type: 'eu_vat', value: 'DE123456789' }] },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    billing: null, customerDetails: { name: 'Buyer', address: { country: 'DE' }, taxIds: [{ type: 'eu_vat', value: 'DE123456789' }] },
+  } } });
+});
+
+it('preserves long legal URLs through bounded metadata values', async () => {
+  const termsUrl = `https://example.com/terms?version=${'a'.repeat(510)}`;
+  const privacyUrl = 'https://example.com/privacy';
+  const params = stripeCheckoutSessionParams({ tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
+    priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
+    directCheckout: { termsUrl, privacyUrl, termsAcceptanceMessage: `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).` } });
+  expect(Object.values(params.metadata ?? {}).every((value) => String(value).length <= 500)).toBe(true);
+  const result = await verify(JSON.stringify({ id: 'evt_legal', type: 'checkout.session.completed',
+    data: { object: { id: 'cs_legal', metadata: params.metadata } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { termsUrl, privacyUrl } } } });
+});
+
+it('sends direct consent and branding fields through the installed SDK with a mocked transport', async () => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push(new Request(input, init));
+    return stripeJson({ id: 'cs_direct', object: 'checkout.session', url: 'https://checkout.stripe.com/c/pay/cs_direct' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_test_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
+  });
+  expect(await payment.createCheckoutSession({ mode: 'test', tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
+    priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
+    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' },
+    checkoutBranding: { displayName: 'Studio', logoUrl: 'https://example.com/logo.png' },
+  })).toEqual(ok({ sessionId: 'cs_direct', url: 'https://checkout.stripe.com/c/pay/cs_direct' }));
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (request === undefined) throw new Error('Missing checkout request');
+  const body = new URLSearchParams(await request.text());
+  expect(body.get('branding_settings[display_name]')).toBe('Studio');
+  expect(body.get('branding_settings[logo][type]')).toBe('url');
+  expect(body.get('branding_settings[logo][url]')).toBe('https://example.com/logo.png');
+  expect(body.get('consent_collection[terms_of_service]')).toBe('required');
+  expect(body.get('tax_id_collection[enabled]')).toBe('true');
+  expect(body.get('allow_promotion_codes')).toBe('false');
+  expect(body.has('billing_address_collection')).toBe(false);
+});

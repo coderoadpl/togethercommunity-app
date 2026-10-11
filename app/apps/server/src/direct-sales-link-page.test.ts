@@ -1,0 +1,39 @@
+import { describe, expect, it } from 'vitest';
+
+import configuration from '../../../vercel.json' with { type: 'json' };
+import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
+import { renderDirectSalesLinkPage } from './direct-sales-link-page.js';
+import { SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
+
+const page = {
+  heading: 'Offer "<name>', description: 'A <bundle>', tenantName: 'Acme',
+  faviconUrl: 'https://example.test/favicon.png', canonicalUrl: 'https://example.test/offer/bundle',
+  language: 'en' as const, mode: 'live' as const, endpoint: '/api/public/sales-links/bundle/checkout', crawler: false, nonce: 'safe-nonce',
+};
+
+describe('direct sales-link page', () => {
+  it('escapes public metadata and localizes the redirect and form', () => {
+    const html = renderDirectSalesLinkPage({ ...page, language: 'pl', mode: 'test' });
+    expect(html).toContain('<title>Offer &quot;&lt;name&gt;</title>');
+    expect(html).toContain('property="og:description" content="A &lt;bundle&gt;"');
+    expect(html).toContain(directSalesLinkCopyPl.redirecting);
+    expect(html).toContain(directSalesLinkCopyPl.continueToPayment);
+    expect(html).toContain('<strong>TEST</strong>');
+    expect(html).toContain('<script nonce="safe-nonce">');
+  });
+
+  it('matches the edge crawler list and forwards handoffs before the SPA rewrite', () => {
+    const crawlerRewrite = configuration.rewrites.find((rewrite) => rewrite.has?.some((condition) => condition.key === 'user-agent'));
+    const crawlerValue = crawlerRewrite?.has?.find((condition) => condition.key === 'user-agent')?.value;
+    expect(crawlerValue).toBe(`.*(${SOCIAL_CRAWLER_PATTERN.source}).*`);
+    const offerRewrites = configuration.rewrites.filter((rewrite) => rewrite.source === '/offer/(.*)');
+    expect(offerRewrites).toEqual([
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], destination: '/index.html' },
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], destination: '/index.html' },
+      { source: '/offer/(.*)', destination: '/api/index' },
+    ]);
+    const staticPolicy = configuration.headers.find((header) => header.source.includes('?!api/'));
+    expect(staticPolicy?.source).toContain('|offer/');
+    expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual(offerRewrites.slice(0, 2).map((rewrite) => ({ source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers })));
+  });
+});

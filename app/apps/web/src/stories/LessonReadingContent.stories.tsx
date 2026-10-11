@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Paper, Stack, Typography } from '@mui/material';
-import { userEvent, within } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 
 import { LessonReadingContent } from '../features/member/LessonReadingContent.js';
 import { en } from '../i18n/en.js';
@@ -37,3 +37,34 @@ export const Expanded: Story = {
   },
 };
 export const Short: Story = { args: { html: '<h2>One clear name</h2><p>Choose names that describe the value.</p><ul><li>Keep related values together.</li></ul>' } };
+
+export const CollapsedInteractive: Story = {
+  args: {
+    html: `<figure><img src="/brand/together-solo.svg" alt="Lesson diagram"><figcaption>Complete diagram caption.</figcaption></figure><p><a href="#interactive-section">Read the example</a></p>${longHtml.replace('<h2>', '<h2 id="interactive-section">')}`,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const preview = canvas.getByTestId('lesson-reading-preview');
+    const image = canvas.getByRole('button', { name: en.lesson.enlargeImage });
+    await expect(preview).toHaveAttribute('data-collapsed', 'true');
+    await expect(preview.querySelector('[hidden], [inert], [aria-hidden="true"]')).toBeNull();
+    await userEvent.tab();
+    await expect(image).toHaveFocus();
+    await expect(preview).toHaveAttribute('data-collapsed', 'false');
+    await userEvent.keyboard('{Enter}');
+    await expect(await page.findByRole('dialog')).toHaveAccessibleDescription('Complete diagram caption.');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(canvas.getByRole('button', { name: en.lesson.collapseText }));
+    await expect(preview).toHaveAttribute('data-collapsed', 'true');
+    await userEvent.click(image);
+    await expect(await page.findByRole('dialog')).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(canvas.getByRole('button', { name: en.lesson.collapseText }));
+    await expect(preview).toHaveAttribute('data-collapsed', 'true');
+    await userEvent.click(canvas.getByRole('link', { name: 'Read the example' }));
+    await expect(window.location.hash).toBe('#interactive-section');
+    await expect(preview).toHaveAttribute('data-collapsed', 'false');
+    canvasElement.dataset['interactiveVerified'] = 'true';
+  },
+};

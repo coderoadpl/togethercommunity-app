@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -122,43 +122,73 @@ describe('LessonReadingContent', () => {
     expect(screen.getByTestId('lesson-html').querySelector('figcaption')).toHaveTextContent('A complete caption that crosses the boundary.');
   });
 
-  it('reveals a heading target and reveals text when a link receives keyboard focus', () => {
+  it('reveals a heading target before scrolling', () => {
     contentHeight = 1200;
-    render(<LessonReadingContent html="<h2 id='section'>Section</h2><a href='#section'>Reference</a>" />);
+    render(<LessonReadingContent html="<h2 id='section'>Section</h2><p>Long text.</p>" />);
     const heading = document.getElementById('section');
-    const link = screen.getByTestId('lesson-html').querySelector('a');
-    if (heading === null || link === null) throw new Error('Expected heading and reference link');
+    if (heading === null) throw new Error('Expected heading');
     fireEvent(heading, new Event(LESSON_TEXT_REVEAL_EVENT, { bubbles: true }));
     expect(screen.getByRole('button', { name: en.lesson.collapseText })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: en.lesson.collapseText }));
-    fireEvent.focus(link);
-    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
   });
 
-  it('keeps the collapsed body searchable and expands synchronously before native Find scrolling', () => {
+  it('keeps one accessible, selectable live body while collapsed', () => {
     contentHeight = 1200;
-    render(<LessonReadingContent html="<h2 id='section'>Section</h2><p>A match below the preview.</p>" />);
-    const body = screen.getByTestId('lesson-html');
-    const searchable = body.parentElement;
-    if (searchable === null) throw new Error('Expected searchable body');
-    const heading = document.getElementById('section');
-    expect(searchable).toHaveAttribute('hidden', 'until-found');
-    expect(stylesAt(searchable, 1440)['contain-intrinsic-block-size']).toBe('1200px');
+    render(<LessonReadingContent html="<h2 id='section'>Section</h2><p>Selectable preview.</p>" />);
+    const preview = screen.getByTestId('lesson-reading-preview');
+    const paragraph = screen.getByText('Selectable preview.');
+    expect(preview).toHaveAttribute('data-collapsed', 'true');
+    expect(preview.querySelector('[hidden], [inert], [aria-hidden="true"]')).toBeNull();
     expect(document.querySelectorAll('#section')).toHaveLength(1);
-    const visualCopy = screen.getByTestId('lesson-reading-preview').querySelector('[inert]');
-    expect(visualCopy).toHaveAttribute('aria-hidden', 'true');
-    expect(visualCopy).toHaveTextContent('A match below the preview.');
-    let expandedBeforeScroll = false;
-    searchable.addEventListener('beforematch', () => {
-      expandedBeforeScroll = !searchable.hasAttribute('hidden')
-        && stylesAt(screen.getByTestId('lesson-reading-preview'), 1440)['max-height'] === undefined;
-    }, { once: true });
+    expect(screen.getByRole('heading', { name: 'Section' })).toBeInTheDocument();
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    expect(window.getSelection()?.toString()).toBe('Selectable preview.');
+  });
 
-    fireEvent(searchable, new Event('beforematch', { bubbles: true }));
+  it('keeps a collapsed preview link usable and expands on real keyboard focus', async () => {
+    contentHeight = 1200;
+    const user = userEvent.setup();
+    render(<LessonReadingContent html="<a href='#section'>Reference</a><h2 id='section'>Section</h2>" />);
+    const preview = screen.getByTestId('lesson-reading-preview');
+    const link = screen.getByRole('link', { name: 'Reference' });
+    expect(preview).toHaveAttribute('data-collapsed', 'true');
+    expect(link).toHaveAttribute('href', '#section');
 
-    expect(expandedBeforeScroll).toBe(true);
-    expect(screen.getByRole('button', { name: en.lesson.collapseText })).toBeInTheDocument();
-    expect(document.getElementById('section')).toBe(heading);
-    expect(screen.getByTestId('lesson-reading-preview').querySelector('[inert]')).toBeNull();
+    await user.tab();
+
+    expect(link).toHaveFocus();
+    expect(preview).toHaveAttribute('data-collapsed', 'false');
+    await user.click(screen.getByRole('button', { name: en.lesson.collapseText }));
+    expect(preview).toHaveAttribute('data-collapsed', 'true');
+    await user.click(link);
+    await waitFor(() => expect(window.location.hash).toBe('#section'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it.each(['click', 'Enter', 'Space'])('opens an image from collapsed content with %s', async (activation) => {
+    contentHeight = 1200;
+    const user = userEvent.setup();
+    render(<LessonReadingContent html="<figure><img src='/diagram.svg' alt='Diagram'><figcaption>Complete caption.</figcaption></figure><p>Long text.</p>" />);
+    const preview = screen.getByTestId('lesson-reading-preview');
+    const image = screen.getByRole('button', { name: en.lesson.enlargeImage });
+    expect(preview).toHaveAttribute('data-collapsed', 'true');
+
+    if (activation === 'click') await user.click(image);
+    else {
+      await user.tab();
+      expect(image).toHaveFocus();
+      expect(preview).toHaveAttribute('data-collapsed', 'false');
+      await user.keyboard(activation === 'Enter' ? '{Enter}' : ' ');
+    }
+
+    const dialog = screen.getByRole('dialog', { name: en.lesson.enlargeImage });
+    expect(dialog).toHaveAccessibleDescription('Complete caption.');
+    expect(within(dialog).getByRole('img', { name: 'Diagram' })).toBeVisible();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(image).toHaveFocus();
   });
 });

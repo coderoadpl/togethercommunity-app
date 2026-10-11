@@ -8,7 +8,6 @@ import {
   orderBillingDataSchema,
   nipSchema,
   checkoutCustomerDetailsSchema,
-  type CheckoutBranding,
   err,
   ok,
   refundCoverage,
@@ -75,18 +74,6 @@ export const stripeCouponParams = (
     : { amount_off: input.value, currency: input.currency.toLowerCase() }),
 });
 
-type CheckoutSessionParams = Stripe.Checkout.SessionCreateParams & {
-  branding_settings?: {
-    display_name?: string;
-    logo?: { type: 'url'; url: string };
-    icon?: { type: 'url'; url: string };
-    background_color?: string;
-    button_color?: string;
-    font_family?: CheckoutBranding['fontFamily'];
-    border_style?: CheckoutBranding['borderStyle'];
-  };
-};
-
 const legalUrlMetadata = (key: string, value: string): Record<string, string> => {
   if (value.length <= 500) return { [key]: value };
   const chunks: Record<string, string> = {};
@@ -103,9 +90,8 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
-): CheckoutSessionParams => {
+): Stripe.Checkout.SessionCreateParams => {
   const locale = localeFor(input.language);
-  const branding = input.checkoutBranding;
   const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
   const productMetadata: Record<string, string> = {};
   if (productList !== undefined) {
@@ -114,15 +100,6 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
-    ...(branding === undefined ? {} : { branding_settings: {
-      ...(branding.displayName === undefined ? {} : { display_name: branding.displayName }),
-      ...(branding.logoUrl === undefined ? {} : { logo: { type: 'url' as const, url: branding.logoUrl } }),
-      ...(branding.iconUrl === undefined ? {} : { icon: { type: 'url' as const, url: branding.iconUrl } }),
-      ...(branding.backgroundColor === undefined ? {} : { background_color: branding.backgroundColor }),
-      ...(branding.buttonColor === undefined ? {} : { button_color: branding.buttonColor }),
-      ...(branding.fontFamily === undefined ? {} : { font_family: branding.fontFamily }),
-      ...(branding.borderStyle === undefined ? {} : { border_style: branding.borderStyle }),
-    } }),
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
       custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },

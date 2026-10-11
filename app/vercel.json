@@ -50,6 +50,17 @@
       "destination": "/api/index"
     },
     {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Googlebot|redditbot|Applebot).*"
+        }
+      ],
+      "destination": "/api/index"
+    },
+    {
       "source": "/offer/(.*)",
       "has": [
         {
@@ -73,17 +84,6 @@
     },
     {
       "source": "/offer/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/(.*)",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": ".*(facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Googlebot|redditbot|Applebot).*"
-        }
-      ],
       "destination": "/api/index"
     },
     {

@@ -850,6 +850,23 @@ describe('order repository', () => {
     expect(await repo.countSince(ACME, PAST)).toBe(2);
   });
 
+  it('does not persist raw checkout customer details alongside validated billing', async () => {
+    const repo = createOrderRepository(db);
+    const billing = { companyName: 'Buyer Company', nip: '5260250274', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+    const paidOrder = {
+      ...order({ id: 'order-without-customer-snapshot', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme' }),
+      billing,
+      customerDetails: { email: 'buyer@example.com', name: 'Buyer Name', address: null, taxIds: [{ type: 'eu_vat', value: 'PL5260250274' }] },
+    };
+    await repo.create(ACME, paidOrder);
+    const [stored] = await db.select().from(orders).where(and(eq(orders.tenantId, ACME), eq(orders.id, paidOrder.id)));
+    expect(stored?.customerDetails).toBeNull();
+    expect(stored?.billing).toEqual(billing);
+    const listed = (await repo.listForMember(ACME, 'mem-acme')).find((entry) => entry.id === paidOrder.id);
+    expect(listed).not.toHaveProperty('customerDetails');
+    await db.delete(orders).where(and(eq(orders.tenantId, ACME), eq(orders.id, paidOrder.id)));
+  });
+
   it('lists only paid orders without a matching tenant member product grant', async () => {
     const repo = createOrderRepository(db);
     await repo.create(

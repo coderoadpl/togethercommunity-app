@@ -41,6 +41,7 @@ import type {
   MemberWithProductIds,
   Membership,
   Order,
+  CheckoutCustomerDetails,
   OrderListItem,
   PaidWithoutGrantRow,
   OrderStatus,
@@ -1002,7 +1003,7 @@ export interface PaymentWebhookEvent {
     email: string | null;
     customerName?: string | null;
     billing?: Order['billing'];
-    customerDetails?: Order['customerDetails'];
+    customerDetails?: CheckoutCustomerDetails | null;
     termsAccepted?: boolean;
     paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;
     subscriptionId: string | null;

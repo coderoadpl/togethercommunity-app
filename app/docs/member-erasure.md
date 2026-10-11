@@ -28,6 +28,11 @@ identity remain tombstoned, so nobody can log in with that restored grant and
 the paid-without-grant reconciliation report remains empty. Provider
 reconciliation must therefore finish before the next billing cycle.
 
+Direct checkout uses Stripe customer details to populate the member's e-mail
+and display name and the order's validated billing fields. It does not retain
+the raw customer-details snapshot on the order. The nullable
+`orders.customer_details` column from migration `0141` is unused.
+
 `MemberErasurePort.pseudonymize` then runs. The implementation in
 `adapters/db/repositories.ts` performs one transaction that:
 

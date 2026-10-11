@@ -489,7 +489,6 @@ const applyCheckoutCompleted = async (
           couponContext?.session.discountCents ??
           0,
         billing,
-        ...(event.checkoutSession.customerDetails === undefined ? {} : { customerDetails: event.checkoutSession.customerDetails }),
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
       },
       deps,

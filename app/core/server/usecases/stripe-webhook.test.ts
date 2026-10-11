@@ -2635,7 +2635,8 @@ it('preserves the direct checkout NIP on the order and invoice job with an incom
 it('fulfills direct checkout with buyer details and consent URLs from checkout, once', async () => {
   const h = await directBundlePayment();
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
-  expect(h.orders[0]).toMatchObject({ customerDetails: { name: 'Buyer Name' }, billing: { nip: '5260250274' } });
+  expect(h.orders[0]).toMatchObject({ billing: { nip: '5260250274' } });
+  expect(h.orders[0]).not.toHaveProperty('customerDetails');
   expect([...h.members.values()][0]?.displayName).toBe('Buyer Name');
   expect(h.consents).toMatchObject([{ source: 'checkout', email: 'buyer@example.com',
     termsUrl: 'https://example.com/terms-at-checkout', privacyUrl: 'https://example.com/privacy-at-checkout' }]);

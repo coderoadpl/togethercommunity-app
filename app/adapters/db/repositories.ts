@@ -3272,7 +3272,6 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
-          customerDetails: order.customerDetails ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),

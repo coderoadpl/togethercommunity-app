@@ -784,7 +784,7 @@ describe('probeStripePermissions with an injected Stripe client', () => {
   });
 });
 
-it.each([undefined, 'month'] as const)('maps tenant branding for payment and subscription sessions (%s)', (recurringInterval) => {
+it.each([undefined, 'month'] as const)('omits unverified branding for payment and subscription sessions (%s)', (recurringInterval) => {
   const params = stripeCheckoutSessionParams({
     tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
     currency: 'PLN', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
@@ -793,9 +793,7 @@ it.each([undefined, 'month'] as const)('maps tenant branding for payment and sub
       iconUrl: 'https://assets.example.com/icon.png', backgroundColor: '#FFFFFF', buttonColor: '#123456',
       fontFamily: 'inter', borderStyle: 'pill' },
   });
-  expect(params.branding_settings).toEqual({ display_name: 'Studio', logo: { type: 'url', url: 'https://assets.example.com/logo.png' },
-    icon: { type: 'url', url: 'https://assets.example.com/icon.png' }, background_color: '#FFFFFF', button_color: '#123456',
-    font_family: 'inter', border_style: 'pill' });
+  expect(params).not.toHaveProperty('branding_settings');
   expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
   expect(params.consent_collection).toBeUndefined();
 });
@@ -899,17 +897,17 @@ it('preserves long legal URLs through bounded metadata values', async () => {
   expect(result).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { termsUrl, privacyUrl } } } });
 });
 
-it('sends direct consent and branding fields through the installed SDK with a mocked transport', async () => {
+it.each(['live', 'test'] as const)('sends supported direct checkout fields without branding in %s mode', async (mode) => {
   const requests: Request[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     requests.push(new Request(input, init));
     return stripeJson({ id: 'cs_direct', object: 'checkout.session', url: 'https://checkout.stripe.com/c/pay/cs_direct' });
   };
   const payment = createStripePaymentProvider({
-    resolver: { resolve: async () => ok('rk_test_unused') },
+    resolver: { resolve: async () => ok(mode === 'test' ? 'rk_test_unused' : 'rk_live_unused') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
   });
-  expect(await payment.createCheckoutSession({ mode: 'test', tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
+  expect(await payment.createCheckoutSession({ mode, tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
     priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
     directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' },
     checkoutBranding: { displayName: 'Studio', logoUrl: 'https://example.com/logo.png' },
@@ -918,9 +916,8 @@ it('sends direct consent and branding fields through the installed SDK with a mo
   const request = requests[0];
   if (request === undefined) throw new Error('Missing checkout request');
   const body = new URLSearchParams(await request.text());
-  expect(body.get('branding_settings[display_name]')).toBe('Studio');
-  expect(body.get('branding_settings[logo][type]')).toBe('url');
-  expect(body.get('branding_settings[logo][url]')).toBe('https://example.com/logo.png');
+  expect(request.headers.get('stripe-version')).toBe('2025-08-27.basil');
+  expect([...body.keys()].some((key) => key.startsWith('branding_settings'))).toBe(false);
   expect(body.get('consent_collection[terms_of_service]')).toBe('required');
   expect(body.get('tax_id_collection[enabled]')).toBe('true');
   expect(body.get('allow_promotion_codes')).toBe('false');

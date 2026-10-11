@@ -51,8 +51,11 @@ describe('direct sales-link page', () => {
     expect(html).toContain('<script nonce="safe-nonce">');
   });
 
-  it('matches the edge crawler list and forwards handoffs before the SPA rewrite', () => {
-    const crawlerRewrite = configuration.rewrites.find((rewrite) => rewrite.has?.some((condition) => condition.key === 'user-agent'));
+  it('forwards crawlers before offer fallbacks and handoffs before the SPA rewrite', () => {
+    const crawlerIndex = configuration.rewrites.findIndex((rewrite) => rewrite.has?.some((condition) => condition.key === 'user-agent'));
+    expect(crawlerIndex).toBeGreaterThanOrEqual(0);
+    const crawlerRewrite = configuration.rewrites[crawlerIndex];
+    expect(crawlerRewrite?.destination).toBe('/api/index');
     const crawlerValue = crawlerRewrite?.has?.find((condition) => condition.key === 'user-agent')?.value;
     expect(crawlerValue).toBe(`.*(${SOCIAL_CRAWLER_PATTERN.source}).*`);
     const offerRewrites = configuration.rewrites.filter((rewrite) => rewrite.source === '/offer/(.*)');
@@ -61,6 +64,12 @@ describe('direct sales-link page', () => {
       { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], destination: '/index.html' },
       { source: '/offer/(.*)', destination: '/api/index' },
     ]);
+    for (const offerRewrite of offerRewrites) {
+      expect(configuration.rewrites.indexOf(offerRewrite)).toBeGreaterThan(crawlerIndex);
+    }
+    const spaIndex = configuration.rewrites.findIndex((rewrite) => rewrite.source === '/(.*)' && rewrite.has === undefined);
+    const handoffIndex = configuration.rewrites.findIndex((rewrite) => rewrite.source === '/offer/(.*)' && rewrite.has === undefined);
+    expect(spaIndex).toBeGreaterThan(handoffIndex);
     const staticPolicy = configuration.headers.find((header) => header.source.includes('?!api/'));
     expect(staticPolicy?.source).toContain('|offer/');
     expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual(offerRewrites.slice(0, 2).map((rewrite) => ({ source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers })));

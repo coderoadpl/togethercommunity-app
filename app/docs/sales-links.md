@@ -98,8 +98,10 @@ the automatic handoff.
 Owners configure **Integrations → Stripe → Checkout appearance**: display name,
 HTTPS logo and icon URLs, background and button hex colours, font and corners.
 Empty overrides use the tenant branding in Settings (name, logo, accent colour
-and favicon). If every resulting field is empty, no branding override is sent.
-These settings apply to sales links, single-product checkout and subscriptions.
+and favicon). Settings are saved, but appearance overrides are currently inactive:
+the installed Stripe SDK does not declare support for `branding_settings`, so
+sales links, single-product checkout and subscriptions use Stripe account
+appearance until a supported SDK or API version is verified.
 See [Payments](payments.md).
 
 Invoices contain one position per order line with its own treatment. Coupon

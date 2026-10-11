@@ -186,7 +186,6 @@ export const orderSchema = z.object({
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
   billing: orderBillingDataSchema.nullable().optional(),
-  customerDetails: checkoutCustomerDetailsSchema.nullable().optional(),
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),

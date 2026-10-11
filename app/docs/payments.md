@@ -56,11 +56,14 @@ image URLs must use HTTPS. The font selector contains Stripe's supported font
 families and defaults to `default`.
 
 Empty fields fall back to the tenant branding in Settings: name, logo, accent
-colour for the button and favicon for the icon. Fully empty resolved settings
-send no `branding_settings`. Every new tenant Checkout Session receives the
-resolved appearance, including sales links, single-product purchases and
-subscriptions. Stripe's account name can still appear in terms and receipts;
-the display-name override changes the checkout heading only.
+colour for the button and favicon for the icon. These settings are saved, but
+checkout appearance overrides are currently inactive for all payment modes and
+flows. The installed Stripe SDK 18.5.0 sends API version `2025-08-27.basil`,
+whose generated Checkout Session types do not include `branding_settings`.
+The adapter omits that unverified parameter to keep session creation compatible
+with the installed SDK. Enabling these overrides requires an SDK with generated
+branding types or a documented supported API version and a transport regression
+test. Until then, checkout uses the Stripe account appearance.
 
 ## Test mode for staff
 

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { orderLineSchema } from '#core/domain/index.js';
 
+import { createProductPriceHistoryRepository } from './coupon-repositories.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import { checkoutSnapshots, couponCheckoutSessions, coupons, memberSubscriptions, members, orders, productDownloadAssets, productGrants, productPriceHistory, productPrices, products, salesLinks, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -53,35 +54,27 @@ describe('product draft deletion persistence', () => {
     }
   });
 
-  it('migrates existing price history without changing rows or historical IDs', async () => {
-    const client = new pg.Client({ connectionString: database.url });
-    await client.connect();
-    try {
-      await client.query('CREATE SCHEMA price_history_migration');
-      await client.query('SET search_path TO price_history_migration');
-      await client.query('CREATE TABLE products (tenant_id text, id text, PRIMARY KEY (tenant_id, id))');
-      await client.query('CREATE TABLE product_prices (id text PRIMARY KEY)');
-      await client.query(`CREATE TABLE product_price_history (
-        id integer PRIMARY KEY, tenant_id text, product_id text, price_id text, amount_cents integer,
-        CONSTRAINT product_price_history_tenant_product_fk FOREIGN KEY (tenant_id, product_id)
-          REFERENCES products (tenant_id, id) ON DELETE CASCADE,
-        CONSTRAINT product_price_history_price_id_product_prices_id_fk FOREIGN KEY (price_id)
-          REFERENCES product_prices (id) ON DELETE SET NULL
-      )`);
-      await client.query("INSERT INTO products VALUES ('workspace', 'draft')");
-      await client.query("INSERT INTO product_prices VALUES ('price')");
-      await client.query("INSERT INTO product_price_history VALUES (1, 'workspace', 'draft', 'price', 100)");
-      const history = (await client.query('SELECT * FROM product_price_history')).rows;
-      await client.query(readFileSync('drizzle/0142_retain_draft_price_history.sql', 'utf8'));
-      await client.query('DELETE FROM product_prices');
-      await client.query('DELETE FROM products');
-      expect((await client.query('SELECT * FROM product_price_history')).rows).toEqual(history);
-    } finally {
-      await client.end();
-    }
+  it('rejects price history for a product that exists only in another tenant', async () => {
+    const { db } = database;
+    await db.insert(products).values(product('foreign-history', 'other'));
+    await expect(db.insert(productPriceHistory).values({
+      tenantId: 'workspace', productId: 'foreign-history', priceId: null, amountCents: 100, effectiveFrom: now,
+    })).rejects.toMatchObject({
+      cause: { code: '23503', constraint: 'product_price_history_tenant_product_fk' },
+    });
   });
 
-  it('deletes draft data while preserving append-only price history and tenant isolation', async () => {
+  it('rejects price history referencing a missing price', async () => {
+    const { db } = database;
+    await db.insert(products).values(product('missing-price-history'));
+    await expect(db.insert(productPriceHistory).values({
+      tenantId: 'workspace', productId: 'missing-price-history', priceId: 'missing-price', amountCents: 100, effectiveFrom: now,
+    })).rejects.toMatchObject({
+      cause: { code: '23503', constraint: 'product_price_history_price_id_product_prices_id_fk' },
+    });
+  });
+
+  it('deletes draft data and its price history while preserving tenant isolation', async () => {
     const { db } = database;
     await db.insert(products).values([{ ...product('retained'), accessItems: [{ level: 'course', courseId: 'course' }] }, product('retained', 'other')]);
     await db.insert(productPrices).values({ id: 'draft-price', tenantId: 'workspace', productId: 'retained', kind: 'one_time', amountCents: 100, currency: 'PLN', createdAt: now });
@@ -97,34 +90,45 @@ describe('product draft deletion persistence', () => {
     expect(await db.select().from(products).where(draftWhere)).toEqual([]);
     expect(await db.select().from(productPrices).where(eq(productPrices.id, 'draft-price'))).toHaveLength(0);
     expect(await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.productId, 'retained'))).toHaveLength(0);
-    expect(await db.select().from(productPriceHistory).where(draftHistory)).toEqual(retainedHistory);
+    expect(await db.select().from(productPriceHistory).where(draftHistory)).toEqual([]);
     expect(await db.select().from(productPriceHistory).where(otherHistory)).toEqual(retainedOtherHistory);
   });
 
-  it('deletes a new draft with its trigger-created base-price history intact', async () => {
+  it('deletes a new draft and its trigger-created base-price history', async () => {
     const { db } = database;
     await db.insert(products).values(product('new-draft'));
     const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'new-draft'));
     const history = await db.select().from(productPriceHistory).where(historyWhere);
     expect(history).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'new-draft')).toEqual({ kind: 'deleted', assets: [] });
-    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual(history);
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual([]);
   });
 
-  it('deletes normal drafts and leaves other tenants and history intact', async () => {
+  it('does not inherit deleted draft price history when a product ID is reused', async () => {
     const { db } = database;
     await insertDraft('removable');
     await db.insert(products).values(product('removable', 'other'));
     await db.insert(productDownloadAssets).values({ id: 'removable-asset', tenantId: 'workspace', productId: 'removable', lineageId: 'removable-asset', fileName: 'guide.pdf', contentType: 'application/pdf', sizeBytes: 100, storageKey: 'files/removable', status: 'ready', createdAt: now });
-    const retainedHistory = await db.select().from(productPriceHistory).where(eq(productPriceHistory.productId, 'removable'));
-    expect(retainedHistory).toHaveLength(3);
+    const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'removable'));
+    const otherHistoryWhere = and(eq(productPriceHistory.tenantId, 'other'), eq(productPriceHistory.productId, 'removable'));
+    const otherHistory = await db.select().from(productPriceHistory).where(otherHistoryWhere);
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toHaveLength(2);
+    expect(otherHistory).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'removable')).toMatchObject({ kind: 'deleted', assets: [{ id: 'removable-asset' }] });
     expect(await db.select().from(products).where(and(eq(products.tenantId, 'workspace'), eq(products.id, 'removable')))).toEqual([]);
     expect(await db.select().from(productPrices).where(eq(productPrices.productId, 'removable'))).toEqual([]);
     expect(await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.productId, 'removable'))).toEqual([]);
-    expect(await db.select().from(productPriceHistory).where(eq(productPriceHistory.productId, 'removable'))).toEqual(retainedHistory);
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual([]);
+    expect(await db.select().from(productPriceHistory).where(otherHistoryWhere)).toEqual(otherHistory);
     expect(await db.select().from(products).where(and(eq(products.tenantId, 'other'), eq(products.id, 'removable')))).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'removable')).toEqual({ kind: 'not_found' });
+    await db.insert(products).values({ ...product('removable'), priceCents: 500 });
+    const replacementHistory = await db.select().from(productPriceHistory).where(historyWhere);
+    expect(replacementHistory).toHaveLength(1);
+    expect(replacementHistory[0]?.amountCents).toBe(500);
+    expect(await createProductPriceHistoryRepository(db).lowestSince('workspace', {
+      productId: 'removable', priceId: null, currentAmountCents: 500, since: '2000-01-01T00:00:00.000Z', through: '2100-01-01T00:00:00.000Z',
+    })).toBe(500);
   });
 
   it('refuses coupon checkout sessions without erasing their history', async () => {
@@ -156,7 +160,12 @@ describe('product draft deletion persistence', () => {
     await db.insert(productDownloadAssets).values({ id: 'rollback-asset', tenantId: 'workspace', productId: 'rollback', lineageId: 'rollback-asset', fileName: 'guide.pdf', contentType: 'application/pdf', sizeBytes: 100, storageKey: 'files/rollback', createdAt: now });
     await db.execute(sql`CREATE FUNCTION reject_draft_deletion() RETURNS trigger AS $$ BEGIN IF OLD.id = 'rollback' THEN RAISE EXCEPTION 'Test transaction failure'; END IF; RETURN OLD; END; $$ LANGUAGE plpgsql`);
     await db.execute(sql`CREATE TRIGGER reject_draft_deletion BEFORE DELETE ON products FOR EACH ROW EXECUTE FUNCTION reject_draft_deletion()`);
+    const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'rollback'));
+    const history = await db.select().from(productPriceHistory).where(historyWhere);
+    expect(history).toHaveLength(2);
     await expect(createProductDraftRepository(db).deleteDraft('workspace', 'rollback')).rejects.toThrow();
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual(history);
+    expect(await db.select().from(productPrices).where(eq(productPrices.id, 'rollback-price'))).toHaveLength(1);
     expect(await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.id, 'rollback-asset'))).toHaveLength(1);
     expect(await db.select().from(products).where(eq(products.id, 'rollback'))).toHaveLength(1);
   });

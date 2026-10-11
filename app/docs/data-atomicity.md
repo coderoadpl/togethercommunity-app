@@ -26,9 +26,9 @@ at all.
   tenant-scoped product row lock with `FOR UPDATE` while checking eligibility
   and deleting download assets, prices, and the product with its embedded access
   items in one transaction. Coupon checkout sessions and subscriptions prevent
-  deletion. Price history retains its original product and price IDs after
-  deletion, as detailed in [Product drafts](products.md); stored-object cleanup
-  follows commit.
+  deletion. The existing tenant/product foreign key cascades deletion to the
+  draft's price history in the same transaction, as detailed in
+  [Product drafts](products.md); stored-object cleanup follows commit.
 - Privacy and identity: `MemberErasurePort.pseudonymize` erases all member
   identifiers as one unit; `MemberErasureRequestRepository.create` and
   `MemberErasureRequestRepository.resolve` keep request projections and events

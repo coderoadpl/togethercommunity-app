@@ -8,7 +8,7 @@ Deletion removes the product, prices, access items, and download asset rows in o
 
 ## History retention
 
-Draft deletion preserves append-only price history, including the base-price row created automatically for a new draft. Migration `0142_retain_draft_price_history` removes the product and price foreign keys from price history so deleting a draft cannot cascade-delete its history or null out its historical price IDs. The original tenant, product, price, amount, and timestamp remain unchanged; the tenant foreign key and lookup index remain in place.
+An eligible draft can be deleted even if it has prices or price history. The existing tenant/product foreign key cascades deletion to that draft's price history, including its automatically created base-price row, within the same transaction. Both the tenant/product and price foreign keys remain enforced. Other tenants' products and price history are unaffected, and a later product reusing the deleted draft's ID does not inherit its price history. Products that have ever been published remain protected from draft deletion.
 
 The repository checks references under the tenant-scoped product row's `FOR UPDATE` lock before deleting anything. Coupon checkout sessions and subscriptions prevent deletion, including residual records without an order or grant.
 

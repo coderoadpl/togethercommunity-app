@@ -1,6 +1,6 @@
 {
-  "hash": "5e65eab2279eaecea87bfdd929c0a174522138c8ee448e298a5c272632801d78",
-  "shortId": "5e65eab2279e",
+  "hash": "fd1cece65620775a2a1f85c32c897510834b68941fde50d81a531edf72d5a4dc",
+  "shortId": "fd1cece65620",
   "schema": {
     "constraints": [
       {
@@ -397,6 +397,11 @@
         "definition": "FOREIGN KEY (price_id) REFERENCES product_prices(id) ON DELETE SET NULL",
         "name": "orders_price_id_product_prices_id_fk",
         "table": "orders"
+      },
+      {
+        "definition": "FOREIGN KEY (price_id) REFERENCES product_prices(id) ON DELETE SET NULL",
+        "name": "product_price_history_price_id_product_prices_id_fk",
+        "table": "product_price_history"
       },
       {
         "definition": "FOREIGN KEY (redemption_id) REFERENCES coupon_redemptions(id) ON DELETE RESTRICT",
@@ -1097,6 +1102,11 @@
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "product_grants_tenant_product_fk",
         "table": "product_grants"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
+        "name": "product_price_history_tenant_product_fk",
+        "table": "product_price_history"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",

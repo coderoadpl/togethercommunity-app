@@ -589,47 +589,64 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       // constructEvent verifies the HMAC locally and never calls the API, so a
       // throwaway key is enough to build the instance for signature checking.
       const client = new Stripe('sk_webhook_verifier_unused');
+      let event: Stripe.Event;
       try {
-        const event = await client.webhooks.constructEventAsync(
+        event = await client.webhooks.constructEventAsync(
           input.payloadRaw,
           input.signatureHeader,
           input.webhookSecret,
         );
-        if (
-          event.type === 'checkout.session.completed' ||
-          event.type === 'checkout.session.async_payment_succeeded' ||
-          event.type === 'checkout.session.async_payment_failed'
-        ) {
-          return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
-        }
-        if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
-          const mapped = toInvoiceEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-          const mapped = toSubscriptionEvent(
-            event.id,
-            event.type,
-            event.data.object,
-            epochToIso(event.created),
-          );
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
-          const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
-        }
-        const object = event.data.object;
-        return ok({
-          livemode: event.livemode,
-          id: event.id,
-          type: event.type,
-          objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
-          checkoutSession: null,
-        });
       } catch (cause) {
         return err(asDiagnostic('Stripe webhook signature verification failed', cause));
       }
+      if (
+        event.type === 'checkout.session.completed' ||
+        event.type === 'checkout.session.async_payment_succeeded' ||
+        event.type === 'checkout.session.async_payment_failed'
+      ) {
+        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
+      }
+      if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
+        const invoice = stripeInvoiceObjectSchema.safeParse(event.data.object);
+        if (invoice.success) {
+          let payments = invoice.data.payments;
+          if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
+            const paymentClient = await clientFor(input.tenantId, input.mode);
+            if (!paymentClient.ok) return paymentClient;
+            const retrieved = stripeInvoiceObjectSchema.parse(await paymentClient.value.invoices.retrieve(
+              invoice.data.id,
+              { expand: ['payments'] },
+            ));
+            if (retrieved.id !== invoice.data.id || retrieved.payments == null) {
+              throw new Error('Stripe invoice lookup returned no matching payment list');
+            }
+            payments = retrieved.payments;
+          }
+          const mapped = toInvoiceEvent(event.id, event.type, { ...invoice.data, payments });
+          if (mapped) return ok({ ...mapped, livemode: event.livemode });
+        }
+      }
+      if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+        const mapped = toSubscriptionEvent(
+          event.id,
+          event.type,
+          event.data.object,
+          epochToIso(event.created),
+        );
+        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+      }
+      if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+        const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
+        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+      }
+      const object = event.data.object;
+      return ok({
+        livemode: event.livemode,
+        id: event.id,
+        type: event.type,
+        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
+        checkoutSession: null,
+      });
     },
   };
 };

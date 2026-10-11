@@ -86,6 +86,18 @@ behavior instead of adopting Clover's new flexible default. Subscription and
 invoice webhook handling continues to use item billing periods and invoice
 subscription references.
 
+For `invoice.paid` and `invoice.payment_failed`, Clover payment correlation comes
+from `payments.data`, which is not included by default. When that list is missing
+or empty, Together retrieves the invoice with `expand: ['payments']` using the
+tenant's restricted key for the webhook's live or test slot. The key needs read
+access to Invoices. Only the payment references are taken from the lookup; the
+original event supplies the invoice amounts, currency and billing period.
+Payment-intent or charge IDs are stored on renewal orders so later refunds and
+disputes can find them. Lookup failures fail webhook processing for retry instead
+of acknowledging an event without its payment references. Existing pre-Clover
+top-level payment references remain supported for older events. Signature
+verification and the signed mode check happen before any lookup.
+
 ## Test mode for staff
 
 A tenant owner can configure an independent Stripe sandbox in Studio → Integrations → Stripe → Test mode. Create a restricted key in the tenant's Stripe sandbox and enter the `rk_test_` key in this card. Grant the same checkout, subscription and webhook permissions shown for the live integration. The live card accepts only `rk_live_` keys; the test card accepts only `rk_test_` keys, including when credentials are saved through the API.

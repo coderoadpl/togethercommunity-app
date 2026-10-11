@@ -7696,6 +7696,8 @@ describe('checkout consent ordering', () => {
       error: { code: 'validation' },
     });
     expect(verifyWebhookEvent).toHaveBeenCalledWith({
+      tenantId: 't-acme',
+      mode: 'live',
       payloadRaw: '{}',
       signatureHeader: signatureHeader ?? '',
       webhookSecret: 'plaintext',
@@ -9127,6 +9129,13 @@ describe('staff Stripe test mode routes', () => {
     const response = await app.request('/api/webhooks/stripe/t-acme?mode=test', { method: 'POST', body: '{}' });
     expect(await response.json()).toMatchObject({ data: { received: true, processed: false } });
     expect(resolve).toHaveBeenCalledWith('t-acme', 'stripe.testWebhookSecret');
+    expect(verify).toHaveBeenCalledWith({
+      tenantId: 't-acme',
+      mode: 'test',
+      payloadRaw: '{}',
+      signatureHeader: '',
+      webhookSecret: 'plaintext',
+    });
     expect(createOrder).not.toHaveBeenCalled();
   });
 });

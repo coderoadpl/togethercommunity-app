@@ -1128,6 +1128,8 @@ export interface PaymentProvider {
     idempotencyKey: string;
   }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
   verifyWebhookEvent(input: {
+    tenantId: string;
+    mode: 'live' | 'test';
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;

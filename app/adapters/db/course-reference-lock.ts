@@ -13,5 +13,5 @@ export const lockActiveCourses = async (
   const rows = await tx.select({ id: courses.id, archivedAt: courses.archivedAt }).from(courses)
     .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, ids)))
     .orderBy(asc(courses.id)).for('update');
-  return rows.length === ids.length && rows.every((course) => course.archivedAt === null);
+  return rows.every((course) => course.archivedAt === null);
 };

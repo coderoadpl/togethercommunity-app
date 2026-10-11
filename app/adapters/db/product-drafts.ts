@@ -4,7 +4,7 @@ import { productDownloadAssetSchema } from '#core/domain/index.js';
 import type { ProductDraftRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
-import { checkoutSnapshots, couponCheckoutSessions, memberSubscriptions, orders, productDownloadAssets, productGrants, productPriceHistory, productPrices, products, salesLinks } from './schema.js';
+import { checkoutSnapshots, couponCheckoutSessions, memberSubscriptions, orders, productDownloadAssets, productGrants, productPrices, products, salesLinks } from './schema.js';
 
 export const createProductDraftRepository = (db: Db): ProductDraftRepository => ({
   deleteDraft: async (tenantId, productId) => db.transaction(async (tx) => {
@@ -34,9 +34,6 @@ export const createProductDraftRepository = (db: Db): ProductDraftRepository => 
     const [subscription] = await tx.select({ id: memberSubscriptions.id }).from(memberSubscriptions)
       .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.productId, productId))).limit(1);
     if (subscription !== undefined) return { kind: 'refused', reason: 'subscriptions' };
-    const [priceHistory] = await tx.select({ id: productPriceHistory.id }).from(productPriceHistory)
-      .where(and(eq(productPriceHistory.tenantId, tenantId), eq(productPriceHistory.productId, productId))).limit(1);
-    if (priceHistory !== undefined) return { kind: 'refused', reason: 'price_history' };
     const assets = await tx.delete(productDownloadAssets)
       .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).returning();
     await tx.delete(productPrices).where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId)));

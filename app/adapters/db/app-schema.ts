@@ -862,16 +862,11 @@ export const productPriceHistory = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     productId: text('product_id').notNull(),
-    priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
+    priceId: text('price_id'),
     amountCents: integer('amount_cents').notNull(),
     effectiveFrom: text('effective_from').notNull(),
   },
   (table) => [
-    foreignKey({
-      name: 'product_price_history_tenant_product_fk',
-      columns: [table.tenantId, table.productId],
-      foreignColumns: [products.tenantId, products.id],
-    }).onDelete('cascade'),
     index('product_price_history_lookup_idx').on(
       table.tenantId,
       table.productId,

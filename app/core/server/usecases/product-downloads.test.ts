@@ -327,24 +327,36 @@ describe('product downloads', () => {
     expect(warnings).toEqual([expect.stringContaining('Storage unavailable')]);
   });
 
-  it.each(['storage', 'configuration preflight', 'configuration cleanup'] as const)(
-    'propagates %s rejections from asset deletion', async (failure) => {
+  it('propagates configuration preflight rejections before deleting the asset', async () => {
+    const { deps, downloadAssets, warnings, removed } = testDeps();
+    const cause = new Error('Infrastructure unavailable');
+    downloadAssets.rows.push(storedAsset());
+    vi.spyOn(deps.secretResolver, 'resolve').mockRejectedValue(cause);
+
+    await expect(deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps)).rejects.toBe(cause);
+
+    expect(downloadAssets.rows).toHaveLength(1);
+    expect(removed).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each(['storage', 'configuration cleanup'] as const)(
+    'logs %s rejections after deleting the asset', async (failure) => {
       const { deps, downloadAssets, warnings, removed } = testDeps();
       const cause = new Error('Infrastructure unavailable');
       downloadAssets.rows.push(storedAsset());
       if (failure === 'storage') vi.spyOn(deps.storage, 'delete').mockRejectedValue(cause);
-      if (failure === 'configuration preflight') vi.spyOn(deps.secretResolver, 'resolve').mockRejectedValue(cause);
       if (failure === 'configuration cleanup') {
         vi.spyOn(deps.secretResolver, 'resolve')
           .mockResolvedValueOnce(ok(storageConfiguration))
           .mockRejectedValue(cause);
       }
 
-      await expect(deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps)).rejects.toBe(cause);
+      expect(await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps)).toEqual({ ok: true, value: { deleted: true } });
 
-      expect(downloadAssets.rows).toHaveLength(failure === 'configuration preflight' ? 1 : 0);
+      expect(downloadAssets.rows).toHaveLength(0);
       expect(removed).toEqual([]);
-      expect(warnings).toEqual([]);
+      expect(warnings).toEqual([expect.stringContaining('Infrastructure unavailable')]);
     },
   );
 

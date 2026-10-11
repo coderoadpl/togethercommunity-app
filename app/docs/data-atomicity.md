@@ -25,9 +25,10 @@ at all.
 - Product-draft deletion: `ProductDraftRepository.deleteDraft` holds the
   tenant-scoped product row lock with `FOR UPDATE` while checking eligibility
   and deleting download assets, prices, and the product with its embedded access
-  items in one transaction. References from price history, coupon checkout
-  sessions, or subscriptions prevent deletion, as detailed in
-  [Product drafts](products.md); stored-object cleanup follows commit.
+  items in one transaction. Coupon checkout sessions and subscriptions prevent
+  deletion. Price history retains its original product and price IDs after
+  deletion, as detailed in [Product drafts](products.md); stored-object cleanup
+  follows commit.
 - Privacy and identity: `MemberErasurePort.pseudonymize` erases all member
   identifiers as one unit; `MemberErasureRequestRepository.create` and
   `MemberErasureRequestRepository.resolve` keep request projections and events

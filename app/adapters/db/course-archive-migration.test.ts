@@ -4,9 +4,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildSnapshot, type Product } from '#core/domain/index.js';
 import type { EntityVersionRecord } from '#core/server/index.js';
+import { deleteLesson } from '#core/server/usecases/course-management.js';
 
-import { createCourseRepository, createProductRepository } from './repositories.js';
-import { courses, tenants } from './schema.js';
+import {
+  createCourseRepository,
+  createCourseModuleRepository,
+  createCourseLessonRepository,
+  createLessonAttachmentRepository,
+  createMemberCourseProgressRepository,
+  createProductRepository,
+} from './repositories.js';
+import { courses, products, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -69,6 +77,53 @@ const waitForCourseLock = async (client: pg.Client): Promise<void> => {
 };
 
 describe('course archive serialization', () => {
+  it('deletes lesson access items while preserving dangling course references', async () => {
+    const { db } = database;
+    const lessons = createCourseLessonRepository(db);
+    const productRepository = createProductRepository(db);
+    const lessonId = 'dangling-reference-lesson';
+    await lessons.create(tenantId, {
+      id: lessonId, tenantId, name: 'Lesson', isPreview: false, contents: [], legacyId: null, createdAt: now,
+    });
+    await db.insert(products).values({
+      ...makeProduct('dangling-reference-product'),
+      accessItems: [
+        { level: 'course', courseId: 'missing-course' },
+        { level: 'lessons', courseId: 'missing-course', lessonIds: [lessonId, 'remaining-lesson'] },
+        { level: 'lessons', courseId: 'another-missing-course', lessonIds: [lessonId] },
+      ],
+    });
+    const unusedStorage = (): never => { throw new Error('Lesson without attachments must not access storage'); };
+    const result = await deleteLesson({ identity: {
+      userId: 'creator', email: 'creator@example.test', name: 'Creator', emailVerified: true,
+      tenantAccess: 'staff', tenantId, tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner',
+      memberId: null, image: null, memberDisplayName: null, memberBannedAt: null,
+      memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+    } }, { id: lessonId }, {
+      courses: createCourseRepository(db),
+      modules: createCourseModuleRepository(db),
+      lessons,
+      products: productRepository,
+      progress: createMemberCourseProgressRepository(db),
+      attachments: createLessonAttachmentRepository(db),
+      storage: {
+        getObject: unusedStorage, objectUrl: unusedStorage, probe: unusedStorage, probeCors: unusedStorage,
+        presignPut: unusedStorage, presignGet: unusedStorage, delete: unusedStorage, head: unusedStorage,
+        healthcheck: unusedStorage, test: unusedStorage,
+      },
+      secretResolver: { resolve: unusedStorage },
+      ids: { nextId: () => 'dangling-reference-snapshot' },
+      clock: { nowIso: () => now },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { lessonId } });
+    expect(await lessons.findById(tenantId, lessonId)).toBeNull();
+    expect(await productRepository.findById(tenantId, 'dangling-reference-product')).toMatchObject({ accessItems: [
+      { level: 'course', courseId: 'missing-course' },
+      { level: 'lessons', courseId: 'missing-course', lessonIds: ['remaining-lesson'] },
+    ] });
+  });
+
   it.each(['create', 'update'] as const)('refuses archive when a concurrent product %s commits its reference first', async (operation) => {
     const courseId = `writer-first-${operation}`;
     const version = await prepareCourse(courseId);

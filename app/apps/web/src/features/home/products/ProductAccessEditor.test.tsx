@@ -112,7 +112,10 @@ describe('ProductAccessEditor', () => {
     let archived = false;
     server.use(http.get('/api/courses', ({ request }) => {
       expect(new URL(request.url).searchParams.get('archived')).not.toBe('true');
-      return HttpResponse.json({ ok: true, data: { courses: archived ? [] : [course] } });
+      return HttpResponse.json({
+        ok: true,
+        data: { courses: [{ ...course, archivedAt: archived ? '2026-10-11T10:00:00.000Z' : null }] },
+      });
     }));
     const { queryClient } = renderWithProviders(<ProductAccessEditor product={product} />);
 

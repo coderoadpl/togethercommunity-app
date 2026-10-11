@@ -17,7 +17,6 @@ const refusalMessages = {
   grants: 'This product has grants and cannot be deleted',
   sales_links: 'This product is referenced by a sales link and cannot be deleted',
   checkout_snapshots: 'This product is referenced by a checkout snapshot and cannot be deleted',
-  price_history: 'This product has price history and cannot be deleted',
   coupon_checkout_sessions: 'This product is referenced by a coupon checkout session and cannot be deleted',
   subscriptions: 'This product has subscriptions and cannot be deleted',
 };
@@ -32,7 +31,7 @@ export const deleteProductDraft = async (
   if (input.productId.trim().length === 0) return err(validation('Product ID is required'));
   const result = await deps.productDrafts.deleteDraft(tenant.value, input.productId);
   if (result.kind === 'not_found') return err(notFound(`No product "${input.productId}" in this tenant`));
-  if (result.kind === 'refused') return err(validation(refusalMessages[result.reason]));
+  if (result.kind === 'refused') return err(validation(refusalMessages[result.reason], { productDraftRefusal: result.reason }));
   for (const asset of result.assets) await deleteStoredProductDownload(tenant.value, asset, deps);
   return ok({ deleted: true });
 };

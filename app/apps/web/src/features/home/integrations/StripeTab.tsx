@@ -19,6 +19,7 @@ import { CopyField } from '../../../components/ui/CopyField.js';
 import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
+import { CheckoutAppearanceSettings } from './CheckoutAppearanceSettings.js';
 import { ProviderTest } from './ProviderTest.js';
 import { previewFor } from './secret-preview.js';
 
@@ -296,6 +297,7 @@ export const StripeTab = () => {
         </> : null}
       </SectionCard>
 
+      <CheckoutAppearanceSettings canEdit={tenant.staffRole === 'owner'} />
       <BillingPortalField canEdit={tenant.staffRole === 'owner'} />
     </>
   );

@@ -731,3 +731,16 @@ describe('anonymous avatar boundary', () => {
     expect(JSON.stringify([feed, thread])).not.toContain('gravatar.com');
   });
 });
+
+
+it('hides archived courses from public navigation and catalog until restored', async () => {
+  const archived = { ...course('archived', true), archivedAt: PUBLIC_NOW };
+  const courses: Course[] = [archived];
+  const navigation = navigationDeps({ spaces: [], courses });
+  const structure = structureDeps({ courses, modules: [], lessons: [] });
+  expect(await getPublicNavigation(tenant, navigation)).toMatchObject({ ok: true, value: { courses: [] } });
+  expect(await getPublicCourseStructure(tenant, archived.id, structure)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  courses[0] = { ...archived, archivedAt: null };
+  expect(await getPublicNavigation(tenant, navigation)).toMatchObject({ ok: true, value: { courses: [{ id: archived.id }] } });
+  expect(await getPublicCourseStructure(tenant, archived.id, structure)).toMatchObject({ ok: true });
+});

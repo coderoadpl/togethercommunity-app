@@ -87,7 +87,7 @@ export const getMemberNavigation = async (
   ]);
   const coursesByProduct = courseIdsByProduct(
     products,
-    new Set(courses.map((course) => course.id)),
+    new Set(courses.filter((course) => !course.archivedAt).map((course) => course.id)),
   );
 
   const listedProducts = products.filter((product) => product.visibility === 'listed');
@@ -128,6 +128,7 @@ export const getMemberNavigation = async (
 
   const navigationCourses: MemberNavigationCourse[] = [];
   for (const course of courses) {
+    if (course.archivedAt) continue;
     const row = progressByCourse.get(course.id);
     const counts = countCourseProgress({
       course,

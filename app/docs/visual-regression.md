@@ -15,7 +15,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 `dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
 native locale drift, not a changing default date.
 
-The catalogue currently covers 216 captures in Shadcn, the maintained base theme
+The catalogue currently covers 220 captures in Shadcn, the maintained base theme
 described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -33,6 +33,15 @@ PNG must be covered; a missing story, missing golden or unmapped golden fails.
 The inherited active-named DNS goldens repeat the pending DNS capture after a
 same-document navigation. Both map to the pending story to preserve that page
 state; verified DNS has separate Active stories.
+
+Lesson lightbox captures are page variants declared in
+`scripts/visual-screen-inventory.ts` and mapped in
+`scripts/storybook-page-screens.ts`. They reuse the recorded lesson fixture with
+local image content and open the overlay through a story interaction. Desktop
+and mobile goldens cover a captioned SVG in light mode and a raster image with
+alternative text in dark mode, including the lesson shell behind the overlay.
+Each variant uses an isolated browser context and the normal fixture readiness
+handshake; no new recording scenario or database is required.
 
 Component screens are the second mapping. `scripts/storybook-component-screens.ts`
 declares them directly as screen specs, each with one story ID and one viewport,

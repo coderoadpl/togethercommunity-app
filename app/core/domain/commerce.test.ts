@@ -4,6 +4,7 @@ import {
   SUBSCRIPTION_GRACE_DAYS,
   allocateOrderLineGross,
   billingDataSchema,
+  orderBillingDataSchema,
   exportOrdersQuerySchema,
   graceExpiresAt,
   listOrdersQuerySchema,
@@ -77,6 +78,16 @@ describe('billingDataSchema', () => {
       city: 'Berlin',
       country: 'DE',
     }).success).toBe(false);
+  });
+});
+
+describe('orderBillingDataSchema', () => {
+  it('preserves a provider billing NIP without weakening checkout billing validation', () => {
+    const billing = { nip: '5260250274', companyName: 'Example Company', address: '', postalCode: '00-001', city: '', country: 'PL' };
+    expect(orderBillingDataSchema.parse(billing)).toEqual(billing);
+    expect(billingDataSchema.safeParse(billing).success).toBe(false);
+    expect(orderBillingDataSchema.parse({ ...billing, country: 'DE' }).country).toBe('DE');
+    expect(orderBillingDataSchema.safeParse({ ...billing, nip: '1234567890' }).success).toBe(false);
   });
 });
 

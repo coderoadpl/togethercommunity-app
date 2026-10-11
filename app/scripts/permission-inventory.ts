@@ -80,7 +80,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/download-copies') return 'order:read';
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
-  if (path === '/api/public/offer') return 'offer:read';
+  if (path === '/api/public/offer' || path === '/offer/:slug') return 'offer:read';
   if (path === '/api/public/orders/qr/:token') return 'offer:read';
   if (path === '/api/public/navigation') return 'offer:read';
   if (path === '/api/public/courses/:courseId/structure') return 'offer:read';
@@ -92,7 +92,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
   if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
   if (path === '/api/public/payment-config' || path === '/api/public/checkout/coupon') return 'checkout:read';
-  if (path === '/api/public/checkout/session') return 'checkout:start';
+  if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
   if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
@@ -209,7 +209,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/integrations/telemetry')) return method === 'GET' ? 'tenant:secret:read' : 'tenant:settings:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
-  if (path === '/api/products/update') return 'product:write';
+  if (path === '/api/products/update' || path === '/api/products/delete') return 'product:write';
   if (path === '/api/products/unpublish') return 'product:publish';
   if (path.startsWith('/api/products/') && path.includes('/downloads')) {
     return method === 'GET' ? 'product:read' : 'product:write';

@@ -13,6 +13,7 @@ import { type z } from 'zod';
 import {
   lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput,
   API_ROUTES,
+  productDeleteOutputSchema,
   marketingDirectoryContracts,
   marketingSignupContracts,
   surveyContracts,
@@ -526,6 +527,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   updateSalesLink: (input: z.input<typeof salesLinkContracts.updateSalesLink.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.updateSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.updateSalesLink.output, input, signal),
   deleteSalesLink: (input: z.input<typeof salesLinkContracts.deleteSalesLink.input>, signal?: AbortSignal) => request(options, 'DELETE', API_ROUTES.deleteSalesLink.path.replace(':id', encodeURIComponent(input.id)), salesLinkContracts.deleteSalesLink.output, input, signal),
   getPublicSalesLink: (input: z.input<typeof salesLinkContracts.getPublicSalesLink.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getPublicSalesLink.path.replace(':slug', encodeURIComponent(input.slug)), salesLinkContracts.getPublicSalesLink.output, undefined, signal),
+  directSalesLinkCheckout: (input: z.input<typeof salesLinkContracts.directSalesLinkCheckout.input> & { slug: string }, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.directSalesLinkCheckout.path.replace(':slug', encodeURIComponent(input.slug)), salesLinkContracts.directSalesLinkCheckout.output, { mode: input.mode }, signal),
   listSurveys: (input: z.input<typeof surveyContracts.listSurveys.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listSurveys.path, surveyContracts.listSurveys.output, undefined, signal),
   getSurvey: (input: z.input<typeof surveyContracts.getSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getSurvey.path.replace(':id', encodeURIComponent(input.id)), surveyContracts.getSurvey.output, undefined, signal),
   createSurvey: (input: z.input<typeof surveyContracts.createSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createSurvey.path, surveyContracts.createSurvey.output, input, signal),
@@ -1641,8 +1643,14 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  listCourses: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.courses.method, API_ROUTES.courses.path, coursesListOutputSchema, undefined, signal),
+  listCourses: (signal?: AbortSignal, query?: { archived?: boolean }) =>
+    request(options, API_ROUTES.courses.method, `${API_ROUTES.courses.path}${query?.archived === true ? '?archived=true' : ''}`, coursesListOutputSchema, undefined, signal),
+  archiveCourse: (input: { courseId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesArchive.method, API_ROUTES.coursesArchive.path, courseOutputSchema, input, signal),
+  restoreCourse: (input: { courseId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesRestore.method, API_ROUTES.coursesRestore.path, courseOutputSchema, input, signal),
+  deleteProductDraft: (input: { productId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productsDelete.method, API_ROUTES.productsDelete.path, productDeleteOutputSchema, input, signal),
   createCourse: (input: CourseCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.coursesCreate.method, API_ROUTES.coursesCreate.path, courseOutputSchema, input, signal),
   updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>

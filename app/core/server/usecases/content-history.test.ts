@@ -412,12 +412,13 @@ describe('content history use-cases', () => {
     const result = await getContentVersion({ identity: identity('t-acme', 'owner') }, 'v9', readDeps(repo));
     expect(result).toMatchObject({
       ok: true,
-      value: { version: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 5 } },
+      value: { version: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 6 } },
     });
     expect(result.ok && result.value.version.payload).toMatchObject({
       id: 'c1',
       name: 'Old name',
       moduleOrder: [],
+      archivedAt: null,
     });
   });
 

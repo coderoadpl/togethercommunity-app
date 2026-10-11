@@ -99,14 +99,18 @@ describe('order and checkout snapshots', () => {
     expect(await repository.listPaidWithoutGrant('other', { paidBefore: now, limit: 100 })).toEqual([]);
   });
 
-  it('reads checkout snapshots only within their workspace and preserves source prices', async () => {
+  it.each([undefined, 'live', 'test'] as const)('reads checkout snapshots only within their workspace and preserves source prices and session correlation in mode %s', async (mode) => {
     const repository = createCheckoutSnapshotRepository(database.db);
-    const snapshot = checkoutSnapshotSchema.parse({ id: 'checkout-1', tenantId: 'workspace', salesLinkId: 'sales-link', lines: [physicalLine, digitalLine], currency: 'PLN', createdAt: now });
+    const providerSessionId = mode === undefined ? null : `cs-${mode}`;
+    const snapshot = checkoutSnapshotSchema.parse({ id: `checkout-${mode ?? 'legacy'}`, tenantId: 'workspace', salesLinkId: 'sales-link', lines: [physicalLine, digitalLine], currency: 'PLN', createdAt: now,
+      ...(mode === undefined ? {} : { mode, providerSessionId }),
+    });
+    const storedSnapshot = { ...snapshot, mode: mode ?? null, providerSessionId };
     await repository.create('workspace', snapshot);
-    expect(await repository.findById('workspace', snapshot.id)).toEqual(snapshot);
+    expect(await repository.findById('workspace', snapshot.id)).toEqual(storedSnapshot);
     expect(await repository.findById('other', snapshot.id)).toBeNull();
     expect(await repository.findById('workspace', 'missing')).toBeNull();
     await database.db.update(products).set({ priceCents: 20000, title: 'Changed digital material' }).where(eq(products.id, 'download'));
-    expect(await repository.findById('workspace', snapshot.id)).toEqual(snapshot);
+    expect(await repository.findById('workspace', snapshot.id)).toEqual(storedSnapshot);
   });
 });

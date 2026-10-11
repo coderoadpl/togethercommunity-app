@@ -94,6 +94,11 @@ const renderProductsPanel = async (
       products = [...products, product];
       return HttpResponse.json({ ok: true, data: { product } });
     }),
+    http.post('/api/products/delete', async ({ request }) => {
+      expect(await request.json()).toEqual({ productId: 'draft-1' });
+      products = products.filter((product) => product.id !== 'draft-1');
+      return HttpResponse.json({ ok: true, data: { deleted: true } });
+    }),
     http.post('/api/products/update', async ({ request }) => {
       const input = updateProductInputSchema.parse(await request.json());
       const existing = products.find((candidate) => candidate.id === input.id);
@@ -246,6 +251,40 @@ const renderProductsPanel = async (
 };
 
 describe('ProductsPanel', () => {
+  it.each(['/panel/products', '/panel/products/draft-1'])('deletes a draft after confirmation from %s', async (entry) => {
+    const { router } = await renderProductsPanel([], entry);
+    await userEvent.click(await screen.findByRole('button', { name: en.products.deleteDraft }));
+    expect(screen.getByText(en.products.deleteDraftBody)).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.cancel }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: en.products.deleteDraft }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.products.deleteDraft }));
+    expect(await screen.findByText(en.products.empty)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel/products');
+    expect(screen.queryByRole('button', { name: en.products.deleteDraft })).not.toBeInTheDocument();
+  });
+
+  it.each(['/panel/products', '/panel/products/draft-1'])('shows an order-reference refusal from %s', async (entry) => {
+    const { router } = await renderProductsPanel([], entry);
+    server.use(http.post('/api/products/delete', () => HttpResponse.json({
+      ok: false,
+      error: { code: 'validation', message: 'This product has orders and cannot be deleted', details: { productDraftRefusal: 'orders' } },
+    }, { status: 400 })));
+
+    await userEvent.click(await screen.findByRole('button', { name: en.products.deleteDraft }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.products.deleteDraft }));
+
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
+    expect(router.state.location.pathname).toBe(entry);
+    expect(screen.getByText('Draft Course')).toBeInTheDocument();
+  });
+
+  it.each(['/panel/products', '/panel/products/draft-1'])('does not offer draft deletion for a published product from %s', async (entry) => {
+    await renderProductsPanel([], entry, initialProducts.map((product) => ({ ...product, published: true })));
+    expect(await screen.findByText('Draft Course')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.products.deleteDraft })).not.toBeInTheDocument();
+  });
+
   it('lists products and publishes a draft after confirmation', async () => {
     await renderProductsPanel();
 

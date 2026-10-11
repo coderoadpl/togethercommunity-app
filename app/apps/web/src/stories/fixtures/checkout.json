@@ -262,6 +262,7 @@
       "ok": true,
       "value": {
         "canTest": false,
+        "salesLinkTestConfigured": false,
         "simulatedPaymentsEnabled": true,
         "stripeConfigured": false,
         "testConfigured": false,

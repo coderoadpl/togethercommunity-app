@@ -491,6 +491,18 @@ export const SCREENS: readonly ScreenSpec[] = [
       await page.getByTestId('lesson-reading-preview').waitFor(visible);
     },
   },
+  ...['light', 'dark'].map((colorScheme): ScreenSpec => ({
+    name: `lesson-lightbox-${colorScheme}`,
+    fixtureName: 'lesson',
+    auth: 'member',
+    path: '/my/courses/course-js/lessons/lesson-js-variables-1',
+    viewports: ['desktop', 'mobile'],
+    isolateCapture: true,
+    ready: async (page) => {
+      await page.getByRole('dialog', { name: en.lesson.enlargeImage }).waitFor(visible);
+      await page.getByRole('button', { name: en.common.close }).waitFor(visible);
+    },
+  })),
   {
     name: 'community',
     auth: 'member',

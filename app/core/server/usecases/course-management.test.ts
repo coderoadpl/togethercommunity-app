@@ -18,11 +18,14 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  CourseArchiveRepository,
   EntityVersionRecord,
   MemberCourseProgressRepository,
   ProductRepository,
 } from '../ports.js';
 import {
+  archiveCourse,
+  restoreCourse,
   attachModuleToCourse,
   createCourse,
   createLesson,
@@ -115,7 +118,7 @@ const product = (id: string, tenantId: string): Product => ({
   createdAt: now,
 });
 
-const courseRepo = (store: Course[], versions: EntityVersionRecord[] = []): CourseRepository => ({
+const courseRepo = (store: Course[], versions: EntityVersionRecord[] = [], products: Product[] = []): CourseRepository & CourseArchiveRepository => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
@@ -130,6 +133,20 @@ const courseRepo = (store: Course[], versions: EntityVersionRecord[] = []): Cour
     if (version) versions.push(version);
     store[index] = item;
     return item;
+  },
+  setArchived: async (tenantId, courseId, archivedAt, version) => {
+    const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === courseId);
+    const existing = store[index];
+    if (existing === undefined) return { kind: 'not_found' };
+    const references = products.filter((product) => product.tenantId === tenantId
+      && product.accessItems.some((item) => item.courseId === courseId));
+    if (archivedAt !== null && references.length > 0) {
+      return { kind: 'referenced', productTitles: references.map((product) => product.title) };
+    }
+    const saved = { ...existing, archivedAt };
+    versions.push(version);
+    store[index] = saved;
+    return { kind: 'saved', course: saved };
   },
   delete: async (tenantId, id) => {
     const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === id);
@@ -251,12 +268,12 @@ const deps = (input: {
   attachments?: LessonAttachment[];
   removedObjects?: string[];
   storageDeleteFails?: boolean;
-} = {}): CourseManagementDeps => {
+} = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository } => {
   const ids = input.ids ?? ['generated-id'];
   const versions = input.versions ?? [];
   const attachments = input.attachments ?? [];
   return {
-    courses: courseRepo(input.courses ?? [], versions),
+    courses: courseRepo(input.courses ?? [], versions, input.products),
     modules: moduleRepo(input.modules ?? [], versions),
     lessons: lessonRepo(input.lessons ?? [], versions),
     products: productRepo(input.products ?? [], versions, input.contentVersionBumps),
@@ -446,7 +463,7 @@ describe('course management use-cases', () => {
       id: 'snapshot-1',
       entityKind: 'course',
       entityId: 'c1',
-      schemaVersion: 5,
+      schemaVersion: 6,
       createdBy: 'u1',
     });
     // The snapshot captures the PREVIOUS name, not the new one.
@@ -943,5 +960,63 @@ describe('course management guard and fallback branches', () => {
     expect(withDuration).toMatchObject({ ok: true, value: { durationMinutes: 30 } });
     const cleared = await updateLesson(owner, { id: 'l1', durationMinutes: null }, d);
     expect(cleared.ok && 'durationMinutes' in cleared.value).toBe(false);
+  });
+});
+
+
+describe('course archive lifecycle', () => {
+  const ctx = { identity: identity('t1', 'owner'), requestId: 'r1' };
+
+  it.each([false, true])('refuses courses referenced by products with published=%s', async (published) => {
+    const referenced = { ...product('p1', 't1'), published, accessItems: [{ level: 'course' as const, courseId: 'c1' }] };
+    const d = deps({ courses: [course('c1', 't1')], products: [referenced] });
+    expect(await archiveCourse(ctx, { courseId: 'c1' }, d)).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Course is referenced by products: Product p1' },
+    });
+    expect(await d.courses.findById('t1', 'c1')).not.toHaveProperty('archivedAt', now);
+  });
+
+  it('archives and restores with snapshots while preserving shared repository reads', async () => {
+    const versions: EntityVersionRecord[] = [];
+    const bumps: string[] = [];
+    const d = deps({ courses: [course('c1', 't1')], versions, ids: ['archive-version', 'restore-version'], contentVersionBumps: bumps });
+    expect(await archiveCourse(ctx, { courseId: 'c1' }, d)).toMatchObject({ ok: true, value: { archivedAt: now } });
+    expect(await listCourses(ctx, d)).toEqual({ ok: true, value: [] });
+    expect(await listCourses(ctx, d, { archived: true })).toMatchObject({ ok: true, value: [{ id: 'c1', archivedAt: now }] });
+    expect(await d.courses.list('t1')).toHaveLength(1);
+    expect(await d.courses.findById('t1', 'c1')).toMatchObject({ id: 'c1' });
+    expect(await restoreCourse(ctx, { courseId: 'c1' }, d)).toMatchObject({ ok: true, value: { archivedAt: null } });
+    expect(await listCourses(ctx, d)).toMatchObject({ ok: true, value: [{ id: 'c1' }] });
+    expect(await listCourses(ctx, d, { archived: true })).toEqual({ ok: true, value: [] });
+    expect(versions).toHaveLength(2);
+    expect(versions[1]?.payload).toMatchObject({ archivedAt: now });
+    expect(bumps).toEqual(['t1', 't1']);
+  });
+
+  it('enforces tenant boundaries and authorization for both transitions', async () => {
+    const d = deps({ courses: [course('c1', 't2')] });
+    for (const action of [archiveCourse, restoreCourse]) {
+      expect(await action(ctx, { courseId: 'c1' }, d)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      expect(await action({ ...ctx, identity: identity('t1', null) }, { courseId: 'c1' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(await action(ctx, { courseId: '' }, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+  });
+});
+
+
+describe('archived product access', () => {
+  const ctx = { identity: identity('t1', 'owner'), requestId: 'r1' };
+  const input = { id: 'p1', accessItems: [{ level: 'course' as const, courseId: 'c1' }] };
+
+  it('rejects archived courses before writing access items', async () => {
+    const d = deps({ courses: [{ ...course('c1', 't1'), archivedAt: now }], products: [product('p1', 't1')] });
+    expect(await updateProductAccessItems(ctx, input, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await d.products.findById('t1', 'p1')).toMatchObject({ accessItems: [] });
+  });
+
+  it('returns validation when a course is archived between validation and persistence', async () => {
+    const d = deps({ courses: [course('c1', 't1')], products: [product('p1', 't1')] });
+    d.products.updateAccessItems = async () => 'course_unavailable';
+    expect(await updateProductAccessItems(ctx, input, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });

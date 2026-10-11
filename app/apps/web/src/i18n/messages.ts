@@ -1020,6 +1020,7 @@ export interface Messages {
     reportKeysScope: string;
     reportKeysHint: string;
     tabApiKeys: string;
+    checkoutAppearance: { heading: string; displayName: string; logoUrl: string; iconUrl: string; backgroundColor: string; buttonColor: string; fontFamily: string; borderStyle: string };
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
@@ -1172,6 +1173,8 @@ export interface Messages {
     storageProbeUnavailable: string;
   };
   products: {
+    deleteDraft: string;
+    deleteDraftBody: string;
     visibilityLabel: string;
     visibilityHelper: string;
     listed: string;
@@ -1326,6 +1329,10 @@ export interface Messages {
     updateItem: string;
   };
   courses: {
+    archived: string;
+    restore: string;
+    archiveCourse: string;
+    archiveBody: string;
     treeTab: string;
     lessonsTab: string;
     tabsAria: string;
@@ -1842,6 +1849,7 @@ export interface Messages {
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
   lesson: {
+    enlargeImage: string;
     editionLabel: (params: { number: string }) => string;
     previousEditions: string;
     editionMenu: string;

@@ -17,7 +17,7 @@ const fixture = {
         ...recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value,
         lesson: {
           ...recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson,
-          contents: recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson.contents.map((content) => content.type === 'html'
+          contents: recordedFixture.calls['studentLesson:["lesson-js-variables-1"]'].value.lesson.contents.map((content) => 'html' in content
             ? { ...content, html: `${content.html}${longTextExamples}<figure><pre>const total = price * quantity;</pre><figcaption>Calculate the total from the price and quantity.</figcaption></figure>` }
             : content),
         },

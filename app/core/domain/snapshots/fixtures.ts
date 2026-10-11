@@ -8,6 +8,13 @@ import type { EntityKind } from '../versioning.js';
  */
 export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
   course: {
+    6: {
+      id: 'course-fixture-6', tenantId: 'tenant-fixture', name: 'Fixture Course',
+      description: 'A representative archived course snapshot', imageUrl: null,
+      salesUrl: null, moduleOrder: [], publiclyVisible: true,
+      archivedAt: '2026-10-11T00:00:00.000Z',
+      legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+    },
     5: {
       id: 'course-fixture-5', tenantId: 'tenant-fixture', name: 'Fixture Course',
       description: 'A representative course snapshot', imageUrl: null,

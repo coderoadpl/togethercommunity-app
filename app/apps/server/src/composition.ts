@@ -1,3 +1,4 @@
+import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
@@ -216,6 +217,7 @@ import type {
   ProductDownloadAssetRepository,
   CourseModuleRepository,
   CourseRepository,
+  CourseArchiveRepository,
   DevEmailReader,
   DiscussionLinkPort,
   EntityVersionRepository,
@@ -293,6 +295,7 @@ import type {
   ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  ProductDraftRepository,
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
@@ -425,7 +428,8 @@ export interface AppDeps {
   >;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
-  courses: CourseRepository;
+  productDrafts: ProductDraftRepository;
+  courses: CourseRepository & CourseArchiveRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   redirects: ImportRedirectRepository;
@@ -1363,6 +1367,7 @@ export const createDeps = (
     auth,
     authPort: createAuthPort(auth),
     products: createProductRepository(db),
+    productDrafts: createProductDraftRepository(db),
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),

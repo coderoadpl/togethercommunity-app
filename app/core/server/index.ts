@@ -152,3 +152,6 @@ export * from './usecases/public-order-qr.js';
 export * from './consumer-sales-ports.js';
 export * from './usecases/consumer-sales.js';
 export * from './usecases/probe-stripe-permissions.js';
+
+export * from './product-draft-ports.js';
+export * from './usecases/product-drafts.js';

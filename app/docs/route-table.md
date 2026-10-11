@@ -324,6 +324,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/integrations/bunny/test` | authenticated | mutating | bunny test connection |
 | `POST /api/products` | authenticated | mutating | products create |
 | `POST /api/products/update` | authenticated | mutating | products update |
+| `POST /api/products/delete` | authenticated | mutating | products delete |
 | `POST /api/products/publish` | authenticated | mutating | products publish |
 | `POST /api/products/unpublish` | authenticated | mutating | products unpublish |
 | `POST /api/products/access-items` | authenticated | mutating | products access items |
@@ -351,6 +352,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/coupons/:couponId` | authenticated | read | coupon stats detail |
 | `GET /api/courses` | authenticated | read | courses |
 | `POST /api/courses` | authenticated | mutating | courses create |
+| `POST /api/courses/archive` | authenticated | mutating | courses archive |
+| `POST /api/courses/restore` | authenticated | mutating | courses restore |
 | `POST /api/courses/update` | authenticated | mutating | courses update |
 | `POST /api/courses/history/edition/mark` | authenticated | mutating | lesson edition mark |
 | `POST /api/courses/history/edition/unmark` | authenticated | mutating | lesson edition unmark |

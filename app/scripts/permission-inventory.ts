@@ -209,7 +209,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/integrations/telemetry')) return method === 'GET' ? 'tenant:secret:read' : 'tenant:settings:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
-  if (path === '/api/products/update') return 'product:write';
+  if (path === '/api/products/update' || path === '/api/products/delete') return 'product:write';
   if (path === '/api/products/unpublish') return 'product:publish';
   if (path.startsWith('/api/products/') && path.includes('/downloads')) {
     return method === 'GET' ? 'product:read' : 'product:write';

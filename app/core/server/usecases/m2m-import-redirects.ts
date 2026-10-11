@@ -86,9 +86,15 @@ const resolveReference = async (
   deps: M2mImportRedirectReaders,
 ): Promise<Result<string, AppError>> => {
   const inCall = references[kind].get(key);
-  if (inCall !== undefined) return ok(inCall);
+  if (inCall !== undefined) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, inCall) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
+    return ok(inCall);
+  }
   const audit = await deps.importAuditEvents.findLatestByImportKey(tenantId, kind, key);
   if (audit !== null) {
+    const course = kind === 'course' ? await deps.courses.findById(tenantId, audit.resourceId) : null;
+    if (course?.archivedAt) return err(appError('conflict', `Referenced course "${key}" is archived`));
     const referenced = await findReferenced(tenantId, kind, audit.resourceId, deps);
     if (referenced !== null) return ok(referenced.id);
   }
@@ -105,7 +111,11 @@ const courseOfModule = async (
 ): Promise<Result<string, AppError>> => {
   const stored = await deps.modules.findById(tenantId, moduleId);
   const storedCourseId = stored?.courseIds[0];
-  if (storedCourseId !== undefined) return ok(storedCourseId);
+  if (storedCourseId !== undefined) {
+    const course = await deps.courses.findById(tenantId, storedCourseId);
+    if (course?.archivedAt) return err(appError('conflict', `Module "${moduleKey}" belongs to an archived course`));
+    return ok(storedCourseId);
+  }
   const inCall = inCallRecords?.get(`module:${moduleKey}`);
   const inCallCourseKey = inCall?.kind === 'module' ? inCall.courseKeys[0] : undefined;
   if (inCallCourseKey !== undefined) {

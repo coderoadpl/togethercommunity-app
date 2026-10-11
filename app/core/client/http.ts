@@ -13,6 +13,7 @@ import { type z } from 'zod';
 import {
   lessonEditionsOutputSchema, lessonEditionOutputSchema, lessonEditionUnmarkOutputSchema, type MarkLessonEditionInput, type UnmarkLessonEditionInput,
   API_ROUTES,
+  productDeleteOutputSchema,
   marketingDirectoryContracts,
   marketingSignupContracts,
   surveyContracts,
@@ -1642,8 +1643,14 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  listCourses: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.courses.method, API_ROUTES.courses.path, coursesListOutputSchema, undefined, signal),
+  listCourses: (signal?: AbortSignal, query?: { archived?: boolean }) =>
+    request(options, API_ROUTES.courses.method, `${API_ROUTES.courses.path}${query?.archived === true ? '?archived=true' : ''}`, coursesListOutputSchema, undefined, signal),
+  archiveCourse: (input: { courseId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesArchive.method, API_ROUTES.coursesArchive.path, courseOutputSchema, input, signal),
+  restoreCourse: (input: { courseId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesRestore.method, API_ROUTES.coursesRestore.path, courseOutputSchema, input, signal),
+  deleteProductDraft: (input: { productId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productsDelete.method, API_ROUTES.productsDelete.path, productDeleteOutputSchema, input, signal),
   createCourse: (input: CourseCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.coursesCreate.method, API_ROUTES.coursesCreate.path, courseOutputSchema, input, signal),
   updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>

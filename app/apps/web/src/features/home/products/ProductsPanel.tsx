@@ -29,6 +29,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { copyText } from '../../../lib/clipboard.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
+import { DeleteProductDraftAction } from './DeleteProductDraftAction.js';
 import { productTypeLabel } from './product-type.js';
 
 const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
@@ -178,6 +179,7 @@ const ProductRow = ({
       }
       actions={
         <>
+          <DeleteProductDraftAction product={product} />
           <Tooltip title={t.products.copyCheckoutLink}>
             <IconButton
               size="small"

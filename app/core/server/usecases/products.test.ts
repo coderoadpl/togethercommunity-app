@@ -452,3 +452,16 @@ describe('products use-cases', () => {
     expect(versions.get('t-acme')).toBe(2);
   });
 });
+
+
+it('rejects creating a product when persistence finds unavailable courses', async () => {
+  const { repo, store } = fakeRepo();
+  repo.create = async () => 'course_unavailable';
+  const result = await createProduct(
+    { identity: identity('t1', 'owner') },
+    { type: 'course', title: 'Archived access', description: '', coverUrl: null, priceCents: 100, currency: 'PLN', visibility: 'listed', accessItems: [{ level: 'course', courseId: 'archived' }], vatRate: null },
+    deps(repo),
+  );
+  expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access items may only reference existing, active courses' } });
+  expect(store).toEqual([]);
+});

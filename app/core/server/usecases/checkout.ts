@@ -140,7 +140,7 @@ export const startCheckoutSession = async (
   selection: CheckoutSelection,
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
-  testSession?: { mode: 'test'; memberId?: string },
+  testSession?: { mode: 'test'; memberId: string },
   directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string },
 ): Promise<Result<{
   url: string;
@@ -150,11 +150,7 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
-  const publicTestSession = testSession !== undefined && testSession.memberId === undefined;
-  if (publicTestSession && (selection.salesLinkId === undefined || deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined)) {
-    return err(validation('Sales link test checkout is not configured'));
-  }
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps, publicTestSession || directCheckout !== undefined);
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, directCheckout !== undefined);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
@@ -162,7 +158,7 @@ export const startCheckoutSession = async (
     const rejected = testCheckoutRejection(input, selection);
     if (rejected !== null) return err(rejected);
   }
-  if (testSession?.memberId !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
+  if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }
   const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
@@ -293,7 +289,7 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
-  if ((publicTestSession || directCheckout !== undefined) && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
+  if (directCheckout !== undefined && checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined && deps.clock !== undefined) {
     try {
       await deps.checkoutSnapshots.create(tenant.id, {
         id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: selection.salesLinkId ?? null,
@@ -304,7 +300,7 @@ export const startCheckoutSession = async (
       throw cause;
     }
   }
-  if (testSession?.memberId !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
+  if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
     try {
       await deps.orders.create(tenant.id, {
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,

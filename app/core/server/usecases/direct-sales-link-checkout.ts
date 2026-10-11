@@ -41,7 +41,7 @@ export const createDirectSalesLinkCheckout = async (
   if (deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined) {
     return err(validation('Sales link checkout is not configured'));
   }
-  const selectedMode = await getDirectSalesLinkMode(tenant.id, input.mode, deps);
+  const selectedMode = await getDirectSalesLinkMode(tenant.id, staffTestSession === undefined ? 'live' : input.mode, deps);
   if (!selectedMode.ok) return selectedMode;
   const mode = selectedMode.value;
   const configured = await getPaymentConfig(tenant.id, deps, mode);

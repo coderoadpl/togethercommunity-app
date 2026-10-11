@@ -157,24 +157,11 @@ export const checkoutSnapshotSchema = z.object({
 
 export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
-export const checkoutCustomerDetailsSchema = z.object({
-  email: z.string().nullable(),
-  name: z.string().nullable(),
-  address: z.object({
-    line1: z.string().nullable(), line2: z.string().nullable(),
-    postalCode: z.string().nullable(), city: z.string().nullable(),
-    state: z.string().nullable(), country: z.string().nullable(),
-  }).nullable(),
-  taxIds: z.array(z.object({ type: z.string(), value: z.string().nullable() })),
-});
-
-export type CheckoutCustomerDetails = z.infer<typeof checkoutCustomerDetailsSchema>;
-
 export const orderSchema = z.object({
   mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
-  memberId: z.string().nullable(),
+  memberId: z.string(),
   productId: z.string(),
   priceId: z.string().nullable(),
   kind: priceKindSchema,
@@ -186,7 +173,6 @@ export const orderSchema = z.object({
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
   billing: orderBillingDataSchema.nullable().optional(),
-  customerDetails: checkoutCustomerDetailsSchema.nullable().optional(),
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),

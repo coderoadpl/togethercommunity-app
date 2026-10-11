@@ -6,7 +6,6 @@ import {
   adoptionRefusal,
   orderBillingDataSchema,
   nipSchema,
-  checkoutCustomerDetailsSchema,
   err,
   ok,
   refundCoverage,
@@ -63,20 +62,7 @@ export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readon
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
-// The installed SDK predates the session branding fields supported by Stripe.
-type BrandedCheckoutSessionParams = Stripe.Checkout.SessionCreateParams & {
-  branding_settings?: {
-    display_name?: string;
-    logo?: { type: 'url'; url: string };
-    icon?: { type: 'url'; url: string };
-    background_color?: string;
-    button_color?: string;
-    font_family?: NonNullable<CheckoutBranding['fontFamily']>;
-    border_style?: NonNullable<CheckoutBranding['borderStyle']>;
-  };
-};
-
-const checkoutBrandingParams = (branding: CheckoutBranding | undefined): BrandedCheckoutSessionParams => {
+const checkoutBrandingParams = (branding: CheckoutBranding | undefined): Stripe.Checkout.SessionCreateParams => {
   if (branding === undefined || Object.keys(branding).length === 0) return {};
   return {
     branding_settings: {
@@ -118,7 +104,7 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
-): BrandedCheckoutSessionParams => {
+): Stripe.Checkout.SessionCreateParams => {
   const locale = localeFor(input.language);
   const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
   const productMetadata: Record<string, string> = {};
@@ -129,6 +115,9 @@ export const stripeCheckoutSessionParams = (
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
+    ...(input.recurringInterval === undefined ? {} : {
+      subscription_data: { billing_mode: { type: 'classic' as const } },
+    }),
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
       custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
@@ -217,19 +206,6 @@ const toCheckoutSessionEvent = (
     customerName: session.customer_details?.name ?? null,
     billing: checkoutBilling(session.customer_details ?? null),
     termsAccepted: session.consent?.terms_of_service === 'accepted',
-    customerDetails: session.customer_details == null ? null : checkoutCustomerDetailsSchema.parse({
-      email: session.customer_details.email,
-      name: session.customer_details.name ?? null,
-      address: session.customer_details.address == null ? null : {
-        line1: session.customer_details.address.line1,
-        line2: session.customer_details.address.line2,
-        postalCode: session.customer_details.address.postal_code,
-        city: session.customer_details.address.city,
-        state: session.customer_details.address.state,
-        country: session.customer_details.address.country,
-      },
-      taxIds: (session.customer_details.tax_ids ?? []).map(({ type, value }) => ({ type, value })),
-    }),
     paymentStatus: session.payment_status,
     subscriptionId: idOrNull(session.subscription),
     paymentIntentId: idOrNull(session.payment_intent),
@@ -404,7 +380,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
             const suffix = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join('');
             const promotion = await client.promotionCodes.create({
-              coupon, code: `TOGETHER-PROBE-${suffix}`, max_redemptions: 1, active: true,
+              promotion: { type: 'coupon', coupon }, code: `TOGETHER-PROBE-${suffix}`, max_redemptions: 1, active: true,
               metadata: { togetherProbe: '1', tenantId: input.tenantId },
             });
             await client.promotionCodes.update(promotion.id, { active: false });
@@ -552,7 +528,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         let stripePromotionCodeId = input.stripePromotionCodeId;
         if (stripePromotionCodeId === null) {
           const created = await client.value.promotionCodes.create({
-            coupon: stripeCouponId,
+            promotion: { type: 'coupon', coupon: stripeCouponId },
             code: input.code,
             metadata: { tenantId: input.tenantId, couponId: input.couponId },
           });

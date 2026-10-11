@@ -655,10 +655,10 @@ const directCheckout = async () => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
-  const start = (mode: 'live' | 'test' = 'live') => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+  const start = (mode: 'live' | 'test' = 'live', staffTestSession?: { memberId: string; email: string }) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug, mode,
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
-  }, h.deps);
+  }, h.deps, staffTestSession);
   return { ...h, settings, start };
 };
 
@@ -676,27 +676,25 @@ it('creates an anonymous direct session using tenant language, legal URLs and br
   expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session', salesLinkId: h.link.id });
 });
 
+it('ignores direct test selection without a staff test session even with a configured key', async () => {
+  const h = await directCheckout();
+  expect(await h.start('test')).toMatchObject({ ok: true });
+  expect(h.calls[0]).toMatchObject({ mode: 'live' });
+  expect(h.calls[0]?.successUrl).not.toContain('test_purchase');
+  expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session' });
+});
+
 it('keeps direct checkout live when the tenant has no test key', async () => {
   const h = await directCheckout();
   h.deps.tenantSecrets.findByKey = async (_tenantId, key) => key === 'stripe.testRestrictedKey' ? null : secret(key);
-  expect(await h.start('test')).toMatchObject({ ok: true });
+  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: true });
   expect(h.calls[0]?.mode).toBe('live');
 });
 
-it('stores anonymous test session correlation and the test return marker', async () => {
-  const h = await directCheckout();
-  expect(await h.start('test')).toMatchObject({ ok: true });
-  expect(h.calls[0]).toMatchObject({
-    mode: 'test', successUrl: expect.stringContaining('test_purchase=1'),
-    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&test=1&salesLinkId=link-1',
-  });
-  expect(h.snapshots[0]).toMatchObject({ mode: 'test', providerSessionId: 'bundle-session' });
-});
-
-it('refuses configured test mode when key decryption is unavailable', async () => {
+it('refuses staff test mode when key decryption is unavailable', async () => {
   const h = await directCheckout();
   delete h.deps.secretCrypto;
-  expect(await h.start('test')).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: false, error: { code: 'validation' } });
   expect(h.calls).toHaveLength(0);
   expect(h.snapshots).toHaveLength(0);
   expect(await h.start('live')).toMatchObject({ ok: true });
@@ -711,7 +709,7 @@ it.each(['unreadable', 'live-key'] as const)('rejects a requested test checkout 
       ? err(internal('Stored secret failed integrity verification'))
       : ok('rk_live_available'),
   };
-  expect(await h.start('test')).toMatchObject({ ok: false, error: { code: failure === 'unreadable' ? 'internal' : 'validation' } });
+  expect(await h.start('test', { memberId: 'staff-member', email: 'staff@example.com' })).toMatchObject({ ok: false, error: { code: failure === 'unreadable' ? 'internal' : 'validation' } });
   expect(h.calls).toHaveLength(0);
   expect(h.snapshots).toHaveLength(0);
   expect(await h.start('live')).toMatchObject({ ok: true });
@@ -743,32 +741,6 @@ it('expires a direct session when its durable correlation cannot be stored', asy
   h.deps.checkoutSnapshots.create = async () => { throw new Error('Storage unavailable'); };
   await expect(h.start()).rejects.toThrow('Storage unavailable');
   expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'bundle-session', mode: 'live' });
-});
-
-it.each([false, true])('stores consent-fallback test correlation after session creation and expires on storage failure: %s', async (storageFails) => {
-  const h = await directCheckout();
-  const { startCheckoutSession, validateCheckoutSelection } = await import('./checkout.js');
-  const input = { productId: product.id, salesLinkSlug: h.link.slug, email: 'buyer@example.test' };
-  const selection = await validateCheckoutSelection(tenant.id, input, h.deps);
-  if (!selection.ok || h.deps.checkoutSnapshots === undefined) throw new Error('Missing checkout fixture');
-  const storeSnapshot = h.deps.checkoutSnapshots.create;
-  h.deps.checkoutSnapshots.create = async (tenantId, snapshot) => {
-    expect(h.calls).toHaveLength(1);
-    if (storageFails) throw new Error('Storage unavailable');
-    await storeSnapshot(tenantId, snapshot);
-  };
-  const expire = vi.spyOn(h.deps.payment, 'expireCheckoutSession');
-  const result = startCheckoutSession(tenant, 'https://workspace.example.com', input, selection.value, h.deps, undefined, { mode: 'test' });
-  if (storageFails) {
-    await expect(result).rejects.toThrow('Storage unavailable');
-    expect(expire).toHaveBeenCalledWith({ tenantId: tenant.id, sessionId: 'bundle-session', mode: 'test' });
-    expect(h.snapshots).toHaveLength(0);
-  } else {
-    expect(await result).toMatchObject({ ok: true });
-    expect(h.snapshots).toMatchObject([{ mode: 'test', providerSessionId: 'bundle-session', salesLinkId: h.link.id }]);
-    expect(h.snapshots).toHaveLength(1);
-    expect(expire).not.toHaveBeenCalled();
-  }
 });
 
 it('applies tenant checkout appearance to existing single-product and subscription sessions', async () => {

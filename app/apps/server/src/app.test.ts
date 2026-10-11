@@ -9500,16 +9500,20 @@ describe('direct public sales-link checkout', () => {
     const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
     h.base.tenantAccess.findStaffGrant = staffGrant;
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
-    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: 'rk_test_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
     const payload = { userId: 'staff-user', tenantId: actor === 'other-tenant' ? 'another-tenant' : acme.id, expiresAt: Date.parse(h.base.clock.nowIso()) + 60_000 };
     const cookie = `together_stripe_test=${encodeURIComponent(JSON.stringify({ ciphertext: JSON.stringify(payload), iv: 'iv', authTag: 'tag' }))}`;
     const headers = { host: 'acme.localhost', 'content-type': 'application/json', ...(actor === 'no-session' ? {} : { cookie }) };
     const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
     const createMember = vi.spyOn(h.base.members, 'create');
+    const page = await h.app.request('/offer/bundle?test=anything', { headers });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain(`name="mode" value="${actor === 'staff' ? 'test' : 'live'}"`);
+    expect(h.create).not.toHaveBeenCalled();
     const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"test"}' });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'test', directCheckout: expect.objectContaining({ termsUrl: 'https://acme.example/terms' }) }));
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: actor === 'staff' ? 'test' : 'live', directCheckout: expect.objectContaining({ termsUrl: 'https://acme.example/terms' }) }));
     if (actor === 'staff') {
       expect(staffGrant).toHaveBeenCalledWith('staff-user', { tenantId: acme.id });
       expect(ensureUser).toHaveBeenCalledExactlyOnceWith('staff@example.test');
@@ -9522,7 +9526,7 @@ describe('direct public sales-link checkout', () => {
       expect(ensureUser).not.toHaveBeenCalled();
       expect(createMember).not.toHaveBeenCalled();
       expect(h.orders).toHaveLength(0);
-      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'test', providerSessionId: 'cs' }]);
+      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'live', providerSessionId: 'cs' }]);
     }
     expect(h.grants).toHaveLength(0);
   });
@@ -9539,35 +9543,26 @@ describe('direct public sales-link checkout', () => {
     expect(h.create).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['unreadable', 'live-key'] as const)('rejects test requests with a %s stored test key without creating a live session', async (failure) => {
+  it.each(['unreadable', 'live-key'] as const)('ignores unauthorized test selection with a %s stored test key', async (failure) => {
     const h = await directSalesLinkApp();
     h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key, iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
     h.base.secretCrypto.decrypt = (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
       ? err(internal('Stored secret failed integrity verification'))
       : ok('rk_live_available');
     const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
-    const expectedStatus = failure === 'unreadable' ? 500 : 400;
-    const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
-    expect(await config.json()).toMatchObject({ ok: true, data: { stripeConfigured: true, salesLinkTestConfigured: true } });
-    const page = await h.app.request('/offer/bundle?test', { headers });
-    expect(page.status).toBe(expectedStatus);
-    expect(page.headers.get('content-type')).toContain('text/html');
-    const html = await page.text();
-    expect(html).toContain('<p role="status">Checkout is unavailable</p>');
-    expect(html).not.toContain('<script');
-    expect(html).not.toContain('<form');
     for (const [path, payload] of [
       ['/api/public/sales-links/bundle/checkout', { mode: 'test' }],
       [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }],
     ] as const) {
-      expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(expectedStatus);
+      expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(200);
     }
-    expect(h.create).not.toHaveBeenCalled();
+    expect(h.create).toHaveBeenCalledTimes(2);
+    expect(h.create.mock.calls.every(([input]) => input.mode === 'live')).toBe(true);
     expect(h.orders).toHaveLength(0);
     expect(h.grants).toHaveLength(0);
     const live = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' });
     expect(live.status).toBe(200);
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live' }));
+    expect(h.create).toHaveBeenCalledTimes(3);
   });
 
   it('keeps consent-bearing offers on the Together checkout and return pages out of redirect loops', async () => {
@@ -9586,7 +9581,7 @@ describe('direct public sales-link checkout', () => {
     expect(h.create).not.toHaveBeenCalled();
   });
 
-  it.each([true, false])('preserves anonymous test selection without provisioning identities through the consent fallback with configured key: %s', async (configured) => {
+  it.each([true, false])('ignores anonymous test selection through the consent fallback with configured key: %s', async (configured) => {
     const h = await directSalesLinkApp();
     const item = h.products[1];
     if (item === undefined) throw new Error('Missing test product');
@@ -9597,21 +9592,15 @@ describe('direct public sales-link checkout', () => {
     const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
     const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
     const createMember = vi.spyOn(h.base.members, 'create');
-    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
     const fallback = await h.app.request('/offer/bundle?test=anything', { headers });
     expect(fallback.headers.get('location')).toBe('/offer/bundle?test=anything&checkout=together');
     const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
-    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: configured } });
+    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: false } });
     const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
       body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true }),
     });
     expect(await response.json()).toMatchObject({ ok: true });
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: configured ? 'test' : 'live', customerEmail: 'buyer@example.test' }));
-    if (configured) {
-      expect(capture).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({ capture: expect.objectContaining({ termsAccepted: true, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', attachedDefinitionIds: ['marketing'] }) }));
-      expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ checkoutConsentCaptureId: capture.mock.calls[0]?.[1].id, cancelUrl: expect.stringContaining('status=cancelled&test=1'), successUrl: expect.stringContaining('test_purchase=1') }));
-      expect([...h.snapshots.values()]).toMatchObject([{ mode: 'test', providerSessionId: 'cs', salesLinkId: 'bundle-link' }]);
-    }
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live', customerEmail: 'buyer@example.test' }));
     expect(ensureUser).not.toHaveBeenCalled();
     expect(createMember).not.toHaveBeenCalled();
     expect(h.orders).toHaveLength(0);
@@ -9624,7 +9613,7 @@ describe('direct public sales-link checkout', () => {
     h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin' });
     h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
     h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
-    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: 'rk_test_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
     const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json', cookie: 'session=staff' };
     const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
     const createMember = vi.spyOn(h.base.members, 'create');
@@ -9637,7 +9626,7 @@ describe('direct public sales-link checkout', () => {
       body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', salesLinkTest: true, email: 'third-party@example.test', termsAccepted: true }),
     });
     expect(response.status).toBe(200);
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'test', customerEmail: enabled ? 'staff@example.test' : 'third-party@example.test' }));
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: enabled ? 'test' : 'live', customerEmail: enabled ? 'staff@example.test' : 'third-party@example.test' }));
     expect(ensureUser).not.toHaveBeenCalledWith('third-party@example.test');
     expect(createMember).not.toHaveBeenCalledWith(acme.id, expect.objectContaining({ email: 'third-party@example.test' }));
     if (enabled) {

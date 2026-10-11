@@ -55,7 +55,8 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       query.set('checkout', 'together');
       return c.redirect(`/offer/${encodeURIComponent(slug)}?${query}`, 302);
     }
-    const mode = await getDirectSalesLinkMode(tenant.id, c.req.query('test') === undefined ? 'live' : 'test', deps);
+    const testIdentity = !crawler && c.req.query('test') !== undefined ? await stripeTestCheckoutIdentity(c, tenant.id, deps) : null;
+    const mode = await getDirectSalesLinkMode(tenant.id, testIdentity === null ? 'live' : 'test', deps);
     if (!mode.ok) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
       status: HTTP_STATUS_BY_ERROR_CODE[mode.error.code], headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
     });
@@ -81,13 +82,13 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
     const identity = parsed.data.mode === 'test' ? await stripeTestCheckoutIdentity(c, resolved.value.tenant.id, deps) : null;
     const staffTest = identity !== null;
-    const selectedMode = await getDirectSalesLinkMode(resolved.value.tenant.id, parsed.data.mode, deps);
+    const selectedMode = await getDirectSalesLinkMode(resolved.value.tenant.id, staffTest ? parsed.data.mode : 'live', deps);
     if (!selectedMode.ok) return respond(selectedMode);
     const member = staffTest && identity !== null && selectedMode.value === 'test' ? await ensureMember(resolved.value.tenant.id, identity.email, deps) : null;
     if (member !== null && !member.ok) return respond(member);
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
-      mode: parsed.data.mode,
+      mode: selectedMode.value,
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
     }, deps, member?.ok === true && identity !== null ? { memberId: member.value.id, email: identity.email } : undefined);
     if (!result.ok) return respond(result);

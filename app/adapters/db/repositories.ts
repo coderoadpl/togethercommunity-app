@@ -234,10 +234,7 @@ const parseProductDownloadAsset = (asset: ProductDownloadAsset): ProductDownload
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
-const parseOrder = (order: Order): Order => {
-  const { customerDetails, ...fields } = order;
-  return orderSchema.parse({ ...fields, ...(customerDetails == null ? {} : { customerDetails }) });
-};
+const parseOrder = (order: Order): Order => orderSchema.parse(order);
 
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3221,8 +3218,6 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
 export const createOrderRepository = (
   db: Db,
 ): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
-  const buyerEmail = sql<string>`coalesce(${members.email}, '')`;
-  const buyerName = members.displayName;
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.mode !== undefined) conditions.push(eq(orders.mode, query.mode));
@@ -3233,8 +3228,8 @@ export const createOrderRepository = (
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
-        ilike(buyerEmail, pattern),
-        ilike(buyerName, pattern),
+        ilike(members.email, pattern),
+        ilike(members.displayName, pattern),
         ilike(products.title, pattern),
       );
       if (search) conditions.push(search);
@@ -3250,7 +3245,6 @@ export const createOrderRepository = (
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
       if (row === undefined) return null;
-      if (row.memberId === null) return parseOrder(row);
       await appendMemberEvent(tx, memberEventSchema.parse({
         id: `purchase-paid:${row.id}`, tenantId, memberId: row.memberId, type: 'purchase',
         payload: { orderId: row.id, productId: row.productId, kind: row.kind, status: row.status,
@@ -3279,7 +3273,6 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
-          customerDetails: null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
@@ -3288,7 +3281,7 @@ export const createOrderRepository = (
         .onConflictDoNothing()
         .returning();
       const row = rows[0];
-      if (row === undefined || row.memberId === null) return;
+      if (row === undefined) return;
       await appendMemberEvent(tx, memberEventSchema.parse({
         id: `purchase:${row.id}`,
         tenantId,
@@ -3310,14 +3303,14 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
-          memberEmail: buyerEmail,
-          memberName: buyerName,
+          memberEmail: members.email,
+          memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
           salesLinkTitle: salesLinks.title,
         })
         .from(orders)
-        .leftJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
@@ -3325,7 +3318,7 @@ export const createOrderRepository = (
         .limit(1);
       const row = rows[0];
       if (row === undefined) return null;
-      const order = orderListItemSchema.parse({ ...parseOrder(row.order), ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const order = orderListItemSchema.parse({ ...row.order, ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
       const staffIds = order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [];
       const displayNames = await createUserDisplayReader(db).findDisplayNames(tenantId, staffIds);
       return {
@@ -3341,14 +3334,14 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
-          memberEmail: buyerEmail,
-          memberName: buyerName,
+          memberEmail: members.email,
+          memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
           salesLinkTitle: salesLinks.title,
         })
         .from(orders)
-        .leftJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
@@ -3359,7 +3352,7 @@ export const createOrderRepository = (
       const totals = await db
         .select({ value: sql<number>`count(*)::int` })
         .from(orders)
-        .leftJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .where(and(...conditions));
       const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
@@ -3369,7 +3362,7 @@ export const createOrderRepository = (
         orders: rows.map(
           (row): OrderListItem =>
             orderListItemSchema.parse({
-              ...parseOrder(row.order),
+              ...row.order,
               memberEmail: row.memberEmail,
               memberName: row.memberName,
               productTitle: row.productTitle,
@@ -3396,7 +3389,7 @@ export const createOrderRepository = (
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
         .orderBy(desc(orders.createdAt), desc(orders.id));
-      return rows.map((row) => orderListItemSchema.parse({ ...parseOrder(row.order), ...row }));
+      return rows.map((row) => orderListItemSchema.parse({ ...row.order, ...row }));
     },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(

@@ -100,7 +100,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const salesLinkTest = salesLinkSlug !== undefined && new URLSearchParams(window.location.search).has('test');
   const salesLinkTestEnabled = salesLinkTest && paymentConfig.data?.salesLinkTestConfigured === true;
   const testEnabled = salesLinkTestEnabled || paymentConfig.data?.testEnabled === true;
-  const testPurchase = (salesLinkSlug !== undefined || paymentConfig.data?.canTest === true) &&
+  const testPurchase = paymentConfig.data?.canTest === true &&
     new URLSearchParams(window.location.search).get('test_purchase') === '1';
   const stripeConfigured = salesLinkTestEnabled || (testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true);
   const [email, setEmail] = useState('');

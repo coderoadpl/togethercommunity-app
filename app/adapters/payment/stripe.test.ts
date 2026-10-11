@@ -355,6 +355,37 @@ describe('stripeCouponParams', () => {
   });
 });
 
+it('creates a coupon promotion through the Clover polymorphic promotion field', async () => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return stripeJson(new URL(request.url).pathname === '/v1/coupons'
+      ? { id: 'coupon_created', object: 'coupon' }
+      : { id: 'promo_created', object: 'promotion_code' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, {
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(fetchImpl),
+    }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SAVE', kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: null, stripePromotionCodeId: null,
+  })).toEqual(ok({ stripeCouponId: 'coupon_created', stripePromotionCodeId: 'promo_created' }));
+  expect(requests).toHaveLength(2);
+  const request = requests[1];
+  if (request === undefined) throw new Error('Promotion request missing');
+  expect(new URL(request.url).pathname).toBe('/v1/promotion_codes');
+  expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+    'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_created', code: 'SAVE',
+    'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1',
+  });
+});
+
 describe('verifyWebhookEvent', () => {
   it('accepts a valid signature and rejects payload or secret tampering', async () => {
     const payload = JSON.stringify({
@@ -720,7 +751,9 @@ describe('probeStripePermissions with an injected Stripe client', () => {
       percent_off: '1', duration: 'once', max_redemptions: '1', name: 'Together permission probe',
       'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',
     });
-    expect(bodies[3]?.get('coupon')).toBe('coupon_probe');
+    expect(bodies[3]?.get('promotion[type]')).toBe('coupon');
+    expect(bodies[3]?.get('promotion[coupon]')).toBe('coupon_probe');
+    expect(bodies[3]?.has('coupon')).toBe(false);
     expect(bodies[3]?.get('code')).toMatch(/^TOGETHER-PROBE-[A-Z0-9]{8}$/);
     expect(bodies[3]?.get('max_redemptions')).toBe('1');
     expect(bodies[3]?.get('active')).toBe('true');
@@ -798,6 +831,7 @@ it.each([undefined, 'month'] as const)('maps branding for payment and subscripti
     icon: { type: 'url', url: 'https://assets.example.com/icon.png' }, background_color: '#FFFFFF',
     button_color: '#123456', font_family: 'inter', border_style: 'pill',
   });
+  expect(params.subscription_data).toEqual(recurringInterval === undefined ? undefined : { billing_mode: { type: 'classic' } });
   expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
   expect(params.consent_collection).toBeUndefined();
 });
@@ -847,7 +881,6 @@ it('maps customer details, Polish VAT ID and accepted consent directly from a si
   expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
     email: 'buyer@example.test', customerName: 'Example Company', termsAccepted: true,
     billing: { companyName: 'Example Company', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL', nip: '5260250274' },
-    customerDetails: { taxIds: [{ type: 'eu_vat', value: 'PL5260250274' }] },
     metadata: { directCheckout: true, termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
   } } });
 });
@@ -863,7 +896,6 @@ it.each([
   expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
     billing: { companyName: 'Example Company', nip: '5260250274', address: '',
       postalCode: address?.postal_code ?? '', city: '', country: 'PL' },
-    customerDetails: { address: address === null ? null : { line1: null, postalCode: '00-001', city: null } },
   } } });
 });
 
@@ -900,7 +932,6 @@ it.each([
   expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
     billing: { companyName: 'Buyer', address: [address.line1, address.line2].filter(Boolean).join(', '),
       postalCode: address.postal_code ?? '', city: address.city ?? '', country: address.country, nip: null },
-    customerDetails: { name: 'Buyer', address: { country: address.country }, taxIds: [{ type: 'eu_vat', value: 'DE123456789' }] },
   } } });
 });
 
@@ -912,7 +943,7 @@ it.each([
     id: 'cs_no_country', customer_details: { email: 'buyer@example.test', name: 'Buyer', address, tax_ids: [] },
   } } }));
   expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
-    billing: null, customerDetails: { name: 'Buyer', address: address === null ? null : { line1: 'Main 1', country: null } },
+    billing: null,
   } } });
 });
 
@@ -954,7 +985,7 @@ it.each([
   const request = requests[0];
   if (request === undefined) throw new Error('Missing checkout request');
   const body = new URLSearchParams(await request.text());
-  expect(request.headers.get('stripe-version')).toBe('2025-08-27.basil');
+  expect(request.headers.get('stripe-version')).toBe(Stripe.API_VERSION);
   expect(Object.fromEntries([...body.entries()].filter(([key]) => key.startsWith('branding_settings')))).toEqual({
     'branding_settings[display_name]': 'Studio',
     'branding_settings[logo][type]': 'url', 'branding_settings[logo][url]': 'https://example.com/logo.png',
@@ -962,9 +993,15 @@ it.each([
     'branding_settings[background_color]': '#FFFFFF', 'branding_settings[button_color]': '#123456',
     'branding_settings[font_family]': 'inter', 'branding_settings[border_style]': 'pill',
   });
+  expect(body.get('subscription_data[billing_mode][type]')).toBe(checkout === 'subscription' ? 'classic' : null);
   expect(body.get('mode')).toBe(checkout === 'subscription' ? 'subscription' : 'payment');
   expect(body.get('consent_collection[terms_of_service]')).toBe(checkout === 'direct' ? 'required' : null);
   expect(body.get('tax_id_collection[enabled]')).toBe(checkout === 'direct' ? 'true' : null);
   expect(body.get('allow_promotion_codes')).toBe(checkout === 'direct' ? 'false' : null);
   expect(body.has('billing_address_collection')).toBe(false);
+});
+
+it('pins the Stripe SDK to the Clover API release or later for native checkout branding', () => {
+  expect(Stripe.API_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.[a-z]+$/);
+  expect(Stripe.API_VERSION >= '2025-09-30.clover').toBe(true);
 });

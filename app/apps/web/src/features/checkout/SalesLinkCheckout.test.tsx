@@ -66,15 +66,14 @@ it.each([
   expect(document.querySelector('form')).toBeNull();
 });
 
-
-it.each([true, false])('submits the consent fallback with its public test selector when configured: %s', async (configured) => {
+it.each([true, false])('honours the consent fallback test selector only with a staff test session: %s', async (staffTestSession) => {
   window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together&test=anything');
   let payload: unknown;
   server.use(
     http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
-      stripeConfigured: true, simulatedPaymentsEnabled: true, salesLinkTestConfigured: configured,
-      canTest: false, testConfigured: false, testEnabled: false,
+      stripeConfigured: true, simulatedPaymentsEnabled: true, salesLinkTestConfigured: staffTestSession,
+      canTest: staffTestSession, testConfigured: staffTestSession, testEnabled: staffTestSession,
     } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
       payload = await request.json();
@@ -84,20 +83,23 @@ it.each([true, false])('submits the consent fallback with its public test select
   renderOffer();
   await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
   await userEvent.click(screen.getByRole('checkbox'));
-  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(configured);
-  if (configured) expect(screen.queryByText(en.checkout.simulatedPaymentNote)).toBeNull();
-  expect(screen.getByRole('button', { name: en.checkout.couponReveal }).hasAttribute('disabled')).toBe(configured);
+  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(staffTestSession);
+  if (staffTestSession) expect(screen.queryByText(en.checkout.simulatedPaymentNote)).toBeNull();
+  expect(screen.getByRole('button', { name: en.checkout.couponReveal }).hasAttribute('disabled')).toBe(staffTestSession);
   await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
   await screen.findByText(en.errors.messageValidation);
   expect(payload).toMatchObject({ salesLinkSlug: 'complete-bundle', salesLinkTest: true, email: 'buyer@example.test', termsAccepted: true });
 });
 
-it('shows the TEST notice immediately on anonymous sales-link success returns', async () => {
+it.each([true, false])('shows the sales-link test success notice only to staff: %s', async (canTest) => {
   window.history.replaceState(null, '', '/offer/complete-bundle?status=success&test_purchase=1');
+  server.use(http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+    stripeConfigured: true, simulatedPaymentsEnabled: false, canTest, testConfigured: canTest, testEnabled: canTest,
+  } })));
   renderOffer();
-  expect(await screen.findByText(en.checkout.testPurchase)).toBeVisible();
-  expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
-  expect(screen.queryByText(en.checkout.successBody)).toBeNull();
+  expect(await screen.findByText(canTest ? en.checkout.testPurchaseBody : en.checkout.successBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(canTest);
+  expect(screen.queryByText(canTest ? en.checkout.successBody : en.checkout.testPurchaseBody)).toBeNull();
 });
 
 it.each(['?status=cancelled&test=1', '?status=cancelled'])('retries a sales link through the server handoff after cancellation: %s', async (query) => {

@@ -31,8 +31,8 @@ describe('sales links on the Vite development origin', () => {
 
   beforeAll(async () => {
     api = createServer((request, response) => {
-      response.setHeader('content-type', 'text/html');
-      response.end(`<main>Server checkout: ${request.url ?? ''}</main>`);
+      response.setHeader('content-type', 'text/plain');
+      response.end(`Server checkout: ${request.url ?? ''}`);
     });
     const apiOrigin = await listen(api);
     const offerProxy = webConfig.server?.proxy?.['/offer'];
@@ -83,7 +83,7 @@ describe('sales links on the Vite development origin', () => {
     'proxies the automatic checkout handoff for /offer/bundle%s',
     async (query) => {
       const response = await fetch(`${origin}/offer/bundle${query}`);
-      expect(await response.text()).toBe(`<main>Server checkout: /offer/bundle${query}</main>`);
+      expect(await response.text()).toBe(`Server checkout: /offer/bundle${query}`);
     },
   );
 
@@ -91,7 +91,7 @@ describe('sales links on the Vite development origin', () => {
     'keeps crawler previews on the server for %s',
     async (query) => {
       const response = await fetch(`${origin}/offer/bundle?${query}`, { headers: { 'user-agent': 'Twitterbot/1.0' } });
-      expect(await response.text()).toBe(`<main>Server checkout: /offer/bundle?${query}</main>`);
+      expect(await response.text()).toBe(`Server checkout: /offer/bundle?${query}`);
     },
   );
 });

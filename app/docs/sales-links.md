@@ -67,30 +67,20 @@ Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and Applebot. The checko
 POST also refuses these crawlers. The edge forwards crawler requests before
 browser fallbacks, including `?checkout=together` and `status=success|cancelled`.
 
-`?test` with any value selects the configured Stripe test key; without a test
-key it stays live. Test payments keep the TEST indicator, do not unlock real
-access and are excluded from revenue. The default is live checkout. The selector also applies to the purchase-consent fallback.
-If the stored test key cannot be decrypted or belongs to live mode, checkout
-returns an error without creating a session or switching to live credentials.
-Cancellation retains test mode for an explicit retry through the server handoff;
-anonymous success returns display the TEST notice without requiring a staff session.
-Test fulfillment has two paths, including on the purchase-consent fallback:
+`?test` with any value selects the configured Stripe test key only for a request
+carrying the existing server-side Stripe test session bound to the signed-in
+account and tenant, with tenant staff membership checked again at checkout.
+Without that verified session or a configured test key, checkout stays live.
+The same rule applies to the purchase-consent fallback. An unreadable stored
+test key or a live key in the test slot returns an error for an authorized test
+checkout instead of switching to live credentials.
 
-- **Staff test:** the request carries the existing server-side Stripe test session
-  bound to the signed-in account and tenant, and checkout rechecks tenant staff
-  membership. The existing staff path stores a pending test order before returning
-  the Stripe URL. Fulfillment keeps the member and test grant while suppressing purchase
-  confirmation email and magic links.
-- **Anonymous test:** without that verified staff session, the configured,
-  readable test key permits checkout without creating an auth user, member or
-  pending order. A snapshot bound to the tenant, Stripe session and test mode
-  correlates the payment. The webhook records only the test order, lines, consent
-  and billing snapshot. It creates no auth user or member, issues no grant and
-  sends no email. A snapshot match never authorizes identity or access creation.
-
-Signing in without the staff test session does not enable full test fulfillment.
-A test event for one tenant cannot fulfill a checkout for another tenant. Both
-paths retain the TEST badge and revenue exclusion; live checkout is unchanged.
+Staff test checkout stores a pending order before returning the Stripe URL.
+Fulfillment keeps the member and test grants while suppressing purchase
+confirmation email and magic links. Test payments keep the TEST indicator,
+do not unlock real access and are excluded from revenue. A return query alone
+does not enable the TEST indicator for anonymous visitors. A test event for
+one tenant cannot fulfill a checkout for another tenant.
 
 Stripe collects the buyer email, name, billing address when provided, and tax
 IDs. A Polish `eu_vat` value prefixed with `PL` becomes the order's digits-only
@@ -114,8 +104,8 @@ Owners configure **Integrations → Stripe → Checkout appearance**: display na
 HTTPS logo and icon URLs, background and button hex colours, font and corners.
 Empty overrides use the tenant branding in Settings (name, logo, accent colour
 and favicon). Sales links, single-product checkout and subscriptions send these
-resolved settings to Stripe in both live and test mode. If all overrides and
-branding defaults are empty, Stripe uses its account appearance.
+resolved `branding_settings` to Stripe in both live and test mode. If all
+overrides and branding defaults are empty, Stripe uses its account appearance.
 See [Payments](payments.md).
 
 Invoices contain one position per order line with its own treatment. Coupon
@@ -170,6 +160,8 @@ The `sales-link` commands mirror Studio: `list`, `show`, `create`, `update`,
 `activate`, `deactivate`, `delete --confirm`, and `offer <slug>`.
 `sales-link checkout <slug> --mode live|test` starts the direct Stripe handoff
 and returns its URL using the same public endpoint as the server-rendered page.
+Test mode still requires the verified staff Stripe test session; the mode option
+alone does not authorize it.
 Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. `checkout session` and the local `simulate-purchase` command
 accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.

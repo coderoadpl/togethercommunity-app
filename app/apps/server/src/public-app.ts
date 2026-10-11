@@ -629,7 +629,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
-    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id, 'test', deps);
+    const salesLinkTestIdentity = await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
+    const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id, salesLinkTestIdentity === null ? 'live' : 'test', deps);
     return respondPublic(
       config.ok
         ? ok({ ...config.value, canTest, salesLinkTestConfigured: !salesLinkMode.ok || salesLinkMode.value === 'test', testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
@@ -700,10 +701,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const staffTestMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
     const salesLinkMode = await getDirectSalesLinkMode(tenant.value.tenant.id,
-      selection.value.salesLinkId !== undefined && parsed.data.salesLinkTest === true ? 'test' : 'live', deps);
+      selection.value.salesLinkId !== undefined && staffTestMode ? 'test' : 'live', deps);
     if (!salesLinkMode.ok) return respondPublic(salesLinkMode);
-    const salesLinkTestMode = salesLinkMode.value === 'test';
-    const testMode = salesLinkTestMode || staffTestMode;
+    const testMode = selection.value.salesLinkId === undefined ? staffTestMode : salesLinkMode.value === 'test';
     const consent = await validateTermsConsent(
       tenant.value.tenant.id,
       parsed.data.termsAccepted,
@@ -715,9 +715,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       const rejected = testCheckoutRejection(parsed.data, selection.value);
       if (rejected !== null) return respondPublic(err(rejected));
     }
-    const testEmail = staffTestMode ? identity.email : parsed.data.email;
-    if (testMode && testEmail === undefined) return respondPublic(err(validation('An email is required for test checkout')));
-    const testMember = staffTestMode ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
+    const testEmail = testMode && identity !== null ? identity.email : parsed.data.email;
+    const testMember = testMode && identity !== null ? await ensureMember(tenant.value.tenant.id, identity.email, deps) : null;
     if (testMember !== null && !testMember.ok) return respondPublic(testMember);
     const baseUrl = await authLinkBaseUrl(tenant.value, deps);
     const checkoutConsentCaptureId = deps.ids.nextId();
@@ -748,7 +747,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       selection.value,
       deps,
       captureConsent ? checkoutConsentCaptureId : undefined,
-      testMode ? { mode: 'test', ...(testMember?.ok === true ? { memberId: testMember.value.id } : {}) } : undefined,
+      testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
     );
     if (
       session.ok &&

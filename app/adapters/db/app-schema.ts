@@ -16,7 +16,6 @@ import type {
   Campaign,
   Chapter,
   CheckoutConsentCapture,
-  CheckoutCustomerDetails,
   CheckoutAppearance,
   BillingData,
   OrderLine,
@@ -493,7 +492,7 @@ export const orders = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    memberId: text('member_id'),
+    memberId: text('member_id').notNull(),
     productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
@@ -508,14 +507,12 @@ export const orders = pgTable(
     couponId: text('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
     discountCents: integer('discount_cents').notNull().default(0),
     billing: jsonb('billing').$type<BillingData>(),
-    customerDetails: jsonb('customer_details').$type<CheckoutCustomerDetails>(),
     salesLinkId: text('sales_link_id'),
     lines: jsonb('lines').$type<OrderLine[]>().notNull().default([]),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
-    check('orders_member_required_for_live', sql`${table.memberId} IS NOT NULL OR ${table.mode} = 'test'`),
     foreignKey({
       name: 'orders_tenant_member_fk',
       columns: [table.tenantId, table.memberId],

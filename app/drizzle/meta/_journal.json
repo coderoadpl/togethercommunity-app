@@ -995,13 +995,6 @@
       "when": 1790964000013,
       "tag": "0141_direct_checkout_sessions",
       "breakpoints": true
-    },
-    {
-      "idx": 142,
-      "version": "7",
-      "when": 1790964000014,
-      "tag": "0142_anonymous_test_orders",
-      "breakpoints": true
     }
   ]
 }

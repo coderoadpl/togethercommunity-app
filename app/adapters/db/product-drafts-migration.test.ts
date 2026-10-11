@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { orderLineSchema } from '#core/domain/index.js';
 
 import { createProductDraftRepository } from './product-drafts.js';
-import { checkoutSnapshots, members, orders, productDownloadAssets, productGrants, productPrices, products, salesLinks, tenants, user } from './schema.js';
+import { checkoutSnapshots, couponCheckoutSessions, coupons, members, orders, productDownloadAssets, productGrants, productPriceHistory, productPrices, products, salesLinks, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const now = '2026-10-11T12:00:00.000Z';
@@ -48,16 +48,27 @@ describe('product draft deletion persistence', () => {
     }
   });
 
-  it('deletes the product, embedded access, prices and every download version while isolating tenants', async () => {
+  it('deletes eligible draft data and permitted history while isolating tenants', async () => {
     const { db } = database;
     await db.insert(products).values([{ ...product('removable'), accessItems: [{ level: 'course', courseId: 'course' }] }, product('removable', 'other')]);
     await db.insert(productPrices).values({ id: 'draft-price', tenantId: 'workspace', productId: 'removable', kind: 'one_time', amountCents: 100, currency: 'PLN', createdAt: now });
     await db.insert(productDownloadAssets).values([1, 2].map((versionNumber) => ({ id: `asset-${String(versionNumber)}`, tenantId: 'workspace', productId: 'removable', lineageId: 'asset-1', versionNumber, fileName: 'guide.pdf', contentType: 'application/pdf', sizeBytes: 100, storageKey: `files/${String(versionNumber)}`, status: 'ready' as const, createdAt: now })));
+    await db.insert(coupons).values({ id: 'draft-coupon', tenantId: 'workspace', code: 'DRAFT', kind: 'percent', value: 10, scope: { kind: 'all' }, appliesTo: 'one_time', createdAt: now });
+    await db.insert(couponCheckoutSessions).values({ id: 'draft-checkout', tenantId: 'workspace', couponId: 'draft-coupon', memberEmail: 'buyer@example.test', productId: 'removable', priceId: 'draft-price', originalCents: 100, discountCents: 10, finalCents: 90, currency: 'PLN', startedAt: now });
+    const draftHistory = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'removable'));
+    const otherHistory = and(eq(productPriceHistory.tenantId, 'other'), eq(productPriceHistory.productId, 'removable'));
+    expect(await db.select().from(productPriceHistory).where(draftHistory)).toHaveLength(2);
+    const retainedHistory = await db.select().from(productPriceHistory).where(otherHistory);
+    expect(retainedHistory).toHaveLength(1);
     const result = await createProductDraftRepository(db).deleteDraft('workspace', 'removable');
     expect(result).toMatchObject({ kind: 'deleted', assets: [{ id: 'asset-1' }, { id: 'asset-2' }] });
     expect(await db.select().from(products).where(eq(products.tenantId, 'workspace'))).toEqual([]);
     expect(await db.select().from(productPrices)).toEqual([]);
     expect(await db.select().from(productDownloadAssets)).toEqual([]);
+    expect(await db.select().from(productPriceHistory).where(draftHistory)).toEqual([]);
+    expect(await db.select().from(productPriceHistory).where(otherHistory)).toEqual(retainedHistory);
+    expect(await db.select().from(couponCheckoutSessions).where(eq(couponCheckoutSessions.id, 'draft-checkout'))).toEqual([]);
+    expect(await db.select().from(coupons).where(eq(coupons.id, 'draft-coupon'))).toHaveLength(1);
     expect(await db.select().from(products).where(eq(products.tenantId, 'other'))).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'removable')).toEqual({ kind: 'not_found' });
   });
@@ -79,7 +90,11 @@ describe('product draft deletion persistence', () => {
     const where = and(eq(products.tenantId, 'workspace'), eq(products.id, 'previously-published'));
     await db.update(products).set({ published: true }).where(where);
     await db.update(products).set({ published: false, everPublished: false }).where(where);
+    const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'previously-published'));
+    const history = await db.select().from(productPriceHistory).where(historyWhere);
+    expect(history).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'previously-published')).toEqual({ kind: 'refused', reason: 'published' });
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual(history);
     expect((await db.select().from(products).where(where))[0]?.everPublished).toBe(true);
   });
 

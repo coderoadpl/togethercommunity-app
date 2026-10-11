@@ -1961,6 +1961,71 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
   });
 
+  it.each([
+    ['charge.refunded', 'paymentIntent'],
+    ['charge.refunded', 'charge'],
+    ['charge.dispute.created', 'paymentIntent'],
+    ['charge.dispute.created', 'charge'],
+  ] as const)(
+    'handles %s for a renewal correlated only by %s and revokes access',
+    async (type, correlation) => {
+      const h = await subscribedHarness();
+      const chargeId = correlation === 'charge' ? 'ch-renewal' : null;
+      const paymentIntentId = correlation === 'paymentIntent' ? 'pi-renewal' : null;
+      const renewal: PaymentWebhookEvent = {
+        id: 'evt-renewal-correlation',
+        type: 'invoice.paid',
+        objectId: 'in-renewal',
+        checkoutSession: null,
+        invoice: {
+          subscriptionId: 'sub-1',
+          chargeId,
+          paymentIntentId,
+          amountCents: 2900,
+          currency: 'PLN',
+          periodEnd: '1998-09-14T10:00:00.000Z',
+        },
+      };
+
+      expect(await fulfillStripeWebhook(tenantA, renewal, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders).toHaveLength(2);
+      expect(h.orders[1]?.status).toBe('paid');
+      expect(h.orders[1]?.providerObjectIds).toEqual({
+        invoice: 'in-renewal',
+        subscription: 'sub-1',
+        [correlation]: chargeId ?? paymentIntentId,
+      });
+      expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
+
+      const adjustment: PaymentWebhookEvent = {
+        id: 'evt-renewal-adjustment',
+        type,
+        objectId: type === 'charge.refunded' ? 'ch-renewal' : 'dp-renewal',
+        checkoutSession: null,
+        adjustment: {
+          chargeId,
+          paymentIntentId,
+          invoiceId: null,
+          ...(type === 'charge.refunded'
+            ? { refund: { full: true, amountRefundedCents: 2900, amountCents: 2900 } }
+            : {}),
+        },
+      };
+
+      expect(await fulfillStripeWebhook(tenantA, adjustment, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
+      expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
+      expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+      expect(h.refundTransitions()).toBe(1);
+      expect(h.providerCancellations).toEqual([{
+        tenantId: tenantA.id,
+        providerSubscriptionId: 'sub-1',
+        mode: 'live',
+        idempotencyKey: `payment-adjustment-evt-renewal-adjustment-${h.subscription.id}`,
+      }]);
+    },
+  );
+
   it('applies a subscription deletion that lands after a refund-driven cancellation', async () => {
     const h = await subscribedHarness();
     await fulfillStripeWebhook(

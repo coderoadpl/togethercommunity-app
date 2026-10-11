@@ -240,6 +240,10 @@ const toInvoiceEvent = (eventId: string, type: string, object: unknown): Payment
     idOrNull(invoice.data.parent?.subscription_details?.subscription);
   const amount = type === 'invoice.paid' ? invoice.data.amount_paid : invoice.data.amount_due;
   const linePeriodEnd = invoice.data.lines?.data[0]?.period?.end;
+  const payment = invoice.data.payments?.data.toSorted((left, right) =>
+    Number(right.status === 'paid') - Number(left.status === 'paid')
+      || (right.created ?? 0) - (left.created ?? 0),
+  )[0]?.payment;
   return {
     id: eventId,
     type,
@@ -247,8 +251,8 @@ const toInvoiceEvent = (eventId: string, type: string, object: unknown): Payment
     checkoutSession: null,
     invoice: {
       subscriptionId,
-      chargeId: idOrNull(invoice.data.charge),
-      paymentIntentId: idOrNull(invoice.data.payment_intent),
+      chargeId: idOrNull(payment?.charge) ?? idOrNull(invoice.data.charge),
+      paymentIntentId: idOrNull(payment?.payment_intent) ?? idOrNull(invoice.data.payment_intent),
       amountCents: amount ?? null,
       currency: invoice.data.currency?.toUpperCase() ?? null,
       periodEnd: epochToIso(linePeriodEnd ?? invoice.data.period_end),

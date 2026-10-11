@@ -464,7 +464,7 @@ describe('verifyWebhookEvent', () => {
       charge: 'ch_1',
       payment_intent: 'pi_1',
       period_end: 916_387_200,
-    }, { invoice: { subscriptionId: 'sub_1', amountCents: 4900, currency: 'PLN' } }],
+    }, { invoice: { subscriptionId: 'sub_1', chargeId: 'ch_1', paymentIntentId: 'pi_1', amountCents: 4900, currency: 'PLN' } }],
     ['invoice.payment_failed', {
       id: 'in_2',
       amount_due: 4900,
@@ -507,6 +507,75 @@ describe('verifyWebhookEvent', () => {
     await expect(verify(payload)).resolves.toMatchObject({
       ok: true,
       value: { type, objectId: object.id, checkoutSession: null, ...expected },
+    });
+  });
+
+  it.each([
+    ['payment intent', { type: 'payment_intent', payment_intent: 'pi_renewal' }, null, 'pi_renewal'],
+    ['expanded payment intent', { type: 'payment_intent', payment_intent: { id: 'pi_renewal' } }, null, 'pi_renewal'],
+    ['charge', { type: 'charge', charge: 'ch_renewal' }, 'ch_renewal', null],
+    ['expanded charge', { type: 'charge', charge: { id: 'ch_renewal' } }, 'ch_renewal', null],
+  ] as const)('maps a Clover renewal invoice with a %s', async (_name, payment, chargeId, paymentIntentId) => {
+    const payload = JSON.stringify({
+      id: 'evt_clover_renewal',
+      type: 'invoice.paid',
+      api_version: '2025-09-30.clover',
+      data: { object: {
+        id: 'in_renewal',
+        parent: { subscription_details: { subscription: { id: 'sub_1' } } },
+        amount_paid: 4900,
+        currency: 'pln',
+        lines: { data: [{ period: { end: 916_387_200 } }] },
+        payments: { data: [{ status: 'paid', created: 916_000_000, payment }] },
+      } },
+    });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: {
+        objectId: 'in_renewal',
+        invoice: {
+          subscriptionId: 'sub_1', chargeId, paymentIntentId,
+          amountCents: 4900, currency: 'PLN', periodEnd: '1999-01-15T08:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it.each([
+    ['invoice.paid', 'paid'],
+    ['invoice.payment_failed', 'open'],
+  ] as const)('selects the newest %s payment independently of list order', async (type, status) => {
+    const payload = JSON.stringify({
+      id: 'evt_clover_payment_selection', type,
+      data: { object: {
+        id: 'in_renewal',
+        amount_paid: 4900, amount_due: 4900,
+        charge: 'ch_legacy', payment_intent: 'pi_legacy',
+        payments: { data: [
+          { status, created: 100, payment: { payment_intent: 'pi_older', charge: 'ch_older' } },
+          { status: 'canceled', created: 150, payment: { payment_intent: 'pi_canceled' } },
+          { status, created: 200, payment: { payment_intent: 'pi_latest', charge: 'ch_latest' } },
+          ...(status === 'paid' ? [{ status: 'open', created: 300, payment: { payment_intent: 'pi_unpaid' } }] : []),
+        ] },
+      } },
+    });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: { invoice: { chargeId: 'ch_latest', paymentIntentId: 'pi_latest', amountCents: 4900 } },
+    });
+  });
+
+  it.each([undefined, null, { data: [] }])('keeps legacy invoice correlation when payments is %j', async (payments) => {
+    const payload = JSON.stringify({
+      id: 'evt_legacy_payment', type: 'invoice.paid',
+      data: { object: {
+        id: 'in_legacy', payments,
+        charge: { id: 'ch_legacy' }, payment_intent: { id: 'pi_legacy' },
+      } },
+    });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: { invoice: { chargeId: 'ch_legacy', paymentIntentId: 'pi_legacy' } },
     });
   });
 

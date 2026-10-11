@@ -3801,6 +3801,11 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   marginInline: 0,
   textAlign: 'left',
   '& img': { maxWidth: '100%', height: 'auto' },
+  '& img[role="button"]': { cursor: 'zoom-in' },
+  '& img[role="button"]:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: 4,
+  },
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
@@ -3813,6 +3818,38 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
     backgroundColor: alpha(theme.palette.text.primary, 0.05),
   },
 }));
+
+export const LessonImageLightbox = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  inset: '1rem',
+  margin: 'auto',
+  maxWidth: 'calc(100vw - 2rem)',
+  maxHeight: 'calc(100dvh - 2rem)',
+  padding: '1rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+  backgroundColor: theme.palette.background.paper,
+  color: theme.palette.text.primary,
+  borderRadius: theme.shape.borderRadius,
+  '& > .MuiButton-root': { alignSelf: 'flex-end', flexShrink: 0, minHeight: 44 },
+  '& [data-slot="caption"]': {
+    flexShrink: 0,
+    maxHeight: '20dvh',
+    overflowY: 'auto',
+    overflowWrap: 'anywhere',
+    textAlign: 'center',
+  },
+}));
+
+export const LessonLightboxImage = styled('img')({
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  flex: '1 1 0',
+  minHeight: 0,
+  objectFit: 'contain',
+});
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',

@@ -1849,6 +1849,7 @@ export interface Messages {
     durationMinutesOnly: (params: { minutes: number }) => string;
   };
   lesson: {
+    enlargeImage: string;
     editionLabel: (params: { number: string }) => string;
     previousEditions: string;
     editionMenu: string;

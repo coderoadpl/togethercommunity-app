@@ -16,9 +16,14 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 const product = (id: string, tenantId = 'workspace') => ({ id, tenantId, slug: id, title: 'Draft product', description: '', priceCents: 100, currency: 'PLN', published: false, createdAt: now });
 const line = (productId: string) => orderLineSchema.parse({ productId, name: 'Draft product', productType: 'physical', grossCents: 100, netCents: 100, vatCents: 0, vatRate: null, vatExemptionBasis: null, issuedCount: 0 });
 
-const insertDraft = async (id: string) => database.db.transaction(async (tx) => {
+const insertDraftWithoutPriceHistory = async (id: string) => database.db.transaction(async (tx) => {
+  // Current inserts always record a price; isolate the history-free deletion branch in this disposable test database.
+  await tx.execute(sql`ALTER TABLE products DISABLE TRIGGER products_price_history_after_write`);
+  await tx.execute(sql`ALTER TABLE product_prices DISABLE TRIGGER product_prices_history_after_write`);
   await tx.insert(products).values({ ...product(id), accessItems: [{ level: 'course', courseId: 'course' }] });
   await tx.insert(productPrices).values({ id: `${id}-price`, tenantId: 'workspace', productId: id, kind: 'one_time', amountCents: 100, currency: 'PLN', createdAt: now });
+  await tx.execute(sql`ALTER TABLE product_prices ENABLE TRIGGER product_prices_history_after_write`);
+  await tx.execute(sql`ALTER TABLE products ENABLE TRIGGER products_price_history_after_write`);
 });
 
 beforeAll(async () => {
@@ -74,7 +79,7 @@ describe('product draft deletion persistence', () => {
     });
   });
 
-  it('deletes draft data and its price history while preserving tenant isolation', async () => {
+  it('refuses recorded price history without changing draft data or another tenant', async () => {
     const { db } = database;
     await db.insert(products).values([{ ...product('retained'), accessItems: [{ level: 'course', courseId: 'course' }] }, product('retained', 'other')]);
     await db.insert(productPrices).values({ id: 'draft-price', tenantId: 'workspace', productId: 'retained', kind: 'one_time', amountCents: 100, currency: 'PLN', createdAt: now });
@@ -86,33 +91,38 @@ describe('product draft deletion persistence', () => {
     const retainedOtherHistory = await db.select().from(productPriceHistory).where(otherHistory);
     expect(retainedHistory).toHaveLength(2);
     expect(retainedOtherHistory).toHaveLength(1);
-    expect(await createProductDraftRepository(db).deleteDraft('workspace', 'retained')).toMatchObject({ kind: 'deleted', assets: [{ id: 'asset-1' }, { id: 'asset-2' }] });
-    expect(await db.select().from(products).where(draftWhere)).toEqual([]);
-    expect(await db.select().from(productPrices).where(eq(productPrices.id, 'draft-price'))).toHaveLength(0);
-    expect(await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.productId, 'retained'))).toHaveLength(0);
-    expect(await db.select().from(productPriceHistory).where(draftHistory)).toEqual([]);
+    const retainedProduct = await db.select().from(products).where(draftWhere);
+    const retainedPrices = await db.select().from(productPrices).where(eq(productPrices.id, 'draft-price'));
+    const retainedAssets = await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.productId, 'retained'));
+    expect(await createProductDraftRepository(db).deleteDraft('workspace', 'retained')).toEqual({ kind: 'refused', reason: 'price_history' });
+    expect(await db.select().from(products).where(draftWhere)).toEqual(retainedProduct);
+    expect(await db.select().from(productPrices).where(eq(productPrices.id, 'draft-price'))).toEqual(retainedPrices);
+    expect(await db.select().from(productDownloadAssets).where(eq(productDownloadAssets.productId, 'retained'))).toEqual(retainedAssets);
+    expect(await db.select().from(productPriceHistory).where(draftHistory)).toEqual(retainedHistory);
     expect(await db.select().from(productPriceHistory).where(otherHistory)).toEqual(retainedOtherHistory);
   });
 
-  it('deletes a new draft and its trigger-created base-price history', async () => {
+  it.each([0, 100])('retains a new draft with a trigger-created base price of %i', async (priceCents) => {
     const { db } = database;
-    await db.insert(products).values(product('new-draft'));
-    const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'new-draft'));
+    const id = `new-draft-${String(priceCents)}`;
+    await db.insert(products).values({ ...product(id), priceCents });
+    const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, id));
     const history = await db.select().from(productPriceHistory).where(historyWhere);
     expect(history).toHaveLength(1);
-    expect(await createProductDraftRepository(db).deleteDraft('workspace', 'new-draft')).toEqual({ kind: 'deleted', assets: [] });
-    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual([]);
+    expect(await createProductDraftRepository(db).deleteDraft('workspace', id)).toEqual({ kind: 'refused', reason: 'price_history' });
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual(history);
+    expect(await db.select().from(products).where(and(eq(products.tenantId, 'workspace'), eq(products.id, id)))).toHaveLength(1);
   });
 
-  it('does not inherit deleted draft price history when a product ID is reused', async () => {
+  it('deletes a history-free draft and its child rows without affecting another tenant', async () => {
     const { db } = database;
-    await insertDraft('removable');
+    await insertDraftWithoutPriceHistory('removable');
     await db.insert(products).values(product('removable', 'other'));
     await db.insert(productDownloadAssets).values({ id: 'removable-asset', tenantId: 'workspace', productId: 'removable', lineageId: 'removable-asset', fileName: 'guide.pdf', contentType: 'application/pdf', sizeBytes: 100, storageKey: 'files/removable', status: 'ready', createdAt: now });
     const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'removable'));
     const otherHistoryWhere = and(eq(productPriceHistory.tenantId, 'other'), eq(productPriceHistory.productId, 'removable'));
     const otherHistory = await db.select().from(productPriceHistory).where(otherHistoryWhere);
-    expect(await db.select().from(productPriceHistory).where(historyWhere)).toHaveLength(2);
+    expect(await db.select().from(productPriceHistory).where(historyWhere)).toHaveLength(0);
     expect(otherHistory).toHaveLength(1);
     expect(await createProductDraftRepository(db).deleteDraft('workspace', 'removable')).toMatchObject({ kind: 'deleted', assets: [{ id: 'removable-asset' }] });
     expect(await db.select().from(products).where(and(eq(products.tenantId, 'workspace'), eq(products.id, 'removable')))).toEqual([]);
@@ -156,13 +166,13 @@ describe('product draft deletion persistence', () => {
 
   it('rolls back download removal when a later write fails', async () => {
     const { db } = database;
-    await insertDraft('rollback');
+    await insertDraftWithoutPriceHistory('rollback');
     await db.insert(productDownloadAssets).values({ id: 'rollback-asset', tenantId: 'workspace', productId: 'rollback', lineageId: 'rollback-asset', fileName: 'guide.pdf', contentType: 'application/pdf', sizeBytes: 100, storageKey: 'files/rollback', createdAt: now });
     await db.execute(sql`CREATE FUNCTION reject_draft_deletion() RETURNS trigger AS $$ BEGIN IF OLD.id = 'rollback' THEN RAISE EXCEPTION 'Test transaction failure'; END IF; RETURN OLD; END; $$ LANGUAGE plpgsql`);
     await db.execute(sql`CREATE TRIGGER reject_draft_deletion BEFORE DELETE ON products FOR EACH ROW EXECUTE FUNCTION reject_draft_deletion()`);
     const historyWhere = and(eq(productPriceHistory.tenantId, 'workspace'), eq(productPriceHistory.productId, 'rollback'));
     const history = await db.select().from(productPriceHistory).where(historyWhere);
-    expect(history).toHaveLength(2);
+    expect(history).toHaveLength(0);
     await expect(createProductDraftRepository(db).deleteDraft('workspace', 'rollback')).rejects.toThrow();
     expect(await db.select().from(productPriceHistory).where(historyWhere)).toEqual(history);
     expect(await db.select().from(productPrices).where(eq(productPrices.id, 'rollback-price'))).toHaveLength(1);
@@ -212,7 +222,8 @@ describe('product draft deletion persistence', () => {
 
   it('refuses checkout snapshots and ignores other tenant snapshots', async () => {
     const { db } = database;
-    await db.insert(products).values([product('checkout'), product('foreign-checkout')]);
+    await db.insert(products).values(product('checkout'));
+    await insertDraftWithoutPriceHistory('foreign-checkout');
     await db.insert(checkoutSnapshots).values([
       { id: 'checkout', tenantId: 'workspace', lines: [line('checkout')], currency: 'PLN', createdAt: now },
       { id: 'foreign', tenantId: 'other', lines: [line('foreign-checkout')], currency: 'PLN', createdAt: now },

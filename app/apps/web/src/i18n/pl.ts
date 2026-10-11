@@ -1269,6 +1269,7 @@ export const pl: Messages = {
   products: {
     deleteDraft: 'Usuń szkic',
     deleteDraftBody: 'Szkic produktu zostanie trwale usunięty.',
+    deleteDraftPriceHistory: 'This draft has recorded price history and cannot be deleted.',
 
     visibilityLabel: 'Widoczność',
     listed: 'Widoczny w ofercie',

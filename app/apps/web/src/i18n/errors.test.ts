@@ -3,10 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizePanelError } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
+  it('uses the dictionary message for draft deletion refused due to price history', () => {
+    const error = { appError: { code: 'validation', message: 'raw backend string', details: { productDraftRefusal: 'price_history' } } };
+    expect(localizePanelError(error, en)).toBe(en.products.deleteDraftPriceHistory);
+    expect(localizePanelError(error, pl)).toBe(pl.products.deleteDraftPriceHistory);
+  });
+
+  it('keeps the generic panel message for other draft refusal reasons and error codes', () => {
+    const otherReason = { appError: { code: 'validation', details: { productDraftRefusal: 'orders' } } };
+    const otherCode = { appError: { code: 'internal', details: { productDraftRefusal: 'price_history' } } };
+    expect(localizePanelError(otherReason, en)).toBe(en.errors.messageValidation);
+    expect(localizePanelError(otherCode, en)).toBe(en.errors.messageInternal);
+  });
+
   it('maps every ApiError-shaped code to its localized dictionary message, never a raw backend string', () => {
     for (const code of ERROR_CODES) {
       const error = { appError: { code, message: 'raw backend string' } };

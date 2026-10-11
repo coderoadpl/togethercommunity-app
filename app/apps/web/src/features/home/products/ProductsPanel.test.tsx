@@ -279,6 +279,21 @@ describe('ProductsPanel', () => {
     expect(screen.getByText('Draft Course')).toBeInTheDocument();
   });
 
+  it.each(['/panel/products', '/panel/products/draft-1'])('shows a price-history refusal from %s', async (entry) => {
+    const { router } = await renderProductsPanel([], entry);
+    server.use(http.post('/api/products/delete', () => HttpResponse.json({
+      ok: false,
+      error: { code: 'validation', message: 'This product has recorded price history', details: { productDraftRefusal: 'price_history' } },
+    }, { status: 400 })));
+
+    await userEvent.click(await screen.findByRole('button', { name: en.products.deleteDraft }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.products.deleteDraft }));
+
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(en.products.deleteDraftPriceHistory);
+    expect(router.state.location.pathname).toBe(entry);
+    expect(screen.getByText('Draft Course')).toBeInTheDocument();
+  });
+
   it.each(['/panel/products', '/panel/products/draft-1'])('does not offer draft deletion for a published product from %s', async (entry) => {
     await renderProductsPanel([], entry, initialProducts.map((product) => ({ ...product, published: true })));
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();

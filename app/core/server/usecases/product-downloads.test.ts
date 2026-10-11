@@ -341,7 +341,7 @@ describe('product downloads', () => {
   });
 
   it.each(['storage', 'configuration cleanup'] as const)(
-    'logs %s rejections after deleting the asset', async (failure) => {
+    'propagates %s rejections after deleting the asset', async (failure) => {
       const { deps, downloadAssets, warnings, removed } = testDeps();
       const cause = new Error('Infrastructure unavailable');
       downloadAssets.rows.push(storedAsset());
@@ -352,11 +352,11 @@ describe('product downloads', () => {
           .mockRejectedValue(cause);
       }
 
-      expect(await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps)).toEqual({ ok: true, value: { deleted: true } });
+      await expect(deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps)).rejects.toBe(cause);
 
       expect(downloadAssets.rows).toHaveLength(0);
       expect(removed).toEqual([]);
-      expect(warnings).toEqual([expect.stringContaining('Infrastructure unavailable')]);
+      expect(warnings).toEqual([]);
     },
   );
 

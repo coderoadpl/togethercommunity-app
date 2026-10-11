@@ -76,6 +76,10 @@ add it here before using it in either dictionary.
 | Course outline | program kursu | course curriculum | Eyebrow: course syllabus. |
 | Connect or disconnect a module | podepnij / odepnij | attach / detach | Use the same pair throughout. Do not use podłącz / odłącz for this concept. |
 | Publication state | wersja robocza / opublikowany | draft / published | Use consistently for state labels. |
+| Archived course filter | `courses.archived` in the Polish dictionary | Archived | Use the established archived state term, including in the confirmation dialog. |
+| Course archive action | `courses.archiveCourse` in the Polish dictionary | Archive course | Hides a course from discovery and new access selection; does not delete it. |
+| Course restore action | `courses.restore` in the Polish dictionary | Restore | Returns an archived course to active lists and pickers. |
+| Product draft deletion | `products.deleteDraft` in the Polish dictionary | Delete draft | Use the canonical draft term in both the action and its permanent-deletion confirmation. |
 | Member's owned content | biblioteka | library | Use in access and missing-course messages. |
 
 ## Community

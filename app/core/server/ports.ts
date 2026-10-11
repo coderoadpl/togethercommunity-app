@@ -93,6 +93,7 @@ import type {
   CampaignResults,
   CampaignSend,
   CheckoutConsentCapture,
+  CheckoutBranding,
   Coupon,
   CouponOption,
   CouponCheckoutSession,
@@ -231,14 +232,14 @@ export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
-  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken'>;
+  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken' | 'course_unavailable'>;
   updateAccessItems(
     tenantId: string,
     id: string,
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
     checkoutConsentDefinitionIds?: string[],
-  ): Promise<Product | null>;
+  ): Promise<Product | null | 'course_unavailable'>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
 }
@@ -258,6 +259,19 @@ export interface CourseRepository {
   create(tenantId: string, course: Course): Promise<void>;
   update(tenantId: string, course: Course, version?: EntityVersionRecord): Promise<Course | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseArchiveRepository {
+  setArchived(
+    tenantId: string,
+    courseId: string,
+    archivedAt: string | null,
+    version: EntityVersionRecord,
+  ): Promise<
+    | { kind: 'saved'; course: Course }
+    | { kind: 'not_found' }
+    | { kind: 'referenced'; productTitles: string[] }
+  >;
 }
 
 export interface CourseModuleRepository {
@@ -999,6 +1013,9 @@ export interface PaymentWebhookEvent {
   createdAt?: string | null;
   checkoutSession: {
     email: string | null;
+    customerName?: string | null;
+    billing?: Order['billing'];
+    termsAccepted?: boolean;
     paymentStatus?: 'paid' | 'unpaid' | 'no_payment_required' | null;
     subscriptionId: string | null;
     paymentIntentId?: string | null;
@@ -1014,6 +1031,9 @@ export interface PaymentWebhookEvent {
       checkoutConsentCaptureId?: string | null;
       couponCheckoutSessionId?: string | null;
       checkoutSnapshotId?: string | null;
+      directCheckout?: boolean;
+      termsUrl?: string | null;
+      privacyUrl?: string | null;
       salesLinkId?: string | null;
       productIds?: string | null;
     };
@@ -1069,6 +1089,8 @@ export interface PaymentProvider {
     productName: string;
     salesLinkId?: string;
     checkoutSnapshotId?: string;
+    checkoutBranding?: CheckoutBranding;
+    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
     lines?: { productId: string; name: string; grossCents: number }[];
     priceCents: number;
     currency: string;
@@ -1757,6 +1779,7 @@ export interface PaymentTransactionPort {
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;
+      checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
       marketingConsents: MarketingConsentRepository;
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;

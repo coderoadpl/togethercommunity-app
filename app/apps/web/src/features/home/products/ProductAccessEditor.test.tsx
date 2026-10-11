@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ import {
   type Product,
 } from '#core/domain/index.js';
 
+import { actions } from '../../../api.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
@@ -106,6 +107,36 @@ const setup = (productFixture: Product = product): { bodies: unknown[] } => {
 };
 
 describe('ProductAccessEditor', () => {
+  it('hides an archived course from the access picker and offers it again after restoration', async () => {
+    setup();
+    let archived = false;
+    server.use(http.get('/api/courses', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('archived')).not.toBe('true');
+      return HttpResponse.json({
+        ok: true,
+        data: { courses: [{ ...course, archivedAt: archived ? '2026-10-11T10:00:00.000Z' : null }] },
+      });
+    }));
+    const { queryClient } = renderWithProviders(<ProductAccessEditor product={product} />);
+
+    await userEvent.click(await screen.findByRole('combobox', { name: en.access.courseLabel }));
+    expect(await screen.findByRole('option', { name: course.name })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+
+    archived = true;
+    await act(async () => { await queryClient.invalidateQueries(actions.coursesInvalidates()); });
+    await userEvent.click(screen.getByRole('combobox', { name: en.access.courseLabel }));
+    expect(screen.queryByRole('option', { name: course.name })).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: en.access.addFullCourse })).toBeDisabled();
+
+    archived = false;
+    await act(async () => { await queryClient.invalidateQueries(actions.coursesInvalidates()); });
+    await userEvent.click(screen.getByRole('combobox', { name: en.access.courseLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: course.name }));
+    expect(screen.getByRole('button', { name: en.access.addFullCourse })).toBeEnabled();
+  });
+
   it('Easy mode builds a course-level access payload in one click', async () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);

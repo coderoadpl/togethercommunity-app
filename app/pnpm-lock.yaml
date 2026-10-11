@@ -179,8 +179,8 @@ importers:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@24.13.2)
       stripe:
-        specifier: ^18.5.0
-        version: 18.5.0(@types/node@24.13.2)
+        specifier: 19.0.0
+        version: 19.0.0(@types/node@24.13.2)
       undici:
         specifier: ^7.30.0
         version: 7.30.0
@@ -5215,11 +5215,11 @@ packages:
     resolution: {integrity: sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==}
     engines: {node: '>=14.16'}
 
-  stripe@18.5.0:
-    resolution: {integrity: sha512-Hp+wFiEQtCB0LlNgcFh5uVyKznpDjzyUZ+CNVEf+I3fhlYvh7rZruIg+jOwzJRCpy0ZTPMjlzm7J2/M2N6d+DA==}
-    engines: {node: '>=12.*'}
+  stripe@19.0.0:
+    resolution: {integrity: sha512-4HG17r7mui4Awic75DVSFVmH4EIXqNvoo3T2cYrVhcwovQz3gzQIPUiqzLzGcgxdUd9CB8zCntKzm0o63tUBgw==}
+    engines: {node: '>=16'}
     peerDependencies:
-      '@types/node': '>=12.x.x'
+      '@types/node': '>=16'
     peerDependenciesMeta:
       '@types/node':
         optional: true
@@ -10635,7 +10635,7 @@ snapshots:
 
   strip-json-comments@5.0.3: {}
 
-  stripe@18.5.0(@types/node@24.13.2):
+  stripe@19.0.0(@types/node@24.13.2):
     dependencies:
       qs: 6.16.0
     optionalDependencies:

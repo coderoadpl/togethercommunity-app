@@ -443,3 +443,14 @@ describe('tenant redirect management', () => {
     )).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });
 });
+
+
+it('refuses archived course redirect targets and accepts them after restoration', async () => {
+  const h = harness();
+  const archived: Course = { ...course, archivedAt: NOW };
+  h.deps.courses.findById = async () => archived;
+  const input = { fromPath: '/link/course', target: { kind: 'course' as const, courseId: course.id }, permanent: false };
+  expect(await createTenantRedirect(ctx, input, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  archived.archivedAt = null;
+  expect(await createTenantRedirect(ctx, input, h.deps)).toMatchObject({ ok: true });
+});

@@ -283,6 +283,7 @@ const billingForCheckout = async (
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
 ) => {
+  if (event.checkoutSession?.metadata.directCheckout === true) return event.checkoutSession.billing ?? null;
   const captureId = event.checkoutSession?.metadata.checkoutConsentCaptureId;
   if (captureId === undefined || captureId === null || deps.checkoutConsentCaptures === undefined) {
     return null;
@@ -379,6 +380,14 @@ const applyCheckoutCompleted = async (
   if (metadata.checkoutSnapshotId != null && snapshot === null) return err(validation('Checkout snapshot not found'));
   if (metadata.salesLinkId != null && (snapshot === null || snapshot.salesLinkId !== metadata.salesLinkId)) return err(validation('Sales link checkout snapshot does not match'));
   if (snapshot !== null && snapshot.lines[0]?.productId !== metadata.productId) return err(validation('Checkout snapshot product does not match'));
+  if (metadata.directCheckout === true && (snapshot === null || snapshot.mode !== (event.mode ?? 'live') ||
+      snapshot.providerSessionId !== event.objectId || !metadata.salesLinkId)) {
+    return err(validation('Direct checkout does not match its recorded session'));
+  }
+  if (metadata.directCheckout === true &&
+      (event.checkoutSession.termsAccepted !== true || !metadata.termsUrl || !metadata.privacyUrl)) {
+    return err(validation('Direct checkout consent evidence is missing'));
+  }
   if (snapshot !== null && event.checkoutSession.amountTotalCents != null &&
       event.checkoutSession.amountTotalCents + (event.checkoutSession.discountTotalCents ?? 0) !== snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0)) return err(validation('Checkout total does not match its lines'));
   const email = event.checkoutSession.email ?? metadata.memberEmail;
@@ -407,12 +416,14 @@ const applyCheckoutCompleted = async (
   if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
     ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
+    ...(metadata.salesLinkId != null ? { billing } : {}),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const fulfilled = await fulfillEnrollment(
     tenant,
     {
       email,
+      name: metadata.directCheckout === true ? event.checkoutSession.customerName ?? null : null,
       productId: metadata.productId,
       expiresAt: periodEnd === null ? null : graceExpiresAt(periodEnd),
       language: metadata.language ?? null,
@@ -800,7 +811,50 @@ const processCheckoutConsent = async (
   deps: StripeWebhookDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
 ): Promise<Result<string | null, AppError>> => {
-  if (event.mode === 'test' || !event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
+  const direct = event.checkoutSession;
+  if (direct?.metadata.directCheckout === true) {
+    if (direct.termsAccepted !== true || !direct.metadata.termsUrl || !direct.metadata.privacyUrl) {
+      return err(validation('Direct checkout consent evidence is missing'));
+    }
+    const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+    if (captures === undefined) return err(internal('Checkout consent capture repository is missing'));
+    const captureId = `stripe:${event.objectId}`;
+    if (await captures.findById(tenant.id, captureId) === null) {
+      await captures.create(tenant.id, {
+        id: captureId, createdAt: deps.clock.nowIso(),
+        capture: {
+          termsAccepted: true, termsUrl: direct.metadata.termsUrl, privacyUrl: direct.metadata.privacyUrl,
+          selectedDefinitionIds: [], attachedDefinitionIds: [], collectedAt: deps.clock.nowIso(),
+          confirmationBaseUrl: await resolveTenantOrigin(tenant, deps),
+          ...(direct.billing == null ? {} : { billing: direct.billing }),
+        },
+      });
+    }
+    await transaction.consents.record(tenant.id, {
+      id: deps.ids.nextId(), tenantId: tenant.id, userId: null,
+      email: direct.email, source: 'checkout',
+      termsUrl: direct.metadata.termsUrl, privacyUrl: direct.metadata.privacyUrl,
+      acceptedAt: deps.clock.nowIso(),
+    });
+    return ok(null);
+  }
+  if (event.mode === 'test') {
+    const checkout = event.checkoutSession;
+    if (checkout?.metadata.salesLinkId == null) return ok(null);
+    const captureId = checkout.metadata.checkoutConsentCaptureId;
+    const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
+    const capture = captureId == null ? null : await captures?.findById(tenant.id, captureId);
+    if (capture?.termsAccepted !== true || !capture.termsUrl || !capture.privacyUrl) {
+      return err(validation('Test sales link checkout consent evidence is missing'));
+    }
+    await transaction.consents.record(tenant.id, {
+      id: deps.ids.nextId(), tenantId: tenant.id, userId: null,
+      email: checkout.email ?? checkout.metadata.memberEmail, source: 'checkout',
+      termsUrl: capture.termsUrl, privacyUrl: capture.privacyUrl, acceptedAt: capture.collectedAt,
+    });
+    return ok(null);
+  }
+  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
   const consent = await transaction.consentTransaction.run((repositories) =>
     recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
   if (consent.ok) return ok(null);
@@ -845,6 +899,7 @@ const paymentModeMatches = async (
   if (await findOrder(mode === 'live' ? 'test' : 'live') !== null) return ignore('order mode mismatch');
   const order = mode === 'test' ? await findOrder('test') : null;
   let matched = order !== null;
+  if (mode === 'test' && event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenant.id) return ignore('checkout tenant mismatch');
   if (order !== null && event.checkoutSession !== null) {
     const member = await deps.members.findById(tenant.id, order.memberId);
     if (order.productId !== event.checkoutSession.metadata.productId ||

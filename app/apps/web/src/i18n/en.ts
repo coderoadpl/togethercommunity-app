@@ -1079,6 +1079,16 @@ export const en: Messages = {
     reportKeysScope: 'Reports (read only)',
     reportKeysHint: 'Reads tenant activity reports. Cannot be combined with write scopes. No expiry; revoke when no longer needed.',
     tabApiKeys: 'API keys',
+    checkoutAppearance: {
+      heading: 'Checkout appearance',
+      displayName: 'Display name',
+      logoUrl: 'Logo (URL)',
+      iconUrl: 'Icon (URL)',
+      backgroundColor: 'Background colour',
+      buttonColor: 'Button colour',
+      fontFamily: 'Font',
+      borderStyle: 'Corners',
+    },
     stripeHeading: 'Stripe',
     stripeDescription:
       'Enter a restricted key. Together creates the webhook automatically and stores its signing secret.',
@@ -1259,6 +1269,9 @@ export const en: Messages = {
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
+    deleteDraft: 'Delete draft',
+    deleteDraftBody: 'The product draft will be permanently deleted.',
+
     visibilityLabel: 'Visibility',
     listed: 'Listed',
     unlisted: 'Unlisted',
@@ -1418,6 +1431,11 @@ export const en: Messages = {
     updateItem: 'Save item',
   },
   courses: {
+    archived: 'Archived',
+    restore: 'Restore',
+    archiveCourse: 'Archive course',
+    archiveBody: 'The course disappears from lists, the offer and the access picker. You can restore it from the Archived filter.',
+
     treeTab: 'Course tree',
     lessonsTab: 'Lessons',
     tabsAria: 'Course tree or lessons',

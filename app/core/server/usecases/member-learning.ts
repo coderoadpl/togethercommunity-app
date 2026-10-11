@@ -102,6 +102,7 @@ export const getMemberLearningSummary = async (
 
   const summaries: MemberCourseLearningSummary[] = [];
   for (const course of courses) {
+    if (course.archivedAt) continue;
     const row = progressByCourse.get(course.id);
     const counts = countCourseProgress({
       course,

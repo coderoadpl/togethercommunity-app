@@ -1,3 +1,4 @@
+import { lockActiveCourses } from './course-reference-lock.js';
 import { surveyResponses } from './survey-schema.js';
 import { lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
@@ -12,7 +13,7 @@ import {
   SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
-  billingDataSchema,
+  orderBillingDataSchema,
   courseLessonSchema,
   lessonAttachmentSchema,
   courseModuleSchema,
@@ -30,6 +31,7 @@ import {
   memberSubscriptionSchema,
   normalizeEmail,
   tenantSchema,
+  checkoutAppearanceSchema,
   notificationSchema,
   orderSchema,
   orderListItemSchema,
@@ -91,6 +93,7 @@ import type {
   LessonAttachmentRepository,
   CourseModuleRepository,
   CourseRepository,
+  CourseArchiveRepository,
   CheckoutConsentCaptureRepository,
   DevEmailReader,
   DevMagicLinkReader,
@@ -293,7 +296,10 @@ const parseModule = (module: Omit<CourseModule, 'name'>): CourseModule =>
     name: computeCourseModuleName(module.prefix, module.title),
   });
 
-const parseCourse = (course: Course): Course => courseSchema.parse(course);
+const parseCourse = (course: Course): Course => courseSchema.parse({
+  ...course,
+  archivedAt: course.archivedAt ? new Date(course.archivedAt).toISOString() : null,
+});
 
 const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
   memberCourseProgressSchema.parse(progress);
@@ -392,26 +398,31 @@ export const createProductRepository = (
   },
   create: async (tenantId, product) => {
     try {
-      await db.insert(products).values({
-        id: product.id,
-        tenantId,
-        type: product.type,
-        slug: product.slug,
-        title: product.title,
-        description: product.description,
-        coverUrl: product.coverUrl,
-        visibility: product.visibility,
-        priceCents: product.priceCents,
-        vatRate: product.vatRate ?? null,
-        vatExemptionBasis: product.vatExemptionBasis ?? null,
-        currency: product.currency,
-        published: product.published,
-        accessItems: product.accessItems,
-        checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
-        legacyId: product.legacyId,
-        createdAt: product.createdAt,
+      return await db.transaction(async (tx) => {
+        if (!await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId))) {
+          return 'course_unavailable';
+        }
+        await tx.insert(products).values({
+          id: product.id,
+          tenantId,
+          type: product.type,
+          slug: product.slug,
+          title: product.title,
+          description: product.description,
+          coverUrl: product.coverUrl,
+          visibility: product.visibility,
+          priceCents: product.priceCents,
+          vatRate: product.vatRate ?? null,
+          vatExemptionBasis: product.vatExemptionBasis ?? null,
+          currency: product.currency,
+          published: product.published,
+          accessItems: product.accessItems,
+          checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
+          legacyId: product.legacyId,
+          createdAt: product.createdAt,
+        });
+        return 'created';
       });
-      return 'created';
     } catch (cause) {
       if (uniqueViolation(cause, 'products_tenant_slug_uidx')) return 'slug_taken';
       throw cause;
@@ -434,25 +445,23 @@ export const createProductRepository = (
     const row = rows[0];
     return row ? parseProduct(row) : null;
   }),
-  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
-    const apply = async (executor: Db): Promise<Product | null> => {
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
+    db.transaction(async (tx) => {
+      if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
+        return 'course_unavailable';
+      }
+      if (version) await insertEntityVersion(tx, tenantId, version);
       const changes = checkoutConsentDefinitionIds === undefined
         ? { accessItems }
         : { accessItems, checkoutConsentDefinitionIds };
-      const rows = await executor
+      const rows = await tx
         .update(products)
         .set(changes)
         .where(and(eq(products.tenantId, tenantId), eq(products.id, id)))
         .returning();
       const row = rows[0];
       return row ? parseProduct(row) : null;
-    };
-    if (!version) return apply(db);
-    return db.transaction(async (tx) => {
-      await insertEntityVersion(tx, tenantId, version);
-      return apply(tx);
-    });
-  },
+    }),
   setPublished: async (tenantId, id, published) => {
     await db
       .update(products)
@@ -467,7 +476,7 @@ export const createProductRepository = (
   },
 });
 
-export const createCourseRepository = (db: Db): CourseRepository => ({
+export const createCourseRepository = (db: Db): CourseRepository & CourseArchiveRepository => ({
   list: async (tenantId) =>
     (await db.select().from(courses).where(eq(courses.tenantId, tenantId)).orderBy(asc(courses.createdAt))).map(
       parseCourse,
@@ -517,6 +526,23 @@ export const createCourseRepository = (db: Db): CourseRepository => ({
       return apply(tx);
     });
   },
+  setArchived: async (tenantId, courseId, archivedAt, version) => db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(courses)
+      .where(and(eq(courses.tenantId, tenantId), eq(courses.id, courseId))).for('update');
+    if (existing === undefined) return { kind: 'not_found' };
+    if (archivedAt !== null) {
+      const references = await tx.select({ title: products.title }).from(products).where(and(
+        eq(products.tenantId, tenantId),
+        sql`${products.accessItems} @> ${JSON.stringify([{ courseId }])}::jsonb`,
+      )).orderBy(asc(products.title), asc(products.id));
+      if (references.length > 0) return { kind: 'referenced', productTitles: references.map((product) => product.title) };
+    }
+    if (Boolean(existing.archivedAt) === Boolean(archivedAt)) return { kind: 'saved', course: parseCourse(existing) };
+    await insertEntityVersion(tx, tenantId, version);
+    const [saved] = await tx.update(courses).set({ archivedAt })
+      .where(and(eq(courses.tenantId, tenantId), eq(courses.id, courseId))).returning();
+    return saved ? { kind: 'saved', course: parseCourse(saved) } : { kind: 'not_found' };
+  }),
   delete: async (tenantId, id) => {
     const rows = await db
       .delete(courses)
@@ -3240,6 +3266,7 @@ export const createOrderRepository = (
     completeTestCheckout: async (tenantId, order) => db.transaction(async (tx) => {
       const [row] = await tx.update(orders).set({
         status: 'paid', providerObjectIds: order.providerObjectIds,
+        billing: order.billing ?? null,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
       if (row === undefined) return null;
@@ -3426,7 +3453,7 @@ export const createOrderRepository = (
         orders: rows.map((row) => ({
           id: row.id,
           createdAt: row.createdAt,
-          billing: row.billing === null ? null : billingDataSchema.parse(row.billing),
+          billing: row.billing === null ? null : orderBillingDataSchema.parse(row.billing),
           invoice: row.invoiceId === null
             ? null
             : {
@@ -4292,6 +4319,7 @@ export const createTenantRepository = (
         logoUrl: tenants.logoUrl,
         logoDarkUrl: tenants.logoDarkUrl,
         signInNotice: tenants.signInNotice,
+        checkoutAppearance: tenants.checkoutAppearance,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
         faviconUrl: tenants.faviconUrl,
@@ -4332,6 +4360,7 @@ export const createTenantRepository = (
           logoUrl: row.logoUrl,
           logoDarkUrl: row.logoDarkUrl,
           signInNotice: row.signInNotice,
+          checkoutAppearance: row.checkoutAppearance === null ? null : checkoutAppearanceSchema.parse(row.checkoutAppearance),
           accentColor: row.accentColor,
           accentLight: row.accentLight,
           faviconUrl: row.faviconUrl,
@@ -4388,6 +4417,7 @@ export const createTenantRepository = (
         logoUrl: settings.logoUrl,
         logoDarkUrl: settings.logoDarkUrl,
         signInNotice: settings.signInNotice,
+        checkoutAppearance: settings.checkoutAppearance,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
         faviconUrl: settings.faviconUrl,
@@ -4424,6 +4454,7 @@ export const createTenantRepository = (
       logoUrl: settings.logoUrl,
       logoDarkUrl: settings.logoDarkUrl,
       signInNotice: settings.signInNotice,
+      checkoutAppearance: settings.checkoutAppearance,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,
       faviconUrl: settings.faviconUrl,

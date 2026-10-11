@@ -62,6 +62,8 @@ product-<sourceAccessId>   member-<sourceUserId>   grant-<sourceUserId>:<sourceA
 
 Records reference each other by `importKey`, never by Together ids. A reference resolves only to a record created by an import for this tenant, or to an eligible record in the same validation call; native resources are never eligible. Otherwise the referencing record fails with `conflict`. Created resources get `id` equal to their `importKey`, and `legacyId` from the record when you supply it.
 
+Archived courses cannot resolve as new course references, including product access items and progress or redirect `courseKey` references; these fail with `conflict`. A `module-as-course` redirect also fails with `conflict` when its module reference resolves to a module whose first course is archived. Existing import updates of the archived course itself remain allowed. See [course management](courses.md) for archive and restore rules.
+
 `createdAt` is optional for courses, modules, lessons, products, and members and preserves the original creation timestamp. Grant and progress records do not accept it. It is an import-only privilege — the normal APIs never accept it.
 
 ### Course
@@ -80,7 +82,7 @@ Records reference each other by `importKey`, never by Together ids. A reference 
 {"kind":"module","importKey":"module-m1","legacyId":"m1","courseKeys":["course-abc123"],"title":"Layout","prefix":"01","chapters":[{"id":"chapter-m1-0","name":"Flexbox","contents":[{"id":"content-m1-0-0","name":"Flex container","lessonKey":"lesson-l1"}]}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
 
-The display name is computed from `prefix` and `title`; it is never accepted as input. `courseKeys` must be unique. Chapter and content `id`s are stored verbatim and must be unique within the module — derive them from your source ids too. Each `lessonKey` must resolve or the record fails with `conflict`.
+The display name is computed from `prefix` and `title`; it is never accepted as input. `courseKeys` must be unique and resolve to non-archived imported courses; an archived course reference fails with `conflict`. Chapter and content `id`s are stored verbatim and must be unique within the module — derive them from your source ids too. Each `lessonKey` must resolve or the record fails with `conflict`.
 
 ### Lesson
 
@@ -178,7 +180,7 @@ Paths that end in a document extension are answered — `/kurs/lekcja-1.html` an
 | `module-as-course` | `importKey` of a module | the member page of the course the module belongs to |
 | `path` | `path` | that path verbatim, for destinations the import does not own; it obeys the same shape rules as `fromPath`, so a redirect can never leave the tenant's own origin |
 
-A redirect answers before the web app sees the path, so never map a path the platform itself serves (`/my`, `/login`, `/panel`, and the rest of the member and studio routes). On the hosted deployment the edge forwards a fixed prefix list to the server (`app/vercel.json`); a redirect stored outside the forwarded prefixes never answers an ordinary browser request there, and of the forwarded prefixes `/courses/` and `/link/` are the ones meant for redirects — put short links for print and QR codes under `/link/<key>`. The social and search crawlers listed in that file are forwarded on every path and receive a stored non-asset entry's answer wherever one exists. An unknown `/link/` key answers `302` to the workspace home. Content targets resolve through the same reference rules as every other kind, so submit redirects last. The destination is resolved once, at import time, and stored with the row; re-import a redirect after moving its target. `permanent: true` answers `301` and `false` answers `302` — use `301` only for a destination that keeps its identity, because browsers cache it. The request's query string is appended to the destination.
+A redirect answers before the web app sees the path, so never map a path the platform itself serves (`/my`, `/login`, `/panel`, and the rest of the member and studio routes). On the hosted deployment the edge forwards a fixed prefix list to the server (`app/vercel.json`); a redirect stored outside the forwarded prefixes never answers an ordinary browser request there, and of the forwarded prefixes `/courses/` and `/link/` are the ones meant for redirects — put short links for print and QR codes under `/link/<key>`. The social and search crawlers listed in that file are forwarded on every path and receive a stored non-asset entry's answer wherever one exists and its target is available. An unknown `/link/` key, or one whose course or lesson target resolves to an archived or missing course, answers `302` to the workspace home and counts no hit. Other paths with an unavailable course target behave as if no entry exists; see the [redirect outcome table](custom-domains.md#redirects-for-links-minted-elsewhere). Content targets resolve through the same reference rules as every other kind, so submit redirects last. The destination is resolved once, at import time, and stored with the row; re-import a redirect after moving its target. For an available target, `permanent: true` answers `301` and `false` answers `302` — use `301` only for a destination that keeps its identity, because browsers cache it. The request's query string is appended to the destination.
 
 Every row an import writes is marked `import`; a row a member of staff adds in the studio is marked `manual`. The import owns only the rows it created, keyed by `importKey`, and never rewrites a manual row: when an incoming record normalises to a path a manual row already answers, that record fails with `conflict` and the manual row is left as it is. Delete the manual row in the studio to hand the path back to the import. A row the studio deletes is recreated by the next import that carries its `importKey`. Retargeting an unlocked imported row in the studio keeps its `import` origin; the next import overwrites that edit when its payload differs from the stored row.
 
@@ -309,7 +311,7 @@ Request-level failures use HTTP status codes:
 Record-level failures appear inside `results[]` (or `errors[]` for validate) and never change the HTTP status:
 
 - `validation` — the record does not match its schema, or a field exceeds its limit.
-- `conflict` — a reference lacks import lineage, a divergent payload targets a record that cannot be updated, an e-mail belongs to a pre-existing identity, or a second grant/progress row exists for the same logical pair.
+- `conflict` — a reference lacks import lineage, a course reference resolves to an archived course (including product access items), a `module-as-course` redirect references a module whose first course is archived, a divergent payload targets a record that cannot be updated, an e-mail belongs to a pre-existing identity, or a second grant/progress row exists for the same logical pair.
 - `slug_reserved` — another product already uses the submitted slug.
 
 ## Drafts only

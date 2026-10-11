@@ -30,7 +30,7 @@ import { recordException, telemetryMiddleware } from './telemetry.js';
 
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
 const isServerRenderedDocument = (path: string): boolean =>
-  ['/u/', '/marketing/', '/legal/'].some((prefix) => path.startsWith(prefix));
+  ['/u/', '/marketing/', '/legal/', '/offer/'].some((prefix) => path.startsWith(prefix));
 const isSpaDocument = (path: string): boolean =>
   path !== '/api' && !path.startsWith('/api/') && !isServerRenderedDocument(path);
 

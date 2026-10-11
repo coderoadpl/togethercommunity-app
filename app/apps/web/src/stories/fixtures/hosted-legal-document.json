@@ -8,6 +8,7 @@
       "billingPortalUrl": null,
       "bunnyStreamCdnHostname": null,
       "bunnyStreamLibraryId": null,
+      "checkoutAppearance": null,
       "defaultHomeSpaceId": null,
       "defaultLanguage": "en",
       "directMessagesEnabled": true,

@@ -107,6 +107,51 @@ const drag = (handle: HTMLElement, target: HTMLElement) => {
 };
 
 describe('CoursesPanel courses tab', () => {
+  it('confirms archiving, lists archived courses and restores them', async () => {
+    let current = course();
+    let archiveCalls = 0;
+    server.use(
+      http.get('/api/courses', ({ request }) => {
+        const archived = new URL(request.url).searchParams.get('archived') === 'true';
+        const courses = Boolean(current.archivedAt) === archived ? [current] : [];
+        return HttpResponse.json({ ok: true, data: { courses } });
+      }),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/archive', async ({ request }) => {
+        expect(await request.json()).toEqual({ courseId: current.id });
+        archiveCalls += 1;
+        current = { ...current, archivedAt: '2026-10-11T10:00:00.000Z' };
+        return HttpResponse.json({ ok: true, data: { course: current } });
+      }),
+      http.post('/api/courses/restore', async ({ request }) => {
+        expect(await request.json()).toEqual({ courseId: current.id });
+        current = { ...current, archivedAt: null };
+        return HttpResponse.json({ ok: true, data: { course: current } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+    await userEvent.click(await screen.findByRole('button', { name: en.courses.archiveCourse }));
+    expect(screen.getByText(en.courses.archiveBody)).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.cancel }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(archiveCalls).toBe(0);
+    await userEvent.click(screen.getByRole('button', { name: en.courses.archiveCourse }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.courses.archiveCourse }));
+    expect(await screen.findByText(en.courses.empty)).toBeInTheDocument();
+    expect(screen.queryByText(current.name)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.courses.archived }));
+    expect(await screen.findByText(current.name)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.courses.restore }));
+    await waitFor(() => expect(screen.queryByText(current.name)).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: en.courses.archived }));
+    expect(await screen.findByText(current.name)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.courses.archived })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: en.courses.manage })).toBeInTheDocument();
+  });
+
   it('lists courses and creates a new one', async () => {
     let courses = [course()];
     server.use(

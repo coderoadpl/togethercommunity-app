@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { publicOfferOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
+import { publicOfferOutputSchema, publicPaymentConfigOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
 import { tenantSettingsSchema } from '#core/domain/index.js';
 import { z } from 'zod';
 import bootSplash from '../apps/web/src/stories/fixtures/boot-splash.json';
@@ -10,7 +10,7 @@ import { fixtureClient, fixtureErrors, fixtureExpectationErrors, fixturePendingC
 const fixturesDirectory = new URL('../apps/web/src/stories/fixtures/', import.meta.url);
 
 describe('recorded tenant settings', () => {
-  it.each(readdirSync(fixturesDirectory).filter((name) => name.endsWith('.json')))('%s records the automatic KSeF submission default', (name) => {
+  it.each(readdirSync(fixturesDirectory).filter((name) => name.endsWith('.json')))('%s records settings and payment configuration defaults', (name) => {
     const fixture = z.object({
       calls: z.record(z.unknown()).optional(),
       brand: z.object({ settings: z.unknown() }).optional(),
@@ -19,13 +19,23 @@ describe('recorded tenant settings', () => {
       const parsed = tenantSettingsSchema.parse(fixture.brand.settings);
       expect(fixture.brand.settings).toEqual(parsed);
       expect(parsed.ksefSubmissionMode).toBe('automatic');
+      expect(parsed.checkoutAppearance).toBeNull();
     }
     const settings = fixture.calls?.['getTenantSettings:[]'];
-    if (settings === undefined) return;
-    const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(settings);
-    const parsed = tenantSettingsOutputSchema.parse(response.value);
-    expect(response.value).toEqual(parsed);
-    expect(parsed.settings.ksefSubmissionMode).toBe('automatic');
+    if (settings !== undefined) {
+      const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(settings);
+      const parsed = tenantSettingsOutputSchema.parse(response.value);
+      expect(response.value).toEqual(parsed);
+      expect(parsed.settings.ksefSubmissionMode).toBe('automatic');
+      expect(parsed.settings.checkoutAppearance).toBeNull();
+    }
+    const paymentConfig = fixture.calls?.['publicPaymentConfig:[]'];
+    if (paymentConfig !== undefined) {
+      const response = z.object({ ok: z.literal(true), value: z.unknown() }).parse(paymentConfig);
+      const parsed = publicPaymentConfigOutputSchema.parse(response.value);
+      expect(response.value).toEqual(parsed);
+      expect(parsed.salesLinkTestConfigured).toBe(false);
+    }
   });
 });
 

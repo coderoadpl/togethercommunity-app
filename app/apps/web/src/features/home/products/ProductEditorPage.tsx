@@ -572,7 +572,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
     <PanelPage
       title={product.title}
       backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}
-      action={<DeleteProductDraftAction product={product} onDeleted={() => void navigate({ to: '/panel/products' })} />}
+      action={product.published ? undefined : <DeleteProductDraftAction product={product} onDeleted={() => void navigate({ to: '/panel/products' })} />}
     >
       <ProductDetailsSection product={product} />
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>

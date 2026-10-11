@@ -40,6 +40,9 @@ describe('deleteProductDraft', () => {
     ['grants', 'grants'],
     ['sales_links', 'sales link'],
     ['checkout_snapshots', 'checkout snapshot'],
+    ['price_history', 'price history'],
+    ['coupon_checkout_sessions', 'coupon checkout session'],
+    ['subscriptions', 'subscriptions'],
   ] as const)('refuses %s with a specific validation reason', async (reason, message) => {
     const { deps, remove } = depsFor({ kind: 'refused', reason });
     expect(await deleteProductDraft(ctx, { productId: 'draft' }, deps)).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining(message) } });
@@ -66,12 +69,23 @@ describe('deleteProductDraft', () => {
     expect(remove).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining(asset.storageKey) }));
   });
 
-  it.each(['result', 'rejection', 'configuration'] as const)('logs %s cleanup failure without undoing the deletion', async (failure) => {
+  it.each(['result', 'configuration'] as const)('logs %s cleanup failure without undoing the deletion', async (failure) => {
     const { deps } = depsFor({ kind: 'deleted', assets: [asset] });
     if (failure === 'result') deps.storage.delete = async () => err(integrationUnavailable('Storage unavailable'));
-    if (failure === 'rejection') deps.storage.delete = async () => { throw new Error('Storage unavailable'); };
     if (failure === 'configuration') deps.secretResolver.resolve = async () => err(integrationUnavailable('Storage unavailable'));
     expect(await deleteProductDraft(ctx, { productId: 'draft' }, deps)).toEqual(ok({ deleted: true }));
     expect(deps.logger.error).toHaveBeenCalledWith(expect.stringContaining('Storage unavailable'));
+  });
+
+  it.each(['storage', 'configuration'] as const)('propagates %s cleanup rejections after the transaction commits', async (failure) => {
+    const { deps, sequence } = depsFor({ kind: 'deleted', assets: [asset] });
+    const cause = new Error('Infrastructure unavailable');
+    if (failure === 'storage') vi.spyOn(deps.storage, 'delete').mockRejectedValue(cause);
+    if (failure === 'configuration') vi.spyOn(deps.secretResolver, 'resolve').mockRejectedValue(cause);
+
+    await expect(deleteProductDraft(ctx, { productId: 'draft' }, deps)).rejects.toBe(cause);
+
+    expect(sequence).toEqual(['committed']);
+    expect(deps.logger.error).not.toHaveBeenCalled();
   });
 });

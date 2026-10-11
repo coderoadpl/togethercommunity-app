@@ -418,6 +418,24 @@ describe('CourseTree', () => {
     }
   });
 
+  it.each([
+    { key: 'Control', modifier: 'ctrlKey' },
+    { key: 'Meta', modifier: 'metaKey' },
+    { key: 'Shift', modifier: 'shiftKey' },
+    { key: 'Alt', modifier: 'altKey' },
+  ] as const)('preserves $key when Enter activates a lesson link', async ({ key, modifier }) => {
+    const user = userEvent.setup();
+    const { router } = await renderTree();
+    const activated = vi.fn((event: MouseEvent) => event.preventDefault());
+    screen.getByTestId('lesson-button-l1').addEventListener('click', activated);
+    treeItem('lesson-button-l1').focus();
+
+    await user.keyboard(`{${key}>}{Enter}{/${key}}`);
+
+    expect(activated).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ [modifier]: true }));
+    expect(router.state.location.pathname).toBe('/my/courses/course-1');
+  });
+
   it('filters to matching lessons, auto-expands and highlights the match', async () => {
     const user = userEvent.setup();
     const { container } = await renderTree();
@@ -620,6 +638,48 @@ describe('CourseTree', () => {
     await user.hover(await screen.findByTestId('lesson-button-l1'));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
+  });
+
+  it('shows only the focused row tooltip and dismisses it with Escape or blur', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+    treeItem('module-toggle-m1').focus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('01 - Fundamentals');
+
+    await user.keyboard('{ArrowDown}');
+    await waitFor(() => {
+      expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Getting started');
+    });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    expect(treeItem('chapter-toggle-c1')).toHaveFocus();
+
+    await user.keyboard('{ArrowDown}');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
+    await user.click(screen.getByTestId('lesson-search'));
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+  });
+
+  it('lets the keyboard reach a locked lesson tooltip without activating the lesson', async () => {
+    const user = userEvent.setup();
+    const { router } = await renderTree();
+    treeItem('module-toggle-m2').focus();
+
+    await user.keyboard('{ArrowDown}');
+
+    expect(treeItem('lesson-button-l4')).toHaveFocus();
+    expect(treeItem('lesson-button-l4')).toHaveAccessibleDescription(
+      en.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
+    );
+    await waitFor(() => {
+      expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+      expect(screen.getByRole('tooltip')).toHaveTextContent(
+        en.courseTree.lockedLessonTooltip({ name: 'Closures Deep Dive' }),
+      );
+    });
+    await user.keyboard('{Enter}');
+    expect(router.state.location.pathname).toBe('/my/courses/course-1');
   });
 
   it('does not add a separate unlock row for locked lessons', async () => {

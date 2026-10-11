@@ -10,6 +10,7 @@ import {
 import { useForkRef } from '@mui/material/utils';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import type { TreeItemProps } from '@mui/x-tree-view/TreeItem';
+import type { UseTreeItemContentSlotOwnProps } from '@mui/x-tree-view/useTreeItem';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -52,11 +53,22 @@ type RowConfig = {
 
 const RowContext = createContext<RowConfig>({ title: '', testId: '' });
 
-const RowContent = (props: ComponentProps<typeof CourseTreeItemContent>) => {
+const RowContent = (props: ComponentProps<typeof CourseTreeItemContent> & Pick<UseTreeItemContentSlotOwnProps, 'data-focused'>) => {
   const row = useContext(RowContext);
   const ref = useForkRef<HTMLDivElement>(props.ref, row.ref);
+  const focused = props['data-focused'] !== undefined;
+  const [tooltip, setTooltip] = useState({ focused, open: focused });
+  if (tooltip.focused !== focused) setTooltip({ focused, open: focused });
   return (
-    <Tooltip describeChild title={row.title} enterDelay={TITLE_TOOLTIP_DELAY_MS} enterNextDelay={TITLE_TOOLTIP_DELAY_MS}>
+    <Tooltip
+      describeChild
+      title={row.title}
+      open={tooltip.open}
+      onOpen={() => setTooltip({ focused, open: true })}
+      onClose={() => setTooltip({ focused, open: false })}
+      enterDelay={TITLE_TOOLTIP_DELAY_MS}
+      enterNextDelay={TITLE_TOOLTIP_DELAY_MS}
+    >
       <CourseTreeItemContent
         {...props}
         as={row.to === undefined ? 'div' : Link}
@@ -260,6 +272,7 @@ const LessonRow = ({
         kind="lesson"
         disabled={locked}
         aria-labelledby={labelId}
+        aria-description={locked ? t.courseTree.lockedLessonTooltip({ name: lesson.name }) : undefined}
         slots={ITEM_SLOTS}
         slotProps={{ label: { id: labelId } }}
         onFocusCapture={locked ? undefined : prefetch}
@@ -267,7 +280,14 @@ const LessonRow = ({
           if (locked || event.key !== 'Enter' || event.target !== event.currentTarget) return;
           event.defaultMuiPrevented = true;
           event.preventDefault();
-          event.currentTarget.querySelector('a')?.click();
+          event.currentTarget.querySelector('a')?.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey,
+          }));
         }}
         label={<>{label}{' '}{marks}</>}
       />
@@ -448,6 +468,7 @@ export const CourseTree = ({
           </Box>
         ) : (
           <SimpleTreeView
+            disabledItemsFocusable
             aria-label={structure.name}
             data-testid="course-tree"
             expandedItems={modules.flatMap((module) => [module.id, ...(module.singleChapter ? [] : module.chapters.map((chapter) => chapter.id))]).filter(isOpen)}

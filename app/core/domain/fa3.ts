@@ -7,6 +7,7 @@ interface Fa3Party {
 }
 
 interface Fa3Buyer {
+  country?: string;
   nip: string | null;
   name: string;
   addressLine: string;
@@ -51,13 +52,14 @@ const vatSummarySuffix = (rate: 5 | 8 | 23): '1' | '2' | '3' => {
 };
 
 const buyerXml = (buyer: Fa3Buyer | null): string => {
-  if (buyer === null) {
-    return '<Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Klient detaliczny</Nazwa></DaneIdentyfikacyjne><JST>2</JST><GV>2</GV></Podmiot2>';
-  }
-  const identifier = buyer.nip === null
+  const identifier = buyer?.nip == null
     ? '<BrakID>1</BrakID>'
     : `<NIP>${escaped(buyer.nip)}</NIP>`;
-  return `<Podmiot2><DaneIdentyfikacyjne>${identifier}<Nazwa>${escaped(buyer.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(buyer.addressLine)}</AdresL1></Adres><JST>2</JST><GV>2</GV></Podmiot2>`;
+  const name = buyer?.name || 'Klient detaliczny';
+  const address = buyer?.addressLine
+    ? `<Adres><KodKraju>${escaped(buyer.country ?? 'PL')}</KodKraju><AdresL1>${escaped(buyer.addressLine)}</AdresL1></Adres>`
+    : '';
+  return `<Podmiot2><DaneIdentyfikacyjne>${identifier}<Nazwa>${escaped(name)}</Nazwa></DaneIdentyfikacyjne>${address}<JST>2</JST><GV>2</GV></Podmiot2>`;
 };
 
 export const renderFa3Invoice = (input: Fa3InvoiceInput): string => {

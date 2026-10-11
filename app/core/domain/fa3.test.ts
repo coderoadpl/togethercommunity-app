@@ -163,6 +163,20 @@ describe('FA(3) renderer', () => {
     expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
   });
 
+  it('preserves a consumer country and partial address without requiring a name or NIP', () => {
+    const xml = renderFa3Invoice({ ...input, buyer: { nip: null, name: '', addressLine: '10115', country: 'DE' } });
+
+    expect(xml).toContain('<BrakID>1</BrakID>');
+    expect(xml).toContain('<Adres><KodKraju>DE</KodKraju><AdresL1>10115</AdresL1></Adres>');
+    expect(xml).not.toContain('<Nazwa></Nazwa>');
+  });
+
+  it('omits an uncollected consumer address', () => {
+    const xml = renderFa3Invoice({ ...input, buyer: { nip: null, name: 'John Smith', addressLine: '' } });
+
+    expect(xml).toContain('<Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>John Smith</Nazwa></DaneIdentyfikacyjne><JST>');
+  });
+
   it('uses the anonymous buyer only when no billing snapshot exists', () => {
     const xml = renderFa3Invoice({ ...input, buyer: null, discountCents: 0 });
 

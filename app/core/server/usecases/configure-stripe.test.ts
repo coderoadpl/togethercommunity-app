@@ -6,6 +6,7 @@ import {
   err,
   integrationUnavailable,
   ok,
+  tenantSettingsSchema,
   type Identity,
   type StripePermissionCheck,
   type TenantSecret,
@@ -358,6 +359,10 @@ describe('probeStripePermissions', () => {
     };
     return { probe, deps: {
       payment, clock: { nowIso: () => '2026-10-10T12:00:00.000Z' },
+      tenants: { findSettings: async () => tenantSettingsSchema.parse({
+        name: 'Studio', billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/logo.png', faviconUrl: '/favicon.png', accentColor: '#112233',
+        checkoutAppearance: { displayName: 'Store', backgroundColor: '#ffffff' },
+      }) },
       appBaseUrl: 'https://app.example.test', baseDomain: 'example.test', singleTenantMode: false,
       tenantDomains: createInMemoryTenantDomainRepository([
         tenantDomainFixture({ id: 'domain-1', tenantId: 'tenant-1', domain: 'learn.example.test', verified: true }),
@@ -373,6 +378,8 @@ describe('probeStripePermissions', () => {
     }));
     expect(h.probe).toHaveBeenCalledExactlyOnceWith({
       tenantId: 'tenant-1', mode: 'test', origin: 'https://learn.example.test',
+      checkoutBranding: { displayName: 'Store', logoUrl: 'https://learn.example.test/logo.png',
+        iconUrl: 'https://learn.example.test/favicon.png', buttonColor: '#112233', backgroundColor: '#ffffff' },
     });
   });
 

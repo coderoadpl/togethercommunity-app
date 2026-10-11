@@ -887,6 +887,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!webhookSecret.ok) return respond(webhookSecret);
     const payloadRaw = await c.req.text();
     const event = await deps.payment.verifyWebhookEvent({
+      tenantId,
+      mode,
       payloadRaw,
       signatureHeader: c.req.header('stripe-signature') ?? '',
       webhookSecret: webhookSecret.value,

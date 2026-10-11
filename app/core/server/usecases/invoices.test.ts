@@ -70,6 +70,7 @@ const harness = (options: {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
   let calls = 0;
+  let issuedBilling: OrderListItem['billing'];
   let allocationCount = 0;
   let allocatedYear: number | null = null;
   let frozenXml: string | null = null;
@@ -121,11 +122,13 @@ const harness = (options: {
     },
     invoicing: {
       issueInvoice: async ({
+        billing,
         providerInvoiceId,
         onProviderInvoiceCreateUncertain,
         onProviderInvoiceCreated,
       }) => {
         calls += 1;
+        issuedBilling = billing;
         if (options.uncertainFailure === true) {
           await onProviderInvoiceCreateUncertain();
           return err(integrationUnavailable('connection lost'));
@@ -274,6 +277,7 @@ const harness = (options: {
     invoices,
     events,
     calls: () => calls,
+    issuedBilling: () => issuedBilling,
     allocatedYear: () => allocatedYear,
     frozenXml: () => frozenXml,
     testedConfig: () => testedConfig,
@@ -705,6 +709,38 @@ describe('refreshInvoiceStatus', () => {
 });
 
 describe('autoIssueOnPayment', () => {
+  it.each(['ifirma', 'ksef'] as const)('issues country-and-postcode-only consumer billing through %s under All orders', async (provider) => {
+    const h = harness({ auto: true, scope: 'all', provider });
+    const consumerBilling = { nip: null, companyName: '', address: '', postalCode: '00-001', city: '', country: 'PL' };
+    const paidOrder = order(consumerBilling);
+    h.deps.orderDetails.findById = async () => paidOrder;
+
+    await autoIssueOnPayment('tenant-1', paidOrder, h.deps);
+
+    expect(h.invoices).toMatchObject([{ provider, status: provider === 'ifirma' ? 'issued' : 'queued' }]);
+    expect(h.events.filter((event) => event.type === 'failed' || event.type === 'skipped')).toEqual([]);
+    if (provider === 'ifirma') {
+      expect(h.issuedBilling()).toEqual(consumerBilling);
+    } else {
+      expect(h.frozenXml()).toContain('<BrakID>1</BrakID>');
+      expect(h.frozenXml()).toContain('<Adres><KodKraju>PL</KodKraju><AdresL1>00-001</AdresL1></Adres>');
+      expect(h.frozenXml()).not.toContain('<Nazwa></Nazwa>');
+    }
+  });
+
+  it.each(['ifirma', 'ksef'] as const)('keeps company billing without a NIP excluded from B2B-only issuance through %s', async (provider) => {
+    const h = harness({ auto: true, scope: 'b2b_only', provider });
+    const paidOrder = order({ ...billing, nip: null });
+    h.deps.orderDetails.findById = async () => paidOrder;
+
+    await autoIssueOnPayment('tenant-1', paidOrder, h.deps);
+
+    expect(h.invoices).toEqual([]);
+    expect(h.calls()).toBe(0);
+    expect(h.frozenXml()).toBeNull();
+    expect(h.events).toMatchObject([{ type: 'skipped', meta: { reason: 'b2b_only' } }]);
+  });
+
   it.each([
     { scope: 'b2b_only' as const, billingSnapshot: null, issued: 0, skipped: 1 },
     { scope: 'b2b_only' as const, billingSnapshot: { ...billing, nip: null }, issued: 0, skipped: 1 },

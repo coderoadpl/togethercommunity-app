@@ -2,6 +2,7 @@ import {
   err,
   integrationUnavailable,
   ok,
+  resolveCheckoutBranding,
   stripeProbePermissionsInputSchema,
   validation,
   type AppError,
@@ -11,12 +12,13 @@ import {
 } from '#core/domain/index.js';
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { Clock, PaymentProvider } from '../ports.js';
+import type { Clock, PaymentProvider, TenantRepository } from '../ports.js';
 import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 
 export interface ProbeStripePermissionsDeps extends TenantOriginDeps {
   payment: PaymentProvider;
   clock: Clock;
+  tenants: Pick<TenantRepository, 'findSettings'>;
 }
 
 export const probeStripePermissions = async (
@@ -32,9 +34,12 @@ export const probeStripePermissions = async (
     return err(integrationUnavailable('Stripe permission probing is unavailable'));
   }
   const origin = await resolveTenantOrigin({ id: tenant.value, slug: ctx.identity.tenantSlug }, deps);
+  const settings = await deps.tenants.findSettings(tenant.value);
+  const checkoutBranding = settings === null ? undefined : resolveCheckoutBranding(settings, origin);
   const checkedAt = deps.clock.nowIso();
   const checks = await deps.payment.probeStripePermissions({
     tenantId: tenant.value, mode: parsed.data.mode, origin,
+    ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
   });
   if (!checks.ok) return checks;
   return ok({ mode: parsed.data.mode, checks: checks.value, allOk: checks.value.every((check) => check.status === 'ok'), checkedAt });

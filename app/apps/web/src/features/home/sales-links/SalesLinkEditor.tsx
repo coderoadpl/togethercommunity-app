@@ -65,7 +65,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
       <TextField type="datetime-local" label={t.salesLinks.validTo} value={validTo} onChange={(event) => setValidTo(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} fullWidth />
     </Stack>
     <Typography variant="caption">{t.salesLinks.timezone}: {SALES_LINK_TIME_ZONE}</Typography>
-    <TextField label={t.salesLinks.cancelReturnUrl} helperText={t.salesLinks.cancelReturnHelp} value={cancelReturnUrl} onChange={(event) => setCancelReturnUrl(event.target.value)} />
+    <TextField label={t.salesLinks.cancelReturnUrl} helperText={t.salesLinks.cancelReturnHelp} value={cancelReturnUrl} onChange={(event) => setCancelReturnUrl(event.target.value)} fullWidth />
     <FormControlLabel control={<Switch checked={listed} onChange={(_, checked) => setListed(checked)} />} label={t.salesLinks.listed} />
     <FormControlLabel control={<Switch checked={active} onChange={(_, checked) => setActive(checked)} />} label={t.salesLinks.active} />
     {invalid ? <Alert severity="error">{t.salesLinks.invalid}</Alert> : null}

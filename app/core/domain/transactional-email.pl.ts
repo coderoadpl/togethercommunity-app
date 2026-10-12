@@ -19,8 +19,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     total: 'Razem',
     notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
     subject: (orderNumber, tenantName) => `Potwierdzenie zakupu ${orderNumber} — ${tenantName}`,
-    verification: 'Pokaż ten kod obsłudze podczas odbioru zamówienia',
-    qrAlt: 'Kod QR do weryfikacji zamówienia',
+    verification: 'Kod weryfikacyjny zamówienia dla sprzedawcy',
+    qrAlt: 'Kod QR zamówienia',
   },
   welcomeSignIn: {
     actionLabels: {

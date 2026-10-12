@@ -19,8 +19,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     total: 'Total',
     notInvoice: 'This purchase confirmation is not an invoice. If you need an invoice, contact us.',
     subject: (orderNumber, tenantName) => `Purchase confirmation ${orderNumber} — ${tenantName}`,
-    verification: 'Show this code to staff when collecting your order',
-    qrAlt: 'Order verification QR code',
+    verification: 'Order verification code for the seller',
+    qrAlt: 'Order QR code',
   },
   welcomeSignIn: {
     actionLabels: {

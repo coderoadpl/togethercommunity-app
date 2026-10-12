@@ -191,8 +191,8 @@ export const welcomeSignIn = (
   return emailMessageSchema.parse({
     ...rendered,
     subject: labels.subject(purchase.orderNumber, input.tenantName),
-    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${link(purchase.verificationUrl, labels.verification)}</p><a href="${escapeHtml(purchase.verificationUrl)}"><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" /></a>${socialLinks.html}`,
-    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}\n\n${labels.notInvoice}\n\n${labels.verification}: ${purchase.verificationUrl}${socialLinks.text}`,
+    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
+    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
   });
 };
 

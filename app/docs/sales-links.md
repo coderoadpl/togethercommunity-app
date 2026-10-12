@@ -142,10 +142,13 @@ version lists each item with its amount and resolved VAT, followed by the total.
 Legacy outbox rows with string lines or without currency and total retain the
 item-name list. Both versions add the localized sentence: "This purchase
 confirmation is not an invoice. If you need an invoice, contact us."
-The collection link and QR follow this purchase block. Its linked QR image encodes
-`https://<workspace host>/panel/orders/verify/<token>`. The stored token contains
-244 random bits and is independent of the order number. The mailer transports
-do not support inline attachments, so the image uses the public token-based PNG
+The purchase block is followed by the plain localized verification label
+"Order verification code for the seller" above the QR image. The image has the
+localized alt text "Order QR code", is unlinked and still encodes the staff
+verification URL, `https://<workspace host>/panel/orders/verify/<token>`, for scanning. Neither
+email version displays that URL. Social links remain after the verification block.
+The stored token contains 244 random bits and is independent of the order number.
+The mailer transports do not support inline attachments, so the image uses the public token-based PNG
 endpoint `/api/public/orders/qr/<token>`. The URL uses the workspace's canonical
 verified custom domain when present, otherwise its platform host. Opening the
 verification link requires staff authentication; the QR image does not expose

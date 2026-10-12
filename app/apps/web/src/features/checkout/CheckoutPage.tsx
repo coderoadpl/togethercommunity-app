@@ -97,13 +97,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...actions.stripeTestSession,
     onSuccess: () => { void paymentConfig.refetch(); },
   });
-  const salesLinkTest = salesLinkSlug !== undefined && new URLSearchParams(window.location.search).has('test');
-  const salesLinkTestEnabled = salesLinkTest && paymentConfig.data?.salesLinkTestConfigured === true;
-  const testEnabled = salesLinkTestEnabled || paymentConfig.data?.testEnabled === true;
-  const testSessionEnded = salesLinkTest && !testEnabled;
+  const testEnabled = paymentConfig.data?.testEnabled === true;
   const testPurchase = paymentConfig.data?.canTest === true &&
     new URLSearchParams(window.location.search).get('test_purchase') === '1';
-  const stripeConfigured = salesLinkTestEnabled || (testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true);
+  const stripeConfigured = testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true;
   const [email, setEmail] = useState('');
   const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [nip, setNip] = useState('');
@@ -227,9 +224,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     });
   };
 
-  const salesLinkRetryUrl = `${window.location.pathname}${salesLinkTest ? '?test=1' : ''}`;
+  const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
   const retry = () => {
-    window.history.replaceState(null, '', `${window.location.pathname}${salesLinkTest ? '?checkout=together&test=1' : ''}`);
+    window.history.replaceState(null, '', `${window.location.pathname}${togetherCheckout ? '?checkout=together' : ''}`);
     setCheckoutStatus(null);
   };
 
@@ -266,7 +263,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
-          <Button variant="contained" {...(salesLinkSlug === undefined || salesLinkTest ? { onClick: retry } : { href: salesLinkRetryUrl })}>
+          <Button variant="contained" {...(salesLinkSlug === undefined || togetherCheckout ? { onClick: retry } : { href: window.location.pathname })}>
             {t.checkout.retry}
           </Button>
         </Stack>
@@ -451,9 +448,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               required
             />
           </FormControl>
-          {salesLinkTestEnabled ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
-          {testSessionEnded ? <Alert severity="warning">{t.checkout.testSessionEnded}</Alert> : null}
-          {!salesLinkTestEnabled && paymentConfig.data.canTest && (paymentConfig.data.testConfigured || testEnabled) ? <>
+          {paymentConfig.data.canTest && (paymentConfig.data.testConfigured || testEnabled) ? <>
             <FormControlLabel label={t.checkout.stripeTestMode}
               control={<Switch checked={testEnabled} data-testid="checkout-test-mode-switch"
                 disabled={testSession.isPending || checkoutSession.isPending}
@@ -638,7 +633,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {testSessionEnded && !checkoutSession.isPending && !simulatePurchase.isPending ? t.checkout.continueLivePayment : bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
+            {bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle({ price: formattedPayable })
@@ -658,7 +653,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             </FinePrint>
           ) : null}
           {selectedAmountCents > 0 &&
-          stripeConfigured && !salesLinkTestEnabled &&
+          stripeConfigured &&
           paymentConfig.data.simulatedPaymentsEnabled ? (
             <Stack useFlexGap spacing="0.35rem">
               <Button

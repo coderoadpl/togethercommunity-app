@@ -907,6 +907,33 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => expect(scrollIntoView.mock.instances).toContain(next));
   });
 
+  it('expands only the deep-linked long block before scrolling, including later hash changes', async () => {
+    stubDesktopViewport();
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200);
+    window.history.replaceState(null, '', '/#second-section');
+    const collapsedWhenScrolled: (string | null | undefined)[] = [];
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      collapsedWhenScrolled.push(this.closest('[data-collapsed]')?.getAttribute('data-collapsed'));
+    });
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'html', html: '<h2>First section</h2><p>First body.</p>' },
+        { type: 'html', html: '<h2>Second section</h2><p>Second body.</p>' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await waitFor(() => expect(collapsedWhenScrolled).toEqual(['false']));
+    const previews = screen.getAllByTestId('lesson-reading-preview');
+    expect(previews[0]).toHaveAttribute('data-collapsed', 'true');
+    expect(previews[1]).toHaveAttribute('data-collapsed', 'false');
+    window.history.replaceState(null, '', '/#first-section');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(collapsedWhenScrolled).toEqual(['false', 'false']));
+    expect(previews[0]).toHaveAttribute('data-collapsed', 'false');
+  });
+
   it('scrolls to the hash after authenticated lesson content mounts', async () => {
     stubDesktopViewport();
     window.history.replaceState(null, '', '/#late-section');
@@ -949,6 +976,106 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
     expect(scrollIntoView.mock.instances[0]).toHaveAttribute('id', 'late-section');
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+  });
+
+  it('reveals the loaded lesson after placeholder navigation with unchanged heading ids', async () => {
+    stubDesktopViewport();
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200);
+    const scrolled: { body: string | null; collapsed: string | null | undefined }[] = [];
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      scrolled.push({ body: this.parentElement?.textContent ?? null, collapsed: this.closest('[data-collapsed]')?.getAttribute('data-collapsed') });
+    });
+    let releaseLesson: () => void = () => undefined;
+    const lessonGate = new Promise<void>((resolve) => { releaseLesson = resolve; });
+    server.use(
+      okStructureOf(structureOf([entry('l1', 'First lesson'), entry('l2', 'Second lesson', false)])),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', async ({ params }) => {
+        const id = String(params.lessonId);
+        if (id === 'l2') await lessonGate;
+        return HttpResponse.json({ ok: true, data: {
+          lesson: { ...lesson([{ type: 'html', html: `<h2>Shared section</h2><p>${id === 'l1' ? 'First body.' : 'Second body.'}</p>` }]), id },
+          authenticated: true,
+        } });
+      }),
+    );
+    const root = createRootRoute();
+    const lessonRoute = createRoute({
+      getParentRoute: () => root, path: '/my/courses/$courseId/lessons/$lessonId',
+      component: function NavigatedLesson() {
+        const params = useParams({ strict: false });
+        return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+      },
+    });
+    const router = createRouter({
+      routeTree: root.addChildren([lessonRoute]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+    await screen.findByTestId('lesson-html');
+    window.history.replaceState(null, '', '/#shared-section');
+
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } }));
+    await screen.findByTestId('lesson-transition-loading');
+    expect(scrolled).toEqual([]);
+    await act(async () => releaseLesson());
+
+    await waitFor(() => expect(scrolled).toEqual([{ body: 'Shared sectionSecond body.', collapsed: 'false' }]));
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
+  });
+
+  it('reveals the same anchor when navigating between cached editions', async () => {
+    stubDesktopViewport();
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200);
+    const scrolled: { body: string | null; collapsed: string | null | undefined }[] = [];
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      scrolled.push({ body: this.parentElement?.textContent ?? null, collapsed: this.closest('[data-collapsed]')?.getAttribute('data-collapsed') });
+    });
+    server.use(
+      okStructureOf(structureOf([entry('l1', 'Intro to Variables')])),
+      okProgress(),
+      http.get('/api/public/offer', () => HttpResponse.json({
+        ok: true, data: { tenant: { slug: 'acme', name: 'Acme', socialLinks: [] }, products: [], contentVersion: 1 },
+      })),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    for (const number of ['2.1', '2.2']) {
+      queryClient.setQueryData(actions.studentLessonEdition('l1', number).queryKey, {
+        lesson: lesson([{ type: 'html', html: `<h2>Shared section</h2><p>Edition ${number} body.</p>` }]),
+        authenticated: true,
+      });
+    }
+    const root = createRootRoute();
+    const lessonRoute = createRoute({
+      getParentRoute: () => root, path: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+      component: function CachedEdition() {
+        const params = useParams({ strict: false });
+        return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} editionNumber={params.number} />;
+      },
+    });
+    const router = createRouter({
+      routeTree: root.addChildren([lessonRoute]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1/editions/2.1'] }),
+    });
+    await router.load();
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+    await screen.findByTestId('lesson-html');
+    window.history.replaceState(null, '', '/#shared-section');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(scrolled).toEqual([{ body: 'Shared sectionEdition 2.1 body.', collapsed: 'false' }]));
+
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId/editions/$number', params: { courseId: 'course-1', lessonId: 'l1', number: '2.2' } }));
+    await waitFor(() => expect(scrolled).toEqual([
+      { body: 'Shared sectionEdition 2.1 body.', collapsed: 'false' },
+      { body: 'Shared sectionEdition 2.2 body.', collapsed: 'false' },
+    ]));
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
+
+    await act(() => router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId/editions/$number', params: { courseId: 'course-1', lessonId: 'l1', number: '2.1' } }));
+    await waitFor(() => expect(scrolled).toHaveLength(3));
+    expect(scrolled[2]).toEqual({ body: 'Shared sectionEdition 2.1 body.', collapsed: 'false' });
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
   });
 
   it('does not scroll back to the same heading after lesson data refetches', async () => {
@@ -1366,12 +1493,12 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('next-lesson')).not.toBeInTheDocument();
   });
 
-  it('left-aligns the reading column of an html block', async () => {
+  it('centres the reading column of an html block with left-aligned text', async () => {
     server.use(okStructure(), okProgress(), okLesson([{ type: 'html', html: '<p>Body</p>' }]));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(stylesAt(await screen.findByTestId('lesson-html'), 1440)).toMatchObject({
-      'margin-inline': '0px',
+      'margin-inline': 'auto',
       'text-align': 'left',
     });
   });
@@ -1786,7 +1913,7 @@ describe('LessonPlayerPage', () => {
 
     expect(stylesAt(screen.getByTestId('lesson-html'), desktop)).toMatchObject({
       'max-width': '44rem',
-      'margin-inline': '0px',
+      'margin-inline': 'auto',
       'text-align': 'left',
     });
   });

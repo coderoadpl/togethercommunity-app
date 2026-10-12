@@ -631,6 +631,7 @@ export default tseslint.config(
               from: ['web-features'],
               allow: [
                 '@mui/material',
+                '@mui/x-tree-view',
                 '@tanstack/react-query',
                 '@tanstack/react-router',
                 '@testing-library/react',
@@ -686,7 +687,7 @@ export default tseslint.config(
             },
             {
               from: ['web-theme'],
-              allow: ['@mui/material', 'react', 'vitest'],
+              allow: ['@mui/material', '@mui/x-tree-view', 'react', 'vitest'],
             },
             {
               from: ['web-i18n'],

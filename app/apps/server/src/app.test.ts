@@ -9625,17 +9625,33 @@ describe('direct public sales-link checkout', () => {
     expect(html).toContain('property="og:title" content="Complete bundle"');
     expect(html).toContain('rel="icon" href="https://acme.example/icon.png"');
     expect(html).toContain('<noscript><form method="post" action="/api/public/sales-links/bundle/checkout">');
-    expect(html).toContain('name="mode" value="live"');
+    expect(html).toContain('data-mode="live"');
+    expect(html).not.toContain('name="mode"');
+    expect(html).not.toContain('<strong>TEST</strong>');
     expect(html).toContain('location.replace(result.data.url)');
     expect(html).toContain('<script nonce="');
     expect(response.headers.get('content-security-policy')).toContain("'nonce-");
     expect(h.create).not.toHaveBeenCalled();
   });
 
+  it('resolves tenant checkout appearance for the redirect card', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings,
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',
+      checkoutAppearance: { displayName: 'Acme <"Studio">', logoUrl: 'https://acme.example/checkout-logo.png', buttonColor: '#112233', backgroundColor: '#ddeeff' },
+    });
+    const response = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('<h1>Acme &lt;&quot;Studio&quot;&gt;</h1>');
+    expect(html).toContain('src="https://acme.example/checkout-logo.png"');
+    expect(html).toContain('style="--accent: #112233; --background: #ddeeff"');
+  });
+
   it.each(['facebookexternalhit', 'Twitterbot', 'LinkedInBot', 'Slackbot', 'Discordbot', 'WhatsApp', 'TelegramBot', 'Googlebot', 'redditbot', 'Applebot'])('does not expose checkout actions to %s', async (userAgent) => {
     const h = await directSalesLinkApp();
     const headers = { host: 'acme.localhost', 'user-agent': userAgent };
-    for (const query of ['', '?checkout=together', '?status=success', '?status=cancelled']) {
+    for (const query of ['', '?test', '?mode=test', '?checkout=together', '?status=success', '?status=cancelled']) {
       const response = await h.app.request(`/offer/bundle${query}`, { headers });
       const html = await response.text();
       expect(response.status).toBe(200);
@@ -9643,14 +9659,14 @@ describe('direct public sales-link checkout', () => {
       expect(html).not.toContain('<script');
       expect(html).not.toContain('<form');
     }
-    const submission = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    const submission = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{}' });
     expect(submission.status).toBe(403);
     expect(h.create).not.toHaveBeenCalled();
   });
 
-  it('creates one live session when test mode has no key and redirects noscript submissions', async () => {
+  it('creates one live session and redirects empty noscript submissions', async () => {
     const h = await directSalesLinkApp();
-    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/x-www-form-urlencoded' }, body: 'mode=test' });
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/x-www-form-urlencoded' }, body: '' });
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('https://checkout.local/cs');
     expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -9661,41 +9677,63 @@ describe('direct public sales-link checkout', () => {
     }));
   });
 
-  it.each(['staff', 'anonymous', 'no-session', 'revoked', 'other-tenant'] as const)('binds full direct test checkout to the staff session: %s', async (actor) => {
+  it.each(['staff', 'anonymous', 'no-session', 'revoked', 'other-tenant'] as const)('ignores all direct mode hints and staff test cookies for %s', async (actor) => {
     const h = await directSalesLinkApp();
-    h.base.authPort.getAuthenticatedUser = async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
+    const authenticated = vi.fn(async () => actor === 'anonymous' ? null : ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null }));
+    h.base.authPort.getAuthenticatedUser = authenticated;
     const staffGrant = vi.fn(async () => actor === 'revoked' ? null : ({ tenant: acme, staffRole: 'admin' as const }));
     h.base.tenantAccess.findStaffGrant = staffGrant;
-    h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
-    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    const decrypt = vi.fn((stored: { ciphertext: string }) => ok(stored.ciphertext));
+    h.base.secretCrypto.decrypt = decrypt;
+    const findKey = vi.fn<AppDeps['tenantSecrets']['findByKey']>(async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() }));
+    h.base.tenantSecrets.findByKey = findKey;
     const payload = { userId: 'staff-user', tenantId: actor === 'other-tenant' ? 'another-tenant' : acme.id, expiresAt: Date.parse(h.base.clock.nowIso()) + 60_000 };
-    const cookie = `together_stripe_test=${encodeURIComponent(JSON.stringify({ ciphertext: JSON.stringify(payload), iv: 'iv', authTag: 'tag' }))}`;
+    const ciphertext = JSON.stringify(payload);
+    const cookie = `together_stripe_test=${encodeURIComponent(JSON.stringify({ ciphertext, iv: 'iv', authTag: 'tag' }))}`;
     const headers = { host: 'acme.localhost', 'content-type': 'application/json', ...(actor === 'no-session' ? {} : { cookie }) };
     const ensureUser = vi.spyOn(h.base.authPort, 'ensureUser');
     const createMember = vi.spyOn(h.base.members, 'create');
-    const page = await h.app.request('/offer/bundle?test=anything', { headers });
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain(`name="mode" value="${actor === 'staff' ? 'test' : 'live'}"`);
+    for (const query of ['?test', '?test=anything', '?mode=test', '?test=false&mode=live']) {
+      const page = await h.app.request(`/offer/bundle${query}`, { headers });
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('data-mode="live"');
+      expect(html).not.toContain('<strong>TEST</strong>');
+    }
+    expect(findKey).not.toHaveBeenCalled();
+    expect(decrypt).not.toHaveBeenCalled();
     expect(h.create).not.toHaveBeenCalled();
-    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"test"}' });
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{}' });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: actor === 'staff' ? 'test' : 'live', directCheckout: expect.objectContaining({ termsUrl: 'https://acme.example/terms' }) }));
-    if (actor === 'staff') {
-      expect(staffGrant).toHaveBeenCalledWith('staff-user', { tenantId: acme.id });
-      expect(ensureUser).toHaveBeenCalledExactlyOnceWith('staff@example.test');
-      expect(createMember).toHaveBeenCalledOnce();
-      expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ customerEmail: 'staff@example.test' }));
-      expect(h.orders).toMatchObject([{ tenantId: acme.id, mode: 'test', status: 'pending', salesLinkId: 'bundle-link', providerObjectIds: { checkoutSession: 'cs' }, lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
-      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'test', providerSessionId: 'cs' }]);
-      expect(response.headers.get('set-cookie')).toContain('together_stripe_test=;');
-    } else {
-      expect(ensureUser).not.toHaveBeenCalled();
-      expect(createMember).not.toHaveBeenCalled();
-      expect(h.orders).toHaveLength(0);
-      expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'live', providerSessionId: 'cs' }]);
-    }
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live', directCheckout: expect.objectContaining({ termsUrl: 'https://acme.example/terms' }) }));
+    expect(authenticated).not.toHaveBeenCalled();
+    expect(staffGrant).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(createMember).not.toHaveBeenCalled();
+    expect(findKey.mock.calls.every(([, key]) => !key.startsWith('stripe.test'))).toBe(true);
+    expect(decrypt).not.toHaveBeenCalledWith(expect.objectContaining({ ciphertext }));
+    expect(h.orders).toHaveLength(0);
+    expect([...h.snapshots.values()]).toMatchObject([{ tenantId: acme.id, mode: 'live', providerSessionId: 'cs' }]);
+    expect(response.headers.get('set-cookie')).toBeNull();
     expect(h.grants).toHaveLength(0);
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('rejects obsolete mode fields in %s without creating a payment', async (contentType) => {
+    const h = await directSalesLinkApp();
+    const findKey = vi.spyOn(h.base.tenantSecrets, 'findByKey');
+    const decrypt = vi.spyOn(h.base.secretCrypto, 'decrypt');
+    for (const mode of ['test', 'live']) {
+      const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+        method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType, cookie: 'together_stripe_test=obsolete-session' },
+        body: contentType === 'application/json' ? JSON.stringify({ mode }) : `mode=${mode}`,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect(h.create).not.toHaveBeenCalled();
+    expect(findKey).not.toHaveBeenCalled();
+    expect(decrypt).not.toHaveBeenCalled();
   });
 
   it('returns a JSON checkout URL and rate-limits creation per IP', async () => {
@@ -9703,33 +9741,11 @@ describe('direct public sales-link checkout', () => {
     h.base.publicRateLimitPolicies.writesPerIp = { limit: 1, windowMs: 60_000 };
     let ipClaims = 0;
     h.base.rateLimitBuckets.claim = async ({ scope, limit }) => scope !== 'public-write:ip' || ++ipClaims <= limit;
-    const request = () => h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{"mode":"live"}' });
+    const request = () => h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
     const response = await request();
     expect(await response.json()).toEqual({ ok: true, data: { url: 'https://checkout.local/cs' } });
     expect((await request()).status).toBe(429);
     expect(h.create).toHaveBeenCalledTimes(1);
-  });
-
-  it.each(['unreadable', 'live-key'] as const)('ignores unauthorized test selection with a %s stored test key', async (failure) => {
-    const h = await directSalesLinkApp();
-    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key, iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
-    h.base.secretCrypto.decrypt = (stored) => stored.ciphertext === 'stripe.testRestrictedKey' && failure === 'unreadable'
-      ? err(internal('Stored secret failed integrity verification'))
-      : ok('rk_live_available');
-    const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
-    for (const [path, payload] of [
-      ['/api/public/sales-links/bundle/checkout', { mode: 'test' }],
-      [API_PATHS.checkoutSession, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true }],
-    ] as const) {
-      expect((await h.app.request(path, { method: 'POST', headers, body: JSON.stringify(payload) })).status).toBe(200);
-    }
-    expect(h.create).toHaveBeenCalledTimes(2);
-    expect(h.create.mock.calls.every(([input]) => input.mode === 'live')).toBe(true);
-    expect(h.orders).toHaveLength(0);
-    expect(h.grants).toHaveLength(0);
-    const live = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' });
-    expect(live.status).toBe(200);
-    expect(h.create).toHaveBeenCalledTimes(3);
   });
 
   it('keeps consent-bearing offers on the Together checkout and return pages out of redirect loops', async () => {
@@ -9762,7 +9778,7 @@ describe('direct public sales-link checkout', () => {
     const fallback = await h.app.request('/offer/bundle?test=anything', { headers });
     expect(fallback.headers.get('location')).toBe('/offer/bundle?test=anything&checkout=together');
     const config = await h.app.request(API_PATHS.publicPaymentConfig, { headers });
-    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false, salesLinkTestConfigured: false } });
+    expect(await config.json()).toMatchObject({ data: { canTest: false, testEnabled: false } });
     const response = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers,
       body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true }),
     });
@@ -9797,6 +9813,7 @@ describe('direct public sales-link checkout', () => {
     expect(ensureUser).not.toHaveBeenCalledWith('third-party@example.test');
     expect(createMember).not.toHaveBeenCalledWith(acme.id, expect.objectContaining({ email: 'third-party@example.test' }));
     if (enabled) {
+      expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ cancelUrl: expect.stringContaining('status=cancelled&checkout=together') }));
       expect(ensureUser).toHaveBeenCalledWith('staff@example.test');
       expect(createMember).toHaveBeenCalledWith(acme.id, expect.objectContaining({ email: 'staff@example.test' }));
       expect(h.orders).toMatchObject([{ mode: 'test', status: 'pending', salesLinkId: 'bundle-link' }]);
@@ -9830,7 +9847,7 @@ describe('direct public sales-link checkout', () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
     }
-    expect((await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{"mode":"live"}' })).status).toBe(400);
+    expect((await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: '{}' })).status).toBe(400);
     expect(h.create).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
     expect(createMember).not.toHaveBeenCalled();

@@ -24,7 +24,7 @@ export const registerSalesLinkCommands = (program: Command, context: () => Resul
   links.command('update <id>').requiredOption('--input <json>', 'All fields, id and expectedRevision as JSON').action(run(z.tuple([z.string(), z.object({ input: jsonInput.pipe(salesLinkContracts.updateSalesLink.input) })]), async (ctx, [id, options]) => options.input.id === id ? ctx.api.updateSalesLink(options.input) : err(validation('Sales-link id does not match the input'))));
   links.command('delete <id>').requiredOption('--confirm', 'Delete a sales link without paid orders').action(run(z.tuple([z.string(), z.object({ confirm: z.literal(true) })]), (ctx, [id]) => ctx.api.deleteSalesLink({ id })));
   links.command('offer <slug>').action(run(z.tuple([z.string(), z.object({})]), (ctx, [slug]) => ctx.api.getPublicSalesLink({ slug })));
-  links.command('checkout <slug>').option('--mode <mode>', 'Stripe mode: live or test', 'live').action(run(z.tuple([z.string(), z.object({ mode: z.enum(['live', 'test']) })]), (ctx, [slug, options]) => ctx.api.directSalesLinkCheckout({ slug, mode: options.mode })));
+  links.command('checkout <slug>').option('--mode <mode>', 'Stripe mode: live only', 'live').action(run(z.tuple([z.string(), z.object({ mode: z.literal('live') })]), (ctx, [slug]) => ctx.api.directSalesLinkCheckout({ slug })));
   for (const active of [true, false]) links.command(active ? 'activate <id>' : 'deactivate <id>').action(run(z.tuple([z.string(), z.object({})]), async (ctx, [id]) => {
     const result = await ctx.api.getSalesLink({ id });
     if (!result.ok) return result;

@@ -53,11 +53,16 @@ stored paid amount plus the stored discount, without consulting today's price. F
 with one paid order and grants every nonphysical product through the existing
 enrollment behavior. Refunds and reconciliation continue to count one payment.
 
-Opening `/offer/<slug>` now serves a minimal server-rendered handoff with the
+Opening `/offer/<slug>` serves a live-only server-rendered handoff with the
 sales-link heading and description in its title and Open Graph tags, plus the
-tenant favicon. Its script immediately posts to
+tenant favicon. A centred card shows the tenant's checkout display name, HTTPS
+logo when configured, accent colour, optional background colour and a CSS spinner.
+It follows the system light or dark preference and uses system fonts.
+Its script immediately posts `{}` to
 `/api/public/sales-links/<slug>/checkout` and replaces the page with the Stripe
-Checkout URL. Without JavaScript, the page offers a POST form. The POST uses the
+Checkout URL. The endpoint always creates live sessions and rejects a `mode`
+field, including `mode: "test"` or `mode: "live"`, with a 400 validation error.
+Without JavaScript, the page offers a POST form. The POST uses the
 existing per-IP and per-tenant public-write limiter. A `/link/<key>` redirect to
 an offer follows the same flow. GET requests never create a payment session.
 
@@ -67,16 +72,16 @@ Discordbot, WhatsApp, TelegramBot, Googlebot, redditbot and Applebot. The checko
 POST also refuses these crawlers. The edge forwards crawler requests before
 browser fallbacks, including `?checkout=together` and `status=success|cancelled`.
 
-`?test` with any value selects the configured Stripe test key only for a request
-carrying the existing server-side Stripe test session bound to the signed-in
-account and tenant, with tenant staff membership checked again at checkout.
-Without that verified session or a configured test key, checkout stays live.
-The same rule applies to the purchase-consent fallback. An unreadable stored
-test key or a live key in the test slot returns an error for an authorized test
-checkout instead of switching to live credentials.
-Retry after a cancelled test checkout stays on the Together page. An ended staff
-test session shows a notice and requires an explicit live-payment choice before
-another live session can be created.
+Staff test purchases use the Together checkout page at `/checkout/<productRef>`
+or `/offer/<slug>?checkout=together` and its **Stripe test mode** switch.
+These pages never hand off automatically. The switch uses the configured Stripe
+test key and the existing server-side test session bound to the signed-in account
+and tenant, with tenant staff membership checked again at checkout. An unreadable
+stored test key or a live key in the test slot returns an error for an authorized
+test checkout instead of switching to live credentials.
+Cancelled staff test checkout returns to `?checkout=together`. Retry stays on the
+Together page and requires a manual checkout action. The switch reflects the
+staff test session; enable it again before starting another test purchase.
 
 Staff test checkout stores a pending order before returning the Stripe URL.
 Fulfillment keeps the member and test grants while suppressing purchase
@@ -164,10 +169,10 @@ the order's financial amounts nor the invoice's sale-time tax point.
 
 The `sales-link` commands mirror Studio: `list`, `show`, `create`, `update`,
 `activate`, `deactivate`, `delete --confirm`, and `offer <slug>`.
-`sales-link checkout <slug> --mode live|test` starts the direct Stripe handoff
+`sales-link checkout <slug>` starts the live-only direct Stripe handoff
 and returns its URL using the same public endpoint as the server-rendered page.
-Test mode still requires the verified staff Stripe test session; the mode option
-alone does not authorize it.
+`--mode live` remains supported; `--mode test` returns a validation error without
+starting checkout. Staff test purchases use the Together checkout page switch.
 Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. `checkout session` and the local `simulate-purchase` command
 accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.

@@ -29,6 +29,6 @@ export const registerSalesLinkCommands = (program: Command, context: () => Resul
     const result = await ctx.api.getSalesLink({ id });
     if (!result.ok) return result;
     const link = result.value.salesLink;
-    return ctx.api.updateSalesLink({ id, expectedRevision: link.revision, slug: link.slug, title: link.title, heading: link.heading, description: link.description, productIds: link.productIds, listed: link.listed, validFrom: link.validFrom, validTo: link.validTo, active });
+    return ctx.api.updateSalesLink({ id, expectedRevision: link.revision, slug: link.slug, title: link.title, heading: link.heading, description: link.description, productIds: link.productIds, listed: link.listed, validFrom: link.validFrom, validTo: link.validTo, cancelReturnUrl: link.cancelReturnUrl, active });
   }));
 };

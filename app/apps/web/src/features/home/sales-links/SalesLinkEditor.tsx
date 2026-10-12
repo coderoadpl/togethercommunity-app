@@ -26,6 +26,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
   const [listed, setListed] = useState(salesLink?.listed ?? false);
   const [validFrom, setValidFrom] = useState(formatValidityTime(salesLink?.validFrom ?? null, SALES_LINK_TIME_ZONE));
   const [validTo, setValidTo] = useState(formatValidityTime(salesLink?.validTo ?? null, SALES_LINK_TIME_ZONE));
+  const [cancelReturnUrl, setCancelReturnUrl] = useState(salesLink?.cancelReturnUrl ?? '');
   const [invalid, setInvalid] = useState(false);
   const move = (index: number, step: number) => setProductIds((current) => {
     const result = [...current];
@@ -36,7 +37,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
   const save = () => {
     const from = parseValidityTime(validFrom, SALES_LINK_TIME_ZONE);
     const to = parseValidityTime(validTo, SALES_LINK_TIME_ZONE);
-    const input: SalesLinkInput = { title, heading, slug, description, productIds, active, listed, validFrom: from, validTo: to };
+    const input: SalesLinkInput = { title, heading, slug, description, productIds, active, listed, validFrom: from, validTo: to, cancelReturnUrl: cancelReturnUrl.trim() === '' ? null : cancelReturnUrl };
     const parsed = salesLinkInputSchema.safeParse(input);
     setInvalid(!parsed.success || from === undefined || to === undefined);
     if (parsed.success && from !== undefined && to !== undefined) onSave(parsed.data);
@@ -64,6 +65,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
       <TextField type="datetime-local" label={t.salesLinks.validTo} value={validTo} onChange={(event) => setValidTo(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} fullWidth />
     </Stack>
     <Typography variant="caption">{t.salesLinks.timezone}: {SALES_LINK_TIME_ZONE}</Typography>
+    <TextField label={t.salesLinks.cancelReturnUrl} helperText={t.salesLinks.cancelReturnHelp} value={cancelReturnUrl} onChange={(event) => setCancelReturnUrl(event.target.value)} />
     <FormControlLabel control={<Switch checked={listed} onChange={(_, checked) => setListed(checked)} />} label={t.salesLinks.listed} />
     <FormControlLabel control={<Switch checked={active} onChange={(_, checked) => setActive(checked)} />} label={t.salesLinks.active} />
     {invalid ? <Alert severity="error">{t.salesLinks.invalid}</Alert> : null}

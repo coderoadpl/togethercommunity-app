@@ -1,4 +1,4 @@
-import { err, notFound, ok, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
+import { err, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
 
@@ -7,6 +7,7 @@ export const createDirectSalesLinkCheckout = async (
   tenantBaseUrl: string,
   input: {
     slug: string;
+    returnUrl?: string;
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
   },
   deps: CheckoutDeps,
@@ -50,7 +51,7 @@ export const createDirectSalesLinkCheckout = async (
     currency: built.value.currency,
     language,
     successUrl: `${checkoutPath}?status=success&purchase_kind=one_time${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${checkoutQuery}`,
+    cancelUrl: resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}`,
     directCheckout: { ...legal, termsAcceptanceMessage },
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
   });

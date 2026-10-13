@@ -61,3 +61,15 @@ describe('workspace validity time', () => {
     expect(parseValidityTime('2026-03-29T02:30', 'Europe/Warsaw')).toBeUndefined();
   });
 });
+
+it('submits the opt-in code checkbox and explains the archive requirement', async () => {
+  const save = vi.fn();
+  renderWithProviders(<SalesLinkEditor salesLink={sampleSalesLink} products={sampleBundleProducts} onSave={save} onCancel={() => undefined} error={en.salesLinks.cannotDisableCodes} />);
+  const checkbox = screen.getByRole('checkbox', { name: en.salesLinks.allowsCodes });
+  expect(checkbox).not.toBeChecked();
+  expect(screen.getByText(en.salesLinks.allowsCodesHelp)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent(en.salesLinks.cannotDisableCodes);
+  await userEvent.click(checkbox);
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.save }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ allowsCodes: true }));
+});

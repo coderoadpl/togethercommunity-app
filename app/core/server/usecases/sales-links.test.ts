@@ -83,5 +83,13 @@ it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects a
 
 it('exposes only public sales-link fields', async () => {
   const result = await getPublicSalesLink('workspace', link.slug, deps);
-  expect(result.ok && result.value.salesLink).toEqual({ slug: link.slug, heading: link.heading, description: link.description, validFrom: null, validTo: null });
+  expect(result.ok && result.value.salesLink).toEqual({ allowsCodes: false, slug: link.slug, heading: link.heading, description: link.description, validFrom: null, validTo: null });
+});
+
+it('blocks disabling codes until the assigned active code is archived', async () => {
+  const current = { ...deps, partners: { hasActiveCodeForSalesLink: async () => true } };
+  const update = { ...input, id: link.id, expectedRevision: 1, allowsCodes: false };
+  expect(await updateSalesLink(ctx, update, current)).toMatchObject({ ok: false, error: { message: 'Cannot disable codes: an active partner code is assigned to this offer.' } });
+  current.partners.hasActiveCodeForSalesLink = async () => false;
+  expect(await updateSalesLink(ctx, update, current)).toMatchObject({ ok: true, value: { salesLink: { allowsCodes: false } } });
 });

@@ -1,9 +1,11 @@
-import { err, ok, resolveProductVat, splitProductGross, validation, type AppError, type OrderLine, type Result } from '#core/domain/index.js';
+import { err, ok, resolveProductVat, splitProductGross, validation, type AppError, type CheckoutSnapshot, type OrderLine, type Result } from '#core/domain/index.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import type { TenantRepository, IdGenerator, Clock } from '../ports.js';
+import type { PartnerRepository } from '../partner-ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 
 interface CheckoutLineDeps {
+  partners?: PartnerRepository;
   tenants?: TenantRepository;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   ids?: IdGenerator;
@@ -44,6 +46,7 @@ export const captureCheckoutSelection = async (
   tenantId: string,
   selection: CheckoutSelection,
   deps: CheckoutLineDeps,
+  attribution?: { partnerCodeId: string; discountCents: number; partnerTerms: NonNullable<CheckoutSnapshot['partnerTerms']> },
 ): Promise<Result<{ lines: OrderLine[]; totalCents: number; currency: string; checkoutSnapshotId?: string }, AppError>> => {
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
@@ -51,6 +54,11 @@ export const captureCheckoutSelection = async (
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const checkoutSnapshotId = deps.ids.nextId();
-  await deps.checkoutSnapshots.create(tenantId, { id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
+  const snapshot = { ...attribution, id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() };
+  if (attribution !== undefined) {
+    if (deps.partners === undefined) return err(validation('Partner checkout is not configured'));
+    const reserved = await deps.partners.reserveCheckout(tenantId, snapshot);
+    if (!reserved.ok) return reserved;
+  } else await deps.checkoutSnapshots.create(tenantId, snapshot);
   return ok({ ...built.value, checkoutSnapshotId });
 };

@@ -21,6 +21,8 @@ export const renderDirectSalesLinkPage = (input: {
   mode: 'test' | 'live';
   endpoint: string;
   returnUrl?: string;
+  allowsCodes?: boolean;
+  code?: string;
   crawler: boolean;
   nonce: string;
   error?: 'checkoutUnavailable' | 'legalUrlsMissing';
@@ -58,6 +60,11 @@ p { margin: 0; color: var(--muted); line-height: 1.6; }
 [data-state="error"] .spinner { display: none; }
 strong { display: inline-block; margin: 0 0 24px; padding: 4px 10px; border: 1px solid currentColor; border-radius: 6px; color: var(--accent); font-size: 0.75rem; letter-spacing: 0.08em; }
 button { margin-top: 24px; padding: 12px 20px; border: 2px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.code-toggle { border: 0; background: transparent; padding: 8px; }
+.code-submit { background: var(--accent); color: var(--surface); }
+label { display: block; margin-top: 24px; text-align: left; }
+input { width: 100%; margin-top: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+[data-state="editing"] .spinner { display: none; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-color-scheme: dark) { :root { --background: #111318; --surface: #1c1f27; --text: #f3f4f6; --muted: #b9bfcb; --border: #363c48; --accent: #a49eff; } }
@@ -65,27 +72,80 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 </style>
 </head>
 <body style="${escapeHtml(appearance)}">
-<main data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
+<main data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-code="${escapeHtml(input.code ?? '')}" data-coupon-unavailable="${escapeHtml(copy.couponUnavailable)}" data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
 ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.logoUrl)}" alt="">` : ''}
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
 ${canSubmit ? '<div class="spinner" aria-hidden="true"></div>' : ''}
 <p role="status">${escapeHtml(input.error === undefined ? copy.redirecting : copy[input.error])}</p>
+${canSubmit && input.allowsCodes ? `<button type="button" class="code-toggle" id="code-toggle">${escapeHtml(copy.haveCode)}</button><form id="code-form" hidden><label for="discount-code">${escapeHtml(copy.discountCode)}</label><input id="discount-code" name="code" maxlength="40" autocomplete="off" value="${escapeHtml((input.code ?? '').toUpperCase())}"><button class="code-submit" type="submit">${escapeHtml(copy.continueToPayment)}</button></form>` : ''}
 ${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
 </main>
 ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
 (async () => {
   const page = document.querySelector('main');
   const status = document.querySelector('[role="status"]');
-  try {
-    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) });
-    const result = await response.json();
-    if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') throw new Error();
-    location.replace(result.data.url);
-  } catch {
-    page.dataset.state = 'error';
-    status.textContent = page.dataset.checkoutUnavailable;
-  }
+  let generation = 0;
+  let pending = false;
+  const submit = async (code, version) => {
+    pending = true;
+    try {
+      const body = page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl };
+      if (code !== '') body.code = code;
+      const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (version !== generation) return;
+      if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') {
+        page.dataset.state = 'error';
+        status.textContent = result?.error?.message === 'Coupon cannot be applied' ? page.dataset.couponUnavailable : page.dataset.checkoutUnavailable;
+        return;
+      }
+      page.dataset.state = 'loading';
+      location.replace(result.data.url);
+    } catch {
+      if (version !== generation) return;
+      page.dataset.state = 'error';
+      status.textContent = page.dataset.checkoutUnavailable;
+    } finally {
+      pending = false;
+    }
+  };
+  ${input.allowsCodes ? `const form = document.querySelector('#code-form');
+  const field = document.querySelector('#discount-code');
+  const toggle = document.querySelector('#code-toggle');
+  const button = form.querySelector('button');
+  const edit = () => {
+    if (page.dataset.state === 'loading') return;
+    generation += 1;
+    page.dataset.state = 'editing';
+    form.hidden = false;
+    toggle.hidden = true;
+    status.textContent = '';
+    field.focus();
+  };
+  toggle.addEventListener('click', edit);
+  field.addEventListener('input', () => { field.value = field.value.toUpperCase(); edit(); });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (pending || page.dataset.state === 'loading') return;
+    generation += 1;
+    page.dataset.state = 'loading';
+    field.disabled = true;
+    button.disabled = true;
+    toggle.hidden = true;
+    await submit(field.value.trim(), generation);
+    if (page.dataset.state === 'error') {
+      field.disabled = false;
+      button.disabled = false;
+    }
+  });
+  if (page.dataset.code) form.hidden = false;
+  setTimeout(async () => {
+    if (generation !== 0) return;
+    button.disabled = true;
+    await submit(page.dataset.code || '', generation);
+    if (page.dataset.state !== 'loading') button.disabled = false;
+  }, 1500);` : "await submit(page.dataset.code || '', generation);"}
 })();
 </script>` : ''}
 </body>

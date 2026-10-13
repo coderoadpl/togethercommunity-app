@@ -1,3 +1,4 @@
+import { partnerCodes } from './partner-schema.js';
 import { and, asc, desc, eq, ilike, inArray, lt, or, sql } from 'drizzle-orm';
 
 import {
@@ -53,6 +54,9 @@ export const createCouponRepository = (db: Db): CouponManagementRepository => ({
   },
   create: async (tenantId, coupon, event) =>
     db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`discount-codes:${tenantId}`}, 0))`);
+      const [partnerCode] = await tx.select({ id: partnerCodes.id }).from(partnerCodes).where(and(eq(partnerCodes.tenantId, tenantId), sql`lower(${partnerCodes.code}) = lower(${coupon.code})`));
+      if (partnerCode !== undefined) return null;
       const inserted = await tx
         .insert(coupons)
         .values({ ...coupon, tenantId })

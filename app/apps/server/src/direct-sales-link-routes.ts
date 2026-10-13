@@ -29,6 +29,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const settings = await deps.tenants.findSettings(tenant.id);
     const baseUrl = await authLinkBaseUrl(resolved.value, deps);
     const requestedReturnUrl = c.req.query('return');
+    const code = c.req.query('code');
     const link = requestedReturnUrl === undefined ? null : await deps.salesLinkManagement.salesLinks.findBySlug(tenant.id, slug);
     const returnUrl = requestedReturnUrl !== undefined && resolveCancelReturnUrl(link?.cancelReturnUrl, requestedReturnUrl) === requestedReturnUrl
       ? requestedReturnUrl : undefined;
@@ -43,6 +44,8 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       endpoint: API_PATHS.directSalesLinkCheckout.replace(':slug', encodeURIComponent(slug)),
       ...(returnUrl === undefined ? {} : { returnUrl }),
       crawler,
+      allowsCodes: offer.ok && offer.value.salesLink.allowsCodes,
+      ...(code === undefined ? {} : { code }),
       nonce: c.get('secureHeadersNonce') ?? '',
     };
     const headers = { 'cache-control': 'no-store', vary: 'User-Agent' };
@@ -81,9 +84,10 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const origin = c.req.header('origin');
     if (origin !== undefined && (!URL.canParse(origin) || new URL(origin).host !== (c.req.header('host') ?? new URL(c.req.url).host))) return respond(err(forbidden('Checkout must start from this workspace')));
     const parsed = salesLinkContracts.directSalesLinkCheckout.input.safeParse(form ? Object.fromEntries(new URLSearchParams(await c.req.text())) : await readJson(c.req.raw));
-    if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
+    if (!parsed.success) return respond(err(validation(parsed.error.issues.some((issue) => issue.path[0] === 'code') ? 'Coupon cannot be applied' : 'Invalid checkout payload')));
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
+      ...(parsed.data.code === undefined ? {} : { code: parsed.data.code }),
       ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
     }, deps);

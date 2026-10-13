@@ -4,6 +4,7 @@ import type { SalesLinkRepository } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { orders, products } from './app-schema.js';
 import { salesLinks, salesLinkEvents } from './sales-link-schema.js';
+import { partnerCodes } from './partner-schema.js';
 
 const parseRow = (row: typeof salesLinks.$inferSelect) => salesLinkSchema.parse({ ...row, validFrom: row.validFrom === null ? null : new Date(row.validFrom).toISOString(), validTo: row.validTo === null ? null : new Date(row.validTo).toISOString(), createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString() });
 export const createSalesLinkRepository = (db: Db): SalesLinkRepository => ({
@@ -23,6 +24,10 @@ export const createSalesLinkRepository = (db: Db): SalesLinkRepository => ({
       const [existing] = await tx.select().from(salesLinks).where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, link.id), isNull(salesLinks.deletedAt))).for('update');
       if (existing === undefined) return err(notFound('Sales link was not found'));
       if (existing.revision !== expectedRevision) return err(appError('conflict', 'Sales link changed; reload before saving'));
+    }
+    if (!link.allowsCodes) {
+      const [activeCode] = await tx.select({ id: partnerCodes.id }).from(partnerCodes).where(and(eq(partnerCodes.tenantId, tenantId), eq(partnerCodes.status, 'active'), sql`${partnerCodes.salesLinkIds} @> ${JSON.stringify([link.id])}::jsonb`)).limit(1);
+      if (activeCode !== undefined) return err(validation('Cannot disable codes: an active partner code is assigned to this offer.'));
     }
     const [sameSlug] = await tx.select({ id: salesLinks.id }).from(salesLinks).where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.slug, link.slug), isNull(salesLinks.deletedAt)));
     if (sameSlug !== undefined && sameSlug.id !== link.id) return err(appError('conflict', 'Sales-link slug already exists'));

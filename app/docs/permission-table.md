@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 429. Exported `Ctx` use-case rows: 334.
+Closed capability count: 125. Route rows: 437. Exported `Ctx` use-case rows: 342.
 
 ## Human-readable diff
 
@@ -224,6 +224,14 @@ no changes
 | `POST /api/sales-links` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/sales-links/:id` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/sales-links/:id` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/partner-programs` | partner:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/partner-programs/:id` | partner:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partner-programs` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partner-programs/:id` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partners` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partners/:id` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partner-codes` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partner-codes/:id` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/verify/:reference` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/lines/:productId/issue` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -718,6 +726,14 @@ no changes
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
+| `partner-management.ts#listPartnerPrograms` | partner:read | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#getPartnerProgram` | partner:read | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#createPartnerProgram` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#updatePartnerProgram` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#assignPartner` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#updatePartner` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#createPartnerCode` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#updatePartnerCode` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
 | `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
 | `probe-stripe-permissions.ts#probeStripePermissions` | tenant:secret:write | owner | owner | yes | core/server/usecases/probe-stripe-permissions.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
@@ -805,14 +821,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:24` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:201` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1206` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1208` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1230` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1244` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:25` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:202` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1207` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1209` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1231` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1245` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -821,7 +837,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:628` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:629` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

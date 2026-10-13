@@ -673,6 +673,19 @@ export const SCREENS: readonly ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-partner-programs',
+    auth: 'creator',
+    path: '/panel/sales/partner-programs',
+    ready: (page) => page.getByTestId('partner-programs-page').waitFor(visible),
+  },
+  {
+    name: 'panel-partner-program-editor',
+    auth: 'creator',
+    path: '/panel/sales/partner-programs/program-studio-ambassadors',
+    fullPage: true,
+    ready: (page) => page.getByTestId('partner-program-editor').waitFor(visible),
+  },
+  {
     name: 'panel-coupons',
     auth: 'creator',
     path: '/panel/sales/coupons',

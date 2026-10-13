@@ -53,6 +53,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'type ResolvedTenant',
   'validateCheckoutSelection',
   'validateCouponForCheckout',
+  'validatePartnerCodeForCheckout',
   'validateTermsConsent',
 ].sort();
 

@@ -75,6 +75,8 @@ const couponError = (
 ): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
+    case 'Partner codes require a sales-link offer':
+      return error.appError.message;
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
     case 'An email is required to validate this coupon':
@@ -207,7 +209,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...consent,
         ...billing,
         ...(priceId === undefined ? {} : { priceId }),
-        ...(appliedCoupon === undefined ? {} : { couponCode }),
+        ...(couponCode.trim() === '' ? {} : { couponCode }),
       });
       return;
     }
@@ -220,7 +222,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       ...consent,
       ...billing,
       ...(priceId === undefined ? {} : { priceId }),
-      ...(appliedCoupon === undefined ? {} : { couponCode }),
+      ...(couponCode.trim() === '' ? {} : { couponCode }),
     });
   };
 
@@ -542,7 +544,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               >
                 {couponValidation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
               </Button>
-              {couponValidation.data === undefined ? null : (
+              {couponValidation.data === undefined || couponValidation.data.breakdown.discountCents === 0 ? null : (
                 <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
                   <Stack useFlexGap spacing="0.25rem">
                     <Typography>{t.checkout.couponOriginal({
@@ -669,7 +671,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   ...consent,
                   ...billing,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
-                  ...(appliedCoupon === undefined ? {} : { couponCode }),
+                  ...(couponCode.trim() === '' ? {} : { couponCode }),
                 })}
               >
                 {payableCents === 0

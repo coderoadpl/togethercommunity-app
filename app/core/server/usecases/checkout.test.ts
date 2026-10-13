@@ -528,7 +528,7 @@ const bundleCheckout = () => {
   ];
   const link = {
     id: 'link-1', tenantId: tenant.id, slug: 'collection', title: 'Collection', heading: 'Collection',
-    description: '', productIds: products.map((item) => item.id), active: true, listed: false,
+    description: '', productIds: products.map((item) => item.id), active: true, listed: false, allowsCodes: false,
     validFrom: null, validTo: null, createdAt: product.createdAt, updatedAt: product.createdAt, revision: 1,
   };
   const snapshots: CheckoutSnapshot[] = [];

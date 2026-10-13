@@ -95,6 +95,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           </Stack>
         </Stack>
       </SectionCard>
+      {order.partnerAttribution === undefined ? null : <SectionCard title={t.partnerPrograms.orderLabel}><Typography>{t.partnerPrograms.orderLabel}: {order.partnerAttribution.code} · {t.partnerPrograms.partner}: {order.partnerAttribution.memberEmail} · {t.partnerPrograms.program}: {order.partnerAttribution.programName}</Typography></SectionCard>}
       {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
       <DownloadCopies query={{ orderId }} />
       {order.billing == null ? null : (

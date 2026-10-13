@@ -9,7 +9,7 @@ const publicTenantSchema = z.object({
 });
 const marketingConsentSchema = z.object({ definitionId: z.string(), label: z.string(), doubleOptIn: z.boolean(), documentUrl: z.string().nullable() });
 export const salesLinkContracts = {
-  directSalesLinkCheckout: { input: z.object({ returnUrl: z.string().max(2000).optional() }).strict(), output: z.object({ url: z.string().url() }) },
+  directSalesLinkCheckout: { input: z.object({ returnUrl: z.string().max(2000).optional(), code: z.string().trim().min(1).max(40).optional() }).strict(), output: z.object({ url: z.string().url() }) },
   listSalesLinks: { input: z.object({}).strict(), output: z.object({ salesLinks: z.array(salesLinkSchema) }) },
   getSalesLink: { input: idInput, output: z.object({ salesLink: salesLinkSchema }) },
   createSalesLink: { input: salesLinkInputSchema, output: z.object({ salesLink: salesLinkSchema }) },

@@ -1,6 +1,7 @@
 import type { CheckoutConsentCapture, OrderLine } from '#core/domain/index.js';
 import { m2mAdoptStripeSubscription } from './stripe-subscription-adoption.js';
 import { memberSchema } from '#core/domain/index.js';
+import { partnerCodeSchema, partnerProgramSchema, type Commission } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -2796,4 +2797,138 @@ it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded
   expect(h.grants.size).toBe(0);
   expect(h.consents).toEqual([]);
   expect(h.autoInvoiceJobs).toEqual([]);
+});
+
+const partnerPayment = () => {
+  const h = bundlePayment();
+  const program = partnerProgramSchema.parse({ id: 'program', tenantId: tenantA.id, name: 'Ambassadors', commissionPct: 50, graceDays: 14, createdAt: now, revision: 1 });
+  const code = partnerCodeSchema.parse({ id: 'partner-code', tenantId: tenantA.id, programId: program.id, partnerId: 'partner', code: 'SAVE10', discountPct: 10, salesLinkIds: ['link-1'], stripeCouponId: 'coupon-provider', stripePromotionCodeId: 'promotion', createdAt: now, revision: 1 });
+  const commissions: Commission[] = [];
+  const voidPendingCommissions = vi.fn(async () => undefined);
+  h.deps.partners = {
+    findCode: async (tenantId, id) => tenantId === tenantA.id && id === code.id ? code : null,
+    findProgram: async (tenantId, id) => tenantId === tenantA.id && id === program.id ? program : null,
+    createCommissions: async (_tenantId, entries) => {
+      for (const entry of entries) {
+        if (!h.orders.some((order) => order.id === entry.orderId)) throw new Error('Commission order is missing');
+        if (!commissions.some((existing) => existing.orderLineId === entry.orderLineId)) commissions.push(entry);
+      }
+    },
+    voidPendingCommissions,
+    completeCheckout: async () => ok(undefined),
+    releaseCheckout: async () => undefined,
+  };
+  h.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
+      id, tenantId, salesLinkId: 'link-1', lines: h.lines, currency: 'PLN', createdAt: now,
+      partnerCodeId: code.id, discountCents: 1240,
+    } : null,
+  };
+  if (h.event.checkoutSession !== null) {
+    h.event.checkoutSession.amountTotalCents = 11160;
+    h.event.checkoutSession.discountTotalCents = 1240;
+  }
+  return { ...h, commissions, voidPendingCommissions };
+};
+
+it('records partner attribution and digital line commissions once across webhook retries', async () => {
+  const h = partnerPayment();
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]).toMatchObject({ partnerCodeId: 'partner-code', couponId: null, discountCents: 1240, amountCents: 11160 });
+  expect(h.commissions).toHaveLength(2);
+  expect(h.commissions.map((entry) => entry.amountCents)).toEqual([1594, 2000]);
+  expect(h.commissions.every((entry) => entry.payableAt === '1998-07-28T10:00:00.000Z')).toBe(true);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.commissions).toHaveLength(2);
+});
+
+it('uses the persisted order when distinct paid events target the same partner checkout', async () => {
+  const h = partnerPayment();
+  const createOrder = h.deps.orders.create;
+  vi.spyOn(h.deps.orders, 'create').mockImplementation(async (tenantId, order) => {
+    if (h.orders.some((existing) => existing.providerObjectIds['checkoutSession'] === order.providerObjectIds['checkoutSession'])) return;
+    await createOrder(tenantId, order);
+  });
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  const orderId = h.orders[0]?.id;
+  const secondEvent = { ...h.event, id: 'evt-second-paid', type: 'checkout.session.async_payment_succeeded' };
+  expect(await fulfillStripeWebhook(tenantA, secondEvent, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toHaveLength(1);
+  expect(h.commissions).toHaveLength(2);
+  expect(h.commissions.every((entry) => entry.orderId === orderId)).toBe(true);
+  expect(await fulfillStripeWebhook(tenantA, secondEvent, h.deps)).toEqual(ok({ processed: false }));
+});
+
+it('checks the reservation against the persisted order before creating partner commissions', async () => {
+  const h = partnerPayment();
+  const completeCheckout = vi.fn(async (_tenantId: string, _snapshotId: string, orderId: string) => {
+    expect(h.orders.some((order) => order.id === orderId)).toBe(true);
+    return err(validation('Partner code redemption limit reached'));
+  });
+  if (h.deps.partners === undefined) throw new Error('Partner repository missing');
+  h.deps.partners.completeCheckout = completeCheckout;
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false });
+  expect(completeCheckout).toHaveBeenCalledWith(tenantA.id, 'snapshot-1', expect.any(String), now);
+  expect(h.orders).toEqual([]);
+  expect(h.grants.size).toBe(0);
+  expect(h.commissions).toEqual([]);
+  expect(h.autoInvoiceJobs).toEqual([]);
+  expect(h.enrollmentEmails).toEqual([]);
+});
+
+it('anchors partner commission grace to the payment event despite delayed delivery', async () => {
+  const h = partnerPayment();
+  h.deps.clock.nowIso = () => '1998-08-01T10:00:00.000Z';
+  expect(await fulfillStripeWebhook(tenantA, { ...h.event, createdAt: now }, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.commissions.every((entry) => entry.payableAt === '1998-07-28T10:00:00.000Z')).toBe(true);
+});
+
+it.each(['charge.refunded', 'charge.dispute.created'] as const)('voids pending partner commissions on full %s', async (type) => {
+  const h = partnerPayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const event = adjustmentEvent({ type, paymentIntentId: h.orders[0]?.providerObjectIds['paymentIntent'] ?? 'pi-cs-1' });
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.voidPendingCommissions).toHaveBeenCalledWith(tenantA.id, h.orders[0]?.id, type === 'charge.refunded' ? 'refunded' : 'disputed', now);
+});
+
+it('does not void partner commissions for a partial refund', async () => {
+  const h = partnerPayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const event = adjustmentEvent({ paymentIntentId: h.orders[0]?.providerObjectIds['paymentIntent'] ?? 'pi-cs-1', refund: { full: false, amountRefundedCents: 100, amountCents: 11160 } });
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.voidPendingCommissions).not.toHaveBeenCalled();
+});
+
+it.each(['charge.refunded', 'charge.dispute.created'] as const)('uses the event time for a delayed partner %s', async (type) => {
+  const h = partnerPayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  h.deps.clock.nowIso = () => '1998-08-01T10:00:00.000Z';
+  const event = { ...adjustmentEvent({ type, paymentIntentId: h.orders[0]?.providerObjectIds['paymentIntent'] ?? 'pi-cs-1' }), createdAt: '1998-07-20T10:00:00.000Z' };
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.voidPendingCommissions).toHaveBeenCalledWith(tenantA.id, h.orders[0]?.id, type === 'charge.refunded' ? 'refunded' : 'disputed', event.createdAt);
+});
+
+it.each(['checkout.session.expired', 'checkout.session.async_payment_failed'])('releases the partner reservation on %s once', async (type) => {
+  const h = partnerPayment();
+  const releaseCheckout = vi.fn(async () => undefined);
+  if (h.deps.partners === undefined) throw new Error('Partner repository missing');
+  h.deps.partners.releaseCheckout = releaseCheckout;
+  const event = { ...h.event, type, createdAt: now };
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(releaseCheckout).toHaveBeenCalledWith(tenantA.id, 'snapshot-1', now);
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+  expect(releaseCheckout).toHaveBeenCalledTimes(1);
+  expect(h.orders).toEqual([]);
+  expect(h.commissions).toEqual([]);
+});
+
+it('rejects a foreign checkout expiration before releasing a partner reservation', async () => {
+  const h = partnerPayment();
+  const releaseCheckout = vi.fn(async () => undefined);
+  if (h.deps.partners === undefined || h.event.checkoutSession === null) throw new Error('Partner checkout missing');
+  h.deps.partners.releaseCheckout = releaseCheckout;
+  h.event.checkoutSession.metadata.tenantId = 'other-workspace';
+  expect(await fulfillStripeWebhook(tenantA, { ...h.event, type: 'checkout.session.expired' }, h.deps)).toMatchObject({ ok: false });
+  expect(releaseCheckout).not.toHaveBeenCalled();
 });

@@ -31,13 +31,16 @@ import type {
   TenantRepository,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
+import type { PartnerRepository } from '../partner-ports.js';
+import { materialisePartnerCode, validatePartnerCodeForCheckout } from './partner-checkout.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
-import { captureCheckoutSelection } from './checkout-lines.js';
+import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
 
 export interface CheckoutDeps {
   salesLinks?: SalesLinkRepository;
+  partners?: PartnerRepository;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   tenants?: TenantRepository;
   products: ProductRepository;
@@ -149,9 +152,17 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps);
+  const amountCents = selection.productPrices?.reduce((sum, item) => sum + item.amountCents, 0) ?? price?.amountCents ?? product.priceCents;
+  const partner = input.couponCode === undefined ? ok(null) : await validatePartnerCodeForCheckout(tenant.id, {
+    code: input.couponCode, ...(selection.salesLinkId === undefined ? {} : { salesLinkId: selection.salesLinkId }), amountCents,
+    currency: selection.productPrices?.[0]?.currency ?? price?.currency ?? product.currency,
+    ...(selection.productPrices === undefined ? {} : { products: selection.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents })) }),
+  }, deps);
+  if (!partner.ok) return partner;
+  const captured = partner.value === null ? await captureCheckoutSelection(tenant.id, selection, deps) : await buildCheckoutLines(tenant.id, selection, deps);
   if (!captured.ok) return captured;
-  const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
+  const { totalCents, currency, lines } = captured.value;
+  let checkoutSnapshotId = 'checkoutSnapshotId' in captured.value && typeof captured.value.checkoutSnapshotId === 'string' ? captured.value.checkoutSnapshotId : undefined;
   const mode = testSession?.mode ?? 'live';
   if (mode === 'test') {
     const rejected = testCheckoutRejection(input, selection);
@@ -170,7 +181,7 @@ export const startCheckoutSession = async (
         checkoutSessionId: string;
       }
     | undefined;
-  if (input.couponCode !== undefined) {
+  if (input.couponCode !== undefined && partner.value === null) {
     if (
       deps.coupons === undefined ||
       deps.couponRedemptions === undefined ||
@@ -248,19 +259,27 @@ export const startCheckoutSession = async (
       checkoutSessionId,
     };
   }
-  if (totalCents === 0 && price?.kind !== 'recurring') {
+  if (totalCents === 0 && price?.kind !== 'recurring' && partner.value === null) {
     if (input.email === undefined) return err(validation('An email is required for free checkout'));
     return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true, ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }) });
   }
-  if (input.couponCode === undefined) {
+  if (input.couponCode === undefined || partner.value !== null) {
     const configured = await getPaymentConfig(tenant.id, deps, mode);
     if (!configured.ok) return configured;
     if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
   }
+  const partnerPromotion = partner.value === null ? ok({}) : await materialisePartnerCode(tenant.id, partner.value.code, currency, deps);
+  if (!partnerPromotion.ok) return partnerPromotion;
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
+  if (partner.value !== null) {
+    const reserved = await captureCheckoutSelection(tenant.id, selection, deps, { partnerCodeId: partner.value.code.id, discountCents: partner.value.breakdown.discountCents, partnerTerms: partner.value.terms });
+    if (!reserved.ok) return reserved;
+    checkoutSnapshotId = reserved.value.checkoutSnapshotId;
+  }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...partnerPromotion.value,
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
     productId: product.id,
@@ -286,7 +305,19 @@ export const startCheckoutSession = async (
           couponCheckoutSessionId: applied.checkoutSessionId,
         }),
   });
-  if (!created.ok) return created;
+  if (!created.ok) {
+    if (partner.value !== null && checkoutSnapshotId !== undefined && deps.clock !== undefined) await deps.partners?.releaseCheckout(tenant.id, checkoutSnapshotId, deps.clock.nowIso());
+    return created;
+  }
+  if (partner.value !== null && checkoutSnapshotId !== undefined) {
+    try {
+      await deps.partners?.attachCheckoutSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
+    } catch (cause) {
+      const expired = await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      if (expired.ok && deps.clock !== undefined) await deps.partners?.releaseCheckout(tenant.id, checkoutSnapshotId, deps.clock.nowIso());
+      throw cause;
+    }
+  }
   if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
     try {
       await deps.orders.create(tenant.id, {
@@ -311,6 +342,7 @@ export const startCheckoutSession = async (
   }
   return ok({
     url: created.value.url,
+    ...(partner.value === null ? {} : { coupon: partner.value.breakdown }),
     ...(applied === undefined ? {} : { coupon: applied.breakdown }),
     ...(applied === undefined ? {} : { couponCheckoutSessionId: applied.checkoutSessionId }),
     free: false,

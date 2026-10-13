@@ -27,3 +27,4 @@ export * from './order-verification.js';
 export * from './consumer-sales.js';
 
 export * from './catalog-cleanup.js';
+export * from './partners.js';

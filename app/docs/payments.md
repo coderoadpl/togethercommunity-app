@@ -2,6 +2,12 @@
 
 ## Direct sales-link checkout
 
+Offers can enable code entry before the automatic handoff. Together validates
+partner codes for the selected offer and records attribution through the order
+and commission ledger. Stripe's promotion-code field stays disabled because
+Stripe cannot scope a code to one offer. See [Partner programs](partner-program.md)
+for code entry, zero-percent attribution, grace periods and refunds.
+
 Public `/offer/<slug>` URLs send buyers straight to live Stripe Checkout. The server
 renders the sales-link title, description, Open Graph metadata and tenant favicon,
 then posts to `/api/public/sales-links/<slug>/checkout` with an optional `returnUrl` and replaces the page

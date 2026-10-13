@@ -1,6 +1,6 @@
 {
-  "hash": "9ec6fa368a64fe5becc76b4939ac115a3e422ec46733441c2824a6c894af2a72",
-  "shortId": "9ec6fa368a64",
+  "hash": "4fdb4af438a92b70d036b9747ce7c1f1fb1a2926277156bbb5dba18ff88d8953",
+  "shortId": "4fdb4af438a9",
   "schema": {
     "constraints": [
       {
@@ -19,9 +19,29 @@
         "table": "product_prices"
       },
       {
+        "definition": "CHECK (((commission_pct >= 1) AND (commission_pct <= 100)))",
+        "name": "partner_programs_commission_pct_check",
+        "table": "partner_programs"
+      },
+      {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK (((discount_pct >= 0) AND (discount_pct <= 100)))",
+        "name": "partner_codes_discount_pct_check",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "CHECK (((grace_days >= 0) AND (grace_days <= 365)))",
+        "name": "partner_programs_grace_days_check",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "CHECK (((jsonb_typeof(sales_link_ids) = 'array'::text) AND (jsonb_array_length(sales_link_ids) > 0)))",
+        "name": "partner_codes_sales_link_ids_check",
+        "table": "partner_codes"
       },
       {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
@@ -37,6 +57,16 @@
         "definition": "CHECK (((length(display_name) <= 200) AND (length(first_name) <= 200) AND (length(last_name) <= 200) AND ((length(source) >= 1) AND (length(source) <= 120))))",
         "name": "marketing_contacts_names_check",
         "table": "marketing_contacts"
+      },
+      {
+        "definition": "CHECK (((length(name) >= 1) AND (length(name) <= 120)))",
+        "name": "partner_programs_name_check",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "CHECK (((pct >= 0) AND (pct <= 100)))",
+        "name": "commissions_pct_check",
+        "table": "commissions"
       },
       {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
@@ -55,6 +85,11 @@
       },
       {
         "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
+        "name": "partner_codes_check",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
         "name": "sales_links_window_check",
         "table": "sales_links"
       },
@@ -69,6 +104,16 @@
         "table": "products"
       },
       {
+        "definition": "CHECK ((amount_cents >= 0))",
+        "name": "commissions_amount_cents_check",
+        "table": "commissions"
+      },
+      {
+        "definition": "CHECK ((base_cents >= 0))",
+        "name": "commissions_base_cents_check",
+        "table": "commissions"
+      },
+      {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "dm_messages_body_format_check",
         "table": "dm_messages"
@@ -77,6 +122,11 @@
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "posts_body_format_check",
         "table": "posts"
+      },
+      {
+        "definition": "CHECK ((code ~ '^[A-Z0-9-]{2,40}$'::text))",
+        "name": "partner_codes_code_check",
+        "table": "partner_codes"
       },
       {
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
@@ -102,6 +152,16 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((length(notes) <= 2000))",
+        "name": "partner_programs_notes_check",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "CHECK ((max_redemptions > 0))",
+        "name": "partner_codes_max_redemptions_check",
+        "table": "partner_codes"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -140,6 +200,16 @@
       },
       {
         "definition": "CHECK ((revision > 0))",
+        "name": "partner_codes_revision_check",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "CHECK ((revision > 0))",
+        "name": "partner_programs_revision_check",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "CHECK ((revision > 0))",
         "name": "sales_links_revision_check",
         "table": "sales_links"
       },
@@ -159,9 +229,29 @@
         "table": "marketing_signup_forms"
       },
       {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
+        "name": "partner_codes_status_check",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
+        "name": "partner_programs_status_check",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
+        "name": "partners_status_check",
+        "table": "partners"
+      },
+      {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))",
         "name": "tenants_status_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'payable'::text, 'paid'::text, 'voided'::text])))",
+        "name": "commissions_status_check",
+        "table": "commissions"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text])))",
@@ -172,6 +262,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['reserved'::text, 'consumed'::text, 'released'::text])))",
+        "name": "partner_checkout_reservations_status_check",
+        "table": "partner_checkout_reservations"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
@@ -309,6 +404,11 @@
         "table": "space_event_rsvps"
       },
       {
+        "definition": "FOREIGN KEY (id) REFERENCES checkout_snapshots(id)",
+        "name": "partner_checkout_reservations_id_fkey",
+        "table": "partner_checkout_reservations"
+      },
+      {
         "definition": "FOREIGN KEY (inbox_id) REFERENCES marketing_sns_inbox(id) ON DELETE CASCADE",
         "name": "marketing_sns_inbox_events_inbox_id_marketing_sns_inbox_id_fk",
         "table": "marketing_sns_inbox_events"
@@ -374,9 +474,44 @@
         "table": "ksef_number_allocations"
       },
       {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id)",
+        "name": "commissions_order_id_fkey",
+        "table": "commissions"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id)",
+        "name": "partner_checkout_reservations_order_id_fkey",
+        "table": "partner_checkout_reservations"
+      },
+      {
         "definition": "FOREIGN KEY (parent_post_id) REFERENCES posts(id)",
         "name": "posts_parent_post_id_posts_id_fk",
         "table": "posts"
+      },
+      {
+        "definition": "FOREIGN KEY (partner_code_id) REFERENCES partner_codes(id)",
+        "name": "commissions_partner_code_id_fkey",
+        "table": "commissions"
+      },
+      {
+        "definition": "FOREIGN KEY (partner_code_id) REFERENCES partner_codes(id)",
+        "name": "orders_partner_code_id_fkey",
+        "table": "orders"
+      },
+      {
+        "definition": "FOREIGN KEY (partner_code_id) REFERENCES partner_codes(id)",
+        "name": "partner_checkout_reservations_partner_code_id_fkey",
+        "table": "partner_checkout_reservations"
+      },
+      {
+        "definition": "FOREIGN KEY (partner_id) REFERENCES partners(id)",
+        "name": "commissions_partner_id_fkey",
+        "table": "commissions"
+      },
+      {
+        "definition": "FOREIGN KEY (partner_id) REFERENCES partners(id)",
+        "name": "partner_codes_partner_id_fkey",
+        "table": "partner_codes"
       },
       {
         "definition": "FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE",
@@ -407,6 +542,21 @@
         "definition": "FOREIGN KEY (price_id) REFERENCES product_prices(id) ON DELETE SET NULL",
         "name": "product_price_history_price_id_product_prices_id_fk",
         "table": "product_price_history"
+      },
+      {
+        "definition": "FOREIGN KEY (program_id) REFERENCES partner_programs(id)",
+        "name": "commissions_program_id_fkey",
+        "table": "commissions"
+      },
+      {
+        "definition": "FOREIGN KEY (program_id) REFERENCES partner_programs(id)",
+        "name": "partner_codes_program_id_fkey",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "FOREIGN KEY (program_id) REFERENCES partner_programs(id)",
+        "name": "partners_program_id_fkey",
+        "table": "partners"
       },
       {
         "definition": "FOREIGN KEY (redemption_id) REFERENCES coupon_redemptions(id) ON DELETE RESTRICT",
@@ -482,6 +632,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "checkout_snapshots_tenant_id_fkey",
         "table": "checkout_snapshots"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "commissions_tenant_id_fkey",
+        "table": "commissions"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -762,6 +917,31 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "orders_tenant_id_tenants_id_fk",
         "table": "orders"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "partner_checkout_reservations_tenant_id_fkey",
+        "table": "partner_checkout_reservations"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "partner_codes_tenant_id_fkey",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "partner_events_tenant_id_fkey",
+        "table": "partner_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "partner_programs_tenant_id_fkey",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "partners_tenant_id_fkey",
+        "table": "partners"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1080,6 +1260,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
+        "name": "partners_tenant_id_member_id_fkey",
+        "table": "partners"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, member_id) REFERENCES members(tenant_id, id)",
         "name": "product_grants_tenant_member_fk",
         "table": "product_grants"
       },
@@ -1197,6 +1382,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "checkout_snapshots_pkey",
         "table": "checkout_snapshots"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "commissions_pkey",
+        "table": "commissions"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -1407,6 +1597,31 @@
         "definition": "PRIMARY KEY (id)",
         "name": "orders_pkey",
         "table": "orders"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "partner_checkout_reservations_pkey",
+        "table": "partner_checkout_reservations"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "partner_codes_pkey",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "partner_events_pkey",
+        "table": "partner_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "partner_programs_pkey",
+        "table": "partner_programs"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "partners_pkey",
+        "table": "partners"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2278,6 +2493,11 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE INDEX partner_checkout_reservations_code_idx ON partner_checkout_reservations USING btree (tenant_id, partner_code_id)",
+        "name": "partner_checkout_reservations_code_idx",
+        "table": "partner_checkout_reservations"
+      },
+      {
         "definition": "CREATE INDEX platform_audit_events_created_idx ON platform_audit_events USING btree (created_at, id)",
         "name": "platform_audit_events_created_idx",
         "table": "platform_audit_events"
@@ -2446,6 +2666,11 @@
         "definition": "CREATE UNIQUE INDEX checkout_snapshots_provider_session_idx ON checkout_snapshots USING btree (tenant_id, provider_session_id) WHERE (provider_session_id IS NOT NULL)",
         "name": "checkout_snapshots_provider_session_idx",
         "table": "checkout_snapshots"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX commissions_order_line_uidx ON commissions USING btree (tenant_id, order_id, order_line_id)",
+        "name": "commissions_order_line_uidx",
+        "table": "commissions"
       },
       {
         "definition": "CREATE UNIQUE INDEX consent_confirmation_tokens_token_uidx ON consent_confirmation_tokens USING btree (token)",
@@ -2691,6 +2916,16 @@
         "definition": "CREATE UNIQUE INDEX orders_verification_token_uidx ON orders USING btree (verification_token)",
         "name": "orders_verification_token_uidx",
         "table": "orders"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX partner_codes_tenant_code_uidx ON partner_codes USING btree (tenant_id, lower(code))",
+        "name": "partner_codes_tenant_code_uidx",
+        "table": "partner_codes"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX partners_program_member_uidx ON partners USING btree (program_id, member_id)",
+        "name": "partners_program_member_uidx",
+        "table": "partners"
       },
       {
         "definition": "CREATE UNIQUE INDEX post_reactions_post_user_emoji_uidx ON post_reactions USING btree (post_id, user_id, emoji)",
@@ -3625,6 +3860,14 @@
             "identity": "",
             "name": "member_id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_code_id",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -6806,6 +7049,99 @@
             "default": "0",
             "generated": "",
             "identity": "",
+            "name": "discount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lines",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_code_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_terms",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "checkout_snapshots"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
             "name": "failed_verification_count",
             "notNull": false,
             "type": "integer"
@@ -7059,6 +7395,224 @@
           }
         ],
         "name": "product_prices"
+      },
+      {
+        "columns": [
+          {
+            "default": "14",
+            "generated": "",
+            "identity": "",
+            "name": "grace_days",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "commission_pct",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "notes",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "partner_programs"
+      },
+      {
+        "columns": [
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "allows_codes",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "active",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "cancel_return_url",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "deleted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "description",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "heading",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "listed",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "slug",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "title",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_from",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_to",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "sales_links"
       },
       {
         "columns": [
@@ -8165,139 +8719,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "cancel_return_url",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "deleted_at",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "description",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "heading",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "listed",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "product_ids",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "revision",
-            "notNull": true,
-            "type": "integer"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "slug",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "title",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "updated_at",
-            "notNull": true,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "valid_from",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "valid_to",
-            "notNull": false,
-            "type": "timestamp with time zone"
-          }
-        ],
-        "name": "sales_links"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "active",
-            "notNull": true,
-            "type": "boolean"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "comment_enabled",
             "notNull": true,
             "type": "boolean"
@@ -9040,6 +9461,131 @@
           }
         ],
         "name": "marketing_signup_forms"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "base_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_line_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_code_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payable_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payout_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "pct",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "program_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "voided_reason",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "commissions"
       },
       {
         "columns": [
@@ -10588,6 +11134,131 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "code",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "discount_pct",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "max_redemptions",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "program_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revision",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "stripe_coupon_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "stripe_promotion_code_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_from",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "valid_to",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "partner_codes"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "comment",
             "notNull": true,
             "type": "text"
@@ -11799,75 +12470,6 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "lines",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "mode",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider_session_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sales_link_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "checkout_snapshots"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
             "name": "email",
             "notNull": true,
             "type": "text"
@@ -12603,6 +13205,112 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "member_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "program_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "partners"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "partner_code_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "partner_checkout_reservations"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "slug",
             "notNull": true,
             "type": "text"
@@ -12888,6 +13596,67 @@
           }
         ],
         "name": "erased_member_imports"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "entity_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "entity_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "snapshot",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "partner_events"
       },
       {
         "columns": [

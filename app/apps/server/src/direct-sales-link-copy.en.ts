@@ -1,4 +1,7 @@
 export const directSalesLinkCopyEn = {
+  haveCode: 'I have a discount code',
+  discountCode: 'Discount code',
+  couponUnavailable: 'This discount code cannot be used.',
   redirecting: 'Redirecting to secure payment…',
   continueToPayment: 'Continue to payment',
   checkoutUnavailable: 'Checkout is unavailable',

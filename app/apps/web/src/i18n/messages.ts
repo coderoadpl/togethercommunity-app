@@ -17,6 +17,50 @@ export const format = (template: string, params: MessageParams): string =>
   );
 
 export interface Messages {
+  partnerPrograms: {
+    couponTaken: string;
+    partnerTaken: string;
+    orderLabel: string;
+    title: string;
+    description: string;
+    create: string;
+    program: string;
+    name: string;
+    commission: string;
+    grace: string;
+    graceHelp: string;
+    notes: string;
+    status: string;
+    active: string;
+    archived: string;
+    statusHelp: string;
+    save: string;
+    partners: string;
+    memberSearch: string;
+    memberHelp: string;
+    add: string;
+    codes: string;
+    code: string;
+    newCode: string;
+    partner: string;
+    discount: string;
+    codeHelp: string;
+    discountRule: string;
+    zeroCommission: string;
+    maxRedemptions: string;
+    unlimited: string;
+    scope: string;
+    validFrom: string;
+    validTo: string;
+    saveCode: string;
+    pending: string;
+    payable: string;
+    paid: string;
+    partnerCommission: string;
+    email: string;
+    archive: string;
+    edit: string;
+  };
   orderVerification: {
     title: string;
     reference: string;
@@ -31,6 +75,11 @@ export interface Messages {
     unpaidHelp: string;
   };
   salesLinks: {
+    allowsCodes: string;
+    allowsCodesHelp: string;
+    cannotDisableCodes: string;
+    codes: string;
+
     heading: string;
     create: string;
     edit: string;
@@ -481,6 +530,7 @@ export interface Messages {
     success: (params: { environment: string }) => string;
   };
   sections: {
+    partnerPrograms: string;
     dashboard: string;
     products: string;
     courses: string;

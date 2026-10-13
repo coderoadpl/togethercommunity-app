@@ -85,6 +85,7 @@ import {
   ensureMember,
   validateCheckoutSelection,
   validateCouponForCheckout,
+  validatePartnerCodeForCheckout,
   validateTermsConsent,
   type PaymentWebhookEvent,
   type ResolvedTenant
@@ -655,6 +656,15 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       return respondPublic(err(internal('Coupon checkout is not configured')));
     }
     const price = selection.value.price;
+    const partner = await validatePartnerCodeForCheckout(tenant.value.tenant.id, {
+      code: parsed.data.couponCode,
+      ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId }),
+      amountCents: selection.value.productPrices?.reduce((sum, item) => sum + item.amountCents, 0) ?? price?.amountCents ?? selection.value.product.priceCents,
+      currency: selection.value.productPrices?.[0]?.currency ?? price?.currency ?? selection.value.product.currency,
+      ...(selection.value.productPrices === undefined ? {} : { products: selection.value.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents })) }),
+    }, deps);
+    if (!partner.ok) return respondPublic(partner);
+    if (partner.value !== null) return respondPublic(ok({ breakdown: partner.value.breakdown, recurringDuration: 'first_invoice' as const }));
     const result = await validateCouponForCheckout(
       tenant.value.tenant.id,
       {

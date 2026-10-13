@@ -1,3 +1,4 @@
+import { partnerProgramActions } from '#core/client/index.js';
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates } from '#core/client/index.js';
@@ -419,6 +420,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   memberNavigationInvalidates,
   memberHomeFeed: (input: MemberHomeFeedGetInput) => memberHomeFeedQuery(apiClient, input),
   memberHomeFeedInvalidates,
+  partnerPrograms: partnerProgramActions(apiClient),
   members: membersQuery(apiClient),
   membersExport: (format: MemberExportFormat) => membersExportQuery(apiClient, format),
   accountSessions: accountSessionsQuery(apiClient),

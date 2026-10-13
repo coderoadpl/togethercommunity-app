@@ -229,6 +229,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     if (path.startsWith('/api/me/')) return 'invoice:member-read';
     return method === 'GET' ? 'invoice:read' : 'invoice:write';
   }
+  if (/^\/api\/(?:partner-programs|partners|partner-codes)(?:\/|$)/.test(path)) return method === 'GET' ? 'partner:read' : 'partner:write';
   if (path.startsWith('/api/coupons')) {
     if (method === 'GET' && (path === '/api/coupons' || path === '/api/coupons/export' || path.includes('/stats'))) return 'coupon:report';
     return method === 'GET' ? 'coupon:read' : 'coupon:write';

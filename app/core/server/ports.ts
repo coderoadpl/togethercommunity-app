@@ -1,3 +1,4 @@
+import type { PartnerRepository } from './partner-ports.js';
 import type {
   LessonEdition, LessonEditionInput,
   ActivitySummary,
@@ -1116,6 +1117,8 @@ export interface PaymentProvider {
     stripeCouponId: string | null;
     stripePromotionCodeId: string | null;
   }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
+  activateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ activated: true }, AppError>>;
+  deactivateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ deactivated: true }, AppError>>;
   expireCheckoutSession(input: {
     mode?: 'live' | 'test';
     tenantId: string;
@@ -1772,6 +1775,7 @@ export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
     operation: (deps: {
+      partners?: PartnerRepository;
       members: MemberRepository;
       grants: ProductGrantRepository;
       orders: OrderRepository;

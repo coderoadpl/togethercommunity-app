@@ -6,6 +6,9 @@ import { createOrderVerificationRepository } from '#adapters/db/order-verificati
 import type { OrderVerificationRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
+import { createPartnerRepository } from '#adapters/db/partner-repositories.js';
+import type { PartnerRepository } from '#core/server/partner-ports.js';
+import type { PartnerManagementDeps } from '#core/server/usecases/partner-management.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
 import type { SurveyDeps } from '#core/server/index.js';
@@ -510,6 +513,8 @@ export interface AppDeps {
   invoicing: InvoicingPort;
   ksef?: KsefAppDeps;
   coupons?: CouponManagementRepository;
+  partners?: PartnerRepository;
+  partnerManagement?: PartnerManagementDeps;
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
@@ -1469,6 +1474,8 @@ export const createDeps = (
       dispatch: dispatchKsef,
     },
     coupons: createCouponRepository(db),
+    partners: createPartnerRepository(db),
+    partnerManagement: { orders: orderRepository, partners: createPartnerRepository(db), coupons: createCouponRepository(db), members, salesLinks: createSalesLinkRepository(db), payments: payment, ids, clock },
     couponRedemptions: createCouponRedemptionRepository(db),
     couponCheckoutSessions: createCouponCheckoutSessionRepository(db),
     priceHistory: createProductPriceHistoryRepository(db),
@@ -1531,7 +1538,7 @@ export const createDeps = (
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
     surveys: { surveys: createSurveyRepository(db), clock, ids, tokens },
-    salesLinkManagement: { salesLinks: createSalesLinkRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids },
+    salesLinkManagement: { salesLinks: createSalesLinkRepository(db), partners: createPartnerRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids },
     salesLinks: createSalesLinkRepository(db),
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography } from '@mui/material';
+import { Alert, Button, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography } from '@mui/material';
 import { SALES_LINK_TIME_ZONE, salesLinkInputSchema, type Product, type SalesLink } from '#core/domain/index.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { MarkdownEditor } from '../../../components/ui/MarkdownEditor.js';
@@ -23,6 +23,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
   const [description, setDescription] = useState(salesLink?.description ?? '');
   const [productIds, setProductIds] = useState(salesLink?.productIds ?? []);
   const [active, setActive] = useState(salesLink?.active ?? false);
+  const [allowsCodes, setAllowsCodes] = useState(salesLink?.allowsCodes ?? false);
   const [listed, setListed] = useState(salesLink?.listed ?? false);
   const [validFrom, setValidFrom] = useState(formatValidityTime(salesLink?.validFrom ?? null, SALES_LINK_TIME_ZONE));
   const [validTo, setValidTo] = useState(formatValidityTime(salesLink?.validTo ?? null, SALES_LINK_TIME_ZONE));
@@ -37,7 +38,7 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
   const save = () => {
     const from = parseValidityTime(validFrom, SALES_LINK_TIME_ZONE);
     const to = parseValidityTime(validTo, SALES_LINK_TIME_ZONE);
-    const input: SalesLinkInput = { title, heading, slug, description, productIds, active, listed, validFrom: from, validTo: to, cancelReturnUrl: cancelReturnUrl.trim() === '' ? null : cancelReturnUrl };
+    const input: SalesLinkInput = { title, heading, slug, description, productIds, active, listed, allowsCodes, validFrom: from, validTo: to, cancelReturnUrl: cancelReturnUrl.trim() === '' ? null : cancelReturnUrl };
     const parsed = salesLinkInputSchema.safeParse(input);
     setInvalid(!parsed.success || from === undefined || to === undefined);
     if (parsed.success && from !== undefined && to !== undefined) onSave(parsed.data);
@@ -66,6 +67,8 @@ export const SalesLinkEditor = ({ salesLink, products, onSave, onCancel, pending
     </Stack>
     <Typography variant="caption">{t.salesLinks.timezone}: {SALES_LINK_TIME_ZONE}</Typography>
     <TextField label={t.salesLinks.cancelReturnUrl} helperText={t.salesLinks.cancelReturnHelp} value={cancelReturnUrl} onChange={(event) => setCancelReturnUrl(event.target.value)} fullWidth />
+    <FormControlLabel control={<Checkbox checked={allowsCodes} onChange={(_, checked) => setAllowsCodes(checked)} />} label={t.salesLinks.allowsCodes} />
+    <Typography variant="caption">{t.salesLinks.allowsCodesHelp}</Typography>
     <FormControlLabel control={<Switch checked={listed} onChange={(_, checked) => setListed(checked)} />} label={t.salesLinks.listed} />
     <FormControlLabel control={<Switch checked={active} onChange={(_, checked) => setActive(checked)} />} label={t.salesLinks.active} />
     {invalid ? <Alert severity="error">{t.salesLinks.invalid}</Alert> : null}

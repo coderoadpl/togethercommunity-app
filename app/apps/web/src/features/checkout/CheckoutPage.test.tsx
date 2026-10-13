@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -270,6 +270,45 @@ describe('CheckoutPage', () => {
     expect(screen.getByText(textPattern(en.checkout.omnibusLowest({ price: pln(4500) })))).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: textPattern(en.checkout.payIdle({ price: pln(3920) })) }));
     expect(purchases).toMatchObject([{ couponCode: 'partner20' }]);
+  });
+
+  it.each([
+    { stripeConfigured: true, preview: 'unapplied' },
+    { stripeConfigured: true, preview: 'pending' },
+    { stripeConfigured: true, preview: 'rejected' },
+    { stripeConfigured: false, preview: 'unapplied' },
+    { stripeConfigured: false, preview: 'pending' },
+    { stripeConfigured: false, preview: 'rejected' },
+  ])('submits the typed code when preview is $preview and Stripe is $stripeConfigured', async ({ stripeConfigured, preview }) => {
+    const purchases: unknown[] = [];
+    const rejection = { ok: false, error: { code: 'validation', message: 'Coupon cannot be applied' } };
+    let finishPreview = () => {};
+    const pendingPreview = new Promise<void>((resolve) => { finishPreview = resolve; });
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured, simulatedPaymentsEnabled: true } })),
+      http.post('/api/public/checkout/coupon', async () => {
+        if (preview === 'pending') await pendingPreview;
+        return HttpResponse.json(rejection, { status: 400 });
+      }),
+      http.post(stripeConfigured ? '/api/public/checkout/session' : '/api/dev/simulate-purchase', async ({ request }) => {
+        purchases.push(await request.json());
+        return HttpResponse.json(rejection, { status: 400 });
+      }),
+    );
+    renderCheckout('course-1');
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
+    await userEvent.type(screen.getByLabelText(en.checkout.couponLabel), 'FRIEND10');
+    if (preview !== 'unapplied') await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    if (preview === 'rejected') expect(await screen.findByTestId('checkout-coupon-error')).toHaveTextContent(en.checkout.couponUnavailable);
+    if (preview === 'pending') expect(screen.getByTestId('checkout-coupon-apply')).toBeDisabled();
+    try {
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(purchases).toMatchObject([{ couponCode: 'FRIEND10' }]));
+    } finally {
+      finishPreview();
+    }
   });
 
   it('explains a forever coupon on a recurring price', async () => {

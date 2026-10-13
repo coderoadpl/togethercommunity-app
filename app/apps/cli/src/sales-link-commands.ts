@@ -24,11 +24,11 @@ export const registerSalesLinkCommands = (program: Command, context: () => Resul
   links.command('update <id>').requiredOption('--input <json>', 'All fields, id and expectedRevision as JSON').action(run(z.tuple([z.string(), z.object({ input: jsonInput.pipe(salesLinkContracts.updateSalesLink.input) })]), async (ctx, [id, options]) => options.input.id === id ? ctx.api.updateSalesLink(options.input) : err(validation('Sales-link id does not match the input'))));
   links.command('delete <id>').requiredOption('--confirm', 'Delete a sales link without paid orders').action(run(z.tuple([z.string(), z.object({ confirm: z.literal(true) })]), (ctx, [id]) => ctx.api.deleteSalesLink({ id })));
   links.command('offer <slug>').action(run(z.tuple([z.string(), z.object({})]), (ctx, [slug]) => ctx.api.getPublicSalesLink({ slug })));
-  links.command('checkout <slug>').option('--mode <mode>', 'Stripe mode: live only', 'live').action(run(z.tuple([z.string(), z.object({ mode: z.literal('live') })]), (ctx, [slug]) => ctx.api.directSalesLinkCheckout({ slug })));
+  links.command('checkout <slug>').option('--mode <mode>', 'Stripe mode: live only', 'live').option('--code <code>', 'Partner discount code for this offer').action(run(z.tuple([z.string(), z.object({ mode: z.literal('live'), code: z.string().optional() })]), (ctx, [slug, options]) => ctx.api.directSalesLinkCheckout({ slug, ...(options.code === undefined ? {} : { code: options.code }) })));
   for (const active of [true, false]) links.command(active ? 'activate <id>' : 'deactivate <id>').action(run(z.tuple([z.string(), z.object({})]), async (ctx, [id]) => {
     const result = await ctx.api.getSalesLink({ id });
     if (!result.ok) return result;
     const link = result.value.salesLink;
-    return ctx.api.updateSalesLink({ id, expectedRevision: link.revision, slug: link.slug, title: link.title, heading: link.heading, description: link.description, productIds: link.productIds, listed: link.listed, validFrom: link.validFrom, validTo: link.validTo, cancelReturnUrl: link.cancelReturnUrl, active });
+    return ctx.api.updateSalesLink({ id, expectedRevision: link.revision, slug: link.slug, title: link.title, heading: link.heading, description: link.description, productIds: link.productIds, listed: link.listed, allowsCodes: link.allowsCodes, validFrom: link.validFrom, validTo: link.validTo, cancelReturnUrl: link.cancelReturnUrl, active });
   }));
 };

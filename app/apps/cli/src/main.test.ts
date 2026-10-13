@@ -348,6 +348,11 @@ afterAll(() => {
 });
 
 describe('sales-link checkout CLI', () => {
+  it('forwards the offer code for server-side validation', async () => {
+    await run('--json', 'sales-link', 'checkout', 'offer-one', '--code', 'FRIEND10');
+    expect(h.directSalesLinkCheckout).toHaveBeenCalledExactlyOnceWith({ slug: 'offer-one', code: 'FRIEND10' });
+    expect(process.exitCode).toBe(0);
+  });
   it.each([{ options: [] }, { options: ['--mode', 'live'] }])('starts live checkout with options $options', async ({ options }) => {
     await run('--json', 'sales-link', 'checkout', 'offer-one', ...options);
     expect(h.directSalesLinkCheckout).toHaveBeenCalledExactlyOnceWith({ slug: 'offer-one' });
@@ -371,7 +376,7 @@ it('updates a sales link with a cancel return address from JSON', async () => {
     cancelReturnUrl: 'https://sales.example.test/offer#details',
   };
   await run('--json', 'sales-link', 'update', 'link-1', '--input', JSON.stringify(input));
-  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(input);
+  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith({ ...input, allowsCodes: false });
   expect(soleJson()).toEqual({ ok: true, data: { salesLink: { id: 'link-1' } } });
   expect(process.exitCode).toBe(0);
 });

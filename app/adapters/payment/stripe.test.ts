@@ -714,6 +714,7 @@ describe('verifyWebhookEvent', () => {
     ['checkout.session.completed', 'unpaid'],
     ['checkout.session.async_payment_succeeded', 'paid'],
     ['checkout.session.async_payment_failed', 'unpaid'],
+    ['checkout.session.expired', 'unpaid'],
   ] as const)('maps %s with payment status %s', async (type, paymentStatus) => {
     const payload = JSON.stringify({
       id: `evt_${type}`,
@@ -760,6 +761,19 @@ describe('verifyWebhookEvent', () => {
     await expect(verify(payload)).resolves.toMatchObject({
       ok: true,
       value: { createdAt: '1999-01-15T08:00:00.000Z' },
+    });
+  });
+
+  it.each([
+    ['checkout.session.completed', { id: 'cs_1', customer_details: { email: 'buyer@example.test' }, metadata: {} }],
+    ['checkout.session.async_payment_succeeded', { id: 'cs_1', customer_details: { email: 'buyer@example.test' }, metadata: {} }],
+    ['charge.refunded', { id: 'ch_1', payment_intent: 'pi_1', refunded: true }],
+    ['charge.dispute.created', { id: 'dp_1', charge: 'ch_1', payment_intent: 'pi_1' }],
+  ])('preserves the provider event time for %s', async (type, object) => {
+    const payload = JSON.stringify({ id: 'evt_delayed', type, created: 916_387_200, data: { object } });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: { type, createdAt: '1999-01-15T08:00:00.000Z' },
     });
   });
 
@@ -1231,4 +1245,44 @@ it.each([
 it('pins the Stripe SDK to the Clover API release or later for native checkout branding', () => {
   expect(Stripe.API_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.[a-z]+$/);
   expect(Stripe.API_VERSION >= '2025-09-30.clover').toBe(true);
+});
+
+it('deactivates a partner promotion code through the existing Stripe client', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+      requests.push(new Request(input, init));
+      return stripeJson({ id: 'promo_partner', active: false });
+    }) }),
+  });
+  expect(await payment.deactivateCouponPromotion?.({ tenantId: 'tenant', stripePromotionCodeId: 'promo_partner' })).toEqual(ok({ deactivated: true }));
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (request === undefined) throw new Error('Missing promotion update');
+  expect(new URL(request.url).pathname).toBe('/v1/promotion_codes/promo_partner');
+  expect(new URLSearchParams(await request.text()).get('active')).toBe('false');
+});
+
+it('applies a direct discount while keeping Stripe code entry disabled', () => {
+  const params = stripeCheckoutSessionParams({ tenantId: 'tenant', productId: 'product', productName: 'Offer', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel', promotionCodeId: 'promo_partner', directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms.' } });
+  expect(params.allow_promotion_codes).toBe(false);
+  expect(params.discounts).toEqual([{ promotion_code: 'promo_partner' }]);
+});
+
+it('reactivates a partner promotion after a failed edit through the existing Stripe client', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+      requests.push(new Request(input, init));
+      return stripeJson({ id: 'promo_partner', active: true });
+    }) }),
+  });
+  expect(await payment.activateCouponPromotion?.({ tenantId: 'tenant', stripePromotionCodeId: 'promo_partner' })).toEqual(ok({ activated: true }));
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (request === undefined) throw new Error('Missing promotion request');
+  expect(request.url).toContain('/v1/promotion_codes/promo_partner');
+  expect(new URLSearchParams(await request.text()).get('active')).toBe('true');
 });

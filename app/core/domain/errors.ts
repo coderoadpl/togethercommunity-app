@@ -89,7 +89,6 @@ export const errorChainEntrySchema = z.object({
   name: z.string().optional(),
   message: z.string(),
   code: z.string().optional(),
-  detail: z.string().optional(),
   routine: z.string().optional(),
   cause: z.unknown().optional(),
 });

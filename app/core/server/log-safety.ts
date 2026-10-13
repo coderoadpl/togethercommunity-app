@@ -24,12 +24,11 @@ export const serializeErrorChain = (error: unknown): string => {
       chain.push({ message: UNKNOWN_ERROR_MESSAGE });
       break;
     }
-    const { name, message, code, detail, routine, cause } = parsed.data;
+    const { name, message, code, routine, cause } = parsed.data;
     chain.push({
       name: name ?? 'Error',
       message: safeLogMessage(message),
       ...(code === undefined ? {} : { code }),
-      ...(detail === undefined ? {} : { detail: safeLogMessage(detail) }),
       ...(routine === undefined ? {} : { routine }),
     });
     current = cause;

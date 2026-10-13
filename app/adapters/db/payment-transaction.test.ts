@@ -42,7 +42,6 @@ const expectedChain = JSON.stringify([
     name: 'DatabaseError',
     message: 'Connection terminated unexpectedly',
     code: '57P01',
-    detail: 'The server closed an idle connection',
     routine: 'ProcessInterrupts',
   },
 ]);

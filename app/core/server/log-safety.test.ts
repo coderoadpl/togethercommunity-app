@@ -55,9 +55,36 @@ describe('serializeErrorChain', () => {
     expect(JSON.parse(serialized)).toEqual([
       { name: 'Error', message: 'Enrollment failed' },
       { name: 'Error', message: 'Failed query: select id from tenant_domains' },
-      { name: 'Error', message: 'Connection terminated', code: '57P01', detail: 'Server shut down', routine: 'ProcessInterrupts' },
+      { name: 'Error', message: 'Connection terminated', code: '57P01', routine: 'ProcessInterrupts' },
     ]);
     expect(serialized).not.toContain('private-value');
+  });
+
+  it.each([
+    {
+      message: 'duplicate key value violates unique constraint "members_tenant_email_key"',
+      code: '23505',
+      detail: 'Key (tenant_id, email)=(tenant-acme, buyer@example.com) already exists.',
+      routine: '_bt_check_unique',
+    },
+    {
+      message: 'new row for relation "email_outbox" violates check constraint "payload_check"',
+      code: '23514',
+      detail: 'Failing row contains (buyer@example.com, Billing address, https://acme.example.com/sign-in?token=private-token).',
+      routine: 'ExecConstraints',
+    },
+  ])('omits row values from PostgreSQL $code details in nested causes', ({ message, code, detail, routine }) => {
+    const postgres = Object.assign(new Error(message), { code, detail, routine });
+    const serialized = serializeErrorChain(new Error('Enrollment failed', { cause: postgres }));
+
+    expect(JSON.parse(serialized)).toEqual([
+      { name: 'Error', message: 'Enrollment failed' },
+      { name: 'Error', message, code, routine },
+    ]);
+    expect(serialized).not.toContain(detail);
+    expect(serialized).not.toContain('buyer@example.com');
+    expect(serialized).not.toContain('Billing address');
+    expect(serialized).not.toContain('private-token');
   });
 
   it('terminates circular causes and handles unknown values', () => {

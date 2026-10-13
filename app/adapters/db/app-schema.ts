@@ -511,6 +511,7 @@ export const orders = pgTable(
     salesLinkId: text('sales_link_id'),
     lines: jsonb('lines').$type<OrderLine[]>().notNull().default([]),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
+    paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

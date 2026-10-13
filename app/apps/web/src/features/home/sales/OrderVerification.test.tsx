@@ -10,6 +10,8 @@ describe('OrderVerification', () => {
     const onIssue = vi.fn();
     renderWithProviders(<OrderVerification order={sampleBundleOrder} canIssue onIssue={onIssue} />);
     expect(screen.getByText('Paid')).toBeVisible();
+    expect(screen.getByText('Placed: 8 Oct 2026, 12:00')).toBeVisible();
+    expect(screen.getByText('Paid: 8 Oct 2026, 12:03')).toBeVisible();
     expect(screen.getByText('Alex Smith')).toBeVisible();
     expect(screen.getByText('buyer@example.org')).toBeVisible();
     expect(screen.getByText('Digital reference')).toBeVisible();
@@ -17,6 +19,18 @@ describe('OrderVerification', () => {
     expect(screen.getAllByRole('button', { name: 'Mark as issued' })).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Mark as issued' }));
     expect(onIssue).toHaveBeenCalledWith('product-1');
+  });
+
+  it('uses the placed date for a paid order without a payment timestamp', () => {
+    renderWithProviders(<OrderVerification order={{ ...sampleBundleOrder, paidAt: null }} canIssue onIssue={() => undefined} />);
+    expect(screen.getByText('Placed: 8 Oct 2026, 12:00')).toBeVisible();
+    expect(screen.getByText('Paid: 8 Oct 2026, 12:00')).toBeVisible();
+  });
+
+  it('shows no payment date for an unpaid order', () => {
+    renderWithProviders(<OrderVerification order={{ ...sampleBundleOrder, status: 'pending', paidAt: null }} canIssue onIssue={() => undefined} />);
+    expect(screen.getByText('Placed: 8 Oct 2026, 12:00')).toBeVisible();
+    expect(screen.getByText('Paid: —')).toBeVisible();
   });
 
   it('shows the first issue and staff name on a second scan without offering another issue', () => {

@@ -42,15 +42,17 @@ export const appendOrder = async (
   },
   deps: Pick<SubscriptionLifecycleDeps, 'orders' | 'ids' | 'clock'>,
 ): Promise<Order> => {
+  const now = deps.clock.nowIso();
   const order: Order = {
     ...input,
+    paidAt: input.status === 'paid' ? input.paidAt ?? now : null,
     mode: input.mode ?? 'live',
     couponId: input.couponId ?? null,
     discountCents: input.discountCents ?? 0,
     billing: input.billing ?? null,
     id: deps.ids.nextId(),
     tenantId,
-    createdAt: deps.clock.nowIso(),
+    createdAt: now,
   };
   await deps.orders.create(tenantId, order);
   return order;

@@ -640,6 +640,7 @@ export interface Messages {
     all: string;
     oneTime: string;
     recurring: string;
+    placed: string;
     paid: string;
     pending: string;
     failed: string;

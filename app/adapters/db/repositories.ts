@@ -1,4 +1,5 @@
 import { lockActiveCourses } from './course-reference-lock.js';
+import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
 import { lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
@@ -238,7 +239,7 @@ const parseProductDownloadAsset = (asset: ProductDownloadAsset): ProductDownload
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
-const parseOrder = (order: Order): Order => orderSchema.parse(order);
+const parseOrder = (order: Order): Order => orderSchema.parse(normalizeOrderDates(order));
 
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3267,7 +3268,7 @@ export const createOrderRepository = (
   return {
     completeTestCheckout: async (tenantId, order) => db.transaction(async (tx) => {
       const [row] = await tx.update(orders).set({
-        status: 'paid', providerObjectIds: order.providerObjectIds,
+        status: 'paid', paidAt: order.paidAt, providerObjectIds: order.providerObjectIds,
         billing: order.billing ?? null,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
@@ -3300,6 +3301,7 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
+          paidAt: order.paidAt ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
           ...(order.verificationToken === undefined ? {} : { verificationToken: order.verificationToken }),
@@ -3345,7 +3347,7 @@ export const createOrderRepository = (
         .limit(1);
       const row = rows[0];
       if (row === undefined) return null;
-      const order = orderListItemSchema.parse({ ...row.order, ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
       const staffIds = order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [];
       const displayNames = await createUserDisplayReader(db).findDisplayNames(tenantId, staffIds);
       return {
@@ -3389,7 +3391,7 @@ export const createOrderRepository = (
         orders: rows.map(
           (row): OrderListItem =>
             orderListItemSchema.parse({
-              ...row.order,
+              ...normalizeOrderDates(row.order),
               memberEmail: row.memberEmail,
               memberName: row.memberName,
               productTitle: row.productTitle,
@@ -3416,7 +3418,7 @@ export const createOrderRepository = (
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
         .orderBy(desc(orders.createdAt), desc(orders.id));
-      return rows.map((row) => orderListItemSchema.parse({ ...row.order, ...row }));
+      return rows.map((row) => orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row }));
     },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(

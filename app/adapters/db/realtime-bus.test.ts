@@ -73,6 +73,15 @@ const listenConnections = async (): Promise<number> =>
     ),
   );
 
+const readyListenConnections = async (): Promise<number> =>
+  countOf(
+    await db.execute(
+      sql`select count(*)::int as value from pg_stat_activity
+          where datname = current_database() and application_name = ${REALTIME_APPLICATION_NAME}
+            and state = 'idle' and query like 'LISTEN %'`,
+    ),
+  );
+
 beforeAll(async () => {
   const testDatabase = await createTestDatabase('together_realtime_bus_test', baseUrl);
   db = testDatabase.db;
@@ -171,7 +180,7 @@ describe('postgres realtime bus', () => {
     const unsubscribe = subscriber.subscribe({ tenantId: TENANT, recipientUserId: 'u1' }, (event) => {
       received.push(event);
     });
-    await waitFor(async () => (await listenConnections()) >= 1);
+    await waitFor(async () => (await readyListenConnections()) >= 1);
 
     publisher.publish(notificationEvent());
 
@@ -197,7 +206,7 @@ describe('postgres realtime bus', () => {
       { tenantId: TENANT, recipientUserId: 'u1' },
       (event) => mine.push(event),
     );
-    await waitFor(async () => (await listenConnections()) >= 1);
+    await waitFor(async () => (await readyListenConnections()) >= 1);
 
     publisher.publish(notificationEvent({ notificationId: 'n-scoped' }));
 
@@ -215,7 +224,7 @@ describe('postgres realtime bus', () => {
     const unsubscribe = subscriber.subscribe({ tenantId: TENANT, recipientUserId: 'u1' }, (event) => {
       received.push(event);
     });
-    await waitFor(async () => (await listenConnections()) >= 1);
+    await waitFor(async () => (await readyListenConnections()) >= 1);
 
     unsubscribe();
     await waitFor(async () => (await listenConnections()) === 0);
@@ -232,7 +241,7 @@ describe('postgres realtime bus', () => {
     const unsubscribe = subscriber.subscribe({ tenantId: TENANT, recipientUserId: 'u1' }, (event) => {
       received.push(event);
     });
-    await waitFor(async () => (await listenConnections()) >= 1);
+    await waitFor(async () => (await readyListenConnections()) >= 1);
 
     await db.execute(
       sql`select pg_terminate_backend(pid) from pg_stat_activity

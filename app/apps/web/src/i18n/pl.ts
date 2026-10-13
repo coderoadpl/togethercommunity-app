@@ -677,6 +677,7 @@ export const pl: Messages = {
     all: 'Wszystkie',
     oneTime: 'Jednorazowa',
     recurring: 'Cykliczna',
+    placed: 'Złożone',
     paid: 'Opłacone',
     pending: 'Oczekujące',
     failed: 'Nieudane',

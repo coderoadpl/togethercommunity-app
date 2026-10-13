@@ -16,13 +16,13 @@ export const recordFulfilledCheckoutConsents = async (
   order: Pick<Order, 'id' | 'productId'>,
   deps: FulfilledCheckoutConsentDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
-): Promise<Result<void, AppError>> => {
+): Promise<Result<boolean, AppError>> => {
   if (event.type !== 'checkout.session.completed' && event.type !== 'checkout.session.async_payment_succeeded') {
-    return ok(undefined);
+    return ok(false);
   }
   const checkout = event.checkoutSession;
   const captureId = checkout?.metadata.checkoutConsentCaptureId;
-  if (checkout === null || captureId === undefined || captureId === null) return ok(undefined);
+  if (checkout === null || captureId === undefined || captureId === null) return ok(false);
   const capture = await deps.checkoutConsentCaptures?.findById(tenant.id, captureId);
   if (capture === null || capture === undefined) return err(validation('Checkout consent capture is missing'));
   const email = checkout.email ?? checkout.metadata.memberEmail;
@@ -33,7 +33,7 @@ export const recordFulfilledCheckoutConsents = async (
     source: 'checkout',
   }, { ...deps, consents: transaction.consents });
   if (!terms.ok) return terms;
-  if (email === null || capture.selectedDefinitionIds.length === 0) return ok(undefined);
+  if (email === null || capture.selectedDefinitionIds.length === 0) return ok(false);
   if (deps.marketing === undefined) return err(validation('Checkout marketing consent is not configured'));
   const recorded = await recordCheckoutMarketingConsents({
     identity: {
@@ -76,5 +76,5 @@ export const recordFulfilledCheckoutConsents = async (
     tokens: deps.consentTokens,
     clock: deps.clock,
   });
-  return recorded.ok ? ok(undefined) : recorded;
+  return recorded.ok ? ok(recorded.value.pendingConfirmations > 0) : recorded;
 };

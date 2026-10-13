@@ -4,13 +4,15 @@
 
 Public `/offer/<slug>` URLs send buyers straight to live Stripe Checkout. The server
 renders the sales-link title, description, Open Graph metadata and tenant favicon,
-then posts `{}` to `/api/public/sales-links/<slug>/checkout` and replaces the page
+then posts to `/api/public/sales-links/<slug>/checkout` with an optional `returnUrl` and replaces the page
 with the returned URL. The endpoint always creates live sessions and rejects a
 `mode` field, including `mode: "test"` or `mode: "live"`, with a 400 validation
 error. It does not read the staff test session. A noscript POST button supports
 browsers without JavaScript.
 The existing public-write limiter limits the POST per IP and tenant. GET requests
-do not create sessions. `/link/<key>` redirects into the same flow.
+do not create sessions. `/link/<key>` redirects into the same flow. Cancellation
+can return to an external tenant-configured HTTPS address through `cancelReturnUrl`
+and an accepted `return` query parameter; see [Sales links](sales-links.md).
 
 The redirect page shows a centred card with the tenant's resolved checkout display
 name, HTTPS logo when configured, button colour as its accent and background colour

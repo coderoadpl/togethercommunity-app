@@ -9571,8 +9571,9 @@ describe('catalog cleanup authorization', () => {
   });
 });
 
-const directSalesLinkApp = async () => {
+const directSalesLinkApp = async (cancelReturnUrl?: string) => {
   const h = simulatedBundleApp();
+  if (cancelReturnUrl !== undefined) h.link.cancelReturnUrl = cancelReturnUrl;
   const settings = await h.base.tenants.findSettings(acme.id);
   if (settings === null) throw new Error('Missing test settings');
   h.base.tenants.findSettings = async () => ({ ...settings, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy', faviconUrl: 'https://acme.example/icon.png' });
@@ -9646,6 +9647,81 @@ describe('direct public sales-link checkout', () => {
     expect(html).toContain('<h1>Acme &lt;&quot;Studio&quot;&gt;</h1>');
     expect(html).toContain('src="https://acme.example/checkout-logo.png"');
     expect(html).toContain('style="--accent: #112233; --background: #ddeeff"');
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('escapes an accepted return query and forwards the return address from %s', async (contentType) => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const returnUrl = 'https://sales.example/offer?section="details"&value=<item>#buy';
+    const escapedReturnUrl = 'https://sales.example/offer?section=&quot;details&quot;&amp;value=&lt;item&gt;#buy';
+    const page = await h.app.request(`/offer/bundle?return=${encodeURIComponent(returnUrl)}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain(`data-return-url="${escapedReturnUrl}"`);
+    expect(html).toContain(`<input type="hidden" name="returnUrl" value="${escapedReturnUrl}">`);
+    expect(html).not.toContain(returnUrl);
+    expect(h.create).not.toHaveBeenCalled();
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+      body: contentType === 'application/json' ? JSON.stringify({ returnUrl }) : new URLSearchParams({ returnUrl }).toString(),
+    });
+    expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      cancelUrl: returnUrl,
+      successUrl: 'http://acme.localhost:48730/offer/bundle?status=success&purchase_kind=one_time&salesLinkId=bundle-link&session_id={CHECKOUT_SESSION_ID}',
+    }));
+  });
+
+  it.each([
+    'https://untrusted.example/offer',
+    'https://sales.example:8443/offer',
+    'http://sales.example/offer',
+    'javascript:alert(1)',
+    '/offer#buy',
+  ])('never reflects a rejected return query or sends it to Stripe: %s', async (returnUrl) => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const page = await h.app.request(`/offer/bundle?return=${encodeURIComponent(returnUrl)}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).not.toContain(returnUrl);
+    expect(h.create).not.toHaveBeenCalled();
+    for (const contentType of ['application/json', 'application/x-www-form-urlencoded']) {
+      const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+        method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+        body: contentType === 'application/json' ? JSON.stringify({ returnUrl }) : new URLSearchParams({ returnUrl }).toString(),
+      });
+      expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    }
+    expect(h.create).toHaveBeenCalledTimes(2);
+    for (const [input] of h.create.mock.calls) expect(input.cancelUrl).toBe('https://sales.example/offer');
+  });
+
+  it('ignores a return query when the sales link has no configured return address', async () => {
+    const h = await directSalesLinkApp();
+    const returnUrl = 'https://sales.example/offer#buy';
+    const page = await h.app.request(`/offer/bundle?return=${encodeURIComponent(returnUrl)}`, { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).not.toContain(returnUrl);
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ returnUrl }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      cancelUrl: 'http://acme.localhost:48730/offer/bundle?status=cancelled&salesLinkId=bundle-link',
+    }));
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('rejects an oversized return address from %s before creating a session', async (contentType) => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const prefix = 'https://sales.example/';
+    const returnUrl = `${prefix}${'a'.repeat(2001 - prefix.length)}`;
+    const page = await h.app.request(`/offer/bundle?return=${encodeURIComponent(returnUrl)}`, { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).not.toContain(returnUrl);
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+      body: contentType === 'application/json' ? JSON.stringify({ returnUrl }) : new URLSearchParams({ returnUrl }).toString(),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.create).not.toHaveBeenCalled();
   });
 
   it.each(['facebookexternalhit', 'Twitterbot', 'LinkedInBot', 'Slackbot', 'Discordbot', 'WhatsApp', 'TelegramBot', 'Googlebot', 'redditbot', 'Applebot'])('does not expose checkout actions to %s', async (userAgent) => {
@@ -9761,6 +9837,50 @@ describe('direct public sales-link checkout', () => {
       const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
       expect(await page.text()).toBe('<main>Existing checkout</main>');
     }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('omits a rejected return address from the consent fallback redirect', async () => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    const returnUrl = 'https://untrusted.example/offer';
+    const response = await h.app.request(`/offer/bundle?source=printed&return=${encodeURIComponent(returnUrl)}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?source=printed&checkout=together');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'https://untrusted.example/offer',
+    'http://sales.example/offer',
+    'javascript:alert(1)',
+  ])('keeps only the accepted first return address in the consent fallback: %s', async (rejectedReturnUrl) => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    const returnUrl = 'https://sales.example/details';
+    const query = new URLSearchParams({ source: 'printed', return: returnUrl });
+    query.append('return', rejectedReturnUrl);
+    query.append('return', 'https://sales.example/another');
+    const response = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`/offer/bundle?${new URLSearchParams({ source: 'printed', return: returnUrl, checkout: 'together' })}`);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('removes every return parameter when the first is rejected in the consent fallback', async () => {
+    const h = await directSalesLinkApp('https://sales.example/offer');
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.checkoutConsentDefinitionIds = ['marketing'];
+    const query = new URLSearchParams({ source: 'printed', return: 'javascript:alert(1)' });
+    query.append('return', 'https://sales.example/details');
+    const response = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?source=printed&checkout=together');
     expect(h.create).not.toHaveBeenCalled();
   });
 

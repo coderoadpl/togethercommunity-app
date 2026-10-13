@@ -20,6 +20,18 @@ describe('sales-link persistence', () => {
     await db.insert(members).values({ id: 'member', tenantId: 'workspace', userId: 'buyer', email: 'buyer@example.org', displayName: 'Buyer', createdAt: now });
   });
   afterAll(async () => { await close(); });
+  it('round-trips the cancel return address through reads, updates and event snapshots', async () => {
+    const repo = createSalesLinkRepository(db);
+    const configured = { ...link, id: 'cancel-return', slug: 'cancel-return', cancelReturnUrl: 'https://example.org/offer#details' };
+    expect(await repo.save('workspace', configured, null)).toMatchObject({ ok: true, value: { cancelReturnUrl: configured.cancelReturnUrl } });
+    expect(await repo.findById('workspace', configured.id)).toMatchObject({ cancelReturnUrl: configured.cancelReturnUrl });
+    expect(await repo.findBySlug('workspace', configured.slug)).toMatchObject({ cancelReturnUrl: configured.cancelReturnUrl });
+    expect(await repo.list('workspace')).toContainEqual(expect.objectContaining({ id: configured.id, cancelReturnUrl: configured.cancelReturnUrl }));
+    expect(await repo.save('workspace', { ...configured, revision: 2, cancelReturnUrl: null }, 1)).toMatchObject({ ok: true, value: { cancelReturnUrl: null } });
+    expect(await repo.findById('workspace', configured.id)).toMatchObject({ cancelReturnUrl: null });
+    const events = await db.select().from(salesLinkEvents).where(eq(salesLinkEvents.salesLinkId, configured.id)).orderBy(salesLinkEvents.revision);
+    expect(events.map((event) => event.snapshot.cancelReturnUrl)).toEqual([configured.cancelReturnUrl, null]);
+  });
   it('isolates products, slugs, reads, updates and deletes by workspace', async () => {
     const repo = createSalesLinkRepository(db);
     expect(await repo.save('workspace', link, null)).toMatchObject({ ok: true });

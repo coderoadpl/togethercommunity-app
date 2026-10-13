@@ -635,8 +635,11 @@ it.each(['missing', 'ambiguous', 'imported', 'inactive', 'currency'])('rejects i
   expect(h.calls).toHaveLength(0);
 });
 
-const directCheckout = async () => {
+const directCheckout = async (cancelReturnUrl?: string | null) => {
   const h = bundleCheckout();
+  if (h.deps.salesLinks !== undefined) {
+    h.deps.salesLinks.findBySlug = async () => ({ ...h.link, cancelReturnUrl });
+  }
   h.deps.secretCrypto = {
     encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
     decrypt: (stored) => ok(stored.ciphertext === 'stripe.testRestrictedKey' ? 'rk_test_available' : 'rk_live_available'),
@@ -654,8 +657,9 @@ const directCheckout = async () => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
-  const start = () => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+  const start = (returnUrl?: string) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug,
+    ...(returnUrl === undefined ? {} : { returnUrl }),
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
   }, h.deps);
   return { ...h, settings, start };
@@ -669,10 +673,40 @@ it('creates an anonymous direct session using tenant language, legal URLs and br
     mode: 'live', language: 'en', checkoutBranding: { displayName: 'Workspace', buttonColor: '#112233' },
     directCheckout: { termsUrl: h.settings.termsUrl, privacyUrl: h.settings.privacyUrl,
       termsAcceptanceMessage: 'I accept the [Terms](https://workspace.example.com/terms) and the [Privacy policy](https://workspace.example.com/privacy).' },
+    successUrl: 'https://workspace.example.com/offer/collection?status=success&purchase_kind=one_time&salesLinkId=link-1&session_id={CHECKOUT_SESSION_ID}',
     cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1',
   });
   expect(h.calls[0]).not.toHaveProperty('customerEmail');
   expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session', salesLinkId: h.link.id });
+});
+
+it.each([
+  { configured: 'https://sales.example/offer', requested: 'https://sales.example/offer?section=details#buy', expected: 'https://sales.example/offer?section=details#buy' },
+  { configured: 'https://sales.example/offer', requested: undefined, expected: 'https://sales.example/offer' },
+  { configured: 'https://sales.example/offer', requested: 'https://untrusted.example/offer', expected: 'https://sales.example/offer' },
+  { configured: null, requested: 'https://sales.example/offer', expected: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1' },
+])('resolves the direct cancel URL to $expected for requested $requested', async ({ configured, requested, expected }) => {
+  const h = await directCheckout(configured);
+  expect(await h.start(requested)).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]).toMatchObject({
+    cancelUrl: expected,
+    successUrl: 'https://workspace.example.com/offer/collection?status=success&purchase_kind=one_time&salesLinkId=link-1&session_id={CHECKOUT_SESSION_ID}',
+  });
+});
+
+it('keeps the Together checkout cancel URL when the sales link configures an external return address', async () => {
+  const h = await directCheckout('https://sales.example/offer');
+  if (h.deps.salesLinks === undefined) throw new Error('Missing sales-link fixture');
+  h.deps.salesLinks.findById = h.deps.salesLinks.findBySlug;
+  const { createCheckoutSession } = await import('./checkout.js');
+  expect(await createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: product.id, salesLinkId: h.link.id,
+  }, h.deps)).toMatchObject({ ok: true });
+  expect(h.calls[0]).toMatchObject({
+    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1',
+    successUrl: 'https://workspace.example.com/offer/collection?status=success&purchase_kind=one_time&salesLinkId=link-1&session_id={CHECKOUT_SESSION_ID}',
+  });
 });
 
 it('uses only live credentials for direct checkout even when a test key exists', async () => {

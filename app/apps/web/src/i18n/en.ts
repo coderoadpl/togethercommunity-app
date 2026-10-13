@@ -33,6 +33,8 @@ export const en: Messages = {
     listed: 'Listed publicly',
     validFrom: 'Valid from',
     validTo: 'Valid until',
+    cancelReturnUrl: 'Return address after cancelling',
+    cancelReturnHelp: 'Where the buyer returns after pressing back in Stripe. https only. Empty = the offer page on the platform.',
     timezone: 'Workspace timezone',
     save: 'Save sales link',
     empty: 'No sales links yet.',

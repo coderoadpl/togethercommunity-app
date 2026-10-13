@@ -4,6 +4,20 @@ import { productVatRateSchema } from './product-vat.js';
 
 export const SALES_LINK_TIME_ZONE = 'Europe/Warsaw';
 
+const httpsUrlSchema = z.string().url().regex(/^https:\/\//iu).max(2000);
+const cancelReturnUrlSchema = z.string().trim().pipe(httpsUrlSchema.or(z.literal(''))).nullable()
+  .transform((value) => value === '' ? null : value).optional();
+
+export const resolveCancelReturnUrl = (
+  configured: string | null | undefined,
+  requested?: string,
+): string | undefined => {
+  if (configured == null) return undefined;
+  const parsed = httpsUrlSchema.safeParse(requested);
+  return parsed.success && new URL(parsed.data).origin === new URL(configured).origin
+    ? parsed.data : configured;
+};
+
 const fields = {
   slug: productSlugSchema,
   title: z.string().trim().min(1).max(200),
@@ -14,6 +28,7 @@ const fields = {
   listed: z.boolean().default(false),
   validFrom: z.string().datetime().nullable().default(null),
   validTo: z.string().datetime().nullable().default(null),
+  cancelReturnUrl: cancelReturnUrlSchema,
 };
 const validWindow = (value: { validFrom: string | null; validTo: string | null }) => value.validFrom === null || value.validTo === null || Date.parse(value.validFrom) < Date.parse(value.validTo);
 export const salesLinkInputSchema = z.object(fields).strict().refine(validWindow, 'Validity end must follow its start');

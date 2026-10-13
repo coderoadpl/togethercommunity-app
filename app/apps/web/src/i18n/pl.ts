@@ -39,6 +39,8 @@ export const pl: Messages = {
     listed: 'Widoczny publicznie',
     validFrom: 'Ważny od',
     validTo: 'Ważny do',
+    cancelReturnUrl: 'Adres powrotu po anulowaniu',
+    cancelReturnHelp: 'Dokąd wraca kupujący, gdy w Stripe kliknie wstecz. Tylko adres https. Puste = strona oferty na platformie.',
     timezone: 'Strefa czasowa przestrzeni',
     save: 'Zapisz link sprzedażowy',
     empty: 'Nie ma jeszcze linków sprzedażowych.',

@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { err, forbidden, internal, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { err, forbidden, internal, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -28,6 +28,10 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const offer = await getPublicSalesLink(tenant.id, slug, deps.salesLinkManagement);
     const settings = await deps.tenants.findSettings(tenant.id);
     const baseUrl = await authLinkBaseUrl(resolved.value, deps);
+    const requestedReturnUrl = c.req.query('return');
+    const link = requestedReturnUrl === undefined ? null : await deps.salesLinkManagement.salesLinks.findBySlug(tenant.id, slug);
+    const returnUrl = requestedReturnUrl !== undefined && resolveCancelReturnUrl(link?.cancelReturnUrl, requestedReturnUrl) === requestedReturnUrl
+      ? requestedReturnUrl : undefined;
     const page = {
       heading: offer.ok ? offer.value.salesLink.heading : directSalesLinkCopy(settings?.defaultLanguage ?? 'en').checkoutUnavailable,
       description: offer.ok ? offer.value.salesLink.description : '',
@@ -37,6 +41,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       canonicalUrl: `${baseUrl}/offer/${encodeURIComponent(slug)}`,
       language: settings?.defaultLanguage ?? 'en',
       endpoint: API_PATHS.directSalesLinkCheckout.replace(':slug', encodeURIComponent(slug)),
+      ...(returnUrl === undefined ? {} : { returnUrl }),
       crawler,
       nonce: c.get('secureHeadersNonce') ?? '',
     };
@@ -52,6 +57,8 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     }
     if (!page.crawler && !missingLegal && products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
       const query = new URLSearchParams(new URL(c.req.url).search);
+      if (returnUrl === undefined) query.delete('return');
+      else query.set('return', returnUrl);
       query.set('checkout', 'together');
       return c.redirect(`/offer/${encodeURIComponent(slug)}?${query}`, 302);
     }
@@ -77,6 +84,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
+      ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
     }, deps);
     if (!result.ok) return respond(result);

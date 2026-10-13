@@ -24,6 +24,33 @@ it('does not save an empty bundle', async () => {
   expect(screen.getByRole('alert')).toHaveTextContent(en.salesLinks.invalid);
 });
 
+it('shows the configured cancel return address and submits it', async () => {
+  const save = vi.fn();
+  const cancelReturnUrl = 'https://sales.example.test/offer#details';
+  renderWithProviders(<SalesLinkEditor salesLink={{ ...sampleSalesLink, cancelReturnUrl }} products={sampleBundleProducts} onSave={save} onCancel={() => undefined} />);
+  expect(screen.getByRole('textbox', { name: en.salesLinks.cancelReturnUrl })).toHaveValue(cancelReturnUrl);
+  expect(screen.getByText(en.salesLinks.cancelReturnHelp)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.save }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ cancelReturnUrl }));
+});
+
+it('submits null when the cancel return address is cleared', async () => {
+  const save = vi.fn();
+  renderWithProviders(<SalesLinkEditor salesLink={{ ...sampleSalesLink, cancelReturnUrl: 'https://sales.example.test/offer' }} products={sampleBundleProducts} onSave={save} onCancel={() => undefined} />);
+  await userEvent.clear(screen.getByRole('textbox', { name: en.salesLinks.cancelReturnUrl }));
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.save }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ cancelReturnUrl: null }));
+});
+
+it('submits an entered cancel return address', async () => {
+  const save = vi.fn();
+  const cancelReturnUrl = 'https://sales.example.test/offer#pricing';
+  renderWithProviders(<SalesLinkEditor salesLink={sampleSalesLink} products={sampleBundleProducts} onSave={save} onCancel={() => undefined} />);
+  await userEvent.type(screen.getByRole('textbox', { name: en.salesLinks.cancelReturnUrl }), cancelReturnUrl);
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.save }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ cancelReturnUrl }));
+});
+
 describe('workspace validity time', () => {
   it('converts winter and summer wall times independently of the browser timezone', () => {
     expect(parseValidityTime('2026-01-10T12:00', 'Europe/Warsaw')).toBe('2026-01-10T11:00:00.000Z');

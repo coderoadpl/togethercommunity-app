@@ -1525,18 +1525,30 @@ describe('SettingsPanel team', () => {
     expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
   });
 
-  it('explains the verification step and preserves the email for the owner to retry', async () => {
-    renderPanel();
-    const message = 'A sign-in link has been sent. Add this administrator again after they verify their email.';
-    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
-      ok: false, error: { code: 'validation', message },
-    }, { status: 400 })));
-    await openSettingsSection(en.settingsNavigation.security);
-    const section = await screen.findByTestId('team-settings');
-    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
-    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
-    expect(await findToast('error')).toHaveTextContent(message);
-    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
+  describe.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('team validation feedback in $language', ({ language, t }) => {
+    it.each([
+      { reason: 'verification_pending', messageKey: 'verificationPending' },
+      { reason: 'invalid_email', messageKey: 'invalidEmail' },
+      { reason: undefined, messageKey: 'invalidEmail' },
+    ] as const)('localizes $reason and preserves the email for retry', async ({ reason, messageKey }) => {
+      renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
+      const message = 'Raw backend validation message';
+      server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+        ok: false, error: { code: 'validation', message, details: { reason } },
+      }, { status: 400 })));
+      await openSettingsSection(t.settingsNavigation.security);
+      const section = await screen.findByTestId('team-settings');
+      await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
+      await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
+      const toast = await findToast('error');
+      expect(toast).toHaveTextContent(t.tenantTeam[messageKey]);
+      expect(toast).not.toHaveTextContent(message);
+      expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue(admin.email);
+      expect(queryToast('success')).not.toBeInTheDocument();
+    });
   });
 
   it('requires confirmation before removing an administrator', async () => {

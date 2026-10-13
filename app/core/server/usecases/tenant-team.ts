@@ -50,7 +50,9 @@ export const addTenantAdmin = async (
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
   const parsed = addTenantAdminInputSchema.safeParse(input);
-  if (!parsed.success) return err(validation('Invalid administrator email', parsed.error.flatten()));
+  if (!parsed.success) return err(validation('Invalid administrator email', {
+    ...parsed.error.flatten(), reason: 'invalid_email',
+  }));
   const { userId } = await deps.authPort.ensureUser(parsed.data.email);
   const account = await deps.authPort.findUserByEmail(parsed.data.email);
   const verified = account?.userId === userId && account.emailVerified;
@@ -77,7 +79,9 @@ export const addTenantAdmin = async (
     ...(settings === null ? {} : { branding: emailBrandingFrom(settings, baseUrl) }),
   });
   if (!verified) {
-    return err(validation('A sign-in link has been sent. Add this administrator again after they verify their email.'));
+    return err(validation('A sign-in link has been sent. Add this administrator again after they verify their email.', {
+      reason: 'verification_pending',
+    }));
   }
   return ok({ userId });
 };

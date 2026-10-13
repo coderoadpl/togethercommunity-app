@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizePanelError } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizePanelError, localizeTenantTeamAddError } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
@@ -120,5 +120,17 @@ describe('localizeError', () => {
       if (hinted.includes(code)) continue;
       expect(localizeErrorCodeForPanel(code, pl)).toBe(localizeErrorCode(code, pl));
     }
+  });
+});
+
+describe('localizeTenantTeamAddError', () => {
+  it.each([en, pl])('keeps unknown reasons and non-validation errors localized', (t) => {
+    expect(localizeTenantTeamAddError({ appError: {
+      code: 'validation', message: 'Raw backend message', details: { reason: 'unknown_reason' },
+    } }, t)).toBe(t.errors.messageValidation);
+    expect(localizeTenantTeamAddError({ appError: {
+      code: 'forbidden', message: 'Raw backend message', details: { reason: 'verification_pending' },
+    } }, t)).toBe(t.errors.messageForbidden);
+    expect(localizeTenantTeamAddError(new Error('Raw backend message'), t)).toBe(t.errors.messageUnknown);
   });
 });

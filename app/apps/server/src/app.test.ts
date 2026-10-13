@@ -10027,6 +10027,27 @@ describe('tenant team HTTP surface', () => {
     ]);
   });
 
+  it('rejects malformed administrator email without creating an invitee or granting access', async () => {
+    const base = deps();
+    const ensureUser = vi.fn(base.authPort.ensureUser);
+    const requestMagicLink = vi.fn(base.authPort.requestMagicLink);
+    const addAdmin = vi.fn(async () => true);
+    const app = scopedApp('owner', { overrides: {
+      team: { ...base.team, addAdmin },
+      authPort: { ...base.authPort,
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
+        ensureUser, requestMagicLink },
+    } });
+    const response = await app.request(API_PATHS.tenantTeamAdd, {
+      method: 'POST', headers, body: JSON.stringify({ email: 'invalid' }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(ensureUser.mock.calls).toEqual([['user@acme.test']]);
+    expect(requestMagicLink).not.toHaveBeenCalled();
+    expect(addAdmin).not.toHaveBeenCalled();
+  });
+
   it('returns a verification error without granting an unverified account administrator access', async () => {
     const base = deps();
     const addAdmin = vi.fn(async () => true);
@@ -10042,6 +10063,9 @@ describe('tenant team HTTP surface', () => {
       method: 'POST', headers, body: JSON.stringify({ email: 'invitee@example.test' }),
     });
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } },
+    });
     expect(addAdmin).not.toHaveBeenCalled();
     expect(requestMagicLink).toHaveBeenCalledOnce();
   });

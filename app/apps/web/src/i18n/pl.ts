@@ -2608,6 +2608,8 @@ export const pl: Messages = {
     saved: 'Zapisano.',
   },
   tenantTeam: {
+    verificationPending: 'Wysłaliśmy link do logowania. Dodaj tego administratora ponownie, gdy potwierdzi adres e-mail.',
+    invalidEmail: 'Nieprawidłowy adres e-mail administratora',
     heading: 'Zespół',
     addAdministrator: 'Dodaj administratora',
     helper: 'Osoba dostanie e-mail z linkiem do logowania i zobaczy Studio po zalogowaniu. Administrator ma dostęp do wszystkiego poza ustawieniami platformy, sekretami, kluczami API i testem integracji.',

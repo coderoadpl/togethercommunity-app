@@ -128,7 +128,7 @@ describe('tenant team', () => {
     h.deps.authPort.findUserByEmail = async () => ({ userId: 'unverified-password-user', emailVerified: false });
 
     expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } } });
     expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
     expect(h.members.some((member) => member.userId === 'unverified-password-user')).toBe(false);
     expect(h.audit).toEqual([]);
@@ -145,7 +145,7 @@ describe('tenant team', () => {
     const h = harness();
     h.deps.authPort.findUserByEmail = async () => account;
     expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } } });
     expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
     expect(h.audit).toEqual([]);
   });
@@ -189,7 +189,7 @@ describe('tenant team', () => {
   it('rejects malformed email before creating an auth user', async () => {
     const h = harness();
     expect(await addTenantAdmin({ identity: identity() }, { email: 'invalid' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'invalid_email' } } });
     expect(h.ensured).toEqual([]);
   });
 

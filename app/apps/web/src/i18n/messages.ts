@@ -2318,6 +2318,8 @@ export interface Messages {
     saved: string;
   };
   tenantTeam: {
+    verificationPending: string;
+    invalidEmail: string;
     heading: string;
     addAdministrator: string;
     helper: string;

@@ -146,3 +146,12 @@ export const localizePanelError = (error: unknown, t: Messages): string => {
   const code = errorCodeOf(error);
   return code === null ? t.errors.messageUnknown : localizeErrorCodeForPanel(code, t);
 };
+
+export const localizeTenantTeamAddError = (error: unknown, t: Messages): string => {
+  if (errorCodeOf(error) === 'validation') {
+    const reason = stringDetailOf(error, 'reason');
+    if (reason === 'verification_pending') return t.tenantTeam.verificationPending;
+    if (reason === 'invalid_email' || reason === null) return t.tenantTeam.invalidEmail;
+  }
+  return localizePanelError(error, t);
+};

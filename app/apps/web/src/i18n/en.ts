@@ -2585,6 +2585,8 @@ export const en: Messages = {
     saved: 'Saved.',
   },
   tenantTeam: {
+    verificationPending: 'A sign-in link has been sent. Add this administrator again after they verify their email.',
+    invalidEmail: 'Invalid administrator email',
     heading: 'Team',
     addAdministrator: 'Add administrator',
     helper: 'The person receives a sign-in e-mail and sees Studio after signing in. An administrator can do everything except platform settings, secrets, API keys and the integration test.',

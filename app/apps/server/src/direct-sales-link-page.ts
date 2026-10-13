@@ -20,6 +20,7 @@ export const renderDirectSalesLinkPage = (input: {
   language: Language;
   mode: 'test' | 'live';
   endpoint: string;
+  returnUrl?: string;
   crawler: boolean;
   nonce: string;
   error?: 'checkoutUnavailable' | 'legalUrlsMissing';
@@ -64,20 +65,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 </style>
 </head>
 <body style="${escapeHtml(appearance)}">
-<main data-endpoint="${escapeHtml(input.endpoint)}" data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
+<main data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
 ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.logoUrl)}" alt="">` : ''}
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
 ${canSubmit ? '<div class="spinner" aria-hidden="true"></div>' : ''}
 <p role="status">${escapeHtml(input.error === undefined ? copy.redirecting : copy[input.error])}</p>
-${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}"><button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
+${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
 </main>
 ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
 (async () => {
   const page = document.querySelector('main');
   const status = document.querySelector('[role="status"]');
   try {
-    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) });
     const result = await response.json();
     if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') throw new Error();
     location.replace(result.data.url);

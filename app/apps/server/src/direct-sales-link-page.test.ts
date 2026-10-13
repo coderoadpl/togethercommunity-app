@@ -83,6 +83,29 @@ describe('direct sales-link page', () => {
     expect(status.textContent).toBe(directSalesLinkCopyEn.redirecting);
   });
 
+  it('escapes the return address in both attributes and submits its original text', async () => {
+    const returnUrl = 'https://sales.example/offer?section="details"&value=<item>#buy';
+    const html = renderDirectSalesLinkPage({ ...page, returnUrl });
+    const escaped = 'https://sales.example/offer?section=&quot;details&quot;&amp;value=&lt;item&gt;#buy';
+    expect(html).toContain(`data-return-url="${escaped}"`);
+    expect(html).toContain(`<input type="hidden" name="returnUrl" value="${escaped}">`);
+    expect(html).not.toContain(returnUrl);
+    const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+    if (script === undefined) throw new Error('Missing checkout script');
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
+    const replace = vi.fn();
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
+      { querySelector: (selector: string) => selector === 'main'
+        ? { dataset: { endpoint: page.endpoint, returnUrl } } : { textContent: '' } },
+      fetch,
+      { replace },
+    );
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ returnUrl }),
+    });
+    expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
+  });
+
   it('renders crawler metadata without automatic checkout or a spinner', () => {
     const html = renderDirectSalesLinkPage({ ...page, crawler: true });
     expect(html).toContain('property="og:site_name" content="Acme"');

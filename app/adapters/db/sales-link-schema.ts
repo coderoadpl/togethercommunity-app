@@ -9,6 +9,7 @@ export const salesLinks = pgTable('sales_links', {
   slug: text('slug').notNull(), title: text('title').notNull(), heading: text('heading').notNull(), description: text('description').notNull(),
   productIds: jsonb('product_ids').$type<string[]>().notNull(), active: boolean('active').notNull(), listed: boolean('listed').notNull(),
   validFrom: timestamp('valid_from', { withTimezone: true, mode: 'string' }), validTo: timestamp('valid_to', { withTimezone: true, mode: 'string' }),
+  cancelReturnUrl: text('cancel_return_url'),
   revision: integer('revision').notNull(), createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(), updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(), deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
 }, (table) => [uniqueIndex('sales_links_tenant_slug_uidx').on(table.tenantId, table.slug).where(sql`${table.deletedAt} IS NULL`), check('sales_links_revision_check', sql`${table.revision} > 0`), check('sales_links_window_check', sql`${table.validFrom} IS NULL OR ${table.validTo} IS NULL OR ${table.validFrom} < ${table.validTo}`)]);
 export const salesLinkEvents = pgTable('sales_link_events', {

@@ -12,6 +12,7 @@ const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
+  updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
   consumerSalesSummary: ReturnType<typeof vi.fn>;
   exportConsumerSales: ReturnType<typeof vi.fn>;
@@ -67,6 +68,7 @@ interface Hoisted {
 const h = vi.hoisted(
   (): Hoisted => ({
     directSalesLinkCheckout: vi.fn(),
+    updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
     consumerSalesSummary: vi.fn(),
     exportConsumerSales: vi.fn(),
@@ -170,6 +172,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
     directSalesLinkCheckout: h.directSalesLinkCheckout,
+    updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
     consumerSalesSummary: h.consumerSalesSummary,
     exportConsumerSales: h.exportConsumerSales,
@@ -257,6 +260,7 @@ const soleJson = (): unknown => {
 
 beforeEach(() => {
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
+  h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
   h.updateTenantSettings.mockReset();
   h.consumerSalesSummary.mockReset().mockResolvedValue(ok({ totals: { grossCents: 105 } }));
@@ -357,6 +361,19 @@ describe('sales-link checkout CLI', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
   });
+});
+
+it('updates a sales link with a cancel return address from JSON', async () => {
+  const input = {
+    id: 'link-1', expectedRevision: 1, slug: 'offer-one', title: 'Offer',
+    heading: 'One offer', description: '', productIds: ['product-1'], active: false,
+    listed: false, validFrom: null, validTo: null,
+    cancelReturnUrl: 'https://sales.example.test/offer#details',
+  };
+  await run('--json', 'sales-link', 'update', 'link-1', '--input', JSON.stringify(input));
+  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(input);
+  expect(soleJson()).toEqual({ ok: true, data: { salesLink: { id: 'link-1' } } });
+  expect(process.exitCode).toBe(0);
 });
 
 describe('one-envelope discipline', () => {

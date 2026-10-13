@@ -58,13 +58,31 @@ sales-link heading and description in its title and Open Graph tags, plus the
 tenant favicon. A centred card shows the tenant's checkout display name, HTTPS
 logo when configured, accent colour, optional background colour and a CSS spinner.
 It follows the system light or dark preference and uses system fonts.
-Its script immediately posts `{}` to
+Its script immediately posts to
 `/api/public/sales-links/<slug>/checkout` and replaces the page with the Stripe
 Checkout URL. The endpoint always creates live sessions and rejects a `mode`
 field, including `mode: "test"` or `mode: "live"`, with a 400 validation error.
 Without JavaScript, the page offers a POST form. The POST uses the
 existing per-IP and per-tenant public-write limiter. A `/link/<key>` redirect to
 an offer follows the same flow. GET requests never create a payment session.
+
+The optional `cancelReturnUrl` sales-link field sets the return address for the
+back arrow in direct Stripe Checkout. Studio shows it after the validity dates
+as **Return address after cancelling**. The address must be an absolute HTTPS
+URL of at most 2000 characters; surrounding whitespace is trimmed, and an empty
+value clears it. Without a configured address, cancellation returns to the
+platform offer page at `/offer/<slug>?status=cancelled`. Success still returns
+to the platform offer page.
+
+A sales page can send `/offer/<slug>?return=<encoded-https-url>` to return to a
+specific section. The handoff forwards this value as `returnUrl` in the checkout
+POST body, including in the form used without JavaScript. It is accepted only
+when it is an absolute HTTPS URL of at most 2000 characters and its parsed
+origin matches `cancelReturnUrl`, including the scheme, host and port. An absent
+or rejected request uses the configured address, or the platform offer page
+when none is configured. A `/link/<key>` redirect preserves this query parameter.
+The Together checkout page at `?checkout=together` keeps its existing cancellation
+behaviour, regardless of the configured address or query parameter.
 
 User agents matching the edge crawler list receive the same metadata without
 scripts or forms: facebookexternalhit, Twitterbot, LinkedInBot, Slackbot,
@@ -177,7 +195,9 @@ and returns its URL using the same public endpoint as the server-rendered page.
 `--mode live` remains supported; `--mode test` returns a validation error without
 starting checkout. Staff test purchases use the Together checkout page switch.
 Create and update accept `--input` JSON; update includes `id` and
-`expectedRevision`. `checkout session` and the local `simulate-purchase` command
+`expectedRevision`. The JSON can include `cancelReturnUrl` as an HTTPS address
+or `null` to clear it. Activate and deactivate preserve the configured address.
+`checkout session` and the local `simulate-purchase` command
 accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT.
 See [Import API](import-api.md).
 

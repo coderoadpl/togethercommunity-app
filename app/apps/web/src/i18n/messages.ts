@@ -47,6 +47,8 @@ export interface Messages {
     listed: string;
     validFrom: string;
     validTo: string;
+    cancelReturnUrl: string;
+    cancelReturnHelp: string;
     timezone: string;
     save: string;
     empty: string;

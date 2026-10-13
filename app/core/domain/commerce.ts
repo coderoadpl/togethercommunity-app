@@ -176,6 +176,7 @@ export const orderSchema = z.object({
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
+  paidAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
 });
 

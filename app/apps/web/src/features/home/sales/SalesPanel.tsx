@@ -23,6 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
@@ -330,7 +331,7 @@ export const SalesPanel = () => {
                     </TableCell> : null}
                     <TableCell>
                       <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
-                        {formatDateTime(order.createdAt, language)}
+                        {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
                       </MuiLink>
                     </TableCell>
                     <TableCell>

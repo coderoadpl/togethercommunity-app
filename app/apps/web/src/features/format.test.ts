@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatFileSize, formatOfferPrice, formatOfferPriceTerms, formatPrice } from '../lib/format.js';
+import { formatDateTime, formatFileSize, formatOfferPrice, formatOfferPriceTerms, formatPrice } from '../lib/format.js';
+
+describe('formatDateTime', () => {
+  it('uses an explicit time zone across daylight saving changes', () => {
+    expect(formatDateTime('2026-10-13T18:38:00.000Z', 'en', 'Europe/Warsaw')).toBe('13 Oct 2026, 20:38');
+    expect(formatDateTime('2026-12-13T18:38:00.000Z', 'en', 'Europe/Warsaw')).toBe('13 Dec 2026, 19:38');
+  });
+
+  it('keeps the runtime time zone when none is supplied', () => {
+    const value = '2026-10-13T18:38:00.000Z';
+    const expected = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+    expect(formatDateTime(value, 'en')).toBe(expected);
+  });
+});
 
 describe('formatPrice', () => {
   it('formats prices from the app language rather than the browser locale', () => {

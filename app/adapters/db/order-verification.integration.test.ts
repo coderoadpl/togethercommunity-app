@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { orderSchema } from '#core/domain/index.js';
 import { createOrderVerificationRepository } from './order-verification.js';
-import { createOrderRepository } from './repositories.js';
+import { createOrderRepository, createPaymentRefundRepository } from './repositories.js';
 import { members, orderIssueEvents, orders, products, tenantAdmins, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -33,6 +33,27 @@ beforeAll(async () => {
 afterAll(async () => { await database?.close(); });
 
 describe('order verification storage', () => {
+  it('preserves historical null payment dates and normalizes stored payment timestamps on order reads', async () => {
+    const ordersRepo = createOrderRepository(database.db);
+    await ordersRepo.create('workspace', order('historical-payment'));
+    expect(await ordersRepo.findById('workspace', 'historical-payment')).toMatchObject({ paidAt: null });
+    await ordersRepo.create('workspace', { ...order('dated-payment'), providerObjectIds: { checkoutSession: 'dated-checkout' } });
+    await database.db.update(orders).set({ paidAt: '2026-10-13T20:38:00+02:00' }).where(eq(orders.id, 'dated-payment'));
+    const paidAt = '2026-10-13T18:38:00.000Z';
+    expect(await ordersRepo.findById('workspace', 'dated-payment')).toMatchObject({ paidAt });
+    expect((await ordersRepo.list('workspace', { page: 1, pageSize: 20 })).orders).toContainEqual(expect.objectContaining({ id: 'dated-payment', paidAt }));
+    expect(await ordersRepo.listForMember('workspace', 'member')).toContainEqual(expect.objectContaining({ id: 'dated-payment', paidAt }));
+    expect(await createOrderVerificationRepository(database.db).findByReference('workspace', 'dated-payment')).toMatchObject({ paidAt });
+    expect(await createPaymentRefundRepository(database.db).findOrderByProviderObjectIds('workspace', { checkoutSession: 'dated-checkout' })).toMatchObject({ paidAt });
+  });
+  it('records the payment time when completing a pending test checkout', async () => {
+    const ordersRepo = createOrderRepository(database.db);
+    const pending = { ...order('pending-payment'), mode: 'test' as const, status: 'pending' as const };
+    await ordersRepo.create('workspace', pending);
+    const paidAt = '2026-10-13T18:38:00.000Z';
+    expect(await ordersRepo.completeTestCheckout('workspace', { ...pending, paidAt })).toMatchObject({ createdAt: now, paidAt, status: 'paid' });
+    expect(await ordersRepo.findById('workspace', pending.id)).toMatchObject({ createdAt: now, paidAt, status: 'paid' });
+  });
   it('resolves stable opaque tokens and order numbers with tenant isolation', async () => {
     await createOrderRepository(database.db).create('workspace', order('lookup-order'));
     const repo = createOrderVerificationRepository(database.db);
@@ -48,7 +69,8 @@ describe('order verification storage', () => {
     expect(await repo.findByReference('workspace', 'unknown')).toBeNull();
   });
   it('allows one concurrent issue and rejects duplicate collection without changing its history', async () => {
-    await createOrderRepository(database.db).create('workspace', order('concurrent-order'));
+    const paidAt = '2026-10-08T10:00:00.000Z';
+    await createOrderRepository(database.db).create('workspace', { ...order('concurrent-order'), paidAt });
     const repo = createOrderVerificationRepository(database.db);
     const attempts = [
       { orderId: 'concurrent-order', productId: 'physical', staffUserId: 'first-staff', occurredAt: now },
@@ -60,7 +82,7 @@ describe('order verification storage', () => {
     const winner = attempts[results.findIndex((result) => result.ok)];
     expect(winner).toBeDefined();
     const issuedLine = { issuedCount: 1, issuedAt: winner?.occurredAt, issuedBy: winner?.staffUserId };
-    expect(await repo.findByReference('workspace', 'concurrent-order')).toMatchObject({ lines: [issuedLine, { issuedCount: null }] });
+    expect(await repo.findByReference('workspace', 'concurrent-order')).toMatchObject({ paidAt, lines: [issuedLine, { issuedCount: null }] });
     expect(await repo.issueLine('workspace', { orderId: 'concurrent-order', productId: 'physical', staffUserId: 'later-staff', occurredAt: '2026-10-09T12:00:00.000Z' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await repo.findByReference('workspace', 'concurrent-order')).toMatchObject({ lines: [issuedLine, { issuedCount: null }] });
     const events = await database.db.select().from(orderIssueEvents).where(and(eq(orderIssueEvents.tenantId, 'workspace'), eq(orderIssueEvents.orderId, 'concurrent-order')));

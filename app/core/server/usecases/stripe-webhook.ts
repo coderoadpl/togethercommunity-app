@@ -324,6 +324,7 @@ const claimDiscountedOrder = async (
     priceId: context.session.priceId,
     kind: context.price?.kind ?? 'one_time',
     status: 'paid',
+    paidAt: deps.clock.nowIso(),
     amountCents,
     currency: context.session.currency,
     provider,
@@ -415,7 +416,7 @@ const applyCheckoutCompleted = async (
   if (pending !== null && pending.mode !== 'test') return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
   if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
-    ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
+    ...pending, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
     ...(metadata.salesLinkId != null ? { billing } : {}),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');

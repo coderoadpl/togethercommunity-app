@@ -2,6 +2,7 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -56,8 +57,10 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   }
 
   const order = detail.data.order;
+  const paidAt = order.paidAt ?? (order.status === 'paid' ? order.createdAt : null);
   const rows = [
-    [t.sales.date, formatDateTime(order.createdAt, language)],
+    [t.sales.placed, formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)],
+    [t.sales.paid, paidAt === null ? '—' : formatDateTime(paidAt, language, SALES_LINK_TIME_ZONE)],
     [t.sales.member, order.memberName ?? order.memberEmail],
     [t.sales.product, order.productTitle],
     [t.salesLinks.salesLink, order.salesLinkTitle ?? order.salesLinkId ?? '—'],

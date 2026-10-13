@@ -1,6 +1,6 @@
 {
-  "hash": "9ec6fa368a64fe5becc76b4939ac115a3e422ec46733441c2824a6c894af2a72",
-  "shortId": "9ec6fa368a64",
+  "hash": "47fa6e670f703a83332b215caa0d755d6f4af042bf8a8419f92600e761334410",
+  "shortId": "47fa6e670f70",
   "schema": {
     "constraints": [
       {
@@ -3626,6 +3626,14 @@
             "name": "member_id",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "paid_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,

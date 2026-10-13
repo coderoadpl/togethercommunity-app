@@ -1056,7 +1056,7 @@ describe('fulfillStripeWebhook', () => {
     );
 
     expect(succeeded).toEqual({ ok: true, value: { processed: true } });
-    expect(h.orders).toMatchObject([{ status: 'paid' }]);
+    expect(h.orders).toMatchObject([{ status: 'paid', paidAt: now }]);
     expect(h.grants.size).toBe(1);
     expect(h.autoInvoiceJobs).toHaveLength(1);
   });
@@ -1502,7 +1502,7 @@ describe('fulfillStripeWebhook', () => {
       cancelAtPeriodEnd: false,
     });
     expect(h.orders).toHaveLength(1);
-    expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900 });
+    expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', paidAt: now, amountCents: 2900 });
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-17T10:00:00.000Z');
   });
 
@@ -1519,6 +1519,8 @@ describe('fulfillStripeWebhook', () => {
     const initialOrder = h.orders[0];
     if (initialOrder === undefined) throw new Error('checkout did not create an order');
     h.orders[0] = { ...initialOrder, billing };
+    const paidAt = '1998-08-14T10:01:00.000Z';
+    h.setNow(paidAt);
 
     const renewal = await fulfillStripeWebhook(
       tenantA,
@@ -1543,6 +1545,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders[1]).toMatchObject({
       kind: 'recurring',
       status: 'paid',
+      paidAt,
       amountCents: 2900,
       providerObjectIds: { invoice: 'in-1', subscription: 'sub-1' },
       billing,
@@ -2650,7 +2653,7 @@ it('queues allocated amounts for a coupon-discounted two-line order', async () =
     event.checkoutSession.metadata.salesLinkId = 'link-1';
   }
   expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
-  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 5149, discountCents: 5151, lines });
+  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, paidAt: now, amountCents: 5149, discountCents: 5151, lines });
   const payload = h.enrollmentEmails[0]?.payload;
   if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
   const amounts = payload.purchase.lines.map((line) => {
@@ -2866,7 +2869,7 @@ it.each(['direct', 'fallback'])('fulfills a staff %s test pending order with tes
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
   expect(h.members.size).toBe(1);
   expect(h.orders).toHaveLength(1);
-  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', billing: { nip: '5260250274' } });
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', paidAt: now, billing: { nip: '5260250274' } });
   expect([...h.grants.values()].map((grant) => grant.mode)).toEqual(['test', 'test']);
   expect(h.enrollmentEmails).toEqual([]);
   expect(h.queued).toEqual([]);

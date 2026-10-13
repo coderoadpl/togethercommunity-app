@@ -4,6 +4,7 @@ import type { OrderVerificationRepository } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { orders } from './app-schema.js';
 import { orderIssueEvents } from './order-issue-schema.js';
+import { normalizeOrderDates } from './order-dates.js';
 import { createOrderRepository } from './repositories.js';
 
 export const createOrderVerificationRepository = (db: Db): OrderVerificationRepository => {
@@ -22,7 +23,7 @@ export const createOrderVerificationRepository = (db: Db): OrderVerificationRepo
         const [row] = await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
         if (row === undefined) return err(notFound('Order was not found'));
         if (row.status !== 'paid') return err(validation('Only paid orders can be issued'));
-        const order = orderSchema.parse(row);
+        const order = orderSchema.parse(normalizeOrderDates(row));
         const line = order.lines?.find((item) => item.productId === input.productId);
         if (line === undefined) return err(notFound('Order line was not found'));
         if (line.productType !== 'physical' || line.issuedCount === null) return err(validation('Only physical order lines can be issued'));

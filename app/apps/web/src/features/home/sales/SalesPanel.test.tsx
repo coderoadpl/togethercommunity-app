@@ -14,6 +14,7 @@ import { actions } from '../../../api.js';
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
 import { PanelContextProvider } from '../panel-context.js';
 import { SalesPanel } from './SalesPanel.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
@@ -96,7 +97,7 @@ describe('SalesPanel', () => {
               couponId: null,
               discountCents: 0,
               couponCode: null,
-              createdAt: '2026-07-18T10:00:00.000Z',
+              createdAt: '2026-10-13T22:38:00.000Z',
               memberEmail: 'member@example.com',
               memberName: 'Ada',
               productTitle: 'Workshop',
@@ -144,6 +145,8 @@ describe('SalesPanel', () => {
     renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
 
     const salesRow = await screen.findByTestId('sales-row');
+    expect(within(salesRow).getByRole('link', { name: '14 Oct 2026, 00:38' }))
+      .toHaveAttribute('href', '/panel/sales/o1');
     expect(salesRow).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-row')).toHaveTextContent('Ada');
     expect(screen.getByRole('link', { name: 'Ada' }))
@@ -224,6 +227,19 @@ describe('SalesPanel', () => {
 });
 
 describe('OrderDetailPage', () => {
+  it.each([
+    { paidAt: '2026-10-08T10:03:00.000Z', expected: '8 Oct 2026, 12:03' },
+    { paidAt: null, expected: '8 Oct 2026, 12:00' },
+  ])('shows both commerce dates when paidAt is $paidAt', async ({ paidAt, expected }) => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+      order: { ...sampleBundleOrder, id: 'o1', paidAt }, invoice: null,
+    } })));
+    await renderOrderDetail();
+    expect((await screen.findByText(en.sales.placed)).parentElement).toHaveTextContent('8 Oct 2026, 12:00');
+    const paymentLabel = screen.getAllByText(en.sales.paid).find((element) => element.tagName === 'P');
+    expect(paymentLabel?.parentElement).toHaveTextContent(expected);
+  });
+
   it('shows coupon and discount attribution', async () => {
     server.use(
       http.get('/api/orders/o1', () =>

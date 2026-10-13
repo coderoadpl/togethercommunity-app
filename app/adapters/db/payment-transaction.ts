@@ -1,4 +1,5 @@
 import { internal, type AppError, type Result } from '#core/domain/index.js';
+import { serializeErrorChain } from '#core/server/log-safety.js';
 import type { EnrollmentTransactionPort, PaymentTransactionPort } from '#core/server/index.js';
 
 import { createCouponRedemptionRepository } from './coupon-repositories.js';
@@ -46,7 +47,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
               if (nestedRejected !== null) return nestedRejected;
               return {
                 ok: false,
-                error: internal(`Could not complete enrollment savepoint: ${String(cause)}`),
+                error: internal(`Could not complete enrollment savepoint: ${serializeErrorChain(cause)}`),
               };
             }
           },
@@ -79,7 +80,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
       if (rejected !== null) return rejected;
       return {
         ok: false,
-        error: internal(`Could not complete payment transaction: ${String(cause)}`),
+        error: internal(`Could not complete payment transaction: ${serializeErrorChain(cause)}`),
       };
     }
   },

@@ -63,6 +63,7 @@ import {
   listLessonEditions,
   authLinkBaseUrl,
   fulfillStripeWebhook,
+  validateStripeInvoiceTenant,
   getPaymentConfig,
   testCheckoutRejection,
   getPlayableLesson,
@@ -875,6 +876,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       );
       return respond(err(notFound()));
     }
+    await deps.authPort.initialize();
     const mode = c.req.query('mode') === 'test' ? 'test' : 'live';
     const webhookSecret = await deps.secretResolver.resolve(tenantId, mode === 'test' ? 'stripe.testWebhookSecret' : 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);
@@ -885,6 +887,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       payloadRaw,
       signatureHeader: c.req.header('stripe-signature') ?? '',
       webhookSecret: webhookSecret.value,
+      validateInvoiceTenant: (invoice) => validateStripeInvoiceTenant(tenantId, { ...invoice, mode }, deps),
     });
     if (!event.ok) return respond(event);
     if (mode === 'test' && event.value.livemode === false) {

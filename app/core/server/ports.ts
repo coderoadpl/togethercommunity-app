@@ -1005,6 +1005,8 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  tenantIds?: string[];
+  customerId?: string | null;
   livemode?: boolean;
   mode?: 'live' | 'test';
   id: string;
@@ -1063,6 +1065,17 @@ export interface PaymentWebhookEvent {
     currentPeriodEnd: string | null;
     endedAt: string | null;
   } | null;
+}
+
+export interface StripeWebhookOwnershipReader {
+  hasForeignOwner(tenantId: string, ids: {
+    customer?: string;
+    subscription?: string;
+    invoice?: string;
+    checkoutSession?: string;
+    paymentIntent?: string;
+    charge?: string;
+  }): Promise<boolean>;
 }
 
 export interface PaymentProvider {
@@ -1133,6 +1146,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<boolean, AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;
@@ -2359,6 +2373,7 @@ export interface AccountSession {
 }
 
 export interface AuthPort {
+  initialize(): Promise<void>;
   findUserByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;

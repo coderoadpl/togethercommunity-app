@@ -44,6 +44,7 @@ const authPortWith = (sessions: AccountSession[]) => {
     revokeSessions,
     getAuthenticatedUser: async () => null,
     findUserByEmail: async () => null,
+    initialize: async () => undefined,
     ensureUser: async () => ({ userId: 'user-1', created: false }),
     requestMagicLink: async () => undefined,
     createEnrollmentMagicLink: async () => ({ url: 'https://example.test/magic' }),

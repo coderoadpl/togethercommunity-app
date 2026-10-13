@@ -1779,6 +1779,8 @@ export const pl: Messages = {
     auditLogHeading: 'Dziennik działań zespołu',
     auditLogEmpty: 'Brak zapisanych działań.',
     auditLogKind: {
+      'team.admin_added': 'Dodaj administratora',
+      'team.admin_removed': 'Usuń',
       impersonation_started: 'Wejście w podgląd uczestnika',
       impersonation_ended: 'Wyjście z podglądu uczestnika',
       content_version_restored: 'Przywrócenie wersji treści',
@@ -2604,6 +2606,15 @@ export const pl: Messages = {
     save: 'Zapisz',
     saving: 'Zapisywanie…',
     saved: 'Zapisano.',
+  },
+  tenantTeam: {
+    heading: 'Zespół',
+    addAdministrator: 'Dodaj administratora',
+    helper: 'Osoba dostanie e-mail z linkiem do logowania i zobaczy Studio po zalogowaniu. Administrator ma dostęp do wszystkiego poza ustawieniami platformy, sekretami, kluczami API i testem integracji.',
+    owner: 'Właściciel',
+    administrator: 'Administrator',
+    you: 'to Ty',
+    removeConfirm: 'Usunąć administratora?',
   },
   tenantDomains: {
     heading: 'Adresy',

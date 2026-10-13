@@ -63,6 +63,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { registerTeamCommands } from './team-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -652,6 +653,7 @@ registerMarketingCommands(program, cliCtx);
 registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
+registerTeamCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {

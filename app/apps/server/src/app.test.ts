@@ -369,6 +369,7 @@ const deps = (input: {
       endLapsed: async () => 0,
       listLapsedTenantIds: async () => [],
     },
+    team: { list: async () => [], addAdmin: async () => true, removeAdmin: async () => true },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
@@ -9973,5 +9974,55 @@ describe('direct public sales-link checkout', () => {
     expect(createMember).not.toHaveBeenCalled();
     expect(h.orders).toHaveLength(0);
     expect(h.grants).toHaveLength(0);
+  });
+});
+
+describe('tenant team HTTP surface', () => {
+  const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
+
+  it.each(['staff', 'member'] as const)('refuses every team operation for %s', async (scope) => {
+    const list = vi.fn(async () => []);
+    const addAdmin = vi.fn(async () => true);
+    const removeAdmin = vi.fn(async () => true);
+    const app = scopedApp(scope, { overrides: { team: { list, addAdmin, removeAdmin } } });
+    for (const [path, method, body] of [
+      [API_PATHS.tenantTeam, 'GET', undefined],
+      [API_PATHS.tenantTeamAdd, 'POST', JSON.stringify({ email: 'admin@example.test' })],
+      [API_PATHS.tenantTeamRemove, 'POST', JSON.stringify({ userId: 'admin-1' })],
+    ] as const) {
+      const response = await app.request(path, { method, headers, ...(body === undefined ? {} : { body }) });
+      expect(response.status).toBe(403);
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(addAdmin).not.toHaveBeenCalled();
+    expect(removeAdmin).not.toHaveBeenCalled();
+  });
+
+  it('lets an owner list, add, and remove with audit and mail delivery', async () => {
+    const members = [{ userId: 'admin-1', email: 'admin@example.test', name: null, role: 'admin' as const }];
+    const base = deps();
+    const requestMagicLink = vi.fn(async () => undefined);
+    const audits: TenantAuditEventInput[] = [];
+    const app = scopedApp('owner', { overrides: {
+      team: { list: async () => members,
+        addAdmin: async (_tenantId, _userId, _id, audit) => { audits.push(audit); return true; },
+        removeAdmin: async (_tenantId, _userId, audit) => { audits.push(audit); return true; } },
+      authPort: { ...base.authPort,
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
+        ensureUser: async () => ({ userId: 'admin-1', created: true }), requestMagicLink },
+    } });
+    const listed = await app.request(API_PATHS.tenantTeam, { headers });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({ data: { members } });
+    const added = await app.request(API_PATHS.tenantTeamAdd, { method: 'POST', headers, body: JSON.stringify({ email: ' ADMIN@EXAMPLE.TEST ' }) });
+    expect(added.status).toBe(200);
+    expect(await added.json()).toMatchObject({ data: { userId: 'admin-1' } });
+    expect(requestMagicLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'admin@example.test', tenantId: acme.id }));
+    const removed = await app.request(API_PATHS.tenantTeamRemove, { method: 'POST', headers, body: JSON.stringify({ userId: 'admin-1' }) });
+    expect(removed.status).toBe(200);
+    expect(audits).toEqual([
+      expect.objectContaining({ kind: 'team.admin_added', tenantId: acme.id }),
+      expect.objectContaining({ kind: 'team.admin_removed', tenantId: acme.id }),
+    ]);
   });
 });

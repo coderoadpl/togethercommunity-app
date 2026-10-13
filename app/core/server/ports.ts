@@ -1,4 +1,5 @@
 import type {
+  TenantTeamMember,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
@@ -2501,4 +2502,10 @@ export interface LessonEditionRepositories {
 
 export interface LessonEditionTransaction {
   run<T>(tenantId: string, lessonId: string, operation: (repositories: LessonEditionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+export interface TenantTeamRepository {
+  list(tenantId: string): Promise<TenantTeamMember[]>;
+  addAdmin(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  removeAdmin(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
 }

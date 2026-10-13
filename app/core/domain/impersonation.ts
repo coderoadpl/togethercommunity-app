@@ -54,6 +54,8 @@ export const tenantAuditEventSchema = z.object({
     'redirect_deleted',
     'post_purged',
     'tenant_provisioned',
+    'team.admin_added',
+    'team.admin_removed',
   ]),
   actorUserId: z.string().min(1),
   actorEmail: z.string().min(1),

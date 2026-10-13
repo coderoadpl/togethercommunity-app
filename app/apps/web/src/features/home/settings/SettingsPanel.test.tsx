@@ -173,6 +173,7 @@ const installSettingsBackend = (
   let routingState = initialRoutingState;
 
   server.use(
+    http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [] } })),
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
     http.get('/api/courses', () =>
       courses === 'unavailable'
@@ -269,7 +270,7 @@ const renderPanel = (
   spaces: StubSpace[] = [],
   courses: StubCourse[] | 'unavailable' = [],
   removeRedirectTo: string | null = null,
-  options: { routing?: ReturnType<typeof initialRouting>; language?: Language } = {},
+  options: { routing?: ReturnType<typeof initialRouting>; language?: Language; staffRole?: 'owner' | 'admin' | null } = {},
 ) => {
   languagePreference.save(options.language ?? 'en');
   const { updates, courseUpdates, domainCalls, redirectQueries } =
@@ -281,7 +282,7 @@ const renderPanel = (
     path: '/panel/settings',
     component: () => (
       <PanelContextProvider
-        value={{ tenant: PANEL_TENANT, email: 'creator3@together.dev', emailVerified }}
+        value={{ tenant: { ...PANEL_TENANT, staffRole: options.staffRole === undefined ? 'owner' : options.staffRole }, email: 'creator3@together.dev', emailVerified }}
       >
         <SettingsPanel />
       </PanelContextProvider>
@@ -1466,5 +1467,85 @@ describe('SettingsPanel sign-in notice', () => {
     if (card === null) throw new Error('Missing notice form');
     await userEvent.click(within(card).getByRole('button', { name: en.signInNoticeSettings.save }));
     await waitFor(() => expect(updates).toContainEqual({ signInNotice: { enabled: true, text: 'Welcome back.\nUse your existing email.' } }));
+  });
+});
+
+describe('SettingsPanel team', () => {
+  const owner = { userId: 'owner-user', email: 'creator3@together.dev', name: 'Studio Owner', role: 'owner' };
+  const admin = { userId: 'admin-user', email: 'admin@example.test', name: null, role: 'admin' };
+
+  it('shows the team to the owner and identifies their row without a remove action', async () => {
+    renderPanel();
+    server.use(http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, admin] } })));
+    await openSettingsSection(en.settingsNavigation.security);
+    const table = await screen.findByRole('table', { name: en.tenantTeam.heading });
+    const ownerRow = within(table).getByRole('row', { name: /creator3@together.dev/ });
+    expect(ownerRow).toHaveTextContent(en.tenantTeam.owner);
+    expect(ownerRow).toHaveTextContent(en.tenantTeam.you);
+    expect(within(ownerRow).queryByRole('button', { name: en.common.remove })).not.toBeInTheDocument();
+    expect(within(table).getByRole('row', { name: /admin@example.test/ })).toHaveTextContent(en.tenantTeam.administrator);
+  });
+
+  it.each(['admin', null] as const)('hides the team and never fetches it for role %s', async (staffRole) => {
+    const list = vi.fn();
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
+    server.use(http.get('/api/tenant/team', () => { list(); return HttpResponse.json({ ok: true, data: { members: [] } }); }));
+    await openSettingsSection(en.settingsNavigation.security);
+    expect(await screen.findByTestId('security-settings')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-settings')).not.toBeInTheDocument();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('submits an email, refreshes the list and shows success', async () => {
+    renderPanel();
+    const added: unknown[] = [];
+    server.use(http.post('/api/tenant/team', async ({ request }) => {
+      added.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { userId: admin.userId } });
+    }));
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
+    await waitFor(() => expect(added).toEqual([{ email: admin.email }]));
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
+    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue('');
+  });
+
+  it('keeps the entered email and shows an error when adding fails', async () => {
+    renderPanel();
+    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+      ok: false, error: { code: 'forbidden', message: 'Owner role required' },
+    }, { status: 403 })));
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
+    expect(await findToast('error')).toBeInTheDocument();
+    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
+  });
+
+  it('requires confirmation before removing an administrator', async () => {
+    renderPanel();
+    const removed: unknown[] = [];
+    server.use(
+      http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, admin] } })),
+      http.post('/api/tenant/team/remove', async ({ request }) => {
+        removed.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { userId: admin.userId } });
+      }),
+    );
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.click(await within(section).findByRole('button', { name: en.common.remove }));
+    const dialog = await screen.findByRole('dialog', { name: en.tenantTeam.removeConfirm });
+    expect(dialog).toHaveTextContent(admin.email);
+    expect(removed).toEqual([]);
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.cancel }));
+    expect(removed).toEqual([]);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.remove }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.common.remove }));
+    await waitFor(() => expect(removed).toEqual([{ userId: admin.userId }]));
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
   });
 });

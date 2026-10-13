@@ -2317,6 +2317,15 @@ export interface Messages {
     saving: string;
     saved: string;
   };
+  tenantTeam: {
+    heading: string;
+    addAdministrator: string;
+    helper: string;
+    owner: string;
+    administrator: string;
+    you: string;
+    removeConfirm: string;
+  };
   tenantDomains: {
     heading: string;
     intro: string;

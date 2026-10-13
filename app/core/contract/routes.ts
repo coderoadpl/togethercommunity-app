@@ -1,3 +1,4 @@
+import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { productVatRateSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -1452,6 +1453,11 @@ export const tenantRoutingOutputSchema = z.object({
   routing: tenantRoutingSchema,
 });
 
+export const tenantTeamOutputSchema = z.object({ members: z.array(tenantTeamMemberSchema) });
+export const tenantTeamAddSchema = addTenantAdminInputSchema;
+export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;
+export const tenantTeamMutationOutputSchema = z.object({ userId: z.string().min(1) });
+
 export const tenantRedirectsOutputSchema = z.object({
   redirects: z.array(tenantRedirectSchema),
   total: z.number().int().nonnegative(),
@@ -2138,6 +2144,9 @@ export const API_ROUTES = {
   globalSchedulerRuns: { method: 'GET', path: '/api/internal/scheduler-runs' },
   globalSchedulerRun: { method: 'GET', path: '/api/internal/scheduler-runs/:id' },
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
+  tenantTeam: { method: 'GET', path: '/api/tenant/team' },
+  tenantTeamAdd: { method: 'POST', path: '/api/tenant/team' },
+  tenantTeamRemove: { method: 'POST', path: '/api/tenant/team/remove' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantRouting: { method: 'GET', path: '/api/tenant/routing' },
   tenantRedirects: { method: 'GET', path: '/api/tenant/redirects' },
@@ -2509,6 +2518,9 @@ export const API_PATHS = {
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantRouting: API_ROUTES.tenantRouting.path,
+  tenantTeam: API_ROUTES.tenantTeam.path,
+  tenantTeamAdd: API_ROUTES.tenantTeamAdd.path,
+  tenantTeamRemove: API_ROUTES.tenantTeamRemove.path,
   tenantRedirects: API_ROUTES.tenantRedirects.path,
   tenantRedirectCreate: API_ROUTES.tenantRedirectCreate.path,
   tenantRedirectUpdate: API_ROUTES.tenantRedirectUpdate.path,

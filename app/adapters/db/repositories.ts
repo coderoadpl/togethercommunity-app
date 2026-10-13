@@ -50,6 +50,7 @@ import {
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
+  tenantTeamMemberSchema,
   termsConsentSchema,
   type Course,
   type CourseLesson,
@@ -144,6 +145,7 @@ import type {
   TenantRepository,
   TenantSecretRepository,
   TenantSecretScanPort,
+  TenantTeamRepository,
   TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
@@ -4625,6 +4627,46 @@ export const createAccountSecurityReader = (db: Db): AccountSecurityReader => ({
       twoFactorEnabled: twoFactorRow?.enabled === true && twoFactorRow.verified === true,
     };
   },
+});
+
+export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
+  list: async (tenantId) => {
+    const rows = await db
+      .select({
+        userId: tenantAdmins.userId,
+        email: user.email,
+        name: user.name,
+        role: tenantAdmins.role,
+      })
+      .from(tenantAdmins)
+      .innerJoin(user, eq(tenantAdmins.userId, user.id))
+      .where(eq(tenantAdmins.tenantId, tenantId))
+      .orderBy(desc(tenantAdmins.role), asc(user.email));
+    return rows.map((row) => tenantTeamMemberSchema.parse(row));
+  },
+  addAdmin: async (tenantId, userId, id, audit) => db.transaction(async (tx) => {
+    const rows = await tx
+      .insert(tenantAdmins)
+      .values({ id, tenantId, userId, role: 'admin' })
+      .onConflictDoNothing({ target: [tenantAdmins.tenantId, tenantAdmins.userId] })
+      .returning({ id: tenantAdmins.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  removeAdmin: async (tenantId, userId, audit) => db.transaction(async (tx) => {
+    const rows = await tx
+      .delete(tenantAdmins)
+      .where(and(
+        eq(tenantAdmins.tenantId, tenantId),
+        eq(tenantAdmins.userId, userId),
+        eq(tenantAdmins.role, 'admin'),
+      ))
+      .returning({ id: tenantAdmins.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {

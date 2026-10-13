@@ -1759,6 +1759,8 @@ export const en: Messages = {
     auditLogHeading: 'Team activity log',
     auditLogEmpty: 'No recorded activity yet.',
     auditLogKind: {
+      'team.admin_added': 'Administrator added',
+      'team.admin_removed': 'Administrator removed',
       impersonation_started: 'Member view started',
       impersonation_ended: 'Member view ended',
       content_version_restored: 'Content version restored',
@@ -2581,6 +2583,15 @@ export const en: Messages = {
     save: 'Save',
     saving: 'Saving…',
     saved: 'Saved.',
+  },
+  tenantTeam: {
+    heading: 'Team',
+    addAdministrator: 'Add administrator',
+    helper: 'The person receives a sign-in e-mail and sees Studio after signing in. An administrator can do everything except platform settings, secrets, API keys and the integration test.',
+    owner: 'Owner',
+    administrator: 'Administrator',
+    you: 'you',
+    removeConfirm: 'Remove administrator?',
   },
   tenantDomains: {
     heading: 'Addresses',

@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 429. Exported `Ctx` use-case rows: 334.
+Closed capability count: 123. Route rows: 432. Exported `Ctx` use-case rows: 337.
 
 ## Human-readable diff
 
@@ -317,6 +317,9 @@ no changes
 | `POST /api/tenant-secrets` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `DELETE /api/tenant-secrets/:key` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant/settings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/team` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/team/remove` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant/redirects` | tenant:domain:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant/redirects` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/redirects/update` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
@@ -797,6 +800,9 @@ no changes
 | `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts authorization call |
 | `tenant-setup-readiness.ts#getTenantSetupReadiness` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-setup-readiness.ts authorization call |
+| `tenant-team.ts#listTenantTeam` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-team.ts authorization call |
+| `tenant-team.ts#addTenantAdmin` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-team.ts authorization call |
+| `tenant-team.ts#removeTenantAdmin` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-team.ts authorization call |
 | `tenants.ts#listMyTenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/tenants.ts authorization call |
 
 ## Authorization source evidence
@@ -805,14 +811,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:24` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:201` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1206` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1208` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1230` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1244` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1767` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:26` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:203` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1208` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1210` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1232` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1246` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -2285,6 +2285,8 @@ export const tenantAuditEvents = pgTable(
         'redirect_deleted',
         'post_purged',
         'tenant_provisioned',
+        'team.admin_added',
+        'team.admin_removed',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

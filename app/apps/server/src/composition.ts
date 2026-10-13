@@ -1,3 +1,5 @@
+import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
@@ -486,6 +488,7 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
   auditEvents: TenantAuditEventRepository;
+  team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
@@ -1429,6 +1432,7 @@ export const createDeps = (
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,
     auditEvents,
+    team: createTenantTeamRepository(db),
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),

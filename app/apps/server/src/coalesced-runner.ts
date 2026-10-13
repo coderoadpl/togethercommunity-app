@@ -1,10 +1,9 @@
 export type CoalescedRunner = () => void;
 
-/**
- * Collapses a burst of triggers into one in-flight run plus at most one follow-up,
- * so N enqueues never start N overlapping dispatch passes.
- */
-export const createCoalescedRunner = (run: () => Promise<void>): CoalescedRunner => {
+export const createCoalescedRunner = (
+  run: () => Promise<void>,
+  keepAlive?: (task: Promise<unknown>) => void,
+): CoalescedRunner => {
   let inFlight: Promise<void> | null = null;
   let followUp = false;
 
@@ -23,5 +22,6 @@ export const createCoalescedRunner = (run: () => Promise<void>): CoalescedRunner
     followUp = true;
     if (inFlight !== null) return;
     inFlight = loop().catch(() => undefined);
+    keepAlive?.(inFlight);
   };
 };

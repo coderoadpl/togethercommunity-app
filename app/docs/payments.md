@@ -48,8 +48,9 @@ continue through the existing fulfillment flow.
 Purchase emails are dispatched immediately after the payment transaction commits.
 The opportunistic dispatcher runs one bounded batch without delaying the webhook
 response, and Vercel keeps the function alive until the dispatch loop finishes.
-The `dispatch-email` cron runs every minute, reduced from every 30 minutes to
-limit the wait for queued emails when opportunistic dispatch does not complete.
+The `dispatch-email` cron runs every minute as a safety net behind immediate
+post-commit dispatch: purchase emails must not wait if opportunistic dispatch
+does not complete.
 
 Staff test purchases use the Together checkout page at `/checkout/<productRef>`
 or `/offer/<slug>?checkout=together` and its **Stripe test mode** switch.
@@ -120,9 +121,11 @@ payments, PaymentIntent metadata. Signed webhook metadata explicitly naming a
 different tenant returns HTTP 400 before any Stripe API lookup, even if an object
 ID matches a local record. This includes metadata on expanded customers and
 subscriptions and invoice subscription details.
+Customer, subscription and order IDs that resolve to another tenant's stored
+records also return HTTP 400 before any Stripe API lookup.
 
-Unknown invoices and subscriptions without foreign-tenant metadata are acknowledged
-with HTTP 200 and `processed: false`. Invoice events without a local subscription
+Uncorrelated invoices and subscriptions without evidence of foreign ownership are
+acknowledged with HTTP 200 and `processed: false`. Invoice events without a local subscription
 or order skip the Stripe lookup. This applies both to older objects without
 metadata and objects with matching tenant metadata: Stripe can deliver invoice or
 subscription events before `checkout.session.completed`, and abandoned or failed

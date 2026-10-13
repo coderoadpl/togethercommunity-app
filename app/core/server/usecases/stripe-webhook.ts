@@ -34,6 +34,7 @@ import type {
   EmailOutboxRepository,
   PaymentProvider,
   PaymentTransactionPort,
+  StripeWebhookOwnershipReader,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
@@ -52,6 +53,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -942,9 +944,9 @@ export const validateStripeWebhookTenant = (
 export const validateStripeInvoiceTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
-  deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds'>,
+  deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
 ): Promise<Result<boolean, AppError>> => {
-  const ownership = validateStripeWebhookTenant(tenantId, event);
+  const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
   if (!ownership.ok) return ownership;
   const subscriptionId = event.invoice?.subscriptionId;
   const subscription = subscriptionId == null ? null :
@@ -954,13 +956,39 @@ export const validateStripeInvoiceTenant = async (
   return ok(subscription !== null || order !== null);
 };
 
+const validateStoredStripeWebhookTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
+): Promise<Result<void, AppError>> => {
+  const metadata = validateStripeWebhookTenant(tenantId, event);
+  if (!metadata.ok) return metadata;
+  const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
+    (event.type.startsWith('customer.subscription.') ? event.objectId : null);
+  const invoice = event.checkoutSession?.invoiceId ?? event.adjustment?.invoiceId ??
+    (event.type.startsWith('invoice.') ? event.objectId : null);
+  const paymentIntent = event.checkoutSession?.paymentIntentId ?? event.invoice?.paymentIntentId ?? event.adjustment?.paymentIntentId;
+  const charge = event.invoice?.chargeId ?? event.adjustment?.chargeId;
+  const foreign = await deps.stripeWebhookOwnership.hasForeignOwner(tenantId, {
+    ...(event.customerId == null ? {} : { customer: event.customerId }),
+    ...(subscription == null ? {} : { subscription }),
+    ...(invoice == null ? {} : { invoice }),
+    ...(paymentIntent == null ? {} : { paymentIntent }),
+    ...(charge == null ? {} : { charge }),
+    ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
+  });
+  return foreign ? err(validation('Stripe event belongs to another tenant')) : ok(undefined);
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
-  const ownership = validateStripeWebhookTenant(tenant.id, event);
+  const ownership = provider === 'stripe'
+    ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
+    : validateStripeWebhookTenant(tenant.id, event);
   if (!ownership.ok) return ownership;
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
   if (event.type.startsWith('customer.subscription.')) {

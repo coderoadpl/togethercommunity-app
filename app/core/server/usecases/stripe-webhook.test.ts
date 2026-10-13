@@ -209,6 +209,15 @@ const harness = (
   const providerCancellations: Parameters<PaymentProvider['cancelSubscription']>[0][] = [];
 
   const deps: StripeWebhookDeps = {
+    stripeWebhookOwnership: {
+      hasForeignOwner: async (tenantId, ids) =>
+        Array.from(subscriptions.values()).some((subscription) => subscription.tenantId !== tenantId &&
+          subscription.providerSubscriptionId === ids.subscription) ||
+        Array.from(members.values()).some((member) => member.tenantId !== tenantId &&
+          ids.customer !== undefined && member.externalCustomerIds['stripe'] === ids.customer) ||
+        orders.some((order) => order.tenantId !== tenantId &&
+          Object.entries(ids).some(([key, value]) => order.providerObjectIds[key] === value)),
+    },
     authPort: {
       initialize: async () => undefined,
       getAuthenticatedUser: async () => null,
@@ -1482,6 +1491,43 @@ describe('fulfillStripeWebhook', () => {
     expect(await validateStripeInvoiceTenant(tenantA.id, { ...invoiceEvent({ id: 'evt-unknown', type: 'invoice.paid', invoiceId: 'in-unknown', subscriptionId: 'sub-unknown' }), mode }, h.deps))
       .toEqual(ok(false));
     expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-unknown' }, mode);
+  });
+
+  it.each(['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'rejects metadata-free %s belonging to a stored foreign subscription before claiming it',
+    async (type) => {
+      const h = await subscribedHarness();
+      h.subscriptions.set(h.subscription.id, { ...h.subscription, tenantId: 'tenant-b' });
+      const event = type === 'invoice.paid'
+        ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
+        : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' });
+      const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+      const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+      if (type === 'invoice.paid') {
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
+          .toMatchObject({ ok: false, error: { code: 'validation' } });
+      }
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps))
+        .toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(claim).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['customer', 'invoice'] as const)('rejects a stored foreign %s even when the invoice subscription is local', async (record) => {
+    const h = await subscribedHarness();
+    const event = { ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }), customerId: 'cus-foreign' };
+    if (record === 'customer') {
+      const member = Array.from(h.members.values())[0];
+      if (member === undefined) throw new Error('Expected enrolled member');
+      h.members.set('foreign-member', { ...member, id: 'foreign-member', tenantId: 'tenant-b', externalCustomerIds: { stripe: 'cus-foreign' } });
+    } else {
+      const order = h.orders[0];
+      if (order === undefined) throw new Error('Expected paid order');
+      h.orders.push({ ...order, id: 'foreign-order', tenantId: 'tenant-b', providerObjectIds: { invoice: 'in-foreign' } });
+    }
+    expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('accepts a tenant-local subscription invoice when checkout created a new customer for an existing member', async () => {

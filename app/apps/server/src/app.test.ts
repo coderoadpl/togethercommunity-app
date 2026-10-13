@@ -11,6 +11,8 @@ import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createHmac } from 'node:crypto';
+import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 
 import {
   API_PATHS,
@@ -291,6 +293,7 @@ const deps = (input: {
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
     },
+    stripeWebhookOwnership: { hasForeignOwner: async () => false },
     paymentRefunds: input.paymentRefunds ?? {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
@@ -7691,6 +7694,43 @@ describe('checkout consent ordering', () => {
       expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
       expect(transaction).not.toHaveBeenCalled();
       expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['unknown', 'foreign-metadata', 'foreign-subscription'] as const)(
+    'handles a signed invoice with %s ownership before any Stripe API call',
+    async (ownership) => {
+      const base = deps({ tenants: [acme] });
+      const foreignOwner = vi.spyOn(base.stripeWebhookOwnership, 'hasForeignOwner')
+        .mockResolvedValue(ownership === 'foreign-subscription');
+      const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
+      const payment = createStripePaymentProvider({
+        resolver: { resolve },
+      });
+      const payload = JSON.stringify({
+        id: 'evt-signed-initial', type: 'invoice.paid', livemode: true,
+        data: { object: {
+          id: 'in-initial', customer: 'cus-initial',
+          parent: { subscription_details: { subscription: 'sub-initial' } },
+          ...(ownership === 'foreign-metadata' ? { metadata: { tenantId: 't-other' } } : {}),
+          amount_paid: 1000, currency: 'usd', lines: { data: [] },
+        } },
+      });
+      const timestamp = Math.floor(Date.now() / 1000);
+      const digest = createHmac('sha256', 'plaintext').update(`${timestamp}.${payload}`).digest('hex');
+      const signature = `t=${timestamp},v1=${digest}`;
+      const response = await buildApp({ ...base, payment }).request('/api/webhooks/stripe/t-acme', {
+        method: 'POST', headers: { 'stripe-signature': signature }, body: payload,
+      });
+      expect(response.status).toBe(ownership === 'unknown' ? 200 : 400);
+      expect(await response.json()).toMatchObject(ownership === 'unknown'
+        ? { ok: true, data: { received: true, processed: false } }
+        : { ok: false, error: { code: 'validation' } });
+      if (ownership === 'foreign-metadata') expect(foreignOwner).not.toHaveBeenCalled();
+      else expect(foreignOwner).toHaveBeenCalledWith(acme.id, {
+        customer: 'cus-initial', subscription: 'sub-initial', invoice: 'in-initial',
+      });
+      expect(resolve).not.toHaveBeenCalled();
     },
   );
 

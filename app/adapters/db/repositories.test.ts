@@ -97,6 +97,7 @@ import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { recordFulfilledCheckoutConsents } from '#core/server/usecases/fulfilled-checkout-consents.js';
 import { createConsentDefinitionRepository, createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
+import { createStripeWebhookOwnershipReader } from './stripe-webhook-ownership.js';
 import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
   account,
@@ -129,6 +130,8 @@ import {
   productGrants,
   productPriceHistory,
   productPrices,
+  products,
+  tenants,
   suppressions,
   twoFactor,
   user,
@@ -4296,4 +4299,90 @@ it('reclaiming a stray test grant does not delete another tenant grant that happ
     id: 'grant-shared-id-live', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme-shared-id', mode: 'live',
   }))).resolves.toBe(true);
   expect(await grantsRepo.findGrant(GLOBEX, 'mem-globex', 'prod-globex-shared-id')).toMatchObject({ id: 'grant-shared-id', mode: 'live' });
+});
+
+describe('Stripe webhook ownership reader', () => {
+  const createdAt = '2026-10-14T10:00:00.000Z';
+
+  beforeAll(async () => {
+    for (const tenantId of ['local', 'foreign']) {
+      await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Workspace', createdAt });
+      await db.insert(members).values({
+        id: 'member', tenantId, userId: `${tenantId}-user`, email: `${tenantId}@example.test`,
+        externalCustomerIds: { stripe: `${tenantId}-customer`, other: `${tenantId}-other-customer` },
+        createdAt,
+      });
+      await db.insert(products).values({
+        id: 'product', tenantId, slug: 'product', title: 'Product', description: '',
+        priceCents: 1000, currency: 'USD', createdAt,
+      });
+      await db.insert(productPrices).values({
+        id: `${tenantId}-price`, tenantId, productId: 'product', kind: 'recurring',
+        interval: 'month', amountCents: 1000, currency: 'USD', createdAt,
+      });
+      for (const provider of ['stripe', 'simulated'] as const) {
+        await db.insert(memberSubscriptions).values({
+          id: `${tenantId}-${provider}-subscription`, tenantId, memberId: 'member', productId: 'product',
+          priceId: `${tenantId}-price`, provider, providerSubscriptionId: `${tenantId}-${provider}-subscription`,
+          status: 'active', currentPeriodEnd: '2026-11-14T10:00:00.000Z', createdAt, updatedAt: createdAt,
+        });
+        await db.insert(orders).values({
+          id: `${tenantId}-${provider}-order`, tenantId, memberId: 'member', productId: 'product',
+          kind: 'recurring', status: 'paid', amountCents: 1000, currency: 'USD', provider,
+          providerObjectIds: {
+            customer: `${tenantId}-${provider}-order-customer`,
+            subscription: `${tenantId}-${provider}-order-subscription`,
+            invoice: `${tenantId}-${provider}-invoice`,
+            checkoutSession: `${tenantId}-${provider}-checkout`,
+            paymentIntent: `${tenantId}-${provider}-payment`,
+            charge: `${tenantId}-${provider}-charge`,
+          },
+          createdAt,
+        });
+      }
+    }
+  });
+
+  it('treats absent and unknown identifiers as unknown ownership', async () => {
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', {})).toBe(false);
+    expect(await reader.hasForeignOwner('local', {
+      customer: 'unknown', subscription: 'unknown', invoice: 'unknown',
+      checkoutSession: 'unknown', paymentIntent: 'unknown', charge: 'unknown',
+    })).toBe(false);
+  });
+
+  it('distinguishes local and foreign customer ownership using only Stripe customer IDs', async () => {
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', { customer: 'local-customer' })).toBe(false);
+    expect(await reader.hasForeignOwner('local', { customer: 'foreign-customer' })).toBe(true);
+    expect(await reader.hasForeignOwner('local', { customer: 'foreign-other-customer' })).toBe(false);
+  });
+
+  it('distinguishes local and foreign Stripe subscriptions and ignores other providers', async () => {
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', { subscription: 'local-stripe-subscription' })).toBe(false);
+    expect(await reader.hasForeignOwner('local', { subscription: 'foreign-stripe-subscription' })).toBe(true);
+    expect(await reader.hasForeignOwner('local', { subscription: 'foreign-simulated-subscription' })).toBe(false);
+  });
+
+  it.each([
+    ['customer', 'order-customer'],
+    ['subscription', 'order-subscription'],
+    ['invoice', 'invoice'],
+    ['checkoutSession', 'checkout'],
+    ['paymentIntent', 'payment'],
+    ['charge', 'charge'],
+  ] as const)('checks foreign order ownership by %s without leaking records', async (key, suffix) => {
+    const reader = createStripeWebhookOwnershipReader(db);
+    expect(await reader.hasForeignOwner('local', { [key]: `local-stripe-${suffix}` })).toBe(false);
+    expect(await reader.hasForeignOwner('local', { [key]: `foreign-stripe-${suffix}` })).toBe(true);
+    expect(await reader.hasForeignOwner('local', { [key]: `foreign-simulated-${suffix}` })).toBe(false);
+  });
+
+  it('rejects foreign ownership even when another identifier belongs to the local tenant', async () => {
+    expect(await createStripeWebhookOwnershipReader(db).hasForeignOwner('local', {
+      customer: 'local-customer', subscription: 'foreign-stripe-subscription',
+    })).toBe(true);
+  });
 });

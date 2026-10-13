@@ -46,6 +46,7 @@ import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.j
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
+import { createStripeWebhookOwnershipReader } from '#adapters/db/stripe-webhook-ownership.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
@@ -284,6 +285,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   PaymentRefundRepository,
+  StripeWebhookOwnershipReader,
   PostRepository,
   PlatformAuditRepository,
   PlatformDataResetPort,
@@ -482,6 +484,7 @@ export interface AppDeps {
   orderVerification?: OrderVerificationRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
@@ -1437,6 +1440,7 @@ export const createDeps = (
     orderVerification: createOrderVerificationRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
+    stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),

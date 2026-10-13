@@ -1067,6 +1067,17 @@ export interface PaymentWebhookEvent {
   } | null;
 }
 
+export interface StripeWebhookOwnershipReader {
+  hasForeignOwner(tenantId: string, ids: {
+    customer?: string;
+    subscription?: string;
+    invoice?: string;
+    checkoutSession?: string;
+    paymentIntent?: string;
+    charge?: string;
+  }): Promise<boolean>;
+}
+
 export interface PaymentProvider {
   probeStripePermissions?(input: {
     tenantId: string;

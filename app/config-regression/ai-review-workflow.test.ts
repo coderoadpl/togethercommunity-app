@@ -58,9 +58,8 @@ const stepByName = (name: string) => {
 const actionPin = 'anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3';
 const checkoutPin = 'actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955';
 const attemptIds = [
-  'try1p', 'try1pr', 'try1f', 'try1fr',
-  'try2p', 'try2pr', 'try2f', 'try2fr',
-  'try3p', 'try3pr', 'try3f', 'try3fr',
+  'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',
+  'try1f', 'try1fr', 'try2f', 'try2fr', 'try3f', 'try3fr',
 ];
 const primaryAttempts = new Set(['try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr']);
 
@@ -140,6 +139,11 @@ describe('AI review workflow', () => {
     const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
     expect(attempts.map((candidate) => candidate.id)).toEqual(attemptIds);
     for (const attempt of attempts) {
+      const index = job.steps.indexOf(attempt);
+      const classifier = `classify${attempt.id?.slice(3)}`;
+      expect(job.steps[index + 1]?.id).toBe(classifier);
+      expect(job.steps[index + 2]?.name).toBe(attempt.name?.replace('AI review —', 'Diagnose'));
+      expect(job.steps[index + 2]?.if).toBe(`\${{ steps.${classifier}.outputs.outcome == 'infra' }}`);
       expect(attempt['continue-on-error']).toBe(true);
       expect(attempt['timeout-minutes']).toBe("${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}");
       expect(attempt.with?.show_full_output).toBe(false);
@@ -151,7 +155,21 @@ describe('AI review workflow', () => {
     }
   });
 
-  it('routes primary then fallback on each token and retries only the immediate cold start', () => {
+  it('exhausts all six primary-model positions before the first fallback-model attempt', () => {
+    const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
+    const firstFallback = attempts.findIndex((candidate) => candidate.id === 'try1f');
+    expect(firstFallback).toBe(6);
+    expect(attempts.slice(0, firstFallback).map((candidate) => candidate.id))
+      .toEqual([...primaryAttempts]);
+    const condition = stepById('try1f').if ?? '';
+    for (const primary of primaryAttempts) {
+      const classifier = `classify${primary.slice(3)}`;
+      expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'pass'`);
+      expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'fail'`);
+    }
+  });
+
+  it('routes each attempt to its model and retries only the immediate cold start', () => {
     for (const id of attemptIds) {
       const expected = primaryAttempts.has(id) ? 'primary_model' : 'fallback_model';
       const other = primaryAttempts.has(id) ? 'fallback_model' : 'primary_model';
@@ -160,15 +178,24 @@ describe('AI review workflow', () => {
       expect(args).not.toMatch(new RegExp(`--model \\$\\{\\{ steps\\.prepare\\.outputs\\.${other} \\}\\}`));
     }
 
-    const normalAttempts = ['try1f', 'try2p', 'try2f', 'try3p', 'try3f'];
-    for (const id of normalAttempts) {
+    for (const id of attemptIds) {
       const index = attemptIds.indexOf(id);
       const condition = stepById(id).if ?? '';
+      expect(condition).toContain("steps.prepare.outputs.prepared == 'true'");
+      expect(condition).toContain("steps.target.outputs.draft == 'false'");
+      expect(condition).toContain("steps.target.outputs.invoke == 'true'");
+      expect(condition).toContain('!cancelled()');
+      expect(condition).toContain(`steps.preflight.outputs.has_slot_${id[3]} == 'true'`);
       for (const earlier of attemptIds.slice(0, index)) {
         const classifier = `classify${earlier.slice(3)}`;
         expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'pass'`);
         expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'fail'`);
       }
+      expect([...condition.matchAll(/steps\.(classify\w+)\.outputs\.outcome/g)].map((match) => match[1]))
+        .toEqual(attemptIds.slice(0, index).flatMap((earlier) => [
+          `classify${earlier.slice(3)}`, `classify${earlier.slice(3)}`,
+        ]));
+      if (!id.endsWith('r')) expect(condition).not.toContain('cold_start');
     }
     for (const retry of ['1pr', '1fr', '2pr', '2fr', '3pr', '3fr']) {
       const normal = retry.slice(0, -1);

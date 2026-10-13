@@ -10,11 +10,14 @@ Only the first valid `PASS` makes the check green. A model `FAIL`, invalid or em
 
 The primary model depends on the PR base. Staging uses `AI_REVIEW_MODEL`, while main uses `AI_REVIEW_MODEL_MAIN`; both use `AI_REVIEW_MODEL_FALLBACK`. Attempts run in this order:
 
-1. Slot 1 primary, then slot 1 fallback.
-2. Slot 2 primary, then slot 2 fallback.
-3. Slot 3 primary, then slot 3 fallback.
+1. Slot 1 primary (`try1p`, `try1pr`).
+2. Slot 2 primary (`try2p`, `try2pr`).
+3. Slot 3 primary (`try3p`, `try3pr`).
+4. Slot 1 fallback (`try1f`, `try1fr`).
+5. Slot 2 fallback (`try2f`, `try2fr`).
+6. Slot 3 fallback (`try3f`, `try3fr`).
 
-Each model/slot pair receives one immediate retry only when the execution log proves the model was never called. Missing slots are skipped. Usage-limit and model-unavailable errors therefore reach the fallback model on the same token before the next token slot.
+Each model/slot pair receives one immediate retry only when the execution log proves the model was never called. Missing slots are skipped. Every attempt requires all earlier attempts to have produced neither `PASS` nor `FAIL`. Primary-model capacity is per account, so usage-limit and model-unavailable errors advance through all available primary token slots before any fallback-model attempt.
 
 The workflow uses a read-only GitHub token for preparation and a pull-request-write token only for its deterministic sticky comment. The model receives one OAuth credential at a time, no GitHub token, no shell, no network tools, no write tools, no plugins, and no repository or user configuration. Its reads are confined to the prepared runner-temporary input directory.
 

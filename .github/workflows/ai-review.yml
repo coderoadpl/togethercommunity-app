@@ -1,7 +1,8 @@
 name: ai-review
 
-# The required check is green only for the first valid PASS from the ordered
-# model/token ladder. Missing capacity, malformed output, stale metadata, drafts,
+# Exhaust primary-model token slots before fallback-model token slots because
+# primary capacity is per account. The first valid PASS/FAIL ends the ladder;
+# only PASS is green. Missing capacity, malformed output, stale metadata, drafts,
 # cancellation, and preparation failures stay red.
 on:
   pull_request:
@@ -195,7 +196,7 @@ jobs:
 
       - name: AI review — slot 1 primary cold-start retry
         id: try1pr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -259,141 +260,9 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
-      - name: AI review — slot 1 fallback
-        id: try1f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' }}
-        continue-on-error: true
-        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
-        env:
-          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
-          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
-          prompt: ${{ steps.prepare.outputs.prompt }}
-          settings: ${{ steps.prepare.outputs.settings_file }}
-          show_full_output: false
-          use_node_cache: false
-          plugins: ''
-          plugin_marketplaces: ''
-          claude_args: >-
-            --model ${{ steps.prepare.outputs.fallback_model }}
-            --max-turns ${{ steps.prepare.outputs.max_turns }}
-            --tools "Read,Grep,Glob"
-            --allowedTools "Read,Grep,Glob"
-            --setting-sources ""
-            --strict-mcp-config
-            --mcp-config '{"mcpServers":{}}'
-            --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
-
-      - name: Classify slot 1 fallback
-        id: classify1f
-        if: ${{ always() }}
-        env:
-          RAW: ${{ steps.try1f.outputs.structured_output }}
-          TRY_OUTCOME: ${{ steps.try1f.outcome }}
-          OUTPUT_EXEC_FILE: ${{ steps.try1f.outputs.execution_file }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
-          DEST_LOG: ${{ runner.temp }}/ai-review-try1f.json
-        run: |
-          rm -f "$DEST_LOG"
-          source_file="$OUTPUT_EXEC_FILE"
-          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
-            source_file="$RUNNER_TEMP/claude-execution-output.json"
-          fi
-          if [ -s "$source_file" ]; then
-            cp -- "$source_file" "$DEST_LOG"
-            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG="$DEST_LOG"
-          else
-            echo "log=" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG=""
-          fi
-          rm -f "$RUNNER_TEMP/claude-execution-output.json"
-          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
-
-      - name: Diagnose slot 1 fallback
-        if: ${{ steps.classify1f.outputs.outcome == 'infra' }}
-        continue-on-error: true
-        env:
-          EXEC_LOG: ${{ steps.classify1f.outputs.log }}
-          MODEL: ${{ steps.prepare.outputs.fallback_model }}
-          SLOT: '1'
-          ATTEMPT: try1f
-          REASON: ${{ steps.classify1f.outputs.reason }}
-          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
-
-      - name: AI review — slot 1 fallback cold-start retry
-        id: try1fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1f.outputs.cold_start == 'true' }}
-        continue-on-error: true
-        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
-        env:
-          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
-          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
-          prompt: ${{ steps.prepare.outputs.prompt }}
-          settings: ${{ steps.prepare.outputs.settings_file }}
-          show_full_output: false
-          use_node_cache: false
-          plugins: ''
-          plugin_marketplaces: ''
-          claude_args: >-
-            --model ${{ steps.prepare.outputs.fallback_model }}
-            --max-turns ${{ steps.prepare.outputs.max_turns }}
-            --tools "Read,Grep,Glob"
-            --allowedTools "Read,Grep,Glob"
-            --setting-sources ""
-            --strict-mcp-config
-            --mcp-config '{"mcpServers":{}}'
-            --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
-
-      - name: Classify slot 1 fallback cold-start retry
-        id: classify1fr
-        if: ${{ always() }}
-        env:
-          RAW: ${{ steps.try1fr.outputs.structured_output }}
-          TRY_OUTCOME: ${{ steps.try1fr.outcome }}
-          OUTPUT_EXEC_FILE: ${{ steps.try1fr.outputs.execution_file }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
-          DEST_LOG: ${{ runner.temp }}/ai-review-try1fr.json
-        run: |
-          rm -f "$DEST_LOG"
-          source_file="$OUTPUT_EXEC_FILE"
-          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
-            source_file="$RUNNER_TEMP/claude-execution-output.json"
-          fi
-          if [ -s "$source_file" ]; then
-            cp -- "$source_file" "$DEST_LOG"
-            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG="$DEST_LOG"
-          else
-            echo "log=" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG=""
-          fi
-          rm -f "$RUNNER_TEMP/claude-execution-output.json"
-          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
-
-      - name: Diagnose slot 1 fallback cold-start retry
-        if: ${{ steps.classify1fr.outputs.outcome == 'infra' }}
-        continue-on-error: true
-        env:
-          EXEC_LOG: ${{ steps.classify1fr.outputs.log }}
-          MODEL: ${{ steps.prepare.outputs.fallback_model }}
-          SLOT: '1'
-          ATTEMPT: try1fr
-          REASON: ${{ steps.classify1fr.outputs.reason }}
-          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
-
       - name: AI review — slot 2 primary
         id: try2p
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -459,7 +328,7 @@ jobs:
 
       - name: AI review — slot 2 primary cold-start retry
         id: try2pr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2p.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -523,141 +392,9 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
-      - name: AI review — slot 2 fallback
-        id: try2f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' }}
-        continue-on-error: true
-        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
-        env:
-          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
-          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
-          prompt: ${{ steps.prepare.outputs.prompt }}
-          settings: ${{ steps.prepare.outputs.settings_file }}
-          show_full_output: false
-          use_node_cache: false
-          plugins: ''
-          plugin_marketplaces: ''
-          claude_args: >-
-            --model ${{ steps.prepare.outputs.fallback_model }}
-            --max-turns ${{ steps.prepare.outputs.max_turns }}
-            --tools "Read,Grep,Glob"
-            --allowedTools "Read,Grep,Glob"
-            --setting-sources ""
-            --strict-mcp-config
-            --mcp-config '{"mcpServers":{}}'
-            --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
-
-      - name: Classify slot 2 fallback
-        id: classify2f
-        if: ${{ always() }}
-        env:
-          RAW: ${{ steps.try2f.outputs.structured_output }}
-          TRY_OUTCOME: ${{ steps.try2f.outcome }}
-          OUTPUT_EXEC_FILE: ${{ steps.try2f.outputs.execution_file }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
-          DEST_LOG: ${{ runner.temp }}/ai-review-try2f.json
-        run: |
-          rm -f "$DEST_LOG"
-          source_file="$OUTPUT_EXEC_FILE"
-          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
-            source_file="$RUNNER_TEMP/claude-execution-output.json"
-          fi
-          if [ -s "$source_file" ]; then
-            cp -- "$source_file" "$DEST_LOG"
-            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG="$DEST_LOG"
-          else
-            echo "log=" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG=""
-          fi
-          rm -f "$RUNNER_TEMP/claude-execution-output.json"
-          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
-
-      - name: Diagnose slot 2 fallback
-        if: ${{ steps.classify2f.outputs.outcome == 'infra' }}
-        continue-on-error: true
-        env:
-          EXEC_LOG: ${{ steps.classify2f.outputs.log }}
-          MODEL: ${{ steps.prepare.outputs.fallback_model }}
-          SLOT: '2'
-          ATTEMPT: try2f
-          REASON: ${{ steps.classify2f.outputs.reason }}
-          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
-
-      - name: AI review — slot 2 fallback cold-start retry
-        id: try2fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify2f.outputs.cold_start == 'true' }}
-        continue-on-error: true
-        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
-        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
-        env:
-          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
-          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
-          prompt: ${{ steps.prepare.outputs.prompt }}
-          settings: ${{ steps.prepare.outputs.settings_file }}
-          show_full_output: false
-          use_node_cache: false
-          plugins: ''
-          plugin_marketplaces: ''
-          claude_args: >-
-            --model ${{ steps.prepare.outputs.fallback_model }}
-            --max-turns ${{ steps.prepare.outputs.max_turns }}
-            --tools "Read,Grep,Glob"
-            --allowedTools "Read,Grep,Glob"
-            --setting-sources ""
-            --strict-mcp-config
-            --mcp-config '{"mcpServers":{}}'
-            --no-session-persistence
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
-
-      - name: Classify slot 2 fallback cold-start retry
-        id: classify2fr
-        if: ${{ always() }}
-        env:
-          RAW: ${{ steps.try2fr.outputs.structured_output }}
-          TRY_OUTCOME: ${{ steps.try2fr.outcome }}
-          OUTPUT_EXEC_FILE: ${{ steps.try2fr.outputs.execution_file }}
-          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
-          DEST_LOG: ${{ runner.temp }}/ai-review-try2fr.json
-        run: |
-          rm -f "$DEST_LOG"
-          source_file="$OUTPUT_EXEC_FILE"
-          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
-            source_file="$RUNNER_TEMP/claude-execution-output.json"
-          fi
-          if [ -s "$source_file" ]; then
-            cp -- "$source_file" "$DEST_LOG"
-            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG="$DEST_LOG"
-          else
-            echo "log=" >> "$GITHUB_OUTPUT"
-            export EXEC_LOG=""
-          fi
-          rm -f "$RUNNER_TEMP/claude-execution-output.json"
-          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
-
-      - name: Diagnose slot 2 fallback cold-start retry
-        if: ${{ steps.classify2fr.outputs.outcome == 'infra' }}
-        continue-on-error: true
-        env:
-          EXEC_LOG: ${{ steps.classify2fr.outputs.log }}
-          MODEL: ${{ steps.prepare.outputs.fallback_model }}
-          SLOT: '2'
-          ATTEMPT: try2fr
-          REASON: ${{ steps.classify2fr.outputs.reason }}
-          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
-
       - name: AI review — slot 3 primary
         id: try3p
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -723,7 +460,7 @@ jobs:
 
       - name: AI review — slot 3 primary cold-start retry
         id: try3pr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3p.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3p.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -787,9 +524,273 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
+      - name: AI review — slot 1 fallback
+        id: try1f
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 1 fallback
+        id: classify1f
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try1f.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try1f.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try1f.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try1f.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Diagnose slot 1 fallback
+        if: ${{ steps.classify1f.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify1f.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '1'
+          ATTEMPT: try1f
+          REASON: ${{ steps.classify1f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 1 fallback cold-start retry
+        id: try1fr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1f.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 1 fallback cold-start retry
+        id: classify1fr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try1fr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try1fr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try1fr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try1fr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Diagnose slot 1 fallback cold-start retry
+        if: ${{ steps.classify1fr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify1fr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '1'
+          ATTEMPT: try1fr
+          REASON: ${{ steps.classify1fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 2 fallback
+        id: try2f
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 2 fallback
+        id: classify2f
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try2f.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try2f.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try2f.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try2f.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Diagnose slot 2 fallback
+        if: ${{ steps.classify2f.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify2f.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '2'
+          ATTEMPT: try2f
+          REASON: ${{ steps.classify2f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 2 fallback cold-start retry
+        id: try2fr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2f.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 2 fallback cold-start retry
+        id: classify2fr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try2fr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try2fr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try2fr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try2fr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+
+      - name: Diagnose slot 2 fallback cold-start retry
+        if: ${{ steps.classify2fr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify2fr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '2'
+          ATTEMPT: try2fr
+          REASON: ${{ steps.classify2fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
       - name: AI review — slot 3 fallback
         id: try3f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3
@@ -855,7 +856,7 @@ jobs:
 
       - name: AI review — slot 3 fallback cold-start retry
         id: try3fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify3f.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3

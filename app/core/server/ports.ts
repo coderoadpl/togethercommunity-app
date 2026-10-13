@@ -1092,6 +1092,7 @@ export interface PaymentProvider {
     productName: string;
     salesLinkId?: string;
     checkoutSnapshotId?: string;
+    expiresInSeconds?: number;
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
     lines?: { productId: string; name: string; grossCents: number }[];

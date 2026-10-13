@@ -1,7 +1,7 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 import {
@@ -1313,4 +1313,18 @@ it('reactivates a partner promotion after a failed edit through the existing Str
   if (request === undefined) throw new Error('Missing promotion request');
   expect(request.url).toContain('/v1/promotion_codes/promo_partner');
   expect(new URLSearchParams(await request.text()).get('active')).toBe('true');
+});
+
+
+it('sets the shortest Stripe expiration for a reserved partner checkout', () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime('2026-10-13T12:00:00.000Z');
+    const input = { tenantId: 'tenant', productId: 'product', productName: 'Offer', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' };
+    const params = stripeCheckoutSessionParams({ ...input, expiresInSeconds: 1800 });
+    expect(params.expires_at).toBe(Date.now() / 1000 + 1800);
+    expect(stripeCheckoutSessionParams(input)).not.toHaveProperty('expires_at');
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -279,6 +279,7 @@ export const startCheckoutSession = async (
   }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(partner.value === null ? {} : { expiresInSeconds: 30 * 60 }),
     ...partnerPromotion.value,
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,

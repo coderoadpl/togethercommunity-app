@@ -114,6 +114,7 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
+    ...(input.expiresInSeconds === undefined ? {} : { expires_at: Math.floor(Date.now() / 1000) + input.expiresInSeconds }),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.recurringInterval === undefined ? {} : {
       subscription_data: { billing_mode: { type: 'classic' as const } },

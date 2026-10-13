@@ -219,16 +219,17 @@ it.each(['toggle:click', 'field:input'])('cancels scheduled automatic checkout o
   expect(replace).toHaveBeenCalledWith('https://example.test/payment');
 });
 
-it.each(['success', 'automatic', 'automatic-invalid-code', 'invalid-code', 'network', 'malformed'] as const)('preserves a capped-code checkout through pending edits and handles %s', async (outcome) => {
-  const automatic = outcome.startsWith('automatic');
-  const html = renderDirectSalesLinkPage({ ...page, allowsCodes: true, ...(automatic ? { code: 'SAVE10' } : {}) });
+it.each(['success', 'prefilled', 'automatic', 'invalid-code', 'network', 'malformed'] as const)('preserves a capped-code checkout through pending edits and handles %s', async (outcome) => {
+  const automatic = outcome === 'automatic';
+  const prefilled = outcome === 'prefilled';
+  const html = renderDirectSalesLinkPage({ ...page, allowsCodes: true, ...(prefilled ? { code: 'SAVE10' } : {}) });
   const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
   if (script === undefined) throw new Error('Missing script');
   type Listener = (event: { preventDefault(): void }) => void | Promise<void>;
   const handlers = new Map<string, Listener>();
   const status = { textContent: '' };
-  const main = { dataset: { endpoint: page.endpoint, code: automatic ? 'SAVE10' : '', state: '', couponUnavailable: directSalesLinkCopyEn.couponUnavailable, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } };
-  const field = { value: 'SAVE10', disabled: false, focus: vi.fn(), addEventListener: (event: string, listener: Listener) => handlers.set(`field:${event}`, listener) };
+  const main = { dataset: { endpoint: page.endpoint, code: prefilled ? 'SAVE10' : '', state: '', couponUnavailable: directSalesLinkCopyEn.couponUnavailable, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } };
+  const field = { value: automatic ? '' : 'SAVE10', disabled: false, focus: vi.fn(), addEventListener: (event: string, listener: Listener) => handlers.set(`field:${event}`, listener) };
   const button = { disabled: false };
   const form = { hidden: true, querySelector: () => button, addEventListener: (event: string, listener: Listener) => handlers.set(`form:${event}`, listener) };
   const toggle = { hidden: false, disabled: false, addEventListener: (event: string, listener: Listener) => handlers.set(`toggle:${event}`, listener) };
@@ -243,11 +244,11 @@ it.each(['success', 'automatic', 'automatic-invalid-code', 'invalid-code', 'netw
     return success;
   });
   fetch.mockImplementationOnce(async () => {
-    if (outcome === 'success' || outcome === 'automatic') remainingRedemptions -= 1;
+    if (outcome === 'success' || outcome === 'prefilled' || automatic) remainingRedemptions -= 1;
     await pending;
     if (outcome === 'network') throw new Error('Network failure');
     if (outcome === 'malformed') return { ok: false, json: async () => { throw new Error('Invalid JSON'); } };
-    if (outcome === 'invalid-code' || outcome === 'automatic-invalid-code') return { ok: false, json: async () => ({ ok: false, error: { message: 'Coupon cannot be applied' } }) };
+    if (outcome === 'invalid-code') return { ok: false, json: async () => ({ ok: false, error: { message: 'Coupon cannot be applied' } }) };
     return success;
   });
   const replace = vi.fn();
@@ -257,21 +258,29 @@ it.each(['success', 'automatic', 'automatic-invalid-code', 'invalid-code', 'netw
     fetch, { replace }, (callback: () => Promise<void>) => timers.push(callback),
   );
   const event = { preventDefault: vi.fn() };
-  if (!automatic) await handlers.get('toggle:click')?.(event);
+  if (prefilled) {
+    expect(form.hidden).toBe(false);
+    expect(toggle.hidden).toBe(true);
+    expect(field.value).toBe('SAVE10');
+    expect(main.dataset.state).toBe('editing');
+    await Promise.all(timers.map((callback) => callback()));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  } else if (!automatic) await handlers.get('toggle:click')?.(event);
   const firstSubmission = automatic ? timers[0]?.() : handlers.get('form:submit')?.(event);
   await handlers.get('form:submit')?.(event);
   await handlers.get('field:input')?.(event);
   await handlers.get('toggle:click')?.(event);
   if (!automatic) await Promise.all(timers.map((callback) => callback()));
   expect(main.dataset.state).toBe('loading');
-  expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'SAVE10' }) });
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(automatic ? {} : { code: 'SAVE10' }) });
   expect(field.disabled).toBe(true);
   expect(button.disabled).toBe(true);
   expect(toggle.disabled).toBe(true);
   expect(replace).not.toHaveBeenCalled();
   finish();
   await firstSubmission;
-  if (outcome === 'success' || outcome === 'automatic') {
+  if (outcome === 'success' || outcome === 'prefilled' || automatic) {
     await handlers.get('form:submit')?.(event);
     expect(fetch).toHaveBeenCalledOnce();
     expect(remainingRedemptions).toBe(0);
@@ -279,7 +288,7 @@ it.each(['success', 'automatic', 'automatic-invalid-code', 'invalid-code', 'netw
     expect(button.disabled).toBe(true);
   } else {
     expect(main.dataset.state).toBe('error');
-    expect(status.textContent).toBe(outcome === 'invalid-code' || outcome === 'automatic-invalid-code' ? directSalesLinkCopyEn.couponUnavailable : directSalesLinkCopyEn.checkoutUnavailable);
+    expect(status.textContent).toBe(outcome === 'invalid-code' ? directSalesLinkCopyEn.couponUnavailable : directSalesLinkCopyEn.checkoutUnavailable);
     expect(field.disabled).toBe(false);
     expect(button.disabled).toBe(false);
     expect(toggle.disabled).toBe(false);

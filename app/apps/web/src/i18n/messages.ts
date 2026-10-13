@@ -2512,6 +2512,7 @@ export interface Messages {
     couponForever: string;
     couponUnavailable: string;
     couponEmailRequired: string;
+    partnerCodeRequiresOffer: string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

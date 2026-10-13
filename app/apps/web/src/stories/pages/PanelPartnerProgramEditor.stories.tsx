@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import fixture from '../fixtures/panel-partner-program-editor.json';
+import { partnerProgramEditorFixture as fixture } from '../partner-fixtures.js';
 import { withPage } from '../page-decorators.js';
 
 const meta = { title: 'Pages/PanelPartnerProgramEditor', id: 'panel-partner-program-editor', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;

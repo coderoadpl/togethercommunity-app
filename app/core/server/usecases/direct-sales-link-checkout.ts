@@ -60,6 +60,7 @@ export const createDirectSalesLinkCheckout = async (
   }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(partner.value === null ? {} : { expiresInSeconds: 30 * 60 }),
     ...promotion.value,
     mode,
     productId,

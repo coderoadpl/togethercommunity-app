@@ -141,8 +141,8 @@ ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
       toggle.disabled = false;
     }
   });
-  if (page.dataset.code) form.hidden = false;
-  setTimeout(async () => {
+  if (page.dataset.code) edit();
+  else setTimeout(async () => {
     if (generation !== 0) return;
     page.dataset.state = 'loading';
     field.disabled = true;

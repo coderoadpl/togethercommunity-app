@@ -674,12 +674,14 @@ export const SCREENS: readonly ScreenSpec[] = [
   },
   {
     name: 'panel-partner-programs',
+    fixtureName: 'panel-coupons',
     auth: 'creator',
     path: '/panel/sales/partner-programs',
     ready: (page) => page.getByTestId('partner-programs-page').waitFor(visible),
   },
   {
     name: 'panel-partner-program-editor',
+    fixtureName: 'panel-coupons',
     auth: 'creator',
     path: '/panel/sales/partner-programs/program-studio-ambassadors',
     fullPage: true,

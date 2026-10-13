@@ -21,8 +21,9 @@ that code first. Eligibility requires an active program, partner and code,
 the selected sales link, an inclusive start and exclusive end when configured,
 and an available redemption under the optional cap. Checkout creation reserves
 capacity atomically before asking Stripe for a session, including attribution-only
-codes. Fulfillment consumes that reservation in the payment transaction. Confirmed
-session expiration or asynchronous payment failure releases it; a definite session
+codes. Every session with a partner reservation expires after 30 minutes, the
+shortest Stripe checkout lifetime. Fulfillment consumes that reservation in the
+payment transaction. Confirmed session expiration or asynchronous payment failure releases it; a definite session
 creation failure also releases it. Reservations do not expire on a local timer:
 a delayed payment webhook must not let another buyer reuse a paid slot. Provider
 failures with an unknown outcome retain capacity until the session is resolved.
@@ -74,9 +75,10 @@ automatic handoff before its POST starts and reveals the code input and
 **Continue to payment** button. While a POST is in flight, the code controls are
 locked so its reserved redemption and successful checkout URL cannot be discarded.
 A failed POST unlocks the controls for correction. A `code` query
-parameter prefills the input, including through `/link/<key>` redirects. The
-server validates every submitted code before creating a payment session. Invalid
-codes show an inline error so the buyer can retry or continue without a code.
+parameter prefills the input, including through `/link/<key>` redirects, and
+waits for an explicit **Continue to payment** click; it never starts an automatic
+POST. Offers without a prefilled code keep the automatic handoff. The server
+validates every submitted code before creating a payment session. Invalid codes show an inline error so the buyer can retry or continue without a code.
 Offers that disallow codes hide the input and reject supplied codes.
 
 The Together checkout coupon field uses the same partner eligibility rules.

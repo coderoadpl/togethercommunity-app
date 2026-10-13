@@ -5,6 +5,9 @@ import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { en } from '../../i18n/en.js';
+import { LanguageProvider, type Language } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
+import { languagePreference } from '../../theme-mode.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -34,7 +37,8 @@ const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const textPattern = (value: string) =>
   new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 
-const renderCheckout = (productRef: string) => {
+const renderCheckout = (productRef: string, language: Language = 'en') => {
+  languagePreference.save(language);
   const root = createRootRoute({ component: () => <CheckoutPage productRef={productRef} /> });
   const router = createRouter({
     routeTree: root,
@@ -42,7 +46,7 @@ const renderCheckout = (productRef: string) => {
       initialEntries: [`${window.location.pathname}${window.location.search}`],
     }),
   });
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(<LanguageProvider><RouterProvider router={router} /></LanguageProvider>);
 };
 
 describe('CheckoutPage', () => {
@@ -309,6 +313,45 @@ describe('CheckoutPage', () => {
     } finally {
       finishPreview();
     }
+  });
+
+  it.each([
+    { language: 'en', messages: en, action: 'apply', stripeConfigured: true },
+    { language: 'pl', messages: pl, action: 'apply', stripeConfigured: true },
+    { language: 'en', messages: en, action: 'pay', stripeConfigured: true },
+    { language: 'pl', messages: pl, action: 'pay', stripeConfigured: true },
+    { language: 'en', messages: en, action: 'pay', stripeConfigured: false },
+    { language: 'pl', messages: pl, action: 'pay', stripeConfigured: false },
+  ] as const)('localizes an offer-required partner code on $action in $language with Stripe $stripeConfigured', async ({ language, messages, action, stripeConfigured }) => {
+    const requests: unknown[] = [];
+    const rejection = {
+      ok: false,
+      error: { code: 'validation', message: 'Partner codes require a sales-link offer' },
+    };
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({
+        ok: true, data: { stripeConfigured, simulatedPaymentsEnabled: true },
+      })),
+      http.post('/api/public/checkout/coupon', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json(rejection, { status: 400 });
+      }),
+      http.post(stripeConfigured ? '/api/public/checkout/session' : '/api/dev/simulate-purchase', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json(rejection, { status: 400 });
+      }),
+    );
+    renderCheckout('course-1', language);
+    await userEvent.type(await screen.findByLabelText(messages.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
+    await userEvent.type(screen.getByLabelText(messages.checkout.couponLabel), 'FRIEND10');
+    await userEvent.click(screen.getByTestId(action === 'apply' ? 'checkout-coupon-apply' : 'checkout-pay-cta'));
+    expect(await screen.findByText(messages.checkout.partnerCodeRequiresOffer)).toBeInTheDocument();
+    expect(screen.queryByText(rejection.error.message)).not.toBeInTheDocument();
+    expect(requests).toMatchObject([{ couponCode: 'FRIEND10' }]);
+    expect(requests).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: messages.checkout.accessGrantedTitle })).not.toBeInTheDocument();
   });
 
   it('explains a forever coupon on a recurring price', async () => {

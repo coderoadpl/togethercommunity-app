@@ -32,6 +32,7 @@
           "memberId": "member-studio-active",
           "memberName": "Active Student",
           "mode": "live",
+          "partnerCodeId": null,
           "priceId": "price-product-js-full",
           "productId": "product-js-full",
           "productTitle": "JavaScript Course - full access",

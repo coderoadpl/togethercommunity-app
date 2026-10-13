@@ -76,7 +76,7 @@ const couponError = (
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
     case 'Partner codes require a sales-link offer':
-      return error.appError.message;
+      return t.checkout.partnerCodeRequiresOffer;
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
     case 'An email is required to validate this coupon':
@@ -692,12 +692,12 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           {checkoutSession.isError ? (
             <Alert severity="error">
-              {localizeError(checkoutSession.error, t)}
+              {couponError(checkoutSession.error, t)}
             </Alert>
           ) : null}
           {simulatePurchase.isError ? (
             <Alert severity="error">
-              {localizeError(simulatePurchase.error, t)}
+              {couponError(simulatePurchase.error, t)}
             </Alert>
           ) : null}
         </Stack>

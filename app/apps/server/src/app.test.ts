@@ -10010,8 +10010,9 @@ it('prefills a partner code on the offer and applies it through the direct POST'
   const html = await response.text();
   expect(html).toContain('id="code-toggle"');
   expect(html).toContain('value="REFERRAL10"');
+  expect(h.create).not.toHaveBeenCalled();
   expect(await (await h.start('referral10')).json()).toMatchObject({ ok: true });
-  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner', directCheckout: expect.any(Object) }));
+  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner', expiresInSeconds: 1800, directCheckout: expect.any(Object) }));
   h.code.discountPct = 20;
   expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: 'partner-code', discountCents: 213, partnerTerms: { commissionPct: 50, discountPct: 10, graceDays: 14 } }]);
 });
@@ -10036,21 +10037,25 @@ it('accepts attribution-only codes without applying a Stripe discount', async ()
   const promotion = vi.spyOn(h.base.payment, 'ensureCouponPromotion');
   expect((await h.start(h.code.code)).status).toBe(200);
   expect(h.create.mock.calls[0]?.[0].promotionCodeId).toBeUndefined();
+  expect(h.create.mock.calls[0]?.[0].expiresInSeconds).toBe(1800);
   expect(promotion).not.toHaveBeenCalled();
   expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: h.code.id, discountCents: 0 }]);
 });
 
-it('accepts partner codes in Together preview and checkout and rejects single-product use', async () => {
+it('applies typed partner codes in Together checkout without a preview and rejects single-product use', async () => {
   const h = await partnerDirectApp();
   const input = { productId: 'print', salesLinkSlug: h.link.slug, couponCode: h.code.code, email: 'buyer@example.test' };
-  const preview = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: h.headers, body: JSON.stringify(input) });
-  expect(await preview.json()).toMatchObject({ ok: true, data: { breakdown: { code: h.code.code, discountCents: 213 } } });
   const checkout = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers: h.headers, body: JSON.stringify({ ...input, termsAccepted: true }) });
   expect(await checkout.json()).toMatchObject({ ok: true });
-  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner' }));
+  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner', expiresInSeconds: 1800 }));
   expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: h.code.id, partnerTerms: { commissionPct: 50, discountPct: 10, graceDays: 14 } }]);
+  const preview = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: h.headers, body: JSON.stringify(input) });
+  expect(await preview.json()).toMatchObject({ ok: true, data: { breakdown: { code: h.code.code, discountCents: 213 } } });
   const single = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: h.headers, body: JSON.stringify({ productId: 'print', couponCode: h.code.code }) });
   expect(await single.json()).toMatchObject({ ok: false, error: { message: 'Partner codes require a sales-link offer' } });
+  const singleCheckout = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers: h.headers, body: JSON.stringify({ productId: 'print', couponCode: h.code.code, email: input.email, termsAccepted: true }) });
+  expect(await singleCheckout.json()).toMatchObject({ ok: false, error: { message: 'Partner codes require a sales-link offer' } });
+  expect(h.create).toHaveBeenCalledOnce();
 });
 
 it('rejects a partner code in staff test checkout before creating a payment session', async () => {

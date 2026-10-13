@@ -2956,3 +2956,30 @@ it('rejects a foreign checkout expiration before releasing a partner reservation
   expect(await fulfillStripeWebhook(tenantA, { ...h.event, type: 'checkout.session.expired' }, h.deps)).toMatchObject({ ok: false });
   expect(releaseCheckout).not.toHaveBeenCalled();
 });
+
+it('releases an abandoned partner reservation at the 30-minute checkout expiration', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(now);
+    const h = partnerPayment();
+    if (h.deps.partners === undefined) throw new Error('Partner repository missing');
+    let reserved = true;
+    const releaseCheckout = vi.fn(async () => { reserved = false; });
+    h.deps.partners.releaseCheckout = releaseCheckout;
+    h.deps.clock.nowIso = () => new Date().toISOString();
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+    expect(reserved).toBe(true);
+    expect(releaseCheckout).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    const expiredAt = new Date().toISOString();
+    const event = { ...h.event, type: 'checkout.session.expired', createdAt: expiredAt };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(releaseCheckout).toHaveBeenCalledExactlyOnceWith(tenantA.id, 'snapshot-1', expiredAt);
+    expect(reserved).toBe(false);
+    expect(Date.parse(expiredAt) - Date.parse(now)).toBe(30 * 60 * 1000);
+    expect(h.orders).toEqual([]);
+    expect(h.commissions).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

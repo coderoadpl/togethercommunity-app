@@ -56,7 +56,7 @@ const stepByName = (name: string) => {
   return found;
 };
 
-const actionPin = 'anthropics/claude-code-action/base-action@19dda84776b3518d98b8798e591daee763049ed3';
+const actionPin = 'anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc';
 const checkoutPin = 'actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955';
 const attemptIds = [
   'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',

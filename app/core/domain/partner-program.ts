@@ -27,3 +27,6 @@ export const commissionStatusAt = (commission: Pick<Commission, 'status' | 'paya
 export const validatePartnerCode = (partnerCode: PartnerCode, input: { now: string; salesLinkId: string | null; totalRedemptions: number }): boolean => partnerCode.status === 'active' && input.salesLinkId !== null && partnerCode.salesLinkIds.includes(input.salesLinkId) && (partnerCode.validFrom === null || Date.parse(input.now) >= Date.parse(partnerCode.validFrom)) && (partnerCode.validTo === null || Date.parse(input.now) < Date.parse(partnerCode.validTo)) && (partnerCode.maxRedemptions === null || input.totalRedemptions < partnerCode.maxRedemptions);
 export const partnerProgramSummarySchema = z.object({ program: partnerProgramSchema, partnerCount: z.number().int().nonnegative(), codeCount: z.number().int().nonnegative(), currencyTotals: z.array(z.object({ currency: z.string().length(3), pendingCents: z.number().int().nonnegative(), payableCents: z.number().int().nonnegative(), paidCents: z.number().int().nonnegative() })) });
 export const partnerDetailSchema = partnerSchema.extend({ email: z.string().email() });
+
+export const partnerCheckoutReservationSchema = z.object({ checkoutSnapshotId: z.string().min(1), sessionId: z.string().min(1).nullable() });
+export type PartnerCheckoutReservation = z.infer<typeof partnerCheckoutReservationSchema>;

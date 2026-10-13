@@ -21,6 +21,7 @@ export const createPartnerRepository = (db: Db): PartnerRepository => ({
   },
   saveProgram: async (tenantId, input, expectedRevision) => db.transaction(async (tx) => {
     const value = partnerProgramSchema.parse({ ...input, tenantId });
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sales-links:${tenantId}`}, 0))`);
     if (expectedRevision !== null) {
       const [existing] = await tx.select().from(partnerPrograms).where(and(eq(partnerPrograms.tenantId, tenantId), eq(partnerPrograms.id, value.id))).for('update');
       if (existing?.revision !== expectedRevision) return err(appError('conflict', 'Partner program changed; reload before saving'));

@@ -151,6 +151,11 @@ export const startCheckoutSession = async (
   checkoutSnapshotId?: string;
   free: boolean;
 }, AppError>> => {
+  const mode = testSession?.mode ?? 'live';
+  if (mode === 'test') {
+    const rejected = testCheckoutRejection(input, selection);
+    if (rejected !== null) return err(rejected);
+  }
   const { product, price } = selection;
   const amountCents = selection.productPrices?.reduce((sum, item) => sum + item.amountCents, 0) ?? price?.amountCents ?? product.priceCents;
   const partner = input.couponCode === undefined ? ok(null) : await validatePartnerCodeForCheckout(tenant.id, {
@@ -163,11 +168,6 @@ export const startCheckoutSession = async (
   if (!captured.ok) return captured;
   const { totalCents, currency, lines } = captured.value;
   let checkoutSnapshotId = 'checkoutSnapshotId' in captured.value && typeof captured.value.checkoutSnapshotId === 'string' ? captured.value.checkoutSnapshotId : undefined;
-  const mode = testSession?.mode ?? 'live';
-  if (mode === 'test') {
-    const rejected = testCheckoutRejection(input, selection);
-    if (rejected !== null) return err(rejected);
-  }
   if (testSession !== undefined && (deps.orders === undefined || deps.ids === undefined || deps.clock === undefined)) {
     return err(validation('Test checkout is not configured'));
   }

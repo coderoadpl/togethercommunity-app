@@ -1,5 +1,5 @@
 import { and, count, eq, ne } from 'drizzle-orm';
-import { err, ok, checkoutSnapshotSchema, partnerCodeSchema, validatePartnerCode, validation } from '#core/domain/index.js';
+import { err, ok, checkoutSnapshotSchema, partnerCodeSchema, partnerCheckoutReservationSchema, validatePartnerCode, validation } from '#core/domain/index.js';
 import type { PartnerRepository } from '#core/server/index.js';
 import { orders } from './app-schema.js';
 import { checkoutSnapshots } from './checkout-snapshot-schema.js';
@@ -18,8 +18,9 @@ const countUsed = async (db: Db, tenantId: string, partnerCodeId: string, exclud
   return (ordered?.total ?? 0) + (reserved?.total ?? 0);
 };
 
-export const createPartnerCheckoutReservations = (db: Db): Pick<PartnerRepository, 'countRedemptions' | 'reserveCheckout' | 'attachCheckoutSession' | 'releaseCheckout' | 'completeCheckout'> => ({
+export const createPartnerCheckoutReservations = (db: Db): Pick<PartnerRepository, 'listCheckoutReservations' | 'countRedemptions' | 'reserveCheckout' | 'attachCheckoutSession' | 'releaseCheckout' | 'completeCheckout'> => ({
   countRedemptions: (tenantId, partnerCodeId) => countUsed(db, tenantId, partnerCodeId),
+  listCheckoutReservations: async (tenantId, partnerCodeId) => partnerCheckoutReservationSchema.array().parse(await db.select({ checkoutSnapshotId: partnerCheckoutReservations.id, sessionId: checkoutSnapshots.providerSessionId }).from(partnerCheckoutReservations).innerJoin(checkoutSnapshots, and(eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.id, partnerCheckoutReservations.id))).where(and(eq(partnerCheckoutReservations.tenantId, tenantId), eq(partnerCheckoutReservations.partnerCodeId, partnerCodeId), eq(partnerCheckoutReservations.status, 'reserved')))),
   reserveCheckout: (tenantId, input) => db.transaction(async (tx) => {
     const snapshot = checkoutSnapshotSchema.parse({ ...input, tenantId });
     if (snapshot.partnerCodeId == null || snapshot.salesLinkId === null || snapshot.mode === 'test') return unavailable();
@@ -39,9 +40,10 @@ export const createPartnerCheckoutReservations = (db: Db): Pick<PartnerRepositor
     await db.update(checkoutSnapshots).set({ providerSessionId }).where(and(eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.id, checkoutSnapshotId)));
   },
   releaseCheckout: async (tenantId, checkoutSnapshotId, now) => {
-    await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
       const [released] = await tx.update(partnerCheckoutReservations).set({ status: 'released' }).where(and(eq(partnerCheckoutReservations.tenantId, tenantId), eq(partnerCheckoutReservations.id, checkoutSnapshotId), eq(partnerCheckoutReservations.status, 'reserved'))).returning();
       if (released !== undefined) await tx.insert(partnerEvents).values({ id: `reservation:${checkoutSnapshotId}:released`, tenantId, entityId: checkoutSnapshotId, entityType: 'reservation', type: 'released', snapshot: released, occurredAt: now });
+      return released !== undefined;
     });
   },
   completeCheckout: (tenantId, checkoutSnapshotId, orderId, now) => db.transaction(async (tx) => {

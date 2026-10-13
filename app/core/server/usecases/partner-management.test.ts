@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { err, validation, appError, ok, memberSchema, partnerCodeSchema, partnerProgramSchema, salesLinkSchema, type Identity } from '#core/domain/index.js';
 import type { PartnerManagementDeps } from './partner-management.js';
-import { assignPartner, createPartnerCode, createPartnerProgram, updatePartnerCode, updatePartnerProgram } from './partner-management.js';
+import { reconcilePartnerCodeReservations, assignPartner, createPartnerCode, createPartnerProgram, updatePartnerCode, updatePartnerProgram } from './partner-management.js';
 
 const now = '2026-10-13T12:00:00.000Z';
 const identity: Identity = { userId: 'owner', email: 'owner@example.org', name: 'Owner', emailVerified: true, tenantAccess: 'staff', tenantId: 'tenant', tenantSlug: 'acme', tenantName: 'Workspace', staffRole: 'owner', memberId: null, image: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false };
@@ -16,7 +16,7 @@ const harness = () => {
       listPrograms: async () => [program], findProgram: async () => program, saveProgram: vi.fn(async (_tenantId, value) => ok(value)),
       listPartners: async () => [partner], findPartner: async () => partner, savePartner: vi.fn(async (_tenantId, value) => ok(value)),
       listCodes: async () => [], findCode: async () => code, findCodeByCode: async () => null, saveCode: vi.fn(async (_tenantId, value) => ok(value)),
-      cacheStripeIds: async () => code, reserveCheckout: async () => ok(undefined), attachCheckoutSession: async () => undefined, releaseCheckout: async () => undefined, completeCheckout: async () => ok(undefined), countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => false,
+      cacheStripeIds: async () => code, reserveCheckout: async () => ok(undefined), attachCheckoutSession: async () => undefined, releaseCheckout: async () => false, completeCheckout: async () => ok(undefined), listCheckoutReservations: async () => [], countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => false,
       listCommissions: async () => [], createCommissions: async () => undefined, voidPendingCommissions: async () => undefined,
     },
     orders: { findById: async () => null },
@@ -161,5 +161,38 @@ describe('partner management', () => {
     expect(await updatePartnerCode({ identity }, { ...input, id: code.id, expectedRevision: 1, status: 'active' }, deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(deps.payments.deactivateCouponPromotion).toHaveBeenCalledWith({ tenantId: 'tenant', stripePromotionCodeId: 'promotion' });
     expect(deps.payments.activateCouponPromotion).not.toHaveBeenCalled();
+  });
+});
+
+describe('operator reservation reconciliation', () => {
+  it('reports actual releases and retains unresolved, paid, and concurrently consumed reservations', async () => {
+    const deps = harness();
+    deps.partners.listCheckoutReservations = vi.fn(async () => [
+      { checkoutSnapshotId: 'expired', sessionId: 'cs_expired' },
+      { checkoutSnapshotId: 'unpaid', sessionId: 'cs_unpaid' },
+      { checkoutSnapshotId: 'paid', sessionId: 'cs_paid' },
+      { checkoutSnapshotId: 'unknown', sessionId: null },
+      { checkoutSnapshotId: 'raced', sessionId: 'cs_raced' },
+    ]);
+    deps.payments.retrieveCheckoutSession = vi.fn(async ({ sessionId }) => ok(sessionId === 'cs_paid'
+      ? { status: 'complete' as const, paymentStatus: 'paid' as const }
+      : { status: sessionId === 'cs_unpaid' ? 'complete' as const : 'expired' as const, paymentStatus: 'unpaid' as const }));
+    deps.partners.releaseCheckout = vi.fn(async (_tenantId, id) => id !== 'raced');
+    expect(await reconcilePartnerCodeReservations({ identity }, { id: code.id }, deps)).toEqual(ok({
+      codeId: code.id, checked: 4, retained: 3,
+      released: [{ checkoutSnapshotId: 'expired', sessionId: 'cs_expired' }, { checkoutSnapshotId: 'unpaid', sessionId: 'cs_unpaid' }],
+    }));
+    expect(deps.partners.listCheckoutReservations).toHaveBeenCalledWith(identity.tenantId, code.id);
+    expect(deps.partners.releaseCheckout).toHaveBeenCalledTimes(3);
+    expect(deps.payments.retrieveCheckoutSession).toHaveBeenCalledTimes(4);
+  });
+  it('requires write permission and a code from the current workspace before retrieving sessions', async () => {
+    const deps = harness();
+    const list = vi.spyOn(deps.partners, 'listCheckoutReservations');
+    expect(await reconcilePartnerCodeReservations({ identity: { ...identity, staffRole: null, memberId: 'member', tenantAccess: 'member' } }, { id: code.id }, deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    deps.partners.findCode = vi.fn(async () => null);
+    expect(await reconcilePartnerCodeReservations({ identity }, { id: 'foreign-code' }, deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(deps.partners.findCode).toHaveBeenCalledWith(identity.tenantId, 'foreign-code');
+    expect(list).not.toHaveBeenCalled();
   });
 });

@@ -209,6 +209,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/partners/:id` | authenticated | mutating | update partner |
 | `POST /api/partner-codes` | authenticated | mutating | create partner code |
 | `POST /api/partner-codes/:id` | authenticated | mutating | update partner code |
+| `POST /api/partner-codes/:id/reconcile-reservations` | authenticated | mutating | reconcile partner code reservations |
 | `GET /api/orders/verify/:reference` | authenticated | read | verify order |
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |

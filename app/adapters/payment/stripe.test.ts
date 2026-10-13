@@ -1328,3 +1328,54 @@ it('sets the shortest Stripe expiration for a reserved partner checkout', () => 
     vi.useRealTimers();
   }
 });
+
+describe('retrieveCheckoutSession', () => {
+  const retrievalProvider = (response: Response) => {
+    const requests: Request[] = [];
+    const resolve = vi.fn(async (_tenantId: string, key: string) => ok(key === 'stripe.testRestrictedKey' ? 'rk_test_unused' : 'rk_live_unused'));
+    const payment = createStripePaymentProvider({
+      resolver: { resolve },
+      clientFactory: (key) => new Stripe(key, {
+        maxNetworkRetries: 0,
+        httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+          requests.push(new Request(input, init));
+          return response;
+        }),
+      }),
+    });
+    return { payment, requests, resolve };
+  };
+
+  it.each([
+    { status: 'open', paymentStatus: 'unpaid', mode: 'live' },
+    { status: 'expired', paymentStatus: 'unpaid', mode: 'test' },
+    { status: 'complete', paymentStatus: 'paid', mode: 'live' },
+    { status: 'complete', paymentStatus: 'unpaid', mode: 'test' },
+    { status: 'complete', paymentStatus: 'no_payment_required', mode: 'live' },
+  ] as const)('retrieves $status/$paymentStatus in $mode mode', async ({ status, paymentStatus, mode }) => {
+    const { payment, requests, resolve } = retrievalProvider(stripeJson({ id: 'cs_reserved', status, payment_status: paymentStatus }));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode })).toEqual(ok({ status, paymentStatus }));
+    expect(resolve).toHaveBeenCalledWith('tenant', mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe('GET');
+    expect(requests[0]?.url).toBe('https://api.stripe.com/v1/checkout/sessions/cs_reserved');
+  });
+
+  it.each([
+    { status: null, payment_status: 'unpaid' },
+    { status: 'complete', payment_status: 'unknown' },
+    { status: 'expired' },
+  ])('rejects an invalid session state: %j', async (session) => {
+    const { payment } = retrievalProvider(stripeJson(session));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved' })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Stripe returned an invalid checkout session state' },
+    });
+  });
+
+  it('returns a Stripe retrieval failure without treating the reservation as expired', async () => {
+    const { payment } = retrievalProvider(stripeJson({ error: { message: 'No such checkout session', type: 'invalid_request_error' } }, 404));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved' })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Stripe could not retrieve the checkout session: No such checkout session' },
+    });
+  });
+});

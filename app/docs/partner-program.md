@@ -27,46 +27,41 @@ payment transaction. Confirmed session expiration or asynchronous payment failur
 creation failure also releases it. Reservations do not expire on a local timer:
 a delayed payment webhook must not let another buyer reuse a paid slot. Provider
 failures with an unknown outcome retain capacity until the session is resolved.
-Stripe webhook endpoints must include `checkout.session.expired` alongside the
-checkout completion and asynchronous payment events so abandoned sessions release
-their reservations.
+When validation finds a capped code at capacity (`reserved + used >= maxRedemptions`),
+Together retrieves every outstanding reservation's checkout session from Stripe
+before deciding whether another redemption is available. An expired session or a
+completed session with `payment_status=unpaid` releases its reservation. Open,
+paid, and `no_payment_required` sessions retain their reservation. Missing session
+IDs and unknown provider outcomes also retain capacity for later investigation;
+age alone never releases a reservation.
 
-### Existing Stripe endpoints: required rollout step
+### Reservation recovery on existing Stripe endpoints
 
-Deploying this release does not update an endpoint already registered in Stripe.
-Before enabling any partner codes, reconfigure Stripe for **every existing
-workspace** that accepts payments. Do this in a maintenance window with checkout
-traffic paused and existing sessions resolved: reconfiguration deletes the old
-endpoint before creating its replacement and saving the new signing secret.
+No manual endpoint reconfiguration is required to enable partner codes. Capacity
+validation recovers abandoned reservations even when the workspace's endpoint
+never delivers `checkout.session.expired`. Subscribing to that event remains
+recommended: its webhook releases capacity immediately as the fast path, while
+the validation fallback runs only when a capped code is full. Completion and
+asynchronous payment webhook handling remains unchanged.
 
-1. In **Integrations → Stripe**, enter the workspace's existing live restricted
-   key again and select **Save and create webhook**. The headless equivalent is
-   `stripe configure <restricted-key>` through the Together CLI with the correct
-   API origin and tenant selected. No new key is required.
-2. Repeat for each configured test-mode card, or use
-   `stripe test-mode configure <restricted-key>`. Each slot is reconfigured
-   separately; saving one leaves the other unchanged.
-3. Confirm configuration succeeds and the replacement endpoint in Stripe enables
-   `checkout.session.expired`, `checkout.session.completed`,
-   `checkout.session.async_payment_succeeded` and
-   `checkout.session.async_payment_failed`, together with the remaining events
-   in `STRIPE_WEBHOOK_EVENT_TYPES` (`core/server/usecases/stripe-webhook.ts`).
-   Confirm a signed checkout event is delivered successfully before resuming
-   checkout traffic.
-   A successful connection test alone does not prove the event subscription.
+Owners and administrators can also run reconciliation before the cap is full:
 
-If reconfiguration fails, keep checkout paused until the endpoint and signing
-secret have been configured successfully. This procedure updates future
-deliveries; it does not recover expiration events missed before the upgrade.
-If partner checkout was already enabled, reconcile unresolved reservations
-against confirmed provider outcomes before reopening capped codes. Never release
-a reservation solely because it is old: its payment notification may be delayed.
-Test-mode orders do not reserve partner capacity, so a sandbox delivery verifies
-the endpoint, not live capped-slot recovery. The local reservation integration
-tests cover release, retry and capacity reuse without real payments.
+```sh
+pnpm --silent run cli --json --tenant <slug> partner-program reconcile-reservations <code-id>
+```
 
-The [go-live checklist](go-live-checklist.md) and [staging runbook](staging.md)
-require this step for existing endpoints before partner checkout rollout.
+The command checks outstanding reservations against Stripe using the same safe
+release rules. Its report contains `codeId`, `checked`, a `released` array with
+each checkout snapshot and Stripe session ID, and `retained`. Retained entries
+include unresolved sessions and reservations without a session ID; investigate
+those provider outcomes instead of releasing them because they are old. There is
+no local expiry timer. Test-mode orders do not reserve partner capacity, so
+sandbox delivery alone does not demonstrate live capped-code recovery. Local
+regression tests mock Stripe to cover expiration without any webhook, capacity
+reuse, and the operator command.
+
+See the [go-live checklist](go-live-checklist.md) and
+[staging runbook](staging.md) for rollout verification.
 
 ### Buyer entry and attribution
 
@@ -136,8 +131,10 @@ the paid status and nullable payout reference needed for that workflow.
 ## CLI
 
 `partner-program` exposes `list`, `show <id>`, `create`, `update`, `assign`,
-`update-partner`, `create-code`, and `update-code`. Mutations accept `--input`
-JSON; program and code updates include `id` and `expectedRevision`.
+`update-partner`, `create-code`, `update-code`, and `reconcile-reservations <id>`.
+Create, update and assignment commands accept `--input` JSON; program and code
+updates include `id` and `expectedRevision`. Reconciliation takes the code ID
+as its positional argument and reports confirmed releases.
 Sales-link create and update inputs accept `allowsCodes`. The direct
 `sales-link checkout <slug>` command accepts `--code` for the same offer-scoped
 validation as the browser.

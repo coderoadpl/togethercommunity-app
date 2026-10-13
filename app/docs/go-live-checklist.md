@@ -112,16 +112,16 @@ A deployment that already stores an `rk_test_…` key in the live slot keeps
 serving Studio but cannot start a checkout. Move that key to the test-mode card
 and save a live key here before accepting payments.
 
-**PARTNER PROGRAM UPGRADE:** Before enabling partner codes on any existing
-workspace, follow the [endpoint reconfiguration procedure](partner-program.md#existing-stripe-endpoints-required-rollout-step).
-Deployment alone does not add `checkout.session.expired` to existing endpoints.
-In a maintenance window with checkout traffic paused and existing sessions
-resolved, save the existing key again in each configured live/test card.
-Confirm the replacement endpoint includes the expiration event and receives a
-signed checkout event successfully before reopening checkout. Without that
-subscription, abandoned sessions permanently retain capped-code capacity.
-Reconfiguration does not recover previously missed expiration events; reconcile
-any already stranded reservations against confirmed provider outcomes first.
+**PARTNER PROGRAM UPGRADE:** No manual endpoint reconfiguration is required.
+When a capped code is full, validation retrieves outstanding checkout sessions
+from Stripe and releases expired or completed unpaid sessions before deciding
+capacity. Subscribing to `checkout.session.expired` remains recommended for faster
+webhook release. Operators can run `partner-program reconcile-reservations <code-id>`
+to report confirmed releases and retained reservations on demand. Open, paid,
+`no_payment_required`, missing-session and unknown outcomes retain capacity; age
+alone is never a release signal. See
+[reservation recovery](partner-program.md#reservation-recovery-on-existing-stripe-endpoints)
+and its local regression coverage for missed expiration webhooks.
 
 Complete item 11 before accepting payments.
 

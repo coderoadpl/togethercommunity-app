@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 125. Route rows: 437. Exported `Ctx` use-case rows: 342.
+Closed capability count: 125. Route rows: 438. Exported `Ctx` use-case rows: 343.
 
 ## Human-readable diff
 
@@ -232,6 +232,7 @@ no changes
 | `POST /api/partners/:id` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/partner-codes` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/partner-codes/:id` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/partner-codes/:id/reconcile-reservations` | partner:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/verify/:reference` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/lines/:productId/issue` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -734,6 +735,7 @@ no changes
 | `partner-management.ts#updatePartner` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
 | `partner-management.ts#createPartnerCode` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
 | `partner-management.ts#updatePartnerCode` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
+| `partner-management.ts#reconcilePartnerCodeReservations` | partner:write | owner, admin | owner, admin | yes | core/server/usecases/partner-management.ts authorization call |
 | `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
 | `probe-stripe-permissions.ts#probeStripePermissions` | tenant:secret:write | owner | owner | yes | core/server/usecases/probe-stripe-permissions.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |

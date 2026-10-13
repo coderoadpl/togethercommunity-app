@@ -1,10 +1,12 @@
 import { err, normalisePartnerCode, ok, validatePartnerCode, validation, type AppError, type CouponCheckoutBreakdown, type CheckoutSnapshot, type PartnerCode, type Result } from '#core/domain/index.js';
 import type { PartnerRepository } from '../partner-ports.js';
 import type { Clock, PaymentProvider, ProductPriceHistoryRepository } from '../ports.js';
+import { reconcilePartnerReservations } from './partner-reservations.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 
 interface PartnerCheckoutDeps {
   partners?: PartnerRepository;
+  payment?: Pick<PaymentProvider, 'retrieveCheckoutSession'>;
   salesLinks?: SalesLinkRepository;
   clock?: Clock;
   priceHistory?: ProductPriceHistoryRepository;
@@ -22,9 +24,15 @@ export const validatePartnerCodeForCheckout = async (
   const link = await deps.salesLinks?.findById(tenantId, input.salesLinkId);
   const now = deps.clock?.nowIso();
   if (deps.partners === undefined || now === undefined || !link?.allowsCodes) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
-  const [program, partner, totalRedemptions] = await Promise.all([
+  const [program, partner, initialRedemptions] = await Promise.all([
     deps.partners.findProgram(tenantId, code.programId), deps.partners.findPartner(tenantId, code.partnerId), deps.partners.countRedemptions(tenantId, code.id),
   ]);
+  let totalRedemptions = initialRedemptions;
+  if (code.maxRedemptions !== null && totalRedemptions >= code.maxRedemptions && deps.payment?.retrieveCheckoutSession !== undefined && deps.clock !== undefined) {
+    const reconciled = await reconcilePartnerReservations(tenantId, code.id, { partners: deps.partners, payment: deps.payment, clock: deps.clock });
+    if (!reconciled.ok) return reconciled;
+    totalRedemptions = await deps.partners.countRedemptions(tenantId, code.id);
+  }
   if (program?.status !== 'active' || partner?.status !== 'active' || code.discountPct > program.commissionPct || !validatePartnerCode(code, { now, salesLinkId: input.salesLinkId, totalRedemptions })) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   const discountCents = Math.min(input.amountCents, Math.floor((input.amountCents * code.discountPct + 50) / 100));
   const priceHistory = deps.priceHistory;

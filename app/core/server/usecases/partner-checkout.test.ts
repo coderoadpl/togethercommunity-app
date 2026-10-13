@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ok, partnerCodeSchema, partnerProgramSchema, salesLinkSchema, type PartnerCode } from '#core/domain/index.js';
+import { err, integrationUnavailable, ok, partnerCodeSchema, partnerProgramSchema, salesLinkSchema, type PartnerCode } from '#core/domain/index.js';
 import type { PartnerRepository } from '../partner-ports.js';
 import { materialisePartnerCode, validatePartnerCodeForCheckout } from './partner-checkout.js';
 
@@ -11,7 +11,7 @@ const repository = (value: PartnerCode = code): PartnerRepository => ({
   listPrograms: async () => [program], findProgram: async () => program, saveProgram: async (_, item) => ok(item),
   listPartners: async () => [], findPartner: async () => ({ id: 'partner', tenantId: 'tenant', programId: program.id, memberId: 'member', status: 'active', createdAt: now }), savePartner: async (_, item) => ok(item),
   listCodes: async () => [value], findCode: async () => value, findCodeByCode: async () => value, saveCode: async (_, item) => ok(item), cacheStripeIds: async () => value,
-  reserveCheckout: async () => ok(undefined), attachCheckoutSession: async () => undefined, releaseCheckout: async () => undefined, completeCheckout: async () => ok(undefined), countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => true,
+  reserveCheckout: async () => ok(undefined), attachCheckoutSession: async () => undefined, releaseCheckout: async () => false, completeCheckout: async () => ok(undefined), listCheckoutReservations: async () => [], countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => true,
   listCommissions: async () => [], createCommissions: async () => undefined, voidPendingCommissions: async () => undefined,
 });
 const deps = (value = code) => ({ partners: repository(value), clock: { nowIso: () => now }, salesLinks: { list: async () => [link], findById: async () => link, findBySlug: async () => link, save: async (_: string, item: typeof link) => ok(item), delete: async () => ok(undefined) } });
@@ -61,5 +61,51 @@ describe('partner checkout validation', () => {
     const payment = { createCheckoutSession: async () => ok({ url: 'https://example.test', sessionId: 'session' }), expireCheckoutSession: async () => ok({ expired: true as const }), cancelSubscription: async () => ok({ canceled: true as const, alreadySettled: false }), verifyWebhookEvent: async () => { throw new Error('Unused'); }, test: async () => { throw new Error('Unused'); }, ensureCouponPromotion };
     expect(await materialisePartnerCode('tenant', code, 'PLN', { partners, payment })).toMatchObject({ ok: false, error: { message: 'Coupon cannot be applied' } });
     expect(partners.cacheStripeIds).toHaveBeenCalledWith('tenant', code.id, { stripeCouponId: 'coupon', stripePromotionCodeId: 'promotion' }, code.revision);
+  });
+});
+
+describe('partner reservation reconciliation during validation', () => {
+  it.each([
+    { status: 'expired' as const, paymentStatus: 'unpaid' as const },
+    { status: 'complete' as const, paymentStatus: 'unpaid' as const },
+  ])('recovers capacity without a webhook for %j', async (session) => {
+    const current = deps({ ...code, maxRedemptions: 1 });
+    let reserved = true;
+    current.partners.countRedemptions = async () => reserved ? 1 : 0;
+    current.partners.listCheckoutReservations = vi.fn(async () => [{ checkoutSnapshotId: 'snapshot', sessionId: 'cs_abandoned' }]);
+    current.partners.releaseCheckout = vi.fn(async () => { reserved = false; return true; });
+    const retrieveCheckoutSession = vi.fn(async () => ok(session));
+    expect(await validatePartnerCodeForCheckout('tenant', input, { ...current, payment: { retrieveCheckoutSession } })).toMatchObject({ ok: true, value: { code: { id: code.id } } });
+    expect(retrieveCheckoutSession).toHaveBeenCalledWith({ tenantId: 'tenant', sessionId: 'cs_abandoned', mode: 'live' });
+    expect(current.partners.listCheckoutReservations).toHaveBeenCalledWith('tenant', code.id);
+    expect(current.partners.releaseCheckout).toHaveBeenCalledWith('tenant', 'snapshot', now);
+  });
+  it.each([
+    { status: 'open' as const, paymentStatus: 'unpaid' as const },
+    { status: 'complete' as const, paymentStatus: 'paid' as const },
+    { status: 'complete' as const, paymentStatus: 'no_payment_required' as const },
+  ])('retains capacity for %j', async (session) => {
+    const current = deps({ ...code, maxRedemptions: 1 });
+    current.partners.countRedemptions = async () => 1;
+    current.partners.listCheckoutReservations = async () => [{ checkoutSnapshotId: 'snapshot', sessionId: 'cs_pending' }];
+    const release = vi.spyOn(current.partners, 'releaseCheckout');
+    expect(await validatePartnerCodeForCheckout('tenant', input, { ...current, payment: { retrieveCheckoutSession: async () => ok(session) } })).toMatchObject({ ok: false, error: { message: 'Coupon cannot be applied' } });
+    expect(release).not.toHaveBeenCalled();
+  });
+  it('retains reservations when Stripe cannot confirm the outcome', async () => {
+    const current = deps({ ...code, maxRedemptions: 1 });
+    current.partners.countRedemptions = async () => 1;
+    current.partners.listCheckoutReservations = async () => [{ checkoutSnapshotId: 'snapshot', sessionId: 'cs_unknown' }];
+    const release = vi.spyOn(current.partners, 'releaseCheckout');
+    const failure = err(integrationUnavailable('Stripe unavailable'));
+    expect(await validatePartnerCodeForCheckout('tenant', input, { ...current, payment: { retrieveCheckoutSession: async () => failure } })).toEqual(failure);
+    expect(release).not.toHaveBeenCalled();
+  });
+  it.each([null, 2])('does not retrieve sessions when capacity remains (limit %j)', async (maxRedemptions) => {
+    const current = deps({ ...code, maxRedemptions });
+    current.partners.countRedemptions = async () => 1;
+    const retrieveCheckoutSession = vi.fn(async () => ok({ status: 'expired' as const, paymentStatus: 'unpaid' as const }));
+    expect(await validatePartnerCodeForCheckout('tenant', input, { ...current, payment: { retrieveCheckoutSession } })).toMatchObject({ ok: true });
+    expect(retrieveCheckoutSession).not.toHaveBeenCalled();
   });
 });

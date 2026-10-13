@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(437);
-    expect(inventory.useCases).toHaveLength(342);
+    expect(inventory.routes).toHaveLength(438);
+    expect(inventory.useCases).toHaveLength(343);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
@@ -59,7 +59,7 @@ describe('permission inventory', () => {
   it('limits partner management surfaces to owners and admins', () => {
     const inventory = collectPermissionInventory();
     const partnerRoutes = inventory.routes.filter((row) => /\/api\/(partner-programs|partners|partner-codes)/.test(row.subject));
-    expect(partnerRoutes).toHaveLength(8);
+    expect(partnerRoutes).toHaveLength(9);
     for (const route of partnerRoutes) {
       expect(route.after).toEqual(['owner', 'admin']);
       expect(route.capability).toBe(route.subject.startsWith('GET ') ? 'partner:read' : 'partner:write');

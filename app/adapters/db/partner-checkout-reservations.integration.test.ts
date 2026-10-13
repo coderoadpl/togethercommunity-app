@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { err, ok, partnerCodeSchema, partnerProgramSchema, salesLinkSchema, validation, type CheckoutSnapshot } from '#core/domain/index.js';
+import { validatePartnerCodeForCheckout } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { members, orders, partnerEvents, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -66,4 +67,27 @@ describe('partner checkout capacity', () => {
     await db.insert(orders).values({ id: 'another-order', tenantId, memberId: 'member', productId: 'product', kind: 'one_time', status: 'paid', amountCents: 10000, currency: 'PLN', provider: 'stripe', partnerCodeId: code.id, createdAt: now });
     expect(await repo.completeCheckout(tenantId, 'legacy', 'another-order', now)).toMatchObject({ ok: false });
   });
+  it('recovers a capped slot from Stripe expiration without receiving a webhook', async () => {
+    const repo = createPartnerRepository(db);
+    const recovering = { ...code, id: 'recovering-code', code: 'RECOVER' };
+    expect(await repo.saveCode(tenantId, recovering, null)).toMatchObject({ ok: true });
+    const abandoned = { ...snapshot('abandoned'), partnerCodeId: recovering.id };
+    expect(await repo.reserveCheckout(tenantId, abandoned)).toEqual(ok(undefined));
+    expect(await repo.listCheckoutReservations(tenantId, recovering.id)).toEqual([{ checkoutSnapshotId: abandoned.id, sessionId: null }]);
+    await repo.attachCheckoutSession(tenantId, abandoned.id, 'cs_expired');
+    expect(await repo.listCheckoutReservations('other-workspace', recovering.id)).toEqual([]);
+    expect(await repo.listCheckoutReservations(tenantId, code.id)).toEqual([]);
+    const retrieveCheckoutSession = vi.fn(async () => ok({ status: 'expired' as const, paymentStatus: 'unpaid' as const }));
+    const result = await validatePartnerCodeForCheckout(tenantId, { code: recovering.code, salesLinkId: 'offer', amountCents: 10000, currency: 'PLN' }, {
+      partners: repo, salesLinks: createSalesLinkRepository(db), clock: { nowIso: () => now }, payment: { retrieveCheckoutSession },
+    });
+    expect(result).toMatchObject({ ok: true, value: { code: { id: recovering.id } } });
+    expect(retrieveCheckoutSession).toHaveBeenCalledWith({ tenantId, sessionId: 'cs_expired', mode: 'live' });
+    expect(await repo.countRedemptions(tenantId, recovering.id)).toBe(0);
+    expect(await repo.listCheckoutReservations(tenantId, recovering.id)).toEqual([]);
+    expect(await repo.releaseCheckout(tenantId, abandoned.id, now)).toBe(false);
+    expect(await repo.reserveCheckout(tenantId, { ...snapshot('recovered'), partnerCodeId: recovering.id })).toEqual(ok(undefined));
+    expect(await db.select().from(partnerEvents).where(eq(partnerEvents.entityId, abandoned.id))).toHaveLength(2);
+  });
+
 });

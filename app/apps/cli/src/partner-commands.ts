@@ -20,6 +20,7 @@ export const registerPartnerCommands = (program: Command, context: () => Result<
   };
   partners.command('list').action(run(z.tuple([z.object({})]), (ctx) => ctx.api.listPartnerPrograms({})));
   partners.command('show <id>').action(run(z.tuple([z.string(), z.object({})]), (ctx, [id]) => ctx.api.getPartnerProgram({ id })));
+  partners.command('reconcile-reservations <id>').description('Check outstanding code reservations in Stripe and release confirmed expired or unpaid completed sessions').action(run(z.tuple([z.string().min(1), z.object({})]), (ctx, [id]) => ctx.api.reconcilePartnerCodeReservations({ id })));
   partners.command('create').requiredOption('--input <json>', 'Program fields as JSON').action(run(z.tuple([z.object({ input: jsonInput.pipe(partnerContracts.createPartnerProgram.input) })]), (ctx, [options]) => ctx.api.createPartnerProgram(options.input)));
   partners.command('update').requiredOption('--input <json>', 'Program fields, id and expectedRevision as JSON').action(run(z.tuple([z.object({ input: jsonInput.pipe(partnerContracts.updatePartnerProgram.input) })]), (ctx, [options]) => ctx.api.updatePartnerProgram(options.input)));
   partners.command('assign').requiredOption('--input <json>', 'Program id and member email as JSON').action(run(z.tuple([z.object({ input: jsonInput.pipe(partnerContracts.assignPartner.input) })]), (ctx, [options]) => ctx.api.assignPartner(options.input)));

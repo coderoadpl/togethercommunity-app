@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 import { API_PATHS, partnerContracts } from '#core/contract/index.js';
 import { err, internal, validation } from '#core/domain/index.js';
-import { listPartnerPrograms, getPartnerProgram, createPartnerProgram, updatePartnerProgram, assignPartner, updatePartner, createPartnerCode, updatePartnerCode } from '#core/server/index.js';
+import { listPartnerPrograms, getPartnerProgram, createPartnerProgram, updatePartnerProgram, assignPartner, updatePartner, createPartnerCode, updatePartnerCode, reconcilePartnerCodeReservations } from '#core/server/index.js';
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { ctxOf } from './ctx-of.js';
@@ -38,5 +38,10 @@ export const registerPartnerRoutes = (app: Hono<AppVars>, deps: AppDeps): void =
     if (deps.partnerManagement === undefined) return respond(err(internal('Partner programs are unavailable')));
     const input = partnerContracts.updatePartnerCode.input.safeParse(await readJson(c.req.raw));
     return input.success && input.data.id === c.req.param('id') ? respond(await updatePartnerCode(ctxOf(c), input.data, deps.partnerManagement)) : respond(err(validation('Invalid partner code')));
+  });
+  app.post(API_PATHS.reconcilePartnerCodeReservations, async (c) => {
+    if (deps.partnerManagement === undefined) return respond(err(internal('Partner programs are unavailable')));
+    const input = partnerContracts.reconcilePartnerCodeReservations.input.safeParse(await readJson(c.req.raw));
+    return input.success && input.data.id === c.req.param('id') ? respond(await reconcilePartnerCodeReservations(ctxOf(c), input.data, deps.partnerManagement)) : respond(err(validation('Invalid partner code')));
   });
 };

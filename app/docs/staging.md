@@ -32,27 +32,25 @@ database on a protected Neon branch. It is not a copy of production data.
 
 ## Partner program rollout on existing Stripe endpoints
 
-Before enabling partner codes in a workspace that already has Stripe configured,
-follow the [required endpoint reconfiguration procedure](partner-program.md#existing-stripe-endpoints-required-rollout-step).
-Deploying the code does not update existing webhook event subscriptions. Pause
-checkout traffic and resolve existing sessions before saving the existing restricted key
-again in **Integrations → Stripe → Save and create webhook** for each configured
-live/test slot. Verify the replacement subscribes to `checkout.session.expired`
-alongside completion and asynchronous payment events, and that a signed checkout
-event reaches the application successfully before resuming traffic.
+Partner codes work with existing Stripe endpoints without manual endpoint
+reconfiguration. When a capped code is full, validation retrieves each outstanding
+reservation's checkout session from Stripe and releases expired or completed unpaid
+sessions before checking capacity again. Subscribing to `checkout.session.expired`
+is recommended for faster release through the webhook; delivery of that event is
+not a rollout precondition.
 
-Use the test-mode card and sandbox key for sandbox delivery verification. A
-test-mode order does not reserve partner capacity or create commissions, so this
-does not establish live capped-code recovery. Local tests cover an old endpoint
-upgraded from an event list without expiration, expiration handling, reservation
-release and subsequent capacity reuse. A fake payment provider needs no Stripe
-endpoint reconfiguration and cannot verify Stripe delivery.
+Use `partner-program reconcile-reservations <code-id>` with the correct API origin
+and tenant selected to check reservations on demand. The command reports checked
+reservations, released checkout snapshot/session IDs, and retained reservations.
+Open, paid, `no_payment_required`, missing-session and unresolved reservations
+remain reserved. Never release solely because a reservation is old.
+See [reservation recovery](partner-program.md#reservation-recovery-on-existing-stripe-endpoints).
 
-If partner checkout was enabled before upgrading the endpoint, reconcile its
-unresolved reservations against confirmed provider outcomes; reconfiguration does
-not recover already missed events. Repeat the endpoint upgrade for each existing
-production workspace before enabling partner checkout there, as required by the
-[go-live checklist](go-live-checklist.md).
+Local regression tests use a mocked Stripe adapter to verify that an expired
+session recovers capped capacity without a webhook and that the operator command
+reports releases. A test-mode order does not reserve partner capacity or create
+commissions, so sandbox delivery alone does not establish live capped-code recovery.
+A fake payment provider does not verify Stripe delivery.
 
 ## Troubleshooting
 

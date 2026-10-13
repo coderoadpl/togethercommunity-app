@@ -2816,7 +2816,7 @@ const partnerPayment = () => {
     },
     voidPendingCommissions,
     completeCheckout: async () => ok(undefined),
-    releaseCheckout: async () => undefined,
+    releaseCheckout: async () => false,
   };
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
@@ -2935,7 +2935,7 @@ it.each(['charge.refunded', 'charge.dispute.created'] as const)('uses the event 
 
 it.each(['checkout.session.expired', 'checkout.session.async_payment_failed'])('releases the partner reservation on %s once', async (type) => {
   const h = partnerPayment();
-  const releaseCheckout = vi.fn(async () => undefined);
+  const releaseCheckout = vi.fn(async () => true);
   if (h.deps.partners === undefined) throw new Error('Partner repository missing');
   h.deps.partners.releaseCheckout = releaseCheckout;
   const event = { ...h.event, type, createdAt: now };
@@ -2949,7 +2949,7 @@ it.each(['checkout.session.expired', 'checkout.session.async_payment_failed'])('
 
 it('rejects a foreign checkout expiration before releasing a partner reservation', async () => {
   const h = partnerPayment();
-  const releaseCheckout = vi.fn(async () => undefined);
+  const releaseCheckout = vi.fn(async () => true);
   if (h.deps.partners === undefined || h.event.checkoutSession === null) throw new Error('Partner checkout missing');
   h.deps.partners.releaseCheckout = releaseCheckout;
   h.event.checkoutSession.metadata.tenantId = 'other-workspace';
@@ -2964,7 +2964,7 @@ it('releases an abandoned partner reservation at the 30-minute checkout expirati
     const h = partnerPayment();
     if (h.deps.partners === undefined) throw new Error('Partner repository missing');
     let reserved = true;
-    const releaseCheckout = vi.fn(async () => { reserved = false; });
+    const releaseCheckout = vi.fn(async () => { reserved = false; return true; });
     h.deps.partners.releaseCheckout = releaseCheckout;
     h.deps.clock.nowIso = () => new Date().toISOString();
     await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);

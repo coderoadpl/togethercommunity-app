@@ -9994,8 +9994,8 @@ const partnerDirectApp = async () => {
     listCodes: async () => [code], findCode: async () => code, findCodeByCode: async (_, value) => value === code.code ? code : null, saveCode: async (_, item) => ok(item), cacheStripeIds: async () => code,
     reserveCheckout: async (_, snapshot) => { h.snapshots.set(snapshot.id, snapshot); return ok(undefined); },
     attachCheckoutSession: async (_, id, providerSessionId) => { const snapshot = h.snapshots.get(id); if (snapshot !== undefined) h.snapshots.set(id, { ...snapshot, providerSessionId }); },
-    releaseCheckout: async () => undefined, completeCheckout: async () => ok(undefined),
-    countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => true,
+    releaseCheckout: async () => false, completeCheckout: async () => ok(undefined),
+    listCheckoutReservations: async () => [], countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => true,
     listCommissions: async () => [], createCommissions: async () => undefined, voidPendingCommissions: async () => undefined,
   };
   h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'coupon-partner', stripePromotionCodeId: 'promotion-partner' });
@@ -10060,12 +10060,19 @@ it('applies typed partner codes in Together checkout without a preview and rejec
 
 it('rejects a partner code in staff test checkout before creating a payment session', async () => {
   const h = await partnerDirectApp();
+  h.code.maxRedemptions = 1;
+  if (h.base.partners === undefined) throw new Error('Partner repository missing');
+  h.base.partners.countRedemptions = async () => 1;
+  h.base.partners.listCheckoutReservations = async () => [{ checkoutSnapshotId: 'live-snapshot', sessionId: 'cs_live' }];
+  const retrieve = vi.fn(async () => ok({ status: 'expired' as const, paymentStatus: 'unpaid' as const }));
+  h.base.payment.retrieveCheckoutSession = retrieve;
   const { startCheckoutSession, validateCheckoutSelection } = await import('#core/server/index.js');
   const input = { productId: 'print', salesLinkSlug: h.link.slug, couponCode: h.code.code, email: 'staff@example.test' };
   const selection = await validateCheckoutSelection(acme.id, input, h.base);
   if (!selection.ok) throw new Error(selection.error.message);
   expect(await startCheckoutSession(acme, 'http://acme.localhost:48730', input, selection.value, h.base, undefined, { mode: 'test', memberId: 'staff-member' })).toMatchObject({ ok: false, error: { message: 'Test checkout requires a paid price without a coupon' } });
   expect(h.create).not.toHaveBeenCalled();
+  expect(retrieve).not.toHaveBeenCalled();
   expect(h.orders).toHaveLength(0);
 });
 

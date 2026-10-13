@@ -1,4 +1,4 @@
-import type { AppError, CheckoutSnapshot, Commission, Partner, PartnerCode, PartnerProgram, Result } from '#core/domain/index.js';
+import type { AppError, CheckoutSnapshot, Commission, Partner, PartnerCode, PartnerProgram, PartnerCheckoutReservation, Result } from '#core/domain/index.js';
 
 export interface PartnerRepository {
   listPrograms(tenantId: string): Promise<PartnerProgram[]>;
@@ -14,7 +14,8 @@ export interface PartnerRepository {
   cacheStripeIds(tenantId: string, id: string, stripeIds: { stripeCouponId: string; stripePromotionCodeId: string }, expectedRevision: number): Promise<PartnerCode | null>;
   reserveCheckout(tenantId: string, snapshot: CheckoutSnapshot): Promise<Result<void, AppError>>;
   attachCheckoutSession(tenantId: string, checkoutSnapshotId: string, providerSessionId: string): Promise<void>;
-  releaseCheckout(tenantId: string, checkoutSnapshotId: string, now: string): Promise<void>;
+  releaseCheckout(tenantId: string, checkoutSnapshotId: string, now: string): Promise<boolean>;
+  listCheckoutReservations(tenantId: string, partnerCodeId: string): Promise<PartnerCheckoutReservation[]>;
   completeCheckout(tenantId: string, checkoutSnapshotId: string, orderId: string, now: string): Promise<Result<void, AppError>>;
   countRedemptions(tenantId: string, partnerCodeId: string): Promise<number>;
   hasActiveCodeForSalesLink(tenantId: string, salesLinkId: string): Promise<boolean>;

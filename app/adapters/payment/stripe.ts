@@ -13,6 +13,7 @@ import {
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
+  stripeCheckoutSessionStateSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
   stripeSubscriptionObjectSchema,
@@ -577,6 +578,17 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return ok({ url: session.url, sessionId: session.id });
       } catch (cause) {
         return err(asDiagnostic('Stripe rejected the checkout request', cause));
+      }
+    },
+    retrieveCheckoutSession: async (input) => {
+      const client = await clientFor(input.tenantId, input.mode);
+      if (!client.ok) return client;
+      try {
+        const session = stripeCheckoutSessionStateSchema.safeParse(await client.value.checkout.sessions.retrieve(input.sessionId));
+        if (!session.success) return err(validation('Stripe returned an invalid checkout session state'));
+        return ok({ status: session.data.status, paymentStatus: session.data.payment_status });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe could not retrieve the checkout session', cause));
       }
     },
     expireCheckoutSession: async (input) => {

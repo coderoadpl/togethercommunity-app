@@ -1121,6 +1121,11 @@ export interface PaymentProvider {
   }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
   activateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ activated: true }, AppError>>;
   deactivateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ deactivated: true }, AppError>>;
+  retrieveCheckoutSession?(input: {
+    mode?: 'live' | 'test';
+    tenantId: string;
+    sessionId: string;
+  }): Promise<Result<{ status: 'open' | 'complete' | 'expired'; paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' }, AppError>>;
   expireCheckoutSession(input: {
     mode?: 'live' | 'test';
     tenantId: string;

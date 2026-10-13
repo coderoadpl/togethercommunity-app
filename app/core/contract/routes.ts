@@ -2171,6 +2171,7 @@ export const API_PATHS = {
   updatePartner: API_ROUTES.updatePartner.path,
   createPartnerCode: API_ROUTES.createPartnerCode.path,
   updatePartnerCode: API_ROUTES.updatePartnerCode.path,
+  reconcilePartnerCodeReservations: API_ROUTES.reconcilePartnerCodeReservations.path,
 
   directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,

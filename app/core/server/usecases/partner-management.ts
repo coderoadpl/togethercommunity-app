@@ -3,6 +3,7 @@ import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { PartnerRepository } from '../partner-ports.js';
 import type { Clock, CouponRepository, IdGenerator, MemberRepository, OrderDetailRepository, PaymentProvider } from '../ports.js';
+import { reconcilePartnerReservations } from './partner-reservations.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
 
 export interface PartnerManagementDeps {
@@ -11,7 +12,7 @@ export interface PartnerManagementDeps {
   coupons: Pick<CouponRepository, 'findByCode'>;
   members: Pick<MemberRepository, 'findByEmail' | 'findById'>;
   salesLinks: Pick<SalesLinkRepository, 'findById'>;
-  payments: Pick<PaymentProvider, 'ensureCouponPromotion' | 'deactivateCouponPromotion' | 'activateCouponPromotion'>;
+  payments: Pick<PaymentProvider, 'ensureCouponPromotion' | 'deactivateCouponPromotion' | 'activateCouponPromotion' | 'retrieveCheckoutSession'>;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -185,4 +186,12 @@ export const updatePartnerCode = async (ctx: Ctx, input: unknown, deps: PartnerM
       }
     }
   }
+};
+
+export const reconcilePartnerCodeReservations = async (ctx: Ctx, input: { id: string }, deps: PartnerManagementDeps) => {
+  const tenant = authorizeRequiredTenant(ctx, 'partner:write');
+  if (!tenant.ok) return tenant;
+  const code = await deps.partners.findCode(tenant.value, input.id);
+  if (code === null) return err(notFound('Partner code was not found'));
+  return reconcilePartnerReservations(tenant.value, code.id, { partners: deps.partners, payment: deps.payments, clock: deps.clock });
 };

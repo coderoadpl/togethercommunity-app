@@ -10,6 +10,7 @@ export const partnerContracts = {
   updatePartner: { input: partnerUpdateInputSchema, output: z.object({ partner: partnerSchema }) },
   createPartnerCode: { input: partnerCodeInputSchema, output: z.object({ code: partnerCodeSchema }) },
   updatePartnerCode: { input: partnerCodeUpdateSchema, output: z.object({ code: partnerCodeSchema }) },
+  reconcilePartnerCodeReservations: { input: z.object({ id: z.string().min(1) }).strict(), output: z.object({ codeId: z.string(), checked: z.number().int().nonnegative(), released: z.array(z.object({ checkoutSnapshotId: z.string(), sessionId: z.string() })), retained: z.number().int().nonnegative() }) },
 } as const;
 export const PARTNER_ROUTES = {
   listPartnerPrograms: { method: 'GET', path: '/api/partner-programs' },
@@ -20,4 +21,5 @@ export const PARTNER_ROUTES = {
   updatePartner: { method: 'POST', path: '/api/partners/:id' },
   createPartnerCode: { method: 'POST', path: '/api/partner-codes' },
   updatePartnerCode: { method: 'POST', path: '/api/partner-codes/:id' },
+  reconcilePartnerCodeReservations: { method: 'POST', path: '/api/partner-codes/:id/reconcile-reservations' },
 } as const;

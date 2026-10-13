@@ -180,7 +180,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 1 primary
         if: ${{ steps.classify1p.outputs.outcome == 'infra' }}
@@ -246,7 +258,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 1 primary cold-start retry
         if: ${{ steps.classify1pr.outputs.outcome == 'infra' }}
@@ -312,7 +336,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 2 primary
         if: ${{ steps.classify2p.outputs.outcome == 'infra' }}
@@ -378,7 +414,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 2 primary cold-start retry
         if: ${{ steps.classify2pr.outputs.outcome == 'infra' }}
@@ -444,7 +492,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 3 primary
         if: ${{ steps.classify3p.outputs.outcome == 'infra' }}
@@ -510,7 +570,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 3 primary cold-start retry
         if: ${{ steps.classify3pr.outputs.outcome == 'infra' }}
@@ -576,7 +648,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 1 fallback
         if: ${{ steps.classify1f.outputs.outcome == 'infra' }}
@@ -642,7 +726,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 1 fallback cold-start retry
         if: ${{ steps.classify1fr.outputs.outcome == 'infra' }}
@@ -708,7 +804,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 2 fallback
         if: ${{ steps.classify2f.outputs.outcome == 'infra' }}
@@ -774,7 +882,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 2 fallback cold-start retry
         if: ${{ steps.classify2fr.outputs.outcome == 'infra' }}
@@ -840,7 +960,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 3 fallback
         if: ${{ steps.classify3f.outputs.outcome == 'infra' }}
@@ -906,7 +1038,19 @@ jobs:
             export EXEC_LOG=""
           fi
           rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
           bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
 
       - name: Diagnose slot 3 fallback cold-start retry
         if: ${{ steps.classify3fr.outputs.outcome == 'infra' }}
@@ -949,62 +1093,62 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
           O_1P: ${{ steps.classify1p.outputs.outcome }}
           R_1P: ${{ steps.classify1p.outputs.reason }}
-          RAW_1P: ${{ steps.try1p.outputs.structured_output }}
+          RAW_1P: ${{ steps.classify1p.outputs.raw }}
           LOG_1P: ${{ steps.classify1p.outputs.log }}
           MODEL_1P: ${{ steps.prepare.outputs.primary_model }}
           O_1PR: ${{ steps.classify1pr.outputs.outcome }}
           R_1PR: ${{ steps.classify1pr.outputs.reason }}
-          RAW_1PR: ${{ steps.try1pr.outputs.structured_output }}
+          RAW_1PR: ${{ steps.classify1pr.outputs.raw }}
           LOG_1PR: ${{ steps.classify1pr.outputs.log }}
           MODEL_1PR: ${{ steps.prepare.outputs.primary_model }}
           O_1F: ${{ steps.classify1f.outputs.outcome }}
           R_1F: ${{ steps.classify1f.outputs.reason }}
-          RAW_1F: ${{ steps.try1f.outputs.structured_output }}
+          RAW_1F: ${{ steps.classify1f.outputs.raw }}
           LOG_1F: ${{ steps.classify1f.outputs.log }}
           MODEL_1F: ${{ steps.prepare.outputs.fallback_model }}
           O_1FR: ${{ steps.classify1fr.outputs.outcome }}
           R_1FR: ${{ steps.classify1fr.outputs.reason }}
-          RAW_1FR: ${{ steps.try1fr.outputs.structured_output }}
+          RAW_1FR: ${{ steps.classify1fr.outputs.raw }}
           LOG_1FR: ${{ steps.classify1fr.outputs.log }}
           MODEL_1FR: ${{ steps.prepare.outputs.fallback_model }}
           O_2P: ${{ steps.classify2p.outputs.outcome }}
           R_2P: ${{ steps.classify2p.outputs.reason }}
-          RAW_2P: ${{ steps.try2p.outputs.structured_output }}
+          RAW_2P: ${{ steps.classify2p.outputs.raw }}
           LOG_2P: ${{ steps.classify2p.outputs.log }}
           MODEL_2P: ${{ steps.prepare.outputs.primary_model }}
           O_2PR: ${{ steps.classify2pr.outputs.outcome }}
           R_2PR: ${{ steps.classify2pr.outputs.reason }}
-          RAW_2PR: ${{ steps.try2pr.outputs.structured_output }}
+          RAW_2PR: ${{ steps.classify2pr.outputs.raw }}
           LOG_2PR: ${{ steps.classify2pr.outputs.log }}
           MODEL_2PR: ${{ steps.prepare.outputs.primary_model }}
           O_2F: ${{ steps.classify2f.outputs.outcome }}
           R_2F: ${{ steps.classify2f.outputs.reason }}
-          RAW_2F: ${{ steps.try2f.outputs.structured_output }}
+          RAW_2F: ${{ steps.classify2f.outputs.raw }}
           LOG_2F: ${{ steps.classify2f.outputs.log }}
           MODEL_2F: ${{ steps.prepare.outputs.fallback_model }}
           O_2FR: ${{ steps.classify2fr.outputs.outcome }}
           R_2FR: ${{ steps.classify2fr.outputs.reason }}
-          RAW_2FR: ${{ steps.try2fr.outputs.structured_output }}
+          RAW_2FR: ${{ steps.classify2fr.outputs.raw }}
           LOG_2FR: ${{ steps.classify2fr.outputs.log }}
           MODEL_2FR: ${{ steps.prepare.outputs.fallback_model }}
           O_3P: ${{ steps.classify3p.outputs.outcome }}
           R_3P: ${{ steps.classify3p.outputs.reason }}
-          RAW_3P: ${{ steps.try3p.outputs.structured_output }}
+          RAW_3P: ${{ steps.classify3p.outputs.raw }}
           LOG_3P: ${{ steps.classify3p.outputs.log }}
           MODEL_3P: ${{ steps.prepare.outputs.primary_model }}
           O_3PR: ${{ steps.classify3pr.outputs.outcome }}
           R_3PR: ${{ steps.classify3pr.outputs.reason }}
-          RAW_3PR: ${{ steps.try3pr.outputs.structured_output }}
+          RAW_3PR: ${{ steps.classify3pr.outputs.raw }}
           LOG_3PR: ${{ steps.classify3pr.outputs.log }}
           MODEL_3PR: ${{ steps.prepare.outputs.primary_model }}
           O_3F: ${{ steps.classify3f.outputs.outcome }}
           R_3F: ${{ steps.classify3f.outputs.reason }}
-          RAW_3F: ${{ steps.try3f.outputs.structured_output }}
+          RAW_3F: ${{ steps.classify3f.outputs.raw }}
           LOG_3F: ${{ steps.classify3f.outputs.log }}
           MODEL_3F: ${{ steps.prepare.outputs.fallback_model }}
           O_3FR: ${{ steps.classify3fr.outputs.outcome }}
           R_3FR: ${{ steps.classify3fr.outputs.reason }}
-          RAW_3FR: ${{ steps.try3fr.outputs.structured_output }}
+          RAW_3FR: ${{ steps.classify3fr.outputs.raw }}
           LOG_3FR: ${{ steps.classify3fr.outputs.log }}
           MODEL_3FR: ${{ steps.prepare.outputs.fallback_model }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/post-review.sh"

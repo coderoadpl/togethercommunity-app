@@ -17,6 +17,8 @@ The primary model depends on the PR base. Staging uses `AI_REVIEW_MODEL`, while 
 5. Slot 2 fallback (`try2f`, `try2fr`).
 6. Slot 3 fallback (`try3f`, `try3fr`).
 
+Each attempt first uses the action’s structured output. When that output is empty, it reads the structured-output object only if the terminal event in that attempt’s execution log is a result with no error flag or error subtype. The recovered object goes through the same verdict validation and is passed to the review comment. A recovered PASS still requires a successful action; a genuine FAIL remains blocking even if the action failed. Missing, malformed, or error-only logs cannot create a verdict.
+
 Each model/slot pair receives one immediate retry only when the execution log proves the model was never called. Missing slots are skipped. Every attempt requires all earlier attempts to have produced neither `PASS` nor `FAIL`. Primary-model capacity is per account, so usage-limit and model-unavailable errors advance through all available primary token slots before any fallback-model attempt.
 
 The workflow uses a read-only GitHub token for preparation and a pull-request-write token only for its deterministic sticky comment. The model receives one OAuth credential at a time, no GitHub token, no shell, no network tools, no write tools, no plugins, and no repository or user configuration. Its reads are confined to the prepared runner-temporary input directory.

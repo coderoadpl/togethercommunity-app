@@ -174,8 +174,12 @@ the buyer or order details and is served without caching.
 
 Staff with `order:read` can scan the QR, open verification from the order detail,
 or enter an order number or token manually. Studio shows the payment status,
-buyer name and email, and the purchased lines. Unknown tokens and tokens from
-another workspace return not found.
+placed and paid dates, buyer name and email, and the purchased lines. Both dates
+use the fixed commerce time zone, Europe/Warsaw, in verification and the order
+detail header, matching the Studio orders list. The paid date falls back to the
+placed date for existing paid orders without a stored payment timestamp. Unpaid
+orders show no paid date.
+Unknown tokens and tokens from another workspace return not found.
 
 Each physical line shows **issued N of 1**. Staff with `order:write` can select
 **Mark as issued** on a paid order while the count is zero. Collection sets the

@@ -670,6 +670,7 @@ export const en: Messages = {
     all: 'All',
     oneTime: 'One-time',
     recurring: 'Recurring',
+    placed: 'Placed',
     paid: 'Paid',
     pending: 'Pending',
     failed: 'Failed',

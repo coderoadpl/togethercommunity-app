@@ -33,7 +33,7 @@ beforeAll(async () => {
     { id: 'free-coupon', tenantId: 'workspace', code: 'FREE', kind: 'percent', value: 100, scope: { kind: 'all' }, appliesTo: 'one_time', createdAt: now },
   ]);
   await database.db.insert(orders).values([
-    order('absent'), order('skipped'), order('issued'), order('delivered'), order('failed-invoice'), order('foreign-invoice'),
+    order('absent'), order('skipped', { paidAt: '2026-09-10T12:01:00.000Z' }), order('issued'), order('delivered'), order('failed-invoice'), order('foreign-invoice'),
     order('refunded', { status: 'refunded' }), order('partial', { status: 'partially_refunded' }), order('pending', { status: 'pending' }), order('failed', { status: 'failed' }),
     order('nip', { billing: { nip: '5555555555', companyName: 'Company', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' } }),
     order('consumer-billing', { billing: { nip: null, companyName: 'Buyer', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' } }),
@@ -72,6 +72,12 @@ afterAll(async () => { await database?.close(); });
 const summarize = (from = '2026-09-01', to = '2026-09-30', actor = identity) => summarizeUninvoicedConsumerSales({ identity: actor }, { from, to }, { consumerSales: createConsumerSalesRepository(database.db) });
 
 describe('consumer sales selection through the use case and local database', () => {
+  it('normalizes stored payment timestamps while retaining historical null payment dates', async () => {
+    const stored = await createConsumerSalesRepository(database.db).listUninvoicedConsumers('workspace', { from: '2026-09-01', to: '2026-09-30' });
+    expect(stored).toContainEqual(expect.objectContaining({ id: 'skipped', paidAt: '2026-09-10T12:01:00.000Z' }));
+    expect(stored).toContainEqual(expect.objectContaining({ id: 'absent', paidAt: null }));
+    expect(await summarize()).toMatchObject({ ok: true, value: { totals: { orderCount: 7, grossCents: 735 } } });
+  });
   it('includes absent, skipped and failed invoices and billing without a NIP', async () => {
     expect(await summarize()).toMatchObject({ ok: true, value: { orderIds: ['start', 'absent', 'consumer-billing', 'failed-invoice', 'foreign-invoice', 'skipped', 'end'], totals: { orderCount: 7, lineCount: 7, netCents: 700, vatCents: 35, grossCents: 735 } } });
   });

@@ -1094,7 +1094,7 @@ export const createDeps = (
   const dispatchEmail = createCoalescedRunner(async () => {
     const result = await dispatchEmails('dev');
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
-  });
+  }, options.keepAlive);
   const refreshMarketingQuota = async (tenantId: string) => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
@@ -1534,7 +1534,7 @@ export const createDeps = (
     salesLinkManagement: { salesLinks: createSalesLinkRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids },
     salesLinks: createSalesLinkRepository(db),
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
-    marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac },
+    marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,
     marketing: {

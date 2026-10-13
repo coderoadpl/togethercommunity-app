@@ -729,7 +729,98 @@ const consentHarness = async () => {
   return { ...h, definitions };
 };
 
+const deferred = () => {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+
 describe('fulfillStripeWebhook', () => {
+  it('dispatches once after the checkout payment transaction resolves', async () => {
+    const h = await consentHarness();
+    const calls: string[] = [];
+    const transaction = h.deps.paymentTransaction;
+    const commitReached = deferred();
+    const allowCommit = deferred();
+    let depth = 0;
+    h.deps.paymentTransaction = {
+      run: async (operation) => {
+        depth += 1;
+        const result = await transaction.run(operation);
+        depth -= 1;
+        if (depth === 0) {
+          commitReached.resolve();
+          await allowCommit.promise;
+          calls.push('committed');
+        }
+        return result;
+      },
+    };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail').mockImplementation(() => {
+      calls.push('dispatch');
+    });
+    const fulfilled = fulfillStripeWebhook(tenantA,
+      completedEvent({ checkoutConsentCaptureId: 'capture-consent' }), h.deps);
+
+    await commitReached.promise;
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.queued).toHaveLength(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    allowCommit.resolve();
+    expect(await fulfilled).toEqual(ok({ processed: true }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['committed', 'dispatch']);
+
+    expect(await fulfillStripeWebhook(tenantA,
+      completedEvent({ checkoutConsentCaptureId: 'capture-consent' }), h.deps)).toEqual(ok({ processed: false }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dispatch when the payment transaction rejects after queuing email', async () => {
+    const h = harness();
+    const transaction = h.deps.paymentTransaction;
+    h.deps.paymentTransaction = {
+      run: async (operation) => {
+        await transaction.run(operation);
+        expect(h.enrollmentEmails).toHaveLength(1);
+        throw new Error('Payment commit failed');
+      },
+    };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toMatchObject({
+      ok: false, error: { code: 'internal' },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each(['invoice.payment_failed', 'customer.subscription.deleted'] as const)(
+    'dispatches the %s notice after the payment transaction resolves', async (type) => {
+      const h = await subscribedHarness();
+      const calls: string[] = [];
+      const transaction = h.deps.paymentTransaction;
+      h.deps.paymentTransaction = {
+        run: async (operation) => {
+          const result = await transaction.run(operation);
+          calls.push('committed');
+          return result;
+        },
+      };
+      const dispatch = vi.spyOn(h.deps, 'dispatchEmail').mockImplementation(() => {
+        calls.push('dispatch');
+      });
+      const event = type === 'invoice.payment_failed'
+        ? invoiceEvent({ id: 'evt-notice', type, invoiceId: 'in-notice', subscriptionId: 'sub-1' })
+        : subscriptionEvent({ id: 'evt-notice', type, subscriptionId: 'sub-1' });
+
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.queued).toHaveLength(1);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual(['committed', 'dispatch']);
+    },
+  );
 
   it.each(['none', 'terms', 'confirmation-email'] as const)('records checkout consent exactly once after duplicate delivery (failure: %s)', async (failurePoint) => {
     const h = await consentHarness();
@@ -879,6 +970,7 @@ describe('fulfillStripeWebhook', () => {
         },
       })),
     };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
 
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(h.orders).toEqual(paidOrders);
@@ -892,10 +984,12 @@ describe('fulfillStripeWebhook', () => {
     expect(h.confirmations.rows).toHaveLength(0);
     expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
     expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay');
+    expect(dispatch).not.toHaveBeenCalled();
 
     failEnqueue = false;
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(h.consentJobs).toMatchObject([{ completedAt: now }]);
     expect(h.consents).toHaveLength(1);
     expect(h.marketingConsents.snapshot()).toHaveLength(1);
@@ -1301,6 +1395,7 @@ describe('fulfillStripeWebhook', () => {
       prices: [monthlyPrice(tenantA.id)],
       rejectPaymentCommit: true,
     });
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
     const result = await fulfillStripeWebhook(
       tenantA,
       completedEvent({ priceId: 'price-monthly', subscriptionId: 'sub-1' }),
@@ -1316,6 +1411,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.sent).toEqual([]);
     expect(h.autoInvoiceJobs).toEqual([]);
     expect(h.queued).toEqual([]);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('reprocesses an expired claim and creates exactly one order', async () => {
@@ -2343,6 +2439,7 @@ describe('Stripe payment mode isolation', () => {
 
   it('fulfills a recorded test checkout and queues one invoice job without email or consent', async () => {
     const { h, event, liveOrder } = await testCheckout();
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
     const liveGrant = structuredClone([...h.grants.values()][0]);
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
     expect(h.orders).toHaveLength(2);
@@ -2351,6 +2448,7 @@ describe('Stripe payment mode isolation', () => {
     expect([...h.grants.values()].filter((grant) => grant.mode === 'live')).toEqual([liveGrant]);
     expect([...h.grants.values()].filter((grant) => grant.mode === 'test')).toHaveLength(1);
     expect(h.sent).toHaveLength(1);
+    expect(dispatch).not.toHaveBeenCalled();
     expect(h.queued).toEqual([]);
     expect(h.consents).toEqual([]);
     expect(h.autoInvoiceJobs).toHaveLength(2);

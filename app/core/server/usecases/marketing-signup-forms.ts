@@ -68,7 +68,8 @@ export const updateMarketingSignupForm = async (ctx: Ctx, input: unknown, deps: 
 export const submitMarketingSignupForm = async (tenantId: string, slug: string, input: unknown, evidence: {
   ipHash: string; userAgent: string; confirmationBaseUrl: string; language: Language;
 }, deps: MarketingSignupDeps): Promise<Result<{ status: 'pending' | 'subscribed'; form: MarketingSignupForm }, AppError>> => {
-  return deps.transaction.run(tenantId, async (repos) => {
+  let emailsQueued = false;
+  const result = await deps.transaction.run<{ status: 'pending' | 'subscribed'; form: MarketingSignupForm }>(tenantId, async (repos) => {
     const form = await repos.forms.findBySlugForUpdate(tenantId, slug);
     if (form === null || form.status !== 'active') return err(notFound('Signup form was not found'));
     const valid = await validateReferences(tenantId, form, repos);
@@ -118,7 +119,10 @@ export const submitMarketingSignupForm = async (tenantId: string, slug: string, 
       await repos.confirmations.create(tenantId, { id: deps.ids.nextId(), tenantId, token, marketingConsentRowId: consent.id, createdAt: now, expiresAt: new Date(Date.parse(now) + 86_400_000).toISOString(), usedAt: null });
       const queued = await repos.outbox.enqueue({ id: deps.ids.nextId(), tenantId, to: consent.email, now, payload: { kind: 'marketing-consent-confirmation', language: evidence.language, wording: consent.wordingSnapshot, confirmationUrl: `${evidence.confirmationBaseUrl}/${token}` } });
       if (!queued.ok) return queued;
+      emailsQueued = true;
     }
     return ok({ status, form });
   });
+  if (result.ok && emailsQueued) deps.dispatchEmail();
+  return result;
 };

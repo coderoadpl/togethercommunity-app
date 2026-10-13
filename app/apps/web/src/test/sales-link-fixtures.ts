@@ -10,7 +10,7 @@ export const sampleBundleOrder = {
   id: 'order-2026-001', tenantId: 't1', memberId: 'member-1', productId: 'product-1', priceId: null,
   kind: 'one_time' as const, status: 'paid' as const, amountCents: 18660, currency: 'PLN' as const, provider: 'simulated' as const,
   mode: 'test' as const, providerObjectIds: {}, couponId: null, discountCents: 0, couponCode: null,
-  createdAt: '2026-10-08T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Alex Smith',
+  createdAt: '2026-10-08T10:00:00.000Z', paidAt: '2026-10-08T10:03:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Alex Smith',
   productTitle: 'Printed workbook', salesLinkId: 'link-1', salesLinkTitle: 'In-person bundle',
   verificationToken: 'a'.repeat(64),
   lines: sampleBundleLines.map((line, index) => ({ ...line, productType: index === 0 ? 'physical' as const : index === 1 ? 'digital_download' as const : 'course' as const, issuedCount: index === 0 ? 0 : null })),

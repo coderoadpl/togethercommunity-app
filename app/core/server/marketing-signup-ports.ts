@@ -21,6 +21,7 @@ export interface MarketingSignupTransaction {
   run<T>(tenantId: string, operation: (repos: MarketingSignupRepos) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }
 export interface MarketingSignupDeps {
+  dispatchEmail: () => void;
   abuseCheck?: (tenantId: string, input: { formId: string; ipHash: string }) => Promise<Result<void, AppError>>;
   forms: MarketingSignupFormRepository;
   transaction: MarketingSignupTransaction;

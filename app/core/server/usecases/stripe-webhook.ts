@@ -75,6 +75,7 @@ export const CHECKOUT_SESSION_EVENT_TYPES = new Set<string>([
 
 interface EventApplication {
   processed: boolean;
+  emailsQueued?: boolean;
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
@@ -131,18 +132,18 @@ const enqueueSubscriptionNotice = async (
   kind: 'subscription-payment-failed' | 'subscription-ended',
   accessEndsAt: string,
   deps: StripeWebhookDeps,
-): Promise<Result<void, AppError>> => {
-  if (subscription === null) return ok(undefined);
+): Promise<Result<boolean, AppError>> => {
+  if (subscription === null) return ok(false);
   if (subscription.mode === 'test') {
     deps.logger.warn(`[stripe-test] suppressed ${kind} tenant=${tenant.id} subscription=${subscription.id}`);
-    return ok(undefined);
+    return ok(false);
   }
   const [member, product, settings] = await Promise.all([
     deps.members.findById(tenant.id, subscription.memberId),
     deps.products.findById(tenant.id, subscription.productId),
     deps.tenants.findSettings(tenant.id),
   ]);
-  if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
+  if (member === null || member.deletedAt !== null || product === null) return ok(false);
   const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
   const branding = settings === null ? undefined : emailBrandingFrom(settings, tenantBaseUrl);
   const language = resolveEmailLanguage(member.language, settings?.defaultLanguage);
@@ -174,8 +175,7 @@ const enqueueSubscriptionNotice = async (
     now: deps.clock.nowIso(),
   });
   if (!queued.ok) return queued;
-  deps.dispatchEmail();
-  return ok(undefined);
+  return ok(true);
 };
 
 export const STRIPE_WEBHOOK_EVENT_TYPES = [
@@ -495,13 +495,14 @@ const applyCheckoutCompleted = async (
       deps,
     ));
 
+  let emailsQueued = false;
   if (event.mode !== 'test' && product !== null) {
     const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
     if (member === null) return err(internal('Purchased order member is missing'));
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
     const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, persistedOrder ?? paidOrder));
     if (!queued.ok) return queued;
-    deps.dispatchEmail();
+    emailsQueued = true;
   }
 
   if (price?.kind === 'recurring') {
@@ -534,10 +535,10 @@ const applyCheckoutCompleted = async (
       },
       deps,
     );
-    return ok({ processed: true, paidOrder });
+    return ok({ processed: true, paidOrder, emailsQueued });
   }
 
-  return ok({ processed: true, paidOrder });
+  return ok({ processed: true, paidOrder, emailsQueued });
 };
 
 const applyInvoiceEvent = async (
@@ -634,6 +635,7 @@ const applyInvoiceEvent = async (
       deps,
     );
     if (!notified.ok) return notified;
+    return ok({ processed: true, emailsQueued: notified.value });
   }
   return ok({ processed: true });
 };
@@ -796,6 +798,7 @@ const applySubscriptionEvent = async (
       deps,
     );
     if (!notified.ok) return notified;
+    return ok({ processed: true, emailsQueued: notified.value });
   }
   return ok({ processed: true });
 };
@@ -810,7 +813,7 @@ const processCheckoutConsent = async (
   order: Pick<Order, 'id' | 'productId'>,
   deps: StripeWebhookDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
-): Promise<Result<string | null, AppError>> => {
+): Promise<Result<{ pendingConsent: string | null; emailsQueued: boolean }, AppError>> => {
   const direct = event.checkoutSession;
   if (direct?.metadata.directCheckout === true) {
     if (direct.termsAccepted !== true || !direct.metadata.termsUrl || !direct.metadata.privacyUrl) {
@@ -836,11 +839,11 @@ const processCheckoutConsent = async (
       termsUrl: direct.metadata.termsUrl, privacyUrl: direct.metadata.privacyUrl,
       acceptedAt: deps.clock.nowIso(),
     });
-    return ok(null);
+    return ok({ pendingConsent: null, emailsQueued: false });
   }
   if (event.mode === 'test') {
     const checkout = event.checkoutSession;
-    if (checkout?.metadata.salesLinkId == null) return ok(null);
+    if (checkout?.metadata.salesLinkId == null) return ok({ pendingConsent: null, emailsQueued: false });
     const captureId = checkout.metadata.checkoutConsentCaptureId;
     const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
     const capture = captureId == null ? null : await captures?.findById(tenant.id, captureId);
@@ -852,12 +855,12 @@ const processCheckoutConsent = async (
       email: checkout.email ?? checkout.metadata.memberEmail, source: 'checkout',
       termsUrl: capture.termsUrl, privacyUrl: capture.privacyUrl, acceptedAt: capture.collectedAt,
     });
-    return ok(null);
+    return ok({ pendingConsent: null, emailsQueued: false });
   }
-  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
+  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok({ pendingConsent: null, emailsQueued: false });
   const consent = await transaction.consentTransaction.run((repositories) =>
     recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
-  if (consent.ok) return ok(null);
+  if (consent.ok) return ok({ pendingConsent: null, emailsQueued: consent.value });
   if (consent.error.code !== 'validation' && consent.error.code !== 'not_found' && consent.error.code !== 'forbidden') return consent;
   const checkout = event.checkoutSession;
   const captureId = checkout?.metadata.checkoutConsentCaptureId;
@@ -869,7 +872,7 @@ const processCheckoutConsent = async (
     captureId, email, orderId: order.id, productId: order.productId,
     reason, createdAt: deps.clock.nowIso(), completedAt: null,
   });
-  return ok(reason);
+  return ok({ pendingConsent: reason, emailsQueued: false });
 };
 
 const paymentModeMatches = async (
@@ -987,7 +990,7 @@ export const fulfillStripeWebhook = async (
   });
   if (claimed === 'processed') {
     if (!CHECKOUT_SESSION_EVENT_TYPES.has(event.type)) return ok({ processed: false });
-    const retried = await deps.paymentTransaction.run(async (transaction) => {
+    const retried = await deps.paymentTransaction.run<EventApplication>(async (transaction) => {
       const job = await transaction.checkoutConsentJobs.lockPending(tenant.id, event.objectId ?? '');
       if (job === null) return ok({ processed: false });
       const consent = await processCheckoutConsent(tenant, {
@@ -1001,13 +1004,17 @@ export const fulfillStripeWebhook = async (
         },
       }, { id: job.orderId, productId: job.productId }, deps, transaction);
       if (!consent.ok) return consent;
-      if (consent.value === null) {
+      if (consent.value.pendingConsent === null) {
         await transaction.checkoutConsentJobs.complete(tenant.id, job.checkoutSessionId, deps.clock.nowIso());
       }
-      return ok({ processed: false });
+      return ok({ processed: false, emailsQueued: consent.value.emailsQueued });
     });
-    if (!retried.ok) logPaymentFailure(tenant, event, deps, retried.error);
-    return retried;
+    if (!retried.ok) {
+      logPaymentFailure(tenant, event, deps, retried.error);
+      return retried;
+    }
+    if (retried.value.emailsQueued) deps.dispatchEmail();
+    return ok({ processed: retried.value.processed });
   }
   if (claimed === 'in_progress') {
     return err(appError('conflict', 'Payment event is being processed'));
@@ -1038,7 +1045,11 @@ export const fulfillStripeWebhook = async (
         if (result.value.paidOrder !== undefined) {
           const consent = await processCheckoutConsent(tenant, event, result.value.paidOrder, deps, transactionDeps);
           if (!consent.ok) return consent;
-          if (consent.value !== null) return ok({ ...result.value, pendingConsent: consent.value });
+          return ok({
+            ...result.value,
+            emailsQueued: result.value.emailsQueued === true || consent.value.emailsQueued,
+            ...(consent.value.pendingConsent === null ? {} : { pendingConsent: consent.value.pendingConsent }),
+          });
         }
       }
       return result;
@@ -1055,6 +1066,7 @@ export const fulfillStripeWebhook = async (
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
     return applied;
   }
+  if (applied.value.emailsQueued) deps.dispatchEmail();
   if (!applied.value.processed && applied.value.consumed !== true) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
   }

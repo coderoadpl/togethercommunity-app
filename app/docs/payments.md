@@ -45,6 +45,11 @@ NIP; orders with a NIP still require complete Polish billing details. iFirma
 retains its domestic-address restriction. Live order lines, grants and confirmation email
 continue through the existing fulfillment flow.
 
+Purchase emails are dispatched immediately after the payment transaction commits.
+The opportunistic dispatcher runs one bounded batch without delaying the webhook
+response, and Vercel keeps the function alive until the dispatch loop finishes.
+The 30-minute `dispatch-email` cron remains the safety net for queued emails.
+
 Staff test purchases use the Together checkout page at `/checkout/<productRef>`
 or `/offer/<slug>?checkout=together` and its **Stripe test mode** switch.
 These pages never hand off automatically. The switch uses the tenant's configured

@@ -293,7 +293,22 @@ describe('m2mEnroll', () => {
 
   it('sends the welcome enrollment email by default', async () => {
     const h = harness({ products: [product('p1', true)] });
-    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+    const calls: string[] = [];
+    const transaction = h.deps.enrollmentTransaction;
+    h.deps.enrollmentTransaction = {
+      run: async (operation) => {
+        const result = await transaction.run(operation);
+        calls.push('committed');
+        return result;
+      },
+    };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail').mockImplementation(() => {
+      calls.push('dispatch');
+    });
+    const result = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['committed', 'dispatch']);
+    expect(result.ok && Object.keys(result.value).sort()).toEqual(['grantId', 'magicLink', 'memberId', 'renewed']);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]?.to).toBe('fresh@together.dev');
     expect(h.sent[0]?.payload).toMatchObject({ actionUrl: 'https://tenant.example/magic?token=abc' });
@@ -318,6 +333,7 @@ describe('m2mEnroll', () => {
 
   it('does not send an email when doNotSendEmail is set', async () => {
     const h = harness({ products: [product('p1', true)] });
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
     const result = await m2mEnroll(
       TENANT,
       { email: 'fresh@together.dev', productId: 'p1', doNotSendEmail: true },
@@ -326,6 +342,7 @@ describe('m2mEnroll', () => {
     expect(result).toMatchObject({ ok: true, value: { magicLink: null } });
     expect(h.sent).toHaveLength(0);
     expect(h.captured).toHaveLength(0);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('exposes the magic link only when the dev flag is on', async () => {

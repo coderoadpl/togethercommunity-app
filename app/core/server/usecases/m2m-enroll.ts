@@ -80,6 +80,7 @@ export const m2mEnroll = async (
     deps,
   );
   if (!fulfilled.ok) return fulfilled;
+  if (fulfilled.value.emailsQueued) deps.dispatchEmail();
 
   await appendOrder(
     tenant.id,
@@ -96,5 +97,6 @@ export const m2mEnroll = async (
     },
     deps,
   );
-  return fulfilled;
+  const { memberId, grantId, renewed, magicLink } = fulfilled.value;
+  return ok({ memberId, grantId, renewed, magicLink });
 };

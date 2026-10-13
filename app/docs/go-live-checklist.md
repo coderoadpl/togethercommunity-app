@@ -114,12 +114,19 @@ and save a live key here before accepting payments.
 
 **PARTNER PROGRAM UPGRADE:** No manual endpoint reconfiguration is required.
 When a capped code is full, validation retrieves outstanding checkout sessions
-from Stripe and releases expired or completed unpaid sessions before deciding
-capacity. Subscribing to `checkout.session.expired` remains recommended for faster
+from Stripe and releases only sessions with `status=expired` before deciding
+capacity. Completed unpaid sessions are pending delayed payments: retain them
+until asynchronous success consumes the reservation or asynchronous failure
+releases it. Subscribing to `checkout.session.expired` remains recommended for faster
 webhook release. Operators can run `partner-program reconcile-reservations <code-id>`
 to report confirmed releases and retained reservations on demand. Open, paid,
 `no_payment_required`, missing-session and unknown outcomes retain capacity; age
-alone is never a release signal. See
+alone is never a release signal. Verify that a completed unpaid session survives
+reconciliation and a later `checkout.session.async_payment_succeeded` fulfills
+the order and commissions. If a successful payment recovers a released or missing
+reservation, fulfillment continues and writes a `recovered` audit event plus a
+`[partner-checkout] recovered paid checkout` warning after commit. Investigate
+`overCap=true` without withholding the paid order. See
 [reservation recovery](partner-program.md#reservation-recovery-on-existing-stripe-endpoints)
 and its local regression coverage for missed expiration webhooks.
 

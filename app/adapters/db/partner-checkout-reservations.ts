@@ -48,18 +48,27 @@ export const createPartnerCheckoutReservations = (db: Db): Pick<PartnerRepositor
   },
   completeCheckout: (tenantId, checkoutSnapshotId, orderId, now) => db.transaction(async (tx) => {
     const [snapshot] = await tx.select().from(checkoutSnapshots).where(and(eq(checkoutSnapshots.tenantId, tenantId), eq(checkoutSnapshots.id, checkoutSnapshotId)));
-    if (snapshot?.partnerCodeId == null) return unavailable();
+    if (snapshot?.partnerCodeId == null || snapshot.mode === 'test') return unavailable();
     const [order] = await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId), eq(orders.partnerCodeId, snapshot.partnerCodeId), eq(orders.mode, 'live')));
-    if (order === undefined) return unavailable();
+    if (order === undefined || (snapshot.providerSessionId !== null && snapshot.providerSessionId !== order.providerObjectIds['checkoutSession'])) return unavailable();
     const [code] = await tx.select().from(partnerCodes).where(and(eq(partnerCodes.tenantId, tenantId), eq(partnerCodes.id, snapshot.partnerCodeId))).for('update');
     const [reservation] = await tx.select().from(partnerCheckoutReservations).where(and(eq(partnerCheckoutReservations.tenantId, tenantId), eq(partnerCheckoutReservations.id, checkoutSnapshotId))).for('update');
     if (reservation?.status === 'consumed') return reservation.orderId === orderId ? ok(undefined) : unavailable();
-    if (code === undefined || reservation?.status === 'released') return unavailable();
-    if (reservation === undefined && code.maxRedemptions !== null && await countUsed(tx, tenantId, code.id, orderId) >= code.maxRedemptions) return unavailable();
+    if (code === undefined || order.status !== 'paid') return unavailable();
+    const totalRedemptions = reservation?.status === 'reserved' ? null : await countUsed(tx, tenantId, code.id, orderId) + 1;
+    const recovery = totalRedemptions === null ? undefined : {
+      recovered: true as const,
+      previousStatus: reservation === undefined ? 'missing' as const : 'released' as const,
+      partnerCodeId: code.id,
+      totalRedemptions,
+      maxRedemptions: code.maxRedemptions,
+      overCap: code.maxRedemptions !== null && totalRedemptions > code.maxRedemptions,
+    };
     const consumed = { id: checkoutSnapshotId, tenantId, partnerCodeId: code.id, status: 'consumed' as const, orderId, createdAt: snapshot.createdAt };
     if (reservation === undefined) await tx.insert(partnerCheckoutReservations).values(consumed);
     else await tx.update(partnerCheckoutReservations).set({ status: 'consumed', orderId }).where(and(eq(partnerCheckoutReservations.tenantId, tenantId), eq(partnerCheckoutReservations.id, checkoutSnapshotId)));
+    if (recovery !== undefined) await tx.insert(partnerEvents).values({ id: `reservation:${checkoutSnapshotId}:recovered`, tenantId, entityId: checkoutSnapshotId, entityType: 'reservation', type: 'recovered', snapshot: { ...consumed, ...recovery }, occurredAt: now });
     await tx.insert(partnerEvents).values({ id: `reservation:${checkoutSnapshotId}:consumed`, tenantId, entityId: checkoutSnapshotId, entityType: 'reservation', type: 'consumed', snapshot: consumed, occurredAt: now });
-    return ok(undefined);
+    return ok(recovery);
   }),
 });

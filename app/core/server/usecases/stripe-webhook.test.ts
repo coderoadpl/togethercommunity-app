@@ -33,6 +33,7 @@ import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhoo
 import { m2mEnroll } from './m2m-enroll.js';
 import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
+import { reconcilePartnerReservations } from './partner-reservations.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
 /** Mirrors the partial unique index on processed_events: one fulfilment per object. */
@@ -2843,6 +2844,43 @@ it('records partner attribution and digital line commissions once across webhook
   expect(h.commissions).toHaveLength(2);
 });
 
+it('retains a completed unpaid partner reservation through reconciliation and fulfills async payment once', async () => {
+  const h = partnerPayment();
+  if (h.deps.partners === undefined || h.event.checkoutSession === null) throw new Error('Partner checkout fixture missing');
+  const reservation = { status: 'reserved' };
+  const releaseCheckout = vi.fn(async () => { reservation.status = 'released'; return true; });
+  const completeCheckout = vi.fn(async () => {
+    expect(reservation.status).toBe('reserved');
+    reservation.status = 'consumed';
+    return ok(undefined);
+  });
+  h.deps.partners.releaseCheckout = releaseCheckout;
+  h.deps.partners.completeCheckout = completeCheckout;
+  const unpaid = { ...h.event, checkoutSession: { ...h.event.checkoutSession, paymentStatus: 'unpaid' as const } };
+  expect(await fulfillStripeWebhook(tenantA, unpaid, h.deps)).toEqual(ok({ processed: false }));
+  expect(await reconcilePartnerReservations(tenantA.id, 'partner-code', {
+    partners: { listCheckoutReservations: async () => [{ checkoutSnapshotId: 'snapshot-1', sessionId: h.event.objectId }], releaseCheckout },
+    payment: { retrieveCheckoutSession: async () => ok({ status: 'complete', paymentStatus: 'unpaid' }) },
+    clock: h.deps.clock,
+  })).toEqual(ok({ codeId: 'partner-code', checked: 1, released: [], retained: 1 }));
+  expect(releaseCheckout).not.toHaveBeenCalled();
+  expect(completeCheckout).not.toHaveBeenCalled();
+  expect(h.orders).toEqual([]);
+  expect(h.commissions).toEqual([]);
+  expect(h.grants.size).toBe(0);
+  const succeeded = { ...h.event, id: 'evt-partner-async-paid', type: 'checkout.session.async_payment_succeeded' };
+  expect(await fulfillStripeWebhook(tenantA, succeeded, h.deps)).toEqual(ok({ processed: true }));
+  expect(reservation.status).toBe('consumed');
+  expect(h.orders).toMatchObject([{ status: 'paid', partnerCodeId: 'partner-code' }]);
+  expect(h.commissions).toHaveLength(2);
+  expect(h.grants.size).toBe(2);
+  expect(h.autoInvoiceJobs).toHaveLength(1);
+  expect(await fulfillStripeWebhook(tenantA, succeeded, h.deps)).toEqual(ok({ processed: false }));
+  expect(completeCheckout).toHaveBeenCalledTimes(1);
+  expect(h.orders).toHaveLength(1);
+  expect(h.commissions).toHaveLength(2);
+});
+
 it('uses the persisted order when distinct paid events target the same partner checkout', async () => {
   const h = partnerPayment();
   const createOrder = h.deps.orders.create;
@@ -2860,11 +2898,48 @@ it('uses the persisted order when distinct paid events target the same partner c
   expect(await fulfillStripeWebhook(tenantA, secondEvent, h.deps)).toEqual(ok({ processed: false }));
 });
 
-it('checks the reservation against the persisted order before creating partner commissions', async () => {
+it('fulfills recovered paid reservations and logs their over-cap details once after commit', async () => {
+  const h = partnerPayment();
+  if (h.deps.partners === undefined) throw new Error('Partner repository missing');
+  h.deps.partners.completeCheckout = async () => ok({ recovered: true, previousStatus: 'released', partnerCodeId: 'partner-code', totalRedemptions: 2, maxRedemptions: 1, overCap: true });
+  const run = h.deps.paymentTransaction.run;
+  let committed = false;
+  h.deps.paymentTransaction.run = async (operation) => {
+    const warningsBefore = [...h.warnings];
+    const result = await run(operation);
+    expect(h.warnings).toEqual(warningsBefore);
+    committed = result.ok;
+    return result;
+  };
+  const warn = vi.spyOn(h.deps.logger, 'warn');
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+  expect(committed).toBe(true);
+  expect(h.orders).toMatchObject([{ status: 'paid', partnerCodeId: 'partner-code' }]);
+  expect(h.grants.size).toBe(2);
+  expect(h.commissions).toHaveLength(2);
+  expect(h.warnings).toEqual([expect.stringContaining(`[partner-checkout] recovered paid checkout tenant=${tenantA.id} event=${h.event.id} checkout=${h.event.objectId} order=${h.orders[0]?.id} code=partner-code previousStatus=released overCap=true totalRedemptions=2 maxRedemptions=1`)]);
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: false }));
+  expect(warn).toHaveBeenCalledTimes(1);
+  expect(h.orders).toHaveLength(1);
+  expect(h.commissions).toHaveLength(2);
+});
+
+it('does not log recovery when the payment transaction rolls back', async () => {
+  const h = partnerPayment();
+  if (h.deps.partners === undefined) throw new Error('Partner repository missing');
+  h.deps.partners.completeCheckout = async () => ok({ recovered: true, previousStatus: 'released', partnerCodeId: 'partner-code', totalRedemptions: 2, maxRedemptions: 1, overCap: true });
+  h.deps.partners.createCommissions = async () => { throw new Error('Commission write failed'); };
+  expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toMatchObject({ ok: false, error: { code: 'internal', message: 'Error: Commission write failed' } });
+  expect(h.warnings).toEqual([]);
+  expect(h.orders).toEqual([]);
+  expect(h.grants.size).toBe(0);
+});
+
+it('rolls back fulfillment when the partner reservation does not match its order', async () => {
   const h = partnerPayment();
   const completeCheckout = vi.fn(async (_tenantId: string, _snapshotId: string, orderId: string) => {
     expect(h.orders.some((order) => order.id === orderId)).toBe(true);
-    return err(validation('Partner code redemption limit reached'));
+    return err(validation('Partner reservation does not match the paid order'));
   });
   if (h.deps.partners === undefined) throw new Error('Partner repository missing');
   h.deps.partners.completeCheckout = completeCheckout;

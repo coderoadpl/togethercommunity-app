@@ -1350,6 +1350,7 @@ describe('retrieveCheckoutSession', () => {
     { status: 'open', paymentStatus: 'unpaid', mode: 'live' },
     { status: 'expired', paymentStatus: 'unpaid', mode: 'test' },
     { status: 'complete', paymentStatus: 'paid', mode: 'live' },
+    { status: 'complete', paymentStatus: 'unpaid', mode: 'live' },
     { status: 'complete', paymentStatus: 'unpaid', mode: 'test' },
     { status: 'complete', paymentStatus: 'no_payment_required', mode: 'live' },
   ] as const)('retrieves $status/$paymentStatus in $mode mode', async ({ status, paymentStatus, mode }) => {
@@ -1359,6 +1360,16 @@ describe('retrieveCheckoutSession', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe('GET');
     expect(requests[0]?.url).toBe('https://api.stripe.com/v1/checkout/sessions/cs_reserved');
+  });
+
+  it('preserves delayed payment state until a later retrieval confirms payment', async () => {
+    const { payment, requests } = retrievalProvider(stripeJson({ id: 'cs_reserved', status: 'complete', payment_status: 'unpaid' }));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode: 'live' }))
+      .toEqual(ok({ status: 'complete', paymentStatus: 'unpaid' }));
+    expect(requests).toHaveLength(1);
+    const succeeded = retrievalProvider(stripeJson({ id: 'cs_reserved', status: 'complete', payment_status: 'paid' }));
+    expect(await succeeded.payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode: 'live' }))
+      .toEqual(ok({ status: 'complete', paymentStatus: 'paid' }));
   });
 
   it.each([

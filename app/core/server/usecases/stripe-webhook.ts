@@ -36,7 +36,7 @@ import type {
   PaymentTransactionPort,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
-import type { PartnerRepository } from '../partner-ports.js';
+import type { PartnerCheckoutRecovery, PartnerRepository } from '../partner-ports.js';
 import { recordOrderCommissions } from './partner-ledger.js';
 import { safeErrorMessage } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
@@ -82,6 +82,7 @@ interface EventApplication {
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
+  partnerCheckoutRecovery?: PartnerCheckoutRecovery;
 }
 
 const ignorePaymentMode = (
@@ -504,9 +505,11 @@ const applyCheckoutCompleted = async (
   const paidOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
   if (paidOrder === null) return err(internal('Fulfilled checkout order is missing'));
 
+  let partnerCheckoutRecovery: PartnerCheckoutRecovery | undefined;
   if (deps.partners !== undefined && snapshot?.partnerCodeId != null && paidOrder.mode !== 'test') {
     const completed = await deps.partners.completeCheckout(tenant.id, snapshot.id, paidOrder.id, deps.clock.nowIso());
     if (!completed.ok) return completed;
+    if (completed.value !== undefined) partnerCheckoutRecovery = completed.value;
   }
   if (deps.partners !== undefined) await recordOrderCommissions(paidOrder, deps.partners, deps.ids, {
     ...(event.createdAt == null ? {} : { paidAt: event.createdAt }),
@@ -551,10 +554,10 @@ const applyCheckoutCompleted = async (
       },
       deps,
     );
-    return ok({ processed: true, paidOrder });
+    return ok({ processed: true, paidOrder, ...(partnerCheckoutRecovery === undefined ? {} : { partnerCheckoutRecovery }) });
   }
 
-  return ok({ processed: true, paidOrder });
+  return ok({ processed: true, paidOrder, ...(partnerCheckoutRecovery === undefined ? {} : { partnerCheckoutRecovery }) });
 };
 
 const applyInvoiceEvent = async (
@@ -1050,6 +1053,10 @@ export const fulfillStripeWebhook = async (
   }
   if (applied.value.pendingConsent !== undefined) {
     deps.logger.error(`[checkout-consent] pending tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${applied.value.pendingConsent}`);
+  }
+  if (applied.value.partnerCheckoutRecovery !== undefined) {
+    const recovery = applied.value.partnerCheckoutRecovery;
+    deps.logger.warn(`[partner-checkout] recovered paid checkout tenant=${tenant.id} event=${event.id} checkout=${event.objectId} order=${applied.value.paidOrder?.id} code=${recovery.partnerCodeId} previousStatus=${recovery.previousStatus} overCap=${recovery.overCap} totalRedemptions=${recovery.totalRedemptions} maxRedemptions=${recovery.maxRedemptions ?? 'unlimited'}`);
   }
   return ok({ processed: applied.value.processed });
 };

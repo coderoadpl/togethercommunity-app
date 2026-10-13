@@ -34,8 +34,10 @@ database on a protected Neon branch. It is not a copy of production data.
 
 Partner codes work with existing Stripe endpoints without manual endpoint
 reconfiguration. When a capped code is full, validation retrieves each outstanding
-reservation's checkout session from Stripe and releases expired or completed unpaid
-sessions before checking capacity again. Subscribing to `checkout.session.expired`
+reservation's checkout session from Stripe and releases only `status=expired`
+sessions before checking capacity again. Completed unpaid sessions retain capacity
+while their delayed payment is pending. Asynchronous success consumes the
+reservation; asynchronous failure releases it. Subscribing to `checkout.session.expired`
 is recommended for faster release through the webhook; delivery of that event is
 not a rollout precondition.
 
@@ -48,7 +50,15 @@ See [reservation recovery](partner-program.md#reservation-recovery-on-existing-s
 
 Local regression tests use a mocked Stripe adapter to verify that an expired
 session recovers capped capacity without a webhook and that the operator command
-reports releases. A test-mode order does not reserve partner capacity or create
+reports releases. They also retain a completed unpaid reservation through
+reconciliation and fulfill its order and commissions on
+`checkout.session.async_payment_succeeded`. Recovery of a previously released or
+missing reservation must still fulfill a successful payment, even above the cap:
+verify the append-only `recovered` reservation event and the post-commit
+`[partner-checkout] recovered paid checkout` warning with its `overCap` flag, count,
+cap, and checkout/order identifiers. A retry must not duplicate fulfillment or
+the recovery event. Investigate over-cap recovery without withholding paid access.
+A test-mode order does not reserve partner capacity or create
 commissions, so sandbox delivery alone does not establish live capped-code recovery.
 A fake payment provider does not verify Stripe delivery.
 

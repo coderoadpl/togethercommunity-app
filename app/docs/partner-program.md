@@ -21,17 +21,20 @@ that code first. Eligibility requires an active program, partner and code,
 the selected sales link, an inclusive start and exclusive end when configured,
 and an available redemption under the optional cap. Checkout creation reserves
 capacity atomically before asking Stripe for a session, including attribution-only
-codes. Every session with a partner reservation expires after 30 minutes, the
-shortest Stripe checkout lifetime. Fulfillment consumes that reservation in the
+codes. Each partner checkout session has a 30-minute deadline to complete checkout,
+the shortest Stripe checkout lifetime; a delayed payment can remain pending afterward. Fulfillment consumes that reservation in the
 payment transaction. Confirmed session expiration or asynchronous payment failure releases it; a definite session
 creation failure also releases it. Reservations do not expire on a local timer:
 a delayed payment webhook must not let another buyer reuse a paid slot. Provider
 failures with an unknown outcome retain capacity until the session is resolved.
 When validation finds a capped code at capacity (`reserved + used >= maxRedemptions`),
 Together retrieves every outstanding reservation's checkout session from Stripe
-before deciding whether another redemption is available. An expired session or a
-completed session with `payment_status=unpaid` releases its reservation. Open,
-paid, and `no_payment_required` sessions retain their reservation. Missing session
+before deciding whether another redemption is available. Reconciliation releases
+only sessions with `status=expired`. A completed session with
+`payment_status=unpaid` is a pending delayed payment and retains its reservation
+until `checkout.session.async_payment_succeeded` consumes it or
+`checkout.session.async_payment_failed` releases it. Open, paid, and
+`no_payment_required` sessions also retain their reservation. Missing session
 IDs and unknown provider outcomes also retain capacity for later investigation;
 age alone never releases a reservation.
 
@@ -42,7 +45,7 @@ validation recovers abandoned reservations even when the workspace's endpoint
 never delivers `checkout.session.expired`. Subscribing to that event remains
 recommended: its webhook releases capacity immediately as the fast path, while
 the validation fallback runs only when a capped code is full. Completion and
-asynchronous payment webhook handling remains unchanged.
+asynchronous payment webhooks remain the authoritative payment outcome.
 
 Owners and administrators can also run reconciliation before the cap is full:
 
@@ -58,7 +61,18 @@ those provider outcomes instead of releasing them because they are old. There is
 no local expiry timer. Test-mode orders do not reserve partner capacity, so
 sandbox delivery alone does not demonstrate live capped-code recovery. Local
 regression tests mock Stripe to cover expiration without any webhook, capacity
-reuse, and the operator command.
+reuse, the operator command, and a retained completed unpaid session followed by
+asynchronous payment success.
+
+A successful payment is fulfilled even if its reservation was previously released
+or is missing, including when another checkout has already taken the freed slot.
+The payment transaction consumes the recovered reservation and creates the order
+and commissions. An append-only `recovered` reservation event records the previous
+state, redemption count, cap, and `overCap` flag; after commit, a
+`[partner-checkout] recovered paid checkout` warning records the same details and
+checkout/order identifiers. Operators should investigate `overCap=true`; the paid
+buyer keeps their order and access, and further checkouts remain blocked by the
+cap. Webhook retries do not duplicate the order, commissions, or recovery event.
 
 See the [go-live checklist](go-live-checklist.md) and
 [staging runbook](staging.md) for rollout verification.

@@ -1,5 +1,14 @@
 import type { AppError, CheckoutSnapshot, Commission, Partner, PartnerCode, PartnerProgram, PartnerCheckoutReservation, Result } from '#core/domain/index.js';
 
+export interface PartnerCheckoutRecovery {
+  recovered: true;
+  previousStatus: 'released' | 'missing';
+  partnerCodeId: string;
+  totalRedemptions: number;
+  maxRedemptions: number | null;
+  overCap: boolean;
+}
+
 export interface PartnerRepository {
   listPrograms(tenantId: string): Promise<PartnerProgram[]>;
   findProgram(tenantId: string, id: string): Promise<PartnerProgram | null>;
@@ -16,7 +25,7 @@ export interface PartnerRepository {
   attachCheckoutSession(tenantId: string, checkoutSnapshotId: string, providerSessionId: string): Promise<void>;
   releaseCheckout(tenantId: string, checkoutSnapshotId: string, now: string): Promise<boolean>;
   listCheckoutReservations(tenantId: string, partnerCodeId: string): Promise<PartnerCheckoutReservation[]>;
-  completeCheckout(tenantId: string, checkoutSnapshotId: string, orderId: string, now: string): Promise<Result<void, AppError>>;
+  completeCheckout(tenantId: string, checkoutSnapshotId: string, orderId: string, now: string): Promise<Result<undefined | PartnerCheckoutRecovery, AppError>>;
   countRedemptions(tenantId: string, partnerCodeId: string): Promise<number>;
   hasActiveCodeForSalesLink(tenantId: string, salesLinkId: string): Promise<boolean>;
   listCommissions(tenantId: string, programId: string, now: string): Promise<Commission[]>;

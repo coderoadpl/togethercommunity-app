@@ -5,7 +5,7 @@ import type { Clock, PaymentProvider } from '../ports.js';
 export const reconcilePartnerReservations = async (
   tenantId: string,
   codeId: string,
-  deps: { partners: PartnerRepository; payment: Pick<PaymentProvider, 'retrieveCheckoutSession'>; clock: Clock },
+  deps: { partners: Pick<PartnerRepository, 'listCheckoutReservations' | 'releaseCheckout'>; payment: Pick<PaymentProvider, 'retrieveCheckoutSession'>; clock: Clock },
 ): Promise<Result<{ codeId: string; checked: number; released: { checkoutSnapshotId: string; sessionId: string }[]; retained: number }, AppError>> => {
   const retrieve = deps.payment.retrieveCheckoutSession;
   if (retrieve === undefined) return err(validation('Checkout reservation reconciliation is unavailable'));
@@ -18,7 +18,7 @@ export const reconcilePartnerReservations = async (
     const session = await retrieve({ tenantId, sessionId: reservation.sessionId, mode: 'live' });
     if (!session.ok) return session;
     checked += 1;
-    if (session.value.status !== 'expired' && !(session.value.status === 'complete' && session.value.paymentStatus === 'unpaid')) continue;
+    if (session.value.status !== 'expired') continue;
     releasable.push({ checkoutSnapshotId: reservation.checkoutSnapshotId, sessionId: reservation.sessionId });
   }
   for (const reservation of releasable) {

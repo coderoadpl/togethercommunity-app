@@ -165,7 +165,7 @@ describe('partner management', () => {
 });
 
 describe('operator reservation reconciliation', () => {
-  it('reports actual releases and retains unresolved, paid, and concurrently consumed reservations', async () => {
+  it('releases expired sessions and retains pending payments, unresolved, paid, and concurrently consumed reservations', async () => {
     const deps = harness();
     deps.partners.listCheckoutReservations = vi.fn(async () => [
       { checkoutSnapshotId: 'expired', sessionId: 'cs_expired' },
@@ -179,11 +179,12 @@ describe('operator reservation reconciliation', () => {
       : { status: sessionId === 'cs_unpaid' ? 'complete' as const : 'expired' as const, paymentStatus: 'unpaid' as const }));
     deps.partners.releaseCheckout = vi.fn(async (_tenantId, id) => id !== 'raced');
     expect(await reconcilePartnerCodeReservations({ identity }, { id: code.id }, deps)).toEqual(ok({
-      codeId: code.id, checked: 4, retained: 3,
-      released: [{ checkoutSnapshotId: 'expired', sessionId: 'cs_expired' }, { checkoutSnapshotId: 'unpaid', sessionId: 'cs_unpaid' }],
+      codeId: code.id, checked: 4, retained: 4,
+      released: [{ checkoutSnapshotId: 'expired', sessionId: 'cs_expired' }],
     }));
     expect(deps.partners.listCheckoutReservations).toHaveBeenCalledWith(identity.tenantId, code.id);
-    expect(deps.partners.releaseCheckout).toHaveBeenCalledTimes(3);
+    expect(deps.partners.releaseCheckout).toHaveBeenCalledTimes(2);
+    expect(deps.partners.releaseCheckout).not.toHaveBeenCalledWith(identity.tenantId, 'unpaid', now);
     expect(deps.payments.retrieveCheckoutSession).toHaveBeenCalledTimes(4);
   });
   it('requires write permission and a code from the current workspace before retrieving sessions', async () => {

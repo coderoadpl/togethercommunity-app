@@ -65,16 +65,13 @@ describe('partner checkout validation', () => {
 });
 
 describe('partner reservation reconciliation during validation', () => {
-  it.each([
-    { status: 'expired' as const, paymentStatus: 'unpaid' as const },
-    { status: 'complete' as const, paymentStatus: 'unpaid' as const },
-  ])('recovers capacity without a webhook for %j', async (session) => {
+  it('recovers capacity for an expired session without a webhook', async () => {
     const current = deps({ ...code, maxRedemptions: 1 });
     let reserved = true;
     current.partners.countRedemptions = async () => reserved ? 1 : 0;
     current.partners.listCheckoutReservations = vi.fn(async () => [{ checkoutSnapshotId: 'snapshot', sessionId: 'cs_abandoned' }]);
     current.partners.releaseCheckout = vi.fn(async () => { reserved = false; return true; });
-    const retrieveCheckoutSession = vi.fn(async () => ok(session));
+    const retrieveCheckoutSession = vi.fn(async () => ok({ status: 'expired' as const, paymentStatus: 'unpaid' as const }));
     expect(await validatePartnerCodeForCheckout('tenant', input, { ...current, payment: { retrieveCheckoutSession } })).toMatchObject({ ok: true, value: { code: { id: code.id } } });
     expect(retrieveCheckoutSession).toHaveBeenCalledWith({ tenantId: 'tenant', sessionId: 'cs_abandoned', mode: 'live' });
     expect(current.partners.listCheckoutReservations).toHaveBeenCalledWith('tenant', code.id);
@@ -82,6 +79,7 @@ describe('partner reservation reconciliation during validation', () => {
   });
   it.each([
     { status: 'open' as const, paymentStatus: 'unpaid' as const },
+    { status: 'complete' as const, paymentStatus: 'unpaid' as const },
     { status: 'complete' as const, paymentStatus: 'paid' as const },
     { status: 'complete' as const, paymentStatus: 'no_payment_required' as const },
   ])('retains capacity for %j', async (session) => {

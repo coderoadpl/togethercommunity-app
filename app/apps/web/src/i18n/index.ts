@@ -9,6 +9,7 @@ export {
   providerCodeOf,
   rejectedCorsOriginOf,
   serverMessageOf,
+  validationReasonOf,
 } from './errors.js';
 export type { Messages } from './messages.js';
 export type { Language } from '#core/domain/index.js';

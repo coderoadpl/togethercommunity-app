@@ -30,7 +30,12 @@ at all.
   draft's price history in the same transaction, as detailed in
   [Product drafts](products.md); stored-object cleanup follows commit.
 - Privacy and identity: `MemberErasurePort.pseudonymize` erases all member
-  identifiers as one unit; `MemberErasureRequestRepository.create` and
+  identifiers and archives their partners and partner codes with append-only
+  events as one unit. It locks the member and partner rows with `FOR UPDATE`;
+  conditional active-status updates archive partners and codes, incrementing
+  code revisions. Member and partner share locks in partner writes prevent
+  concurrent creation or reactivation after erasure.
+  `MemberErasureRequestRepository.create` and
   `MemberErasureRequestRepository.resolve` keep request projections and events
   together.
 - Enrollment and tenant creation: `PurchaseRepository.createMemberGrant`,
@@ -57,7 +62,36 @@ at all.
 - Coupons: `CouponManagementRepository.create`,
   `CouponManagementRepository.archive`, and
   `CouponRedemptionRepository.createOrderAndClaim` keep coupon projections,
-  events, orders, and redemption limits consistent.
+  events, orders, and redemption limits consistent. Coupon creation takes the
+  workspace `discount-codes` transaction-scoped advisory lock shared with
+  partner code edits before checking for cross-table code collisions.
+- Partner checkout: `PartnerRepository.reserveCheckout` and
+  `PartnerRepository.completeCheckout` lock the workspace's `partner_codes`
+  row with `FOR UPDATE` before checking reserved plus used capacity and writing
+  the reservation or consumption with its append-only event. Reservation also
+  writes the immutable checkout snapshot; consumption locks the reservation
+  and runs inside the payment transaction. `PartnerRepository.releaseCheckout`
+  conditionally changes only `reserved` rows to `released`, appending an event
+  only for a changed row in the same transaction.
+- Partner management: `PartnerRepository.saveProgram`,
+  `PartnerRepository.savePartner`, and `PartnerRepository.saveCode` write
+  projections and append-only events together. Program and code edits use
+  revision-conditional updates under the workspace `sales-links`
+  transaction-scoped advisory lock. Program edits lock the program with
+  `FOR UPDATE`; code edits share-lock the program and partner so commission
+  limits and partner activation cannot race. The workspace lock also protects
+  offer validation during code edits, which then take the `discount-codes`
+  advisory lock shared with coupon creation to reject code collisions.
+  Partner writes share-lock the non-erased member, lock an existing partner
+  with `FOR UPDATE`, and use the unique `(program_id, member_id)`
+  constraint to prevent duplicate enrollment.
+- Partner commissions: `PartnerRepository.createCommissions` inserts each
+  commission and its event together, using the unique
+  `(tenant_id, order_id, order_line_id)` constraint and `ON CONFLICT DO NOTHING`
+  to make payment retries idempotent. `PartnerRepository.voidPendingCommissions`
+  conditionally updates unpaid `pending` or `payable` rows before the grace
+  deadline to `voided`, or matures eligible `pending` rows to `payable`, and
+  appends events only for changed rows in the same transaction.
 - Moderation: `PostReportRepository.open`, `PostReportRepository.resolve`,
   `PostReportRepository.resolveAllForPost`, and `MemberRepository.setBanned`
   keep moderation projections and events consistent.

@@ -10,3 +10,6 @@ export { surveyContracts } from '#core/contract/index.js';
 export { salesLinkActions } from './sales-links.js';
 export { salesLinkContracts } from '#core/contract/index.js';
 export * from './order-verification.js';
+
+export { partnerProgramActions } from './partner-programs.js';
+export { partnerContracts } from '#core/contract/index.js';

@@ -30,6 +30,38 @@ database on a protected Neon branch. It is not a copy of production data.
 9. Delete the old data-copied staging branch after the new deployment and smoke
    are green.
 
+## Partner program rollout on existing Stripe endpoints
+
+Partner codes work with existing Stripe endpoints without manual endpoint
+reconfiguration. When a capped code is full, validation retrieves each outstanding
+reservation's checkout session from Stripe and releases only `status=expired`
+sessions before checking capacity again. Completed unpaid sessions retain capacity
+while their delayed payment is pending. Asynchronous success consumes the
+reservation; asynchronous failure releases it. Subscribing to `checkout.session.expired`
+is recommended for faster release through the webhook; delivery of that event is
+not a rollout precondition.
+
+Use `partner-program reconcile-reservations <code-id>` with the correct API origin
+and tenant selected to check reservations on demand. The command reports checked
+reservations, released checkout snapshot/session IDs, and retained reservations.
+Open, paid, `no_payment_required`, missing-session and unresolved reservations
+remain reserved. Never release solely because a reservation is old.
+See [reservation recovery](partner-program.md#reservation-recovery-on-existing-stripe-endpoints).
+
+Local regression tests use a mocked Stripe adapter to verify that an expired
+session recovers capped capacity without a webhook and that the operator command
+reports releases. They also retain a completed unpaid reservation through
+reconciliation and fulfill its order and commissions on
+`checkout.session.async_payment_succeeded`. Recovery of a previously released or
+missing reservation must still fulfill a successful payment, even above the cap:
+verify the append-only `recovered` reservation event and the post-commit
+`[partner-checkout] recovered paid checkout` warning with its `overCap` flag, count,
+cap, and checkout/order identifiers. A retry must not duplicate fulfillment or
+the recovery event. Investigate over-cap recovery without withholding paid access.
+A test-mode order does not reserve partner capacity or create
+commissions, so sandbox delivery alone does not establish live capped-code recovery.
+A fake payment provider does not verify Stripe delivery.
+
 ## Troubleshooting
 
 If staging build migration fails with `42P07 relation already exists` while

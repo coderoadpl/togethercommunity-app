@@ -11,6 +11,7 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  reconcilePartnerCodeReservations: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
@@ -67,6 +68,7 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    reconcilePartnerCodeReservations: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
@@ -171,6 +173,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    reconcilePartnerCodeReservations: h.reconcilePartnerCodeReservations,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
@@ -259,6 +262,7 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.reconcilePartnerCodeReservations.mockReset();
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
@@ -347,7 +351,35 @@ afterAll(() => {
   process.argv = originalArgv;
 });
 
+describe('partner reservation reconciliation CLI', () => {
+  it('reports released checkout sessions and retained reservations', async () => {
+    const report = { codeId: 'code-one', checked: 3, released: [{ checkoutSnapshotId: 'snapshot-expired', sessionId: 'cs_expired' }, { checkoutSnapshotId: 'snapshot-unpaid', sessionId: 'cs_unpaid' }], retained: 1 };
+    h.reconcilePartnerCodeReservations.mockResolvedValue(ok(report));
+
+    await run('--json', 'partner-program', 'reconcile-reservations', 'code-one');
+
+    expect(h.reconcilePartnerCodeReservations).toHaveBeenCalledExactlyOnceWith({ id: 'code-one' });
+    expect(soleJson()).toEqual({ ok: true, data: report });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('preserves authorization errors and their CLI exit code', async () => {
+    const error = appError('forbidden', 'Insufficient permissions');
+    h.reconcilePartnerCodeReservations.mockResolvedValue(err(error));
+
+    await run('--json', 'partner-program', 'reconcile-reservations', 'code-one');
+
+    expect(soleJson()).toEqual({ ok: false, error });
+    expect(process.exitCode).toBe(4);
+  });
+});
+
 describe('sales-link checkout CLI', () => {
+  it('forwards the offer code for server-side validation', async () => {
+    await run('--json', 'sales-link', 'checkout', 'offer-one', '--code', 'FRIEND10');
+    expect(h.directSalesLinkCheckout).toHaveBeenCalledExactlyOnceWith({ slug: 'offer-one', code: 'FRIEND10' });
+    expect(process.exitCode).toBe(0);
+  });
   it.each([{ options: [] }, { options: ['--mode', 'live'] }])('starts live checkout with options $options', async ({ options }) => {
     await run('--json', 'sales-link', 'checkout', 'offer-one', ...options);
     expect(h.directSalesLinkCheckout).toHaveBeenCalledExactlyOnceWith({ slug: 'offer-one' });
@@ -371,7 +403,7 @@ it('updates a sales link with a cancel return address from JSON', async () => {
     cancelReturnUrl: 'https://sales.example.test/offer#details',
   };
   await run('--json', 'sales-link', 'update', 'link-1', '--input', JSON.stringify(input));
-  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith(input);
+  expect(h.updateSalesLink).toHaveBeenCalledExactlyOnceWith({ ...input, allowsCodes: false });
   expect(soleJson()).toEqual({ ok: true, data: { salesLink: { id: 'link-1' } } });
   expect(process.exitCode).toBe(0);
 });

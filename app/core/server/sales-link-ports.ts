@@ -1,4 +1,5 @@
 import type { AppError, Result, SalesLink } from '#core/domain/index.js';
+import type { PartnerRepository } from './partner-ports.js';
 import type { Clock, IdGenerator, ProductPriceRepository, ProductBatchReader, TenantRepository } from './ports.js';
 
 export interface SalesLinkRepository {
@@ -9,6 +10,7 @@ export interface SalesLinkRepository {
   delete(tenantId: string, id: string, occurredAt: string): Promise<Result<void, AppError>>;
 }
 export interface SalesLinkDeps {
+  partners?: Pick<PartnerRepository, 'hasActiveCodeForSalesLink'>;
   salesLinks: SalesLinkRepository;
   products: Pick<ProductBatchReader, 'findByIds'>;
   prices: Pick<ProductPriceRepository, 'listActiveByProducts'>;

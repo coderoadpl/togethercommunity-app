@@ -1,6 +1,7 @@
 import type { AnyPgColumn, AnyPgTable } from 'drizzle-orm/pg-core';
 
 import {
+  partnerCheckoutReservations, commissions, partnerEvents, partnerCodes, partners, partnerPrograms,
   telemetryOutbox, telemetryConnections, telemetryAccounting,
   marketingCampaignAudienceContacts,
   marketingCampaignAudienceSnapshots,
@@ -110,6 +111,7 @@ export type DemoTenantWipeTable = AnyPgTable & { tenantId: AnyPgColumn };
 
 // Order is load-bearing: children before parents, so the wipe holds even for FKs without ON DELETE CASCADE.
 export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
+  partnerCheckoutReservations, commissions, partnerEvents,
   telemetryOutbox, telemetryConnections, telemetryAccounting,
   marketingOutbox,
   marketingSignupSubmissions,
@@ -206,6 +208,7 @@ export const DEMO_TENANT_WIPE_TABLES: readonly DemoTenantWipeTable[] = [
   campaigns,
   marketingConsents,
   orders,
+  partnerCodes, partners, partnerPrograms,
   posts,
   consentDefinitions,
   coupons,

@@ -1,4 +1,6 @@
 import { err, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
+import { materialisePartnerCode, validatePartnerCodeForCheckout } from './partner-checkout.js';
+import { COUPON_UNAVAILABLE_MESSAGE } from './coupon-checkout.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
 
@@ -8,6 +10,7 @@ export const createDirectSalesLinkCheckout = async (
   input: {
     slug: string;
     returnUrl?: string;
+    code?: string;
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
   },
   deps: CheckoutDeps,
@@ -25,12 +28,17 @@ export const createDirectSalesLinkCheckout = async (
   if (deps.checkoutSnapshots === undefined || deps.ids === undefined || deps.clock === undefined) {
     return err(validation('Sales link checkout is not configured'));
   }
-  const mode = 'live';
+  const mode = 'live' as const;
   const configured = await getPaymentConfig(tenant.id, deps, mode);
   if (!configured.ok) return configured;
   if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
   const built = await buildCheckoutLines(tenant.id, selection.value, deps);
   if (!built.ok) return built;
+  const partner = input.code === undefined ? ok(null) : await validatePartnerCodeForCheckout(tenant.id, { code: input.code, salesLinkId: link.id, amountCents: built.value.totalCents, currency: built.value.currency }, deps);
+  if (!partner.ok) return partner;
+  if (input.code !== undefined && (!link.allowsCodes || partner.value === null)) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
+  const promotion = partner.value === null ? ok({}) : await materialisePartnerCode(tenant.id, partner.value.code, built.value.currency, deps);
+  if (!promotion.ok) return promotion;
   const language = settings.defaultLanguage ?? 'en';
   const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
   const termsAcceptanceMessage = input.termsAcceptanceMessage(legal, language);
@@ -39,8 +47,21 @@ export const createDirectSalesLinkCheckout = async (
   const checkoutBranding = resolveCheckoutBranding(settings, tenantBaseUrl);
   const checkoutPath = `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}`;
   const checkoutQuery = `&salesLinkId=${encodeURIComponent(link.id)}`;
+  const snapshot = {
+    id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: link.id,
+    ...(partner.value === null ? {} : { partnerCodeId: partner.value.code.id, discountCents: partner.value.breakdown.discountCents, partnerTerms: partner.value.terms }),
+    lines: built.value.lines, currency: built.value.currency,
+    mode, createdAt: deps.clock.nowIso(),
+  };
+  if (partner.value !== null) {
+    if (deps.partners === undefined) return err(validation('Partner checkout is not configured'));
+    const reserved = await deps.partners.reserveCheckout(tenant.id, snapshot);
+    if (!reserved.ok) return reserved;
+  }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(partner.value === null ? {} : { expiresInSeconds: 30 * 60 }),
+    ...promotion.value,
     mode,
     productId,
     productName: selection.value.product.title,
@@ -55,15 +76,16 @@ export const createDirectSalesLinkCheckout = async (
     directCheckout: { ...legal, termsAcceptanceMessage },
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
   });
-  if (!created.ok) return created;
+  if (!created.ok) {
+    if (partner.value !== null) await deps.partners?.releaseCheckout(tenant.id, checkoutSnapshotId, deps.clock.nowIso());
+    return created;
+  }
   try {
-    await deps.checkoutSnapshots.create(tenant.id, {
-      id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: link.id,
-      lines: built.value.lines, currency: built.value.currency,
-      mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
-    });
+    if (partner.value !== null) await deps.partners?.attachCheckoutSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
+    else await deps.checkoutSnapshots.create(tenant.id, { ...snapshot, providerSessionId: created.value.sessionId });
   } catch (cause) {
-    await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+    const expired = await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+    if (expired.ok && partner.value !== null) await deps.partners?.releaseCheckout(tenant.id, checkoutSnapshotId, deps.clock.nowIso());
     throw cause;
   }
   return ok({ url: created.value.url });

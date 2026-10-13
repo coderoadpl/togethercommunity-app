@@ -26,6 +26,7 @@ const fields = {
   productIds: z.array(z.string().min(1)).min(1).max(50).refine((ids) => new Set(ids).size === ids.length, 'Each product may appear only once'),
   active: z.boolean().default(false),
   listed: z.boolean().default(false),
+  allowsCodes: z.boolean().default(false),
   validFrom: z.string().datetime().nullable().default(null),
   validTo: z.string().datetime().nullable().default(null),
   cancelReturnUrl: cancelReturnUrlSchema,
@@ -38,7 +39,7 @@ const salesLinkLineSchema = z.object({
   productId: z.string(), name: z.string(), type: productTypeSchema, grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
 });
 export const salesLinkOfferSchema = z.object({
-  salesLink: z.object({ slug: fields.slug, heading: fields.heading, description: fields.description, validFrom: fields.validFrom, validTo: fields.validTo }),
+  salesLink: z.object({ allowsCodes: fields.allowsCodes, slug: fields.slug, heading: fields.heading, description: fields.description, validFrom: fields.validFrom, validTo: fields.validTo }),
   descriptionHtml: z.string(),
   lines: z.array(salesLinkLineSchema).min(1),
   currency: currencySchema,

@@ -2,6 +2,7 @@ import { internal, type AppError, type Result } from '#core/domain/index.js';
 import type { EnrollmentTransactionPort, PaymentTransactionPort } from '#core/server/index.js';
 
 import { createCouponRedemptionRepository } from './coupon-repositories.js';
+import { createPartnerRepository } from './partner-repositories.js';
 import { createCheckoutConsentJobRepository } from './checkout-consent-jobs.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
@@ -52,6 +53,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           },
         };
         const result = await operation({
+          partners: createPartnerRepository(tx),
           members,
           grants,
           orders: createOrderRepository(tx),

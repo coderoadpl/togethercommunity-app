@@ -3905,6 +3905,7 @@ describe('member erasure repository', () => {
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(ERASURE, pseudonymizationInput('mem-erasure'));
     expect(result).toEqual({
+      partnerPromotionCodeIds: [],
       alreadyDeleted: false,
       authUserErased: true,
       erasureRequestId: null,
@@ -4092,6 +4093,7 @@ describe('member erasure repository', () => {
   it('reports an already pseudonymized member without touching it again', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(ERASURE, pseudonymizationInput('mem-erasure'));
     expect(result).toEqual({
+      partnerPromotionCodeIds: [],
       alreadyDeleted: true,
       authUserErased: false,
       erasureRequestId: null,
@@ -4107,6 +4109,7 @@ describe('member erasure repository', () => {
   it('keeps the auth user when other tenant memberships still reference it', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(ERASURE, pseudonymizationInput('mem-erasure-shared'));
     expect(result).toEqual({
+      partnerPromotionCodeIds: [],
       alreadyDeleted: false,
       authUserErased: false,
       erasureRequestId: null,

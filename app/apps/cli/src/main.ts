@@ -1,3 +1,4 @@
+import { registerPartnerCommands } from './partner-commands.js';
 import { stripeProbePermissionsInputSchema } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
@@ -651,6 +652,7 @@ const cliCtx = (): Result<CliCtx, AppError> => {
 registerMarketingCommands(program, cliCtx);
 registerSurveyCommands(program, cliCtx);
 registerSalesLinkCommands(program, cliCtx);
+registerPartnerCommands(program, cliCtx);
 registerReportCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 

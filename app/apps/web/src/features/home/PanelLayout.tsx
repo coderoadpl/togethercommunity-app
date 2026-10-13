@@ -88,6 +88,7 @@ type PanelSection =
   | 'reports'
   | 'spaces'
   | 'sales'
+  | 'partnerPrograms'
   | 'coupons'
   | 'integrations'
   | 'marketingActivity'
@@ -163,7 +164,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'offer',
     sections: [
       { id: 'products', to: '/panel/products' },
-      { id: 'coupons', to: '/panel/sales/coupons' },
     ],
   },
   {
@@ -178,6 +178,8 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'sales',
     sections: [
       { id: 'sales', to: '/panel/sales' },
+      { id: 'coupons', to: '/panel/sales/coupons' },
+      { id: 'partnerPrograms', to: '/panel/sales/partner-programs' },
     ],
   },
   {
@@ -201,7 +203,7 @@ const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
   role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
 
 const isActive = (pathname: string, to: string, exact: boolean): boolean =>
-  to === '/panel/sales' && pathname.startsWith('/panel/sales/coupons')
+  to === '/panel/sales' && (pathname.startsWith('/panel/sales/coupons') || pathname.startsWith('/panel/sales/partner-programs'))
     ? false
     : exact
       ? pathname === to || pathname === `${to}/`
@@ -225,6 +227,7 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <SpacesIcon />;
     case 'sales':
       return <SalesIcon />;
+    case 'partnerPrograms':
     case 'coupons':
       return <CouponsIcon />;
     case 'integrations':

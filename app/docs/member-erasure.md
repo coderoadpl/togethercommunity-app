@@ -45,6 +45,8 @@ follow the same member-erasure selection as live orders.
   `reported_display`, and the matching `snapshot[].senderDisplay` entries — with
   `deletedMemberDisplay()`;
 - deletes the `member_blocks` rows on either side of the severed `userId`;
+- archives the member's partner memberships and partner codes, increments code
+  revisions, and appends erasure events;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state
@@ -188,3 +190,25 @@ that reaches its transaction after erasure is rejected and writes nothing; later
 requests from that visitor are handled as anonymous and are never linked to the
 erased member.
 See [Surveys](surveys.md#privacy-and-erasure).
+
+## Partner program registry
+
+| Record | Erasure action | Retained data |
+|---|---|---|
+| `partners` | Archive every membership for the tenant and member. Assignment and erasure serialize on the member row; erased members cannot be assigned again. | Opaque member and program ids, status, and creation time remain for financial reconciliation. |
+| `partner_codes` | Archive all active codes and advance their revisions in the erasure transaction. Code edits serialize on the partner row and cannot reactivate an erased partner's codes. | Code text, offer scope, commercial terms, Stripe identifiers, and revision history remain for attribution and accounting. |
+| `partner_events` | Append `member-erased` events for changed memberships and codes. Existing snapshots are immutable. | Historical partner, code, reservation, and commission snapshots retain their opaque ids and commercial terms; they do not copy member e-mail or display name. A chosen code may itself contain identifying text and is retained as a financial reference. |
+| `commissions` | Preserve ledger rows and their existing payout/grace status. | Per-order amounts, partner/code/program ids, and financial history remain; the member link resolves to the tombstone. |
+
+New checkouts reject archived codes. Existing paid orders and checkout sessions
+reserved before erasure retain their attribution and agreed commission terms.
+Erasure does not cancel a buyer's existing checkout or rewrite their financial
+history.
+
+After the transaction, `removeMember` deactivates every retained Stripe promotion
+for these codes through the payment provider. A failure is returned to the caller;
+local erasure and code archival remain committed. Repeating removal retries all
+retained promotions, including codes already archived before erasure, without
+adding duplicate events. Provider deactivation has no durable background retry;
+staff must repeat a failed removal. Stripe's promotion-code field remains disabled
+and Together rejects these archived codes even while provider cleanup is pending.

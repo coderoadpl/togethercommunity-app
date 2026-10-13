@@ -36,6 +36,8 @@ import type {
   PaymentTransactionPort,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
+import type { PartnerCheckoutRecovery, PartnerRepository } from '../partner-ports.js';
+import { recordOrderCommissions } from './partner-ledger.js';
 import { safeErrorMessage } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
@@ -52,6 +54,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+  partners?: Pick<PartnerRepository, 'findCode' | 'findProgram' | 'createCommissions' | 'voidPendingCommissions' | 'completeCheckout' | 'releaseCheckout'>;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -71,6 +74,7 @@ export const CHECKOUT_SESSION_EVENT_TYPES = new Set<string>([
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
   'checkout.session.async_payment_failed',
+  'checkout.session.expired',
 ]);
 
 interface EventApplication {
@@ -78,6 +82,7 @@ interface EventApplication {
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
+  partnerCheckoutRecovery?: PartnerCheckoutRecovery;
 }
 
 const ignorePaymentMode = (
@@ -182,6 +187,7 @@ export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
   'checkout.session.async_payment_failed',
+  'checkout.session.expired',
   'invoice.paid',
   'invoice.payment_failed',
   'customer.subscription.updated',
@@ -460,9 +466,8 @@ const applyCheckoutCompleted = async (
   }
   const product = await deps.products.findById(tenant.id, metadata.productId);
   if (event.mode === 'test') deps.logger.warn(`[stripe-test] fulfilled tenant=${tenant.id} checkout=${event.objectId}; member email suppressed`);
-  const paidOrder =
-    completedTestOrder ?? discounted?.order ??
-    (await appendOrder(
+  if (completedTestOrder === null && discounted === null) {
+    await appendOrder(
       tenant.id,
       {
         mode: event.mode ?? 'live',
@@ -488,18 +493,33 @@ const applyCheckoutCompleted = async (
         discountCents:
           event.checkoutSession.discountTotalCents ??
           couponContext?.session.discountCents ??
+          (snapshot?.partnerCodeId == null ? undefined : snapshot.discountCents) ??
           0,
+        partnerCodeId: snapshot?.partnerCodeId ?? null,
         billing,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
       },
       deps,
-    ));
+    );
+  }
+  const paidOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
+  if (paidOrder === null) return err(internal('Fulfilled checkout order is missing'));
+
+  let partnerCheckoutRecovery: PartnerCheckoutRecovery | undefined;
+  if (deps.partners !== undefined && snapshot?.partnerCodeId != null && paidOrder.mode !== 'test') {
+    const completed = await deps.partners.completeCheckout(tenant.id, snapshot.id, paidOrder.id, deps.clock.nowIso());
+    if (!completed.ok) return completed;
+    if (completed.value !== undefined) partnerCheckoutRecovery = completed.value;
+  }
+  if (deps.partners !== undefined) await recordOrderCommissions(paidOrder, deps.partners, deps.ids, {
+    ...(event.createdAt == null ? {} : { paidAt: event.createdAt }),
+    ...(snapshot?.partnerTerms == null ? {} : { terms: snapshot.partnerTerms }),
+  });
 
   if (event.mode !== 'test' && product !== null) {
     const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
     if (member === null) return err(internal('Purchased order member is missing'));
-    const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
-    const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, persistedOrder ?? paidOrder));
+    const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, paidOrder));
     if (!queued.ok) return queued;
     deps.dispatchEmail();
   }
@@ -534,10 +554,10 @@ const applyCheckoutCompleted = async (
       },
       deps,
     );
-    return ok({ processed: true, paidOrder });
+    return ok({ processed: true, paidOrder, ...(partnerCheckoutRecovery === undefined ? {} : { partnerCheckoutRecovery }) });
   }
 
-  return ok({ processed: true, paidOrder });
+  return ok({ processed: true, paidOrder, ...(partnerCheckoutRecovery === undefined ? {} : { partnerCheckoutRecovery }) });
 };
 
 const applyInvoiceEvent = async (
@@ -689,8 +709,11 @@ const applyPaymentAdjustment = async (
   }
 
   if (order.status !== 'refunded') {
-    const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
-    if (!refunded) return ok({ processed: false });
+    await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
+  }
+  if (order.mode !== 'test') {
+    await deps.partners?.voidPendingCommissions(tenant.id, order.id,
+      event.type === 'charge.dispute.created' ? 'disputed' : 'refunded', event.createdAt ?? deps.clock.nowIso());
   }
   const refundedProductIds = order.lines?.filter((line) => line.productType !== 'physical').map((line) => line.productId) ?? [order.productId];
   for (const productId of refundedProductIds) {
@@ -740,12 +763,17 @@ const applyPaymentAdjustment = async (
   return ok({ processed: true });
 };
 
-const asyncPaymentFailed = (
+const applyUnpaidCheckoutClosed = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
-): Result<EventApplication, AppError> => {
-  deps.logger.warn(
+): Promise<Result<EventApplication, AppError>> => {
+  const metadata = event.checkoutSession?.metadata;
+  if (metadata?.tenantId !== tenant.id) return err(validation('Stripe checkout metadata does not match the webhook tenant'));
+  if (metadata.checkoutSnapshotId != null && event.mode !== 'test') {
+    await deps.partners?.releaseCheckout(tenant.id, metadata.checkoutSnapshotId, event.createdAt ?? deps.clock.nowIso());
+  }
+  if (event.type === 'checkout.session.async_payment_failed') deps.logger.warn(
     `[stripe-webhook] tenant=${tenant.id} event=${event.id} checkout=${event.objectId ?? 'unknown'} async payment failed`,
   );
   return ok({ processed: true });
@@ -983,8 +1011,8 @@ export const fulfillStripeWebhook = async (
     applied = await deps.paymentTransaction.run(async (transactionDeps) => {
       const branchDeps = { ...deps, ...transactionDeps };
       const result: Result<EventApplication, AppError> =
-        event.type === 'checkout.session.async_payment_failed'
-          ? asyncPaymentFailed(tenant, event, deps)
+        event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired'
+          ? await applyUnpaidCheckoutClosed(tenant, event, branchDeps)
           : CHECKOUT_SESSION_EVENT_TYPES.has(event.type)
             ? await applyCheckoutCompleted(tenant, event, provider, branchDeps)
             : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
@@ -1025,6 +1053,10 @@ export const fulfillStripeWebhook = async (
   }
   if (applied.value.pendingConsent !== undefined) {
     deps.logger.error(`[checkout-consent] pending tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${applied.value.pendingConsent}`);
+  }
+  if (applied.value.partnerCheckoutRecovery !== undefined) {
+    const recovery = applied.value.partnerCheckoutRecovery;
+    deps.logger.warn(`[partner-checkout] recovered paid checkout tenant=${tenant.id} event=${event.id} checkout=${event.objectId} order=${applied.value.paidOrder?.id} code=${recovery.partnerCodeId} previousStatus=${recovery.previousStatus} overCap=${recovery.overCap} totalRedemptions=${recovery.totalRedemptions} maxRedemptions=${recovery.maxRedemptions ?? 'unlimited'}`);
   }
   return ok({ processed: applied.value.processed });
 };

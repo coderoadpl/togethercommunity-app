@@ -7557,7 +7557,7 @@ describe('checkout consent ordering', () => {
         evidence: {
           ip: '203.0.113.90',
           userAgent: 'Webhook Browser/99',
-          proofRef: expect.stringMatching(/^product:webhook-product;order:id-\d+$/),
+          proofRef: 'product:webhook-product;order:order-webhook',
         },
       },
     ]);
@@ -7587,7 +7587,9 @@ describe('checkout consent ordering', () => {
     event.id = 'evt_webhook_missing_order';
     event.objectId = 'cs_webhook_missing_order';
     orderResult = null;
-    expect((await deliver()).status).toBe(200);
+    const missingOrder = await deliver();
+    expect(missingOrder.status).toBe(500);
+    expect(await missingOrder.json()).toMatchObject({ ok: false, error: { code: 'internal', message: 'Fulfilled checkout order is missing' } });
 
     const grantedBefore = await marketing.marketingConsents.listByEmail(
       acme.id,
@@ -8887,8 +8889,11 @@ describe('unlisted and free checkout', () => {
     const base = deps({ products: [hidden] });
     const createSession = vi.fn(base.payment.createCheckoutSession);
     base.payment.createCheckoutSession = createSession;
-    const createOrder = vi.fn(base.orders.create);
+    const storedOrders: Order[] = [];
+    const createOrder = vi.fn<AppDeps['orders']['create']>(async (_tenantId, order) => { storedOrders.push(order); });
     base.orders.create = createOrder;
+    base.paymentRefunds.findOrderByProviderObjectIds = async (tenantId, objectIds) =>
+      storedOrders.find((order) => order.tenantId === tenantId && Object.entries(objectIds).some(([key, value]) => order.providerObjectIds[key] === value)) ?? null;
     const recordConsent = vi.fn(base.consents.record);
     base.consents.record = recordConsent;
     base.tenants.findSettings = async () => ({
@@ -9422,7 +9427,7 @@ it('exposes only public sales-link fields and accepts its slug for checkout', as
   const response = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   const body = envelopeSchema(salesLinkContracts.getPublicSalesLink.output).parse(await response.json());
   if (!body.ok) throw new Error(body.error.message);
-  expect(body.data.salesLink).toEqual({ slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
+  expect(body.data.salesLink).toEqual({ allowsCodes: false, slug: 'bundle', heading: 'Complete bundle', description: '', validFrom: null, validTo: null });
   const raw = await h.app.request('/api/public/sales-links/bundle', { headers: { host: 'acme.localhost' } });
   expect((await raw.json()).data.salesLink).toEqual(body.data.salesLink);
   const purchaseResponse = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test' });
@@ -9974,4 +9979,136 @@ describe('direct public sales-link checkout', () => {
     expect(h.orders).toHaveLength(0);
     expect(h.grants).toHaveLength(0);
   });
+});
+
+const partnerDirectApp = async () => {
+  const h = await directSalesLinkApp();
+  const { partnerCodeSchema, partnerProgramSchema } = await import('#core/domain/index.js');
+  const now = h.base.clock.nowIso();
+  const program = partnerProgramSchema.parse({ id: 'program', tenantId: acme.id, name: 'Referral program', commissionPct: 50, createdAt: now, revision: 1 });
+  const code = partnerCodeSchema.parse({ id: 'partner-code', tenantId: acme.id, programId: program.id, partnerId: 'partner', code: 'REFERRAL10', discountPct: 10, salesLinkIds: [h.link.id], stripeCouponId: null, stripePromotionCodeId: null, createdAt: now, revision: 1 });
+  h.link.allowsCodes = true;
+  h.base.partners = {
+    listPrograms: async () => [program], findProgram: async () => program, saveProgram: async (_, item) => ok(item),
+    listPartners: async () => [], findPartner: async () => ({ id: 'partner', tenantId: acme.id, programId: program.id, memberId: 'member', status: 'active', createdAt: now }), savePartner: async (_, item) => ok(item),
+    listCodes: async () => [code], findCode: async () => code, findCodeByCode: async (_, value) => value === code.code ? code : null, saveCode: async (_, item) => ok(item), cacheStripeIds: async () => code,
+    reserveCheckout: async (_, snapshot) => { h.snapshots.set(snapshot.id, snapshot); return ok(undefined); },
+    attachCheckoutSession: async (_, id, providerSessionId) => { const snapshot = h.snapshots.get(id); if (snapshot !== undefined) h.snapshots.set(id, { ...snapshot, providerSessionId }); },
+    releaseCheckout: async () => false, completeCheckout: async () => ok(undefined),
+    listCheckoutReservations: async () => [], countRedemptions: async () => 0, hasActiveCodeForSalesLink: async () => true,
+    listCommissions: async () => [], createCommissions: async () => undefined, voidPendingCommissions: async () => undefined,
+  };
+  h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'coupon-partner', stripePromotionCodeId: 'promotion-partner' });
+  const headers = { host: 'acme.localhost', 'content-type': 'application/json' };
+  const start = (value: string) => h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers, body: JSON.stringify({ code: value }) });
+  return { ...h, code, headers, start };
+};
+
+it('prefills a partner code on the offer and applies it through the direct POST', async () => {
+  const h = await partnerDirectApp();
+  const response = await h.app.request('/offer/bundle?code=referral10', { headers: h.headers });
+  const html = await response.text();
+  expect(html).toContain('id="code-toggle"');
+  expect(html).toContain('value="REFERRAL10"');
+  expect(h.create).not.toHaveBeenCalled();
+  expect(await (await h.start('referral10')).json()).toMatchObject({ ok: true });
+  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner', expiresInSeconds: 1800, directCheckout: expect.any(Object) }));
+  h.code.discountPct = 20;
+  expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: 'partner-code', discountCents: 213, partnerTerms: { commissionPct: 50, discountPct: 10, graceDays: 14 } }]);
+});
+
+it.each(['unknown', 'archived', 'foreign', 'expired', 'exhausted', 'disabled'] as const)('rejects a %s direct partner code without creating a session', async (reason) => {
+  const h = await partnerDirectApp();
+  if (reason === 'archived') h.code.status = 'archived';
+  if (reason === 'foreign') h.code.salesLinkIds = ['another-offer'];
+  if (reason === 'expired') h.code.validTo = h.base.clock.nowIso();
+  if (reason === 'exhausted') { h.code.maxRedemptions = 1; if (h.base.partners !== undefined) h.base.partners.countRedemptions = async () => 1; }
+  if (reason === 'disabled') h.link.allowsCodes = false;
+  const response = await h.start(reason === 'unknown' ? 'UNKNOWN' : h.code.code);
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ ok: false, error: { message: 'Coupon cannot be applied' } });
+  expect(h.create).not.toHaveBeenCalled();
+  if (reason === 'disabled') expect(await (await h.app.request('/offer/bundle?code=REFERRAL10', { headers: h.headers })).text()).not.toContain('id="code-toggle"');
+});
+
+it('accepts attribution-only codes without applying a Stripe discount', async () => {
+  const h = await partnerDirectApp();
+  h.code.discountPct = 0;
+  const promotion = vi.spyOn(h.base.payment, 'ensureCouponPromotion');
+  expect((await h.start(h.code.code)).status).toBe(200);
+  expect(h.create.mock.calls[0]?.[0].promotionCodeId).toBeUndefined();
+  expect(h.create.mock.calls[0]?.[0].expiresInSeconds).toBe(1800);
+  expect(promotion).not.toHaveBeenCalled();
+  expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: h.code.id, discountCents: 0 }]);
+});
+
+it('applies typed partner codes in Together checkout without a preview and rejects single-product use', async () => {
+  const h = await partnerDirectApp();
+  const input = { productId: 'print', salesLinkSlug: h.link.slug, couponCode: h.code.code, email: 'buyer@example.test' };
+  const checkout = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers: h.headers, body: JSON.stringify({ ...input, termsAccepted: true }) });
+  expect(await checkout.json()).toMatchObject({ ok: true });
+  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ promotionCodeId: 'promotion-partner', expiresInSeconds: 1800 }));
+  expect([...h.snapshots.values()]).toMatchObject([{ partnerCodeId: h.code.id, partnerTerms: { commissionPct: 50, discountPct: 10, graceDays: 14 } }]);
+  const preview = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: h.headers, body: JSON.stringify(input) });
+  expect(await preview.json()).toMatchObject({ ok: true, data: { breakdown: { code: h.code.code, discountCents: 213 } } });
+  const single = await h.app.request(API_PATHS.couponCheckoutValidation, { method: 'POST', headers: h.headers, body: JSON.stringify({ productId: 'print', couponCode: h.code.code }) });
+  expect(await single.json()).toMatchObject({ ok: false, error: { message: 'Partner codes require a sales-link offer' } });
+  const singleCheckout = await h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers: h.headers, body: JSON.stringify({ productId: 'print', couponCode: h.code.code, email: input.email, termsAccepted: true }) });
+  expect(await singleCheckout.json()).toMatchObject({ ok: false, error: { message: 'Partner codes require a sales-link offer' } });
+  expect(h.create).toHaveBeenCalledOnce();
+});
+
+it('rejects a partner code in staff test checkout before creating a payment session', async () => {
+  const h = await partnerDirectApp();
+  h.code.maxRedemptions = 1;
+  if (h.base.partners === undefined) throw new Error('Partner repository missing');
+  h.base.partners.countRedemptions = async () => 1;
+  h.base.partners.listCheckoutReservations = async () => [{ checkoutSnapshotId: 'live-snapshot', sessionId: 'cs_live' }];
+  const retrieve = vi.fn(async () => ok({ status: 'expired' as const, paymentStatus: 'unpaid' as const }));
+  h.base.payment.retrieveCheckoutSession = retrieve;
+  const { startCheckoutSession, validateCheckoutSelection } = await import('#core/server/index.js');
+  const input = { productId: 'print', salesLinkSlug: h.link.slug, couponCode: h.code.code, email: 'staff@example.test' };
+  const selection = await validateCheckoutSelection(acme.id, input, h.base);
+  if (!selection.ok) throw new Error(selection.error.message);
+  expect(await startCheckoutSession(acme, 'http://acme.localhost:48730', input, selection.value, h.base, undefined, { mode: 'test', memberId: 'staff-member' })).toMatchObject({ ok: false, error: { message: 'Test checkout requires a paid price without a coupon' } });
+  expect(h.create).not.toHaveBeenCalled();
+  expect(retrieve).not.toHaveBeenCalled();
+  expect(h.orders).toHaveLength(0);
+});
+
+it('rejects capacity lost after preview before creating either partner checkout session', async () => {
+  const h = await partnerDirectApp();
+  if (h.base.partners === undefined) throw new Error('Missing partner repository');
+  h.base.partners.reserveCheckout = async () => err(validation('Coupon cannot be applied'));
+  expect((await h.start(h.code.code)).status).toBe(400);
+  const response = await h.app.request(API_PATHS.checkoutSession, {
+    method: 'POST', headers: h.headers,
+    body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true, couponCode: h.code.code }),
+  });
+  expect(response.status).toBe(400);
+  expect(h.create).not.toHaveBeenCalled();
+});
+
+it('releases partner capacity when Stripe rejects session creation', async () => {
+  const h = await partnerDirectApp();
+  if (h.base.partners === undefined) throw new Error('Missing partner repository');
+  const release = vi.spyOn(h.base.partners, 'releaseCheckout');
+  h.create.mockResolvedValue(err(validation('Session rejected')));
+  expect((await h.start(h.code.code)).status).toBe(400);
+  expect(release).toHaveBeenCalledWith(acme.id, expect.any(String), h.base.clock.nowIso());
+});
+
+it.each(['direct', 'together'])('expires the %s session and releases capacity when attaching it fails', async (path) => {
+  const h = await partnerDirectApp();
+  if (h.base.partners === undefined) throw new Error('Missing partner repository');
+  h.base.partners.attachCheckoutSession = async () => { throw new Error('Attachment failed'); };
+  const expire = vi.spyOn(h.base.payment, 'expireCheckoutSession').mockResolvedValue(ok({ expired: true }));
+  const release = vi.spyOn(h.base.partners, 'releaseCheckout');
+  const response = path === 'direct' ? await h.start(h.code.code) : await h.app.request(API_PATHS.checkoutSession, {
+    method: 'POST', headers: h.headers,
+    body: JSON.stringify({ productId: 'print', salesLinkSlug: 'bundle', email: 'buyer@example.test', termsAccepted: true, couponCode: h.code.code }),
+  });
+  expect(response.status).toBe(500);
+  expect(expire).toHaveBeenCalledWith(expect.objectContaining({ tenantId: acme.id, mode: 'live' }));
+  expect(release).toHaveBeenCalledWith(acme.id, expect.any(String), h.base.clock.nowIso());
 });

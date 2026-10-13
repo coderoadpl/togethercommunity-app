@@ -1,3 +1,4 @@
+import { registerPartnerRoutes } from './partner-routes.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
@@ -1319,6 +1320,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSessionMarketingSignupRoutes(app, deps);
   registerSurveyRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
+  registerPartnerRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
@@ -2948,7 +2950,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await archiveCoupon(
         ctxOf(c),
         parsed.data,
-        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+        { coupons: deps.coupons, ...(deps.partners === undefined ? {} : { partners: deps.partners }), ids: deps.ids, clock: deps.clock },
       ),
     );
   });
@@ -3004,7 +3006,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await createCoupon(
         ctxOf(c),
         parsed.data,
-        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+        { coupons: deps.coupons, ...(deps.partners === undefined ? {} : { partners: deps.partners }), ids: deps.ids, clock: deps.clock },
       ),
     );
   });

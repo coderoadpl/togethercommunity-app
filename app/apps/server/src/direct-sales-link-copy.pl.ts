@@ -1,6 +1,9 @@
 import { type DirectSalesLinkMessages } from './direct-sales-link-copy.en.js';
 
 export const directSalesLinkCopyPl = {
+  haveCode: 'Mam kod rabatowy',
+  discountCode: 'Kod rabatowy',
+  couponUnavailable: 'Tego kodu rabatowego nie można użyć.',
   redirecting: 'Przekierowujemy do bezpiecznej płatności…',
   continueToPayment: 'Przejdź do płatności',
   checkoutUnavailable: 'Płatność jest w tej chwili niedostępna.',

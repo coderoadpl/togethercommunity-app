@@ -1016,6 +1016,48 @@
       "when": 1790964000016,
       "tag": "0144_sales_link_cancel_return_url",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1790964000017,
+      "tag": "0145_partner_programs",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1790964000018,
+      "tag": "0146_partners",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1790964000019,
+      "tag": "0147_partner_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1790964000020,
+      "tag": "0148_commissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1790964000021,
+      "tag": "0149_sales_link_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1790964000022,
+      "tag": "0150_partner_checkout_reservations",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { PARTNER_ROUTES } from './partners.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { productVatRateSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -1853,6 +1854,7 @@ export const API_ROUTES = {
   ...MARKETING_SIGNUP_ROUTES,
   ...SURVEY_ROUTES,
   ...SALES_LINK_ROUTES,
+  ...PARTNER_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
@@ -2161,6 +2163,16 @@ export type ReadMethod = Extract<HttpMethod, 'GET'>;
 export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
+  listPartnerPrograms: API_ROUTES.listPartnerPrograms.path,
+  getPartnerProgram: API_ROUTES.getPartnerProgram.path,
+  createPartnerProgram: API_ROUTES.createPartnerProgram.path,
+  updatePartnerProgram: API_ROUTES.updatePartnerProgram.path,
+  assignPartner: API_ROUTES.assignPartner.path,
+  updatePartner: API_ROUTES.updatePartner.path,
+  createPartnerCode: API_ROUTES.createPartnerCode.path,
+  updatePartnerCode: API_ROUTES.updatePartnerCode.path,
+  reconcilePartnerCodeReservations: API_ROUTES.reconcilePartnerCodeReservations.path,
+
   directSalesLinkCheckout: API_ROUTES.directSalesLinkCheckout.path,
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,

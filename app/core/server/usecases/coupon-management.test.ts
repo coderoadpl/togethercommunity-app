@@ -65,6 +65,23 @@ const harness = () => {
 };
 
 describe('coupon management', () => {
+  it('rejects names already reserved by a partner code before creating a coupon', async () => {
+    const h = harness();
+    const result = await createCoupon({ identity }, {
+      code: ' partner20 ', kind: 'percent', value: 20, scope: { kind: 'all' }, appliesTo: 'both',
+    }, {
+      coupons: h.repository,
+      partners: { findCodeByCode: async (_tenantId, code) => code === 'PARTNER20' ? {
+        id: 'partner-code', tenantId: 'tenant-1', programId: 'program', partnerId: 'partner', code,
+        discountPct: 20, salesLinkIds: ['offer'], validFrom: null, validTo: null,
+        maxRedemptions: null, status: 'archived', stripeCouponId: null, stripePromotionCodeId: null,
+        createdAt: '2026-10-13T12:00:00.000Z', revision: 1,
+      } : null },
+      ids: { nextId: () => 'unused' }, clock: { nowIso: () => '2026-10-13T12:00:00.000Z' },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.created).toEqual([]);
+  });
   it('creates normalized coupons and an append-only lifecycle event', async () => {
     const h = harness();
     const result = await createCoupon(

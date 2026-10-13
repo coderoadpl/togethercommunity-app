@@ -1,7 +1,7 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 import {
@@ -197,6 +197,34 @@ describe('configureWebhook', () => {
     expect([...HANDLED_EVENT_TYPES]).toEqual([...STRIPE_WEBHOOK_EVENTS]);
     expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_succeeded');
     expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_failed');
+    expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.expired');
+  });
+
+  it.each(['live', 'test'] as const)('upgrades an existing %s endpoint to release abandoned partner checkouts', async (mode) => {
+    const url = webhookUrl + (mode === 'test' ? '?mode=test' : '');
+    const previousEvents = STRIPE_WEBHOOK_EVENTS.filter((event) => event !== 'checkout.session.expired');
+    const stripeApi = providerOverHttp((request) => request.method === 'DELETE'
+      ? stripeJson({ id: 'we_previous', object: 'webhook_endpoint', deleted: true })
+      : stripeJson({ id: 'we_upgraded', object: 'webhook_endpoint', secret: 'whsec_upgraded', status: 'enabled', url }), [
+      { id: 'we_previous', object: 'webhook_endpoint', metadata: { tenantId: 'tenant-1' }, status: 'enabled', url, enabled_events: previousEvents },
+    ]);
+
+    expect(await stripeApi.configureWebhook({ tenantId: 'tenant-1', restrictedKey: `rk_${mode}_private`, webhookUrl: url }))
+      .toEqual(ok({ webhookEndpointId: 'we_upgraded', webhookSecret: 'whsec_upgraded' }));
+    expect(stripeApi.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
+      'GET /v1/webhook_endpoints',
+      'DELETE /v1/webhook_endpoints/we_previous',
+      'POST /v1/webhook_endpoints',
+    ]);
+    const replacement = stripeApi.requests.at(-1);
+    if (replacement === undefined) throw new Error('Replacement endpoint request missing');
+    const body = new URLSearchParams(await replacement.text());
+    expect(body.get('url')).toBe(url);
+    expect(body.get('metadata[tenantId]')).toBe('tenant-1');
+    const enabledEvents = [...body.entries()].filter(([key]) => key.startsWith('enabled_events[')).map(([, value]) => value);
+    expect(enabledEvents).toContain('checkout.session.expired');
+    expect(enabledEvents).toEqual(expect.arrayContaining(previousEvents));
+    expect(enabledEvents).toEqual([...STRIPE_WEBHOOK_EVENTS]);
   });
 
   it('deletes a newly registered endpoint during persistence cleanup', async () => {
@@ -714,6 +742,7 @@ describe('verifyWebhookEvent', () => {
     ['checkout.session.completed', 'unpaid'],
     ['checkout.session.async_payment_succeeded', 'paid'],
     ['checkout.session.async_payment_failed', 'unpaid'],
+    ['checkout.session.expired', 'unpaid'],
   ] as const)('maps %s with payment status %s', async (type, paymentStatus) => {
     const payload = JSON.stringify({
       id: `evt_${type}`,
@@ -760,6 +789,19 @@ describe('verifyWebhookEvent', () => {
     await expect(verify(payload)).resolves.toMatchObject({
       ok: true,
       value: { createdAt: '1999-01-15T08:00:00.000Z' },
+    });
+  });
+
+  it.each([
+    ['checkout.session.completed', { id: 'cs_1', customer_details: { email: 'buyer@example.test' }, metadata: {} }],
+    ['checkout.session.async_payment_succeeded', { id: 'cs_1', customer_details: { email: 'buyer@example.test' }, metadata: {} }],
+    ['charge.refunded', { id: 'ch_1', payment_intent: 'pi_1', refunded: true }],
+    ['charge.dispute.created', { id: 'dp_1', charge: 'ch_1', payment_intent: 'pi_1' }],
+  ])('preserves the provider event time for %s', async (type, object) => {
+    const payload = JSON.stringify({ id: 'evt_delayed', type, created: 916_387_200, data: { object } });
+    expect(await verify(payload)).toMatchObject({
+      ok: true,
+      value: { type, createdAt: '1999-01-15T08:00:00.000Z' },
     });
   });
 
@@ -1231,4 +1273,120 @@ it.each([
 it('pins the Stripe SDK to the Clover API release or later for native checkout branding', () => {
   expect(Stripe.API_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.[a-z]+$/);
   expect(Stripe.API_VERSION >= '2025-09-30.clover').toBe(true);
+});
+
+it('deactivates a partner promotion code through the existing Stripe client', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+      requests.push(new Request(input, init));
+      return stripeJson({ id: 'promo_partner', active: false });
+    }) }),
+  });
+  expect(await payment.deactivateCouponPromotion?.({ tenantId: 'tenant', stripePromotionCodeId: 'promo_partner' })).toEqual(ok({ deactivated: true }));
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (request === undefined) throw new Error('Missing promotion update');
+  expect(new URL(request.url).pathname).toBe('/v1/promotion_codes/promo_partner');
+  expect(new URLSearchParams(await request.text()).get('active')).toBe('false');
+});
+
+it('applies a direct discount while keeping Stripe code entry disabled', () => {
+  const params = stripeCheckoutSessionParams({ tenantId: 'tenant', productId: 'product', productName: 'Offer', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel', promotionCodeId: 'promo_partner', directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms.' } });
+  expect(params.allow_promotion_codes).toBe(false);
+  expect(params.discounts).toEqual([{ promotion_code: 'promo_partner' }]);
+});
+
+it('reactivates a partner promotion after a failed edit through the existing Stripe client', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+      requests.push(new Request(input, init));
+      return stripeJson({ id: 'promo_partner', active: true });
+    }) }),
+  });
+  expect(await payment.activateCouponPromotion?.({ tenantId: 'tenant', stripePromotionCodeId: 'promo_partner' })).toEqual(ok({ activated: true }));
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (request === undefined) throw new Error('Missing promotion request');
+  expect(request.url).toContain('/v1/promotion_codes/promo_partner');
+  expect(new URLSearchParams(await request.text()).get('active')).toBe('true');
+});
+
+
+it('sets the shortest Stripe expiration for a reserved partner checkout', () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime('2026-10-13T12:00:00.000Z');
+    const input = { tenantId: 'tenant', productId: 'product', productName: 'Offer', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' };
+    const params = stripeCheckoutSessionParams({ ...input, expiresInSeconds: 1800 });
+    expect(params.expires_at).toBe(Date.now() / 1000 + 1800);
+    expect(stripeCheckoutSessionParams(input)).not.toHaveProperty('expires_at');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+describe('retrieveCheckoutSession', () => {
+  const retrievalProvider = (response: Response) => {
+    const requests: Request[] = [];
+    const resolve = vi.fn(async (_tenantId: string, key: string) => ok(key === 'stripe.testRestrictedKey' ? 'rk_test_unused' : 'rk_live_unused'));
+    const payment = createStripePaymentProvider({
+      resolver: { resolve },
+      clientFactory: (key) => new Stripe(key, {
+        maxNetworkRetries: 0,
+        httpClient: Stripe.createFetchHttpClient(async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+          requests.push(new Request(input, init));
+          return response;
+        }),
+      }),
+    });
+    return { payment, requests, resolve };
+  };
+
+  it.each([
+    { status: 'open', paymentStatus: 'unpaid', mode: 'live' },
+    { status: 'expired', paymentStatus: 'unpaid', mode: 'test' },
+    { status: 'complete', paymentStatus: 'paid', mode: 'live' },
+    { status: 'complete', paymentStatus: 'unpaid', mode: 'live' },
+    { status: 'complete', paymentStatus: 'unpaid', mode: 'test' },
+    { status: 'complete', paymentStatus: 'no_payment_required', mode: 'live' },
+  ] as const)('retrieves $status/$paymentStatus in $mode mode', async ({ status, paymentStatus, mode }) => {
+    const { payment, requests, resolve } = retrievalProvider(stripeJson({ id: 'cs_reserved', status, payment_status: paymentStatus }));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode })).toEqual(ok({ status, paymentStatus }));
+    expect(resolve).toHaveBeenCalledWith('tenant', mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe('GET');
+    expect(requests[0]?.url).toBe('https://api.stripe.com/v1/checkout/sessions/cs_reserved');
+  });
+
+  it('preserves delayed payment state until a later retrieval confirms payment', async () => {
+    const { payment, requests } = retrievalProvider(stripeJson({ id: 'cs_reserved', status: 'complete', payment_status: 'unpaid' }));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode: 'live' }))
+      .toEqual(ok({ status: 'complete', paymentStatus: 'unpaid' }));
+    expect(requests).toHaveLength(1);
+    const succeeded = retrievalProvider(stripeJson({ id: 'cs_reserved', status: 'complete', payment_status: 'paid' }));
+    expect(await succeeded.payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved', mode: 'live' }))
+      .toEqual(ok({ status: 'complete', paymentStatus: 'paid' }));
+  });
+
+  it.each([
+    { status: null, payment_status: 'unpaid' },
+    { status: 'complete', payment_status: 'unknown' },
+    { status: 'expired' },
+  ])('rejects an invalid session state: %j', async (session) => {
+    const { payment } = retrievalProvider(stripeJson(session));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved' })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Stripe returned an invalid checkout session state' },
+    });
+  });
+
+  it('returns a Stripe retrieval failure without treating the reservation as expired', async () => {
+    const { payment } = retrievalProvider(stripeJson({ error: { message: 'No such checkout session', type: 'invalid_request_error' } }, 404));
+    expect(await payment.retrieveCheckoutSession?.({ tenantId: 'tenant', sessionId: 'cs_reserved' })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Stripe could not retrieve the checkout session: No such checkout session' },
+    });
+  });
 });

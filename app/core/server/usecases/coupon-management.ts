@@ -16,8 +16,10 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type { Clock, CouponManagementRepository, IdGenerator } from '../ports.js';
+import type { PartnerRepository } from '../partner-ports.js';
 
 interface CouponManagementDeps {
+  partners?: Pick<PartnerRepository, 'findCodeByCode'>;
   coupons: CouponManagementRepository;
   ids: IdGenerator;
   clock: Clock;
@@ -32,6 +34,9 @@ export const createCoupon = async (
   if (!tenant.ok) return tenant;
   const parsed = couponCreateInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid coupon payload', parsed.error.flatten()));
+  if (await deps.partners?.findCodeByCode(tenant.value, normalizeCouponCode(parsed.data.code))) {
+    return err(validation('A partner code with this code already exists'));
+  }
   const occurredAt = deps.clock.nowIso();
   const coupon = couponSchema.parse({
     id: deps.ids.nextId(),

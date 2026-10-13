@@ -1,3 +1,4 @@
+import { PartnerProgramsPanel, PartnerProgramCreatePage, PartnerProgramDetailPage } from './partners/PartnerProgramsPanel.js';
 import { OrderVerificationPage } from './sales/OrderVerificationPage.js';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
@@ -192,3 +193,10 @@ export const PanelCouponDetailRoute = () => {
 
 export const PanelSettingsRoute = () => <SettingsPanel />;
 export const PanelRedirectsRoute = () => <RedirectsPanel />;
+
+export const PanelPartnerProgramsRoute = () => <PartnerProgramsPanel />;
+export const PanelPartnerProgramCreateRoute = () => <PartnerProgramCreatePage />;
+export const PanelPartnerProgramDetailRoute = () => {
+  const params = useParams({ strict: false });
+  return <PartnerProgramDetailPage programId={params.programId ?? ''} />;
+};

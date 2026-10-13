@@ -155,3 +155,7 @@ export * from './usecases/probe-stripe-permissions.js';
 
 export * from './product-draft-ports.js';
 export * from './usecases/product-drafts.js';
+export * from './partner-ports.js';
+export * from './usecases/partner-management.js';
+
+export { validatePartnerCodeForCheckout } from './usecases/partner-checkout.js';

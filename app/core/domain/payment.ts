@@ -103,6 +103,11 @@ export const stripeInvoiceObjectSchema = z.object({
     .optional(),
 });
 
+export const stripeCheckoutSessionStateSchema = z.object({
+  status: z.enum(['open', 'complete', 'expired']),
+  payment_status: z.enum(['paid', 'unpaid', 'no_payment_required']),
+});
+
 export const stripeChargeObjectSchema = z.object({
   id: z.string(),
   invoice: z.unknown().optional(),

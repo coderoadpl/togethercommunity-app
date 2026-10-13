@@ -1,3 +1,4 @@
+import type { PartnerRepository } from './partner-ports.js';
 import type {
   LessonEdition, LessonEditionInput,
   ActivitySummary,
@@ -761,6 +762,7 @@ export interface MemberPseudonymization {
 
 /** @public */
 export interface MemberPseudonymizationResult {
+  partnerPromotionCodeIds: string[];
   alreadyDeleted: boolean;
   authUserErased: boolean;
   erasureRequestId: string | null;
@@ -1090,6 +1092,7 @@ export interface PaymentProvider {
     productName: string;
     salesLinkId?: string;
     checkoutSnapshotId?: string;
+    expiresInSeconds?: number;
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
     lines?: { productId: string; name: string; grossCents: number }[];
@@ -1116,6 +1119,13 @@ export interface PaymentProvider {
     stripeCouponId: string | null;
     stripePromotionCodeId: string | null;
   }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
+  activateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ activated: true }, AppError>>;
+  deactivateCouponPromotion?(input: { tenantId: string; stripePromotionCodeId: string }): Promise<Result<{ deactivated: true }, AppError>>;
+  retrieveCheckoutSession?(input: {
+    mode?: 'live' | 'test';
+    tenantId: string;
+    sessionId: string;
+  }): Promise<Result<{ status: 'open' | 'complete' | 'expired'; paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' }, AppError>>;
   expireCheckoutSession(input: {
     mode?: 'live' | 'test';
     tenantId: string;
@@ -1772,6 +1782,7 @@ export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
     operation: (deps: {
+      partners?: PartnerRepository;
       members: MemberRepository;
       grants: ProductGrantRepository;
       orders: OrderRepository;

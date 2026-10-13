@@ -276,7 +276,7 @@ describe('configureStripe', () => {
     expect(h.rows).toEqual([]);
   });
 
-  it('replaces all three records during a successful reconfiguration', async () => {
+  it.each(['rk_live_previous', 'rk_live_reconfigured'])('replaces all three records when reconfiguring with %s', async (restrictedKey) => {
     const h = harness(payment(async () => ok({
       webhookEndpointId: 'we_reconfigured',
       webhookSecret: 'whsec_reconfigured',
@@ -284,13 +284,13 @@ describe('configureStripe', () => {
 
     await expect(configureStripe(
       { identity: identity('owner') },
-      { restrictedKey: 'rk_live_reconfigured' },
+      { restrictedKey },
       h.deps,
     )).resolves.toMatchObject({ ok: true });
 
     expect(h.rows.map(({ key, ciphertext }) => ({ key, ciphertext }))).toEqual([
       { key: 'stripe.webhookSecret', ciphertext: 'encrypted:whsec_reconfigured' },
-      { key: 'stripe.restrictedKey', ciphertext: 'encrypted:rk_live_reconfigured' },
+      { key: 'stripe.restrictedKey', ciphertext: `encrypted:${restrictedKey}` },
       { key: 'stripe.webhookEndpointId', ciphertext: 'encrypted:we_reconfigured' },
     ]);
   });

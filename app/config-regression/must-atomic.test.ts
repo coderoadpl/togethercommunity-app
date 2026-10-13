@@ -69,6 +69,23 @@ describe('MUST-ATOMIC port inventory', () => {
     expect(names).toContain('TenantRepository.createTenantWithOwnerGrant');
   });
 
+  it.each([
+    'PartnerRepository.reserveCheckout',
+    'PartnerRepository.completeCheckout',
+    'PartnerRepository.releaseCheckout',
+    'PartnerRepository.saveProgram',
+    'PartnerRepository.savePartner',
+    'PartnerRepository.saveCode',
+    'PartnerRepository.createCommissions',
+    'PartnerRepository.voidPendingCommissions',
+    'CouponManagementRepository.create',
+    'MemberErasurePort.pseudonymize',
+  ])('keeps %s in the partner persistence inventory', (name) => {
+    expect(entries().map(
+      ({ interfaceName, methodName }) => `${interfaceName}.${methodName}`,
+    )).toContain(name);
+  });
+
   it.each(entries().map(({ interfaceName, methodName }) => [interfaceName, methodName]))(
     '%s.%s remains one method on its port',
     (interfaceName, methodName) => {

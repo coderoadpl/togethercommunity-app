@@ -43,6 +43,22 @@ collection note. Each physical order line starts with `issuedCount = 0`.
 
 ## Checkout and accounting
 
+Offers default to `allowsCodes: false`. Enable **Discount codes allowed on this
+offer** to show **I have a discount code** on the direct page. Opening the field
+cancels the scheduled automatic handoff before its POST starts; submitting
+validates the code before a session is created. During a POST, controls are locked
+until navigation or an error so a reserved redemption cannot be abandoned by an
+edit. The `code` query parameter prefills it, and `/link/<key>` preserves that
+query. A prefilled code waits for an explicit **Continue to payment** click
+without an automatic POST. Invalid codes can be corrected or cleared in place.
+Offers that disallow codes reject supplied codes. Active partner codes prevent disabling the flag.
+Stripe's promotion-code field stays disabled because Stripe cannot scope a code
+to one offer. Together validates that scope and applies the discount itself.
+Zero-percent partner codes record attribution without a Stripe discount.
+Sessions reserving partner capacity expire after 30 minutes; the Stripe
+`checkout.session.expired` webhook releases abandoned reservations.
+See [Partner programs](partner-program.md) for eligibility and commission rules.
+
 One Stripe Checkout session contains one line item per product, quantity one.
 The session identifies the sales link and product list and references a stored
 checkout snapshot. The snapshot preserves the names, gross prices and VAT
@@ -58,7 +74,7 @@ sales-link heading and description in its title and Open Graph tags, plus the
 tenant favicon. A centred card shows the tenant's checkout display name, HTTPS
 logo when configured, accent colour, optional background colour and a CSS spinner.
 It follows the system light or dark preference and uses system fonts.
-Its script immediately posts to
+Without a prefilled code, its script automatically posts to
 `/api/public/sales-links/<slug>/checkout` and replaces the page with the Stripe
 Checkout URL. The endpoint always creates live sessions and rejects a `mode`
 field, including `mode: "test"` or `mode: "live"`, with a 400 validation error.

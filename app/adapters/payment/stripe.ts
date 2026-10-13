@@ -13,6 +13,7 @@ import {
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
+  stripeCheckoutSessionStateSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
   stripeSubscriptionObjectSchema,
@@ -114,6 +115,7 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
+    ...(input.expiresInSeconds === undefined ? {} : { expires_at: Math.floor(Date.now() / 1000) + input.expiresInSeconds }),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.recurringInterval === undefined ? {} : {
       subscription_data: { billing_mode: { type: 'classic' as const } },
@@ -545,6 +547,26 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return err(asDiagnostic('Stripe rejected the coupon request', cause));
       }
     },
+    activateCouponPromotion: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        await client.value.promotionCodes.update(input.stripePromotionCodeId, { active: true });
+        return ok({ activated: true });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe could not reactivate the promotion code', cause));
+      }
+    },
+    deactivateCouponPromotion: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        await client.value.promotionCodes.update(input.stripePromotionCodeId, { active: false });
+        return ok({ deactivated: true });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe could not deactivate the promotion code', cause));
+      }
+    },
     createCheckoutSession: async (input) => {
       const client = await clientFor(input.tenantId, input.mode);
       if (!client.ok) return client;
@@ -556,6 +578,17 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return ok({ url: session.url, sessionId: session.id });
       } catch (cause) {
         return err(asDiagnostic('Stripe rejected the checkout request', cause));
+      }
+    },
+    retrieveCheckoutSession: async (input) => {
+      const client = await clientFor(input.tenantId, input.mode);
+      if (!client.ok) return client;
+      try {
+        const session = stripeCheckoutSessionStateSchema.safeParse(await client.value.checkout.sessions.retrieve(input.sessionId));
+        if (!session.success) return err(validation('Stripe returned an invalid checkout session state'));
+        return ok({ status: session.data.status, paymentStatus: session.data.payment_status });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe could not retrieve the checkout session', cause));
       }
     },
     expireCheckoutSession: async (input) => {
@@ -602,9 +635,10 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       if (
         event.type === 'checkout.session.completed' ||
         event.type === 'checkout.session.async_payment_succeeded' ||
-        event.type === 'checkout.session.async_payment_failed'
+        event.type === 'checkout.session.async_payment_failed' ||
+        event.type === 'checkout.session.expired'
       ) {
-        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
+        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), createdAt: epochToIso(event.created), livemode: event.livemode });
       }
       if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
         const invoice = stripeInvoiceObjectSchema.safeParse(event.data.object);
@@ -637,7 +671,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
       if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
         const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
-        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+        if (mapped) return ok({ ...mapped, createdAt: epochToIso(event.created), livemode: event.livemode });
       }
       const object = event.data.object;
       return ok({

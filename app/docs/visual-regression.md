@@ -176,6 +176,11 @@ retry. Synthetic stories without inventory entries have no golden and do not
 increase the required capture count. See the boot splash and marketing
 preference-result stories for examples.
 
+The partner program list and editor combine synthetic program, partner, code
+and ledger totals with the recorded `panel-coupons` Studio shell in
+`apps/web/src/stories/partner-fixtures.ts`. Their capture metadata identifies that
+recorded base; synthetic states do not add files to the recording directory.
+
 ## Live application subset
 
 `pnpm run visual:app` keeps only login, boot splash and one seeded lesson, at

@@ -50,6 +50,7 @@ export const updateSalesLink = async (ctx: Ctx, input: unknown, deps: SalesLinkD
   if (!parsed.success) return err(validation('Invalid sales link', parsed.error.flatten()));
   const existing = await deps.salesLinks.findById(tenant.value, parsed.data.id);
   if (existing === null) return err(notFound('Sales link was not found'));
+  if (!parsed.data.allowsCodes && await deps.partners?.hasActiveCodeForSalesLink(tenant.value, existing.id)) return err(validation('Cannot disable codes: an active partner code is assigned to this offer.'));
   const products = await validatedProducts(tenant.value, parsed.data, deps);
   if (!products.ok) return products;
   const { expectedRevision, ...fields } = parsed.data;
@@ -76,7 +77,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
   });
   const first = products.value.prices[0];
   if (lines.length !== products.value.products.length || first === undefined) return err(notFound('Sales link was not found'));
-  return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0) });
+  return ok({ salesLink: { allowsCodes: salesLink.allowsCodes, slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0) });
 };
 
 export const getPublicSalesLink = async (tenantId: string, slug: string, deps: SalesLinkDeps) => {

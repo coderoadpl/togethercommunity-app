@@ -180,3 +180,123 @@ describe('direct sales-link page', () => {
     expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual(offerRewrites.slice(0, 2).map((rewrite) => ({ source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers })));
   });
 });
+
+it('renders the hidden offer code field with an escaped uppercase prefill only when codes are allowed', () => {
+  const html = renderDirectSalesLinkPage({ ...page, allowsCodes: true, code: 'save10"<' });
+  expect(html).toContain('id="code-toggle">I have a discount code</button>');
+  expect(html).toContain('<form id="code-form" hidden>');
+  expect(html).toContain('maxlength="40"');
+  expect(html).toContain('value="SAVE10&quot;&lt;"');
+  expect(renderDirectSalesLinkPage({ ...page, allowsCodes: false, code: 'SAVE10' })).not.toContain('id="code-toggle"');
+});
+
+it.each(['toggle:click', 'field:input'])('cancels scheduled automatic checkout on %s and permits checkout without a code', async (event) => {
+  const html = renderDirectSalesLinkPage({ ...page, allowsCodes: true });
+  const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+  if (script === undefined) throw new Error('Missing script');
+  type Listener = (event: { preventDefault(): void }) => void | Promise<void>;
+  const handlers = new Map<string, Listener>();
+  const status = { textContent: '' };
+  const main = { dataset: { endpoint: page.endpoint, code: '', state: '', couponUnavailable: directSalesLinkCopyEn.couponUnavailable, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } };
+  const field = { value: '', focus: vi.fn(), addEventListener: (event: string, listener: Listener) => handlers.set(`field:${event}`, listener) };
+  const form = { hidden: true, querySelector: () => ({ disabled: false }), addEventListener: (event: string, listener: Listener) => handlers.set(`form:${event}`, listener) };
+  const toggle = { hidden: false, disabled: false, addEventListener: (event: string, listener: Listener) => handlers.set(`toggle:${event}`, listener) };
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
+  const timers: (() => Promise<void>)[] = [];
+  const replace = vi.fn();
+  await new Function('document', 'fetch', 'location', 'setTimeout', `return ${script.trim()}`)(
+    { querySelector: (selector: string) => selector === 'main' ? main : selector === '[role="status"]' ? status : selector === '#code-form' ? form : selector === '#discount-code' ? field : toggle },
+    fetch, { replace }, (callback: () => Promise<void>) => timers.push(callback),
+  );
+  await handlers.get(event)?.({ preventDefault: () => undefined });
+  expect(form.hidden).toBe(false);
+  expect(main.dataset.state).toBe('editing');
+  await Promise.all(timers.map((callback) => callback()));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
+  await handlers.get('form:submit')?.({ preventDefault: () => undefined });
+  expect(fetch).toHaveBeenLastCalledWith(page.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  expect(replace).toHaveBeenCalledWith('https://example.test/payment');
+});
+
+it.each(['success', 'prefilled', 'automatic', 'invalid-code', 'network', 'malformed'] as const)('preserves a capped-code checkout through pending edits and handles %s', async (outcome) => {
+  const automatic = outcome === 'automatic';
+  const prefilled = outcome === 'prefilled';
+  const html = renderDirectSalesLinkPage({ ...page, allowsCodes: true, ...(prefilled ? { code: 'SAVE10' } : {}) });
+  const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+  if (script === undefined) throw new Error('Missing script');
+  type Listener = (event: { preventDefault(): void }) => void | Promise<void>;
+  const handlers = new Map<string, Listener>();
+  const status = { textContent: '' };
+  const main = { dataset: { endpoint: page.endpoint, code: prefilled ? 'SAVE10' : '', state: '', couponUnavailable: directSalesLinkCopyEn.couponUnavailable, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } };
+  const field = { value: automatic ? '' : 'SAVE10', disabled: false, focus: vi.fn(), addEventListener: (event: string, listener: Listener) => handlers.set(`field:${event}`, listener) };
+  const button = { disabled: false };
+  const form = { hidden: true, querySelector: () => button, addEventListener: (event: string, listener: Listener) => handlers.set(`form:${event}`, listener) };
+  const toggle = { hidden: false, disabled: false, addEventListener: (event: string, listener: Listener) => handlers.set(`toggle:${event}`, listener) };
+  let finish: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => { finish = resolve; });
+  const success = { ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) };
+  let remainingRedemptions = 1;
+  const fetch = vi.fn(async () => {
+    if (remainingRedemptions === 0) return { ok: false, json: async () => ({ ok: false, error: { message: 'Coupon cannot be applied' } }) };
+    remainingRedemptions -= 1;
+    await pending;
+    return success;
+  });
+  fetch.mockImplementationOnce(async () => {
+    if (outcome === 'success' || outcome === 'prefilled' || automatic) remainingRedemptions -= 1;
+    await pending;
+    if (outcome === 'network') throw new Error('Network failure');
+    if (outcome === 'malformed') return { ok: false, json: async () => { throw new Error('Invalid JSON'); } };
+    if (outcome === 'invalid-code') return { ok: false, json: async () => ({ ok: false, error: { message: 'Coupon cannot be applied' } }) };
+    return success;
+  });
+  const replace = vi.fn();
+  const timers: (() => Promise<void>)[] = [];
+  await new Function('document', 'fetch', 'location', 'setTimeout', `return ${script.trim()}`)(
+    { querySelector: (selector: string) => selector === 'main' ? main : selector === '[role="status"]' ? status : selector === '#code-form' ? form : selector === '#discount-code' ? field : toggle },
+    fetch, { replace }, (callback: () => Promise<void>) => timers.push(callback),
+  );
+  const event = { preventDefault: vi.fn() };
+  if (prefilled) {
+    expect(form.hidden).toBe(false);
+    expect(toggle.hidden).toBe(true);
+    expect(field.value).toBe('SAVE10');
+    expect(main.dataset.state).toBe('editing');
+    await Promise.all(timers.map((callback) => callback()));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  } else if (!automatic) await handlers.get('toggle:click')?.(event);
+  const firstSubmission = automatic ? timers[0]?.() : handlers.get('form:submit')?.(event);
+  await handlers.get('form:submit')?.(event);
+  await handlers.get('field:input')?.(event);
+  await handlers.get('toggle:click')?.(event);
+  if (!automatic) await Promise.all(timers.map((callback) => callback()));
+  expect(main.dataset.state).toBe('loading');
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(automatic ? {} : { code: 'SAVE10' }) });
+  expect(field.disabled).toBe(true);
+  expect(button.disabled).toBe(true);
+  expect(toggle.disabled).toBe(true);
+  expect(replace).not.toHaveBeenCalled();
+  finish();
+  await firstSubmission;
+  if (outcome === 'success' || outcome === 'prefilled' || automatic) {
+    await handlers.get('form:submit')?.(event);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(remainingRedemptions).toBe(0);
+    expect(field.disabled).toBe(true);
+    expect(button.disabled).toBe(true);
+  } else {
+    expect(main.dataset.state).toBe('error');
+    expect(status.textContent).toBe(outcome === 'invalid-code' ? directSalesLinkCopyEn.couponUnavailable : directSalesLinkCopyEn.checkoutUnavailable);
+    expect(field.disabled).toBe(false);
+    expect(button.disabled).toBe(false);
+    expect(toggle.disabled).toBe(false);
+    field.value = '';
+    await handlers.get('field:input')?.(event);
+    await handlers.get('form:submit')?.(event);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenLastCalledWith(page.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  }
+  expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
+});

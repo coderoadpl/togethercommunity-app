@@ -507,6 +507,7 @@ export const orders = pgTable(
       .default({}),
     couponId: text('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
     discountCents: integer('discount_cents').notNull().default(0),
+    partnerCodeId: text('partner_code_id'),
     billing: jsonb('billing').$type<BillingData>(),
     salesLinkId: text('sales_link_id'),
     lines: jsonb('lines').$type<OrderLine[]>().notNull().default([]),

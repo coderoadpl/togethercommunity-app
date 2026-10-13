@@ -42,6 +42,8 @@ const pageScreenNames = new Set([
   'panel-products',
   'panel-product-downloads',
   'panel-coupons',
+  'panel-partner-programs',
+  'panel-partner-program-editor',
   'panel-coupon-create',
   'panel-coupon-detail',
   'panel-order-detail',

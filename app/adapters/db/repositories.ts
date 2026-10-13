@@ -1,5 +1,7 @@
+import { archiveMemberPartners } from './partner-member-erasure.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { surveyResponses } from './survey-schema.js';
+import { partnerCodes, partnerPrograms, partners } from './partner-schema.js';
 import { lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
@@ -2742,8 +2744,10 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .limit(1).for('update');
       const member = rows[0];
       if (!member) return null;
+      const partnerPromotionCodeIds = await archiveMemberPartners(tx, tenantId, input.memberId, input.deletedAt);
       if (member.deletedAt !== null) {
         return {
+          partnerPromotionCodeIds,
           alreadyDeleted: true,
           authUserErased: false,
           erasureRequestId: null,
@@ -2951,6 +2955,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       }
       if (linked > 0) {
         return {
+          partnerPromotionCodeIds,
           alreadyDeleted: false,
           authUserErased: false,
           erasureRequestId: openErasureRequest?.id ?? null,
@@ -2960,6 +2965,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
 
       await tx.delete(user).where(eq(user.id, member.userId));
       return {
+        partnerPromotionCodeIds,
         alreadyDeleted: false,
         authUserErased: true,
         erasureRequestId: openErasureRequest?.id ?? null,
@@ -3296,6 +3302,7 @@ export const createOrderRepository = (
           provider: order.provider,
           providerObjectIds: order.providerObjectIds,
           couponId: order.couponId,
+          partnerCodeId: order.partnerCodeId ?? null,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
           salesLinkId: order.salesLinkId ?? null,
@@ -3344,10 +3351,18 @@ export const createOrderRepository = (
       const row = rows[0];
       if (row === undefined) return null;
       const order = orderListItemSchema.parse({ ...row.order, ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const attribution = order.partnerCodeId == null ? [] : await db.select({
+        code: partnerCodes.code, memberEmail: members.email, programName: partnerPrograms.name,
+      }).from(partnerCodes)
+        .innerJoin(partners, and(eq(partners.tenantId, partnerCodes.tenantId), eq(partners.id, partnerCodes.partnerId)))
+        .innerJoin(partnerPrograms, and(eq(partnerPrograms.tenantId, partnerCodes.tenantId), eq(partnerPrograms.id, partnerCodes.programId)))
+        .innerJoin(members, and(eq(members.tenantId, partners.tenantId), eq(members.id, partners.memberId)))
+        .where(and(eq(partnerCodes.tenantId, tenantId), eq(partnerCodes.id, order.partnerCodeId))).limit(1);
       const staffIds = order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [];
       const displayNames = await createUserDisplayReader(db).findDisplayNames(tenantId, staffIds);
       return {
         ...order,
+        ...(attribution[0] === undefined ? {} : { partnerAttribution: attribution[0] }),
         lines: order.lines?.map((line) => ({
           ...line,
           issuedByDisplayName: line.issuedBy === undefined ? undefined : displayNames.get(line.issuedBy),

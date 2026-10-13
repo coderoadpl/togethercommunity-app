@@ -145,6 +145,9 @@ export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCe
 };
 
 export const checkoutSnapshotSchema = z.object({
+  partnerTerms: z.object({ commissionPct: z.number().int().min(1).max(100), discountPct: z.number().int().min(0).max(100), graceDays: z.number().int().min(0).max(365) }).nullable().optional(),
+  partnerCodeId: z.string().nullable().optional(),
+  discountCents: z.number().int().nonnegative().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),
@@ -172,6 +175,7 @@ export const orderSchema = z.object({
   providerObjectIds: z.record(z.string()),
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
+  partnerCodeId: z.string().nullable().optional(),
   billing: orderBillingDataSchema.nullable().optional(),
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
@@ -182,6 +186,7 @@ export const orderSchema = z.object({
 export type Order = z.infer<typeof orderSchema>;
 
 export const orderListItemSchema = orderSchema.extend({
+  partnerAttribution: z.object({ code: z.string(), memberEmail: z.string(), programName: z.string() }).optional(),
   invoice: invoiceSchema.nullable().optional(),
   lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
   salesLinkTitle: z.string().optional(),

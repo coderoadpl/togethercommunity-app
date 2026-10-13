@@ -182,7 +182,7 @@
     },
     {
       "path": "/api/internal/dispatch-email",
-      "schedule": "*/30 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/internal/dispatch-auto-invoices",

@@ -18,6 +18,7 @@ import { drainTelemetry } from '#core/server/telemetry/drain.js';
 import type { TelemetryTenantDirectory } from '#core/server/telemetry/ports.js';
 import type { TelemetryStoreDeps } from '#core/server/usecases/telemetry-store.js';
 import { createTelemetryEgressProbe } from './telemetry-egress.js';
+import { createTrustedOrigins } from './trusted-origins.js';
 import { createDownloadCopyRepository, createDownloadCopyOrderReader } from '#adapters/db/download-copies.js';
 import { createDownloadCopyCrypto } from '#adapters/crypto/download-copy.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
@@ -47,6 +48,7 @@ import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.j
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
+import { createStripeWebhookOwnershipReader } from '#adapters/db/stripe-webhook-ownership.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createActivityReportRepository } from '#adapters/db/activity-reports.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
@@ -285,6 +287,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   PaymentRefundRepository,
+  StripeWebhookOwnershipReader,
   PostRepository,
   PlatformAuditRepository,
   PlatformDataResetPort,
@@ -483,6 +486,7 @@ export interface AppDeps {
   orderVerification?: OrderVerificationRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
@@ -1350,17 +1354,29 @@ export const createDeps = (
         { tenants, consents, ids, clock },
       );
     },
-    trustedOrigins: async () => {
-      const domains = await tenantDomains.listVerifiedDomains();
-      const configured = selectTrustedAuthOrigins({
-        appBaseUrl: env.APP_BASE_URL,
-        baseDomain,
-        port: env.PORT,
-        singleTenantMode,
-        customDomains: domains.map((domain) => domain.domain),
-      });
-      return [...new Set([...configured, ...selectDeploymentAuthOrigins(env)])];
-    },
+    trustedOrigins: createTrustedOrigins({
+      configuredOrigins: [
+        ...selectTrustedAuthOrigins({
+          appBaseUrl: env.APP_BASE_URL,
+          baseDomain,
+          port: env.PORT,
+          singleTenantMode,
+          customDomains: [],
+        }),
+        ...selectDeploymentAuthOrigins(env),
+      ],
+      loadCustomOrigins: async () => {
+        const domains = await tenantDomains.listVerifiedDomains();
+        return selectTrustedAuthOrigins({
+          appBaseUrl: env.APP_BASE_URL,
+          baseDomain,
+          port: env.PORT,
+          singleTenantMode,
+          customDomains: domains.map((domain) => domain.domain),
+        });
+      },
+      logger,
+    }),
   });
 
   const deps: AppDeps = {
@@ -1427,6 +1443,7 @@ export const createDeps = (
     orderVerification: createOrderVerificationRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
+    stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),

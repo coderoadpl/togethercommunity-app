@@ -2,7 +2,7 @@ import { and, eq, inArray, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 
 import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, REDACTED_AUTH_EMAIL_KINDS, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformAuthSendLog, PlatformTransactionalPool } from '#core/server/index.js';
-import { safeErrorMessage } from '#core/server/log-safety.js';
+import { safeErrorMessage, serializeErrorChain } from '#core/server/log-safety.js';
 
 import type { Db } from './client.js';
 import { appendEmailSentMemberEvents } from './member-events.js';
@@ -420,7 +420,7 @@ export const createEnrollmentTransactionPort = (db: Db): EnrollmentTransactionPo
       });
     } catch (cause) {
       if (rejected !== null) return rejected;
-      return { ok: false, error: internal(`Could not complete enrollment transaction: ${safeErrorMessage(cause)}`) };
+      return { ok: false, error: internal(`Could not complete enrollment transaction: ${serializeErrorChain(cause)}`) };
     }
   },
 });

@@ -34,9 +34,10 @@ import type {
   EmailOutboxRepository,
   PaymentProvider,
   PaymentTransactionPort,
+  StripeWebhookOwnershipReader,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
-import { safeErrorMessage } from '../log-safety.js';
+import { serializeErrorChain } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
@@ -52,6 +53,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -805,7 +807,7 @@ const applySubscriptionEvent = async (
 };
 
 const logPaymentFailure = (tenant: Tenant, event: PaymentWebhookEvent, deps: StripeWebhookDeps, error: AppError): void => {
-  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message}`);
+  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message} chain=${serializeErrorChain(error)}`);
 };
 
 const processCheckoutConsent = async (
@@ -929,16 +931,76 @@ const paymentModeMatches = async (
   return true;
 };
 
+export const validateStripeWebhookTenant = (
+  tenantId: string,
+  event: Pick<PaymentWebhookEvent, 'tenantIds' | 'checkoutSession'>,
+): Result<void, AppError> => {
+  if (event.tenantIds?.some((id) => id !== tenantId) ||
+      (event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenantId)) {
+    return err(validation('Stripe event metadata does not match the webhook tenant'));
+  }
+  return ok(undefined);
+};
+
+export const validateStripeInvoiceTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
+): Promise<Result<boolean, AppError>> => {
+  const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
+  if (!ownership.ok) return ownership;
+  const subscriptionId = event.invoice?.subscriptionId;
+  const subscription = subscriptionId == null ? null :
+    await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
+  const order = subscription !== null || event.objectId === null ? null :
+    await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { invoice: event.objectId }, event.mode ?? 'live');
+  return ok(subscription !== null || order !== null);
+};
+
+const validateStoredStripeWebhookTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
+): Promise<Result<void, AppError>> => {
+  const metadata = validateStripeWebhookTenant(tenantId, event);
+  if (!metadata.ok) return metadata;
+  const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
+    (event.type.startsWith('customer.subscription.') ? event.objectId : null);
+  const invoice = event.checkoutSession?.invoiceId ?? event.adjustment?.invoiceId ??
+    (event.type.startsWith('invoice.') ? event.objectId : null);
+  const paymentIntent = event.checkoutSession?.paymentIntentId ?? event.invoice?.paymentIntentId ?? event.adjustment?.paymentIntentId;
+  const charge = event.invoice?.chargeId ?? event.adjustment?.chargeId;
+  const foreign = await deps.stripeWebhookOwnership.hasForeignOwner(tenantId, {
+    ...(event.customerId == null ? {} : { customer: event.customerId }),
+    ...(subscription == null ? {} : { subscription }),
+    ...(invoice == null ? {} : { invoice }),
+    ...(paymentIntent == null ? {} : { paymentIntent }),
+    ...(charge == null ? {} : { charge }),
+    ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
+  });
+  return foreign ? err(validation('Stripe event belongs to another tenant')) : ok(undefined);
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
+  const ownership = provider === 'stripe'
+    ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
+    : validateStripeWebhookTenant(tenant.id, event);
+  if (!ownership.ok) return ownership;
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
+  if (event.type.startsWith('customer.subscription.')) {
+    const subscription = event.objectId === null ? null :
+      await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
+    if (subscription === null) return ok({ processed: false });
+  }
   if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
   if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
+  await deps.authPort.initialize();
 
   const processedEvent: ProcessedPaymentEvent = {
     id: event.id,
@@ -1022,7 +1084,7 @@ export const fulfillStripeWebhook = async (
     });
   } catch (cause) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    const error = internal(`Payment fulfillment failed: ${safeErrorMessage(cause)}`);
+    const error = internal(`Payment fulfillment failed: ${serializeErrorChain(cause)}`);
     logPaymentFailure(tenant, event, deps, error);
     return err(error);
   }

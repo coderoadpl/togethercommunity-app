@@ -762,6 +762,7 @@ export interface MemberPseudonymization {
 
 /** @public */
 export interface MemberPseudonymizationResult {
+  partnerPromotionCodeIds: string[];
   alreadyDeleted: boolean;
   authUserErased: boolean;
   erasureRequestId: string | null;

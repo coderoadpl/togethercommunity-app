@@ -41,7 +41,7 @@ export const createPartnerRepository = (db: Db): PartnerRepository => ({
   savePartner: async (tenantId, input) => db.transaction(async (tx) => {
     const value = partnerSchema.parse({ ...input, tenantId });
     const [program] = await tx.select({ id: partnerPrograms.id }).from(partnerPrograms).where(and(eq(partnerPrograms.tenantId, tenantId), eq(partnerPrograms.id, value.programId)));
-    const [member] = await tx.select({ id: members.id }).from(members).where(and(eq(members.tenantId, tenantId), eq(members.id, value.memberId)));
+    const [member] = await tx.select({ id: members.id }).from(members).where(and(eq(members.tenantId, tenantId), eq(members.id, value.memberId), isNull(members.deletedAt))).for('share');
     if (program === undefined || member === undefined) return err(appError('validation', 'Program and member must belong to this workspace'));
     const [existing] = await tx.select().from(partners).where(and(eq(partners.tenantId, tenantId), eq(partners.id, value.id))).for('update');
     const rows = existing === undefined ? await tx.insert(partners).values(value).onConflictDoNothing().returning() : await tx.update(partners).set({ status: value.status }).where(and(eq(partners.tenantId, tenantId), eq(partners.id, value.id))).returning();
@@ -70,8 +70,9 @@ export const createPartnerRepository = (db: Db): PartnerRepository => ({
       if (disabled !== undefined) return err(appError('validation', `Discount codes are disabled for offer: ${disabled.title}`, { reason: 'sales_link_codes_disabled', salesLinkTitle: disabled.title }));
     }
     const [program] = await tx.select().from(partnerPrograms).where(and(eq(partnerPrograms.tenantId, tenantId), eq(partnerPrograms.id, value.programId))).for('share');
-    const [partner] = await tx.select().from(partners).where(and(eq(partners.tenantId, tenantId), eq(partners.id, value.partnerId), eq(partners.programId, value.programId)));
+    const [partner] = await tx.select().from(partners).where(and(eq(partners.tenantId, tenantId), eq(partners.id, value.partnerId), eq(partners.programId, value.programId))).for('share');
     if (program === undefined || partner === undefined || value.discountPct > program.commissionPct) return err(appError('validation', 'Invalid partner code program or partner'));
+    if (value.status === 'active' && partner.status !== 'active') return err(appError('validation', 'Partner must be active', { reason: 'partner_inactive' }));
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`discount-codes:${tenantId}`}, 0))`);
     const [coupon] = await tx.select({ id: coupons.id }).from(coupons).where(and(eq(coupons.tenantId, tenantId), sql`lower(${coupons.code}) = lower(${value.code})`));
     const [duplicate] = await tx.select({ id: partnerCodes.id }).from(partnerCodes).where(and(eq(partnerCodes.tenantId, tenantId), sql`lower(${partnerCodes.code}) = lower(${value.code})`));
@@ -102,9 +103,9 @@ export const createPartnerRepository = (db: Db): PartnerRepository => ({
     });
   },
   voidPendingCommissions: async (tenantId, orderId, reason, now) => db.transaction(async (tx) => {
-    const pending = and(eq(commissions.tenantId, tenantId), eq(commissions.orderId, orderId), eq(commissions.status, 'pending'));
-    const voided = await tx.update(commissions).set({ status: 'voided', voidedReason: reason }).where(and(pending, lt(sql`${now}::timestamptz`, commissions.payableAt))).returning();
-    const matured = await tx.update(commissions).set({ status: 'payable' }).where(and(pending, gte(sql`${now}::timestamptz`, commissions.payableAt))).returning();
+    const unpaid = and(eq(commissions.tenantId, tenantId), eq(commissions.orderId, orderId), inArray(commissions.status, ['pending', 'payable']), isNull(commissions.payoutId));
+    const voided = await tx.update(commissions).set({ status: 'voided', voidedReason: reason }).where(and(unpaid, lt(sql`${now}::timestamptz`, commissions.payableAt))).returning();
+    const matured = await tx.update(commissions).set({ status: 'payable' }).where(and(unpaid, eq(commissions.status, 'pending'), gte(sql`${now}::timestamptz`, commissions.payableAt))).returning();
     const changed = [...voided, ...matured];
     if (changed.length > 0) await tx.insert(partnerEvents).values(changed.map((entry) => ({ id: `commission:${entry.id}:${entry.status}`, tenantId, entityId: entry.id, entityType: 'commission', type: entry.status, snapshot: commissionRow(entry), occurredAt: now })));
   }),

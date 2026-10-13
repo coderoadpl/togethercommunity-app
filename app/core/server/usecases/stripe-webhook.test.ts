@@ -2900,6 +2900,30 @@ it('does not void partner commissions for a partial refund', async () => {
   expect(h.voidPendingCommissions).not.toHaveBeenCalled();
 });
 
+it.each([false, true])('applies an earlier dispute after a later refund with a stale order read: %s', async (staleRead) => {
+  const h = partnerPayment();
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  const order = h.orders[0];
+  if (order === undefined) throw new Error('Partner order missing');
+  const paymentIntentId = order.providerObjectIds['paymentIntent'] ?? 'pi-cs-1';
+  const refund = { ...adjustmentEvent({ id: 'late-refund', paymentIntentId }), createdAt: '1998-08-01T10:00:00.000Z' };
+  const dispute = { ...adjustmentEvent({ id: 'early-dispute', type: 'charge.dispute.created', paymentIntentId }), createdAt: '1998-07-20T10:00:00.000Z' };
+  expect(await fulfillStripeWebhook(tenantA, refund, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders[0]?.status).toBe('refunded');
+  const markRefunded = vi.spyOn(h.deps.paymentRefunds, 'markOrderRefunded');
+  if (staleRead) {
+    const findOrder = h.deps.paymentRefunds.findOrderByProviderObjectIds;
+    vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds').mockImplementation((tenantId, ids, mode) =>
+      mode === undefined ? Promise.resolve(order) : findOrder(tenantId, ids, mode));
+  }
+  expect(await fulfillStripeWebhook(tenantA, dispute, h.deps)).toEqual(ok({ processed: true }));
+  expect(markRefunded).toHaveBeenCalledTimes(staleRead ? 1 : 0);
+  expect(h.voidPendingCommissions).toHaveBeenNthCalledWith(1, tenantA.id, order.id, 'refunded', refund.createdAt);
+  expect(h.voidPendingCommissions).toHaveBeenNthCalledWith(2, tenantA.id, order.id, 'disputed', dispute.createdAt);
+  expect(await fulfillStripeWebhook(tenantA, dispute, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.voidPendingCommissions).toHaveBeenCalledTimes(2);
+});
+
 it.each(['charge.refunded', 'charge.dispute.created'] as const)('uses the event time for a delayed partner %s', async (type) => {
   const h = partnerPayment();
   expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);

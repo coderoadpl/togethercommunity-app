@@ -45,8 +45,10 @@ collection note. Each physical order line starts with `issuedCount = 0`.
 
 Offers default to `allowsCodes: false`. Enable **Discount codes allowed on this
 offer** to show **I have a discount code** on the direct page. Opening the field
-cancels automatic navigation; submitting validates the code before a session is
-created. The `code` query parameter prefills it, and `/link/<key>` preserves that
+cancels the scheduled automatic handoff before its POST starts; submitting
+validates the code before a session is created. During a POST, controls are locked
+until navigation or an error so a reserved redemption cannot be abandoned by an
+edit. The `code` query parameter prefills it, and `/link/<key>` preserves that
 query. Invalid codes can be corrected or cleared in place. Offers that disallow
 codes reject supplied codes. Active partner codes prevent disabling the flag.
 Stripe's promotion-code field stays disabled because Stripe cannot scope a code

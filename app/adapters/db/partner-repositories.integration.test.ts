@@ -144,4 +144,37 @@ describe('partner persistence', () => {
     expect((await repo.listCommissions('workspace', program.id, now)).find((row) => row.id === 'early')).toMatchObject({ status: 'voided', voidedReason: 'disputed' });
     expect(await db.select().from(partnerEvents).where(eq(partnerEvents.entityId, 'early'))).toHaveLength(2);
   });
+  it('voids unpaid commissions for an in-grace dispute delivered after a post-grace refund', async () => {
+    const repo = createPartnerRepository(db);
+    const orderId = 'reordered-adjustments';
+    const payableAt = '2026-10-27T12:00:00.000Z';
+    const refundedAt = '2026-10-28T12:00:00.000Z';
+    const disputedAt = '2026-10-20T12:00:00.000Z';
+    await db.insert(orders).values({ id: orderId, tenantId: 'workspace', memberId: 'member', productId: 'product', kind: 'one_time', status: 'refunded', amountCents: 20000, currency: 'PLN', provider: 'simulated', partnerCodeId: code.id, createdAt: now });
+    const entries = ['first', 'second'].map((line) => commissionSchema.parse({ id: `${orderId}:${line}`, tenantId: 'workspace', orderId, orderLineId: `${orderId}:${line}`, programId: program.id, partnerId: 'partner', partnerCodeId: code.id, baseCents: 10000, pct: 40, amountCents: 4000, status: 'pending', payableAt, voidedReason: null, payoutId: null, createdAt: now }));
+    await repo.createCommissions('workspace', entries);
+    await repo.voidPendingCommissions('workspace', orderId, 'refunded', refundedAt);
+    expect((await repo.listCommissions('workspace', program.id, refundedAt)).filter((row) => row.orderId === orderId)).toMatchObject([{ status: 'payable' }, { status: 'payable' }]);
+    await repo.voidPendingCommissions('other', orderId, 'disputed', disputedAt);
+    expect((await repo.listCommissions('workspace', program.id, refundedAt)).filter((row) => row.orderId === orderId)).toMatchObject([{ status: 'payable' }, { status: 'payable' }]);
+    await repo.voidPendingCommissions('workspace', orderId, 'disputed', disputedAt);
+    await repo.voidPendingCommissions('workspace', orderId, 'disputed', disputedAt);
+    await repo.voidPendingCommissions('workspace', orderId, 'refunded', refundedAt);
+    expect((await repo.listCommissions('workspace', program.id, refundedAt)).filter((row) => row.orderId === orderId)).toMatchObject([{ status: 'voided', voidedReason: 'disputed' }, { status: 'voided', voidedReason: 'disputed' }]);
+    for (const entry of entries) {
+      const events = await db.select().from(partnerEvents).where(eq(partnerEvents.entityId, entry.id));
+      expect(events).toHaveLength(3);
+      expect(events.find((event) => event.type === 'voided')).toMatchObject({ occurredAt: expect.stringContaining('2026-10-20') });
+    }
+  });
+  it('preserves paid commissions when an in-grace adjustment arrives later', async () => {
+    const repo = createPartnerRepository(db);
+    const orderId = 'paid-commission-order';
+    await db.insert(orders).values({ id: orderId, tenantId: 'workspace', memberId: 'member', productId: 'product', kind: 'one_time', status: 'refunded', amountCents: 10000, currency: 'PLN', provider: 'simulated', partnerCodeId: code.id, createdAt: now });
+    const entry = commissionSchema.parse({ id: 'paid-commission', tenantId: 'workspace', orderId, orderLineId: `${orderId}:product`, programId: program.id, partnerId: 'partner', partnerCodeId: code.id, baseCents: 10000, pct: 40, amountCents: 4000, status: 'paid', payableAt: '2026-10-27T12:00:00.000Z', voidedReason: null, payoutId: 'payout', createdAt: now });
+    await repo.createCommissions('workspace', [entry]);
+    await repo.voidPendingCommissions('workspace', orderId, 'disputed', now);
+    expect((await repo.listCommissions('workspace', program.id, now)).find((row) => row.id === entry.id)).toMatchObject({ status: 'paid', payoutId: 'payout', voidedReason: null });
+    expect(await db.select().from(partnerEvents).where(eq(partnerEvents.entityId, entry.id))).toHaveLength(1);
+  });
 });

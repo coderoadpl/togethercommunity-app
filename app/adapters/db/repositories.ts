@@ -1,3 +1,4 @@
+import { archiveMemberPartners } from './partner-member-erasure.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { surveyResponses } from './survey-schema.js';
 import { partnerCodes, partnerPrograms, partners } from './partner-schema.js';
@@ -2743,8 +2744,10 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .limit(1).for('update');
       const member = rows[0];
       if (!member) return null;
+      const partnerPromotionCodeIds = await archiveMemberPartners(tx, tenantId, input.memberId, input.deletedAt);
       if (member.deletedAt !== null) {
         return {
+          partnerPromotionCodeIds,
           alreadyDeleted: true,
           authUserErased: false,
           erasureRequestId: null,
@@ -2952,6 +2955,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       }
       if (linked > 0) {
         return {
+          partnerPromotionCodeIds,
           alreadyDeleted: false,
           authUserErased: false,
           erasureRequestId: openErasureRequest?.id ?? null,
@@ -2961,6 +2965,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
 
       await tx.delete(user).where(eq(user.id, member.userId));
       return {
+        partnerPromotionCodeIds,
         alreadyDeleted: false,
         authUserErased: true,
         erasureRequestId: openErasureRequest?.id ?? null,

@@ -1075,6 +1075,7 @@ describe('marketing e-mail use-case integration', () => {
         await deps.sends.pseudonymizeMember(tenantId, { memberId: input.memberId, email: member.email, tombstoneEmail: input.tombstoneEmail });
         await deps.suppressions.record(tenantId, { id: ids.nextId(), tenantId, email: null, emailHmac: deps.hmac.compute(tenantId, member.email), reason: 'erasure', sourceRef: input.memberId, meta: null, createdAt: NOW, liftedAt: null, liftedBy: null });
         return {
+          partnerPromotionCodeIds: [],
           alreadyDeleted: false,
           authUserErased: true,
           erasureRequestId: null,

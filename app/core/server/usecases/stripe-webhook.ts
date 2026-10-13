@@ -706,8 +706,7 @@ const applyPaymentAdjustment = async (
   }
 
   if (order.status !== 'refunded') {
-    const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
-    if (!refunded) return ok({ processed: false });
+    await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
   }
   if (order.mode !== 'test') {
     await deps.partners?.voidPendingCommissions(tenant.id, order.id,

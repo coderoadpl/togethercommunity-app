@@ -30,8 +30,11 @@ Stripe webhook endpoints must include `checkout.session.expired` alongside the
 checkout completion and asynchronous payment events so abandoned sessions release
 their reservations.
 
-On the direct offer page, **I have a discount code** cancels automatic navigation
-and reveals the code input and **Continue to payment** button. A `code` query
+On the direct offer page, **I have a discount code** cancels the scheduled
+automatic handoff before its POST starts and reveals the code input and
+**Continue to payment** button. While a POST is in flight, the code controls are
+locked so its reserved redemption and successful checkout URL cannot be discarded.
+A failed POST unlocks the controls for correction. A `code` query
 parameter prefills the input, including through `/link/<key>` redirects. The
 server validates every submitted code before creating a payment session. Invalid
 codes show an inline error so the buyer can retry or continue without a code.

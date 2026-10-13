@@ -35,6 +35,8 @@ const stringDetailOf = (error: unknown, key: string): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
+export const validationReasonOf = (error: unknown): string | null => stringDetailOf(error, 'reason');
+
 export const providerCodeOf = (error: unknown): string | null => stringDetailOf(error, 'providerCode');
 
 const isAdoptionRefusal = (value: string): value is StripeAdoptionRefusal =>

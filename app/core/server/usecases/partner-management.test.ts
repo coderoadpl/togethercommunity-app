@@ -48,12 +48,12 @@ describe('partner management', () => {
   });
   it('rejects excessive discounts, foreign partners and offers that disallow codes', async () => {
     const deps = harness();
-    expect(await createPartnerCode({ identity }, { ...input, discountPct: 51 }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createPartnerCode({ identity }, { ...input, discountPct: 51 }, deps)).toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'discount_exceeds_commission' } } });
     deps.partners.findPartner = async () => ({ ...partner, programId: 'foreign' });
-    expect(await createPartnerCode({ identity }, input, deps)).toMatchObject({ ok: false });
+    expect(await createPartnerCode({ identity }, input, deps)).toMatchObject({ ok: false, error: { details: { reason: 'partner_program_mismatch' } } });
     deps.partners.findPartner = async () => partner;
     deps.salesLinks.findById = async () => ({ ...link, allowsCodes: false });
-    expect(await createPartnerCode({ identity }, input, deps)).toMatchObject({ ok: false, error: { message: 'Discount codes are disabled for offer: The offer' } });
+    expect(await createPartnerCode({ identity }, input, deps)).toMatchObject({ ok: false, error: { message: 'Discount codes are disabled for offer: The offer', details: { reason: 'sales_link_codes_disabled', salesLinkTitle: 'The offer' } } });
     expect(deps.payments.ensureCouponPromotion).not.toHaveBeenCalled();
     expect(deps.partners.saveCode).not.toHaveBeenCalled();
   });
@@ -104,6 +104,35 @@ describe('partner management', () => {
     expect(deps.payments.deactivateCouponPromotion).toHaveBeenNthCalledWith(1, { tenantId: 'tenant', stripePromotionCodeId: 'promotion' });
     expect(deps.payments.deactivateCouponPromotion).toHaveBeenNthCalledWith(2, { tenantId: 'tenant', stripePromotionCodeId: 'replacement-promotion' });
     expect(deps.payments.activateCouponPromotion).toHaveBeenCalledWith({ tenantId: 'tenant', stripePromotionCodeId: 'promotion' });
+  });
+  it('deactivates a restored promotion when member erasure archives its code during activation', async () => {
+    const deps = harness();
+    let current = { ...code, stripeCouponId: 'coupon', stripePromotionCodeId: 'promotion' };
+    let promotionActive = true;
+    let activationStarted: () => void = () => undefined;
+    let finishActivation: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => { activationStarted = resolve; });
+    const pending = new Promise<void>((resolve) => { finishActivation = resolve; });
+    deps.partners.findCode = async () => current;
+    deps.partners.saveCode = vi.fn(async () => err(appError('conflict', 'Concurrent change')));
+    deps.payments.deactivateCouponPromotion = vi.fn(async () => {
+      promotionActive = false;
+      return ok({ deactivated: true as const });
+    });
+    deps.payments.activateCouponPromotion = vi.fn(async () => {
+      activationStarted();
+      await pending;
+      promotionActive = true;
+      return ok({ activated: true as const });
+    });
+    const update = updatePartnerCode({ identity }, { ...input, id: code.id, expectedRevision: 1, status: 'archived' }, deps);
+    await started;
+    current = { ...current, status: 'archived', revision: 2 };
+    await deps.payments.deactivateCouponPromotion({ tenantId: 'tenant', stripePromotionCodeId: 'promotion' });
+    finishActivation();
+    expect(await update).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(promotionActive).toBe(false);
+    expect(deps.payments.deactivateCouponPromotion).toHaveBeenCalledTimes(3);
   });
   it('restores the promotion when archiving cannot persist', async () => {
     const deps = harness();

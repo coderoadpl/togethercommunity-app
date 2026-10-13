@@ -189,6 +189,14 @@ export const removeMember = async (
     }
   }
 
+  for (const stripePromotionCodeId of result.partnerPromotionCodeIds) {
+    if (deps.payment.deactivateCouponPromotion === undefined) {
+      return err(validation('Promotion-code deactivation is unavailable'));
+    }
+    const deactivated = await deps.payment.deactivateCouponPromotion({ tenantId: tenant.value, stripePromotionCodeId });
+    if (!deactivated.ok) return deactivated;
+  }
+
   return ok({
     memberId: input.memberId,
     subscriptionCancellations,

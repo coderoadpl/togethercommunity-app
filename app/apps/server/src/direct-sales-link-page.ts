@@ -115,7 +115,7 @@ ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
   const toggle = document.querySelector('#code-toggle');
   const button = form.querySelector('button');
   const edit = () => {
-    if (page.dataset.state === 'loading') return;
+    if (pending || page.dataset.state === 'loading') return;
     generation += 1;
     page.dataset.state = 'editing';
     form.hidden = false;
@@ -132,19 +132,28 @@ ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
     page.dataset.state = 'loading';
     field.disabled = true;
     button.disabled = true;
+    toggle.disabled = true;
     toggle.hidden = true;
     await submit(field.value.trim(), generation);
     if (page.dataset.state === 'error') {
       field.disabled = false;
       button.disabled = false;
+      toggle.disabled = false;
     }
   });
   if (page.dataset.code) form.hidden = false;
   setTimeout(async () => {
     if (generation !== 0) return;
+    page.dataset.state = 'loading';
+    field.disabled = true;
     button.disabled = true;
+    toggle.disabled = true;
     await submit(page.dataset.code || '', generation);
-    if (page.dataset.state !== 'loading') button.disabled = false;
+    if (page.dataset.state === 'error') {
+      field.disabled = false;
+      button.disabled = false;
+      toggle.disabled = false;
+    }
   }, 1500);` : "await submit(page.dataset.code || '', generation);"}
 })();
 </script>` : ''}

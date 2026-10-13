@@ -118,6 +118,7 @@ const erasureFor = (
     if (!row) return null;
     if (row.deletedAt !== null) {
       return {
+        partnerPromotionCodeIds: [],
         alreadyDeleted: true,
         authUserErased: false,
         erasureRequestId: null,
@@ -131,6 +132,7 @@ const erasureFor = (
     row.marketingConsents = {};
     row.externalCustomerIds = {};
     return {
+      partnerPromotionCodeIds: [],
       alreadyDeleted: false,
       authUserErased: true,
       erasureRequestId: null,
@@ -500,6 +502,30 @@ describe('removeMember', () => {
       value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
     });
     expect(byTenant['t-acme'][0]?.deletedAt).toBe('1998-07-01T00:00:00.000Z');
+  });
+
+  it('retries partner promotion deactivation after erasure without restoring the member', async () => {
+    const byTenant = { 't-acme': [memberRow({ id: 'm1' })] };
+    const deps = depsFor(byTenant);
+    const pseudonymize = deps.memberErasure.pseudonymize;
+    deps.memberErasure.pseudonymize = async (tenantId, input) => {
+      const result = await pseudonymize(tenantId, input);
+      return result === null ? null : { ...result, partnerPromotionCodeIds: ['promotion'] };
+    };
+    const calls: { tenantId: string; stripePromotionCodeId: string }[] = [];
+    deps.payment.deactivateCouponPromotion = async (input) => {
+      calls.push(input);
+      expect(byTenant['t-acme'][0]?.deletedAt).toBe(clock.nowIso());
+      return calls.length === 1 ? err(integrationUnavailable('Provider unavailable')) : ok({ deactivated: true });
+    };
+    const ctx = { identity: staff('t-acme', 'acme') };
+    expect(await removeMember(ctx, { memberId: 'm1' }, deps)).toMatchObject({ ok: false });
+    expect(await removeMember(ctx, { memberId: 'm1' }, deps)).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      { tenantId: 't-acme', stripePromotionCodeId: 'promotion' },
+      { tenantId: 't-acme', stripePromotionCodeId: 'promotion' },
+    ]);
+    expect(byTenant['t-acme'][0]?.email).toBe(memberTombstone('m1').email);
   });
 
   it('cancels Stripe subscriptions before pseudonymization with stable idempotency keys', async () => {

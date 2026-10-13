@@ -6,7 +6,7 @@ import type { PartnerCode } from '#core/domain/partner-program.js';
 import { actions } from '../../../api.js';
 import { PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { SearchField } from '../../../components/ui/SearchField.js';
-import { localizePanelError, serverMessageOf, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizePanelError, serverMessageOf, validationReasonOf, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatPrice } from '../../../lib/format.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { usePanelContext } from '../panel-context.js';
@@ -14,10 +14,15 @@ import { PartnerProgramEditor } from './PartnerProgramEditor.js';
 import { PartnerCodeEditor } from './PartnerCodeEditor.js';
 
 const partnerCodeError = (error: unknown, t: Messages): string => {
+  const reason = validationReasonOf(error);
+  if (reason === 'discount_exceeds_commission') return t.partnerPrograms.discountRule;
+  if (reason === 'invalid_date_range') return t.coupons.invalidDateRange;
+  if (reason === 'coupon_code_taken') return t.partnerPrograms.couponTaken;
+  if (reason === 'partner_code_taken') return t.partnerPrograms.partnerTaken;
   const message = serverMessageOf(error);
   if (message === 'A coupon with this code already exists') return t.partnerPrograms.couponTaken;
   if (message === 'A partner code with this code already exists') return t.partnerPrograms.partnerTaken;
-  return message ?? localizePanelError(error, t);
+  return localizePanelError(error, t);
 };
 
 const commissionTotalFields = ['pendingCents', 'payableCents', 'paidCents'] as const;

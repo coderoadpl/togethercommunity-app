@@ -86,16 +86,16 @@ export const updatePartner = async (ctx: Ctx, input: unknown, deps: PartnerManag
   return saved.ok ? ok({ partner: saved.value }) : saved;
 };
 const validateCode = async (tenantId: string, code: PartnerCode, program: PartnerProgram, deps: PartnerManagementDeps) => {
-  if (code.discountPct > program.commissionPct) return err(validation('Code discount cannot exceed the program commission'));
-  if (code.validFrom !== null && code.validTo !== null && Date.parse(code.validFrom) >= Date.parse(code.validTo)) return err(validation('Code expiry must be after its start'));
+  if (code.discountPct > program.commissionPct) return err(validation('Code discount cannot exceed the program commission', { reason: 'discount_exceeds_commission' }));
+  if (code.validFrom !== null && code.validTo !== null && Date.parse(code.validFrom) >= Date.parse(code.validTo)) return err(validation('Code expiry must be after its start', { reason: 'invalid_date_range' }));
   const partner = await deps.partners.findPartner(tenantId, code.partnerId);
-  if (partner === null || partner.programId !== program.id) return err(validation('Partner must belong to this program'));
-  if (await deps.coupons.findByCode(tenantId, code.code) !== null) return err(validation('A coupon with this code already exists'));
+  if (partner === null || partner.programId !== program.id) return err(validation('Partner must belong to this program', { reason: 'partner_program_mismatch' }));
+  if (await deps.coupons.findByCode(tenantId, code.code) !== null) return err(validation('A coupon with this code already exists', { reason: 'coupon_code_taken' }));
   const duplicate = await deps.partners.findCodeByCode(tenantId, code.code);
-  if (duplicate !== null && duplicate.id !== code.id) return err(validation('A partner code with this code already exists'));
+  if (duplicate !== null && duplicate.id !== code.id) return err(validation('A partner code with this code already exists', { reason: 'partner_code_taken' }));
   for (const id of code.status === 'active' ? code.salesLinkIds : []) {
     const link = await deps.salesLinks.findById(tenantId, id);
-    if (link === null) return err(validation('Every offer must belong to this workspace'));
+    if (link === null) return err(validation('Every offer must belong to this workspace', { reason: 'sales_link_workspace_mismatch' }));
     if (!link.allowsCodes) return err(validation(`Discount codes are disabled for offer: ${link.title}`, { reason: 'sales_link_codes_disabled', salesLinkTitle: link.title }));
   }
   return ok(undefined);
@@ -143,7 +143,7 @@ export const updatePartnerCode = async (ctx: Ctx, input: unknown, deps: PartnerM
   const existing = await deps.partners.findCode(tenant.value, parsed.data.id);
   const program = await deps.partners.findProgram(tenant.value, parsed.data.programId);
   if (existing === null || program === null) return err(notFound('Partner code or program was not found'));
-  if (existing.programId !== parsed.data.programId || existing.partnerId !== parsed.data.partnerId) return err(validation('An existing code cannot be reassigned'));
+  if (existing.programId !== parsed.data.programId || existing.partnerId !== parsed.data.partnerId) return err(validation('An existing code cannot be reassigned', { reason: 'code_reassignment' }));
   const { expectedRevision, ...fields } = parsed.data;
   if (existing.revision !== expectedRevision) return err(appError('conflict', 'Partner code changed; reload before saving'));
   const changedDiscount = existing.discountPct !== fields.discountPct || existing.code !== fields.code || (existing.status === 'archived' && fields.status === 'active');
@@ -177,6 +177,11 @@ export const updatePartnerCode = async (ctx: Ctx, input: unknown, deps: PartnerM
       if (retired && retiringPromotion !== null && current?.status === 'active' && current.stripePromotionCodeId === retiringPromotion && deps.payments.activateCouponPromotion !== undefined) {
         const restored = await deps.payments.activateCouponPromotion({ tenantId: tenant.value, stripePromotionCodeId: retiringPromotion });
         if (!restored.ok) throw new Error(restored.error.message);
+        const latest = await deps.partners.findCode(tenant.value, existing.id);
+        if ((latest?.status !== 'active' || latest.stripePromotionCodeId !== retiringPromotion) && deps.payments.deactivateCouponPromotion !== undefined) {
+          const deactivated = await deps.payments.deactivateCouponPromotion({ tenantId: tenant.value, stripePromotionCodeId: retiringPromotion });
+          if (!deactivated.ok) throw new Error(deactivated.error.message);
+        }
       }
     }
   }

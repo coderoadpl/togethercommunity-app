@@ -284,8 +284,8 @@ const ladderWorkflow = ladderWorkflowSchema.parse(parse(
   readFileSync(join(root, '.github', 'workflows', 'ai-review.yml'), 'utf8'),
 ));
 const ladderIds = [
-  'try1p', 'try1pr', 'try1f', 'try1fr', 'try2p', 'try2pr',
-  'try2f', 'try2fr', 'try3p', 'try3pr', 'try3f', 'try3fr',
+  'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',
+  'try1f', 'try1fr', 'try2f', 'try2fr', 'try3f', 'try3fr',
 ];
 type StubResult = { outcome: 'pass' | 'fail' | 'infra'; coldStart?: boolean; reason?: string };
 type StepOutputs = Record<string, Record<string, string>>;
@@ -321,9 +321,9 @@ const simulateLadder = (
   };
   const calls: Array<{ id: string; model: string; reason: string }> = [];
   let cancelled = false;
-  for (const id of ladderIds) {
-    const step = ladderWorkflow.jobs['ai-review'].steps.find((candidate) => candidate.id === id);
-    if (step?.if === undefined) throw new Error(`Missing ladder step ${id}`);
+  for (const step of ladderWorkflow.jobs['ai-review'].steps.filter((candidate) => candidate.id?.startsWith('try'))) {
+    const id = step.id;
+    if (id === undefined || step.if === undefined) throw new Error('Missing ladder step id or condition');
     const classifier = `classify${id.slice(3)}`;
     if (!evaluateAttempt(step.if, outputs, cancelled)) {
       outputs[classifier] = { outcome: 'skip', cold_start: 'false', reason: 'not_attempted' };
@@ -346,12 +346,12 @@ const simulateLadder = (
 };
 
 describe('AI review attempt ladder', () => {
-  it.each(['usage_limit', 'model_unavailable'])('moves %s to same-slot fallback before slot 2', (reason) => {
+  it.each(['usage_limit', 'model_unavailable'])('moves %s through primary slots before fallback', (reason) => {
     const calls = simulateLadder([true, true, false], {
       try1p: { outcome: 'infra', reason },
       try1f: { outcome: 'pass' },
     });
-    expect(calls.map(({ id }) => id)).toEqual(['try1p', 'try1f']);
+    expect(calls.map(({ id }) => id)).toEqual(['try1p', 'try2p', 'try1f']);
   });
 
   it('keeps auth distinct and never cold-retries it', () => {
@@ -361,6 +361,7 @@ describe('AI review attempt ladder', () => {
     });
     expect(calls).toEqual([
       { id: 'try1p', model: 'primary', reason: 'auth_rejected' },
+      { id: 'try2p', model: 'primary', reason: 'action_failure' },
       { id: 'try1f', model: 'fallback', reason: 'pass' },
     ]);
   });
@@ -372,6 +373,7 @@ describe('AI review attempt ladder', () => {
     });
     expect(calls).toEqual([
       { id: 'try1p', model: 'primary', reason: 'turn_limit' },
+      { id: 'try2p', model: 'primary', reason: 'action_failure' },
       { id: 'try1f', model: 'fallback', reason: 'pass' },
     ]);
   });
@@ -402,6 +404,18 @@ describe('AI review attempt ladder', () => {
       coldResults[id] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
     }
     expect(simulateLadder([true, true, true], coldResults).map(({ id }) => id)).toEqual(ladderIds);
+  });
+
+  it.each(ladderIds)('stops after either valid verdict at %s', (id) => {
+    for (const outcome of ['pass', 'fail'] as const) {
+      const results: Partial<Record<string, StubResult>> = {};
+      for (const earlier of ladderIds.slice(0, ladderIds.indexOf(id))) {
+        results[earlier] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
+      }
+      results[id] = { outcome };
+      expect(simulateLadder([true, true, true], results).map((call) => call.id))
+        .toEqual(ladderIds.slice(0, ladderIds.indexOf(id) + 1));
+    }
   });
 
   it('schedules nothing after cancellation', () => {

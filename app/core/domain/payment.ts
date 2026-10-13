@@ -65,6 +65,17 @@ export const stripeWebhookPayloadSchema = z.object({
   created: z.number().int().nullable().optional(),
 });
 
+const stripeTenantMetadataSchema = z.object({
+  metadata: z.object({ tenantId: z.string().nullish() }).nullish(),
+});
+
+export const stripeWebhookOwnershipSchema = stripeTenantMetadataSchema.extend({
+  customer: z.union([z.string(), stripeTenantMetadataSchema.extend({ id: z.string().optional() })]).nullish(),
+  subscription: z.union([z.string(), stripeTenantMetadataSchema]).nullish(),
+  subscription_details: stripeTenantMetadataSchema.nullish(),
+  parent: z.object({ subscription_details: stripeTenantMetadataSchema.nullish() }).nullish(),
+});
+
 /**
  * Tolerant shapes for raw Stripe webhook objects: Stripe moved fields across
  * recent API versions (for example `invoice.subscription` into

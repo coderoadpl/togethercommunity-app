@@ -211,6 +211,7 @@ const deps = (input: {
       listSessions: async () => [],
       revokeSessions: async () => undefined,
       findUserByEmail: async () => null,
+      initialize: async () => undefined,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -7640,9 +7641,58 @@ describe('checkout consent ordering', () => {
     webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));
     expect((await deliver()).status).toBe(500);
     expect(logger.error).toHaveBeenCalledWith(
-      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable',
+      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable chain=[{"name":"Error","message":"Consent storage unavailable","code":"internal"}]',
     );
   });
+
+  it('returns HTTP 400 for an invoice naming another tenant without opening a transaction', async () => {
+    const base = deps({ tenants: [acme] });
+    const transaction = vi.spyOn(base.paymentTransaction, 'run');
+    const app = buildApp({
+      ...base,
+      payment: {
+        ...base.payment,
+        verifyWebhookEvent: async () => ok({
+          id: 'evt-foreign-invoice', type: 'invoice.paid', objectId: 'in-foreign',
+          tenantIds: ['another-workspace'], checkoutSession: null,
+          invoice: { subscriptionId: 'sub-foreign', paymentIntentId: null, periodEnd: null, amountCents: 1000, currency: 'USD' },
+        }),
+      },
+    });
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'returns HTTP 400 for metadata-free foreign %s',
+    async (type) => {
+      const base = deps({ tenants: [acme] });
+      const transaction = vi.spyOn(base.paymentTransaction, 'run');
+      const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+      const app = buildApp({
+        ...base,
+        payment: {
+          ...base.payment,
+          verifyWebhookEvent: async () => ok({
+            id: 'evt-foreign-subscription', type, objectId: 'sub-foreign',
+            customerId: 'cus-foreign', checkoutSession: null,
+            subscription: { id: 'sub-foreign', status: null, cancelAtPeriodEnd: false, currentPeriodEnd: null, endedAt: null },
+          }),
+        },
+      });
+      const response = await app.request('/api/webhooks/stripe/t-acme', {
+        method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(transaction).not.toHaveBeenCalled();
+      expect(claim).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a stripe webhook for an unknown tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
@@ -7701,6 +7751,7 @@ describe('checkout consent ordering', () => {
       payloadRaw: '{}',
       signatureHeader: signatureHeader ?? '',
       webhookSecret: 'plaintext',
+      validateInvoiceTenant: expect.any(Function),
     });
   });
 
@@ -9135,6 +9186,7 @@ describe('staff Stripe test mode routes', () => {
       payloadRaw: '{}',
       signatureHeader: '',
       webhookSecret: 'plaintext',
+      validateInvoiceTenant: expect.any(Function),
     });
     expect(createOrder).not.toHaveBeenCalled();
   });

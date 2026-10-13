@@ -1005,6 +1005,8 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  tenantIds?: string[];
+  customerId?: string | null;
   livemode?: boolean;
   mode?: 'live' | 'test';
   id: string;
@@ -1133,6 +1135,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<void, AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;
@@ -2359,6 +2362,7 @@ export interface AccountSession {
 }
 
 export interface AuthPort {
+  initialize(): Promise<void>;
   findUserByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   /** Returns the authenticated user for a request, or null when anonymous. */
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;

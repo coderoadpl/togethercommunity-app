@@ -15,6 +15,7 @@ import {
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
+  stripeWebhookOwnershipSchema,
   stripeSubscriptionObjectSchema,
   validation,
   stripeKeyModeConflicts,
@@ -25,6 +26,7 @@ import {
 } from '#core/domain/index.js';
 import {
   STRIPE_WEBHOOK_EVENT_TYPES,
+  validateStripeWebhookTenant,
   type PaymentProvider,
   type PaymentWebhookEvent,
   type TenantSecretResolver,
@@ -599,16 +601,38 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       } catch (cause) {
         return err(asDiagnostic('Stripe webhook signature verification failed', cause));
       }
+      const ownership = stripeWebhookOwnershipSchema.safeParse(event.data.object);
+      if (!ownership.success) return err(validation('Stripe event ownership metadata is invalid'));
+      const objectOwnership = ownership.data;
+      const tenantIds = [
+        objectOwnership.metadata?.tenantId,
+        typeof objectOwnership.customer === 'object' ? objectOwnership.customer?.metadata?.tenantId : null,
+        typeof objectOwnership.subscription === 'object' ? objectOwnership.subscription?.metadata?.tenantId : null,
+        objectOwnership.subscription_details?.metadata?.tenantId,
+        objectOwnership.parent?.subscription_details?.metadata?.tenantId,
+      ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const tenantCheck = validateStripeWebhookTenant(input.tenantId, { tenantIds, checkoutSession: null });
+      if (!tenantCheck.ok) return tenantCheck;
+      const customerId = typeof objectOwnership.customer === 'string' ? objectOwnership.customer : objectOwnership.customer?.id;
+      const tenantMetadata = {
+        ...(tenantIds.length === 0 ? {} : { tenantIds }),
+        ...(customerId === undefined ? {} : { customerId }),
+      };
       if (
         event.type === 'checkout.session.completed' ||
         event.type === 'checkout.session.async_payment_succeeded' ||
         event.type === 'checkout.session.async_payment_failed'
       ) {
-        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), livemode: event.livemode });
+        return ok({ ...toCheckoutSessionEvent(event.id, event.type, event.data.object), ...tenantMetadata, livemode: event.livemode });
       }
       if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
         const invoice = stripeInvoiceObjectSchema.safeParse(event.data.object);
         if (invoice.success) {
+          const mappedInvoice = toInvoiceEvent(event.id, event.type, invoice.data);
+          if (mappedInvoice !== null && input.validateInvoiceTenant !== undefined) {
+            const ownershipCheck = await input.validateInvoiceTenant({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
+            if (!ownershipCheck.ok) return ownershipCheck;
+          }
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
             const paymentClient = await clientFor(input.tenantId, input.mode);
@@ -623,7 +647,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             payments = retrieved.payments;
           }
           const mapped = toInvoiceEvent(event.id, event.type, { ...invoice.data, payments });
-          if (mapped) return ok({ ...mapped, livemode: event.livemode });
+          if (mapped) return ok({ ...mapped, ...tenantMetadata, livemode: event.livemode });
         }
       }
       if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
@@ -633,14 +657,15 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           event.data.object,
           epochToIso(event.created),
         );
-        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+        if (mapped) return ok({ ...mapped, ...tenantMetadata, livemode: event.livemode });
       }
       if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
         const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
-        if (mapped) return ok({ ...mapped, livemode: event.livemode });
+        if (mapped) return ok({ ...mapped, ...tenantMetadata, livemode: event.livemode });
       }
       const object = event.data.object;
       return ok({
+        ...tenantMetadata,
         livemode: event.livemode,
         id: event.id,
         type: event.type,

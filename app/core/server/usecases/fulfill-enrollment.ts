@@ -66,6 +66,7 @@ export const fulfillEnrollment = async (
     return err(notFound(`No published product "${input.productId}" in this tenant`));
   }
 
+  await deps.authPort.initialize();
   const completed = await deps.enrollmentTransaction.run(async (transaction) => {
     const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members }, input.name);
     if (!member.ok) return member;

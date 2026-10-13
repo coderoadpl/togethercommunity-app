@@ -1,6 +1,6 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
-import { ok, tenantSettingsSchema } from '#core/domain/index.js';
+import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 
@@ -11,6 +11,7 @@ import {
   stripeCheckoutSessionParams,
   stripeCouponParams,
 } from './stripe.js';
+import type { PaymentProvider } from '#core/server/index.js';
 import { HANDLED_EVENT_TYPES } from '#core/server/index.js';
 
 const webhookSecret = 'whsec_test_secret';
@@ -72,7 +73,10 @@ const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payment
     } },
   });
 
-const invoiceProviderOverHttp = (respond: (request: Request) => Response) => {
+const invoiceProviderOverHttp = (
+  respond: (request: Request) => Response,
+  validateInvoiceTenant?: Parameters<PaymentProvider['verifyWebhookEvent']>[0]['validateInvoiceTenant'],
+) => {
   const requests: Request[] = [];
   const resolvedSecrets: Array<{ tenantId: string; key: string }> = [];
   const payment = createStripePaymentProvider({
@@ -94,6 +98,7 @@ const invoiceProviderOverHttp = (respond: (request: Request) => Response) => {
     verify: (payloadRaw: string, mode: 'live' | 'test' = 'live', signedPayload = payloadRaw) =>
       payment.verifyWebhookEvent({
         tenantId: 'tenant-a', mode, payloadRaw, webhookSecret,
+        ...(validateInvoiceTenant === undefined ? {} : { validateInvoiceTenant }),
         signatureHeader: stripe.webhooks.generateTestHeaderString({ payload: signedPayload, secret: webhookSecret }),
       }),
   };
@@ -679,6 +684,33 @@ describe('verifyWebhookEvent', () => {
       });
       expect(api.requests).toHaveLength(1);
     });
+  });
+
+  it.each([
+    { metadata: { tenantId: 'tenant-b' } },
+    { customer: { id: 'cus-foreign', metadata: { tenantId: 'tenant-b' } } },
+    { subscription_details: { metadata: { tenantId: 'tenant-b' } } },
+    { parent: { subscription_details: { subscription: 'sub-foreign', metadata: { tenantId: 'tenant-b' } } } },
+  ])('rejects foreign invoice ownership before resolving credentials or retrieving payments: %j', async (ownership) => {
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
+    const payload = JSON.stringify({ id: 'evt-foreign', type: 'invoice.paid', livemode: true,
+      data: { object: { id: 'in-foreign', ...ownership } } });
+    const result = await api.verify(payload);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('checks metadata-free invoice ownership before resolving credentials or retrieving payments', async () => {
+    const checked: string[] = [];
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, async (event) => {
+      checked.push(event.invoice?.subscriptionId ?? 'missing');
+      return err(validation('Stripe invoice does not belong to the webhook tenant'));
+    });
+    expect(await api.verify(invoiceWebhook('invoice.paid'))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(checked).toEqual(['sub_1']);
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
   });
 
   it('rejects an invalid invoice signature before resolving credentials or fetching payments', async () => {

@@ -143,3 +143,14 @@ shared assets. Erasure cannot edit copies already held by buyers.
 Tenant owners should explain this metadata identifier and its purpose,
 controller access and erasure policy in their terms and privacy information.
 Do not put names or email addresses into the file metadata.
+
+## Database connections
+
+The node-postgres pool expires idle connections after 30 seconds, enables TCP
+keepalive, limits connection attempts to 10 seconds, and allows the process to
+exit while connections are idle. Neon can close idle connections while a
+serverless function remains warm, leaving a dead connection available for reuse.
+The pool removes and closes a failed idle client before emitting its error;
+the registered error listener logs the failure so it cannot become an unhandled
+pool error that crashes the process. The listener does not release the client
+again. These settings do not affect the neon-http driver.

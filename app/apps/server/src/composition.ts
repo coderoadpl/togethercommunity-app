@@ -16,6 +16,7 @@ import { drainTelemetry } from '#core/server/telemetry/drain.js';
 import type { TelemetryTenantDirectory } from '#core/server/telemetry/ports.js';
 import type { TelemetryStoreDeps } from '#core/server/usecases/telemetry-store.js';
 import { createTelemetryEgressProbe } from './telemetry-egress.js';
+import { createTrustedOrigins } from './trusted-origins.js';
 import { createDownloadCopyRepository, createDownloadCopyOrderReader } from '#adapters/db/download-copies.js';
 import { createDownloadCopyCrypto } from '#adapters/crypto/download-copy.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
@@ -1347,17 +1348,29 @@ export const createDeps = (
         { tenants, consents, ids, clock },
       );
     },
-    trustedOrigins: async () => {
-      const domains = await tenantDomains.listVerifiedDomains();
-      const configured = selectTrustedAuthOrigins({
-        appBaseUrl: env.APP_BASE_URL,
-        baseDomain,
-        port: env.PORT,
-        singleTenantMode,
-        customDomains: domains.map((domain) => domain.domain),
-      });
-      return [...new Set([...configured, ...selectDeploymentAuthOrigins(env)])];
-    },
+    trustedOrigins: createTrustedOrigins({
+      configuredOrigins: [
+        ...selectTrustedAuthOrigins({
+          appBaseUrl: env.APP_BASE_URL,
+          baseDomain,
+          port: env.PORT,
+          singleTenantMode,
+          customDomains: [],
+        }),
+        ...selectDeploymentAuthOrigins(env),
+      ],
+      loadCustomOrigins: async () => {
+        const domains = await tenantDomains.listVerifiedDomains();
+        return selectTrustedAuthOrigins({
+          appBaseUrl: env.APP_BASE_URL,
+          baseDomain,
+          port: env.PORT,
+          singleTenantMode,
+          customDomains: domains.map((domain) => domain.domain),
+        });
+      },
+      logger,
+    }),
   });
 
   const deps: AppDeps = {

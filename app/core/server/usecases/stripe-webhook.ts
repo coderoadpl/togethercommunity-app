@@ -36,7 +36,7 @@ import type {
   PaymentTransactionPort,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
-import { safeErrorMessage } from '../log-safety.js';
+import { serializeErrorChain } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
@@ -801,7 +801,7 @@ const applySubscriptionEvent = async (
 };
 
 const logPaymentFailure = (tenant: Tenant, event: PaymentWebhookEvent, deps: StripeWebhookDeps, error: AppError): void => {
-  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message}`);
+  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message} chain=${serializeErrorChain(error)}`);
 };
 
 const processCheckoutConsent = async (
@@ -925,16 +925,51 @@ const paymentModeMatches = async (
   return true;
 };
 
+export const validateStripeWebhookTenant = (
+  tenantId: string,
+  event: Pick<PaymentWebhookEvent, 'tenantIds' | 'checkoutSession'>,
+): Result<void, AppError> => {
+  if (event.tenantIds?.some((id) => id !== tenantId) ||
+      (event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenantId)) {
+    return err(validation('Stripe event metadata does not match the webhook tenant'));
+  }
+  return ok(undefined);
+};
+
+export const validateStripeInvoiceTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds'>,
+): Promise<Result<void, AppError>> => {
+  const ownership = validateStripeWebhookTenant(tenantId, event);
+  if (!ownership.ok) return ownership;
+  const subscriptionId = event.invoice?.subscriptionId;
+  const subscription = subscriptionId == null ? null :
+    await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
+  const order = subscription !== null || event.objectId === null ? null :
+    await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { invoice: event.objectId }, event.mode ?? 'live');
+  if (subscription !== null || order !== null || event.tenantIds?.includes(tenantId)) return ok(undefined);
+  return err(validation('Stripe invoice does not belong to the webhook tenant'));
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
+  const ownership = validateStripeWebhookTenant(tenant.id, event);
+  if (!ownership.ok) return ownership;
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
+  if (event.type.startsWith('customer.subscription.') && !event.tenantIds?.includes(tenant.id)) {
+    const subscription = event.objectId === null ? null :
+      await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
+    if (subscription === null) return err(validation('Stripe subscription does not belong to the webhook tenant'));
+  }
   if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
   if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
+  await deps.authPort.initialize();
 
   const processedEvent: ProcessedPaymentEvent = {
     id: event.id,
@@ -1010,7 +1045,7 @@ export const fulfillStripeWebhook = async (
     });
   } catch (cause) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    const error = internal(`Payment fulfillment failed: ${safeErrorMessage(cause)}`);
+    const error = internal(`Payment fulfillment failed: ${serializeErrorChain(cause)}`);
     logPaymentFailure(tenant, event, deps, error);
     return err(error);
   }

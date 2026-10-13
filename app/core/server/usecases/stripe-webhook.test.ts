@@ -31,7 +31,7 @@ import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../te
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
-import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
+import { fulfillStripeWebhook, validateStripeInvoiceTenant, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
 /** Mirrors the partial unique index on processed_events: one fulfilment per object. */
@@ -210,6 +210,7 @@ const harness = (
 
   const deps: StripeWebhookDeps = {
     authPort: {
+      initialize: async () => undefined,
       getAuthenticatedUser: async () => null,
       listSessions: async () => [],
       revokeSessions: async () => undefined,
@@ -891,7 +892,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.marketingConsents.snapshot()).toHaveLength(0);
     expect(h.confirmations.rows).toHaveLength(0);
     expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
-    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay');
+    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay chain=[{"name":"Error","message":"Confirmation outbox unavailable during replay","code":"internal"}]');
 
     failEnqueue = false;
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
@@ -1365,6 +1366,121 @@ describe('fulfillStripeWebhook', () => {
     expect(h.grants.size).toBe(1);
     expect(h.events.size).toBe(1);
     expect(h.sent).toEqual(['buyer@example.com']);
+  });
+
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('rejects foreign %s metadata before initializing auth or opening a transaction', async (type) => {
+    const h = harness();
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const event = { ...invoiceEvent({ id: 'evt-foreign', type, invoiceId: 'in-foreign', subscriptionId: 'sub-foreign' }), tenantIds: ['tenant-b'] };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(initialize).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+  });
+
+  it.each(['live', 'test'] as const)('rejects a metadata-free invoice without a tenant-local subscription or order in %s mode', async (mode) => {
+    const h = harness();
+    const findOrder = vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds');
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...invoiceEvent({ id: 'evt-foreign', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-foreign' }), mode }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-foreign' }, mode);
+  });
+
+  it('accepts a tenant-local subscription invoice when checkout created a new customer for an existing member', async () => {
+    const h = await subscribedHarness();
+    const member = [...h.members.values()][0];
+    if (member === undefined) throw new Error('Expected enrolled member');
+    member.externalCustomerIds = { stripe: 'cus-historical' };
+    const event = invoiceEvent({ id: 'evt-local', type: 'invoice.paid', invoiceId: 'in-local', subscriptionId: 'sub-1' });
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, customerId: 'cus-new-checkout' }, h.deps)).toEqual(ok(undefined));
+  });
+
+  it('rejects explicit foreign ownership even when the subscription exists locally', async () => {
+    const h = await subscribedHarness();
+    const event = invoiceEvent({ id: 'evt-foreign', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' });
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, tenantIds: ['tenant-b'] }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'rejects metadata-free foreign %s before claiming the event or opening a transaction',
+    async (type) => {
+      const h = harness();
+      const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+      const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+      const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+      const findSubscription = vi.spyOn(h.deps.subscriptions, 'findByProviderSubscriptionId');
+      const event = {
+        ...subscriptionEvent({ id: 'evt-foreign-subscription', type, subscriptionId: 'sub-foreign' }),
+        customerId: 'cus-foreign',
+      };
+      for (const mode of ['live', 'test'] as const) {
+        expect(await fulfillStripeWebhook(tenantA, { ...event, mode, livemode: mode === 'live' }, h.deps))
+          .toMatchObject({ ok: false, error: { code: 'validation' } });
+      }
+      expect(findSubscription).toHaveBeenCalledWith(tenantA.id, 'sub-foreign');
+      expect(initialize).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+      expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'accepts metadata-free tenant-local %s with a new checkout customer',
+    async (type) => {
+      const h = await subscribedHarness();
+      const member = [...h.members.values()][0];
+      if (member === undefined) throw new Error('Expected enrolled member');
+      member.externalCustomerIds = { stripe: 'cus-historical' };
+      const event = {
+        ...subscriptionEvent({ id: 'evt-local-subscription', type, subscriptionId: 'sub-1' }),
+        customerId: 'cus-new-checkout',
+      };
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    },
+  );
+
+  it('accepts an untracked subscription with explicit tenant ownership', async () => {
+    const h = harness();
+    const event = {
+      ...subscriptionEvent({ id: 'evt-untracked', type: 'customer.subscription.updated', subscriptionId: 'sub-untracked' }),
+      customerId: 'cus-new', tenantIds: [tenantA.id],
+    };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+  });
+
+  it('rejects foreign subscription metadata even when the subscription exists locally', async () => {
+    const h = await subscribedHarness();
+    const event = {
+      ...subscriptionEvent({ id: 'evt-conflicting', type: 'customer.subscription.updated', subscriptionId: 'sub-1' }),
+      tenantIds: ['tenant-b'],
+    };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('awaits auth initialization before the payment transaction and ensureUser', async () => {
+    const h = harness();
+    let start: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => { start = resolve; });
+    let finish: () => void = () => undefined;
+    const initialized = new Promise<void>((resolve) => { finish = resolve; });
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize').mockImplementation(async () => {
+      start();
+      await initialized;
+    });
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+    const fulfillment = fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+    await started;
+    expect(transaction).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    finish();
+    expect(await fulfillment).toEqual(ok({ processed: true }));
+    expect(initialize.mock.invocationCallOrder[0]).toBeLessThan(transaction.mock.invocationCallOrder[0] ?? 0);
+    expect(transaction.mock.invocationCallOrder[0]).toBeLessThan(ensureUser.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('rejects tenant metadata mismatch before creating a member or grant', async () => {

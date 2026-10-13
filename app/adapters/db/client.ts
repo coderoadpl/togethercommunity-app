@@ -18,7 +18,18 @@ export const createDb = (driver: DbDriver, connectionString: string): Db => {
   switch (driver) {
     case 'neon-http':
       return drizzleNeonHttp(neon(normalizedConnectionString), { schema });
-    case 'node-postgres':
-      return drizzleNodePg(new pg.Pool({ connectionString: normalizedConnectionString }), { schema });
+    case 'node-postgres': {
+      const pool = new pg.Pool({
+        connectionString: normalizedConnectionString,
+        idleTimeoutMillis: 30_000,
+        keepAlive: true,
+        connectionTimeoutMillis: 10_000,
+        allowExitOnIdle: true,
+      });
+      pool.on('error', (error) => {
+        console.error('[database-pool] Idle client removed:', error.message);
+      });
+      return drizzleNodePg(pool, { schema });
+    }
   }
 };

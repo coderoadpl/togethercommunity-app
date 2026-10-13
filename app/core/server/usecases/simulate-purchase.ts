@@ -50,6 +50,7 @@ export const simulatePurchase = async (
   input: SimulatePurchaseInputData,
   deps: SimulatePurchaseDeps,
 ): Promise<Result<SimulatePurchaseResult, AppError>> => {
+  await deps.authPort.initialize();
   const selection = await validateCheckoutSelection(tenantId, input, deps);
   if (!selection.ok) return selection;
   const { product, price } = selection.value;

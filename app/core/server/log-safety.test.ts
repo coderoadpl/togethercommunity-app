@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeErrorMessage, safeLogMessage } from './log-safety.js';
+import { safeErrorMessage, safeLogMessage, serializeErrorChain } from './log-safety.js';
 
 describe('safeErrorMessage', () => {
   it('keeps the Drizzle SQL text while removing query parameters', () => {
@@ -42,5 +42,30 @@ describe('safeLogMessage', () => {
 
   it('keeps a message without query parameters', () => {
     expect(safeLogMessage('[email-outbox] failed: timeout')).toBe('[email-outbox] failed: timeout');
+  });
+});
+
+describe('serializeErrorChain', () => {
+  it('preserves nested Postgres diagnostics while removing query parameters', () => {
+    const postgres = Object.assign(new Error('Connection terminated'), {
+      code: '57P01', detail: 'Server shut down', routine: 'ProcessInterrupts',
+    });
+    const query = new Error('Failed query: select id from tenant_domains\nparams: private-value', { cause: postgres });
+    const serialized = serializeErrorChain(new Error('Enrollment failed', { cause: query }));
+    expect(JSON.parse(serialized)).toEqual([
+      { name: 'Error', message: 'Enrollment failed' },
+      { name: 'Error', message: 'Failed query: select id from tenant_domains' },
+      { name: 'Error', message: 'Connection terminated', code: '57P01', detail: 'Server shut down', routine: 'ProcessInterrupts' },
+    ]);
+    expect(serialized).not.toContain('private-value');
+  });
+
+  it('terminates circular causes and handles unknown values', () => {
+    const error = new Error('Cycle');
+    error.cause = error;
+    expect(JSON.parse(serializeErrorChain(error))).toEqual([
+      { name: 'Error', message: 'Cycle' }, { message: 'Circular error cause' },
+    ]);
+    expect(serializeErrorChain('private-value')).toBe('[{"message":"Unknown error"}]');
   });
 });

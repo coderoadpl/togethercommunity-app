@@ -100,6 +100,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
     listSessions: async () => [],
     revokeSessions: async () => undefined,
     findUserByEmail: async () => null,
+    initialize: async () => undefined,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
     createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),

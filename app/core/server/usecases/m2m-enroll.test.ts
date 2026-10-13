@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ok, type EmailOutboxPayload, type Language, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
 
@@ -116,6 +116,7 @@ const harness = (options: {
     listSessions: async () => [],
     revokeSessions: async () => undefined,
     findUserByEmail: async () => null,
+    initialize: async () => undefined,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
     createEnrollmentMagicLink: async ({ email, callbackURL, baseUrl }) => {
@@ -224,6 +225,32 @@ const seedMember = async (deps: M2mEnrollDeps, language: Language | null = null)
 };
 
 describe('m2mEnroll', () => {
+  it('awaits auth initialization before opening the enrollment transaction for a new member', async () => {
+    const h = harness({ products: [product('p1', true)] });
+    let ready: () => void = () => undefined;
+    const initialization = new Promise<void>((resolve) => { ready = () => resolve(); });
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize').mockImplementation(async () => { await initialization; });
+    const transaction = vi.spyOn(h.deps.enrollmentTransaction, 'run');
+    const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+    const enrollment = m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1', expiresAt: NEW_EXPIRY }, h.deps);
+    await vi.waitFor(() => expect(initialize).toHaveBeenCalledOnce());
+    expect(transaction).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    ready();
+    expect(await enrollment).toMatchObject({ ok: true });
+    expect(initialize.mock.invocationCallOrder[0]).toBeLessThan(transaction.mock.invocationCallOrder[0] ?? 0);
+    expect(transaction.mock.invocationCallOrder[0]).toBeLessThan(ensureUser.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it('does not open a transaction when auth initialization rejects', async () => {
+    const h = harness({ products: [product('p1', true)] });
+    vi.spyOn(h.deps.authPort, 'initialize').mockRejectedValue(new Error('Auth unavailable'));
+    const transaction = vi.spyOn(h.deps.enrollmentTransaction, 'run');
+    await expect(m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1', expiresAt: NEW_EXPIRY }, h.deps))
+      .rejects.toThrow('Auth unavailable');
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('creates a grant starting now when none exists', async () => {
     const h = harness({ products: [product('p1', true)] });
     const result = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1', expiresAt: NEW_EXPIRY }, h.deps);

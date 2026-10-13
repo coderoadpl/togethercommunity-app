@@ -841,6 +841,8 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         : { crossSubDomainCookies: { enabled: true, domain: cookieDomain } }),
     },
   });
+  // Better Auth starts initialization eagerly; observe rejection before a request awaits it.
+  void auth.$context.catch(() => undefined);
   return {
     ...auth,
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
@@ -885,6 +887,7 @@ const nameFromEmail = (email: string): string => email.split('@')[0] ?? email;
  * these accounts sign in via magic link or passkey.
  */
 export const createAuthPort = (auth: Auth): AuthPort => ({
+  initialize: async () => { await auth.$context; },
   findUserByEmail: async (email) => {
     const { internalAdapter } = await auth.$context;
     const found = await internalAdapter.findUserByEmail(normalizeEmail(email));

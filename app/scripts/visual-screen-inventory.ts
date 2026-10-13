@@ -594,7 +594,10 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-settings-security',
     auth: 'creator',
     path: '/panel/settings#security',
-    ready: (page) => page.getByTestId('team-settings').waitFor(visible),
+    ready: async (page) => {
+      await page.getByTestId('team-settings').waitFor(visible);
+      await page.getByTestId('security-reset-password').waitFor(visible);
+    },
     settled: async (page) => {
       await page.evaluate(() => window.scrollTo(0, 0));
     },

@@ -1525,6 +1525,20 @@ describe('SettingsPanel team', () => {
     expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
   });
 
+  it('explains the verification step and preserves the email for the owner to retry', async () => {
+    renderPanel();
+    const message = 'A sign-in link has been sent. Add this administrator again after they verify their email.';
+    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+      ok: false, error: { code: 'validation', message },
+    }, { status: 400 })));
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
+    expect(await findToast('error')).toHaveTextContent(message);
+    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
+  });
+
   it('requires confirmation before removing an administrator', async () => {
     renderPanel();
     const removed: unknown[] = [];

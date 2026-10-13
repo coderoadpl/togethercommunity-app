@@ -137,6 +137,19 @@
         "openCount": 1
       }
     },
+    "listTenantTeam:[]": {
+      "ok": true,
+      "value": {
+        "members": [
+          {
+            "email": "creator@together.dev",
+            "name": "Studio Creator",
+            "role": "owner",
+            "userId": "fixture-user-f9e5468247b51d08"
+          }
+        ]
+      }
+    },
     "me:[]": {
       "ok": true,
       "value": {
@@ -362,25 +375,6 @@
       "ok": true,
       "value": {
         "unread": 0
-      }
-    },
-    "listTenantTeam:[]": {
-      "ok": true,
-      "value": {
-        "members": [
-          {
-            "userId": "owner-studio",
-            "email": "creator@together.dev",
-            "name": "Studio Owner",
-            "role": "owner"
-          },
-          {
-            "userId": "admin-studio",
-            "email": "admin@example.test",
-            "name": "Studio Administrator",
-            "role": "admin"
-          }
-        ]
       }
     }
   },

@@ -10009,7 +10009,8 @@ describe('tenant team HTTP surface', () => {
         removeAdmin: async (_tenantId, _userId, audit) => { audits.push(audit); return true; } },
       authPort: { ...base.authPort,
         getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
-        ensureUser: async () => ({ userId: 'admin-1', created: true }), requestMagicLink },
+        ensureUser: async () => ({ userId: 'admin-1', created: false }),
+        findUserByEmail: async () => ({ userId: 'admin-1', emailVerified: true }), requestMagicLink },
     } });
     const listed = await app.request(API_PATHS.tenantTeam, { headers });
     expect(listed.status).toBe(200);
@@ -10024,5 +10025,24 @@ describe('tenant team HTTP surface', () => {
       expect.objectContaining({ kind: 'team.admin_added', tenantId: acme.id }),
       expect.objectContaining({ kind: 'team.admin_removed', tenantId: acme.id }),
     ]);
+  });
+
+  it('returns a verification error without granting an unverified account administrator access', async () => {
+    const base = deps();
+    const addAdmin = vi.fn(async () => true);
+    const requestMagicLink = vi.fn(async () => undefined);
+    const app = scopedApp('owner', { overrides: {
+      team: { ...base.team, addAdmin },
+      authPort: { ...base.authPort,
+        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
+        ensureUser: async () => ({ userId: 'unverified-user', created: false }),
+        findUserByEmail: async () => ({ userId: 'unverified-user', emailVerified: false }), requestMagicLink },
+    } });
+    const response = await app.request(API_PATHS.tenantTeamAdd, {
+      method: 'POST', headers, body: JSON.stringify({ email: 'invitee@example.test' }),
+    });
+    expect(response.status).toBe(400);
+    expect(addAdmin).not.toHaveBeenCalled();
+    expect(requestMagicLink).toHaveBeenCalledOnce();
   });
 });

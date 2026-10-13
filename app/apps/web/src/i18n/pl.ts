@@ -1779,8 +1779,8 @@ export const pl: Messages = {
     auditLogHeading: 'Dziennik działań zespołu',
     auditLogEmpty: 'Brak zapisanych działań.',
     auditLogKind: {
-      'team.admin_added': 'Dodaj administratora',
-      'team.admin_removed': 'Usuń',
+      'team.admin_added': 'Dodanie administratora',
+      'team.admin_removed': 'Usunięcie administratora',
       impersonation_started: 'Wejście w podgląd uczestnika',
       impersonation_ended: 'Wyjście z podglądu uczestnika',
       content_version_restored: 'Przywrócenie wersji treści',

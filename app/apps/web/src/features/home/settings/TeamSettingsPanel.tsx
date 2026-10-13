@@ -10,7 +10,7 @@ import type { TenantTeamMember } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useToastOutcome } from '../../../components/ui/Toast.js';
-import { localizePanelError, useTranslations } from '../../../i18n/index.js';
+import { errorCodeOf, localizePanelError, serverMessageOf, useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 
 export const TeamSettingsPanel = () => {
@@ -34,7 +34,9 @@ export const TeamSettingsPanel = () => {
       await queryClient.invalidateQueries(actions.tenantTeamInvalidates());
     },
   });
-  useToastOutcome(add.isSuccess, t.common.saved, add.error === null ? null : localizePanelError(add.error, t));
+  const addError = add.error === null ? null : localizePanelError(add.error, t);
+  useToastOutcome(add.isSuccess, t.common.saved,
+    errorCodeOf(add.error) === 'validation' ? serverMessageOf(add.error) ?? addError : addError);
   useToastOutcome(remove.isSuccess, t.common.saved, remove.error === null ? null : localizePanelError(remove.error, t));
   const pending = add.isPending || remove.isPending;
 

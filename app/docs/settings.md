@@ -10,10 +10,14 @@ public copy and must never hold private account or member information. Saving
 uses the tenant settings mutation and refreshes the public offer cache.
 
 Owners manage administrators in **Studio → Settings → Security → Team**. Adding an
-e-mail address creates an account when needed, grants the existing administrator
-role and sends a sign-in link. Administrators can use Studio except platform
+e-mail address creates an account when needed and sends a sign-in link. The
+administrator role is granted only after the address has been verified. For an
+unverified address, the owner is asked to add it again after the recipient signs
+in through the link; no administrator access is granted before that retry.
+Administrators can use Studio except platform
 settings, secrets, API keys and the integration test. Adding an existing team
-member is idempotent and never downgrades an owner. Owners cannot remove themselves
+member is idempotent, never downgrades an owner and does not resend the e-mail.
+Owners cannot remove themselves
 or another owner; removing an administrator requires confirmation.
 
 The owner-only CLI commands are `team list`, `team add <email>` and

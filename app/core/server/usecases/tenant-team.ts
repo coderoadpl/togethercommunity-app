@@ -27,7 +27,7 @@ import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 
 export interface TenantTeamDeps extends TenantOriginDeps {
   team: TenantTeamRepository;
-  authPort: Pick<AuthPort, 'ensureUser' | 'requestMagicLink'>;
+  authPort: Pick<AuthPort, 'ensureUser' | 'findUserByEmail' | 'requestMagicLink'>;
   tenants: Pick<TenantRepository, 'findSettings'>;
   ids: IdGenerator;
   clock: Clock;
@@ -52,7 +52,9 @@ export const addTenantAdmin = async (
   const parsed = addTenantAdminInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid administrator email', parsed.error.flatten()));
   const { userId } = await deps.authPort.ensureUser(parsed.data.email);
-  await deps.team.addAdmin(tenant.value, userId, deps.ids.nextId(), {
+  const account = await deps.authPort.findUserByEmail(parsed.data.email);
+  const verified = account?.userId === userId && account.emailVerified;
+  const added = verified && await deps.team.addAdmin(tenant.value, userId, deps.ids.nextId(), {
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     kind: 'team.admin_added',
@@ -62,6 +64,7 @@ export const addTenantAdmin = async (
     reason: userId,
     at: deps.clock.nowIso(),
   });
+  if (verified && !added) return ok({ userId });
   const settings = await deps.tenants.findSettings(tenant.value);
   const baseUrl = `${await resolveTenantOrigin({ id: tenant.value, slug: ctx.identity.tenantSlug }, deps)}/`;
   await deps.authPort.requestMagicLink({
@@ -73,6 +76,9 @@ export const addTenantAdmin = async (
     baseUrl,
     ...(settings === null ? {} : { branding: emailBrandingFrom(settings, baseUrl) }),
   });
+  if (!verified) {
+    return err(validation('A sign-in link has been sent. Add this administrator again after they verify their email.'));
+  }
   return ok({ userId });
 };
 

@@ -52,6 +52,10 @@ const harness = () => {
       }),
     },
     authPort: {
+      findUserByEmail: async (email) => ({
+        userId: members.find((member) => member.email === email)?.userId ?? 'new-user',
+        emailVerified: true,
+      }),
       ensureUser: async (email) => {
         ensured.push(email);
         const existing = members.find((member) => member.email === email);
@@ -115,7 +119,35 @@ describe('tenant team', () => {
     expect((await addTenantAdmin({ identity: identity() }, { email }, h.deps)).ok).toBe(true);
     expect(h.members).toEqual(original);
     expect(h.audit).toEqual([]);
-    expect(h.requestMagicLink).toHaveBeenCalledTimes(2);
+    expect(h.requestMagicLink).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('withholds administrator access until mailbox verification (created: %s)', async (created) => {
+    const h = harness();
+    h.deps.authPort.ensureUser = async () => ({ userId: 'unverified-password-user', created });
+    h.deps.authPort.findUserByEmail = async () => ({ userId: 'unverified-password-user', emailVerified: false });
+
+    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
+    expect(h.members.some((member) => member.userId === 'unverified-password-user')).toBe(false);
+    expect(h.audit).toEqual([]);
+    expect(h.requestMagicLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'invitee@acme.test' }));
+
+    h.deps.authPort.findUserByEmail = async () => ({ userId: 'unverified-password-user', emailVerified: true });
+    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
+      .toEqual({ ok: true, value: { userId: 'unverified-password-user' } });
+    expect(h.deps.team.addAdmin).toHaveBeenCalledOnce();
+    expect(h.audit).toHaveLength(1);
+  });
+
+  it.each([null, { userId: 'another-user', emailVerified: true }])('refuses an account that disappeared or changed after provisioning: %j', async (account) => {
+    const h = harness();
+    h.deps.authPort.findUserByEmail = async () => account;
+    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
+    expect(h.audit).toEqual([]);
   });
 
   it('allows an owner to remove an administrator and records the audit event', async () => {

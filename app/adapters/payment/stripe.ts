@@ -117,8 +117,10 @@ export const stripeCheckoutSessionParams = (
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
-    ...(input.recurringInterval === undefined ? {} : {
-      subscription_data: { billing_mode: { type: 'classic' as const } },
+    ...(input.recurringInterval === undefined ? {
+      payment_intent_data: { metadata: { tenantId: input.tenantId } },
+    } : {
+      subscription_data: { billing_mode: { type: 'classic' as const }, metadata: { tenantId: input.tenantId } },
     }),
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
@@ -632,6 +634,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           if (mappedInvoice !== null && input.validateInvoiceTenant !== undefined) {
             const ownershipCheck = await input.validateInvoiceTenant({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             if (!ownershipCheck.ok) return ownershipCheck;
+            // Checkout may commit after this lookup; an unenriched invoice must stay ignored for this delivery.
+            if (!ownershipCheck.value) return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
           }
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {

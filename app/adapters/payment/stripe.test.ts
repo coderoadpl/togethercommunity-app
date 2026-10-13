@@ -701,7 +701,19 @@ describe('verifyWebhookEvent', () => {
     expect(api.requests).toEqual([]);
   });
 
-  it('checks metadata-free invoice ownership before resolving credentials or retrieving payments', async () => {
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'rejects explicit foreign ownership on %s without a lookup', async (type) => {
+      const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected Stripe lookup'); });
+      const payload = JSON.stringify({ id: 'evt-foreign-subscription', type, livemode: true,
+        data: { object: { id: 'sub-foreign', metadata: { tenantId: 'tenant-b' }, status: 'active' } },
+      });
+      expect(await api.verify(payload)).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(api.resolvedSecrets).toEqual([]);
+      expect(api.requests).toEqual([]);
+    },
+  );
+
+  it('propagates rejected invoice ownership before resolving credentials or retrieving payments', async () => {
     const checked: string[] = [];
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, async (event) => {
       checked.push(event.invoice?.subscriptionId ?? 'missing');
@@ -712,6 +724,54 @@ describe('verifyWebhookEvent', () => {
     expect(api.resolvedSecrets).toEqual([]);
     expect(api.requests).toEqual([]);
   });
+
+  it.each([
+    ['invoice.paid', undefined], ['invoice.paid', 'tenant-a'],
+    ['invoice.payment_failed', undefined], ['invoice.payment_failed', 'tenant-a'],
+  ] as const)('accepts an unknown %s before checkout completion without a lookup (tenant metadata: %s)', async (type, tenantId) => {
+    const checked: string[] = [];
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, async (event) => {
+      checked.push(event.invoice?.subscriptionId ?? 'missing');
+      return ok(false);
+    });
+    const payload = JSON.stringify({ id: 'evt-initial-invoice', type, livemode: true,
+      data: { object: { id: 'in-initial', amount_paid: 4900, amount_due: 4900, currency: 'usd',
+        parent: { subscription_details: { subscription: 'sub-initial',
+          ...(tenantId === undefined ? {} : { metadata: { tenantId } }),
+        } },
+      } },
+    });
+    expect(await api.verify(payload)).toMatchObject({ ok: true, value: {
+      type, objectId: 'in-initial', invoice: null,
+    } });
+    expect(checked).toEqual(['sub-initial']);
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('retrieves payments for a metadata-free invoice with a known local subscription', async () => {
+    const api = invoiceProviderOverHttp(() => stripeJson({ id: 'in_renewal', payments: {
+      data: [{ status: 'paid', payment: { payment_intent: 'pi_renewal' } }],
+    } }), async () => ok(true));
+    expect(await api.verify(invoiceWebhook('invoice.paid'))).toMatchObject({
+      ok: true, value: { invoice: { subscriptionId: 'sub_1', paymentIntentId: 'pi_renewal' } },
+    });
+    expect(api.requests).toHaveLength(1);
+  });
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'accepts metadata-free %s for an abandoned initial subscription without a lookup', async (type) => {
+      const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected Stripe lookup'); });
+      const payload = JSON.stringify({ id: 'evt-abandoned', type, livemode: true,
+        data: { object: { id: 'sub-abandoned', status: 'incomplete_expired', cancel_at_period_end: false } },
+      });
+      expect(await api.verify(payload)).toMatchObject({ ok: true, value: {
+        type, objectId: 'sub-abandoned', subscription: { id: 'sub-abandoned', status: 'incomplete_expired' },
+      } });
+      expect(api.resolvedSecrets).toEqual([]);
+      expect(api.requests).toEqual([]);
+    },
+  );
 
   it('rejects an invalid invoice signature before resolving credentials or fetching payments', async () => {
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
@@ -1090,7 +1150,10 @@ it.each([undefined, 'month'] as const)('maps branding for payment and subscripti
     icon: { type: 'url', url: 'https://assets.example.com/icon.png' }, background_color: '#FFFFFF',
     button_color: '#123456', font_family: 'inter', border_style: 'pill',
   });
-  expect(params.subscription_data).toEqual(recurringInterval === undefined ? undefined : { billing_mode: { type: 'classic' } });
+  expect(params.subscription_data).toEqual(recurringInterval === undefined ? undefined : {
+    billing_mode: { type: 'classic' }, metadata: { tenantId: 'tenant-a' },
+  });
+  expect(params.payment_intent_data).toEqual(recurringInterval === undefined ? { metadata: { tenantId: 'tenant-a' } } : undefined);
   expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
   expect(params.consent_collection).toBeUndefined();
 });
@@ -1115,6 +1178,7 @@ it('creates direct checkout with required consent, tax IDs and exact lines witho
   });
   expect(params).toEqual({
     mode: 'payment', locale: 'en', success_url: 'https://alpha.example.com/success', cancel_url: 'https://alpha.example.com/',
+    payment_intent_data: { metadata: { tenantId: 'tenant-a' } },
     consent_collection: { terms_of_service: 'required' },
     custom_text: { terms_of_service_acceptance: { message } }, tax_id_collection: { enabled: true }, allow_promotion_codes: false,
     line_items: [
@@ -1253,6 +1317,8 @@ it.each([
     'branding_settings[font_family]': 'inter', 'branding_settings[border_style]': 'pill',
   });
   expect(body.get('subscription_data[billing_mode][type]')).toBe(checkout === 'subscription' ? 'classic' : null);
+  expect(body.get('subscription_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? 'tenant-a' : null);
+  expect(body.get('payment_intent_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? null : 'tenant-a');
   expect(body.get('mode')).toBe(checkout === 'subscription' ? 'subscription' : 'payment');
   expect(body.get('consent_collection[terms_of_service]')).toBe(checkout === 'direct' ? 'required' : null);
   expect(body.get('tax_id_collection[enabled]')).toBe(checkout === 'direct' ? 'true' : null);

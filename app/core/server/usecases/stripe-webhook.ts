@@ -943,7 +943,7 @@ export const validateStripeInvoiceTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds'>,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<boolean, AppError>> => {
   const ownership = validateStripeWebhookTenant(tenantId, event);
   if (!ownership.ok) return ownership;
   const subscriptionId = event.invoice?.subscriptionId;
@@ -951,8 +951,7 @@ export const validateStripeInvoiceTenant = async (
     await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
   const order = subscription !== null || event.objectId === null ? null :
     await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { invoice: event.objectId }, event.mode ?? 'live');
-  if (subscription !== null || order !== null || event.tenantIds?.includes(tenantId)) return ok(undefined);
-  return err(validation('Stripe invoice does not belong to the webhook tenant'));
+  return ok(subscription !== null || order !== null);
 };
 
 export const fulfillStripeWebhook = async (
@@ -964,10 +963,10 @@ export const fulfillStripeWebhook = async (
   const ownership = validateStripeWebhookTenant(tenant.id, event);
   if (!ownership.ok) return ownership;
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
-  if (event.type.startsWith('customer.subscription.') && !event.tenantIds?.includes(tenant.id)) {
+  if (event.type.startsWith('customer.subscription.')) {
     const subscription = event.objectId === null ? null :
       await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
-    if (subscription === null) return err(validation('Stripe subscription does not belong to the webhook tenant'));
+    if (subscription === null) return ok({ processed: false });
   }
   if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
   if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };

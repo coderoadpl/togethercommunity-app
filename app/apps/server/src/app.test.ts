@@ -7668,7 +7668,7 @@ describe('checkout consent ordering', () => {
   });
 
   it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'returns HTTP 400 for metadata-free foreign %s',
+    'returns HTTP 200 for metadata-free unknown %s',
     async (type) => {
       const base = deps({ tenants: [acme] });
       const transaction = vi.spyOn(base.paymentTransaction, 'run');
@@ -7678,17 +7678,17 @@ describe('checkout consent ordering', () => {
         payment: {
           ...base.payment,
           verifyWebhookEvent: async () => ok({
-            id: 'evt-foreign-subscription', type, objectId: 'sub-foreign',
-            customerId: 'cus-foreign', checkoutSession: null,
-            subscription: { id: 'sub-foreign', status: null, cancelAtPeriodEnd: false, currentPeriodEnd: null, endedAt: null },
+            id: 'evt-unknown-subscription', type, objectId: 'sub-unknown',
+            customerId: 'cus-unknown', checkoutSession: null,
+            subscription: { id: 'sub-unknown', status: null, cancelAtPeriodEnd: false, currentPeriodEnd: null, endedAt: null },
           }),
         },
       });
       const response = await app.request('/api/webhooks/stripe/t-acme', {
         method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
       });
-      expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
       expect(transaction).not.toHaveBeenCalled();
       expect(claim).not.toHaveBeenCalled();
     },
@@ -7771,6 +7771,36 @@ describe('checkout consent ordering', () => {
       data: { received: true, processed: false },
     });
   });
+
+  it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
+    'acknowledges unknown %s with HTTP 200 and rejects explicit foreign metadata with HTTP 400',
+    async (type) => {
+      const base = deps({ tenants: [acme] });
+      const event = {
+        id: 'evt-initial-subscription', type, objectId: type.startsWith('invoice.') ? 'in-initial' : 'sub-initial',
+        livemode: true, checkoutSession: null,
+        ...(type.startsWith('invoice.') ? {
+          invoice: { subscriptionId: 'sub-initial', chargeId: null, paymentIntentId: null, amountCents: null, currency: null, periodEnd: null },
+        } : {}),
+      };
+      for (const tenantIds of [[], [acme.id], ['t-other']]) {
+        const app = buildApp({
+          ...base,
+          payment: { ...base.payment, verifyWebhookEvent: async () => ok({ ...event, tenantIds }) },
+        });
+        const response = await app.request('/api/webhooks/stripe/t-acme', {
+          method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+        });
+        if (tenantIds.includes('t-other')) {
+          expect(response.status).toBe(400);
+          expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+        } else {
+          expect(response.status).toBe(200);
+          expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+        }
+      }
+    },
+  );
 
   it('rejects a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };

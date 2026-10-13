@@ -1135,7 +1135,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
-    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<void, AppError>>;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<boolean, AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;

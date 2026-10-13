@@ -197,6 +197,34 @@ describe('configureWebhook', () => {
     expect([...HANDLED_EVENT_TYPES]).toEqual([...STRIPE_WEBHOOK_EVENTS]);
     expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_succeeded');
     expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.async_payment_failed');
+    expect(STRIPE_WEBHOOK_EVENTS).toContain('checkout.session.expired');
+  });
+
+  it.each(['live', 'test'] as const)('upgrades an existing %s endpoint to release abandoned partner checkouts', async (mode) => {
+    const url = webhookUrl + (mode === 'test' ? '?mode=test' : '');
+    const previousEvents = STRIPE_WEBHOOK_EVENTS.filter((event) => event !== 'checkout.session.expired');
+    const stripeApi = providerOverHttp((request) => request.method === 'DELETE'
+      ? stripeJson({ id: 'we_previous', object: 'webhook_endpoint', deleted: true })
+      : stripeJson({ id: 'we_upgraded', object: 'webhook_endpoint', secret: 'whsec_upgraded', status: 'enabled', url }), [
+      { id: 'we_previous', object: 'webhook_endpoint', metadata: { tenantId: 'tenant-1' }, status: 'enabled', url, enabled_events: previousEvents },
+    ]);
+
+    expect(await stripeApi.configureWebhook({ tenantId: 'tenant-1', restrictedKey: `rk_${mode}_private`, webhookUrl: url }))
+      .toEqual(ok({ webhookEndpointId: 'we_upgraded', webhookSecret: 'whsec_upgraded' }));
+    expect(stripeApi.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
+      'GET /v1/webhook_endpoints',
+      'DELETE /v1/webhook_endpoints/we_previous',
+      'POST /v1/webhook_endpoints',
+    ]);
+    const replacement = stripeApi.requests.at(-1);
+    if (replacement === undefined) throw new Error('Replacement endpoint request missing');
+    const body = new URLSearchParams(await replacement.text());
+    expect(body.get('url')).toBe(url);
+    expect(body.get('metadata[tenantId]')).toBe('tenant-1');
+    const enabledEvents = [...body.entries()].filter(([key]) => key.startsWith('enabled_events[')).map(([, value]) => value);
+    expect(enabledEvents).toContain('checkout.session.expired');
+    expect(enabledEvents).toEqual(expect.arrayContaining(previousEvents));
+    expect(enabledEvents).toEqual([...STRIPE_WEBHOOK_EVENTS]);
   });
 
   it('deletes a newly registered endpoint during persistence cleanup', async () => {

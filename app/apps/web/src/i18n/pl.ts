@@ -44,7 +44,7 @@ export const pl: Messages = {
     scope: 'Zakres',
     validFrom: 'Ważny od',
     validTo: 'Ważny do',
-    saveCode: 'Utwórz kod',
+    saveCode: 'Zapisz kod',
     pending: 'Oczekuje',
     payable: 'Do wypłaty',
     paid: 'Wypłacone',

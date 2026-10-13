@@ -30,6 +30,30 @@ database on a protected Neon branch. It is not a copy of production data.
 9. Delete the old data-copied staging branch after the new deployment and smoke
    are green.
 
+## Partner program rollout on existing Stripe endpoints
+
+Before enabling partner codes in a workspace that already has Stripe configured,
+follow the [required endpoint reconfiguration procedure](partner-program.md#existing-stripe-endpoints-required-rollout-step).
+Deploying the code does not update existing webhook event subscriptions. Pause
+checkout traffic and resolve existing sessions before saving the existing restricted key
+again in **Integrations → Stripe → Save and create webhook** for each configured
+live/test slot. Verify the replacement subscribes to `checkout.session.expired`
+alongside completion and asynchronous payment events, and that a signed checkout
+event reaches the application successfully before resuming traffic.
+
+Use the test-mode card and sandbox key for sandbox delivery verification. A
+test-mode order does not reserve partner capacity or create commissions, so this
+does not establish live capped-code recovery. Local tests cover an old endpoint
+upgraded from an event list without expiration, expiration handling, reservation
+release and subsequent capacity reuse. A fake payment provider needs no Stripe
+endpoint reconfiguration and cannot verify Stripe delivery.
+
+If partner checkout was enabled before upgrading the endpoint, reconcile its
+unresolved reservations against confirmed provider outcomes; reconfiguration does
+not recover already missed events. Repeat the endpoint upgrade for each existing
+production workspace before enabling partner checkout there, as required by the
+[go-live checklist](go-live-checklist.md).
+
 ## Troubleshooting
 
 If staging build migration fails with `42P07 relation already exists` while

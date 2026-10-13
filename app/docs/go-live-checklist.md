@@ -112,6 +112,17 @@ A deployment that already stores an `rk_test_…` key in the live slot keeps
 serving Studio but cannot start a checkout. Move that key to the test-mode card
 and save a live key here before accepting payments.
 
+**PARTNER PROGRAM UPGRADE:** Before enabling partner codes on any existing
+workspace, follow the [endpoint reconfiguration procedure](partner-program.md#existing-stripe-endpoints-required-rollout-step).
+Deployment alone does not add `checkout.session.expired` to existing endpoints.
+In a maintenance window with checkout traffic paused and existing sessions
+resolved, save the existing key again in each configured live/test card.
+Confirm the replacement endpoint includes the expiration event and receives a
+signed checkout event successfully before reopening checkout. Without that
+subscription, abandoned sessions permanently retain capped-code capacity.
+Reconfiguration does not recover previously missed expiration events; reconcile
+any already stranded reservations against confirmed provider outcomes first.
+
 Complete item 11 before accepting payments.
 
 ### 6. Production e-mail provider
@@ -325,7 +336,9 @@ Confirm that the panel shows the expected test/live badge and that Stripe
 contains the generated tenant endpoint on the tenant platform host. If Stripe
 already contains a manually registered endpoint on another URL, update that URL
 in the Stripe Dashboard. Together enables exactly
-`checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
+`checkout.session.completed`, `checkout.session.expired`,
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
+`invoice.paid`, `invoice.payment_failed`,
 `customer.subscription.updated`, `customer.subscription.deleted`,
 `charge.refunded`, and `charge.dispute.created`
 (`core/server/usecases/stripe-webhook.ts`).

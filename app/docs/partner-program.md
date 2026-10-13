@@ -30,6 +30,45 @@ Stripe webhook endpoints must include `checkout.session.expired` alongside the
 checkout completion and asynchronous payment events so abandoned sessions release
 their reservations.
 
+### Existing Stripe endpoints: required rollout step
+
+Deploying this release does not update an endpoint already registered in Stripe.
+Before enabling any partner codes, reconfigure Stripe for **every existing
+workspace** that accepts payments. Do this in a maintenance window with checkout
+traffic paused and existing sessions resolved: reconfiguration deletes the old
+endpoint before creating its replacement and saving the new signing secret.
+
+1. In **Integrations → Stripe**, enter the workspace's existing live restricted
+   key again and select **Save and create webhook**. The headless equivalent is
+   `stripe configure <restricted-key>` through the Together CLI with the correct
+   API origin and tenant selected. No new key is required.
+2. Repeat for each configured test-mode card, or use
+   `stripe test-mode configure <restricted-key>`. Each slot is reconfigured
+   separately; saving one leaves the other unchanged.
+3. Confirm configuration succeeds and the replacement endpoint in Stripe enables
+   `checkout.session.expired`, `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded` and
+   `checkout.session.async_payment_failed`, together with the remaining events
+   in `STRIPE_WEBHOOK_EVENT_TYPES` (`core/server/usecases/stripe-webhook.ts`).
+   Confirm a signed checkout event is delivered successfully before resuming
+   checkout traffic.
+   A successful connection test alone does not prove the event subscription.
+
+If reconfiguration fails, keep checkout paused until the endpoint and signing
+secret have been configured successfully. This procedure updates future
+deliveries; it does not recover expiration events missed before the upgrade.
+If partner checkout was already enabled, reconcile unresolved reservations
+against confirmed provider outcomes before reopening capped codes. Never release
+a reservation solely because it is old: its payment notification may be delayed.
+Test-mode orders do not reserve partner capacity, so a sandbox delivery verifies
+the endpoint, not live capped-slot recovery. The local reservation integration
+tests cover release, retry and capacity reuse without real payments.
+
+The [go-live checklist](go-live-checklist.md) and [staging runbook](staging.md)
+require this step for existing endpoints before partner checkout rollout.
+
+### Buyer entry and attribution
+
 On the direct offer page, **I have a discount code** cancels the scheduled
 automatic handoff before its POST starts and reveals the code input and
 **Continue to payment** button. While a POST is in flight, the code controls are

@@ -40,6 +40,7 @@ export interface FulfillEnrollmentDeps extends EnsureMemberDeps, TenantOriginDep
 }
 
 export interface FulfillEnrollmentResult {
+  emailsQueued: boolean;
   memberId: string;
   grantId: string;
   renewed: boolean;
@@ -81,11 +82,11 @@ export const fulfillEnrollment = async (
     return ok({ member: member.value, grant });
   });
   if (!completed.ok) return completed;
-  if (input.sendEmail && input.mode !== 'test') deps.dispatchEmail();
+  const emailsQueued = input.sendEmail && input.mode !== 'test';
   const magicLink = input.sendEmail && input.mode !== 'test' && deps.exposeMagicLinks
     ? await deps.devMagicLinks.findByEmail(completed.value.member.email)
     : null;
-  return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink });
+  return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink, emailsQueued });
 };
 
 export const queueEnrollmentWelcome = async (

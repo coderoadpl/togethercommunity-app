@@ -115,6 +115,41 @@ site can answer. The platform owns the prefixes, never the keys: keys stay
 workspace data and `link` is not a reserved redirect root. Adding a forwarded
 prefix needs a dated owner decision here.
 
+Checkout analytics (owner decision 2026-10-14, approved; implemented by the
+checkout analytics change that follows this decision): a workspace owner may
+configure a Google Analytics 4 measurement id, a Meta Pixel id and a
+consent-cookie rule (cookie name, optional value fragment, and a bypass switch
+for workspaces that collect consent outside the platform). The live checkout
+success document — the `/offer/*` and `/checkout/*` documents requested with
+`status=success`, and no other document — is the only platform document
+permitted to load third-party scripts, and only these two vendor sources:
+Google's tag library under `https://www.googletagmanager.com/gtag/` and Meta's
+pixel library with its configuration scripts under
+`https://connect.facebook.net`. On that document the `script-src` directive of
+the content security policy (the server middleware and the static hosting
+headers, both conditioned on `status=success`) adds exactly those two sources.
+`connect-src` on those documents is `'self' https:`, as on other web-app
+documents: the static hosting headers already say so, while the server
+middleware today gives every `/offer/*` path `'self' https://*.sentry.io` and
+must, for the success documents, permit `'self' https:` instead (implementation
+requirement). `img-src` already permits `https:`. The policy is static per
+document; the libraries load only when the workspace has configured analytics
+and its consent rule passes. Required of the implementation (not yet present):
+leaving the success document must be a full document navigation (no in-app
+router transition), so the vendor scripts never run in sign-in or signed-in
+views. Workspace-authored scripts and tag-manager containers are never loaded.
+Risk accepted by the owner: the session cookie is set for the base domain and
+covers the platform host and every workspace subdomain, so a vendor script on
+one workspace's success document runs with a credential that is valid for
+every workspace where the buyer has roles and can reach same-origin
+account-level auth endpoints; the owner accepts this platform-wide exposure on
+the strength of the two vendors' libraries being the only foreign code, the
+success document being the only place they run, and the full-navigation exit.
+Consent: a matching consent cookie grants all four Google consent categories
+and enables the pixel; the bypass switch grants Google analytics storage only
+and enables the pixel without a consent gate, with the workspace owner
+carrying that responsibility.
+
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.
 The explicit `checkout=together` fallback and `status=success|cancelled` return

@@ -119,13 +119,15 @@ only successful public-offer responses opt into revalidated shared caching.
 
 Exception (owner decision 2026-10-14, approved and recorded in `CLAUDE.md`;
 not yet implemented in this baseline): on the checkout success documents
-(`/offer/*` and `/checkout/*` requested with `status=success`) the policy
+(`/offer/*` and `/checkout/*` requested with `status=success`) `script-src`
 additionally lists the two vendor script sources named there, Google's tag
-library and Meta's pixel library, in `script-src`, and their measurement
-endpoints in `connect-src`. The policy is static per document; the libraries
-are loaded only when the workspace has configured analytics and its consent
-rule passes, and leaving that document is a full document navigation. Every
-other document keeps the same-origin script policy.
+library and Meta's pixel library; `connect-src` on those documents already
+permits `https:`. The policy is static per document; the libraries are loaded
+only when the workspace has configured analytics and its consent rule passes,
+and the implementation must leave that document by a full document
+navigation. The accepted exposure is platform-wide, because the base-domain
+session cookie is valid on every workspace subdomain. Every other document
+keeps the same-origin script policy.
 
 ## Accepted dependency advisories
 

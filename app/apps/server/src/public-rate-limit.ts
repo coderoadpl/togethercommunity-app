@@ -82,6 +82,7 @@ const DEVELOPMENT_LIMITS = {
 export type PublicRateLimitEnv = Pick<
   Env,
   | 'PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE'
+  | 'PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES'
   | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES'
   | 'NODE_ENV'
@@ -115,7 +116,10 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       windowMs: TEN_MINUTES_MS,
     },
     // Separate polling capacity lets buyers behind one NAT wait without exhausting checkout writes.
-    checkoutStatusPerIp: { limit: fallback.checkoutStatusPerIp, windowMs: 5 * MINUTE_MS },
+    checkoutStatusPerIp: {
+      limit: env.PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES ?? fallback.checkoutStatusPerIp,
+      windowMs: 5 * MINUTE_MS,
+    },
     writesPerIp: {
       limit: env.PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE ?? fallback.writesPerIp,
       windowMs: MINUTE_MS,

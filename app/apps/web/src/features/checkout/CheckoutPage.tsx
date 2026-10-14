@@ -95,23 +95,24 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
+  const hasSessionId = sessionId !== null && sessionId !== '';
   const [statusDeadline] = useState(() => Date.now() + 180_000);
   const [statusTimedOut, setStatusTimedOut] = useState(false);
   const paymentStatus = useQuery({
     ...actions.publicCheckoutSessionStatus(sessionId ?? ''),
-    enabled: (query) => checkoutStatus === 'success' && sessionId !== null &&
+    enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
       !statusTimedOut && query.state.data?.status !== 'paid',
     refetchInterval: (query) => query.state.data?.status === 'paid' ||
       statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
     retry: false,
   });
-  const paymentPaid = paymentStatus.data?.status === 'paid';
+  const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
 
   useEffect(() => {
-    if (checkoutStatus !== 'success' || sessionId === null || paymentPaid) return;
+    if (checkoutStatus !== 'success' || paymentPaid) return;
     const timeout = window.setTimeout(() => setStatusTimedOut(true), Math.max(0, statusDeadline - Date.now()));
     return () => window.clearTimeout(timeout);
-  }, [checkoutStatus, paymentPaid, sessionId, statusDeadline]);
+  }, [checkoutStatus, paymentPaid, statusDeadline]);
   const testSession = useMutation({
     ...actions.stripeTestSession,
     onSuccess: () => { void paymentConfig.refetch(); },

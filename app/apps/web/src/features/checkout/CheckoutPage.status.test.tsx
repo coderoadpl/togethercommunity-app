@@ -91,14 +91,23 @@ it('shows the timeout guidance after three minutes and stops polling', async () 
   expect(requests).toBe(requestsAtTimeout);
 });
 
-it('keeps legacy return links pending without polling or a timeout', async () => {
+it.each([
+  ['shows the paid card without polling when session_id is absent', '&purchase_kind=one_time'],
+  ['does not poll for an empty session_id (shows the paid card)', '&purchase_kind=one_time&session_id='],
+])('%s', async (_name, query) => {
   const statusRequest = vi.fn(() => HttpResponse.json({ ok: true, data: { status: 'paid' } }));
   server.use(http.get('/api/public/checkout/session-status', statusRequest));
-  await renderReturn('');
-  expect(screen.getByText(en.checkout.successPendingBody)).toBeVisible();
+  await renderReturn(query);
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.successPaidEyebrow)).toBeVisible();
+  expect(screen.getByText(en.checkout.successBody)).toBeVisible();
+  expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveClass('MuiButton-contained');
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(statusRequest).not.toHaveBeenCalled();
   await act(() => vi.advanceTimersByTimeAsync(210_000));
   expect(statusRequest).not.toHaveBeenCalled();
-  expect(screen.getByText(en.checkout.successPendingBody)).toBeVisible();
+  expect(screen.getByText(en.checkout.successBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPendingBody)).toBeNull();
   expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
 });
 

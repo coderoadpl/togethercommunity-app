@@ -123,7 +123,8 @@ const attachCustomDomain = async (databaseUrl: string): Promise<void> => {
     );
     await client.query(
       `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
-       VALUES ($1, $2, $3, 'custom', true)`,
+       VALUES ($1, $2, $3, 'custom', true)
+       ON CONFLICT (domain) DO UPDATE SET verified = true`,
       ['domain-studio-custom', 'tenant-studio', STUDIO_CUSTOM_HOST],
     );
   } finally {

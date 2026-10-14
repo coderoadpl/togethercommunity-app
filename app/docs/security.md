@@ -111,7 +111,12 @@ previews and nothing else.
 
 All responses receive the secure-header baseline. The CSP permits Emotion's
 runtime styles, HTTPS images, HTTPS lesson embeds, and Sentry envelope delivery
-while keeping other scripts and network requests same-origin. Ordinary API
+while keeping other scripts and network requests same-origin.
+Exception (owner decision 2026-10-14, recorded in `CLAUDE.md`): the live
+checkout success document may additionally load the two vendor script sources
+named there, Google's tag library and Meta's pixel library, when the workspace
+has configured analytics and its consent rule passes; every other document
+keeps the same-origin script policy. Ordinary API
 request bodies are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;

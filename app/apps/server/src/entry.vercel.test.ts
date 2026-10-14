@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => {
-  const app = { fetch: vi.fn(), get: vi.fn() };
+  const app = { fetch: vi.fn() };
   const deps = { auth: { flushAuthEmails: vi.fn() }, marker: 'deps' };
   const flush = vi.fn();
   const listener = vi.fn();
@@ -15,16 +15,14 @@ const harness = vi.hoisted(() => {
     request,
     response,
     completeFlush: vi.fn(),
-    serveStatic: vi.fn((options: { path: string }) => options),
     buildApp: vi.fn(() => app),
     createDeps: vi.fn(() => deps),
     getRequestListener: vi.fn(() => listener),
-    loadEnv: vi.fn(() => ({ marker: 'env', WEB_DIST_DIR: 'dist/web', PERSONALISATION_MAX_BYTES: 20 * 1024 * 1024 })),
+    loadEnv: vi.fn(() => ({ marker: 'env', PERSONALISATION_MAX_BYTES: 20 * 1024 * 1024 })),
     startServerObservability: vi.fn(() => flush),
   };
 });
 
-vi.mock('@hono/node-server/serve-static', () => ({ serveStatic: harness.serveStatic }));
 vi.mock('@hono/node-server', () => ({
   getRequestListener: harness.getRequestListener,
 }));
@@ -54,27 +52,18 @@ describe('entry.vercel composition', () => {
     expect(harness.getRequestListener).toHaveBeenCalledWith(harness.app.fetch);
   });
 
-  it('serves checkout return documents through the application security middleware', async () => {
-    await importEntry();
-    expect(harness.serveStatic).toHaveBeenCalledWith({ path: 'dist/web/index.html' });
-    expect(harness.app.get.mock.calls).toEqual([
-      ['/checkout/*', { path: 'dist/web/index.html' }],
-      ['/offer/*', { path: 'dist/web/index.html' }],
-    ]);
-  });
-
   it('passes keepAlive into dependency composition', async () => {
     const entry = await importEntry();
 
     expect(harness.createDeps).toHaveBeenCalledOnce();
-    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env', WEB_DIST_DIR: 'dist/web', PERSONALISATION_MAX_BYTES: 4 * 1024 * 1024 }, { keepAlive: entry.keepAlive });
+    expect(harness.createDeps).toHaveBeenCalledWith({ marker: 'env', PERSONALISATION_MAX_BYTES: 4 * 1024 * 1024 }, { keepAlive: entry.keepAlive });
   });
 
   it('preserves a configured ceiling below the platform cap', async () => {
-    harness.loadEnv.mockReturnValueOnce({ marker: 'env', WEB_DIST_DIR: 'dist/web', PERSONALISATION_MAX_BYTES: 1024 });
+    harness.loadEnv.mockReturnValueOnce({ marker: 'env', PERSONALISATION_MAX_BYTES: 1024 });
     await importEntry();
     expect(harness.createDeps).toHaveBeenCalledWith(
-      { marker: 'env', WEB_DIST_DIR: 'dist/web', PERSONALISATION_MAX_BYTES: 1024 }, expect.anything(),
+      { marker: 'env', PERSONALISATION_MAX_BYTES: 1024 }, expect.anything(),
     );
   });
 

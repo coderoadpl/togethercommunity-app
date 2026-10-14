@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { serveStatic } from '@hono/node-server/serve-static';
 import { getRequestListener } from '@hono/node-server';
 import { getDeadline, waitUntil } from '@vercel/functions';
 
@@ -27,8 +26,6 @@ const deps = createDeps({
   ...env, PERSONALISATION_MAX_BYTES: vercelPersonalisationMaxBytes(env.PERSONALISATION_MAX_BYTES),
 }, { keepAlive });
 const app = buildApp(deps);
-app.get('/checkout/*', serveStatic({ path: `${env.WEB_DIST_DIR}/index.html` }));
-app.get('/offer/*', serveStatic({ path: `${env.WEB_DIST_DIR}/index.html` }));
 const handler = getRequestListener(app.fetch);
 
 const AUTH_EMAIL_DRAIN_CEILING_MS = 25_000;

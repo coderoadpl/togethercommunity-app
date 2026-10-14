@@ -1,6 +1,6 @@
 {
-  "hash": "6bae3fe7f38aed2c1f346239f8bb826e878854e23164e288501e42e23c8d74b6",
-  "shortId": "6bae3fe7f38a",
+  "hash": "75434271578d2a350d432c8b4e0d00e5cc56a320382911a2ae327d3aff21502e",
+  "shortId": "75434271578d",
   "schema": {
     "constraints": [
       {
@@ -4131,7 +4131,7 @@
             "default": null,
             "generated": "",
             "identity": "",
-            "name": "analytics_consent_event",
+            "name": "analytics_meta_pixel_id",
             "notNull": false,
             "type": "text"
           },

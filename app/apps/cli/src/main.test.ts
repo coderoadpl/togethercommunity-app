@@ -1473,16 +1473,16 @@ describe('tenant analytics settings', () => {
   it('passes all five analytics settings through the existing update path', async () => {
     h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
     await run('--json', 'tenant', 'settings-set',
-      '--analytics-tag-id', 'GTM-ABCD123',
+      '--analytics-tag-id', 'G-ABCD123',
+      '--analytics-meta-pixel-id', '12345678',
       '--analytics-consent-cookie-name', 'site_consent',
       '--analytics-consent-cookie-value', 'analytics:true',
-      '--analytics-consent-event', 'site_consent',
       '--analytics-load-without-consent', 'true');
     expect(h.updateTenantSettings).toHaveBeenCalledWith({
-      analyticsTagId: 'GTM-ABCD123',
+      analyticsTagId: 'G-ABCD123',
+      analyticsMetaPixelId: '12345678',
       analyticsConsentCookieName: 'site_consent',
       analyticsConsentCookieValue: 'analytics:true',
-      analyticsConsentEvent: 'site_consent',
       analyticsLoadWithoutConsent: true,
     });
   });
@@ -1491,15 +1491,15 @@ describe('tenant analytics settings', () => {
     h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
     await run('--json', 'tenant', 'settings-set',
       '--analytics-tag-id', '',
+      '--analytics-meta-pixel-id', '',
       '--analytics-consent-cookie-name', '',
       '--analytics-consent-cookie-value', '',
-      '--analytics-consent-event', '',
       '--analytics-load-without-consent', 'false');
     expect(h.updateTenantSettings).toHaveBeenCalledWith({
       analyticsTagId: '',
+      analyticsMetaPixelId: '',
       analyticsConsentCookieName: '',
       analyticsConsentCookieValue: '',
-      analyticsConsentEvent: '',
       analyticsLoadWithoutConsent: false,
     });
   });
@@ -1513,17 +1513,17 @@ describe('tenant analytics settings', () => {
   it('prints all five analytics settings', async () => {
     h.getTenantSettings.mockResolvedValue(ok({ settings: {
       analyticsTagId: 'G-ABCDEF1234',
+      analyticsMetaPixelId: '12345678',
       analyticsConsentCookieName: 'site_consent',
       analyticsConsentCookieValue: 'analytics:true',
-      analyticsConsentEvent: 'site_consent',
       analyticsLoadWithoutConsent: false,
     } }));
     await run('tenant', 'settings');
     for (const line of [
       'analytics tag ID: G-ABCDEF1234',
+      'analytics Meta Pixel ID: 12345678',
       'analytics consent cookie name: site_consent',
       'analytics consent cookie value: analytics:true',
-      'analytics consent event: site_consent',
       'analytics load without consent: false',
     ]) {
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(line));

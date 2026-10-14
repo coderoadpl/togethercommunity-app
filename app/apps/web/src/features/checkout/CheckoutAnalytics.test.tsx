@@ -6,14 +6,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 
-const analytics = vi.hoisted(() => ({ loadGoogleTag: vi.fn(), trackCheckoutPurchase: vi.fn() }));
+const analytics = vi.hoisted(() => ({ loadGoogleTag: vi.fn(), loadMetaPixel: vi.fn(), trackCheckoutPurchase: vi.fn() }));
 vi.mock('./analytics.js', () => analytics);
 
 const histories: ReturnType<typeof createBrowserHistory>[] = [];
 const returnPath = '/checkout/course?status=success&session_id=cs_live_one';
 const config = {
-  tagId: 'GTM-ABC1234', consentCookieName: 'consent', consentCookieValue: null,
-  consentEvent: null, loadWithoutConsent: false,
+  metaPixelId: null,
+  tagId: 'G-ABC1234', consentCookieName: 'consent', consentCookieValue: null,
+  loadWithoutConsent: false,
 };
 
 const renderReturn = async (testMode = false, forward = false) => {
@@ -62,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
   analytics.loadGoogleTag.mockReturnValue(true);
+  analytics.loadMetaPixel.mockReturnValue(false);
 });
 afterEach(() => {
   histories.splice(0).forEach((history) => history.destroy());
@@ -121,5 +123,15 @@ it('keeps the document navigation guard when analytics configuration disappears 
   await userEvent.click(screen.getByRole('link', { name: 'Open Studio' }));
   expect(assign).toHaveBeenCalledExactlyOnceWith('/');
   expect(router.state.location.pathname).toBe('/checkout/course');
+  expect(screen.queryByText('Studio destination')).not.toBeInTheDocument();
+});
+
+
+it('guards navigation when only Meta Pixel loaded', async () => {
+  analytics.loadGoogleTag.mockReturnValue(false);
+  analytics.loadMetaPixel.mockReturnValue(true);
+  const { assign } = await renderReturn();
+  await userEvent.click(screen.getByRole('link', { name: 'Open Studio' }));
+  expect(assign).toHaveBeenCalledExactlyOnceWith('/');
   expect(screen.queryByText('Studio destination')).not.toBeInTheDocument();
 });

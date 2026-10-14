@@ -605,6 +605,8 @@ export interface Messages {
     save: string;
   };
   analyticsSettings: {
+    metaPixelId: string;
+    metaPixelIdHint: string;
     heading: string;
     intro: string;
     tagId: string;
@@ -613,8 +615,6 @@ export interface Messages {
     consentCookieNameHint: string;
     consentCookieValue: string;
     consentCookieValueHint: string;
-    consentEvent: string;
-    consentEventHint: string;
     loadWithoutConsent: string;
     loadWithoutConsentHint: string;
   };

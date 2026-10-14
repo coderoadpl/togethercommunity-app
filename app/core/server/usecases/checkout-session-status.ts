@@ -24,7 +24,7 @@ export const getCheckoutSessionStatus = async (
     ['paid', 'partially_refunded', 'refunded'].includes(order.status);
   if (!paid || order === null) return ok({ status: 'pending' });
   const settings = await deps.tenants.findSettings(tenantId);
-  if (!settings?.analyticsTagId) return ok({ status: 'paid' });
+  if (!settings?.analyticsTagId && !settings?.analyticsMetaPixelId) return ok({ status: 'paid' });
   const lines = order.lines ?? [];
   const product = lines.length === 0 ? await deps.products.findById(tenantId, order.productId) : null;
   const salesLink = order.salesLinkId == null ? null : await deps.salesLinks?.findById(tenantId, order.salesLinkId);

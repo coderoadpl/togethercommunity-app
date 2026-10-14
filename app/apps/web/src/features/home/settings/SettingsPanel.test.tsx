@@ -34,9 +34,9 @@ const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 interface StoredSettings {
   analyticsTagId?: string | null;
+  analyticsMetaPixelId?: string | null;
   analyticsConsentCookieName?: string | null;
   analyticsConsentCookieValue?: string | null;
-  analyticsConsentEvent?: string | null;
   analyticsLoadWithoutConsent?: boolean;
   signInNotice?: { enabled: boolean; text: string };
   name: string;
@@ -1485,23 +1485,23 @@ describe('SettingsPanel analytics', () => {
     expect(tag).toHaveAccessibleDescription(en.analyticsSettings.tagIdHint);
     const cookieName = screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName });
     const cookieValue = screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue });
-    const consentEvent = screen.getByRole('textbox', { name: en.analyticsSettings.consentEvent });
     const consentSwitch = screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent });
     expect(cookieName).toHaveAccessibleDescription(en.analyticsSettings.consentCookieNameHint);
     expect(cookieValue).toHaveAccessibleDescription(en.analyticsSettings.consentCookieValueHint);
-    expect(consentEvent).toHaveAccessibleDescription(en.analyticsSettings.consentEventHint);
     expect(consentSwitch).toHaveAccessibleDescription(en.analyticsSettings.loadWithoutConsentHint);
-    await userEvent.type(tag, 'GTM-ABCD123');
+    const pixel = screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId });
+    expect(pixel).toHaveAccessibleDescription(en.analyticsSettings.metaPixelIdHint);
+    await userEvent.type(pixel, '123456789012345');
+    await userEvent.type(tag, 'G-ABCD123');
     await userEvent.type(cookieName, 'site_consent');
     await userEvent.type(cookieValue, 'analytics:true');
-    await userEvent.type(consentEvent, 'site_consent');
     await userEvent.click(consentSwitch);
     await userEvent.click(screen.getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
-      analyticsTagId: 'GTM-ABCD123',
+      analyticsTagId: 'G-ABCD123',
+      analyticsMetaPixelId: '123456789012345',
       analyticsConsentCookieName: 'site_consent',
       analyticsConsentCookieValue: 'analytics:true',
-      analyticsConsentEvent: 'site_consent',
       analyticsLoadWithoutConsent: true,
     }));
     expect(await findToast('success')).toBeInTheDocument();
@@ -1511,25 +1511,25 @@ describe('SettingsPanel analytics', () => {
     const { updates } = renderPanel({
       ...EMPTY_SETTINGS,
       analyticsTagId: 'G-ABCDEF1234',
+      analyticsMetaPixelId: '123456789012345',
       analyticsConsentCookieName: 'site_consent',
       analyticsConsentCookieValue: 'analytics:true',
-      analyticsConsentEvent: 'site_consent',
       analyticsLoadWithoutConsent: true,
     });
     await openSettingsSection(en.analyticsSettings.heading);
     const tag = await screen.findByRole('textbox', { name: en.analyticsSettings.tagId });
     await waitFor(() => expect(tag).toHaveValue('G-ABCDEF1234'));
     await userEvent.clear(tag);
+    await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId }));
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName }));
     await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue }));
-    await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentEvent }));
     await userEvent.click(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent }));
     await userEvent.click(screen.getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({
       analyticsTagId: null,
+      analyticsMetaPixelId: null,
       analyticsConsentCookieName: null,
       analyticsConsentCookieValue: null,
-      analyticsConsentEvent: null,
       analyticsLoadWithoutConsent: false,
     }));
     expect(await findToast('success')).toBeInTheDocument();
@@ -1539,9 +1539,9 @@ describe('SettingsPanel analytics', () => {
     renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
     await openSettingsSection(en.analyticsSettings.heading);
     expect(await screen.findByRole('textbox', { name: en.analyticsSettings.tagId })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentEvent })).toBeDisabled();
     expect(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent })).toBeDisabled();
     expect(screen.queryByRole('button', { name: en.common.save })).not.toBeInTheDocument();
   });
@@ -1551,9 +1551,9 @@ describe('SettingsPanel analytics', () => {
     await openSettingsSection(pl.analyticsSettings.heading);
     expect(await screen.findByText(pl.analyticsSettings.intro)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: pl.analyticsSettings.tagId })).toHaveAccessibleDescription(pl.analyticsSettings.tagIdHint);
+    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.metaPixelId })).toHaveAccessibleDescription(pl.analyticsSettings.metaPixelIdHint);
     expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieName })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieNameHint);
     expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieValue })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieValueHint);
-    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentEvent })).toHaveAccessibleDescription(pl.analyticsSettings.consentEventHint);
     expect(screen.getByRole('switch', { name: pl.analyticsSettings.loadWithoutConsent })).toHaveAccessibleDescription(pl.analyticsSettings.loadWithoutConsentHint);
   });
 });

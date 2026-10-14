@@ -17,9 +17,9 @@ import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 
 type AnalyticsDraft = {
   analyticsTagId: string;
+  analyticsMetaPixelId: string;
   analyticsConsentCookieName: string;
   analyticsConsentCookieValue: string;
-  analyticsConsentEvent: string;
   analyticsLoadWithoutConsent: boolean;
 };
 
@@ -30,9 +30,9 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [draft, setDraft] = useState<AnalyticsDraft | null>(null);
   const value = draft ?? {
     analyticsTagId: settings.data?.settings.analyticsTagId ?? '',
+    analyticsMetaPixelId: settings.data?.settings.analyticsMetaPixelId ?? '',
     analyticsConsentCookieName: settings.data?.settings.analyticsConsentCookieName ?? '',
     analyticsConsentCookieValue: settings.data?.settings.analyticsConsentCookieValue ?? '',
-    analyticsConsentEvent: settings.data?.settings.analyticsConsentEvent ?? '',
     analyticsLoadWithoutConsent: settings.data?.settings.analyticsLoadWithoutConsent ?? false,
   };
   const update = useMutation({
@@ -55,9 +55,9 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         event.preventDefault();
         update.mutate({
           analyticsTagId: value.analyticsTagId || null,
+          analyticsMetaPixelId: value.analyticsMetaPixelId || null,
           analyticsConsentCookieName: value.analyticsConsentCookieName || null,
           analyticsConsentCookieValue: value.analyticsConsentCookieValue || null,
-          analyticsConsentEvent: value.analyticsConsentEvent || null,
           analyticsLoadWithoutConsent: value.analyticsLoadWithoutConsent,
         });
       }}
@@ -72,6 +72,17 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setDraft({ ...value, analyticsTagId: event.target.value })}
         />
         <FormHelperText id="analytics-tag-id-hint">{t.analyticsSettings.tagIdHint}</FormHelperText>
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="analytics-meta-pixel-id">{t.analyticsSettings.metaPixelId}</FormLabel>
+        <OutlinedInput
+          id="analytics-meta-pixel-id"
+          value={value.analyticsMetaPixelId}
+          disabled={!canEdit || unavailable}
+          inputProps={{ maxLength: 20, inputMode: 'numeric', 'aria-describedby': 'analytics-meta-pixel-id-hint' }}
+          onChange={(event) => setDraft({ ...value, analyticsMetaPixelId: event.target.value })}
+        />
+        <FormHelperText id="analytics-meta-pixel-id-hint">{t.analyticsSettings.metaPixelIdHint}</FormHelperText>
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="analytics-consent-cookie-name">{t.analyticsSettings.consentCookieName}</FormLabel>
@@ -94,17 +105,6 @@ export const AnalyticsSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           onChange={(event) => setDraft({ ...value, analyticsConsentCookieValue: event.target.value })}
         />
         <FormHelperText id="analytics-consent-cookie-value-hint">{t.analyticsSettings.consentCookieValueHint}</FormHelperText>
-      </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="analytics-consent-event">{t.analyticsSettings.consentEvent}</FormLabel>
-        <OutlinedInput
-          id="analytics-consent-event"
-          value={value.analyticsConsentEvent}
-          disabled={!canEdit || unavailable}
-          inputProps={{ maxLength: 64, 'aria-describedby': 'analytics-consent-event-hint' }}
-          onChange={(event) => setDraft({ ...value, analyticsConsentEvent: event.target.value })}
-        />
-        <FormHelperText id="analytics-consent-event-hint">{t.analyticsSettings.consentEventHint}</FormHelperText>
       </FormControl>
       <FormControl>
         <FormControlLabel

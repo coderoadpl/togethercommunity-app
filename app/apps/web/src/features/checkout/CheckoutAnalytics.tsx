@@ -3,7 +3,7 @@ import { useRouter } from '@tanstack/react-router';
 
 import type { CheckoutAnalyticsConfig, CheckoutPurchaseAnalytics } from '#core/domain/index.js';
 
-import { loadGoogleTag, trackCheckoutPurchase } from './analytics.js';
+import { loadGoogleTag, loadMetaPixel, trackCheckoutPurchase } from './analytics.js';
 
 export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
   config: CheckoutAnalyticsConfig;
@@ -31,7 +31,11 @@ export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
     };
   }, [router]);
   useEffect(() => {
-    if (!testMode && loaded.current === null) loaded.current = loadGoogleTag(config);
+    if (!testMode && loaded.current === null) {
+      const googleLoaded = loadGoogleTag(config);
+      const metaLoaded = loadMetaPixel(config);
+      loaded.current = googleLoaded || metaLoaded;
+    }
     if (!testMode && loaded.current && purchase !== undefined) trackCheckoutPurchase(config, sessionId, purchase);
   }, [config, sessionId, purchase, testMode]);
   return null;

@@ -1233,13 +1233,13 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const current = await repo.findSettings(ACME);
     if (current === null) throw new Error('Missing tenant settings');
     const disabled = {
-      analyticsTagId: null, analyticsConsentCookieName: null,
-      analyticsConsentCookieValue: null, analyticsConsentEvent: null, analyticsLoadWithoutConsent: false,
+      analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: null,
+      analyticsConsentCookieValue: null, analyticsLoadWithoutConsent: false,
     };
     expect(current).toMatchObject(disabled);
     const configured = {
-      analyticsTagId: 'GTM-ABCD', analyticsConsentCookieName: 'consent',
-      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+      analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     };
     const updated = await repo.updateSettings(ACME, { ...current, ...configured });
     expect(updated).toMatchObject(configured);

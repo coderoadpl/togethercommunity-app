@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CheckoutAnalyticsConfig } from '#core/domain/index.js';
 
 const config: CheckoutAnalyticsConfig = {
-  tagId: 'GTM-ABC1234',
+  metaPixelId: null,
+  tagId: 'G-ABC1234567',
   consentCookieName: 'analytics_consent',
   consentCookieValue: 'analytics:true',
-  consentEvent: null,
   loadWithoutConsent: false,
 };
 const purchase = {
@@ -30,29 +30,33 @@ const scripts = () => document.querySelectorAll('script[src*="googletagmanager.c
 
 beforeEach(() => {
   vi.resetModules();
-  vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
   window.history.replaceState(null, '', '/checkout/course?status=success');
   document.cookie = 'analytics_consent=analytics%3Atrue; path=/';
   delete window.dataLayer;
   delete window.gtag;
+  delete window.fbq;
+  delete window._fbq;
 });
 afterEach(() => {
   scripts().forEach((script) => script.remove());
+  document.querySelectorAll('script[src*="connect.facebook.net"]').forEach((script) => script.remove());
   document.cookie = 'analytics_consent=; max-age=0; path=/';
   delete window.dataLayer;
   delete window.gtag;
+  delete window.fbq;
+  delete window._fbq;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
 describe('Google tag loading', () => {
-  it.each([null, 'site_consent'])('loads GTM once with the consent sequence before the bootstrap event (%s)', async (consentEvent) => {
+  it('loads GA4 once with native consent commands before the measurement configuration', async () => {
     const { loadGoogleTag } = await import('./analytics.js');
-    expect(loadGoogleTag({ ...config, consentEvent })).toBe(true);
-    expect(loadGoogleTag({ ...config, consentEvent })).toBe(true);
+    expect(loadGoogleTag(config)).toBe(true);
+    expect(loadGoogleTag(config)).toBe(true);
     expect(scripts()).toHaveLength(1);
-    expect(scripts()[0]).toHaveAttribute('src', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC1234');
+    expect(scripts()[0]).toHaveAttribute('src', 'https://www.googletagmanager.com/gtag/js?id=G-ABC1234567');
     expect(scripts()[0]?.textContent).toBe('');
     expect(Object.prototype.toString.call(window.dataLayer?.[0])).toBe('[object Arguments]');
     expect(Array.isArray(window.dataLayer?.[0])).toBe(false);
@@ -62,33 +66,14 @@ describe('Google tag loading', () => {
         ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500,
       } }),
       expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
-        analytics_storage: 'granted', ad_storage: 'denied',
-        ad_user_data: 'denied', ad_personalization: 'denied',
+        analytics_storage: 'granted', ad_storage: 'granted',
+        ad_user_data: 'granted', ad_personalization: 'granted',
       } }),
-      ...(consentEvent === null ? [] : [{ event: consentEvent, [consentEvent]: 'granted' }]),
-      { 'gtm.start': expect.any(Number), event: 'gtm.js' },
-    ]);
-    expect(loadGoogleTag({ ...config, tagId: 'G-ABC1234567' })).toBe(false);
-    expect(scripts()).toHaveLength(1);
-  });
-
-  it('loads GA4 and configures the measurement ID after the consent update and event', async () => {
-    const { loadGoogleTag } = await import('./analytics.js');
-    expect(loadGoogleTag({ ...config, tagId: 'G-ABC1234567', consentEvent: 'site_consent' })).toBe(true);
-    expect(scripts()[0]).toHaveAttribute('src', 'https://www.googletagmanager.com/gtag/js?id=G-ABC1234567');
-    expect(window.dataLayer).toEqual([
-      expect.objectContaining({ 0: 'consent', 1: 'default', 2: {
-        analytics_storage: 'denied', ad_storage: 'denied',
-        ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500,
-      } }),
-      expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
-        analytics_storage: 'granted', ad_storage: 'denied',
-        ad_user_data: 'denied', ad_personalization: 'denied',
-      } }),
-      { event: 'site_consent', site_consent: 'granted' },
       expect.objectContaining({ 0: 'js', 1: expect.any(Date) }),
-      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567', 2: { cookie_domain: 'none' } }),
+      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567', 2: { send_page_view: true } }),
     ]);
+    expect(loadGoogleTag({ ...config, tagId: 'G-DEF1234567' })).toBe(false);
+    expect(scripts()).toHaveLength(1);
   });
 
   it.each(['', 'analytics:false'])('does not load without matching cookie consent (%s)', async (cookie) => {
@@ -118,13 +103,13 @@ describe('Google tag loading', () => {
   });
 });
 
-it('pushes the exact GTM purchase once per session, including after a module reload', async () => {
+it('sends purchases once per session, including after a module reload', async () => {
   const analytics = await import('./analytics.js');
   analytics.loadGoogleTag(config);
   analytics.trackCheckoutPurchase(config, 'cs_live_one', purchase);
   analytics.trackCheckoutPurchase(config, 'cs_live_one', purchase);
-  expect(window.dataLayer?.slice(3)).toEqual([
-    { ecommerce: null }, { event: 'purchase', ecommerce: payload, offer_slug: 'course-bundle' },
+  expect(window.dataLayer?.slice(4)).toEqual([
+    expect.objectContaining({ 0: 'event', 1: 'purchase', 2: { ...payload, offer_slug: 'course-bundle' } }),
   ]);
   vi.resetModules();
   const reloaded = await import('./analytics.js');
@@ -133,8 +118,8 @@ it('pushes the exact GTM purchase once per session, including after a module rel
   reloaded.trackCheckoutPurchase(config, 'cs_live_one', purchase);
   expect(window.dataLayer).toHaveLength(before ?? 0);
   reloaded.trackCheckoutPurchase(config, 'cs_live_two', purchase);
-  expect(window.dataLayer?.slice(-2)).toEqual([
-    { ecommerce: null }, { event: 'purchase', ecommerce: payload, offer_slug: 'course-bundle' },
+  expect(window.dataLayer?.slice(-1)).toEqual([
+    expect.objectContaining({ 0: 'event', 1: 'purchase', 2: { ...payload, offer_slug: 'course-bundle' } }),
   ]);
 });
 
@@ -155,7 +140,7 @@ it('sends nothing without a loaded tag or session ID', async () => {
   analytics.loadGoogleTag(config);
   analytics.trackCheckoutPurchase(config, null, purchase);
   analytics.trackCheckoutPurchase(config, '', purchase);
-  expect(window.dataLayer).toHaveLength(3);
+  expect(window.dataLayer).toHaveLength(4);
 });
 
 it.each(['test_purchase=1', 'session_id=cs_test_one'])('never loads or sends a purchase in test mode (%s), even with consent bypassed', async (query) => {
@@ -167,7 +152,7 @@ it.each(['test_purchase=1', 'session_id=cs_test_one'])('never loads or sends a p
   expect(scripts()).toHaveLength(0);
 });
 
-it('persists the session marker before either ecommerce push', async () => {
+it('persists the session marker before the purchase command', async () => {
   const analytics = await import('./analytics.js');
   const { persistedJsonPreference } = await import('../../theme-mode.js');
   const queue: unknown[] = [];
@@ -183,7 +168,7 @@ it('persists the session marker before either ecommerce push', async () => {
     return Array.prototype.push.apply(queue, entries);
   });
   analytics.trackCheckoutPurchase(config, 'cs_live_ordering', purchase);
-  expect(push).toHaveBeenCalledTimes(2);
+  expect(push).toHaveBeenCalledOnce();
 });
 
 it('suppresses purchases when the browser cannot persist the deduplication marker', async () => {
@@ -194,15 +179,15 @@ it('suppresses purchases when the browser cannot persist the deduplication marke
     setItem: () => { throw new Error('Storage unavailable'); },
   });
   expect(() => analytics.trackCheckoutPurchase(config, 'cs_live_blocked', purchase)).not.toThrow();
-  expect(window.dataLayer).toHaveLength(3);
+  expect(window.dataLayer).toHaveLength(4);
 });
 
 it('preserves a null offer slug for purchases without a sales link', async () => {
   const analytics = await import('./analytics.js');
   analytics.loadGoogleTag(config);
   analytics.trackCheckoutPurchase(config, 'cs_live_no_offer', { ...purchase, offerSlug: null });
-  expect(window.dataLayer?.slice(-2)).toEqual([
-    { ecommerce: null }, { event: 'purchase', ecommerce: payload, offer_slug: null },
+  expect(window.dataLayer?.slice(-1)).toEqual([
+    expect.objectContaining({ 0: 'event', 1: 'purchase', 2: { ...payload, offer_slug: null } }),
   ]);
 });
 
@@ -212,13 +197,13 @@ it('queues consent and bootstrap commands before inserting the script', async ()
     expect(window.dataLayer).toEqual([
       expect.objectContaining({ 0: 'consent', 1: 'default' }),
       expect.objectContaining({ 0: 'consent', 1: 'update' }),
-      { event: 'site_consent', site_consent: 'granted' },
-      { 'gtm.start': expect.any(Number), event: 'gtm.js' },
+      expect.objectContaining({ 0: 'js', 1: expect.any(Date) }),
+      expect.objectContaining({ 0: 'config', 1: config.tagId, 2: { send_page_view: true } }),
     ]);
     return node;
   });
   const analytics = await import('./analytics.js');
-  expect(analytics.loadGoogleTag({ ...config, consentEvent: 'site_consent' })).toBe(true);
+  expect(analytics.loadGoogleTag(config)).toBe(true);
   expect(append).toHaveBeenCalledOnce();
 });
 
@@ -229,26 +214,11 @@ it('decodes JSON cookie values before checking consent', async () => {
   expect(scripts()).toHaveLength(1);
 });
 
-it.each([
-  'togethercommunity.app',
-  'acme.togethercommunity.app',
-  'start.togethercommunity.app',
-  'nested.acme.togethercommunity.app',
-  'ACME.TOGETHERCOMMUNITY.APP.',
-])('rejects the shared-cookie host %s even with consent bypassed', async (hostname) => {
+it.each(['togethercommunity.app', 'acme.togethercommunity.app', 'checkout.example.test'])('loads on the success return independently of host (%s)', async (hostname) => {
   vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, hostname });
   const { loadGoogleTag } = await import('./analytics.js');
-  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(false);
-  expect(scripts()).toHaveLength(0);
-  expect(window.dataLayer).toBeUndefined();
-});
-
-it.each(['', 'LOCALHOST.'])('fails closed with an unknown or matching normalized base domain (%s)', async (baseDomain) => {
-  vi.stubEnv('VITE_APP_BASE_DOMAIN', baseDomain);
-  const { loadGoogleTag } = await import('./analytics.js');
-  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(false);
-  expect(scripts()).toHaveLength(0);
-  expect(window.dataLayer).toBeUndefined();
+  expect(loadGoogleTag(config)).toBe(true);
+  expect(scripts()).toHaveLength(1);
 });
 
 it.each([
@@ -262,27 +232,168 @@ it.each([
   expect(window.dataLayer).toBeUndefined();
 });
 
-describe.each(['GTM-ABC1234', 'G-ABC1234567'])('%s consent commands', (tagId) => {
+describe('GA4 consent commands', () => {
   it.each([
     { mode: 'matching cookie', cookie: 'analytics%3Atrue', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
     { mode: 'cookie presence', cookie: '', consentCookieValue: null, loadWithoutConsent: false },
     { mode: 'explicit bypass without a cookie', cookie: null, consentCookieValue: null, loadWithoutConsent: true },
-  ])('grants only analytics with $mode', async ({ cookie, consentCookieValue, loadWithoutConsent }) => {
+  ])('grants all four consent types with $mode', async ({ cookie, consentCookieValue, loadWithoutConsent }) => {
     document.cookie = cookie === null
       ? 'analytics_consent=; max-age=0; path=/'
       : `analytics_consent=${cookie}; path=/`;
     const { loadGoogleTag } = await import('./analytics.js');
-    expect(loadGoogleTag({ ...config, tagId, consentCookieValue, loadWithoutConsent, consentEvent: 'analytics_consent' })).toBe(true);
-    expect(window.dataLayer?.slice(0, 3)).toEqual([
+    expect(loadGoogleTag({ ...config, consentCookieValue, loadWithoutConsent })).toBe(true);
+    expect(window.dataLayer?.slice(0, 2)).toEqual([
       expect.objectContaining({ 0: 'consent', 1: 'default', 2: {
         analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied',
         ad_personalization: 'denied', wait_for_update: 500,
       } }),
       expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
-        analytics_storage: 'granted', ad_storage: 'denied',
-        ad_user_data: 'denied', ad_personalization: 'denied',
+        analytics_storage: 'granted', ad_storage: 'granted',
+        ad_user_data: 'granted', ad_personalization: 'granted',
       } }),
-      { event: 'analytics_consent', analytics_consent: 'granted' },
     ]);
+  });
+});
+
+
+describe('Meta Pixel', () => {
+  const meta = { ...config, tagId: null, metaPixelId: '123456789012345' };
+  const metaScripts = () => document.querySelectorAll('script[src*="connect.facebook.net"]');
+  const metaPayload = {
+    value: 99.5, currency: 'PLN', content_type: 'product',
+    content_ids: ['product-1', 'product-2'],
+    contents: [
+      { id: 'product-1', quantity: 1, item_price: 75 },
+      { id: 'product-2', quantity: 1, item_price: 24.5 },
+    ],
+    num_items: 2,
+  };
+
+  it('loads independently once with consent, init and PageView commands', async () => {
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadGoogleTag(meta)).toBe(false);
+    expect(analytics.loadMetaPixel(meta)).toBe(true);
+    expect(analytics.loadMetaPixel(meta)).toBe(true);
+    expect(metaScripts()).toHaveLength(1);
+    expect(metaScripts()[0]).toHaveAttribute('src', 'https://connect.facebook.net/en_US/fbevents.js');
+    expect(metaScripts()[0]?.textContent).toBe('');
+    expect(window.fbq).toBe(window._fbq);
+    expect(window.fbq?.loaded).toBe(true);
+    expect(window.fbq?.version).toBe('2.0');
+    expect(window.fbq?.push).toBe(window.fbq);
+    expect(window.fbq?.queue).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'revoke' }),
+      expect.objectContaining({ 0: 'consent', 1: 'grant' }),
+      expect.objectContaining({ 0: 'init', 1: meta.metaPixelId }),
+      expect.objectContaining({ 0: 'track', 1: 'PageView' }),
+    ]);
+    expect(analytics.loadMetaPixel({ ...meta, metaPixelId: '987654321098765' })).toBe(false);
+    expect(metaScripts()).toHaveLength(1);
+  });
+
+  it.each(['', 'analytics:false'])('does not load without cookie consent (%s)', async (cookie) => {
+    document.cookie = cookie === ''
+      ? 'analytics_consent=; max-age=0; path=/'
+      : `analytics_consent=${cookie}; path=/`;
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel(meta)).toBe(false);
+    expect(metaScripts()).toHaveLength(0);
+    expect(window.fbq).toBeUndefined();
+  });
+
+  it('does not load a pixel when only GA4 is configured', async () => {
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel(config)).toBe(false);
+    expect(metaScripts()).toHaveLength(0);
+    expect(window.fbq).toBeUndefined();
+  });
+
+  it.each([
+    { cookie: '', fragment: null },
+    { cookie: '%7B%22choice%22%3A%22granted%22%7D', fragment: '"choice":"granted"' },
+  ])('accepts presence-only or decoded JSON consent ($cookie)', async ({ cookie, fragment }) => {
+    document.cookie = `analytics_consent=${cookie}; path=/`;
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel({ ...meta, consentCookieValue: fragment })).toBe(true);
+    expect(metaScripts()).toHaveLength(1);
+  });
+
+  it('grants bypassed consent without first revoking it', async () => {
+    document.cookie = 'analytics_consent=; max-age=0; path=/';
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel({ ...meta, loadWithoutConsent: true })).toBe(true);
+    expect(window.fbq?.queue).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'grant' }),
+      expect.objectContaining({ 0: 'init', 1: meta.metaPixelId }),
+      expect.objectContaining({ 0: 'track', 1: 'PageView' }),
+    ]);
+  });
+
+  it('sends the exact Purchase once, independently of the GA4 marker and after reload', async () => {
+    const analytics = await import('./analytics.js');
+    const both = { ...config, metaPixelId: meta.metaPixelId };
+    analytics.loadGoogleTag(both);
+    analytics.loadMetaPixel(both);
+    analytics.trackCheckoutPurchase(both, 'cs_live_both', purchase);
+    analytics.trackCheckoutPurchase(both, 'cs_live_both', purchase);
+    expect(window.dataLayer).toHaveLength(5);
+    expect(window.fbq?.queue).toHaveLength(5);
+    expect(window.fbq?.queue[4]).toEqual(expect.objectContaining({
+      0: 'track', 1: 'Purchase', 2: metaPayload, 3: { eventID: 'order-1' },
+    }));
+    vi.resetModules();
+    const reloaded = await import('./analytics.js');
+    reloaded.loadMetaPixel(meta);
+    const before = window.fbq?.queue.length;
+    reloaded.trackCheckoutPurchase(meta, 'cs_live_both', purchase);
+    expect(window.fbq?.queue).toHaveLength(before ?? 0);
+  });
+
+  it('persists the marker before dispatching through the initialized library', async () => {
+    const analytics = await import('./analytics.js');
+    analytics.loadMetaPixel(meta);
+    const { persistedJsonPreference } = await import('../../theme-mode.js');
+    const marker = persistedJsonPreference(
+      'together.analytics.meta-purchase.cs_live_meta_ordering',
+      (value) => typeof value === 'boolean' ? value : undefined,
+      false,
+    );
+    const callMethod = vi.fn(() => { expect(marker.load()).toBe(true); });
+    if (window.fbq) window.fbq.callMethod = callMethod;
+    analytics.trackCheckoutPurchase(meta, 'cs_live_meta_ordering', purchase);
+    expect(callMethod).toHaveBeenCalledExactlyOnceWith('track', 'Purchase', metaPayload, { eventID: 'order-1' });
+  });
+
+  it('sends nothing without a loaded pixel, session ID or durable marker', async () => {
+    const analytics = await import('./analytics.js');
+    analytics.trackCheckoutPurchase(meta, 'cs_live_meta_absent', purchase);
+    expect(window.fbq).toBeUndefined();
+    analytics.loadMetaPixel(meta);
+    analytics.trackCheckoutPurchase(meta, null, purchase);
+    analytics.trackCheckoutPurchase(meta, '', purchase);
+    analytics.trackCheckoutPurchase(meta, 'cs_test_one', purchase);
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => { throw new Error('Storage unavailable'); },
+    });
+    analytics.trackCheckoutPurchase(meta, 'cs_live_meta_blocked', purchase);
+    expect(window.fbq?.queue).toHaveLength(4);
+  });
+
+  it.each(['test_purchase=1', 'session_id=cs_test_one'])('does nothing in test mode (%s)', async (query) => {
+    window.history.replaceState(null, '', `/offer/bundle?status=success&${query}`);
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel({ ...meta, loadWithoutConsent: true })).toBe(false);
+    analytics.trackCheckoutPurchase(meta, 'cs_test_one', purchase);
+    expect(window.fbq).toBeUndefined();
+    expect(metaScripts()).toHaveLength(0);
+  });
+
+  it.each(['/offer/bundle', '/checkout/course?status=cancelled', '/my?status=success'])('does not load outside the success return (%s)', async (path) => {
+    window.history.replaceState(null, '', path);
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel({ ...meta, loadWithoutConsent: true })).toBe(false);
+    expect(metaScripts()).toHaveLength(0);
   });
 });

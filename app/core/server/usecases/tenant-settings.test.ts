@@ -347,12 +347,12 @@ describe('updateTenantSettings', () => {
 describe('analytics settings permissions', () => {
   it('allows the owner to save all five analytics settings', async () => {
     const result = await updateTenantSettings({ identity: identity('owner') }, {
-      analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
-      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+      analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     }, deps);
     expect(result).toMatchObject({ ok: true, value: {
-      analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
-      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+      analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     } });
   });
 
@@ -371,13 +371,13 @@ describe('analytics settings permissions', () => {
 
   it('preserves omitted fields and clears text through the existing patch path', async () => {
     const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({
-      ...settings, analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
-      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+      ...settings, analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
     }) } };
-    expect(await updateTenantSettings({ identity: identity('owner') }, { analyticsTagId: '' }, configured))
+    expect(await updateTenantSettings({ identity: identity('owner') }, { analyticsTagId: '', analyticsMetaPixelId: '' }, configured))
       .toMatchObject({ ok: true, value: {
-        analyticsTagId: null, analyticsConsentCookieName: 'consent',
-        analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+        analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: 'consent',
+        analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
       } });
   });
 });

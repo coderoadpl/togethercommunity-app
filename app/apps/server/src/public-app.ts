@@ -1,4 +1,3 @@
-import { checkoutAnalyticsTenant } from './checkout-analytics-host.js';
 import { createHash } from 'node:crypto';
 import { SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
@@ -643,12 +642,11 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
     const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
-    const analyticsTenantId = await checkoutAnalyticsTenant(c.req.header('host') ?? '', deps);
-    const analytics = analyticsTenantId === tenant.value.tenant.id && settings?.analyticsTagId ? {
-      tagId: settings.analyticsTagId,
+    const analytics = (settings?.analyticsTagId || settings?.analyticsMetaPixelId) ? {
+      tagId: settings.analyticsTagId ?? null,
+      metaPixelId: settings.analyticsMetaPixelId ?? null,
       consentCookieName: settings.analyticsConsentCookieName ?? null,
       consentCookieValue: settings.analyticsConsentCookieValue ?? null,
-      consentEvent: settings.analyticsConsentEvent ?? null,
       loadWithoutConsent: settings.analyticsLoadWithoutConsent ?? false,
     } : null;
     return respondPublic(

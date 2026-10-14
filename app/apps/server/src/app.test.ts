@@ -3761,78 +3761,37 @@ describe('server edge security baseline', () => {
       expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
     }
     expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
-    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https: https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.facebook.com;");
     for (const response of [unsubscribe, confirmation, legal]) {
       expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
       expect(response.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     }
   });
 
-  it('extends analytics CSP only for live success documents on a verified custom domain', async () => {
+  it('extends analytics CSP only for checkout SPA documents', async () => {
     const h = await directSalesLinkApp();
-    h.base.tenantDomains = tenantDomainRepositoryStub({ findByDomain: async (domain) => domain === 'learn.acme.example'
-      ? tenantDomainFixture({ id: 'analytics-domain', tenantId: acme.id, domain, kind: 'custom', verified: true }) : null });
-    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'GTM-ABC123', termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.base.tenants.findSettings = async () => ({ ...h.settings, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
-      const response = await h.app.request(path, { headers: { host: 'learn.acme.example' } });
+    for (const path of ['/checkout/product-1', '/checkout/product-1?status=success', '/checkout/product-1?status=cancelled', '/checkout/product-1?status=success&test_purchase=1', '/offer/bundle?status=success', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together']) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.status).toBe(200);
       const policy = response.headers.get('content-security-policy');
-      expect(policy).toContain('https://www.googletagmanager.com/gtm.js https://www.googletagmanager.com/gtag/js;');
-      expect(policy).toContain('https://*.google-analytics.com');
+      expect(policy).toMatch(/script-src [^;]+ https:\/\/www\.googletagmanager\.com https:\/\/connect\.facebook\.net;/);
+      expect(policy).toMatch(/connect-src [^;]+ https:\/\/\*\.google-analytics\.com https:\/\/\*\.analytics\.google\.com https:\/\/www\.googletagmanager\.com https:\/\/www\.facebook\.com;/);
+      expect(policy).toMatch(/img-src [^;]+ https:\/\/www\.facebook\.com;/);
+      expect(policy).not.toContain('https://*.googletagmanager.com');
     }
-    for (const path of ['/checkout/product-1', '/checkout/product-1?status=cancelled', '/checkout/product-1?status=success&test_purchase=1', '/checkout/product-1?status=success&session_id=cs_test_checkout', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together', '/offer/bundle', '/panel/settings', '/my/products', '/legal/terms']) {
-      const response = await h.app.request(path, { headers: { host: 'learn.acme.example' } });
+    for (const path of ['/offer/bundle', '/panel/settings', '/my/products', '/legal/terms', API_PATHS.publicPaymentConfig]) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.headers.get('content-security-policy')).not.toContain('google');
+      expect(response.headers.get('content-security-policy')).not.toContain('facebook');
     }
     for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
-      const response = await h.app.request(path, { headers: { host: 'learn.acme.example', 'user-agent': 'Googlebot' } });
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost', 'user-agent': 'Googlebot' } });
       expect(response.headers.get('content-security-policy')).not.toContain('google');
+      expect(response.headers.get('content-security-policy')).not.toContain('facebook');
     }
-    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABC123' });
-    const ga4 = await h.app.request('/checkout/product-1?status=success', { headers: { host: 'learn.acme.example' } });
-    expect(ga4.headers.get('content-security-policy')).toContain('https://www.googletagmanager.com/gtag/js;');
-    h.base.tenants.findSettings = async () => h.settings;
-    const disabled = await h.app.request('/checkout/product-1?status=success', { headers: { host: 'learn.acme.example' } });
-    expect(disabled.headers.get('content-security-policy')).not.toContain('google');
-  });
-
-  it.each([
-    { host: 'example.org', domain: 'example.org' },
-    { host: 'acme.example.org', domain: 'acme.example.org' },
-    { host: 'nested.acme.example.org', domain: 'nested.acme.example.org' },
-    { host: 'ACME.EXAMPLE.ORG.:443', domain: 'acme.example.org' },
-    { host: 'platform.example.net', domain: 'platform.example.net' },
-    { host: 'app.example.net', domain: 'app.example.net' },
-    { host: 'example.net', domain: 'example.net' },
-    { host: 'learn.acme.example.', domain: 'learn.acme.example' },
-    { host: 'unknown.example', domain: 'learn.acme.example' },
-    { host: 'learn.acme.example', domain: 'learn.acme.example', verified: false },
-    { host: 'learn.acme.example', domain: 'learn.acme.example', kind: 'subdomain' as const },
-    { host: 'learn.acme.example', domain: 'learn.acme.example', suspended: true },
-  ])('withholds analytics CSP and config on ineligible host $host', async ({ host, domain, verified = true, kind = 'custom' as const, suspended = false }) => {
-    const base = deps({
-      domains: [tenantDomainFixture({ id: 'analytics-domain', tenantId: acme.id, domain, kind, verified })],
-      tenants: [{ ...acme, status: suspended ? 'suspended' : 'active' }],
-    });
-    const findSettings = base.tenants.findSettings;
-    base.tenants.findSettings = async (tenantId) => {
-      const settings = await findSettings(tenantId);
-      return settings === null ? null : { ...settings, analyticsTagId: 'GTM-ABC123' };
-    };
-    const app = buildApp({ ...base, baseDomain: 'example.org', appBaseUrl: 'https://app.example.net', platformHost: 'platform.example.net' });
-    app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
-    const headers = { host, [TENANT_HEADER]: 'acme' };
-    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
-      const response = await app.request(path, { headers });
-      expect(response.headers.get('content-security-policy')).not.toContain('google');
-    }
-    const config = await app.request(API_PATHS.publicPaymentConfig, { headers });
-    const body: unknown = await config.json();
-    if (config.status === 200) expect(body).toMatchObject({ ok: true, data: { analytics: null } });
-    else expect(body).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
@@ -5991,7 +5950,7 @@ describe('public checkout session-status route', () => {
     currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_live_paid123' },
     couponId: null, discountCents: 0, createdAt: '2026-10-01T12:00:00.000Z',
   };
-  const statusApp = (rows: Order[] = [order], analyticsTagId: string | null = null) => {
+  const statusApp = (rows: Order[] = [order], analyticsTagId: string | null = null, analyticsMetaPixelId: string | null = null) => {
     const base = deps();
     const findOrderByProviderObjectIds = vi.fn<AppDeps['paymentRefunds']['findOrderByProviderObjectIds']>(
       async (tenantId, ids, mode) => rows.find((row) => row.tenantId === tenantId
@@ -6001,7 +5960,7 @@ describe('public checkout session-status route', () => {
       app: buildApp({ ...base,
         tenants: { ...base.tenants, findSettings: async (tenantId) => {
           const settings = await base.tenants.findSettings(tenantId);
-          return settings === null ? null : { ...settings, analyticsTagId };
+          return settings === null ? null : { ...settings, analyticsTagId, analyticsMetaPixelId };
         } },
         paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds },
       }),
@@ -6019,11 +5978,15 @@ describe('public checkout session-status route', () => {
     expect(findOrderByProviderObjectIds).toHaveBeenCalledExactlyOnceWith(acme.id, { checkoutSession: 'cs_live_paid123' }, 'live');
   });
 
-  it('exposes only purchase analytics when the paid tenant has configured a tag', async () => {
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+    ['both libraries', 'G-ABC123', '12345678'],
+  ])('exposes only purchase analytics when the paid tenant has configured %s', async (_label, tagId, metaPixelId) => {
     const { app } = statusApp([{ ...order, amountCents: 9900, lines: [{
       productId: 'product-analytics', name: 'Analytics product', productType: 'digital_download',
       grossCents: 9900, netCents: 9900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null,
-    }] }], 'GTM-ABCD');
+    }] }], tagId, metaPixelId);
     const response = await app.request(path('cs_live_paid123'), { headers: { [TENANT_HEADER]: 'acme' } });
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ ok: true, data: { status: 'paid', analytics: {
@@ -6032,8 +5995,11 @@ describe('public checkout session-status route', () => {
     } } });
   });
 
-  it('keeps configured pending and unknown session bodies identical', async () => {
-    const { app } = statusApp([{ ...order, status: 'pending' }], 'GTM-ABCD');
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+  ])('keeps %s-configured pending and unknown session bodies identical', async (_label, tagId, metaPixelId) => {
+    const { app } = statusApp([{ ...order, status: 'pending' }], tagId, metaPixelId);
     for (const sessionId of ['cs_live_paid123', 'cs_live_unknown']) {
       const response = await app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
       expect(await response.json()).toEqual({ ok: true, data: { status: 'pending' } });
@@ -6131,18 +6097,22 @@ describe('public payment-config route', () => {
     expect(await response.json()).toMatchObject({ ok: true, data: { analytics: null } });
   });
 
-  it('exposes only the five public analytics settings on a verified custom domain', async () => {
-    const base = deps({ domains: [tenantDomainFixture({ id: 'analytics-domain', tenantId: acme.id, domain: 'learn.acme.example', kind: 'custom', verified: true })] });
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+    ['both libraries', 'G-ABC123', '12345678'],
+  ])('exposes only the five public analytics settings for %s on a tenant host', async (_label, tagId, metaPixelId) => {
+    const base = deps();
     const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
       const settings = await base.tenants.findSettings(tenantId);
-      return settings === null ? null : { ...settings, analyticsTagId: 'G-ABC123',
-        analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: false };
+      return settings === null ? null : { ...settings, analyticsTagId: tagId, analyticsMetaPixelId: metaPixelId,
+        analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: false };
     } } });
-    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { host: 'learn.acme.example' } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
     expect(await response.json()).toEqual({ ok: true, data: {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
-      analytics: { tagId: 'G-ABC123', consentCookieName: 'consent', consentCookieValue: 'analytics:true', consentEvent: 'site_consent', loadWithoutConsent: false },
+      analytics: { tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
     } });
   });
 

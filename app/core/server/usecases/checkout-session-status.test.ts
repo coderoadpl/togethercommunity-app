@@ -102,17 +102,21 @@ describe('getCheckoutSessionStatus', () => {
 });
 
 const analyticsSettings = tenantSettingsSchema.parse({
-  name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, analyticsTagId: 'GTM-ABCD',
+  name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, analyticsTagId: 'G-ABCDEF',
 });
 
 describe('checkout session purchase analytics', () => {
-  it('returns the immutable order lines and gross major units when configured and paid', async () => {
+  it.each([
+    analyticsSettings,
+    { ...analyticsSettings, analyticsTagId: null, analyticsMetaPixelId: '12345678' },
+    { ...analyticsSettings, analyticsMetaPixelId: '12345678' },
+  ])('returns immutable order lines and gross major units with configured analytics %j', async (settings) => {
     const deps = harness([{ ...order, amountCents: 12999, lines: [
       { productId: 'product-1', name: 'First product', productType: 'digital_download', grossCents: 9900,
         netCents: 9900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
       { productId: 'product-2', name: 'Second product', productType: 'digital_download', grossCents: 3099,
         netCents: 3099, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
-    ] }], analyticsSettings);
+    ] }], settings);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
       ok: true, value: { status: 'paid', analytics: {
         transactionId: 'order-1', value: 129.99, currency: 'PLN', offerSlug: null, items: [

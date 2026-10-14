@@ -12,7 +12,6 @@ import { err, internal, notFound, validation } from '#core/domain/index.js';
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { isMarketingSignupSubmissionPath, requestBodyLimit } from './body-limits.js';
-import { checkoutAnalyticsTenant } from './checkout-analytics-host.js';
 import { trustedAuthRequest } from './auth-network.js';
 import { impersonationGuard } from './impersonation-guard.js';
 import { registerInternalRoutes } from './internal-app.js';
@@ -88,16 +87,11 @@ export const buildApp = (deps: AppDeps) => {
     if (policy === null) return;
     const checkoutDocument = c.get('checkoutSpaDocument') === true
       || (c.req.path.startsWith('/checkout/') && !SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? ''));
-    if (checkoutDocument) c.res.headers.set('cache-control', 'no-store');
-    if (checkoutDocument && c.req.query('status') === 'success' && c.req.query('test_purchase') !== '1'
-      && !c.req.query('session_id')?.startsWith('cs_test_')) {
-      const tenantId = await checkoutAnalyticsTenant(c.req.header('host') ?? '', deps);
-      const settings = tenantId === null ? null : await deps.tenants.findSettings(tenantId);
-      if (settings?.analyticsTagId) {
-        policy = policy
-          .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtm.js https://www.googletagmanager.com/gtag/js')
-          .replace(/connect-src [^;]+/, '$& https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com');
-      }
+    if (checkoutDocument) {
+      policy = policy
+        .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com https://connect.facebook.net')
+        .replace(/connect-src [^;]+/, '$& https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.facebook.com')
+        .replace(/img-src [^;]+/, '$& https://www.facebook.com');
     }
     if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
     c.res.headers.set('content-security-policy', policy);

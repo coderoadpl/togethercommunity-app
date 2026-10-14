@@ -151,9 +151,9 @@ const changePasswordOptionsSchema = z.object({
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
   analyticsTagId: z.string().optional(),
+  analyticsMetaPixelId: z.string().optional(),
   analyticsConsentCookieName: z.string().optional(),
   analyticsConsentCookieValue: z.string().optional(),
-  analyticsConsentEvent: z.string().optional(),
   analyticsLoadWithoutConsent: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   ksefSubmissionMode: z.enum(['automatic', 'manual']).optional(),
   accentColor: z.string().optional(),
@@ -946,9 +946,9 @@ tenant.command('settings').description('Show tenant settings').action(
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
         `analytics tag ID: ${data.settings.analyticsTagId ?? '(not set)'}`,
+        `analytics Meta Pixel ID: ${data.settings.analyticsMetaPixelId ?? '(not set)'}`,
         `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
         `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
-        `analytics consent event: ${data.settings.analyticsConsentEvent ?? '(not set)'}`,
         `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
       ].join('\n'),
     );
@@ -958,10 +958,10 @@ tenant.command('settings').description('Show tenant settings').action(
 tenant
   .command('settings-set')
   .description('Update tenant settings (owner)')
-  .option('--analytics-tag-id <id>', 'GTM container or GA4 measurement ID; empty string clears')
+  .option('--analytics-tag-id <id>', 'GA4 measurement ID; empty string clears')
+  .option('--analytics-meta-pixel-id <id>', 'Meta Pixel ID; empty string clears')
   .option('--analytics-consent-cookie-name <name>', 'parent-domain consent cookie name; empty string clears')
   .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')
-  .option('--analytics-consent-event <name>', 'dataLayer consent event name; empty string clears')
   .option('--analytics-load-without-consent <value>', "'true' or 'false' — load without checking consent")
   .option('--ksef-submission-mode <mode>', 'automatic or manual')
   .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
@@ -984,9 +984,9 @@ tenant
         options.memberVideoAutoplayOverride === undefined &&
         options.ksefSubmissionMode === undefined &&
         options.analyticsTagId === undefined &&
+        options.analyticsMetaPixelId === undefined &&
         options.analyticsConsentCookieName === undefined &&
         options.analyticsConsentCookieValue === undefined &&
-        options.analyticsConsentEvent === undefined &&
         options.analyticsLoadWithoutConsent === undefined
       ) {
         emit(
@@ -998,9 +998,9 @@ tenant
       }
       emit(await ctx.api.updateTenantSettings({
         ...(options.analyticsTagId === undefined ? {} : { analyticsTagId: options.analyticsTagId }),
+        ...(options.analyticsMetaPixelId === undefined ? {} : { analyticsMetaPixelId: options.analyticsMetaPixelId }),
         ...(options.analyticsConsentCookieName === undefined ? {} : { analyticsConsentCookieName: options.analyticsConsentCookieName }),
         ...(options.analyticsConsentCookieValue === undefined ? {} : { analyticsConsentCookieValue: options.analyticsConsentCookieValue }),
-        ...(options.analyticsConsentEvent === undefined ? {} : { analyticsConsentEvent: options.analyticsConsentEvent }),
         ...(options.analyticsLoadWithoutConsent === undefined ? {} : { analyticsLoadWithoutConsent: options.analyticsLoadWithoutConsent }),
         ...(options.ksefSubmissionMode === undefined ? {} : { ksefSubmissionMode: options.ksefSubmissionMode }),
         ...(accentColor === undefined ? {} : { accentColor }),
@@ -1021,9 +1021,9 @@ tenant
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
           `analytics tag ID: ${data.settings.analyticsTagId ?? '(not set)'}`,
+          `analytics Meta Pixel ID: ${data.settings.analyticsMetaPixelId ?? '(not set)'}`,
           `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
           `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
-          `analytics consent event: ${data.settings.analyticsConsentEvent ?? '(not set)'}`,
           `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
         ].join('\n'),
       );

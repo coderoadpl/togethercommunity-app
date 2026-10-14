@@ -957,7 +957,7 @@ tenant.command('settings').description('Show tenant settings').action(
 
 tenant
   .command('settings-set')
-  .description('Update tenant settings (owner; analytics also available to admins)')
+  .description('Update tenant settings (owner)')
   .option('--analytics-tag-id <id>', 'GTM container or GA4 measurement ID; empty string clears')
   .option('--analytics-consent-cookie-name <name>', 'parent-domain consent cookie name; empty string clears')
   .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')

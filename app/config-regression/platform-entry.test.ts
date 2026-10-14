@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -11,12 +12,43 @@ const require = createRequire(import.meta.url);
 const depcruise: {
   forbidden: Array<{ name: string; from: { pathNot?: string } }>;
 } = require(join(appRoot, '.dependency-cruiser.cjs'));
-const vercel: {
-  regions: string[];
-  functions: Record<string, { maxDuration: number }>;
-  rewrites: Array<{ source: string; destination: string }>;
-  headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
-} = JSON.parse(readFileSync(join(appRoot, 'vercel.json'), 'utf8'));
+const routeConditionSchema = z.object({
+  type: z.enum(['query', 'header']),
+  key: z.string(),
+  value: z.string(),
+});
+const routeMatcherSchema = z.object({
+  source: z.string(),
+  has: z.array(routeConditionSchema).optional(),
+  missing: z.array(routeConditionSchema).optional(),
+});
+const vercel = z.object({
+  regions: z.array(z.string()),
+  functions: z.record(z.object({ maxDuration: z.number() })),
+  rewrites: z.array(routeMatcherSchema.extend({ destination: z.string() })),
+  headers: z.array(routeMatcherSchema.extend({
+    headers: z.array(z.object({ key: z.string(), value: z.string() })),
+  })),
+}).parse(JSON.parse(readFileSync(join(appRoot, 'vercel.json'), 'utf8')));
+
+const matchesRequest = (rule: z.infer<typeof routeMatcherSchema>, url: URL, userAgent: string): boolean => {
+  const matchesCondition = (condition: z.infer<typeof routeConditionSchema>) => {
+    const value = condition.type === 'query'
+      ? url.searchParams.get(condition.key)
+      : condition.key === 'user-agent' ? userAgent : null;
+    return value !== null && new RegExp(`^(?:${condition.value})$`, 'u').test(value);
+  };
+  return new RegExp(`^${rule.source}$`, 'u').test(url.pathname)
+    && (rule.has ?? []).every(matchesCondition)
+    && (rule.missing ?? []).every((condition) => !matchesCondition(condition));
+};
+
+const hostedCspFor = (url: URL, userAgent = 'Mozilla/5.0') => vercel.headers
+  .filter((rule) => matchesRequest(rule, url, userAgent))
+  .flatMap(({ headers }) => headers)
+  .filter(({ key }) => key === 'Content-Security-Policy')
+  .map(({ value }) => value);
+
 const platformResetEntry = readFileSync(join(appRoot, 'api', 'platform-reset.ts'), 'utf8');
 
 describe('Vercel platform entry boundary', () => {
@@ -98,8 +130,51 @@ describe('Vercel platform entry boundary', () => {
     const cspFor = (source: string) => vercel.headers
       .find((entry) => entry.source === source)
       ?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
-    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/|offer/).*)');
+    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/|offer/|checkout/).*)');
     expect(spaCsp).toContain("default-src 'self'");
     expect(spaCsp).toContain("connect-src 'self' https:;");
+  });
+
+  it.each([
+    '/checkout/order?status=success',
+    '/checkout/order?status=cancelled',
+    '/offer/workbook?status=success',
+    '/offer/workbook?status=cancelled',
+    '/offer/workbook?checkout=together',
+    '/offer/workbook?checkout=together&status=success',
+  ])('allows the Google tag on the hosted checkout SPA at %s', (path) => {
+    const url = new URL(path, 'https://acme.example');
+    expect(vercel.rewrites.find((rule) => matchesRequest(rule, url, 'Mozilla/5.0'))?.destination)
+      .toBe('/index.html');
+    const policies = hostedCspFor(url);
+    expect(policies.length).toBeGreaterThan(0);
+    for (const policy of policies) {
+      expect(policy).toContain("script-src 'self' https://www.googletagmanager.com;");
+      expect(policy).toContain("connect-src 'self' https: https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com;");
+      expect(policy).toContain("object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    }
+  });
+
+  it.each(['/start', '/home/settings', '/my/products', '/index.html'])(
+    'keeps the hosted script policy same-origin at %s',
+    (path) => {
+      const policies = hostedCspFor(new URL(path, 'https://acme.example'));
+      expect(policies).toHaveLength(1);
+      expect(policies[0]).toContain("script-src 'self';");
+      expect(policies[0]).not.toContain('google');
+    },
+  );
+
+  it.each([
+    ['/offer/workbook', 'Mozilla/5.0'],
+    ['/offer/workbook?status=pending', 'Mozilla/5.0'],
+    ['/offer/workbook?status=success', 'Twitterbot/1.0'],
+    ['/offer/workbook?checkout=together', 'Googlebot'],
+    ['/checkout/order?status=success', 'Twitterbot/1.0'],
+  ])('leaves the server CSP in charge at %s for %s', (path, userAgent) => {
+    const url = new URL(path, 'https://acme.example');
+    expect(vercel.rewrites.find((rule) => matchesRequest(rule, url, userAgent))?.destination)
+      .toBe('/api/index');
+    expect(hostedCspFor(url, userAgent)).toEqual([]);
   });
 });

@@ -651,7 +651,7 @@ export const pl: Messages = {
     consentCookieValue: 'Wymagany fragment wartości ciasteczka',
     consentCookieValueHint: 'Opcjonalnie. Tag załaduje się tylko, gdy wartość ciasteczka zawiera ten fragment, np. analytics:true.',
     consentEvent: 'Zdarzenie zgody w dataLayer',
-    consentEventHint: 'Opcjonalnie. Nazwa zdarzenia, którym Twoja strona informuje Google Tag Manager o zgodzie, np. zsk_consent.',
+    consentEventHint: 'Opcjonalnie. Nazwa zdarzenia, którym Twoja strona informuje Google Tag Manager o zgodzie, np. site_consent.',
     loadWithoutConsent: 'Ładuj tag bez sprawdzania zgody',
     loadWithoutConsentHint: 'Włącz tylko, jeśli zgody nie zbierasz przez ciasteczko. Odpowiedzialność za zgodność z RODO jest po Twojej stronie.',
   },

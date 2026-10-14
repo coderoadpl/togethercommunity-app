@@ -1477,8 +1477,8 @@ describe('SettingsPanel sign-in notice', () => {
 
 
 describe('SettingsPanel analytics', () => {
-  it.each(['owner', 'admin'] as const)('lets an %s save all five analytics fields', async (staffRole) => {
-    const { updates } = renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
+  it('lets the owner save all five analytics fields', async () => {
+    const { updates } = renderPanel(EMPTY_SETTINGS);
     await openSettingsSection(en.analyticsSettings.heading);
     const tag = await screen.findByRole('textbox', { name: en.analyticsSettings.tagId });
     await waitFor(() => expect(tag).toBeEnabled());
@@ -1535,8 +1535,8 @@ describe('SettingsPanel analytics', () => {
     expect(await findToast('success')).toBeInTheDocument();
   });
 
-  it('keeps analytics read-only for members', async () => {
-    renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole: null });
+  it.each(['admin', null] as const)('keeps analytics read-only for staff role %s', async (staffRole) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
     await openSettingsSection(en.analyticsSettings.heading);
     expect(await screen.findByRole('textbox', { name: en.analyticsSettings.tagId })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName })).toBeDisabled();

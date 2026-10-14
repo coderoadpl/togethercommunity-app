@@ -72,17 +72,16 @@ describe('permission inventory', () => {
     }
   });
 
-  it('classifies analytics settings separately from owner-only tenant settings', () => {
+  it('keeps all tenant settings updates owner-only', () => {
     const inventory = collectPermissionInventory();
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/tenant/settings'),
       inventory.useCases.find((entry) => entry.subject === 'tenant-settings.ts#updateTenantSettings'),
     ]) {
       expect(row).toMatchObject({
-        capability: 'tenant:analytics:write',
-        before: ['owner', 'admin'],
-        after: ['owner', 'admin'],
-        evidence: 'Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only)',
+        capability: 'tenant:settings:write',
+        before: ['owner'],
+        after: ['owner'],
       });
     }
   });

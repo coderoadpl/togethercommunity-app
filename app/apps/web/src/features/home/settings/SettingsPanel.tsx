@@ -1885,7 +1885,7 @@ export const SettingsPanel = () => {
       ) : null}
       {section === 'analytics' ? (
         <Box id="settings-panel-analytics" role="tabpanel" aria-labelledby="settings-tab-analytics">
-          <AnalyticsSettingsPanel canEdit={canEdit || tenant.staffRole === 'admin'} />
+          <AnalyticsSettingsPanel canEdit={canEdit} />
         </Box>
       ) : null}
       {section === 'security' ? (

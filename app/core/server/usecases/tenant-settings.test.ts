@@ -54,7 +54,7 @@ const spaceRepo = (stored: Space | null): SpaceRepository => ({
   stats: async () => new Map(),
 });
 
-const identity = (staffRole: 'admin' | null): Identity => ({
+const identity = (staffRole: Identity['staffRole']): Identity => ({
   userId: 'user-1',
   email: 'user@example.com',
   name: 'User',
@@ -345,8 +345,8 @@ describe('updateTenantSettings', () => {
 
 
 describe('analytics settings permissions', () => {
-  it.each(['owner', 'admin'] as const)('allows %s to save all five analytics settings', async (staffRole) => {
-    const result = await updateTenantSettings({ identity: { ...identity('admin'), staffRole } }, {
+  it('allows the owner to save all five analytics settings', async () => {
+    const result = await updateTenantSettings({ identity: identity('owner') }, {
       analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
       analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
     }, deps);
@@ -364,8 +364,8 @@ describe('analytics settings permissions', () => {
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
-  it('denies member analytics updates', async () => {
-    expect(await updateTenantSettings({ identity: identity(null) }, { analyticsTagId: 'G-ABC123' }, deps))
+  it.each(['admin', null] as const)('denies analytics updates for staff role %s', async (staffRole) => {
+    expect(await updateTenantSettings({ identity: identity(staffRole) }, { analyticsTagId: 'G-ABC123' }, deps))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
@@ -374,7 +374,7 @@ describe('analytics settings permissions', () => {
       ...settings, analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
       analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
     }) } };
-    expect(await updateTenantSettings({ identity: identity('admin') }, { analyticsTagId: '' }, configured))
+    expect(await updateTenantSettings({ identity: identity('owner') }, { analyticsTagId: '' }, configured))
       .toMatchObject({ ok: true, value: {
         analyticsTagId: null, analyticsConsentCookieName: 'consent',
         analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,

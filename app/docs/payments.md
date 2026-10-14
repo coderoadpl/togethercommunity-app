@@ -6,7 +6,7 @@ The success return page polls `GET /api/public/checkout/session-status?session_i
 
 ## Checkout analytics
 
-Owners and admins configure **Studio → Settings → Analytics** through the existing
+Owners configure **Studio → Settings → Analytics** through the existing
 tenant settings update. Set a Google Tag Manager container ID (`GTM-` followed by
 4–12 uppercase letters or digits) or a GA4 measurement ID (`G-` followed by 6–14
 uppercase letters or digits). Clearing the tag ID disables analytics. The consent
@@ -75,12 +75,15 @@ preventing another event for that session on reload. Returns without a session
 ID, including free checkouts and legacy links, may load the tag but never emit a
 purchase event.
 
-Checkout SPA documents extend `script-src` with
+Checkout SPA documents served by the server and the hosted static deployment
+extend `script-src` with
 `https://www.googletagmanager.com` and `connect-src` with that origin plus
 `https://*.google-analytics.com`, `https://*.analytics.google.com` and
 `https://*.googletagmanager.com`. The existing `img-src` already allows HTTPS.
-Other documents, including server-rendered handoff and crawler pages, retain
-their existing content security policy.
+The hosted headers cover `/checkout/` paths and the explicit checkout fallback
+and success or cancellation returns under `/offer/`. Other documents, including
+server-rendered handoff and crawler pages, retain their existing content security
+policy.
 
 When the creator's site uses GA4 with a parent-domain `_ga` cookie, the platform
 subdomain reads the same visitor identifier. No additional cross-domain

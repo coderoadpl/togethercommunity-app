@@ -55,12 +55,7 @@ export const updateTenantSettings = async (
   input: UpdateTenantSettingsInput,
   deps: TenantSettingsDeps,
 ): Promise<Result<TenantSettings, AppError>> => {
-  const analyticsFields = ['analyticsTagId', 'analyticsConsentCookieName', 'analyticsConsentCookieValue', 'analyticsConsentEvent', 'analyticsLoadWithoutConsent'];
-  const fields = Object.keys(input);
-  const analyticsOnly = fields.length > 0 && fields.every((field) => analyticsFields.includes(field));
-  const tenant = analyticsOnly
-    ? authorizeTenant(ctx, 'tenant:analytics:write')
-    : authorizeTenant(ctx, 'tenant:settings:write');
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
   const parsed = updateTenantSettingsInputSchema.safeParse(input);
   if (!parsed.success) {

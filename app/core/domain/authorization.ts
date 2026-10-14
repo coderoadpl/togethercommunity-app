@@ -7,7 +7,6 @@ export const CAPABILITIES = [
   'tenant:create',
   'tenant:list-own',
   'tenant:settings:read',
-  'tenant:analytics:write',
   'tenant:settings:write',
   'tenant:domain:read',
   'tenant:secret:read',
@@ -191,7 +190,6 @@ const memberSelfCapabilities = [
 ] as const satisfies readonly Capability[];
 
 const sharedStaffCapabilities = [
-  'tenant:analytics:write',
   ...memberSelfCapabilities,
   'subscriptions:read',
   'subscriptions:adopt',

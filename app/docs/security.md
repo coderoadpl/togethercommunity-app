@@ -110,9 +110,15 @@ back to anonymous public capabilities, which reach lessons flagged as free
 previews and nothing else.
 
 All responses receive the secure-header baseline. The CSP permits Emotion's
-runtime styles, HTTPS images, HTTPS lesson embeds, and Sentry envelope delivery
-while keeping other scripts and network requests same-origin. Ordinary API
-request bodies are limited to 100KB. Public HTML mutations are limited to 16KB,
+runtime styles, HTTPS images and HTTPS lesson embeds. SPA documents allow HTTPS
+network requests; other responses permit same-origin connections and Sentry
+envelope delivery. Checkout SPA documents served by the server and the hosted
+static deployment additionally permit Google Tag Manager scripts and explicitly
+list Google analytics connection origins. Other documents retain their existing
+script policy. Only owners can configure the Google tag. A tag loaded after the
+checkout consent check stays active during in-app navigation until reload; see
+[checkout analytics](payments.md#checkout-analytics). Ordinary API request bodies
+are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;
 only successful public-offer responses opt into revalidated shared caching.

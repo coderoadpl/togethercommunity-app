@@ -73,8 +73,10 @@ it.each([true, false])('shows the sales-link test success notice only to staff: 
   } })));
   renderOffer();
   expect(await screen.findByText(canTest ? en.checkout.testPurchaseBody : en.checkout.successBody)).toBeVisible();
-  expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(canTest);
-  expect(screen.queryByText(canTest ? en.checkout.successBody : en.checkout.testPurchaseBody)).toBeNull();
+  await waitFor(() => expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(canTest));
+  expect(screen.queryByText(en.checkout.successBody) !== null).toBe(!canTest);
+  expect(screen.queryByText(en.checkout.successPendingBody)).toBeNull();
+  expect(screen.queryByRole('progressbar')).toBeNull();
 });
 
 it('retries a live sales link through the server handoff after cancellation', async () => {

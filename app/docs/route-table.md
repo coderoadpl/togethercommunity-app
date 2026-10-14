@@ -29,6 +29,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `OPTIONS /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
 | `OPTIONS /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
+| `OPTIONS /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation without buyer or order details |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
@@ -48,6 +49,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/student/lessons/:lessonId/editions` | public | read | Free lesson preview editions with the current lesson access check |
 | `GET /api/student/lessons/:lessonId/editions/:number` | public | read | Free lesson preview edition with the current lesson access check |
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
+| `GET /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation without buyer or order details |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |

@@ -56,7 +56,11 @@ same trusted forwarding resolution as authentication, never from a raw
 `x-forwarded-for`, and a request whose address cannot be attributed falls back
 to one shared bucket. Rejections
 answer `429` with `Retry-After` and a message that does not reveal which bucket
-was exhausted. Expired windows are deleted by the hourly KSeF dispatch run.
+was exhausted. Public checkout session-status polling uses a separate per-IP
+`checkout-status:ip` bucket of 600 requests per five minutes in production
+(60,000 in development and staging), so several buyers behind one NAT can poll
+without consuming checkout-start or coupon-validation capacity. Expired windows
+are deleted by the hourly KSeF dispatch run.
 
 New passwords require at least 15 characters, with no character-class rules.
 The 15-character floor is required because MFA remains optional; it applies to

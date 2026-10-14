@@ -172,6 +172,110 @@
         }
       }
     },
+    "myProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              }
+            ],
+            "currency": "PLN",
+            "description": "Full access to every module in JavaScript from Scratch.",
+            "downloads": [],
+            "grantExpiresAt": null,
+            "grantStartsAt": "2026-06-01T12:00:00.000Z",
+            "grantStatus": "active",
+            "id": "product-js-full",
+            "priceCents": 39900,
+            "purchasable": true,
+            "subscription": null,
+            "title": "JavaScript Course - full access",
+            "type": "course"
+          },
+          {
+            "accessItems": [],
+            "currency": "PLN",
+            "description": "Exercises and checklists for independent practice after purchase.",
+            "downloads": [
+              {
+                "contentType": "application/pdf",
+                "createdAt": "2026-06-29T12:00:00.000Z",
+                "downloadPath": "/api/my/products/product-download-workbook/downloads/download-asset-workbook-v2",
+                "fileName": "workbook-creator.pdf",
+                "id": "download-asset-workbook-v2",
+                "lineageId": "download-asset-workbook",
+                "personalisationSizeExceeded": false,
+                "previousVersions": [
+                  {
+                    "contentType": "application/pdf",
+                    "createdAt": "2026-06-19T12:00:00.000Z",
+                    "downloadPath": "/api/my/products/product-download-workbook/downloads/download-asset-workbook",
+                    "fileName": "workbook-creator.pdf",
+                    "id": "download-asset-workbook",
+                    "lineageId": "download-asset-workbook",
+                    "personalisationSizeExceeded": false,
+                    "productId": "product-download-workbook",
+                    "sizeBytes": 2416640,
+                    "status": "ready",
+                    "supersededAt": "2026-06-29T12:00:00.000Z",
+                    "versionNote": null,
+                    "versionNumber": 1
+                  }
+                ],
+                "productId": "product-download-workbook",
+                "sizeBytes": 2426880,
+                "status": "ready",
+                "supersededAt": null,
+                "versionNote": "Corrected the diagram in chapter 4.",
+                "versionNumber": 2
+              }
+            ],
+            "grantExpiresAt": null,
+            "grantStartsAt": "2026-06-19T12:00:00.000Z",
+            "grantStatus": "active",
+            "id": "product-download-workbook",
+            "priceCents": 7900,
+            "purchasable": true,
+            "subscription": null,
+            "title": "Creator Workbook",
+            "type": "digital_download"
+          },
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "course"
+              },
+              {
+                "courseId": "course-react",
+                "level": "course"
+              }
+            ],
+            "currency": "PLN",
+            "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
+            "downloads": [],
+            "grantExpiresAt": "2026-08-10T12:00:00.000Z",
+            "grantStartsAt": "2026-06-11T12:00:00.000Z",
+            "grantStatus": "active",
+            "id": "product-club",
+            "priceCents": 4900,
+            "purchasable": true,
+            "subscription": {
+              "cancelAtPeriodEnd": false,
+              "currentPeriodEnd": "2026-07-11T12:00:00.000Z",
+              "id": "subscription-studio-active-club",
+              "status": "active"
+            },
+            "title": "Studio Club - subscription",
+            "type": "membership"
+          }
+        ]
+      }
+    },
     "publicOffer:[]": {
       "ok": true,
       "value": {

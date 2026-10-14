@@ -66,6 +66,33 @@
         }
       }
     },
+    "myProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [
+              {
+                "level": "course",
+                "courseId": "course-acme"
+              }
+            ],
+            "currency": "PLN",
+            "description": "",
+            "downloads": [],
+            "grantExpiresAt": null,
+            "grantStartsAt": "2026-06-01T12:00:00.000Z",
+            "grantStatus": "active",
+            "id": "product-acme-course",
+            "priceCents": 9900,
+            "purchasable": true,
+            "subscription": null,
+            "title": "Acme Course",
+            "type": "course"
+          }
+        ]
+      }
+    },
     "publicOffer:[]": {
       "ok": true,
       "value": {

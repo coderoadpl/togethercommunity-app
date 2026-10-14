@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { publicOfferOutputSchema, publicPaymentConfigOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
+import { myProductsOutputSchema, publicOfferOutputSchema, publicPaymentConfigOutputSchema, tenantSettingsOutputSchema } from '#core/contract/index.js';
 import { tenantSettingsSchema } from '#core/domain/index.js';
 import { z } from 'zod';
 import bootSplash from '../apps/web/src/stories/fixtures/boot-splash.json';
@@ -39,6 +39,17 @@ describe('recorded tenant settings', () => {
 });
 
 describe('page fixture client', () => {
+  it.each(readdirSync(fixturesDirectory).filter((name) => name.endsWith('.json')))('%s provides products for recorded member navigation', async (name) => {
+    const fixture = z.object({ calls: z.record(z.unknown()).optional() }).parse(JSON.parse(
+      readFileSync(new URL(name, fixturesDirectory), 'utf8'),
+    ));
+    if (fixture.calls === undefined || !Object.hasOwn(fixture.calls, 'memberNavigation:[]')) return;
+    selectFixture(JSON.parse(readFileSync(new URL(name, fixturesDirectory), 'utf8')));
+    const response = await fixtureClient.myProducts();
+    expect(z.object({ ok: z.literal(true), value: myProductsOutputSchema }).safeParse(response).success).toBe(true);
+    expect([...fixtureErrors]).toEqual([]);
+  });
+
   it('holds the splash identity while resolving the seed public offer', async () => {
     selectFixture(bootSplash);
     let settled = false;

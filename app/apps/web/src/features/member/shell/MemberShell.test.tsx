@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CourseStructureWithAccess,
+  GrantWindowStatus,
   MemberNavigation,
   PublicNavigation,
 } from '#core/domain/index.js';
@@ -142,6 +143,33 @@ const okNavigation = (value: MemberNavigation = navigation()) =>
   http.get('/api/member/navigation', () =>
     HttpResponse.json({ ok: true, data: { navigation: value } }));
 
+const downloadProduct = (id: string, grantStatus: GrantWindowStatus = 'active', hasDownloads = true) => ({
+  id,
+  type: 'digital_download',
+  title: `Field guide ${id}`,
+  description: '',
+  accessItems: [],
+  priceCents: 1000,
+  currency: 'EUR',
+  purchasable: true,
+  grantStatus,
+  grantStartsAt: '2026-07-12T10:00:00.000Z',
+  grantExpiresAt: null,
+  subscription: null,
+  downloads: hasDownloads ? [{
+    id: `asset-${id}`,
+    productId: id,
+    lineageId: `asset-${id}`,
+    fileName: 'guide.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 1000,
+    status: 'ready',
+    createdAt: '2026-07-12T10:00:00.000Z',
+    personalisationSizeExceeded: false,
+    downloadPath: `/api/my/products/${id}/downloads/asset-${id}`,
+  }] : [],
+});
+
 const publicNavigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
   spaces: [{ id: 's1', slug: 'general', name: 'General', description: null, position: 0 }],
@@ -251,6 +279,7 @@ const renderShell = async (
       createRoute({ getParentRoute: () => shellRoute, path: '/search', component: page(en.search.title) }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my', component: page('Biblioteka') }),
       createRoute({ getParentRoute: () => shellRoute, path: '/my/products', component: page(en.members.colProducts) }),
+      createRoute({ getParentRoute: () => shellRoute, path: '/my/course/$productId', component: page('Product') }),
       createRoute({
         getParentRoute: () => shellRoute,
         path: '/my/courses/$courseId',
@@ -575,6 +604,58 @@ describe('MemberShell', () => {
     expect(await screen.findByText(en.shell.lockedSpaceHint)).toBeInTheDocument();
     expect(await screen.findByText(en.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(sidebar).getByText(en.shell.spacesSection)).toBeInTheDocument();
+  });
+
+  it.each([true, false])('lists active downloads beneath spaces and selects the product page (desktop: %s)', async (desktop) => {
+    stubViewport(desktop);
+    server.use(
+      okMe(), okNavigation(), okOffer(), noNotifications(),
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [
+        downloadProduct('p1'), downloadProduct('p2'), downloadProduct('p3', 'expired'),
+        downloadProduct('p4', 'upcoming'), downloadProduct('p5', 'active', false),
+      ] } })),
+    );
+
+    await renderShell('/my/course/p1');
+    if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
+
+    const sidebar = await screen.findByTestId('member-sidebar');
+    const downloads = await within(sidebar).findByTestId('sidebar-downloads');
+    expect(within(downloads).getByRole('heading', { name: en.shell.downloadsSection })).toBeInTheDocument();
+    expect(within(downloads).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Field guide p1', 'Field guide p2',
+    ]);
+    const selected = within(downloads).getByTestId('sidebar-product-p1');
+    expect(selected).toHaveAttribute('href', '/my/course/p1');
+    expect(selected).toHaveAttribute('aria-current', 'page');
+    expect(within(downloads).getByTestId('sidebar-product-p2')).not.toHaveAttribute('aria-current');
+    const lastSpace = await within(sidebar).findByTestId('sidebar-locked-s9');
+    expect(lastSpace.compareDocumentPosition(downloads)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(sidebar).queryByTestId('sidebar-products')).not.toBeInTheDocument();
+  });
+
+  it.each([true, false])('omits the downloads section without active downloadable products (desktop: %s)', async (desktop) => {
+    stubViewport(desktop);
+    let productsLoaded = false;
+    server.use(
+      okMe(), okNavigation(), okOffer(), noNotifications(),
+      http.get('/api/my/products', () => {
+        productsLoaded = true;
+        return HttpResponse.json({ ok: true, data: { products: [
+          downloadProduct('p1', 'active', false), downloadProduct('p2', 'expired'),
+        ] } });
+      }),
+    );
+
+    await renderShell('/start');
+    if (!desktop) await userEvent.click(await screen.findByTestId('member-tab-menu'));
+
+    const sidebar = await screen.findByTestId('member-sidebar');
+    await waitFor(() => {
+      expect(productsLoaded).toBe(true);
+      expect(within(sidebar).queryByText(en.common.loading)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sidebar-downloads')).not.toBeInTheDocument();
   });
 
   it('keeps messages in the sidebar and avatar menu', async () => {

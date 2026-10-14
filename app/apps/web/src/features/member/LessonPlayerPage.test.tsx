@@ -294,6 +294,7 @@ describe('LessonPlayerPage', () => {
     let structureReads = 0;
     const names: Record<string, string> = { l1: 'Lesson A', l2: 'Lesson B' };
     server.use(
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
       http.get('/api/student/courses/:courseId/structure', () => {
         structureReads += 1;
         return HttpResponse.json({ ok: true, data: { structure } });

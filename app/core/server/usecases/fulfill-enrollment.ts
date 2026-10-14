@@ -112,9 +112,12 @@ export const queueEnrollmentWelcome = async (
     inputLanguage,
     settings?.defaultLanguage,
   );
+  const downloadProductId = order?.lines?.find((line) => line.productType === 'digital_download')?.productId
+    ?? (product.type === 'digital_download' ? product.id : undefined);
+  const callbackURL = `${tenantBaseUrl}${downloadProductId === undefined ? 'start' : `my/course/${downloadProductId}`}`;
   const created = await deps.authPort.createEnrollmentMagicLink({
     email: member.email,
-    callbackURL: tenantBaseUrl,
+    callbackURL,
     baseUrl: tenantBaseUrl,
     tenantName: tenant.name,
     language,

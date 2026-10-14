@@ -14,6 +14,7 @@ import type {
   ProductRepository,
   TenantApiKeyRepository,
 } from '../ports.js';
+import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
 import { authenticateApiKey, m2mEnroll, type M2mEnrollDeps } from './m2m-enroll.js';
 
 const NOW = '1998-06-01T00:00:00.000Z';
@@ -362,7 +363,7 @@ describe('m2mEnroll', () => {
     ]);
     await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
     expect(h.captured[0]).toMatchObject({
-      callbackURL: 'https://courses.example.org/',
+      callbackURL: 'https://courses.example.org/start',
       baseUrl: 'https://courses.example.org/',
     });
   });
@@ -373,7 +374,7 @@ describe('m2mEnroll', () => {
     await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
 
     expect(h.captured[0]).toMatchObject({
-      callbackURL: 'https://tenant-one.example/',
+      callbackURL: 'https://tenant-one.example/start',
       baseUrl: 'https://tenant-one.example/',
     });
     expect(new URL(h.captured[0]?.baseUrl ?? '').host).not.toBe('tenant.example');
@@ -385,9 +386,46 @@ describe('m2mEnroll', () => {
     await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
 
     expect(h.captured[0]).toMatchObject({
-      callbackURL: 'https://tenant.example/',
+      callbackURL: 'https://tenant.example/start',
       baseUrl: 'https://tenant.example/',
     });
+  });
+
+  it.each([
+    ['digital_download', '/my/course/p1'],
+    ['course', '/start'],
+    ['physical', '/start'],
+  ] as const)('targets the purchased %s in the welcome link', async (type, path) => {
+    const h = harness({ products: [{ ...product('p1', true), type }] });
+
+    expect((await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps)).ok).toBe(true);
+
+    expect(new URL(h.captured[0]?.callbackURL ?? '').pathname).toBe(path);
+  });
+
+  it('targets the first download product in order lines', async () => {
+    const purchased = product('p1', true);
+    const h = harness({ products: [purchased] });
+    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+    const order = h.orders[0];
+    const member = await h.deps.members.findByEmail(TENANT.id, 'fresh@together.dev');
+    if (order === undefined || member === null) throw new Error('Expected an enrolled member and order');
+
+    const queued = await h.deps.enrollmentTransaction.run((transaction) =>
+      queueEnrollmentWelcome(TENANT, member, purchased, 'en', transaction.emailOutbox, h.deps, {
+        ...order,
+        lines: [
+          { productId: 'p1', name: 'Course', productType: 'course', grossCents: 0, netCents: 0,
+            vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+          { productId: 'p2', name: 'Guide', productType: 'digital_download', grossCents: 0, netCents: 0,
+            vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+          { productId: 'p3', name: 'Workbook', productType: 'digital_download', grossCents: 0, netCents: 0,
+            vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+        ],
+      }));
+
+    expect(queued.ok).toBe(true);
+    expect(new URL(h.captured.at(-1)?.callbackURL ?? '').pathname).toBe('/my/course/p2');
   });
 
   it('is not found for an unpublished product', async () => {

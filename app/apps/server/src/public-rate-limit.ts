@@ -162,6 +162,7 @@ const publicRateLimitKind = (path: string): PublicRateLimitKind | null => {
   if (path === BETTER_AUTH_PASSWORD_SIGN_IN_PATH) return 'auth-password';
   if (AUTH_LINK_PATHS.has(path)) return 'auth-link';
   if (path === API_PATHS.authResolve) return 'auth-resolve';
+  if (path === API_PATHS.publicCheckoutSessionStatus) return 'write';
   return isPublicWritePath(path) ? 'write' : null;
 };
 
@@ -200,7 +201,8 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   const policies = deps.publicRateLimitPolicies;
   const clientIp = (): string =>
     trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY;
-  if (c.req.method === 'GET') {
+  const checkoutStatusRead = c.req.method === 'GET' && c.req.path === API_PATHS.publicCheckoutSessionStatus;
+  if (c.req.method === 'GET' && !checkoutStatusRead) {
     if (c.req.path !== API_PATHS.healthDeep) return null;
     const claimed = await claimRateLimitWindow(
       { scope: 'deep-health:ip', key: clientIp(), window: policies.deepHealthPerIp },
@@ -208,7 +210,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
   }
-  if (c.req.method !== 'POST') return null;
+  if (c.req.method !== 'POST' && !checkoutStatusRead) return null;
   if (isMarketingSignupSubmissionPath(c.req.path)) {
     const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp(), window: policies.signupsPerIp }, limiter);
     if (!ip.ok) return rateLimitedResponse(ip.error);

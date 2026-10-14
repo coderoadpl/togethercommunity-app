@@ -3545,7 +3545,9 @@ export const createOrderRepository = (
 export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
   findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) => {
     const matches = Object.entries(providerObjectIds).map(
-      ([key, value]) => sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
+      ([key, value]) => key === 'checkoutSession'
+        ? sql`${orders.providerObjectIds} ? 'checkoutSession' and ${orders.providerObjectIds} ->> 'checkoutSession' = ${value}`
+        : sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
     );
     if (matches.length === 0) return null;
     const rows = await db

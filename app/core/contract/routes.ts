@@ -21,6 +21,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
+  checkoutSessionStatusInputSchema,
   couponCheckoutBreakdownSchema,
   couponRecurringDurationSchema,
   couponCreateInputSchema,
@@ -444,6 +445,12 @@ export const stripeTestRemoveOutputSchema = z.object({ removed: z.literal(true) 
 
 export const stripeTestSessionInputSchema = z.object({ enabled: z.boolean() });
 export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
+
+export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
+
+export const publicCheckoutSessionStatusOutputSchema = z.object({
+  status: z.enum(['pending', 'paid']),
+}).strict();
 
 export const publicPaymentConfigOutputSchema = z.object({
   canTest: z.boolean().default(false),
@@ -1874,6 +1881,7 @@ export const API_ROUTES = {
   publicSpaceEvents: { method: 'GET', path: '/api/public/spaces/:spaceId/events' },
   publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
+  publicCheckoutSessionStatus: { method: 'GET', path: '/api/public/checkout/session-status' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
   stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
@@ -2264,6 +2272,7 @@ export const API_PATHS = {
   publicSpaceEvents: API_ROUTES.publicSpaceEvents.path,
   publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
+  publicCheckoutSessionStatus: API_ROUTES.publicCheckoutSessionStatus.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   stripeTestRemove: API_ROUTES.stripeTestRemove.path,
   stripeTestSession: API_ROUTES.stripeTestSession.path,

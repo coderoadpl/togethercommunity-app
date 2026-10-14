@@ -8,6 +8,7 @@ import {
   FormControlLabel,
   FormLabel,
   Link as MuiLink,
+  LinearProgress,
   OutlinedInput,
   Paper,
   Radio,
@@ -93,6 +94,24 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? ''), enabled: !statusPage && salesLinkSlug !== undefined });
   const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
+  const sessionId = new URLSearchParams(window.location.search).get('session_id');
+  const [statusDeadline] = useState(() => Date.now() + 180_000);
+  const [statusTimedOut, setStatusTimedOut] = useState(false);
+  const paymentStatus = useQuery({
+    ...actions.publicCheckoutSessionStatus(sessionId ?? ''),
+    enabled: (query) => checkoutStatus === 'success' && sessionId !== null &&
+      !statusTimedOut && query.state.data?.status !== 'paid',
+    refetchInterval: (query) => query.state.data?.status === 'paid' ||
+      statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
+    retry: false,
+  });
+  const paymentPaid = paymentStatus.data?.status === 'paid';
+
+  useEffect(() => {
+    if (checkoutStatus !== 'success' || sessionId === null || paymentPaid) return;
+    const timeout = window.setTimeout(() => setStatusTimedOut(true), Math.max(0, statusDeadline - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [checkoutStatus, paymentPaid, sessionId, statusDeadline]);
   const testSession = useMutation({
     ...actions.stripeTestSession,
     onSuccess: () => { void paymentConfig.refetch(); },
@@ -237,19 +256,22 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
+    const title = paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const eyebrow = paymentPaid
+      ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
+      : t.checkout.successEyebrow;
     return (
-      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.successEyebrow} footer={socialFooter}>
+      <FocusCard brand={<BrandMark size="compact" />} eyebrow={eyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
-          <CardTitle variant="h1">
-            {subscriptionSuccess ? t.checkout.subscriptionSuccessTitle : t.checkout.successTitle}
-          </CardTitle>
+          <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">
-            {testPurchase
-              ? t.checkout.testPurchaseBody
-              : subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody}
+            {paymentPaid
+              ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
+              : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>
-          <Button component={Link} to="/login" variant="contained" fullWidth>
+          {paymentPaid ? null : <LinearProgress aria-label={title} />}
+          <Button component={Link} to="/login" variant={paymentPaid ? 'contained' : 'text'} fullWidth>
             {t.checkout.goToLogin}
           </Button>
         </Stack>

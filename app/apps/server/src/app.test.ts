@@ -5917,6 +5917,97 @@ describe('single-tenant mode', () => {
   });
 });
 
+describe('public checkout session-status route', () => {
+  const order: Order = {
+    id: 'order-status', tenantId: acme.id, memberId: 'member-status', productId: 'acme-published',
+    priceId: null, kind: 'one_time', status: 'paid', mode: 'live', amountCents: 1000,
+    currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_live_paid123' },
+    couponId: null, discountCents: 0, createdAt: '2026-10-01T12:00:00.000Z',
+  };
+  const statusApp = (rows: Order[] = [order]) => {
+    const base = deps();
+    const findOrderByProviderObjectIds = vi.fn<AppDeps['paymentRefunds']['findOrderByProviderObjectIds']>(
+      async (tenantId, ids, mode) => rows.find((row) => row.tenantId === tenantId
+        && row.mode === mode && row.providerObjectIds.checkoutSession === ids.checkoutSession) ?? null,
+    );
+    return {
+      app: buildApp({ ...base, paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds } }),
+      findOrderByProviderObjectIds,
+    };
+  };
+  const path = (sessionId: string) => `${API_PATHS.publicCheckoutSessionStatus}?${new URLSearchParams({ session_id: sessionId })}`;
+
+  it.each(['paid', 'partially_refunded', 'refunded'] as const)('reports a %s order without buyer or order details', async (status) => {
+    const { app, findOrderByProviderObjectIds } = statusApp([{ ...order, status }]);
+    const response = await app.request(path('cs_live_paid123'), { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({ ok: true, data: { status: 'paid' } });
+    expect(findOrderByProviderObjectIds).toHaveBeenCalledExactlyOnceWith(acme.id, { checkoutSession: 'cs_live_paid123' }, 'live');
+  });
+
+  it('uses the tenant header and test-session mode', async () => {
+    const sessionId = 'cs_test_paid123';
+    const { app, findOrderByProviderObjectIds } = statusApp([
+      { ...order, mode: 'test', providerObjectIds: { checkoutSession: sessionId } },
+    ]);
+    const response = await app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toEqual({ ok: true, data: { status: 'paid' } });
+    expect(findOrderByProviderObjectIds).toHaveBeenCalledExactlyOnceWith(acme.id, { checkoutSession: sessionId }, 'test');
+  });
+
+  it.each([
+    ['pending order', { ...order, status: 'pending' }],
+    ['foreign tenant', { ...order, tenantId: globex.id }],
+    ['wrong mode', { ...order, mode: 'test' }],
+  ] as const)('returns the identical body for an unknown session and a %s', async (_case, row) => {
+    const { app } = statusApp([row]);
+    const request = (sessionId: string) => app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
+    const unknown = await request('cs_live_unknown');
+    const unresolved = await request('cs_live_paid123');
+    expect(unknown.status).toBe(200);
+    expect(unresolved.status).toBe(200);
+    expect(unknown.headers.get('cache-control')).toBe('no-store');
+    expect(unresolved.headers.get('cache-control')).toBe('no-store');
+    const unknownBody = await unknown.text();
+    expect(await unresolved.text()).toBe(unknownBody);
+    expect(JSON.parse(unknownBody)).toEqual({ ok: true, data: { status: 'pending' } });
+  });
+
+  it.each(['', 'cs_live_', 'cs_test_', 'cs_invalid_abc', 'cs_live_abc-def', `cs_live_${'a'.repeat(201)}`])(
+    'rejects a malformed session id with 400: %s', async (sessionId) => {
+      const { app, findOrderByProviderObjectIds } = statusApp();
+      const response = await app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(findOrderByProviderObjectIds).not.toHaveBeenCalled();
+    },
+  );
+
+  it('uses the public checkout rate limit and returns Retry-After when exhausted', async () => {
+    const claims: Parameters<AppDeps['rateLimitBuckets']['claim']>[0][] = [];
+    const app = buildApp(deps({
+      rateLimitBuckets: {
+        claim: async (input) => { claims.push(input); return false; },
+        purgeExpired: async () => 0,
+      },
+    }));
+    const response = await app.request(path('cs_live_paid123'), { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(claims.map((claim) => claim.scope)).toEqual(['public-write:ip']);
+  });
+
+  it('rejects a missing session id with 400', async () => {
+    const { app, findOrderByProviderObjectIds } = statusApp();
+    const response = await app.request(API_PATHS.publicCheckoutSessionStatus, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(findOrderByProviderObjectIds).not.toHaveBeenCalled();
+  });
+});
+
 describe('public payment-config route', () => {
   it('exposes the simulated-payments flag for a resolved tenant', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {

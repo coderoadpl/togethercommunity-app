@@ -853,6 +853,12 @@ publicCommand.command('payment-config').description('Show public payment configu
 
 const checkout = program.command('checkout').description('Public checkout');
 
+checkout.command('session-status').description('Show checkout payment confirmation')
+  .requiredOption('--session-id <id>')
+  .action(withInput(z.tuple([z.object({ sessionId: z.string() })]), async (ctx, [input]) => {
+    emit(await ctx.api.publicCheckoutSessionStatus(input.sessionId), ctx.json, (data) => data.status);
+  }));
+
 checkout
   .command('session')
   .description('Start a paid or free checkout')

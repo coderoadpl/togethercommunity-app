@@ -609,6 +609,32 @@ describe('survey transport', () => {
   });
 });
 
+it.each(['pending', 'paid'] as const)('requests public checkout status %s with an encoded session and abort signal', async (status) => {
+  const controller = new AbortController();
+  const fetchImpl: typeof fetch = async (input, init) => {
+    expect(input).toBe('https://api.example.test/api/public/checkout/session-status?session_id=cs_test_one%26other%3Dvalue');
+    expect(init?.method).toBe('GET');
+    expect(init?.body).toBeNull();
+    expect(init?.signal).toBe(controller.signal);
+    return jsonResponse({ ok: true, data: { status } });
+  };
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+  await expect(client.publicCheckoutSessionStatus('cs_test_one&other=value', controller.signal))
+    .resolves.toEqual(ok({ status }));
+});
+
+it('rejects checkout status responses containing extra data', async () => {
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => jsonResponse({ ok: true, data: { status: 'paid', orderId: 'order-1' } }),
+  });
+
+  await expect(client.publicCheckoutSessionStatus('cs_test_one')).resolves.toMatchObject({
+    ok: false, error: { code: 'internal' },
+  });
+});
+
 it('starts direct sales-link checkout with an encoded slug and empty body', async () => {
   const fetchImpl: typeof fetch = async (input, init) => {
     expect(input).toBe('https://api.example.test/api/public/sales-links/offer%2Fone/checkout');

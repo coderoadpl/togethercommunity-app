@@ -46,7 +46,12 @@ const renderCheckout = (productRef: string) => {
 };
 
 describe('CheckoutPage', () => {
-  beforeEach(() => window.history.replaceState(null, '', '/checkout/course-1'));
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/checkout/course-1');
+    server.use(http.get('/api/public/checkout/session-status', () =>
+      HttpResponse.json({ ok: true, data: { status: 'paid' } }),
+    ));
+  });
 
   it('loads the public offer and completes the simulated purchase flow', async () => {
     server.use(
@@ -622,7 +627,7 @@ describe('CheckoutPage', () => {
   });
 
   it('renders webhook-driven success guidance without fulfilling from the page', async () => {
-    window.history.replaceState(null, '', '/checkout/course-1?status=success&session_id=cs_1');
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&session_id=cs_test_example');
     renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: en.checkout.successTitle })).toBeInTheDocument();
@@ -634,11 +639,12 @@ describe('CheckoutPage', () => {
     window.history.replaceState(
       null,
       '',
-      '/checkout/course-1?status=success&purchase_kind=subscription&session_id=cs_1',
+      '/checkout/course-1?status=success&purchase_kind=subscription&session_id=cs_test_example',
     );
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('heading', { name: en.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.checkout.successTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.subscriptionSuccessEyebrow)).toBeInTheDocument();
     expect(screen.getByText(en.checkout.subscriptionSuccessBody)).toBeInTheDocument();
     expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
   });
@@ -717,16 +723,16 @@ describe('CheckoutPage', () => {
   });
 
   it('keeps the live success copy when a buyer opens a forged test-purchase return URL', async () => {
-    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_1');
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_test_example');
     renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: en.checkout.successTitle })).toBeInTheDocument();
     expect(screen.getByText(en.checkout.successBody)).toBeInTheDocument();
-    expect(screen.queryByText(en.checkout.testPurchaseBody)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.testPurchase)).not.toBeInTheDocument();
   });
 
   it('marks the return page as a test purchase for staff of the same tenant', async () => {
-    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_1');
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&test_purchase=1&session_id=cs_test_example');
     server.use(
       http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
         stripeConfigured: true, simulatedPaymentsEnabled: false,
@@ -736,8 +742,7 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     expect(await screen.findByText(en.checkout.testPurchase)).toBeInTheDocument();
-    expect(screen.getByText(en.checkout.testPurchaseBody)).toBeInTheDocument();
-    expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
+    expect(await screen.findByText(en.checkout.successBody)).toBeInTheDocument();
   });
 
   it('renders an unavailable offer as a not-found state with an escape action', async () => {

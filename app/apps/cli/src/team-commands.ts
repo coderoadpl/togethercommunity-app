@@ -21,13 +21,13 @@ export const registerTeamCommands = (program: Command, context: () => Result<Tea
     if (!input.success) { emit(err(validation('Invalid team command options', input.error.flatten())), ctx.value.json, () => ''); return; }
     emit(await action(ctx.value, input.data), ctx.value.json, (value) => JSON.stringify(value, null, 2));
   };
-  team.command('list').description('List the owner and administrators').action(
+  team.command('list').description('List the owner, administrators, and pending invitations').action(
     run(z.tuple([z.object({})]), (ctx) => ctx.api.listTenantTeam()),
   );
-  team.command('add <email>').description('Add an administrator and send a sign-in link').action(
+  team.command('add <email>').description('Invite an administrator with a sign-in link').action(
     run(z.tuple([emailSchema, z.object({})]), (ctx, [email]) => ctx.api.addTenantAdmin({ email })),
   );
-  team.command('remove <email>').description('Remove an administrator').action(
+  team.command('remove <email>').description('Remove an administrator or revoke an invitation').action(
     run(z.tuple([emailSchema, z.object({})]), async (ctx, [email]) => {
       const result = await ctx.api.listTenantTeam();
       if (!result.ok) return result;

@@ -1,4 +1,4 @@
-import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema } from '#core/contract/index.js';
+import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import { consumerSalesSummarySchema } from '#core/contract/index.js';
@@ -2628,7 +2628,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   listTenantTeam: (signal?: AbortSignal) =>
     request(options, API_ROUTES.tenantTeam.method, API_ROUTES.tenantTeam.path, tenantTeamOutputSchema, undefined, signal),
   addTenantAdmin: (input: AddTenantAdminInput, signal?: AbortSignal) =>
-    request(options, API_ROUTES.tenantTeamAdd.method, API_ROUTES.tenantTeamAdd.path, tenantTeamMutationOutputSchema, input, signal),
+    request(options, API_ROUTES.tenantTeamAdd.method, API_ROUTES.tenantTeamAdd.path, tenantTeamInvitationOutputSchema, input, signal),
   removeTenantAdmin: (input: RemoveTenantAdminInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.tenantTeamRemove.method, API_ROUTES.tenantTeamRemove.path, tenantTeamMutationOutputSchema, input, signal),
   getTenantRedirects: (input: TenantRedirectsQueryInput = {}, signal?: AbortSignal) => {

@@ -27,7 +27,7 @@ import { resolveTenantOrigin, type TenantOriginDeps } from '../tenant-url.js';
 
 export interface TenantTeamDeps extends TenantOriginDeps {
   team: TenantTeamRepository;
-  authPort: Pick<AuthPort, 'ensureUser' | 'findUserByEmail' | 'requestMagicLink'>;
+  authPort: Pick<AuthPort, 'ensureUser' | 'requestMagicLink'>;
   tenants: Pick<TenantRepository, 'findSettings'>;
   ids: IdGenerator;
   clock: Clock;
@@ -46,27 +46,22 @@ export const addTenantAdmin = async (
   ctx: Ctx,
   input: AddTenantAdminInput,
   deps: TenantTeamDeps,
-): Promise<Result<{ userId: string }, AppError>> => {
+): Promise<Result<{ status: 'invitation_sent' }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
   const parsed = addTenantAdminInputSchema.safeParse(input);
-  if (!parsed.success) return err(validation('Invalid administrator email', {
-    ...parsed.error.flatten(), reason: 'invalid_email',
-  }));
+  if (!parsed.success) return err(validation('Invalid administrator email', parsed.error.flatten()));
   const { userId } = await deps.authPort.ensureUser(parsed.data.email);
-  const account = await deps.authPort.findUserByEmail(parsed.data.email);
-  const verified = account?.userId === userId && account.emailVerified;
-  const added = verified && await deps.team.addAdmin(tenant.value, userId, deps.ids.nextId(), {
+  await deps.team.inviteAdmin(tenant.value, userId, parsed.data.email, deps.ids.nextId(), {
     id: deps.ids.nextId(),
     tenantId: tenant.value,
-    kind: 'team.admin_added',
+    kind: 'team.admin_invited',
     actorUserId: ctx.identity.userId,
     actorEmail: ctx.identity.email,
     subjectMemberId: null,
     reason: userId,
     at: deps.clock.nowIso(),
   });
-  if (verified && !added) return ok({ userId });
   const settings = await deps.tenants.findSettings(tenant.value);
   const baseUrl = `${await resolveTenantOrigin({ id: tenant.value, slug: ctx.identity.tenantSlug }, deps)}/`;
   await deps.authPort.requestMagicLink({
@@ -78,12 +73,7 @@ export const addTenantAdmin = async (
     baseUrl,
     ...(settings === null ? {} : { branding: emailBrandingFrom(settings, baseUrl) }),
   });
-  if (!verified) {
-    return err(validation('A sign-in link has been sent. Add this administrator again after they verify their email.', {
-      reason: 'verification_pending',
-    }));
-  }
-  return ok({ userId });
+  return ok({ status: 'invitation_sent' });
 };
 
 export const removeTenantAdmin = async (
@@ -101,10 +91,11 @@ export const removeTenantAdmin = async (
   const member = (await deps.team.list(tenant.value)).find((row) => row.userId === parsed.data.userId);
   if (member === undefined) return err(notFound('Team member not found'));
   if (member.role === 'owner') return err(forbidden('An owner cannot be removed from the team'));
-  const removed = await deps.team.removeAdmin(tenant.value, parsed.data.userId, {
+  const remove = member.status === 'invited' ? deps.team.revokeInvitation : deps.team.removeAdmin;
+  const removed = await remove(tenant.value, parsed.data.userId, {
     id: deps.ids.nextId(),
     tenantId: tenant.value,
-    kind: 'team.admin_removed',
+    kind: member.status === 'invited' ? 'team.invitation_revoked' : 'team.admin_removed',
     actorUserId: ctx.identity.userId,
     actorEmail: ctx.identity.email,
     subjectMemberId: null,

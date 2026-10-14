@@ -8,6 +8,8 @@ export const tenantTeamMemberSchema = z.object({
   email: z.string().email(),
   name: z.string().nullable(),
   role: staffRoleSchema,
+  status: z.enum(['invited', 'active']),
+  invitedAt: z.string().datetime().optional(),
 });
 
 export type TenantTeamMember = z.infer<typeof tenantTeamMemberSchema>;

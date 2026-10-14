@@ -1760,6 +1760,9 @@ export const en: Messages = {
     auditLogHeading: 'Team activity log',
     auditLogEmpty: 'No recorded activity yet.',
     auditLogKind: {
+      'team.admin_invited': 'Administrator invited',
+      'team.admin_activated': 'Administrator activated',
+      'team.invitation_revoked': 'Invitation revoked',
       'team.admin_added': 'Administrator added',
       'team.admin_removed': 'Administrator removed',
       impersonation_started: 'Member view started',
@@ -2586,8 +2589,9 @@ export const en: Messages = {
     saved: 'Saved.',
   },
   tenantTeam: {
-    verificationPending: 'A sign-in link has been sent. Add this administrator again after they verify their email.',
-    invalidEmail: 'Invalid administrator email',
+    invitationSent: 'Invitation sent',
+    revokeInvitation: 'Revoke invitation',
+    invitationSuccess: 'We sent an invitation to that address. The administrator appears in the list after signing in.',
     heading: 'Team',
     addAdministrator: 'Add administrator',
     helper: 'The person receives a sign-in e-mail and sees Studio after signing in. An administrator can do everything except platform settings, secrets, API keys and the integration test.',

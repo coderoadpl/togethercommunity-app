@@ -10,15 +10,19 @@ public copy and must never hold private account or member information. Saving
 uses the tenant settings mutation and refreshes the public offer cache.
 
 Owners manage administrators in **Studio → Settings → Security → Team**. Adding an
-e-mail address creates an account when needed and sends a sign-in link. The
-administrator role is granted only after the address has been verified. For an
-unverified address, the owner is asked to add it again after the recipient signs
-in through the link; no administrator access is granted before that retry.
-Administrators can use Studio except platform
-settings, secrets, API keys and the integration test. Adding an existing team
-member is idempotent, never downgrades an owner and does not resend the e-mail.
-Owners cannot remove themselves
-or another owner; removing an administrator requires confirmation.
+e-mail address creates a pending invitation and sends a sign-in link. Every valid
+address receives the same opaque confirmation, regardless of whether an account
+already exists or has a verified address. Pending invitations appear as
+**Invitation sent**, with a **Revoke invitation** action. Completing sign-in through
+the workspace's e-mail activates the administrator role automatically; no owner
+retry is needed. Unverified accounts never receive administrator access before
+proving control of the mailbox.
+
+Administrators can use Studio except platform settings, secrets, API keys and the
+integration test. Adding an existing team member is idempotent and never
+downgrades an owner. Owners cannot remove themselves or another owner; removing
+an administrator or revoking an invitation requires confirmation. Invitation,
+activation and revocation events are recorded in the tenant audit history.
 
 The owner-only CLI commands are `team list`, `team add <email>` and
 `team remove <email>`. Team changes are recorded in the tenant audit history.

@@ -27,9 +27,9 @@ const identity = (staffRole: StaffRole | null = 'owner'): Identity => ({
 
 const harness = () => {
   const members: TenantTeamMember[] = [
-    { userId: 'owner-1', email: 'owner@acme.test', name: 'Owner', role: 'owner' },
-    { userId: 'admin-1', email: 'admin@acme.test', name: null, role: 'admin' },
-    { userId: 'owner-2', email: 'second-owner@acme.test', name: 'Second owner', role: 'owner' },
+    { userId: 'owner-1', email: 'owner@acme.test', name: 'Owner', role: 'owner', status: 'active' },
+    { userId: 'admin-1', email: 'admin@acme.test', name: null, role: 'admin', status: 'active' },
+    { userId: 'owner-2', email: 'second-owner@acme.test', name: 'Second owner', role: 'owner', status: 'active' },
   ];
   const audit: TenantAuditEventInput[] = [];
   const ensured: string[] = [];
@@ -37,9 +37,17 @@ const harness = () => {
   const deps: TenantTeamDeps = {
     team: {
       list: vi.fn(async () => members),
-      addAdmin: vi.fn(async (_tenantId, userId, _id, event) => {
+      inviteAdmin: vi.fn(async (_tenantId, userId, email, _id, event) => {
         if (members.some((member) => member.userId === userId)) return false;
-        members.push({ userId, email: ensured.at(-1) ?? '', name: null, role: 'admin' });
+        members.push({ userId, email, name: null, role: 'admin', status: 'invited' });
+        audit.push(event);
+        return true;
+      }),
+      activateInvitation: vi.fn(async () => false),
+      revokeInvitation: vi.fn(async (_tenantId, userId, event) => {
+        const index = members.findIndex((member) => member.userId === userId && member.status === 'invited');
+        if (index === -1) return false;
+        members.splice(index, 1);
         audit.push(event);
         return true;
       }),
@@ -52,10 +60,6 @@ const harness = () => {
       }),
     },
     authPort: {
-      findUserByEmail: async (email) => ({
-        userId: members.find((member) => member.email === email)?.userId ?? 'new-user',
-        emailVerified: true,
-      }),
       ensureUser: async (email) => {
         ensured.push(email);
         const existing = members.find((member) => member.email === email);
@@ -81,15 +85,15 @@ describe('tenant team', () => {
     expect(h.deps.team.list).toHaveBeenCalledWith('tenant-1');
   });
 
-  it('normalizes the email, grants admin, audits, and queues the existing sign-in email', async () => {
+  it('normalizes the email, records an invitation, audits, and queues the sign-in email', async () => {
     const h = harness();
     const result = await addTenantAdmin({ identity: identity() }, { email: '  NEW@ACME.TEST  ' }, h.deps);
-    expect(result).toEqual({ ok: true, value: { userId: 'new-user' } });
+    expect(result).toEqual({ ok: true, value: { status: 'invitation_sent' } });
     expect(h.ensured).toEqual(['new@acme.test']);
-    expect(h.members).toContainEqual({ userId: 'new-user', email: 'new@acme.test', name: null, role: 'admin' });
-    expect(h.deps.team.addAdmin).toHaveBeenCalledWith('tenant-1', 'new-user', 'id-1', expect.objectContaining({ kind: 'team.admin_added' }));
+    expect(h.members).toContainEqual({ userId: 'new-user', email: 'new@acme.test', name: null, role: 'admin', status: 'invited' });
+    expect(h.deps.team.inviteAdmin).toHaveBeenCalledWith('tenant-1', 'new-user', 'new@acme.test', 'id-1', expect.objectContaining({ kind: 'team.admin_invited' }));
     expect(h.audit).toEqual([expect.objectContaining({
-      tenantId: 'tenant-1', kind: 'team.admin_added', actorUserId: 'owner-1', reason: 'new-user',
+      tenantId: 'tenant-1', kind: 'team.admin_invited', actorUserId: 'owner-1', reason: 'new-user',
     })]);
     expect(h.requestMagicLink).toHaveBeenCalledWith({
       email: 'new@acme.test',
@@ -119,35 +123,33 @@ describe('tenant team', () => {
     expect((await addTenantAdmin({ identity: identity() }, { email }, h.deps)).ok).toBe(true);
     expect(h.members).toEqual(original);
     expect(h.audit).toEqual([]);
-    expect(h.requestMagicLink).not.toHaveBeenCalled();
+    expect(h.requestMagicLink).toHaveBeenCalledTimes(2);
   });
 
-  it.each([false, true])('withholds administrator access until mailbox verification (created: %s)', async (created) => {
-    const h = harness();
-    h.deps.authPort.ensureUser = async () => ({ userId: 'unverified-password-user', created });
-    h.deps.authPort.findUserByEmail = async () => ({ userId: 'unverified-password-user', emailVerified: false });
-
-    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } } });
-    expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
-    expect(h.members.some((member) => member.userId === 'unverified-password-user')).toBe(false);
-    expect(h.audit).toEqual([]);
-    expect(h.requestMagicLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'invitee@acme.test' }));
-
-    h.deps.authPort.findUserByEmail = async () => ({ userId: 'unverified-password-user', emailVerified: true });
-    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
-      .toEqual({ ok: true, value: { userId: 'unverified-password-user' } });
-    expect(h.deps.team.addAdmin).toHaveBeenCalledOnce();
-    expect(h.audit).toHaveLength(1);
+  it('returns byte-identical opaque results for verified, unverified, and unknown accounts', async () => {
+    const responses: string[] = [];
+    for (const account of ['verified', 'unverified', 'unknown']) {
+      const h = harness();
+      h.deps.authPort.ensureUser = async () => ({ userId: `${account}-user`, created: account === 'unknown' });
+      responses.push(JSON.stringify(await addTenantAdmin({ identity: identity() }, { email: `${account}@acme.test` }, h.deps)));
+      expect(h.members.at(-1)).toMatchObject({ userId: `${account}-user`, status: 'invited' });
+      expect(h.audit).toEqual([expect.objectContaining({ kind: 'team.admin_invited' })]);
+      expect(h.requestMagicLink).toHaveBeenCalledOnce();
+    }
+    expect(new Set(responses)).toEqual(new Set([JSON.stringify({ ok: true, value: { status: 'invitation_sent' } })]));
   });
 
-  it.each([null, { userId: 'another-user', emailVerified: true }])('refuses an account that disappeared or changed after provisioning: %j', async (account) => {
+  it('revokes a pending invitation and audits the revocation', async () => {
     const h = harness();
-    h.deps.authPort.findUserByEmail = async () => account;
-    expect(await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } } });
-    expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
-    expect(h.audit).toEqual([]);
+    await addTenantAdmin({ identity: identity() }, { email: 'invitee@acme.test' }, h.deps);
+    expect(await removeTenantAdmin({ identity: identity() }, { userId: 'new-user' }, h.deps))
+      .toEqual({ ok: true, value: { userId: 'new-user' } });
+    expect(h.members.some((member) => member.userId === 'new-user')).toBe(false);
+    expect(h.deps.team.removeAdmin).not.toHaveBeenCalled();
+    expect(h.audit).toEqual([
+      expect.objectContaining({ kind: 'team.admin_invited' }),
+      expect.objectContaining({ kind: 'team.invitation_revoked' }),
+    ]);
   });
 
   it('allows an owner to remove an administrator and records the audit event', async () => {
@@ -179,7 +181,7 @@ describe('tenant team', () => {
     ]);
     for (const result of results) expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(h.deps.team.list).not.toHaveBeenCalled();
-    expect(h.deps.team.addAdmin).not.toHaveBeenCalled();
+    expect(h.deps.team.inviteAdmin).not.toHaveBeenCalled();
     expect(h.deps.team.removeAdmin).not.toHaveBeenCalled();
     expect(h.ensured).toEqual([]);
     expect(h.audit).toEqual([]);
@@ -189,7 +191,7 @@ describe('tenant team', () => {
   it('rejects malformed email before creating an auth user', async () => {
     const h = harness();
     expect(await addTenantAdmin({ identity: identity() }, { email: 'invalid' }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation', details: { reason: 'invalid_email' } } });
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.ensured).toEqual([]);
   });
 

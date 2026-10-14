@@ -1780,6 +1780,9 @@ export const pl: Messages = {
     auditLogHeading: 'Dziennik działań zespołu',
     auditLogEmpty: 'Brak zapisanych działań.',
     auditLogKind: {
+      'team.admin_invited': 'Zaproszenie wysłane',
+      'team.admin_activated': 'Administrator',
+      'team.invitation_revoked': 'Cofnij zaproszenie',
       'team.admin_added': 'Dodanie administratora',
       'team.admin_removed': 'Usunięcie administratora',
       impersonation_started: 'Wejście w podgląd uczestnika',
@@ -2609,8 +2612,9 @@ export const pl: Messages = {
     saved: 'Zapisano.',
   },
   tenantTeam: {
-    verificationPending: 'Wysłaliśmy link do logowania. Dodaj tego administratora ponownie, gdy potwierdzi adres e-mail.',
-    invalidEmail: 'Nieprawidłowy adres e-mail administratora',
+    invitationSent: 'Zaproszenie wysłane',
+    revokeInvitation: 'Cofnij zaproszenie',
+    invitationSuccess: 'Wysłaliśmy zaproszenie na podany adres. Administrator pojawi się na liście po zalogowaniu.',
     heading: 'Zespół',
     addAdministrator: 'Dodaj administratora',
     helper: 'Osoba dostanie e-mail z linkiem do logowania i zobaczy Studio po zalogowaniu. Administrator ma dostęp do wszystkiego poza ustawieniami platformy, sekretami, kluczami API i testem integracji.',

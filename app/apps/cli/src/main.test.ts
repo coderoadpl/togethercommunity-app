@@ -1455,7 +1455,7 @@ describe('team CLI', () => {
     h.listTenantTeam.mockReset().mockResolvedValue(ok({
       members: [{ userId: 'admin-user', email: 'Admin@example.test', name: null, role: 'admin' }],
     }));
-    h.addTenantAdmin.mockReset().mockResolvedValue(ok({ userId: 'admin-user' }));
+    h.addTenantAdmin.mockReset().mockResolvedValue(ok({ status: 'invitation_sent' }));
     h.removeTenantAdmin.mockReset().mockResolvedValue(ok({ userId: 'admin-user' }));
   });
 
@@ -1468,6 +1468,7 @@ describe('team CLI', () => {
   it('normalizes an address before adding an administrator', async () => {
     await run('--json', 'team', 'add', ' Admin@Example.test ');
     expect(h.addTenantAdmin).toHaveBeenCalledWith({ email: 'admin@example.test' });
+    expect(soleJson()).toEqual({ ok: true, data: { status: 'invitation_sent' } });
   });
 
   it('resolves an address case-insensitively before removing its user id', async () => {

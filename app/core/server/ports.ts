@@ -2521,6 +2521,8 @@ export interface LessonEditionTransaction {
 
 export interface TenantTeamRepository {
   list(tenantId: string): Promise<TenantTeamMember[]>;
-  addAdmin(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  inviteAdmin(tenantId: string, userId: string, email: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
   removeAdmin(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
 }

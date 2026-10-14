@@ -1,6 +1,6 @@
 {
-  "hash": "47fa6e670f703a83332b215caa0d755d6f4af042bf8a8419f92600e761334410",
-  "shortId": "47fa6e670f70",
+  "hash": "df79b0a0d3e3261f74909d2ae15c3b1fa994840736774887e36c9f9559043b1d",
+  "shortId": "df79b0a0d3e3",
   "schema": {
     "constraints": [
       {
@@ -885,6 +885,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "tenant_admin_invitations_tenant_id_fkey",
+        "table": "tenant_admin_invitations"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "tenant_admins_tenant_id_tenants_id_fk",
         "table": "tenant_admins"
       },
@@ -1497,6 +1502,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "surveys_pkey",
         "table": "surveys"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "tenant_admin_invitations_pkey",
+        "table": "tenant_admin_invitations"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2796,6 +2806,11 @@
         "definition": "CREATE UNIQUE INDEX telemetry_outbox_event_unique ON telemetry_outbox USING btree (tenant_id, event_id)",
         "name": "telemetry_outbox_event_unique",
         "table": "telemetry_outbox"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX tenant_admin_invitations_tenant_user_uidx ON tenant_admin_invitations USING btree (tenant_id, user_id)",
+        "name": "tenant_admin_invitations_tenant_user_uidx",
+        "table": "tenant_admin_invitations"
       },
       {
         "definition": "CREATE UNIQUE INDEX tenant_admins_tenant_user_uidx ON tenant_admins USING btree (tenant_id, user_id)",
@@ -12851,6 +12866,51 @@
           }
         ],
         "name": "member_erasure_requests"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "invited_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "tenant_admin_invitations"
       },
       {
         "columns": [

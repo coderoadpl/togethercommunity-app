@@ -373,7 +373,7 @@ const deps = (input: {
       endLapsed: async () => 0,
       listLapsedTenantIds: async () => [],
     },
-    team: { list: async () => [], addAdmin: async () => true, removeAdmin: async () => true },
+    team: { list: async () => [], inviteAdmin: async () => true, removeAdmin: async () => true, revokeInvitation: async () => true, activateInvitation: async () => true },
     auditEvents: {
       list: async () => ({ events: [], nextCursor: null }),
       record: async () => undefined,
@@ -10104,9 +10104,9 @@ describe('tenant team HTTP surface', () => {
 
   it.each(['staff', 'member'] as const)('refuses every team operation for %s', async (scope) => {
     const list = vi.fn(async () => []);
-    const addAdmin = vi.fn(async () => true);
+    const inviteAdmin = vi.fn(async () => true);
     const removeAdmin = vi.fn(async () => true);
-    const app = scopedApp(scope, { overrides: { team: { list, addAdmin, removeAdmin } } });
+    const app = scopedApp(scope, { overrides: { team: { ...deps().team, list, inviteAdmin, removeAdmin } } });
     for (const [path, method, body] of [
       [API_PATHS.tenantTeam, 'GET', undefined],
       [API_PATHS.tenantTeamAdd, 'POST', JSON.stringify({ email: 'admin@example.test' })],
@@ -10116,18 +10116,18 @@ describe('tenant team HTTP surface', () => {
       expect(response.status).toBe(403);
     }
     expect(list).not.toHaveBeenCalled();
-    expect(addAdmin).not.toHaveBeenCalled();
+    expect(inviteAdmin).not.toHaveBeenCalled();
     expect(removeAdmin).not.toHaveBeenCalled();
   });
 
   it('lets an owner list, add, and remove with audit and mail delivery', async () => {
-    const members = [{ userId: 'admin-1', email: 'admin@example.test', name: null, role: 'admin' as const }];
+    const members = [{ userId: 'admin-1', email: 'admin@example.test', name: null, role: 'admin' as const, status: 'active' as const }];
     const base = deps();
     const requestMagicLink = vi.fn(async () => undefined);
     const audits: TenantAuditEventInput[] = [];
     const app = scopedApp('owner', { overrides: {
-      team: { list: async () => members,
-        addAdmin: async (_tenantId, _userId, _id, audit) => { audits.push(audit); return true; },
+      team: { ...base.team, list: async () => members,
+        inviteAdmin: async (_tenantId, _userId, _email, _id, audit) => { audits.push(audit); return true; },
         removeAdmin: async (_tenantId, _userId, audit) => { audits.push(audit); return true; } },
       authPort: { ...base.authPort,
         getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
@@ -10139,12 +10139,12 @@ describe('tenant team HTTP surface', () => {
     expect(await listed.json()).toMatchObject({ data: { members } });
     const added = await app.request(API_PATHS.tenantTeamAdd, { method: 'POST', headers, body: JSON.stringify({ email: ' ADMIN@EXAMPLE.TEST ' }) });
     expect(added.status).toBe(200);
-    expect(await added.json()).toMatchObject({ data: { userId: 'admin-1' } });
+    expect(await added.json()).toMatchObject({ data: { status: 'invitation_sent' } });
     expect(requestMagicLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'admin@example.test', tenantId: acme.id }));
     const removed = await app.request(API_PATHS.tenantTeamRemove, { method: 'POST', headers, body: JSON.stringify({ userId: 'admin-1' }) });
     expect(removed.status).toBe(200);
     expect(audits).toEqual([
-      expect.objectContaining({ kind: 'team.admin_added', tenantId: acme.id }),
+      expect.objectContaining({ kind: 'team.admin_invited', tenantId: acme.id }),
       expect.objectContaining({ kind: 'team.admin_removed', tenantId: acme.id }),
     ]);
   });
@@ -10153,9 +10153,9 @@ describe('tenant team HTTP surface', () => {
     const base = deps();
     const ensureUser = vi.fn(base.authPort.ensureUser);
     const requestMagicLink = vi.fn(base.authPort.requestMagicLink);
-    const addAdmin = vi.fn(async () => true);
+    const inviteAdmin = vi.fn(async () => true);
     const app = scopedApp('owner', { overrides: {
-      team: { ...base.team, addAdmin },
+      team: { ...base.team, inviteAdmin },
       authPort: { ...base.authPort,
         getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
         ensureUser, requestMagicLink },
@@ -10167,28 +10167,31 @@ describe('tenant team HTTP surface', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(ensureUser.mock.calls).toEqual([['user@acme.test']]);
     expect(requestMagicLink).not.toHaveBeenCalled();
-    expect(addAdmin).not.toHaveBeenCalled();
+    expect(inviteAdmin).not.toHaveBeenCalled();
   });
 
-  it('returns a verification error without granting an unverified account administrator access', async () => {
-    const base = deps();
-    const addAdmin = vi.fn(async () => true);
-    const requestMagicLink = vi.fn(async () => undefined);
-    const app = scopedApp('owner', { overrides: {
-      team: { ...base.team, addAdmin },
-      authPort: { ...base.authPort,
-        getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
-        ensureUser: async () => ({ userId: 'unverified-user', created: false }),
-        findUserByEmail: async () => ({ userId: 'unverified-user', emailVerified: false }), requestMagicLink },
-    } });
-    const response = await app.request(API_PATHS.tenantTeamAdd, {
-      method: 'POST', headers, body: JSON.stringify({ email: 'invitee@example.test' }),
-    });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      ok: false, error: { code: 'validation', details: { reason: 'verification_pending' } },
-    });
-    expect(addAdmin).not.toHaveBeenCalled();
-    expect(requestMagicLink).toHaveBeenCalledOnce();
+  it('returns byte-identical responses for verified, unverified, and unknown addresses', async () => {
+    const responses: string[] = [];
+    for (const state of ['verified', 'unverified', 'unknown']) {
+      const base = deps();
+      const inviteAdmin = vi.fn(async () => true);
+      const requestMagicLink = vi.fn(async () => undefined);
+      const app = scopedApp('owner', { overrides: {
+        team: { ...base.team, inviteAdmin },
+        authPort: { ...base.authPort,
+          getAuthenticatedUser: async () => ({ sessionId: 'session-1', userId: 'user-1', email: 'user@acme.test', name: 'User', emailVerified: true, image: null }),
+          ensureUser: async () => ({ userId: `${state}-user`, created: state === 'unknown' }),
+          findUserByEmail: async () => state === 'unknown' ? null : ({ userId: `${state}-user`, emailVerified: state === 'verified' }),
+          requestMagicLink },
+      } });
+      const response = await app.request(API_PATHS.tenantTeamAdd, {
+        method: 'POST', headers, body: JSON.stringify({ email: `${state}@example.test` }),
+      });
+      expect(response.status).toBe(200);
+      responses.push(await response.text());
+      expect(inviteAdmin).toHaveBeenCalledOnce();
+      expect(requestMagicLink).toHaveBeenCalledOnce();
+    }
+    expect(new Set(responses)).toEqual(new Set([JSON.stringify({ ok: true, data: { status: 'invitation_sent' } })]));
   });
 });

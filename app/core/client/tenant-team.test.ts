@@ -5,13 +5,13 @@ import { createApiClient } from './http.js';
 describe('tenant team client', () => {
   it('uses the team routes and validates their envelopes', async () => {
     const requests: Array<{ url: string; method: string | undefined; body: BodyInit | null | undefined }> = [];
-    const members = [{ userId: 'owner-1', email: 'owner@example.test', name: null, role: 'owner' }];
+    const members = [{ userId: 'owner-1', email: 'owner@example.test', name: null, role: 'owner', status: 'active' }];
     const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
       requests.push({ url: String(url), method: init?.method, body: init?.body });
-      return Response.json({ ok: true, data: init?.method === 'GET' ? { members } : { userId: 'admin-1' } });
+      return Response.json({ ok: true, data: init?.method === 'GET' ? { members } : String(url).endsWith('/remove') ? { userId: 'admin-1' } : { status: 'invitation_sent' } });
     } });
     expect(await api.listTenantTeam()).toEqual({ ok: true, value: { members } });
-    expect(await api.addTenantAdmin({ email: 'admin@example.test' })).toEqual({ ok: true, value: { userId: 'admin-1' } });
+    expect(await api.addTenantAdmin({ email: 'admin@example.test' })).toEqual({ ok: true, value: { status: 'invitation_sent' } });
     expect(await api.removeTenantAdmin({ userId: 'admin-1' })).toEqual({ ok: true, value: { userId: 'admin-1' } });
     expect(requests).toEqual([
       { url: 'http://localhost:48730/api/tenant/team', method: 'GET', body: null },

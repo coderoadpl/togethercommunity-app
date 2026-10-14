@@ -1456,6 +1456,7 @@ export const tenantRoutingOutputSchema = z.object({
 export const tenantTeamOutputSchema = z.object({ members: z.array(tenantTeamMemberSchema) });
 export const tenantTeamAddSchema = addTenantAdminInputSchema;
 export const tenantTeamRemoveSchema = removeTenantAdminInputSchema;
+export const tenantTeamInvitationOutputSchema = z.object({ status: z.literal('invitation_sent') });
 export const tenantTeamMutationOutputSchema = z.object({ userId: z.string().min(1) });
 
 export const tenantRedirectsOutputSchema = z.object({

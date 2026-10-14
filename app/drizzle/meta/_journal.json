@@ -1023,6 +1023,13 @@
       "when": 1790964000017,
       "tag": "0145_order_paid_at",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1790964000018,
+      "tag": "0146_tenant_admin_invitations",
+      "breakpoints": true
     }
   ]
 }

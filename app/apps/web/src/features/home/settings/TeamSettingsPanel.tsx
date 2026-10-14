@@ -10,7 +10,7 @@ import type { TenantTeamMember } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { useToastOutcome } from '../../../components/ui/Toast.js';
-import { localizePanelError, localizeTenantTeamAddError, useTranslations } from '../../../i18n/index.js';
+import { localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { usePanelContext } from '../panel-context.js';
 
 export const TeamSettingsPanel = () => {
@@ -34,8 +34,8 @@ export const TeamSettingsPanel = () => {
       await queryClient.invalidateQueries(actions.tenantTeamInvalidates());
     },
   });
-  useToastOutcome(add.isSuccess, t.common.saved,
-    add.error === null ? null : localizeTenantTeamAddError(add.error, t));
+  useToastOutcome(add.isSuccess, t.tenantTeam.invitationSuccess,
+    add.error === null ? null : localizePanelError(add.error, t));
   useToastOutcome(remove.isSuccess, t.common.saved, remove.error === null ? null : localizePanelError(remove.error, t));
   const pending = add.isPending || remove.isPending;
 
@@ -60,8 +60,8 @@ export const TeamSettingsPanel = () => {
                     </TableCell>
                     <TableCell align="right" sx={{ width: '9rem' }}>
                       <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-end' }}>
-                        <Chip size="small" label={member.role === 'owner' ? t.tenantTeam.owner : t.tenantTeam.administrator} />
-                        {member.role === 'admin' && !isCurrentUser ? <Button color="error" disabled={pending} onClick={() => setRemoving(member)}>{t.common.remove}</Button> : null}
+                        <Chip size="small" label={member.status === 'invited' ? t.tenantTeam.invitationSent : member.role === 'owner' ? t.tenantTeam.owner : t.tenantTeam.administrator} />
+                        {member.role === 'admin' && !isCurrentUser ? <Button color="error" disabled={pending} onClick={() => setRemoving(member)}>{member.status === 'invited' ? t.tenantTeam.revokeInvitation : t.common.remove}</Button> : null}
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -83,8 +83,8 @@ export const TeamSettingsPanel = () => {
         <Button type="submit" variant="contained" disabled={pending || email.trim().length === 0} sx={{ alignSelf: 'flex-start' }}>{t.common.add}</Button>
       </Stack>
       {removing ? (
-        <ConfirmDialog open title={t.tenantTeam.removeConfirm} body={<Typography>{removing.email}</Typography>}
-          confirmLabel={t.common.remove} cancelLabel={t.common.cancel} pending={remove.isPending}
+        <ConfirmDialog open title={removing.status === 'invited' ? t.tenantTeam.revokeInvitation : t.tenantTeam.removeConfirm} body={<Typography>{removing.email}</Typography>}
+          confirmLabel={removing.status === 'invited' ? t.tenantTeam.revokeInvitation : t.common.remove} cancelLabel={t.common.cancel} pending={remove.isPending}
           onClose={() => setRemoving(null)} onConfirm={() => remove.mutate({ userId: removing.userId })} />
       ) : null}
     </SectionCard>

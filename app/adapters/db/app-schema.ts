@@ -234,6 +234,18 @@ export const tenantAdmins = pgTable(
   ],
 );
 
+export const tenantAdminInvitations = pgTable(
+  'tenant_admin_invitations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    email: text('email').notNull(),
+    invitedAt: text('invited_at').notNull(),
+  },
+  (table) => [uniqueIndex('tenant_admin_invitations_tenant_user_uidx').on(table.tenantId, table.userId)],
+);
+
 export const members = pgTable(
   'members',
   {
@@ -2287,6 +2299,9 @@ export const tenantAuditEvents = pgTable(
         'post_purged',
         'tenant_provisioned',
         'team.admin_added',
+        'team.admin_invited',
+        'team.admin_activated',
+        'team.invitation_revoked',
         'team.admin_removed',
       ],
     }).notNull(),

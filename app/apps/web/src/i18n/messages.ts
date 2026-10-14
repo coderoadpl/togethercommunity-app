@@ -2319,8 +2319,9 @@ export interface Messages {
     saved: string;
   };
   tenantTeam: {
-    verificationPending: string;
-    invalidEmail: string;
+    invitationSent: string;
+    revokeInvitation: string;
+    invitationSuccess: string;
     heading: string;
     addAdministrator: string;
     helper: string;

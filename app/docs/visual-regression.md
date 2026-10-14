@@ -15,7 +15,7 @@ and `LANG=C` alone do not override them. Empty coupon validity fields must show
 `dd/mm/yyyy, --:--`; an `mm/dd/yyyy` placeholder with an AM/PM field indicates
 native locale drift, not a changing default date.
 
-The catalogue currently covers 220 captures in Shadcn, the maintained base theme
+The catalogue currently covers 222 captures in Shadcn, the maintained base theme
 described in the [Storybook reference](storybook.md#supported-scope). Other themes and synthetic
 states remain available for review without separate committed PNG baselines.
 
@@ -33,6 +33,12 @@ PNG must be covered; a missing story, missing golden or unmapped golden fails.
 The inherited active-named DNS goldens repeat the pending DNS capture after a
 same-document navigation. Both map to the pending story to preserve that page
 state; verified DNS has separate Active stories.
+
+Settings security and team have separate desktop and mobile captures using the
+recorded owner fixture. The team story adds a synthetic pending invitation to
+cover its status and revoke action. Each capture scrolls to its section and
+asserts that the section begins below the sticky app bar in the viewport,
+preserving coverage of both settings surfaces and their headings.
 
 Lesson lightbox captures are page variants declared in
 `scripts/visual-screen-inventory.ts` and mapped in

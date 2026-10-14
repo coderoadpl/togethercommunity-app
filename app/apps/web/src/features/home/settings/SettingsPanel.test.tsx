@@ -1471,8 +1471,9 @@ describe('SettingsPanel sign-in notice', () => {
 });
 
 describe('SettingsPanel team', () => {
-  const owner = { userId: 'owner-user', email: 'creator3@together.dev', name: 'Studio Owner', role: 'owner' };
-  const admin = { userId: 'admin-user', email: 'admin@example.test', name: null, role: 'admin' };
+  const owner = { userId: 'owner-user', email: 'creator3@together.dev', name: 'Studio Owner', role: 'owner', status: 'active' };
+  const admin = { userId: 'admin-user', email: 'admin@example.test', name: null, role: 'admin', status: 'active' };
+  const invited = { userId: 'invited-user', email: 'invited@example.test', name: null, role: 'admin', status: 'invited' };
 
   it('shows the team to the owner and identifies their row without a remove action', async () => {
     renderPanel();
@@ -1496,20 +1497,23 @@ describe('SettingsPanel team', () => {
     expect(list).not.toHaveBeenCalled();
   });
 
-  it('submits an email, refreshes the list and shows success', async () => {
-    renderPanel();
+  it.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('submits an email and shows the opaque invitation confirmation in $language', async ({ language, t }) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
     const added: unknown[] = [];
     server.use(http.post('/api/tenant/team', async ({ request }) => {
       added.push(await request.json());
-      return HttpResponse.json({ ok: true, data: { userId: admin.userId } });
+      return HttpResponse.json({ ok: true, data: { status: 'invitation_sent' } });
     }));
-    await openSettingsSection(en.settingsNavigation.security);
+    await openSettingsSection(t.settingsNavigation.security);
     const section = await screen.findByTestId('team-settings');
-    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
-    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
+    await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
     await waitFor(() => expect(added).toEqual([{ email: admin.email }]));
-    expect(await findToast('success')).toHaveTextContent(en.common.saved);
-    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue('');
+    expect(await findToast('success')).toHaveTextContent(t.tenantTeam.invitationSuccess);
+    expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue('');
   });
 
   it('keeps the entered email and shows an error when adding fails', async () => {
@@ -1525,30 +1529,48 @@ describe('SettingsPanel team', () => {
     expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
   });
 
-  describe.each([
+  it.each([
     { language: 'en' as const, t: en },
     { language: 'pl' as const, t: pl },
-  ])('team validation feedback in $language', ({ language, t }) => {
-    it.each([
-      { reason: 'verification_pending', messageKey: 'verificationPending' },
-      { reason: 'invalid_email', messageKey: 'invalidEmail' },
-      { reason: undefined, messageKey: 'invalidEmail' },
-    ] as const)('localizes $reason and preserves the email for retry', async ({ reason, messageKey }) => {
-      renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
-      const message = 'Raw backend validation message';
-      server.use(http.post('/api/tenant/team', () => HttpResponse.json({
-        ok: false, error: { code: 'validation', message, details: { reason } },
-      }, { status: 400 })));
-      await openSettingsSection(t.settingsNavigation.security);
-      const section = await screen.findByTestId('team-settings');
-      await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
-      await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
-      const toast = await findToast('error');
-      expect(toast).toHaveTextContent(t.tenantTeam[messageKey]);
-      expect(toast).not.toHaveTextContent(message);
-      expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue(admin.email);
-      expect(queryToast('success')).not.toBeInTheDocument();
-    });
+  ])('localizes syntax validation in $language and preserves the email', async ({ language, t }) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
+    const message = 'Raw backend validation message';
+    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+      ok: false, error: { code: 'validation', message },
+    }, { status: 400 })));
+    await openSettingsSection(t.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
+    const toast = await findToast('error');
+    expect(toast).toHaveTextContent(t.errors.messageValidation);
+    expect(toast).not.toHaveTextContent(message);
+    expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue(admin.email);
+    expect(queryToast('success')).not.toBeInTheDocument();
+  });
+
+  it('shows pending invitations and requires confirmation before revoking them', async () => {
+    renderPanel();
+    const removed: unknown[] = [];
+    server.use(
+      http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, invited] } })),
+      http.post('/api/tenant/team/remove', async ({ request }) => {
+        removed.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { userId: invited.userId } });
+      }),
+    );
+    await openSettingsSection(en.settingsNavigation.security);
+    const table = await screen.findByRole('table', { name: en.tenantTeam.heading });
+    const row = within(table).getByRole('row', { name: /invited@example.test/ });
+    expect(row).toHaveTextContent(en.tenantTeam.invitationSent);
+    expect(within(row).queryByRole('button', { name: en.common.remove })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole('button', { name: en.tenantTeam.revokeInvitation }));
+    const dialog = await screen.findByRole('dialog', { name: en.tenantTeam.revokeInvitation });
+    expect(dialog).toHaveTextContent(invited.email);
+    expect(removed).toEqual([]);
+    await userEvent.click(within(dialog).getByRole('button', { name: en.tenantTeam.revokeInvitation }));
+    await waitFor(() => expect(removed).toEqual([{ userId: invited.userId }]));
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
   });
 
   it('requires confirmation before removing an administrator', async () => {

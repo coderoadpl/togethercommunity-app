@@ -145,6 +145,7 @@
             "email": "creator@together.dev",
             "name": "Studio Creator",
             "role": "owner",
+            "status": "active",
             "userId": "fixture-user-f9e5468247b51d08"
           }
         ]

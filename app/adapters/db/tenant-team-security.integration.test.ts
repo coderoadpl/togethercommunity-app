@@ -1,13 +1,16 @@
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+
+import { ok } from '#core/domain/index.js';
 
 import { createAuth, createAuthPort } from '#adapters/auth/create-auth.js';
 import { authorizeTenant } from '#core/server/authorize.js';
 import { resolveIdentity } from '#core/server/usecases/resolve-identity.js';
-import { addTenantAdmin, type TenantTeamDeps } from '#core/server/usecases/tenant-team.js';
+import { addTenantAdmin } from '#core/server/usecases/tenant-team.js';
 
 import { createEmailOutboxRepository, createPlatformAuthSendLog } from './email-outbox.js';
 import {
+  createDevMagicLinkReader,
   createMemberRepository,
   createTenantAccessReader,
   createTenantDomainRepository,
@@ -28,12 +31,13 @@ beforeAll(async () => {
 
 afterAll(async () => { await database?.close(); });
 
-it('withholds staff access from a pre-existing unverified password account and its active session', async () => {
+it('withholds staff access until mailbox proof, then activates the invitation and invalidates the unverified session', async () => {
   const clock = { nowIso: () => new Date().toISOString() };
   const ids = { nextId: () => crypto.randomUUID() };
-  await database.db.insert(tenants).values({
-    id: 'acme', slug: 'acme', name: 'Acme', createdAt: clock.nowIso(),
-  });
+  await database.db.insert(tenants).values([
+    { id: 'acme', slug: 'acme', name: 'Acme', createdAt: clock.nowIso() },
+    { id: 'studio', slug: 'studio', name: 'Studio', createdAt: clock.nowIso() },
+  ]);
   await database.db.insert(user).values([
     { id: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true },
     { id: 'invitee', email: 'invitee@example.test', name: 'Invitee', emailVerified: false },
@@ -41,22 +45,30 @@ it('withholds staff access from a pre-existing unverified password account and i
   await database.db.insert(tenantAdmins).values({
     id: 'owner-grant', tenantId: 'acme', userId: 'owner', role: 'owner',
   });
+  const team = createTenantTeamRepository(database.db);
   const auth = createAuth(database.db, {
     secret: 'team-security-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
     baseDomain: 'localhost',
     singleTenantMode: false,
-    trustedOrigins: ['http://localhost:48730'],
+    trustedOrigins: ['http://localhost:48730', 'http://acme.localhost:48730'],
     secureCookies: false,
-    exposeMagicLinks: false,
+    exposeMagicLinks: true,
     emailOutbox: createEmailOutboxRepository(database.db),
-    emailSender: { send: async () => { throw new Error('Unexpected email delivery'); } },
+    emailSender: { send: async () => ok({ messageId: 'test-message', transport: 'platform' }) },
     authSendLog: createPlatformAuthSendLog(database.db),
     ids,
     clock,
     dispatchEmail: () => undefined,
     defaultTenantName: 'Together',
     google: null,
+    activateTeamInvitation: async ({ request, userId, email, occurredAt }) => {
+      if (new URL(request.url).hostname !== 'acme.localhost') return;
+      await team.activateInvitation('acme', userId, ids.nextId(), {
+        id: ids.nextId(), tenantId: 'acme', kind: 'team.admin_activated',
+        actorUserId: userId, actorEmail: email, subjectMemberId: null, reason: userId, at: occurredAt,
+      });
+    },
   });
   const authPort = createAuthPort(auth);
   const authContext = await auth.$context;
@@ -83,20 +95,16 @@ it('withholds staff access from a pre-existing unverified password account and i
     emailVerified: true, image: null,
   }, request, identityDeps);
   if (!owner.ok) throw new Error('Owner identity could not be resolved');
-  const requestMagicLink = vi.fn<TenantTeamDeps['authPort']['requestMagicLink']>(async () => undefined);
-  const team = createTenantTeamRepository(database.db);
   expect(await addTenantAdmin({ identity: owner.value }, { email: 'invitee@example.test' }, {
     ...identityDeps,
-    authPort: { ...authPort, requestMagicLink },
     team,
     appBaseUrl: 'http://localhost:48730',
-  })).toMatchObject({ ok: false, error: { code: 'validation' } });
-  expect(requestMagicLink).toHaveBeenCalledWith(expect.objectContaining({ email: 'invitee@example.test' }));
-  expect(await team.list('acme')).toEqual([
-    { userId: 'owner', email: 'owner@example.test', name: 'Owner', role: 'owner' },
-  ]);
+  })).toEqual({ ok: true, value: { status: 'invitation_sent' } });
+  expect(await team.list('acme')).toContainEqual(expect.objectContaining({
+    userId: 'invitee', name: null, role: 'admin', status: 'invited',
+  }));
   expect(await database.db.select().from(tenantAuditEvents)
-    .where(eq(tenantAuditEvents.kind, 'team.admin_added'))).toEqual([]);
+    .where(eq(tenantAuditEvents.kind, 'team.admin_activated'))).toEqual([]);
 
   const authenticated = await authPort.getAuthenticatedUser(new Headers({
     authorization: 'Bearer pre-existing-session-token',
@@ -109,4 +117,24 @@ it('withholds staff access from a pre-existing unverified password account and i
     expect(authorizeTenant({ identity: identity.value }, capability))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
   }
+  await team.inviteAdmin('studio', 'invitee', 'invitee@example.test', ids.nextId(), {
+    id: ids.nextId(), tenantId: 'studio', kind: 'team.admin_invited', actorUserId: 'owner',
+    actorEmail: 'owner@example.test', subjectMemberId: null, reason: 'invitee', at: clock.nowIso(),
+  });
+  const link = await createDevMagicLinkReader(database.db).findByEmail('invitee@example.test');
+  expect(link).not.toBeNull();
+  const signedIn = await auth.handler(new Request(link?.url ?? ''));
+  expect(signedIn.status).toBe(302);
+  expect(await team.list('acme')).toContainEqual(expect.objectContaining({
+    userId: 'invitee', role: 'admin', status: 'active',
+  }));
+  expect(await database.db.select().from(tenantAuditEvents)
+    .where(eq(tenantAuditEvents.kind, 'team.admin_activated'))).toHaveLength(1);
+  expect(await authPort.getAuthenticatedUser(new Headers({
+    authorization: 'Bearer pre-existing-session-token',
+  }))).toBeNull();
+  expect(await team.list('studio')).toContainEqual(expect.objectContaining({
+    userId: 'invitee', status: 'invited',
+  }));
+  await auth.flushAuthEmails();
 });

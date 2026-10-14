@@ -211,6 +211,7 @@ import {
   spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
+  tenantAdminInvitations,
   tenantApiKeys,
   apiKeyRateLimitBuckets,
   rateLimitBuckets,
@@ -4633,25 +4634,62 @@ export const createAccountSecurityReader = (db: Db): AccountSecurityReader => ({
 
 export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
   list: async (tenantId) => {
-    const rows = await db
-      .select({
+    const [active, invited] = await Promise.all([
+      db.select({
         userId: tenantAdmins.userId,
         email: user.email,
         name: user.name,
         role: tenantAdmins.role,
-      })
-      .from(tenantAdmins)
-      .innerJoin(user, eq(tenantAdmins.userId, user.id))
-      .where(eq(tenantAdmins.tenantId, tenantId))
-      .orderBy(desc(tenantAdmins.role), asc(user.email));
-    return rows.map((row) => tenantTeamMemberSchema.parse(row));
+      }).from(tenantAdmins)
+        .innerJoin(user, eq(tenantAdmins.userId, user.id))
+        .where(eq(tenantAdmins.tenantId, tenantId))
+        .orderBy(desc(tenantAdmins.role), asc(user.email)),
+      db.select({
+        userId: tenantAdminInvitations.userId,
+        email: tenantAdminInvitations.email,
+        invitedAt: tenantAdminInvitations.invitedAt,
+      }).from(tenantAdminInvitations)
+        .where(eq(tenantAdminInvitations.tenantId, tenantId))
+        .orderBy(asc(tenantAdminInvitations.email)),
+    ]);
+    return [
+      ...active.map((row) => tenantTeamMemberSchema.parse({ ...row, status: 'active' })),
+      ...invited.map((row) => tenantTeamMemberSchema.parse({ ...row, name: null, role: 'admin', status: 'invited' })),
+    ];
   },
-  addAdmin: async (tenantId, userId, id, audit) => db.transaction(async (tx) => {
-    const rows = await tx
-      .insert(tenantAdmins)
-      .values({ id, tenantId, userId, role: 'admin' })
-      .onConflictDoNothing({ target: [tenantAdmins.tenantId, tenantAdmins.userId] })
-      .returning({ id: tenantAdmins.id });
+  inviteAdmin: async (tenantId, userId, email, id, audit) => db.transaction(async (tx) => {
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for('update');
+    const active = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
+      eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, userId),
+    ));
+    if (active.length > 0) return false;
+    const rows = await tx.insert(tenantAdminInvitations)
+      .values({ id, tenantId, userId, email: normalizeEmail(email), invitedAt: audit.at })
+      .onConflictDoNothing({ target: [tenantAdminInvitations.tenantId, tenantAdminInvitations.userId] })
+      .returning({ id: tenantAdminInvitations.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  activateInvitation: async (tenantId, userId, id, audit) => db.transaction(async (tx) => {
+    const accounts = await tx.select({ email: user.email, emailVerified: user.emailVerified }).from(user)
+      .where(eq(user.id, userId)).for('update');
+    const account = accounts[0];
+    if (account?.emailVerified !== true) return false;
+    const invitations = await tx.delete(tenantAdminInvitations).where(and(
+      eq(tenantAdminInvitations.tenantId, tenantId), eq(tenantAdminInvitations.userId, userId),
+      eq(tenantAdminInvitations.email, normalizeEmail(account.email)),
+    )).returning({ id: tenantAdminInvitations.id });
+    if (invitations.length === 0) return false;
+    await tx.insert(tenantAdmins).values({ id, tenantId, userId, role: 'admin' })
+      .onConflictDoNothing({ target: [tenantAdmins.tenantId, tenantAdmins.userId] });
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  revokeInvitation: async (tenantId, userId, audit) => db.transaction(async (tx) => {
+    const rows = await tx.delete(tenantAdminInvitations).where(and(
+      eq(tenantAdminInvitations.tenantId, tenantId), eq(tenantAdminInvitations.userId, userId),
+    )).returning({ id: tenantAdminInvitations.id });
     if (rows.length === 0) return false;
     await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
     return true;

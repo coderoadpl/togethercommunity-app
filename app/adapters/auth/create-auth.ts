@@ -53,6 +53,7 @@ export interface AuthSettings {
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
+  activateTeamInvitation?(input: { request: Request; userId: string; email: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
   logger?: { warn(message: string): void };
   /** Resolves whether a request host is a tenant's verified custom domain. */
@@ -812,12 +813,20 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
             matcher: (ctx) => ctx.path?.startsWith('/sign-in/') === true
               || ctx.path?.startsWith('/callback/') === true
               || ctx.path?.startsWith('/two-factor/verify-') === true
-              || ['/sign-up/email', '/magic-link/verify', '/passkey/verify-authentication', '/one-tap/callback'].includes(ctx.path ?? ''),
+              || ['/sign-up/email', '/magic-link/verify', '/verify-email', '/passkey/verify-authentication', '/one-tap/callback'].includes(ctx.path ?? ''),
             handler: createAuthMiddleware(async (ctx) => {
               // Two-factor hooks must finish before a new session counts as a sign-in.
               const signedIn = ctx.context.newSession;
               if (signedIn === null || ctx.request === undefined) return;
               const request = ctx.request;
+              if (signedIn.user.emailVerified) {
+                await settings.activateTeamInvitation?.({
+                  request,
+                  userId: signedIn.user.id,
+                  email: signedIn.user.email,
+                  occurredAt: signedIn.session.createdAt.toISOString(),
+                });
+              }
               void Promise.resolve()
                 .then(() => settings.recordSignIn?.({
                   request,

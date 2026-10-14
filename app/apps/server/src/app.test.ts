@@ -3761,37 +3761,77 @@ describe('server edge security baseline', () => {
       expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
     }
     expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
-    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https: https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.facebook.com;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
     for (const response of [unsubscribe, confirmation, legal]) {
       expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
       expect(response.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     }
   });
 
-  it('extends analytics CSP only for checkout SPA documents', async () => {
+  it.each([
+    ['neither vendor', null, null],
+    ['GA4', 'G-ABCDEF', null],
+    ['Meta', null, '12345678'],
+    ['both vendors', 'G-ABCDEF', '12345678'],
+  ])('extends live success document CSP only for configured %s', async (_label, analyticsTagId, analyticsMetaPixelId) => {
     const h = await directSalesLinkApp();
-    h.base.tenants.findSettings = async () => ({ ...h.settings, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId, analyticsMetaPixelId });
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    for (const path of ['/checkout/product-1', '/checkout/product-1?status=success', '/checkout/product-1?status=cancelled', '/checkout/product-1?status=success&test_purchase=1', '/offer/bundle?status=success', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together']) {
+    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.status).toBe(200);
-      const policy = response.headers.get('content-security-policy');
-      expect(policy).toMatch(/script-src [^;]+ https:\/\/www\.googletagmanager\.com https:\/\/connect\.facebook\.net;/);
-      expect(policy).toMatch(/connect-src [^;]+ https:\/\/\*\.google-analytics\.com https:\/\/\*\.analytics\.google\.com https:\/\/www\.googletagmanager\.com https:\/\/www\.facebook\.com;/);
-      expect(policy).toMatch(/img-src [^;]+ https:\/\/www\.facebook\.com;/);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      const policy = response.headers.get('content-security-policy') ?? '';
+      expect(policy).toContain("script-src 'self' 'nonce-");
+      expect(policy.includes('https://www.googletagmanager.com')).toBe(analyticsTagId !== null);
+      expect(policy.includes('https://*.google-analytics.com')).toBe(analyticsTagId !== null);
+      expect(policy.includes('https://*.analytics.google.com')).toBe(analyticsTagId !== null);
+      expect(policy.includes('https://connect.facebook.net')).toBe(analyticsMetaPixelId !== null);
+      expect(policy.includes('https://www.facebook.com')).toBe(analyticsMetaPixelId !== null);
       expect(policy).not.toContain('https://*.googletagmanager.com');
+      if (analyticsTagId !== null) expect(policy).toMatch(/script-src [^;]+ https:\/\/www\.googletagmanager\.com/);
+      if (analyticsMetaPixelId !== null) {
+        expect(policy).toMatch(/script-src [^;]+ https:\/\/connect\.facebook\.net;/);
+        expect(policy).toMatch(/connect-src [^;]+ https:\/\/www\.facebook\.com;/);
+        expect(policy).toMatch(/img-src [^;]+ https:\/\/www\.facebook\.com;/);
+      }
     }
-    for (const path of ['/offer/bundle', '/panel/settings', '/my/products', '/legal/terms', API_PATHS.publicPaymentConfig]) {
-      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
-      expect(response.headers.get('content-security-policy')).not.toContain('google');
-      expect(response.headers.get('content-security-policy')).not.toContain('facebook');
+  });
+
+  it('keeps baseline CSP outside configured live success documents', async () => {
+    const h = await directSalesLinkApp();
+    const configuredSettings = { ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' };
+    h.base.tenants.findSettings = async () => configuredSettings;
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    const expectBaseline = (response: Response) => {
+      const policy = response.headers.get('content-security-policy');
+      expect(policy).toMatch(/script-src 'self' 'nonce-[^']+';/);
+      expect(policy).not.toContain('google');
+      expect(policy).not.toContain('facebook');
+    };
+    for (const path of [
+      '/checkout/product-1', '/checkout/product-1?status=cancelled',
+      '/checkout/product-1?checkout=together',
+      '/checkout/product-1?status=success&test_purchase=1',
+      '/checkout/product-1?status=success&session_id=cs_test_one',
+      '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together',
+      '/offer/bundle?status=success&test_purchase=1',
+      '/offer/bundle?status=success&session_id=cs_test_one',
+      '/offer/bundle', '/panel/settings?status=success', '/my/products?status=success',
+      '/legal/terms', API_PATHS.publicPaymentConfig,
+    ]) {
+      expectBaseline(await h.app.request(path, { headers: { host: 'acme.localhost' } }));
     }
     for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
-      const response = await h.app.request(path, { headers: { host: 'acme.localhost', 'user-agent': 'Googlebot' } });
-      expect(response.headers.get('content-security-policy')).not.toContain('google');
-      expect(response.headers.get('content-security-policy')).not.toContain('facebook');
+      expectBaseline(await h.app.request(path, { headers: { host: 'acme.localhost', 'user-agent': 'Googlebot' } }));
+      expectBaseline(await h.app.request(path, { headers: { host: 'unknown.localhost' } }));
+      expectBaseline(await h.app.request(path, { headers: { host: 'localhost' } }));
     }
+    h.base.tenants.findSettings = async () => null;
+    expectBaseline(await h.app.request('/checkout/product-1?status=success', { headers: { host: 'acme.localhost' } }));
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {

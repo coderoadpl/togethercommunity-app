@@ -112,13 +112,29 @@ previews and nothing else.
 All responses receive the secure-header baseline. The CSP permits Emotion's
 runtime styles, HTTPS images and HTTPS lesson embeds. SPA documents allow HTTPS
 network requests; other responses permit same-origin connections and Sentry
-envelope delivery. For checkout SPA documents under `/offer/` and `/checkout/`,
-`script-src` additionally permits `https://www.googletagmanager.com` and
-`https://connect.facebook.net`; `connect-src` additionally permits
-`https://*.google-analytics.com`, `https://*.analytics.google.com`,
-`https://www.googletagmanager.com` and `https://www.facebook.com`. `img-src`
-explicitly adds `https://www.facebook.com` to its existing HTTPS allowance. Other
-documents retain the existing policy; hosting and document routing are unchanged.
+envelope delivery.
+
+For server-served HTML success returns under `/offer/` and `/checkout/`, the CSP
+adds analytics sources only when `status=success`, the return is live, the request
+is not from a crawler, and the resolved tenant has the corresponding ID configured.
+A GA4 ID adds `https://www.googletagmanager.com` to `script-src` and
+`https://*.google-analytics.com`, `https://*.analytics.google.com` and
+`https://www.googletagmanager.com` to `connect-src`. A Meta Pixel ID adds
+`https://connect.facebook.net` to `script-src` and `https://www.facebook.com` to
+`connect-src` and `img-src`. Existing HTTPS connection and image allowances remain.
+Entry, cancellation, handoff, test and crawler documents, unresolved or unconfigured
+tenants, and all other documents retain the baseline policy. Success documents
+use `Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
+CSP eligibility does not prove consent; the client checks the configured cookie
+before loading either library.
+
+The repository hosting configuration serves these SPA returns statically. Its
+baseline CSP blocks both external libraries; the server's tenant-specific extension does
+not reach those static responses. Static headers cannot resolve tenant settings.
+Enabling hosted analytics therefore requires a separately approved way to serve
+success documents with the tenant-specific policy. Broad static vendor allowlists
+would also weaken entry pages and unconfigured tenants and must not be used.
+Hosting configuration and document routing are unchanged.
 
 The platform never loads tenant-authored scripts: checkout analytics is limited
 to Google's GA4 `gtag.js` and Meta's `fbevents.js` libraries for tenant-configured

@@ -638,7 +638,7 @@ export const en: Messages = {
     metaPixelId: 'Meta Pixel ID',
     metaPixelIdHint: 'Pixel number only. The platform loads only Meta’s library and sends PageView and Purchase events on the purchase confirmation page.',
     heading: 'Analytics',
-    intro: 'Connect Google Analytics 4 to the purchase confirmation page. The platform loads only Google\'s library for the configured measurement ID, and only when the buyer has consented on your website (with the consent cookie set for the parent domain).',
+    intro: 'Connect Google Analytics 4 and/or Meta Pixel to the purchase confirmation page. The platform loads the Google and/or Meta library for each configured ID and sends page-view and purchase data to the configured providers after the consent-cookie check passes (with the cookie set for the parent domain), or when you enable loading without checking consent.',
     tagId: 'GA4 measurement ID',
     tagIdHint: 'Format G-XXXXXXXXXX. Google Tag Manager is not supported — the platform does not run custom scripts on buyer pages.',
     consentCookieName: 'Consent cookie name',

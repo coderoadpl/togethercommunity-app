@@ -137,6 +137,19 @@ describe('checkout session purchase analytics', () => {
     expect(deps.salesLinks.findById).toHaveBeenCalledExactlyOnceWith('tenant-1', 'link-1');
   });
 
+  it('does not expose a sales link slug from another tenant', async () => {
+    const deps = harness([{ ...order, salesLinkId: 'link-1' }], analyticsSettings);
+    deps.salesLinks.findById.mockResolvedValue(salesLinkSchema.parse({
+      id: 'link-1', tenantId: 'tenant-2', slug: 'foreign-workbook', title: 'Foreign workbook',
+      heading: 'Foreign workbook', productIds: ['product-2'], active: true, revision: 1,
+      createdAt: order.createdAt, updatedAt: order.createdAt,
+    }));
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+      ok: true, value: { status: 'paid', analytics: { offerSlug: null } },
+    });
+    expect(deps.salesLinks.findById).toHaveBeenCalledExactlyOnceWith('tenant-1', 'link-1');
+  });
+
   it('returns a null offer slug when the sales link no longer exists', async () => {
     const deps = { ...harness([{ ...order, salesLinkId: 'deleted-link' }], analyticsSettings),
       salesLinks: { findById: async () => null },

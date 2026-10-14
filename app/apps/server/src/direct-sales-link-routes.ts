@@ -16,7 +16,6 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const crawler = SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? '');
     const status = c.req.query('status');
     if (!crawler && (status === 'success' || status === 'cancelled')) {
-      c.set('checkoutSpaDocument', true);
       await next();
       return;
     }
@@ -53,7 +52,6 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const products = await deps.products.findByIds(tenant.id, offer.value.lines.map((line) => line.productId));
     const missingLegal = settings?.termsUrl == null || settings.privacyUrl === null;
     if (!crawler && !missingLegal && c.req.query('checkout') === 'together') {
-      c.set('checkoutSpaDocument', true);
       await next();
       return;
     }

@@ -645,7 +645,7 @@ export const pl: Messages = {
     metaPixelId: 'Identyfikator Meta Pixel',
     metaPixelIdHint: 'Tylko numer piksela. Platforma ładuje wyłącznie bibliotekę Meta i wysyła zdarzenia PageView oraz Purchase na stronie potwierdzenia zakupu.',
     heading: 'Analityka',
-    intro: 'Podłącz Google Analytics 4 do strony potwierdzenia zakupu. Platforma ładuje wyłącznie bibliotekę Google dla podanego identyfikatora pomiaru i tylko wtedy, gdy kupujący wyraził zgodę na Twojej stronie (ciasteczko zgody ustawione dla domeny nadrzędnej).',
+    intro: 'Connect Google Analytics 4 and/or Meta Pixel to the purchase confirmation page. The platform loads the Google and/or Meta library for each configured ID and sends page-view and purchase data to the configured providers after the consent-cookie check passes (with the cookie set for the parent domain), or when you enable loading without checking consent.',
     tagId: 'Identyfikator pomiaru GA4',
     tagIdHint: 'Format G-XXXXXXXXXX. Google Tag Manager nie jest obsługiwany — platforma nie uruchamia obcego kodu na stronach kupujących.',
     consentCookieName: 'Nazwa ciasteczka zgody',

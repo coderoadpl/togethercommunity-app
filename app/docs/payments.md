@@ -31,7 +31,8 @@ loads for `test_purchase=1`, a test checkout session, the server-rendered checko
 handoff, cancellation, Studio or member pages. Each library is injected once per
 document. A SPA is a single document, so a loaded tag remains active until reload;
 leaving the return page after loading a tag forces a full document navigation,
-including navigation to member pages or Studio.
+including the sign-in button, router links, programmatic navigation and browser
+history, before member or Studio content renders.
 
 The success card reads `document.cookie`. Loading requires at least one
 configured ID and
@@ -102,22 +103,16 @@ Returns without a session ID, including free checkouts and legacy links, may loa
 the libraries but never emit a purchase event.
 
 For server-served HTML success returns under `/offer/` and `/checkout/`, the CSP
-adds analytics sources only when `status=success`, the return is live, the request
-is not from a crawler, and the resolved tenant has the corresponding ID configured.
-A GA4 ID adds `https://www.googletagmanager.com/gtag/` to `script-src`;
-a Meta Pixel ID adds `https://connect.facebook.net`. The Google path prefix
+extends `script-src` only when `status=success`, permitting
+`https://www.googletagmanager.com/gtag/` and `https://connect.facebook.net`
+alongside the existing same-origin and nonce sources. The Google path prefix
 permits its GA4 scripts. Meta needs its host because `fbevents.js` loads further
-scripts under `/signals/config/<id>` and plugin paths.
-For GA4, `connect-src` also adds `https://*.google-analytics.com`,
-`https://*.analytics.google.com` and `https://www.googletagmanager.com`.
-For Meta, it adds `https://www.facebook.com` and `https://connect.facebook.net`.
-These measurement endpoints allow beacons on self-hosted `/offer/` success
-returns, whose baseline connection policy allows only `'self'` and
-`https://*.sentry.io`. The existing `/checkout/` HTTPS connection allowance
-remains. No other directive changes; `img-src` already permits HTTPS images.
-Entry, cancellation, handoff, test and crawler documents, unresolved or
-unconfigured tenants, and all other server documents retain the baseline policy. Success documents use
-`Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
+scripts under `/signals/config/<id>` and plugin paths. These success documents
+use `connect-src 'self' https:`, including `/offer/` success returns whose other
+server responses allow only same-origin and Sentry connections. The existing
+`img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
+are added. Entry, cancellation, handoff
+and other documents retain the baseline script policy.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require

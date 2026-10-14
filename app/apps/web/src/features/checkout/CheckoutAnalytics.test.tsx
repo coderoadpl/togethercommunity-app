@@ -86,12 +86,20 @@ it('turns programmatic member navigation into a document navigation', async () =
   expect(screen.queryByText('Member destination')).not.toBeInTheDocument();
 });
 
-it.each(['back', 'forward', 'go'] as const)('turns history %s into a document navigation with the full destination URL', async (action) => {
+it.each([
+  { source: 'router', action: 'back' },
+  { source: 'router', action: 'forward' },
+  { source: 'router', action: 'go' },
+  { source: 'browser', action: 'back' },
+  { source: 'browser', action: 'forward' },
+  { source: 'browser', action: 'go' },
+] as const)('turns $source history $action into a document navigation with the full destination URL', async ({ source, action }) => {
   const { router, assign } = await renderReturn(false, action === 'forward');
   const rollback = vi.spyOn(window.history, 'go');
+  const history = source === 'browser' ? window.history : router.history;
   act(() => {
-    if (action === 'go') router.history.go(-1);
-    else router.history[action]();
+    if (action === 'go') history.go(-1);
+    else history[action]();
   });
   await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith('/my?tab=recent#lesson'));
   expect(router.state.location.pathname).toBe('/checkout/course');

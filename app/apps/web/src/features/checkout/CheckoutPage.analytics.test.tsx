@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -44,7 +44,25 @@ beforeEach(() => {
     stripeConfigured: true, simulatedPaymentsEnabled: false, analytics: config,
   } })));
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+it.each(['/checkout/course-1', '/offer/bundle'])('leaves %s through a full document navigation when the sign-in button is clicked after loading a vendor', async (path) => {
+  const returnPath = `${path}?status=success&session_id=cs_live_one`;
+  window.history.replaceState(null, '', returnPath);
+  const location = window.location;
+  const assign = vi.fn();
+  vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
+  await renderCheckout(returnPath);
+  expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(config);
+
+  fireEvent.click(screen.getByRole('link', { name: en.checkout.goToLogin }));
+
+  expect(assign).toHaveBeenCalledExactlyOnceWith('/login');
+  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+});
 
 it.each(['/checkout/course-1', '/offer/bundle'])('loads on %s success and sends only after the paid payload arrives', async (path) => {
   let paid = false;

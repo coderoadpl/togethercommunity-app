@@ -3788,71 +3788,48 @@ describe('server edge security baseline', () => {
     ['GA4', 'G-ABCDEF', null],
     ['Meta', null, '12345678'],
     ['both vendors', 'G-ABCDEF', '12345678'],
-  ])('extends live success document CSP only for configured %s', async (_label, analyticsTagId, analyticsMetaPixelId) => {
+    ['neither vendor', null, null],
+  ])('allows both vendor script sources on success documents with %s configured', async (_label, analyticsTagId, analyticsMetaPixelId) => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId, analyticsMetaPixelId });
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
+    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together&status=success']) {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.status).toBe(200);
-      expect(response.headers.get('cache-control')).toBe('no-store');
       const directives = parseCsp(response);
       expect(directives.get('script-src')).toEqual(new Set([
         "'self'", scriptNonce(directives),
-        ...(analyticsTagId === null ? [] : ['https://www.googletagmanager.com/gtag/']),
-        ...(analyticsMetaPixelId === null ? [] : ['https://connect.facebook.net']),
+        'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
       ]));
-      expect(directives.get('connect-src')).toEqual(new Set([
-        "'self'", path.startsWith('/checkout/') ? 'https:' : 'https://*.sentry.io',
-        ...(analyticsTagId === null ? [] : [
-          'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com',
-        ]),
-        ...(analyticsMetaPixelId === null ? [] : ['https://www.facebook.com', 'https://connect.facebook.net']),
-      ]));
-      expect(directives.get('img-src')).toEqual(new Set([
-        "'self'", 'data:', 'https:',
-      ]));
+      expect(directives.get('connect-src')).toEqual(new Set(["'self'", 'https:']));
+      expect(directives.get('img-src')).toEqual(new Set(["'self'", 'data:', 'https:']));
     }
   });
 
-  it('keeps baseline CSP outside configured live success documents', async () => {
+  it('keeps baseline CSP outside checkout success documents', async () => {
     const h = await directSalesLinkApp();
-    const configuredSettings = { ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
-      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' };
-    h.base.tenants.findSettings = async () => configuredSettings;
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    const expectBaseline = (response: Response) => {
-      const directives = parseCsp(response);
-      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
-      expect([
-        new Set(["'self'", 'https:']),
-        new Set(["'self'", 'https://*.sentry.io']),
-      ]).toContainEqual(directives.get('connect-src'));
-    };
     for (const path of [
       '/checkout/product-1', '/checkout/product-1?status=cancelled',
-      '/checkout/product-1?status=successful',
-      '/checkout/product-1?checkout=together',
-      '/checkout/product-1?status=success&test_purchase=1',
-      '/checkout/product-1?status=success&session_id=cs_test_one',
+      '/checkout/product-1?status=successful', '/checkout/product-1?checkout=together',
       '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together',
-      '/offer/bundle?status=successful',
-      '/offer/bundle?status=success&test_purchase=1',
-      '/offer/bundle?status=success&session_id=cs_test_one',
-      '/offer/bundle', '/panel/settings?status=success', '/my/products?status=success',
+      '/offer/bundle?status=successful', '/offer/bundle',
+      '/panel/settings?status=success', '/my/products?status=success',
       '/legal/terms', API_PATHS.publicPaymentConfig,
     ]) {
-      expectBaseline(await h.app.request(path, { headers: { host: 'acme.localhost' } }));
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      const directives = parseCsp(response);
+      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
+      expect(directives.get('connect-src')).toEqual(new Set([
+        "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
+      ]));
+      expect(directives.get('img-src')).toEqual(new Set(["'self'", 'data:', 'https:']));
     }
-    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success']) {
-      expectBaseline(await h.app.request(path, { headers: { host: 'acme.localhost', 'user-agent': 'Googlebot' } }));
-      expectBaseline(await h.app.request(path, { headers: { host: 'unknown.localhost' } }));
-      expectBaseline(await h.app.request(path, { headers: { host: 'localhost' } }));
-    }
-    h.base.tenants.findSettings = async () => null;
-    expectBaseline(await h.app.request('/checkout/product-1?status=success', { headers: { host: 'acme.localhost' } }));
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {

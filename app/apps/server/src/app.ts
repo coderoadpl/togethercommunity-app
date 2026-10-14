@@ -1,4 +1,4 @@
-import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
+import { API_PATHS } from '#core/contract/index.js';
 import { operatorTenantSecretGuard } from './operator-tenant-routes.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -8,7 +8,6 @@ import type { RouterRoute } from 'hono/types';
 
 import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 import { err, internal, notFound, validation } from '#core/domain/index.js';
-import { resolveTenant } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
@@ -25,7 +24,7 @@ import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
-import { registerSocialPreviewRoute, SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
+import { registerSocialPreviewRoute } from './social-preview.js';
 import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
@@ -65,12 +64,14 @@ export const buildApp = (deps: AppDeps) => {
   const app = new Hono<AppVars>();
 
   app.use('*', async (c, next) => {
+    const checkoutSuccessPath = ['/checkout/', '/offer/'].some((prefix) => c.req.path.startsWith(prefix))
+      && c.req.query('status') === 'success';
     await secureHeaders({
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: isSpaDocument(c.req.path)
+        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath
           ? ["'self'", 'https:']
           : ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],
@@ -86,30 +87,10 @@ export const buildApp = (deps: AppDeps) => {
     const redirectOrigin = c.get('signupRedirectOrigin');
     let policy = c.res.headers.get('content-security-policy');
     if (policy === null) return;
-    const checkoutSuccessDocument = c.req.method === 'GET'
-      && ['/checkout/', '/offer/'].some((prefix) => c.req.path.startsWith(prefix))
-      && c.req.query('status') === 'success'
-      && c.req.query('test_purchase') !== '1'
-      && !c.req.query('session_id')?.startsWith('cs_test_')
-      && !SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? '')
+    if (checkoutSuccessPath && c.req.method === 'GET'
       && c.res.status === 200
-      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html';
-    if (checkoutSuccessDocument) {
-      const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
-      const settings = resolved.ok && resolved.value !== null
-        ? await deps.tenants.findSettings(resolved.value.tenant.id)
-        : null;
-      if (settings?.analyticsTagId) {
-        policy = policy
-          .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/')
-          .replace(/connect-src [^;]+/, '$& https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com');
-      }
-      if (settings?.analyticsMetaPixelId) {
-        policy = policy
-          .replace(/script-src [^;]+/, '$& https://connect.facebook.net')
-          .replace(/connect-src [^;]+/, '$& https://www.facebook.com https://connect.facebook.net');
-      }
-      c.res.headers.set('cache-control', 'no-store');
+      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html') {
+      policy = policy.replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/ https://connect.facebook.net');
     }
     if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
     c.res.headers.set('content-security-policy', policy);

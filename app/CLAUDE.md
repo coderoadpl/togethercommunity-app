@@ -115,6 +115,22 @@ site can answer. The platform owns the prefixes, never the keys: keys stay
 workspace data and `link` is not a reserved redirect root. Adding a forwarded
 prefix needs a dated owner decision here.
 
+Checkout analytics (owner decision 2026-10-14): a workspace may configure a
+Google Analytics 4 measurement id and a Meta Pixel id. On the live checkout
+success document only, after the workspace's consent-cookie rule passes (or the
+owner's explicit bypass switch), the web app loads exactly two vendor libraries,
+`https://www.googletagmanager.com/gtag/js` and
+`https://connect.facebook.net/en_US/fbevents.js`, and sends page-view and
+purchase events. Workspace-authored scripts and tag-manager containers never
+run on platform documents. The content security policy of that document (server
+middleware and the static hosting headers for `/offer/*` success documents and
+`/checkout/*`) allows those two script URLs and nothing else beyond the
+baseline; the signed-in session on that document is not otherwise isolated from
+the two libraries, which the owner accepts as the same exposure any site using
+these vendors carries. Consent categories follow the cookie rule: a matching
+cookie grants all four Google consent categories (the creator's banner is a
+single choice); the bypass switch grants analytics storage only.
+
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.
 The explicit `checkout=together` fallback and `status=success|cancelled` return

@@ -150,8 +150,18 @@ document load for the sign-in button, router links, programmatic navigation and
 browser history before member or Studio content renders. Consent Mode first denies
 all four categories. A matching consent cookie grants all four; explicitly
 bypassing the cookie check grants only `analytics_storage`, leaving advertising
-storage, advertising user data and advertising personalization denied. GA4 uses
-its default parent-domain cookie scope. Meta's consent API is binary: it grants
+storage, advertising user data and advertising personalization denied. GA4 sets
+`cookie_domain` to the current document hostname and uses a host-specific cookie
+prefix, so it neither shares identifiers across workspace subdomains nor adopts
+an existing parent-domain `_ga` identifier. The same isolation applies on custom
+domains; the creator's site and checkout do not automatically share a GA4
+identifier. Meta still uses its vendor-default first-party cookie behavior; the
+loader does not yet isolate its identifiers across workspace subdomains. The
+accepted session-cookie exposure does not authorize shared vendor tracking
+cookies. A consent cookie is separate from these vendor identifiers: it must
+be readable on the checkout host. A creator's unrelated domain cannot set a
+consent cookie for a platform subdomain; a custom checkout subdomain can read a
+consent cookie set for its shared parent domain. Meta's consent API is binary: it grants
 consent once before initialization and events when the rule passes, including the
 bypass path, which loads Meta Pixel in full. When the rule does not pass, Meta
 consent is revoked without loading or initializing the Pixel. The owner is
@@ -163,18 +173,18 @@ provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;
 only successful public-offer responses opt into revalidated shared caching.
 
-Exception (owner decision 2026-10-14, approved and recorded in `CLAUDE.md`;
-not yet implemented in this baseline): on the checkout success documents
+Exception (owner decision 2026-10-14, approved, implemented and recorded in
+`CLAUDE.md`): on the checkout success documents
 (`/offer/*` and `/checkout/*` requested with `status=success`) `script-src`
 additionally lists the two vendor script sources named there, Google's tag
 library and Meta's pixel library, and `connect-src` is `'self' https:` as on
-other web-app documents (the static hosting headers already say so; the server
-middleware, which today narrows every `/offer/*` path to `'self'
-https://*.sentry.io`, must permit the same on the success documents). The
+other web-app documents, in both the static hosting headers and the server
+middleware. Other `/offer/*` server responses retain `'self'
+https://*.sentry.io`. The
 policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
-and the implementation must leave that document by a full document
-navigation. The accepted exposure is platform-wide, because the base-domain
+and leaving that document after a vendor library loads uses a full document
+navigation. The accepted session exposure is platform-wide, because the base-domain
 session cookie is valid on every workspace subdomain. Every other document
 keeps the same-origin script policy.
 

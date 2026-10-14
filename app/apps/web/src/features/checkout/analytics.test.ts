@@ -70,7 +70,7 @@ describe('Google tag loading', () => {
         ad_user_data: 'granted', ad_personalization: 'granted',
       } }),
       expect.objectContaining({ 0: 'js', 1: expect.any(Date) }),
-      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567', 2: { send_page_view: true } }),
+      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567', 2: { send_page_view: true, cookie_domain: window.location.hostname, cookie_prefix: `together_${window.location.hostname}` } }),
     ]);
     expect(loadGoogleTag({ ...config, tagId: 'G-DEF1234567' })).toBe(false);
     expect(scripts()).toHaveLength(1);
@@ -196,7 +196,7 @@ it('queues consent and bootstrap commands before inserting the script', async ()
       expect.objectContaining({ 0: 'consent', 1: 'default' }),
       expect.objectContaining({ 0: 'consent', 1: 'update' }),
       expect.objectContaining({ 0: 'js', 1: expect.any(Date) }),
-      expect.objectContaining({ 0: 'config', 1: config.tagId, 2: { send_page_view: true } }),
+      expect.objectContaining({ 0: 'config', 1: config.tagId, 2: { send_page_view: true, cookie_domain: window.location.hostname, cookie_prefix: `together_${window.location.hostname}` } }),
     ]);
     return node;
   });
@@ -212,11 +212,16 @@ it('decodes JSON cookie values before checking consent', async () => {
   expect(scripts()).toHaveLength(1);
 });
 
-it.each(['togethercommunity.app', 'acme.togethercommunity.app', 'checkout.example.test'])('loads on the success return independently of host (%s)', async (hostname) => {
+it.each(['togethercommunity.app', 'acme.togethercommunity.app', 'studio.togethercommunity.app', 'checkout.example.test'])('scopes GA4 cookies to the current host with a separate cookie name (%s)', async (hostname) => {
   vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, hostname });
   const { loadGoogleTag } = await import('./analytics.js');
   expect(loadGoogleTag(config)).toBe(true);
   expect(scripts()).toHaveLength(1);
+  expect(window.dataLayer?.[3]).toEqual(expect.objectContaining({
+    0: 'config', 1: config.tagId, 2: {
+      send_page_view: true, cookie_domain: hostname, cookie_prefix: `together_${hostname}`,
+    },
+  }));
 });
 
 it.each([

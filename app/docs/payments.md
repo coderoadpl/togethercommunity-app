@@ -39,10 +39,13 @@ configured ID and
 either **Load without checking consent** or a configured consent cookie that is
 present and contains the required value fragment, if one is configured. With no
 fragment, cookie presence is sufficient. Cookie values are URL-decoded before
-matching; malformed encoding falls back to the raw value. The creator's site must
-set this cookie for the parent domain so it is readable on the platform
-subdomain. Enabling the consent bypass makes the creator responsible for the
-applicable consent rules.
+matching; malformed encoding falls back to the raw value. The consent cookie must
+be readable on the checkout host. A creator's unrelated website cannot set a
+cookie for a workspace on the platform's domain. On a custom checkout subdomain
+of the creator's own domain, a consent cookie set for that shared parent domain
+can be read by checkout. This consent cookie is separate from vendor identifiers.
+Enabling the consent bypass makes the creator responsible for the applicable
+consent rules.
 
 After the loading rule passes, Consent Mode v2 defaults deny `analytics_storage`,
 `ad_storage`, `ad_user_data` and `ad_personalization`, with `wait_for_update: 500`.
@@ -127,9 +130,14 @@ Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.
 
-GA4 uses its default cookie domain. A parent-domain `_ga` cookie is shared across
-the creator's site and the platform subdomain, recognizing the same visitor
-without additional cross-domain configuration.
+GA4 sets `cookie_domain` to the current checkout hostname and `cookie_prefix` to
+`together_<hostname>`. The distinct cookie name prevents adopting an existing
+parent-domain `_ga` identifier. Workspace subdomains therefore do not share GA4
+identifiers with each other or the platform host. The same restriction applies
+on custom domains: visits to the creator's website and its checkout subdomain
+are not automatically linked through a shared GA4 cookie. Meta still uses its
+vendor-default first-party cookie scope; its identifiers are not yet isolated
+across platform workspace subdomains.
 
 Creators should add a privacy-policy statement describing their actual setup,
 for example: “After our configured consent-cookie check passes, our purchase
@@ -140,8 +148,9 @@ sales-link slug. Meta receives page-view and purchase events with the order
 identifier, product identifiers, quantities, currency and gross purchase amounts.
 Our single consent choice
 grants analytics storage, advertising storage, advertising user data and
-advertising personalization. A parent-domain analytics cookie links visits to
-our website and purchase confirmation page. You can manage consent through our
+advertising personalization. GA4 cookies are scoped to the purchase confirmation
+host and do not automatically link visits to our separate website. You can
+manage consent through our
 website's consent controls.” When cookie checking is disabled, explain that the
 libraries load without checking that cookie, Google receives analytics consent
 only while advertising remains denied, Meta Pixel loads in full, and how consent

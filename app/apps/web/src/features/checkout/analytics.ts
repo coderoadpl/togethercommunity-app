@@ -62,7 +62,12 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
     ad_personalization: 'granted',
   });
   gtag('js', new Date());
-  gtag('config', config.tagId, { send_page_view: true });
+  gtag('config', config.tagId, {
+    send_page_view: true,
+    cookie_domain: window.location.hostname,
+    // A host-specific name prevents adopting an existing parent-domain identifier.
+    cookie_prefix: `together_${window.location.hostname}`,
+  });
 
   const script = document.createElement('script');
   script.async = true;

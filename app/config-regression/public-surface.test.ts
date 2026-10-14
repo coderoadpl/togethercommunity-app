@@ -30,6 +30,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'ensureMember',
   'hasStripeTestSession',
   'fulfillStripeWebhook',
+  'getCheckoutSessionStatus',
   'getPaymentConfig',
   'getPlayableLesson',
   'listLessonEditions',

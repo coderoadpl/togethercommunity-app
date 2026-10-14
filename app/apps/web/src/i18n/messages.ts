@@ -2429,6 +2429,7 @@ export interface Messages {
   checkout: {
     stripeTestMode: string;
     testPurchase: string;
+    testPurchaseBody: string;
     testModeHint: string;
     testModeCouponBlocked: string;
     testModeUnavailable: string;

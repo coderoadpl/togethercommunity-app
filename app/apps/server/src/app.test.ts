@@ -5984,7 +5984,28 @@ describe('public checkout session-status route', () => {
     },
   );
 
-  it('uses the public checkout rate limit and returns Retry-After when exhausted', async () => {
+  it('keeps polling available when checkout-write buckets are exhausted', async () => {
+    const claims: Parameters<AppDeps['rateLimitBuckets']['claim']>[0][] = [];
+    const base = deps({
+      rateLimitBuckets: {
+        claim: async (input) => { claims.push(input); return input.scope === 'checkout-status:ip'; },
+        purgeExpired: async () => 0,
+      },
+    });
+    base.publicRateLimitPolicies = selectPublicRateLimitPolicies({ NODE_ENV: 'production' });
+    const response = await buildApp(base).request(path('cs_live_unknown'), {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+    expect(response.status).toBe(200);
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({ scope: 'checkout-status:ip', key: 'unattributed', limit: 600 });
+    const claim = claims[0];
+    expect(claim).toBeDefined();
+    if (claim === undefined) throw new Error('Missing checkout status rate-limit claim');
+    expect(Date.parse(claim.expiresAt) - Date.parse(claim.windowStartedAt)).toBe(300_000);
+  });
+
+  it('uses its dedicated polling bucket and returns Retry-After when exhausted', async () => {
     const claims: Parameters<AppDeps['rateLimitBuckets']['claim']>[0][] = [];
     const app = buildApp(deps({
       rateLimitBuckets: {
@@ -5996,7 +6017,7 @@ describe('public checkout session-status route', () => {
     expect(response.status).toBe(429);
     expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
-    expect(claims.map((claim) => claim.scope)).toEqual(['public-write:ip']);
+    expect(claims.map((claim) => claim.scope)).toEqual(['checkout-status:ip']);
   });
 
   it('rejects a missing session id with 400', async () => {

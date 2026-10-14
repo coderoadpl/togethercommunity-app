@@ -101,3 +101,29 @@ it('keeps legacy return links pending without polling or a timeout', async () =>
   expect(screen.getByText(en.checkout.successPendingBody)).toBeVisible();
   expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
 });
+
+it('keeps the no-email guidance throughout a staff test purchase, including timeout', async () => {
+  let paid = false;
+  server.use(
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: false,
+      canTest: true, testConfigured: true, testEnabled: false,
+    } })),
+    http.get('/api/public/checkout/session-status', () =>
+      HttpResponse.json({ ok: true, data: { status: paid ? 'paid' : 'pending' } }),
+    ),
+  );
+  const rendered = await renderReturn('&session_id=cs_test_example&test_purchase=1');
+  expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPendingBody)).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(180_000));
+  expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
+  rendered.unmount();
+
+  paid = true;
+  await renderReturn('&session_id=cs_test_paid&test_purchase=1');
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.testPurchaseBody)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successBody)).toBeNull();
+});

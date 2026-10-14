@@ -72,7 +72,7 @@ it.each([true, false])('shows the sales-link test success notice only to staff: 
     stripeConfigured: true, simulatedPaymentsEnabled: false, canTest, testConfigured: canTest, testEnabled: canTest,
   } })));
   renderOffer();
-  expect(await screen.findByText(en.checkout.successPendingBody)).toBeVisible();
+  expect(await screen.findByText(canTest ? en.checkout.testPurchaseBody : en.checkout.successPendingBody)).toBeVisible();
   await waitFor(() => expect(screen.queryByText(en.checkout.testPurchase) !== null).toBe(canTest));
   expect(screen.queryByText(en.checkout.successBody)).toBeNull();
 });

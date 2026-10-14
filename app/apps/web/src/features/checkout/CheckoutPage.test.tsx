@@ -742,7 +742,8 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     expect(await screen.findByText(en.checkout.testPurchase)).toBeInTheDocument();
-    expect(await screen.findByText(en.checkout.successBody)).toBeInTheDocument();
+    expect(await screen.findByText(en.checkout.testPurchaseBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.successBody)).not.toBeInTheDocument();
   });
 
   it('renders an unavailable offer as a not-found state with an escape action', async () => {

@@ -266,7 +266,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">
-            {paymentPaid
+            {testPurchase ? t.checkout.testPurchaseBody : paymentPaid
               ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
               : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
           </Typography>

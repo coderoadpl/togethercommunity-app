@@ -27,6 +27,7 @@ import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {
   redirectHitsPerRedirect: RateLimitWindow;
+  checkoutStatusPerIp: RateLimitWindow;
   writesPerIp: RateLimitWindow;
   writesPerTenant: RateLimitWindow;
   authLinksPerEmail: RateLimitWindow;
@@ -51,6 +52,7 @@ const TEN_MINUTES_MS = 10 * MINUTE_MS;
 
 const PRODUCTION_LIMITS = {
   redirectHitsPerRedirect: 600,
+  checkoutStatusPerIp: 600,
   writesPerIp: 30,
   writesPerTenant: 300,
   authLinksPerEmail: 5,
@@ -64,6 +66,7 @@ const PRODUCTION_LIMITS = {
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
+  checkoutStatusPerIp: 60_000,
   writesPerIp: 3_000,
   writesPerTenant: 30_000,
   authLinksPerEmail: 500,
@@ -111,6 +114,8 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       limit: env.PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES ?? fallback.signInPerEmail,
       windowMs: TEN_MINUTES_MS,
     },
+    // Separate polling capacity lets buyers behind one NAT wait without exhausting checkout writes.
+    checkoutStatusPerIp: { limit: fallback.checkoutStatusPerIp, windowMs: 5 * MINUTE_MS },
     writesPerIp: {
       limit: env.PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE ?? fallback.writesPerIp,
       windowMs: MINUTE_MS,
@@ -162,7 +167,6 @@ const publicRateLimitKind = (path: string): PublicRateLimitKind | null => {
   if (path === BETTER_AUTH_PASSWORD_SIGN_IN_PATH) return 'auth-password';
   if (AUTH_LINK_PATHS.has(path)) return 'auth-link';
   if (path === API_PATHS.authResolve) return 'auth-resolve';
-  if (path === API_PATHS.publicCheckoutSessionStatus) return 'write';
   return isPublicWritePath(path) ? 'write' : null;
 };
 
@@ -201,8 +205,14 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   const policies = deps.publicRateLimitPolicies;
   const clientIp = (): string =>
     trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY;
-  const checkoutStatusRead = c.req.method === 'GET' && c.req.path === API_PATHS.publicCheckoutSessionStatus;
-  if (c.req.method === 'GET' && !checkoutStatusRead) {
+  if (c.req.method === 'GET' && c.req.path === API_PATHS.publicCheckoutSessionStatus) {
+    const claimed = await claimRateLimitWindow(
+      { scope: 'checkout-status:ip', key: clientIp(), window: policies.checkoutStatusPerIp },
+      limiter,
+    );
+    return claimed.ok ? null : rateLimitedResponse(claimed.error);
+  }
+  if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;
     const claimed = await claimRateLimitWindow(
       { scope: 'deep-health:ip', key: clientIp(), window: policies.deepHealthPerIp },
@@ -210,7 +220,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
   }
-  if (c.req.method !== 'POST' && !checkoutStatusRead) return null;
+  if (c.req.method !== 'POST') return null;
   if (isMarketingSignupSubmissionPath(c.req.path)) {
     const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp(), window: policies.signupsPerIp }, limiter);
     if (!ip.ok) return rateLimitedResponse(ip.error);

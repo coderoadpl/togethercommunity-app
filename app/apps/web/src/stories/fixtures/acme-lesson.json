@@ -108,8 +108,8 @@
           {
             "accessItems": [
               {
-                "level": "course",
-                "courseId": "course-acme"
+                "courseId": "course-acme",
+                "level": "course"
               }
             ],
             "currency": "PLN",

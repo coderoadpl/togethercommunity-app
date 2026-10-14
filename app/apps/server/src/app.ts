@@ -24,7 +24,7 @@ import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
 import { respond } from './respond.js';
-import { registerSocialPreviewRoute } from './social-preview.js';
+import { registerSocialPreviewRoute, SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
 import { registerTenantRedirects } from './tenant-redirects.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
@@ -83,8 +83,17 @@ export const buildApp = (deps: AppDeps) => {
       referrerPolicy: 'strict-origin-when-cross-origin',
     })(c, next);
     const redirectOrigin = c.get('signupRedirectOrigin');
-    const policy = c.res.headers.get('content-security-policy');
-    if (redirectOrigin !== undefined && policy !== null) c.res.headers.set('content-security-policy', policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`));
+    let policy = c.res.headers.get('content-security-policy');
+    if (policy === null) return;
+    const checkoutDocument = c.get('checkoutSpaDocument') === true
+      || (c.req.path.startsWith('/checkout/') && !SOCIAL_CRAWLER_PATTERN.test(c.req.header('user-agent') ?? ''));
+    if (checkoutDocument) {
+      policy = policy
+        .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com')
+        .replace(/connect-src [^;]+/, '$& https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com');
+    }
+    if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
+    c.res.headers.set('content-security-policy', policy);
   });
   app.use('*', marketingSignupCorsMiddleware(deps));
   app.use('*', async (c, next) => {

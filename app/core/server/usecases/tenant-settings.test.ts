@@ -342,3 +342,42 @@ describe('updateTenantSettings', () => {
     });
   });
 });
+
+
+describe('analytics settings permissions', () => {
+  it.each(['owner', 'admin'] as const)('allows %s to save all five analytics settings', async (staffRole) => {
+    const result = await updateTenantSettings({ identity: { ...identity('admin'), staffRole } }, {
+      analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+    }, deps);
+    expect(result).toMatchObject({ ok: true, value: {
+      analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+    } });
+  });
+
+  it('denies admins unrelated settings even when included alongside analytics', async () => {
+    expect(await updateTenantSettings({ identity: identity('admin') }, {
+      analyticsTagId: 'G-ABC123', name: 'Changed name',
+    }, deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateTenantSettings({ identity: identity('admin') }, { name: 'Changed name' }, deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('denies member analytics updates', async () => {
+    expect(await updateTenantSettings({ identity: identity(null) }, { analyticsTagId: 'G-ABC123' }, deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('preserves omitted fields and clears text through the existing patch path', async () => {
+    const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({
+      ...settings, analyticsTagId: 'G-ABC123', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+    }) } };
+    expect(await updateTenantSettings({ identity: identity('admin') }, { analyticsTagId: '' }, configured))
+      .toMatchObject({ ok: true, value: {
+        analyticsTagId: null, analyticsConsentCookieName: 'consent',
+        analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: true,
+      } });
+  });
+});

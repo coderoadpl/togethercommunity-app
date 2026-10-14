@@ -190,7 +190,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/api-keys/')) return 'api-key:write';
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
-  if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
+  if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:analytics:write';
   if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path.startsWith('/api/tenant/redirects')) {
     return method === 'GET' ? 'tenant:domain:read' : 'tenant:settings:write';
@@ -308,6 +308,7 @@ const beforeForRoute = (
   }
   if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/tenant/settings' && method === 'POST') return staff;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
   if (path === '/api/support/message') return tenantActors;
@@ -360,7 +361,9 @@ const routeRows = (): PermissionRow[] =>
             ? before
             : effectiveAfter(reachable, capability),
         derivable: capability !== null && route.path !== '/api/m2m/import/validate',
-        evidence: route.path === '/api/m2m/import/validate'
+        evidence: route.path === '/api/tenant/settings' && route.method === 'POST'
+          ? 'Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only)'
+          : route.path === '/api/m2m/import/validate'
           ? 'Tenant API key + either import scope'
           : publicRouteManifestEntry(route) !== undefined
           ? 'public route manifest'
@@ -415,6 +418,10 @@ const capabilityFromBody = (
     ts.forEachChild(node, visit);
   };
   visit(body);
+  if (subject === 'tenant-settings.ts#updateTenantSettings'
+    && capabilities.length === 2
+    && capabilities.includes('tenant:analytics:write')
+    && capabilities.includes('tenant:settings:write')) return 'tenant:analytics:write';
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
   if (capabilities.length !== 1 && !directoryConjunction) {
     throw new Error(
@@ -561,7 +568,7 @@ const beforeForUseCase = (
     return capability === 'tenant:domain:read' ? staff : owner;
   }
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
-  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
+  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : capability === 'tenant:analytics:write' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
@@ -610,7 +617,9 @@ const useCaseRows = (): PermissionRow[] =>
       before,
       after: effectiveAfter(reachable, capability),
       derivable: true,
-      evidence: `${relative(appRoot, join(useCasesRoot, file))} authorization call`,
+      evidence: file === 'tenant-settings.ts' && name === 'updateTenantSettings'
+        ? 'Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only)'
+        : `${relative(appRoot, join(useCasesRoot, file))} authorization call`,
     };
   });
 
@@ -652,7 +661,7 @@ const suspicious: SuspiciousPermission[] = [
   },
   {
     subject: 'GET /api/tenant/settings',
-    behavior: 'A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).',
+    behavior: 'A member can read tenant settings. Analytics-only updates allow owners and admins; every other settings patch remains owner-only (`core/server/usecases/tenant-settings.ts`).',
   },
   {
     subject: 'marketing synthetic identities',
@@ -714,6 +723,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'Directory imports additionally require the relevant contact, list, consent or suppression writes; previews and row results require corresponding reads. List previews require both `marketing:list:read` and `marketing:contact:read`. The table lists the primary capability, while use-case guards enforce these conjunctions. Marketing API keys cannot invoke scheduler operations.',
     '',
     'Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.',
+    '',
+    'Tenant settings writes list the analytics-only capability, which allows owners and admins. Any patch containing other settings requires `tenant:settings:write` and remains owner-only, including mixed analytics and non-analytics patches.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',

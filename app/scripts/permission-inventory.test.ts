@@ -72,6 +72,21 @@ describe('permission inventory', () => {
     }
   });
 
+  it('classifies analytics settings separately from owner-only tenant settings', () => {
+    const inventory = collectPermissionInventory();
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'POST /api/tenant/settings'),
+      inventory.useCases.find((entry) => entry.subject === 'tenant-settings.ts#updateTenantSettings'),
+    ]) {
+      expect(row).toMatchObject({
+        capability: 'tenant:analytics:write',
+        before: ['owner', 'admin'],
+        after: ['owner', 'admin'],
+        evidence: 'Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only)',
+      });
+    }
+  });
+
   it('classifies sales-link handoffs as public reads and session creation as checkout start', () => {
     const inventory = collectPermissionInventory();
     for (const [subject, capability] of [

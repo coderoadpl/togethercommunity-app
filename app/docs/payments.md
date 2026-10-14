@@ -2,7 +2,103 @@
 
 ## Purchase confirmation and purchased files
 
-The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns only `pending` or `paid` in the API envelope, with no buyer, order, product, or amount data and `Cache-Control: no-store`. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. Polling stops after payment confirmation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending` or `paid` in the API envelope with `Cache-Control: no-store`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a Google tag; buyer details are never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. Polling stops after payment confirmation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+
+## Checkout analytics
+
+Owners and admins configure **Studio → Settings → Analytics** through the existing
+tenant settings update. Set a Google Tag Manager container ID (`GTM-` followed by
+4–12 uppercase letters or digits) or a GA4 measurement ID (`G-` followed by 6–14
+uppercase letters or digits). Clearing the tag ID disables analytics. The consent
+cookie name accepts 1–64 letters, digits, underscores, dots or hyphens; the optional
+required value fragment accepts at most 128 characters. The optional consent event
+accepts 1–64 letters, digits or underscores. The five settings are
+also available in `tenant settings` and `tenant settings-set` through
+`--analytics-tag-id`, `--analytics-consent-cookie-name`,
+`--analytics-consent-cookie-value`, `--analytics-consent-event` and
+`--analytics-load-without-consent true|false`. An empty string clears a text field.
+
+The public payment configuration exposes only the analytics tag and consent
+configuration under `analytics`, or `null` when no tag is configured. A tag loads
+only when the live success card mounts on `/offer/<slug>?status=success` or
+`/checkout/<reference>?status=success`. It never loads for `test_purchase=1`, the
+server-rendered checkout handoff, cancellation, Studio or member pages. The tag
+is injected once per document. Because the SPA is a single document, a tag already
+loaded on the return page stays active during in-app navigation until reload.
+
+The success card reads `document.cookie`. Loading requires a configured tag and
+either **Load without checking consent** or a configured consent cookie that is
+present and contains the required value fragment, if one is configured. With no
+fragment, cookie presence is sufficient. Cookie values are URL-decoded before
+matching; malformed encoding falls back to the raw value. The creator's site must set this cookie
+for the parent domain so it is readable on the platform subdomain. Enabling the
+consent bypass makes the creator responsible for the applicable consent rules.
+After the loading rule passes and before loading either Google snippet, Consent
+Mode v2 defaults deny `analytics_storage`, `ad_storage`, `ad_user_data` and
+`ad_personalization`, with `wait_for_update: 500`. An immediate consent update
+grants all four categories. If configured, the consent event follows as
+`dataLayer.push({ event: name, [name]: 'granted' })`, before the GTM bootstrap or
+GA4 initialization. The creator must ensure their consent rule authorizes these
+categories.
+
+When session status becomes `paid` and the tenant has a tag ID, its response adds:
+
+```json
+{
+  "analytics": {
+    "transactionId": "order-id",
+    "value": 99,
+    "currency": "PLN",
+    "offerSlug": "workbook",
+    "items": [
+      { "itemId": "product-id", "itemName": "Digital workbook", "price": 99 }
+    ]
+  }
+}
+```
+
+The transaction ID is the order ID; the value is the gross order total in major
+currency units, and each item's price is the gross order-line amount in major
+units. `offerSlug` is the order's sales-link slug, or `null` when no link is
+available. Pending and unknown sessions retain identical responses without analytics.
+Unconfigured tenants receive no analytics payload even when paid. Rate limits
+and `Cache-Control: no-store` remain unchanged.
+
+Once the tag has loaded, the success card emits `purchase` with `transaction_id`,
+`value`, `currency` and `items`. Each item uses `item_id`, `item_name`, `price` and
+`quantity: 1`. GTM receives `dataLayer.push({ ecommerce: null })` followed by
+`dataLayer.push({ event: 'purchase', ecommerce: payload, offer_slug: offerSlug })`;
+GA4 receives `gtag('event', 'purchase', { ...payload, offer_slug: offerSlug })`.
+The creator can map `offer_slug` to a custom dimension in GTM. The client writes
+`together.analytics.purchase.<session_id>` to local storage before emission,
+preventing another event for that session on reload. Returns without a session
+ID, including free checkouts and legacy links, may load the tag but never emit a
+purchase event.
+
+Checkout SPA documents extend `script-src` with
+`https://www.googletagmanager.com` and `connect-src` with that origin plus
+`https://*.google-analytics.com`, `https://*.analytics.google.com` and
+`https://*.googletagmanager.com`. The existing `img-src` already allows HTTPS.
+Other documents, including server-rendered handoff and crawler pages, retain
+their existing content security policy.
+
+When the creator's site uses GA4 with a parent-domain `_ga` cookie, the platform
+subdomain reads the same visitor identifier. No additional cross-domain
+configuration is needed for this apex-domain-to-subdomain funnel. The creator
+must configure the desired GA4 destination and purchase handling in their own
+Google tag or GTM container.
+
+Creators should add a privacy-policy statement describing their actual setup,
+for example: “After you consent to analytics on our website, our purchase
+confirmation page loads Google Analytics through our configured Google tag. It
+uses the shared analytics cookie to connect website visits with purchases and
+sends an order identifier, purchased product identifiers and names, currency and
+gross purchase amounts and the sales-link slug to Google. After the configured
+consent check passes, our confirmation page grants analytics and advertising
+storage, advertising user data and advertising personalization consent. You can
+manage analytics consent through our website's consent controls.” The statement
+must explain any configured consent bypass or GTM overrides and the creator's
+own retention, recipients and consent-withdrawal arrangements.
 
 ## Direct sales-link checkout
 

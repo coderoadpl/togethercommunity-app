@@ -604,6 +604,20 @@ export interface Messages {
     options: { pl: string; en: string };
     save: string;
   };
+  analyticsSettings: {
+    heading: string;
+    intro: string;
+    tagId: string;
+    tagIdHint: string;
+    consentCookieName: string;
+    consentCookieNameHint: string;
+    consentCookieValue: string;
+    consentCookieValueHint: string;
+    consentEvent: string;
+    consentEventHint: string;
+    loadWithoutConsent: string;
+    loadWithoutConsentHint: string;
+  };
   settingsNavigation: {
     aria: string;
     company: string;

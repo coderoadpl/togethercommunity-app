@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { analyticsTagIdSchema, analyticsConsentCookieNameSchema, analyticsConsentCookieValueSchema, analyticsConsentEventSchema } from './checkout-analytics.js';
+
 import { checkoutAppearanceSchema } from './checkout-appearance.js';
 
 import {
@@ -147,6 +149,11 @@ export const signInNoticeSchema = z.object({
 });
 
 export const tenantSettingsSchema = z.object({
+  analyticsTagId: analyticsTagIdSchema.nullable().optional(),
+  analyticsConsentCookieName: analyticsConsentCookieNameSchema.nullable().optional(),
+  analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().optional(),
+  analyticsConsentEvent: analyticsConsentEventSchema.nullable().optional(),
+  analyticsLoadWithoutConsent: z.boolean().optional(),
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.default({ enabled: false, text: '' }),
   name: tenantSchema.shape.name,
@@ -209,6 +216,11 @@ const clearableText = (max: number) => z
 
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
+  analyticsTagId: analyticsTagIdSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
+  analyticsConsentCookieName: analyticsConsentCookieNameSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
+  analyticsConsentCookieValue: analyticsConsentCookieValueSchema.nullable().transform((value) => value === '' ? null : value).optional(),
+  analyticsConsentEvent: analyticsConsentEventSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
+  analyticsLoadWithoutConsent: z.boolean().optional(),
   checkoutAppearance: checkoutAppearanceSchema.nullable().optional(),
   signInNotice: signInNoticeSchema.optional(),
   name: tenantSchema.shape.name.optional(),

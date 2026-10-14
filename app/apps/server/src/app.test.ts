@@ -3761,11 +3761,47 @@ describe('server edge security baseline', () => {
       expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
     }
     expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
-    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https: https://www.googletagmanager.com");
     for (const response of [unsubscribe, confirmation, legal]) {
       expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
       expect(response.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     }
+  });
+
+  it('extends analytics CSP only for checkout SPA documents', async () => {
+    const h = await directSalesLinkApp();
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    const analyticsConnections = 'https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com';
+    for (const path of ['/checkout/product-1', '/checkout/product-1?status=success', '/offer/bundle?status=success', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together']) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status).toBe(200);
+      const policy = response.headers.get('content-security-policy');
+      expect(policy).toMatch(/script-src 'self' 'nonce-[^']+' https:\/\/www\.googletagmanager\.com;/);
+      expect(policy).toContain(`${analyticsConnections};`);
+      expect(policy).toContain("img-src 'self' data: https:;");
+    }
+    for (const path of ['/panel/settings', '/my/products', '/legal/terms', '/offer/bundle']) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      const policy = response.headers.get('content-security-policy');
+      expect(policy).toMatch(/script-src 'self' 'nonce-[^']+';/);
+      expect(policy).not.toContain('google');
+      expect(policy).toContain(path.startsWith('/panel/') || path.startsWith('/my/')
+        ? "connect-src 'self' https:;"
+        : "connect-src 'self' https://*.sentry.io;");
+    }
+    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together']) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost', 'user-agent': 'Googlebot' } });
+      expect(response.headers.get('content-security-policy')).not.toContain('google');
+    }
+    h.base.tenants.findSettings = async () => ({ ...h.settings, termsUrl: null, privacyUrl: null });
+    const missingLegal = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(missingLegal.status).toBe(503);
+    expect(missingLegal.headers.get('content-security-policy')).not.toContain('google');
+    h.salesLinks.findBySlug = async () => null;
+    const unknownOffer = await h.app.request('/offer/missing?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(unknownOffer.status).toBe(404);
+    expect(unknownOffer.headers.get('content-security-policy')).not.toContain('google');
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
@@ -5924,14 +5960,20 @@ describe('public checkout session-status route', () => {
     currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_live_paid123' },
     couponId: null, discountCents: 0, createdAt: '2026-10-01T12:00:00.000Z',
   };
-  const statusApp = (rows: Order[] = [order]) => {
+  const statusApp = (rows: Order[] = [order], analyticsTagId: string | null = null) => {
     const base = deps();
     const findOrderByProviderObjectIds = vi.fn<AppDeps['paymentRefunds']['findOrderByProviderObjectIds']>(
       async (tenantId, ids, mode) => rows.find((row) => row.tenantId === tenantId
         && row.mode === mode && row.providerObjectIds.checkoutSession === ids.checkoutSession) ?? null,
     );
     return {
-      app: buildApp({ ...base, paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds } }),
+      app: buildApp({ ...base,
+        tenants: { ...base.tenants, findSettings: async (tenantId) => {
+          const settings = await base.tenants.findSettings(tenantId);
+          return settings === null ? null : { ...settings, analyticsTagId };
+        } },
+        paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds },
+      }),
       findOrderByProviderObjectIds,
     };
   };
@@ -5944,6 +5986,27 @@ describe('public checkout session-status route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ ok: true, data: { status: 'paid' } });
     expect(findOrderByProviderObjectIds).toHaveBeenCalledExactlyOnceWith(acme.id, { checkoutSession: 'cs_live_paid123' }, 'live');
+  });
+
+  it('exposes only purchase analytics when the paid tenant has configured a tag', async () => {
+    const { app } = statusApp([{ ...order, amountCents: 9900, lines: [{
+      productId: 'product-analytics', name: 'Analytics product', productType: 'digital_download',
+      grossCents: 9900, netCents: 9900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null,
+    }] }], 'GTM-ABCD');
+    const response = await app.request(path('cs_live_paid123'), { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({ ok: true, data: { status: 'paid', analytics: {
+      transactionId: 'order-status', value: 99, currency: 'PLN', offerSlug: null,
+      items: [{ itemId: 'product-analytics', itemName: 'Analytics product', price: 99 }],
+    } } });
+  });
+
+  it('keeps configured pending and unknown session bodies identical', async () => {
+    const { app } = statusApp([{ ...order, status: 'pending' }], 'GTM-ABCD');
+    for (const sessionId of ['cs_live_paid123', 'cs_live_unknown']) {
+      const response = await app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
+      expect(await response.json()).toEqual({ ok: true, data: { status: 'pending' } });
+    }
   });
 
   it('uses the tenant header and test-session mode', async () => {
@@ -6030,6 +6093,28 @@ describe('public checkout session-status route', () => {
 });
 
 describe('public payment-config route', () => {
+  it('returns null analytics when no tag is configured', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: null } });
+  });
+
+  it('exposes only the five public analytics settings', async () => {
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, analyticsTagId: 'G-ABC123',
+        analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true', analyticsConsentEvent: 'site_consent', analyticsLoadWithoutConsent: false };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toEqual({ ok: true, data: {
+      stripeConfigured: false, simulatedPaymentsEnabled: false,
+      canTest: false, testConfigured: false, testEnabled: false,
+      analytics: { tagId: 'G-ABC123', consentCookieName: 'consent', consentCookieValue: 'analytics:true', consentEvent: 'site_consent', loadWithoutConsent: false },
+    } });
+  });
+
   it('exposes the simulated-payments flag for a resolved tenant', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
       headers: { [TENANT_HEADER]: 'acme' },

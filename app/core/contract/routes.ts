@@ -1,3 +1,4 @@
+import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { productVatRateSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -450,9 +451,11 @@ export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInput
 
 export const publicCheckoutSessionStatusOutputSchema = z.object({
   status: z.enum(['pending', 'paid']),
+  analytics: checkoutPurchaseAnalyticsSchema.optional(),
 }).strict();
 
 export const publicPaymentConfigOutputSchema = z.object({
+  analytics: checkoutAnalyticsConfigSchema.nullable().optional(),
   canTest: z.boolean().default(false),
   testConfigured: z.boolean().default(false),
   testEnabled: z.boolean().default(false),

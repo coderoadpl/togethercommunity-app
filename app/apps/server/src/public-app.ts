@@ -641,9 +641,17 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
+    const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
+    const analytics = settings?.analyticsTagId ? {
+      tagId: settings.analyticsTagId,
+      consentCookieName: settings.analyticsConsentCookieName ?? null,
+      consentCookieValue: settings.analyticsConsentCookieValue ?? null,
+      consentEvent: settings.analyticsConsentEvent ?? null,
+      loadWithoutConsent: settings.analyticsLoadWithoutConsent ?? false,
+    } : null;
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+        ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );

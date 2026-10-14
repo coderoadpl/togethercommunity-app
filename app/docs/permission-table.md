@@ -14,13 +14,15 @@ Directory imports additionally require the relevant contact, list, consent or su
 
 Staff acting on their own account share all member capabilities. Tenant identity resolution ensures their member row, while impersonation retains its separate read allowlist and mutation guard.
 
+Tenant settings writes list the analytics-only capability, which allows owners and admins. Any patch containing other settings requires `tenant:settings:write` and remains owner-only, including mixed analytics and non-analytics patches.
+
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
 `member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, sign-in, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 431. Exported `Ctx` use-case rows: 334.
+Closed capability count: 124. Route rows: 431. Exported `Ctx` use-case rows: 334.
 
 ## Human-readable diff
 
@@ -328,7 +330,7 @@ no changes
 | `POST /api/tenant/domains/check` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/domains/storage-cors/check` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/tenant/domains/remove` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
-| `POST /api/tenant/settings` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/tenant/settings` | tenant:analytics:write | owner, admin | owner, admin | yes | Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only) |
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/onboarding/setup` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -797,7 +799,7 @@ no changes
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts authorization call |
-| `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts authorization call |
+| `tenant-settings.ts#updateTenantSettings` | tenant:analytics:write | owner, admin | owner, admin | yes | Analytics-only patches: tenant:analytics:write; all other patches: tenant:settings:write (owner only) |
 | `tenant-setup-readiness.ts#getTenantSetupReadiness` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-setup-readiness.ts authorization call |
 | `tenants.ts#listMyTenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/tenants.ts authorization call |
 
@@ -879,7 +881,7 @@ When the composition flag is enabled, these routes have no session or secret che
 
 ### GET /api/tenant/settings
 
-A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).
+A member can read tenant settings. Analytics-only updates allow owners and admins; every other settings patch remains owner-only (`core/server/usecases/tenant-settings.ts`).
 
 ### marketing synthetic identities
 

@@ -1467,3 +1467,66 @@ describe('catalog cleanup commands', () => {
     expect(soleJson()).toEqual({ ok: true, data: { deleted: true } });
   });
 });
+
+
+describe('tenant analytics settings', () => {
+  it('passes all five analytics settings through the existing update path', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', 'GTM-ABCD123',
+      '--analytics-consent-cookie-name', 'site_consent',
+      '--analytics-consent-cookie-value', 'analytics:true',
+      '--analytics-consent-event', 'site_consent',
+      '--analytics-load-without-consent', 'true');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: 'GTM-ABCD123',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsConsentEvent: 'site_consent',
+      analyticsLoadWithoutConsent: true,
+    });
+  });
+
+  it('accepts empty strings to clear text settings and false to restore consent checks', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', '',
+      '--analytics-consent-cookie-name', '',
+      '--analytics-consent-cookie-value', '',
+      '--analytics-consent-event', '',
+      '--analytics-load-without-consent', 'false');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: '',
+      analyticsConsentCookieName: '',
+      analyticsConsentCookieValue: '',
+      analyticsConsentEvent: '',
+      analyticsLoadWithoutConsent: false,
+    });
+  });
+
+  it('rejects an invalid consent switch value before calling the client', async () => {
+    await run('--json', 'tenant', 'settings-set', '--analytics-load-without-consent', 'yes');
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('prints all five analytics settings', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: {
+      analyticsTagId: 'G-ABCDEF1234',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsConsentEvent: 'site_consent',
+      analyticsLoadWithoutConsent: false,
+    } }));
+    await run('tenant', 'settings');
+    for (const line of [
+      'analytics tag ID: G-ABCDEF1234',
+      'analytics consent cookie name: site_consent',
+      'analytics consent cookie value: analytics:true',
+      'analytics consent event: site_consent',
+      'analytics load without consent: false',
+    ]) {
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(line));
+    }
+  });
+});

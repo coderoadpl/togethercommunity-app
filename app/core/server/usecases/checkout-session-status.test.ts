@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { type Order } from '#core/domain/index.js';
+import { salesLinkSchema, tenantSettingsSchema, type Order, type Product, type TenantSettings } from '#core/domain/index.js';
 import { type PaymentRefundRepository } from '../ports.js';
 import { getCheckoutSessionStatus } from './checkout-session-status.js';
 
@@ -22,12 +22,18 @@ const order: Order = {
   createdAt: '2026-10-01T12:00:00.000Z',
 };
 
-const harness = (rows: Order[] = [order]) => {
+const harness = (rows: Order[] = [order], settings: TenantSettings | null = null, product: Product | null = null) => {
   const findOrderByProviderObjectIds = vi.fn<PaymentRefundRepository['findOrderByProviderObjectIds']>(
     async (tenantId, ids, mode) => rows.find((row) => row.tenantId === tenantId
       && row.mode === mode && row.providerObjectIds.checkoutSession === ids.checkoutSession) ?? null,
   );
   return {
+    salesLinks: { findById: vi.fn(async () => salesLinkSchema.parse({
+      id: 'link-1', tenantId: 'tenant-1', slug: 'workbook', title: 'Workbook', heading: 'Workbook', productIds: ['product-1'],
+      active: true, revision: 1, createdAt: order.createdAt, updatedAt: order.createdAt,
+    })) },
+    tenants: { findSettings: vi.fn(async () => settings) },
+    products: { findById: vi.fn(async () => product) },
     paymentRefunds: {
       findOrderByProviderObjectIds,
       findLatestSubscriptionOrder: async () => null,
@@ -93,4 +99,75 @@ describe('getCheckoutSessionStatus', () => {
       expect(deps.paymentRefunds.findOrderByProviderObjectIds).not.toHaveBeenCalled();
     },
   );
+});
+
+const analyticsSettings = tenantSettingsSchema.parse({
+  name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, analyticsTagId: 'GTM-ABCD',
+});
+
+describe('checkout session purchase analytics', () => {
+  it('returns the immutable order lines and gross major units when configured and paid', async () => {
+    const deps = harness([{ ...order, amountCents: 12999, lines: [
+      { productId: 'product-1', name: 'First product', productType: 'digital_download', grossCents: 9900,
+        netCents: 9900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+      { productId: 'product-2', name: 'Second product', productType: 'digital_download', grossCents: 3099,
+        netCents: 3099, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+    ] }], analyticsSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
+      ok: true, value: { status: 'paid', analytics: {
+        transactionId: 'order-1', value: 129.99, currency: 'PLN', offerSlug: null, items: [
+          { itemId: 'product-1', itemName: 'First product', price: 99 },
+          { itemId: 'product-2', itemName: 'Second product', price: 30.99 },
+        ],
+      } },
+    });
+    expect(deps.products.findById).not.toHaveBeenCalled();
+    expect(deps.salesLinks.findById).not.toHaveBeenCalled();
+  });
+
+  it('resolves the order sales link within its tenant', async () => {
+    const deps = harness([{ ...order, salesLinkId: 'link-1' }], analyticsSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+      ok: true, value: { analytics: { offerSlug: 'workbook' } },
+    });
+    expect(deps.salesLinks.findById).toHaveBeenCalledExactlyOnceWith('tenant-1', 'link-1');
+  });
+
+  it('returns a null offer slug when the sales link no longer exists', async () => {
+    const deps = { ...harness([{ ...order, salesLinkId: 'deleted-link' }], analyticsSettings),
+      salesLinks: { findById: async () => null },
+    };
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+      ok: true, value: { analytics: { offerSlug: null } },
+    });
+  });
+
+  it('uses the tenant product for historical orders without line snapshots', async () => {
+    const product: Product = {
+      id: order.productId, tenantId: order.tenantId, type: 'digital_download', slug: 'historical-product',
+      title: 'Historical product', description: '', coverUrl: null, priceCents: 9999, currency: 'PLN',
+      published: false, visibility: 'listed', accessItems: [], legacyId: null, createdAt: order.createdAt,
+    };
+    const deps = harness([order], analyticsSettings, product);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
+      ok: true, value: { status: 'paid', analytics: { transactionId: 'order-1', value: 10, currency: 'PLN', offerSlug: null,
+        items: [{ itemId: 'product-1', itemName: 'Historical product', price: 10 }],
+      } },
+    });
+    expect(deps.products.findById).toHaveBeenCalledExactlyOnceWith('tenant-1', 'product-1');
+  });
+
+  it.each(['pending', 'failed'] as const)('does not expose configured analytics for a %s order', async (status) => {
+    const deps = harness([{ ...order, status }], analyticsSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
+      ok: true, value: { status: 'pending' },
+    });
+    expect(deps.tenants.findSettings).not.toHaveBeenCalled();
+  });
+
+  it('does not expose analytics for an unknown session even when configured', async () => {
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_unknown', harness([order], analyticsSettings))).toEqual({
+      ok: true, value: { status: 'pending' },
+    });
+  });
 });

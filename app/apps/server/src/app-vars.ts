@@ -13,6 +13,7 @@ export type AppVars = {
     sessionId?: string;
     secureHeadersNonce?: string;
     signupRedirectOrigin?: string;
+    checkoutSpaDocument?: boolean;
     tenantRedirectHit?: { tenantId: string; redirectId: string };
   };
 };

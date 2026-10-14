@@ -1,6 +1,6 @@
 {
-  "hash": "47fa6e670f703a83332b215caa0d755d6f4af042bf8a8419f92600e761334410",
-  "shortId": "47fa6e670f70",
+  "hash": "6bae3fe7f38aed2c1f346239f8bb826e878854e23164e288501e42e23c8d74b6",
+  "shortId": "6bae3fe7f38a",
   "schema": {
     "constraints": [
       {
@@ -4059,6 +4059,14 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "analytics_load_without_consent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "auto_issue_invoices",
             "notNull": true,
             "type": "boolean"
@@ -4100,6 +4108,38 @@
             "generated": "",
             "identity": "",
             "name": "accent_light",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_event",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_tag_id",
             "notNull": false,
             "type": "text"
           },

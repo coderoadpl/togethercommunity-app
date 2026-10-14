@@ -121,8 +121,11 @@ Exception (owner decision 2026-10-14, approved and recorded in `CLAUDE.md`;
 not yet implemented in this baseline): on the checkout success documents
 (`/offer/*` and `/checkout/*` requested with `status=success`) `script-src`
 additionally lists the two vendor script sources named there, Google's tag
-library and Meta's pixel library; `connect-src` on those documents already
-permits `https:`. The policy is static per document; the libraries are loaded
+library and Meta's pixel library, and `connect-src` is `'self' https:` as on
+other web-app documents (the static hosting headers already say so; the server
+middleware, which today narrows every `/offer/*` path to `'self'
+https://*.sentry.io`, must permit the same on the success documents). The
+policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
 and the implementation must leave that document by a full document
 navigation. The accepted exposure is platform-wide, because the base-domain

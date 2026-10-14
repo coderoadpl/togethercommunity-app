@@ -127,9 +127,12 @@ Google's tag library under `https://www.googletagmanager.com/gtag/` and Meta's
 pixel library with its configuration scripts under
 `https://connect.facebook.net`. On that document the `script-src` directive of
 the content security policy (the server middleware and the static hosting
-headers, both conditioned on `status=success`) adds exactly those two sources;
-`connect-src` on those documents already permits `https:` and `img-src` already
-permits `https:`, so no other directive changes. The policy is static per
+headers, both conditioned on `status=success`) adds exactly those two sources.
+`connect-src` on those documents is `'self' https:`, as on other web-app
+documents: the static hosting headers already say so, while the server
+middleware today gives every `/offer/*` path `'self' https://*.sentry.io` and
+must, for the success documents, permit `'self' https:` instead (implementation
+requirement). `img-src` already permits `https:`. The policy is static per
 document; the libraries load only when the workspace has configured analytics
 and its consent rule passes. Required of the implementation (not yet present):
 leaving the success document must be a full document navigation (no in-app

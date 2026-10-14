@@ -111,14 +111,21 @@ previews and nothing else.
 
 All responses receive the secure-header baseline. The CSP permits Emotion's
 runtime styles, HTTPS images, HTTPS lesson embeds, and Sentry envelope delivery
-while keeping other scripts and network requests same-origin.
+while keeping other scripts and network requests same-origin. Ordinary API
+request bodies are limited to 100KB. Public HTML mutations are limited to 16KB,
+provider webhooks to 512KB, and bounded layout, document, and lesson authoring
+payloads to 2MB. JSON errors and authenticated successes are always `no-store`;
+only successful public-offer responses opt into revalidated shared caching.
+
 Exception (owner decision 2026-10-14, approved and recorded in `CLAUDE.md`;
-not yet implemented in this baseline): the checkout success document requested
-with `status=success` may additionally load the two vendor script sources named
-there, Google's tag library and Meta's pixel library, when the workspace has
-configured analytics and its consent rule passes; leaving that document is a
-full document navigation; every other document keeps the same-origin script
-policy.
+not yet implemented in this baseline): on the checkout success documents
+(`/offer/*` and `/checkout/*` requested with `status=success`) the policy
+additionally lists the two vendor script sources named there, Google's tag
+library and Meta's pixel library, in `script-src`, and their measurement
+endpoints in `connect-src`. The policy is static per document; the libraries
+are loaded only when the workspace has configured analytics and its consent
+rule passes, and leaving that document is a full document navigation. Every
+other document keeps the same-origin script policy.
 
 ## Accepted dependency advisories
 

@@ -127,9 +127,13 @@ Google's tag library under `https://www.googletagmanager.com/gtag/` and Meta's
 pixel library with its configuration scripts under
 `https://connect.facebook.net`. On that document the `script-src` directive of
 the content security policy (the server middleware and the static hosting
-headers, both conditioned on `status=success`) adds exactly those two sources;
-no other directive changes (`connect-src` and `img-src` already permit
-`https:`). Leaving the success document is always a full document navigation,
+headers, both conditioned on `status=success`) adds exactly those two sources,
+and `connect-src` adds the vendors' measurement endpoints
+(`https://*.google-analytics.com`, `https://*.analytics.google.com`,
+`https://www.googletagmanager.com`, `https://www.facebook.com`,
+`https://connect.facebook.net`); `img-src` already permits `https:`; no other
+directive changes. The policy is static per document; the libraries load only
+when the workspace has configured analytics and its consent rule passes. Leaving the success document is always a full document navigation,
 so the vendor scripts never run in signed-in views. Workspace-authored scripts
 and tag-manager containers are never loaded. The signed-in session on the
 success document itself is not isolated from the two vendors; the owner

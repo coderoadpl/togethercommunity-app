@@ -5,6 +5,8 @@ import {
   allocateOrderLineGross,
   billingDataSchema,
   orderBillingDataSchema,
+  orderSchema,
+  orderListItemSchema,
   exportOrdersQuerySchema,
   graceExpiresAt,
   listOrdersQuerySchema,
@@ -181,5 +183,15 @@ describe('order list / export queries', () => {
     const parsed = exportOrdersQuerySchema.parse({ format: 'csv', status: 'paid' });
     expect(parsed).toMatchObject({ format: 'csv', status: 'paid' });
     expect('page' in parsed).toBe(false);
+  });
+});
+
+describe('order payment timestamp schemas', () => {
+  it.each([orderSchema, orderListItemSchema])('accepts an ISO payment timestamp and historical null or missing values', (schema) => {
+    expect(schema.shape.paidAt.parse('2026-10-13T18:38:00.000Z')).toBe('2026-10-13T18:38:00.000Z');
+    expect(schema.shape.paidAt.parse(null)).toBeNull();
+    expect(schema.shape.paidAt.parse(undefined)).toBeUndefined();
+    expect(schema.shape.paidAt.safeParse('2026-10-13').success).toBe(false);
+    expect(schema.shape.paidAt.safeParse('invalid').success).toBe(false);
   });
 });

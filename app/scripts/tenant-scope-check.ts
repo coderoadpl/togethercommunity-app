@@ -125,6 +125,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   KsefDispatchLogger: 'KSeF operational logging boundary.',
   KsefInvoicePdf: 'Invoice rendering boundary with no persistence access.',
   MarketingAppDeps: 'Server composition dispatch callbacks.',
+  MarketingSignupDeps: 'Use-case email dispatch callback with no direct persistence access.',
   NotificationChannelPort: 'Notification delivery boundary with no persistence access.',
   NotificationStreamSource: 'Browser event-stream boundary.',
   NotificationsStreamHandle: 'Browser event-stream lifecycle handle.',

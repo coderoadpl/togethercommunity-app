@@ -34,9 +34,10 @@ import type {
   EmailOutboxRepository,
   PaymentProvider,
   PaymentTransactionPort,
+  StripeWebhookOwnershipReader,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
-import { safeErrorMessage } from '../log-safety.js';
+import { serializeErrorChain } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
@@ -52,6 +53,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps, FulfilledCheckoutConsentDeps {
+  stripeWebhookOwnership: StripeWebhookOwnershipReader;
   checkoutSnapshots?: CheckoutSnapshotRepository;
   emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -75,6 +77,7 @@ export const CHECKOUT_SESSION_EVENT_TYPES = new Set<string>([
 
 interface EventApplication {
   processed: boolean;
+  emailsQueued?: boolean;
   consumed?: boolean;
   paidOrder?: Order;
   pendingConsent?: string;
@@ -131,18 +134,18 @@ const enqueueSubscriptionNotice = async (
   kind: 'subscription-payment-failed' | 'subscription-ended',
   accessEndsAt: string,
   deps: StripeWebhookDeps,
-): Promise<Result<void, AppError>> => {
-  if (subscription === null) return ok(undefined);
+): Promise<Result<boolean, AppError>> => {
+  if (subscription === null) return ok(false);
   if (subscription.mode === 'test') {
     deps.logger.warn(`[stripe-test] suppressed ${kind} tenant=${tenant.id} subscription=${subscription.id}`);
-    return ok(undefined);
+    return ok(false);
   }
   const [member, product, settings] = await Promise.all([
     deps.members.findById(tenant.id, subscription.memberId),
     deps.products.findById(tenant.id, subscription.productId),
     deps.tenants.findSettings(tenant.id),
   ]);
-  if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
+  if (member === null || member.deletedAt !== null || product === null) return ok(false);
   const tenantBaseUrl = `${await resolveTenantOrigin(tenant, deps)}/`;
   const branding = settings === null ? undefined : emailBrandingFrom(settings, tenantBaseUrl);
   const language = resolveEmailLanguage(member.language, settings?.defaultLanguage);
@@ -174,8 +177,7 @@ const enqueueSubscriptionNotice = async (
     now: deps.clock.nowIso(),
   });
   if (!queued.ok) return queued;
-  deps.dispatchEmail();
-  return ok(undefined);
+  return ok(true);
 };
 
 export const STRIPE_WEBHOOK_EVENT_TYPES = [
@@ -324,6 +326,7 @@ const claimDiscountedOrder = async (
     priceId: context.session.priceId,
     kind: context.price?.kind ?? 'one_time',
     status: 'paid',
+    paidAt: deps.clock.nowIso(),
     amountCents,
     currency: context.session.currency,
     provider,
@@ -415,7 +418,7 @@ const applyCheckoutCompleted = async (
   if (pending !== null && pending.mode !== 'test') return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
   if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
-    ...pending, providerObjectIds: providerObjectIdsForCheckout(event),
+    ...pending, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
     ...(metadata.salesLinkId != null ? { billing } : {}),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
@@ -495,13 +498,14 @@ const applyCheckoutCompleted = async (
       deps,
     ));
 
+  let emailsQueued = false;
   if (event.mode !== 'test' && product !== null) {
     const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
     if (member === null) return err(internal('Purchased order member is missing'));
     const persistedOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId });
     const queued = await deps.enrollmentTransaction.run((transaction) => queueEnrollmentWelcome(tenant, member, product, metadata.language ?? null, transaction.emailOutbox, deps, persistedOrder ?? paidOrder));
     if (!queued.ok) return queued;
-    deps.dispatchEmail();
+    emailsQueued = true;
   }
 
   if (price?.kind === 'recurring') {
@@ -534,10 +538,10 @@ const applyCheckoutCompleted = async (
       },
       deps,
     );
-    return ok({ processed: true, paidOrder });
+    return ok({ processed: true, paidOrder, emailsQueued });
   }
 
-  return ok({ processed: true, paidOrder });
+  return ok({ processed: true, paidOrder, emailsQueued });
 };
 
 const applyInvoiceEvent = async (
@@ -634,6 +638,7 @@ const applyInvoiceEvent = async (
       deps,
     );
     if (!notified.ok) return notified;
+    return ok({ processed: true, emailsQueued: notified.value });
   }
   return ok({ processed: true });
 };
@@ -796,12 +801,13 @@ const applySubscriptionEvent = async (
       deps,
     );
     if (!notified.ok) return notified;
+    return ok({ processed: true, emailsQueued: notified.value });
   }
   return ok({ processed: true });
 };
 
 const logPaymentFailure = (tenant: Tenant, event: PaymentWebhookEvent, deps: StripeWebhookDeps, error: AppError): void => {
-  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message}`);
+  deps.logger.error(`[stripe-webhook] tenant=${tenant.id} event=${event.id} capture=${event.checkoutSession?.metadata.checkoutConsentCaptureId ?? 'none'} error=${error.code}:${error.message} chain=${serializeErrorChain(error)}`);
 };
 
 const processCheckoutConsent = async (
@@ -810,7 +816,7 @@ const processCheckoutConsent = async (
   order: Pick<Order, 'id' | 'productId'>,
   deps: StripeWebhookDeps,
   transaction: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
-): Promise<Result<string | null, AppError>> => {
+): Promise<Result<{ pendingConsent: string | null; emailsQueued: boolean }, AppError>> => {
   const direct = event.checkoutSession;
   if (direct?.metadata.directCheckout === true) {
     if (direct.termsAccepted !== true || !direct.metadata.termsUrl || !direct.metadata.privacyUrl) {
@@ -836,11 +842,11 @@ const processCheckoutConsent = async (
       termsUrl: direct.metadata.termsUrl, privacyUrl: direct.metadata.privacyUrl,
       acceptedAt: deps.clock.nowIso(),
     });
-    return ok(null);
+    return ok({ pendingConsent: null, emailsQueued: false });
   }
   if (event.mode === 'test') {
     const checkout = event.checkoutSession;
-    if (checkout?.metadata.salesLinkId == null) return ok(null);
+    if (checkout?.metadata.salesLinkId == null) return ok({ pendingConsent: null, emailsQueued: false });
     const captureId = checkout.metadata.checkoutConsentCaptureId;
     const captures = transaction.checkoutConsentCaptures ?? deps.checkoutConsentCaptures;
     const capture = captureId == null ? null : await captures?.findById(tenant.id, captureId);
@@ -852,12 +858,12 @@ const processCheckoutConsent = async (
       email: checkout.email ?? checkout.metadata.memberEmail, source: 'checkout',
       termsUrl: capture.termsUrl, privacyUrl: capture.privacyUrl, acceptedAt: capture.collectedAt,
     });
-    return ok(null);
+    return ok({ pendingConsent: null, emailsQueued: false });
   }
-  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok(null);
+  if (!event.checkoutSession?.metadata.checkoutConsentCaptureId) return ok({ pendingConsent: null, emailsQueued: false });
   const consent = await transaction.consentTransaction.run((repositories) =>
     recordFulfilledCheckoutConsents(tenant, event, order, deps, repositories));
-  if (consent.ok) return ok(null);
+  if (consent.ok) return ok({ pendingConsent: null, emailsQueued: consent.value });
   if (consent.error.code !== 'validation' && consent.error.code !== 'not_found' && consent.error.code !== 'forbidden') return consent;
   const checkout = event.checkoutSession;
   const captureId = checkout?.metadata.checkoutConsentCaptureId;
@@ -869,7 +875,7 @@ const processCheckoutConsent = async (
     captureId, email, orderId: order.id, productId: order.productId,
     reason, createdAt: deps.clock.nowIso(), completedAt: null,
   });
-  return ok(reason);
+  return ok({ pendingConsent: reason, emailsQueued: false });
 };
 
 const paymentModeMatches = async (
@@ -925,16 +931,76 @@ const paymentModeMatches = async (
   return true;
 };
 
+export const validateStripeWebhookTenant = (
+  tenantId: string,
+  event: Pick<PaymentWebhookEvent, 'tenantIds' | 'checkoutSession'>,
+): Result<void, AppError> => {
+  if (event.tenantIds?.some((id) => id !== tenantId) ||
+      (event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenantId)) {
+    return err(validation('Stripe event metadata does not match the webhook tenant'));
+  }
+  return ok(undefined);
+};
+
+export const validateStripeInvoiceTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
+): Promise<Result<boolean, AppError>> => {
+  const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
+  if (!ownership.ok) return ownership;
+  const subscriptionId = event.invoice?.subscriptionId;
+  const subscription = subscriptionId == null ? null :
+    await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
+  const order = subscription !== null || event.objectId === null ? null :
+    await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { invoice: event.objectId }, event.mode ?? 'live');
+  return ok(subscription !== null || order !== null);
+};
+
+const validateStoredStripeWebhookTenant = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
+): Promise<Result<void, AppError>> => {
+  const metadata = validateStripeWebhookTenant(tenantId, event);
+  if (!metadata.ok) return metadata;
+  const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
+    (event.type.startsWith('customer.subscription.') ? event.objectId : null);
+  const invoice = event.checkoutSession?.invoiceId ?? event.adjustment?.invoiceId ??
+    (event.type.startsWith('invoice.') ? event.objectId : null);
+  const paymentIntent = event.checkoutSession?.paymentIntentId ?? event.invoice?.paymentIntentId ?? event.adjustment?.paymentIntentId;
+  const charge = event.invoice?.chargeId ?? event.adjustment?.chargeId;
+  const foreign = await deps.stripeWebhookOwnership.hasForeignOwner(tenantId, {
+    ...(event.customerId == null ? {} : { customer: event.customerId }),
+    ...(subscription == null ? {} : { subscription }),
+    ...(invoice == null ? {} : { invoice }),
+    ...(paymentIntent == null ? {} : { paymentIntent }),
+    ...(charge == null ? {} : { charge }),
+    ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
+  });
+  return foreign ? err(validation('Stripe event belongs to another tenant')) : ok(undefined);
+};
+
 export const fulfillStripeWebhook = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   deps: StripeWebhookDeps,
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
+  const ownership = provider === 'stripe'
+    ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
+    : validateStripeWebhookTenant(tenant.id, event);
+  if (!ownership.ok) return ownership;
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
+  if (event.type.startsWith('customer.subscription.')) {
+    const subscription = event.objectId === null ? null :
+      await deps.subscriptions.findByProviderSubscriptionId(tenant.id, event.objectId);
+    if (subscription === null) return ok({ processed: false });
+  }
   if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
   if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
+  await deps.authPort.initialize();
 
   const processedEvent: ProcessedPaymentEvent = {
     id: event.id,
@@ -952,7 +1018,7 @@ export const fulfillStripeWebhook = async (
   });
   if (claimed === 'processed') {
     if (!CHECKOUT_SESSION_EVENT_TYPES.has(event.type)) return ok({ processed: false });
-    const retried = await deps.paymentTransaction.run(async (transaction) => {
+    const retried = await deps.paymentTransaction.run<EventApplication>(async (transaction) => {
       const job = await transaction.checkoutConsentJobs.lockPending(tenant.id, event.objectId ?? '');
       if (job === null) return ok({ processed: false });
       const consent = await processCheckoutConsent(tenant, {
@@ -966,13 +1032,17 @@ export const fulfillStripeWebhook = async (
         },
       }, { id: job.orderId, productId: job.productId }, deps, transaction);
       if (!consent.ok) return consent;
-      if (consent.value === null) {
+      if (consent.value.pendingConsent === null) {
         await transaction.checkoutConsentJobs.complete(tenant.id, job.checkoutSessionId, deps.clock.nowIso());
       }
-      return ok({ processed: false });
+      return ok({ processed: false, emailsQueued: consent.value.emailsQueued });
     });
-    if (!retried.ok) logPaymentFailure(tenant, event, deps, retried.error);
-    return retried;
+    if (!retried.ok) {
+      logPaymentFailure(tenant, event, deps, retried.error);
+      return retried;
+    }
+    if (retried.value.emailsQueued) deps.dispatchEmail();
+    return ok({ processed: retried.value.processed });
   }
   if (claimed === 'in_progress') {
     return err(appError('conflict', 'Payment event is being processed'));
@@ -1003,14 +1073,18 @@ export const fulfillStripeWebhook = async (
         if (result.value.paidOrder !== undefined) {
           const consent = await processCheckoutConsent(tenant, event, result.value.paidOrder, deps, transactionDeps);
           if (!consent.ok) return consent;
-          if (consent.value !== null) return ok({ ...result.value, pendingConsent: consent.value });
+          return ok({
+            ...result.value,
+            emailsQueued: result.value.emailsQueued === true || consent.value.emailsQueued,
+            ...(consent.value.pendingConsent === null ? {} : { pendingConsent: consent.value.pendingConsent }),
+          });
         }
       }
       return result;
     });
   } catch (cause) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
-    const error = internal(`Payment fulfillment failed: ${safeErrorMessage(cause)}`);
+    const error = internal(`Payment fulfillment failed: ${serializeErrorChain(cause)}`);
     logPaymentFailure(tenant, event, deps, error);
     return err(error);
   }
@@ -1020,6 +1094,7 @@ export const fulfillStripeWebhook = async (
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
     return applied;
   }
+  if (applied.value.emailsQueued) deps.dispatchEmail();
   if (!applied.value.processed && applied.value.consumed !== true) {
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
   }

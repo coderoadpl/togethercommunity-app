@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import type { OrderListItem } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import { SectionCard } from '../../../components/layout/index.js';
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -33,6 +34,7 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
   const t = useTranslations();
   const { language } = useLanguage();
   const paid = order.status === 'paid';
+  const paidAt = order.paidAt ?? (paid ? order.createdAt : null);
   const lines = order.lines ?? [];
   return <Stack spacing={3} data-testid="order-verification">
     <SectionCard title={t.sales.orderTitle({ id: order.id })}>
@@ -40,6 +42,8 @@ export const OrderVerification = ({ order, canIssue, pending = false, onIssue }:
         <Chip label={t.sales[order.status]} color={paid ? 'success' : 'warning'} />
         {order.mode === 'test' ? <Chip label={t.sales.testChip} /> : null}
       </Stack>
+      <Typography>{t.sales.placed}: {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}</Typography>
+      <Typography>{t.sales.paid}: {paidAt === null ? '—' : formatDateTime(paidAt, language, SALES_LINK_TIME_ZONE)}</Typography>
       <Typography>{order.memberName ?? order.memberEmail}</Typography>
       {order.memberName === null ? null : <Typography color="text.secondary">{order.memberEmail}</Typography>}
       <Typography>{t.sales.amount}: {formatPrice(order.amountCents, order.currency, language)}</Typography>

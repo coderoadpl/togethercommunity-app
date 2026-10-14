@@ -5,6 +5,7 @@ import type { ConsumerSalesRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { invoices, orders } from './schema.js';
+import { normalizeOrderDates } from './order-dates.js';
 
 export const createConsumerSalesRepository = (db: Db): ConsumerSalesRepository => ({
   listUninvoicedConsumers: async (tenantId, query) => (
@@ -24,5 +25,5 @@ export const createConsumerSalesRepository = (db: Db): ConsumerSalesRepository =
             OR ${invoices.ksef}->>'ksefNumber' IS NOT NULL
             OR ${invoices.ksef}->>'originalKsefNumber' IS NOT NULL))`,
     )).orderBy(asc(orders.createdAt), asc(orders.id))
-  ).map((row) => orderSchema.parse(row)),
+  ).map((row) => orderSchema.parse(normalizeOrderDates(row))),
 });

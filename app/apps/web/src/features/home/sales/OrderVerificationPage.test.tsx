@@ -31,11 +31,20 @@ it('looks up a token and refreshes the issue count after an issue', async () => 
     }),
   );
   await renderPage(sampleBundleOrder.verificationToken ?? '');
+  expect(await screen.findByText('Placed: 8 Oct 2026, 12:00')).toBeVisible();
+  expect(screen.getByText('Paid: 8 Oct 2026, 12:03')).toBeVisible();
   await userEvent.click(await screen.findByRole('button', { name: 'Mark as issued' }));
   expect(await screen.findByText('Issued 1 of 1')).toBeVisible();
   expect(screen.getByText(/First issued:/)).toBeVisible();
   expect(screen.getByText('Issued by: staff@example.org')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Mark as issued' })).toBeNull();
+});
+
+it('shows the placed date as the payment date for a paid order without a payment timestamp', async () => {
+  server.use(http.get('/api/orders/verify/:reference', () => HttpResponse.json({ ok: true, data: { order: { ...sampleBundleOrder, paidAt: null } } })));
+  await renderPage(sampleBundleOrder.id);
+  expect(await screen.findByText('Placed: 8 Oct 2026, 12:00')).toBeVisible();
+  expect(screen.getByText('Paid: 8 Oct 2026, 12:00')).toBeVisible();
 });
 
 it('shows not found without buyer information for an unknown token', async () => {

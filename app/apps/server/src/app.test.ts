@@ -11,6 +11,8 @@ import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createHmac } from 'node:crypto';
+import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 
 import {
   API_PATHS,
@@ -211,6 +213,7 @@ const deps = (input: {
       listSessions: async () => [],
       revokeSessions: async () => undefined,
       findUserByEmail: async () => null,
+      initialize: async () => undefined,
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -290,6 +293,7 @@ const deps = (input: {
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
     },
+    stripeWebhookOwnership: { hasForeignOwner: async () => false },
     paymentRefunds: input.paymentRefunds ?? {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
@@ -7640,9 +7644,95 @@ describe('checkout consent ordering', () => {
     webhookDeps.paymentTransaction.run = async () => err(internal('Consent storage unavailable'));
     expect((await deliver()).status).toBe(500);
     expect(logger.error).toHaveBeenCalledWith(
-      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable',
+      '[stripe-webhook] tenant=t-acme event=evt_webhook_consent_storage capture=capture-gone error=internal:Consent storage unavailable chain=[{"name":"Error","message":"Consent storage unavailable","code":"internal"}]',
     );
   });
+
+  it('returns HTTP 400 for an invoice naming another tenant without opening a transaction', async () => {
+    const base = deps({ tenants: [acme] });
+    const transaction = vi.spyOn(base.paymentTransaction, 'run');
+    const app = buildApp({
+      ...base,
+      payment: {
+        ...base.payment,
+        verifyWebhookEvent: async () => ok({
+          id: 'evt-foreign-invoice', type: 'invoice.paid', objectId: 'in-foreign',
+          tenantIds: ['another-workspace'], checkoutSession: null,
+          invoice: { subscriptionId: 'sub-foreign', paymentIntentId: null, periodEnd: null, amountCents: 1000, currency: 'USD' },
+        }),
+      },
+    });
+    const response = await app.request('/api/webhooks/stripe/t-acme', {
+      method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'returns HTTP 200 for metadata-free unknown %s',
+    async (type) => {
+      const base = deps({ tenants: [acme] });
+      const transaction = vi.spyOn(base.paymentTransaction, 'run');
+      const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+      const app = buildApp({
+        ...base,
+        payment: {
+          ...base.payment,
+          verifyWebhookEvent: async () => ok({
+            id: 'evt-unknown-subscription', type, objectId: 'sub-unknown',
+            customerId: 'cus-unknown', checkoutSession: null,
+            subscription: { id: 'sub-unknown', status: null, cancelAtPeriodEnd: false, currentPeriodEnd: null, endedAt: null },
+          }),
+        },
+      });
+      const response = await app.request('/api/webhooks/stripe/t-acme', {
+        method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+      expect(transaction).not.toHaveBeenCalled();
+      expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['unknown', 'foreign-metadata', 'foreign-subscription'] as const)(
+    'handles a signed invoice with %s ownership before any Stripe API call',
+    async (ownership) => {
+      const base = deps({ tenants: [acme] });
+      const foreignOwner = vi.spyOn(base.stripeWebhookOwnership, 'hasForeignOwner')
+        .mockResolvedValue(ownership === 'foreign-subscription');
+      const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
+      const payment = createStripePaymentProvider({
+        resolver: { resolve },
+      });
+      const payload = JSON.stringify({
+        id: 'evt-signed-initial', type: 'invoice.paid', livemode: true,
+        data: { object: {
+          id: 'in-initial', customer: 'cus-initial',
+          parent: { subscription_details: { subscription: 'sub-initial' } },
+          ...(ownership === 'foreign-metadata' ? { metadata: { tenantId: 't-other' } } : {}),
+          amount_paid: 1000, currency: 'usd', lines: { data: [] },
+        } },
+      });
+      const timestamp = Math.floor(Date.now() / 1000);
+      const digest = createHmac('sha256', 'plaintext').update(`${timestamp}.${payload}`).digest('hex');
+      const signature = `t=${timestamp},v1=${digest}`;
+      const response = await buildApp({ ...base, payment }).request('/api/webhooks/stripe/t-acme', {
+        method: 'POST', headers: { 'stripe-signature': signature }, body: payload,
+      });
+      expect(response.status).toBe(ownership === 'unknown' ? 200 : 400);
+      expect(await response.json()).toMatchObject(ownership === 'unknown'
+        ? { ok: true, data: { received: true, processed: false } }
+        : { ok: false, error: { code: 'validation' } });
+      if (ownership === 'foreign-metadata') expect(foreignOwner).not.toHaveBeenCalled();
+      else expect(foreignOwner).toHaveBeenCalledWith(acme.id, {
+        customer: 'cus-initial', subscription: 'sub-initial', invoice: 'in-initial',
+      });
+      expect(resolve).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a stripe webhook for an unknown tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
@@ -7701,6 +7791,7 @@ describe('checkout consent ordering', () => {
       payloadRaw: '{}',
       signatureHeader: signatureHeader ?? '',
       webhookSecret: 'plaintext',
+      validateInvoiceTenant: expect.any(Function),
     });
   });
 
@@ -7720,6 +7811,36 @@ describe('checkout consent ordering', () => {
       data: { received: true, processed: false },
     });
   });
+
+  it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
+    'acknowledges unknown %s with HTTP 200 and rejects explicit foreign metadata with HTTP 400',
+    async (type) => {
+      const base = deps({ tenants: [acme] });
+      const event = {
+        id: 'evt-initial-subscription', type, objectId: type.startsWith('invoice.') ? 'in-initial' : 'sub-initial',
+        livemode: true, checkoutSession: null,
+        ...(type.startsWith('invoice.') ? {
+          invoice: { subscriptionId: 'sub-initial', chargeId: null, paymentIntentId: null, amountCents: null, currency: null, periodEnd: null },
+        } : {}),
+      };
+      for (const tenantIds of [[], [acme.id], ['t-other']]) {
+        const app = buildApp({
+          ...base,
+          payment: { ...base.payment, verifyWebhookEvent: async () => ok({ ...event, tenantIds }) },
+        });
+        const response = await app.request('/api/webhooks/stripe/t-acme', {
+          method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
+        });
+        if (tenantIds.includes('t-other')) {
+          expect(response.status).toBe(400);
+          expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+        } else {
+          expect(response.status).toBe(200);
+          expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+        }
+      }
+    },
+  );
 
   it('rejects a stripe webhook for a suspended tenant without verifying or fulfilling it', async () => {
     const logger = { error: vi.fn(), warn: vi.fn() };
@@ -9135,6 +9256,7 @@ describe('staff Stripe test mode routes', () => {
       payloadRaw: '{}',
       signatureHeader: '',
       webhookSecret: 'plaintext',
+      validateInvoiceTenant: expect.any(Function),
     });
     expect(createOrder).not.toHaveBeenCalled();
   });

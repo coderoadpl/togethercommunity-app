@@ -49,8 +49,8 @@ export const formatDate = (value: string, language: string): string =>
 export const formatTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { timeStyle: 'short' }).format(new Date(value));
 
-export const formatDateTime = (value: string, language: string): string =>
-  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+export const formatDateTime = (value: string, language: string, timeZone?: string): string =>
+  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 
 export const formatDateTimeWithSeconds = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));

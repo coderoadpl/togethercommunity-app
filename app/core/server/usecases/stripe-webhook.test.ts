@@ -31,7 +31,7 @@ import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../te
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { queueEnrollmentWelcome } from './fulfill-enrollment.js';
-import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
+import { fulfillStripeWebhook, validateStripeInvoiceTenant, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
 /** Mirrors the partial unique index on processed_events: one fulfilment per object. */
@@ -209,7 +209,17 @@ const harness = (
   const providerCancellations: Parameters<PaymentProvider['cancelSubscription']>[0][] = [];
 
   const deps: StripeWebhookDeps = {
+    stripeWebhookOwnership: {
+      hasForeignOwner: async (tenantId, ids) =>
+        Array.from(subscriptions.values()).some((subscription) => subscription.tenantId !== tenantId &&
+          subscription.providerSubscriptionId === ids.subscription) ||
+        Array.from(members.values()).some((member) => member.tenantId !== tenantId &&
+          ids.customer !== undefined && member.externalCustomerIds['stripe'] === ids.customer) ||
+        orders.some((order) => order.tenantId !== tenantId &&
+          Object.entries(ids).some(([key, value]) => order.providerObjectIds[key] === value)),
+    },
     authPort: {
+      initialize: async () => undefined,
       getAuthenticatedUser: async () => null,
       listSessions: async () => [],
       revokeSessions: async () => undefined,
@@ -729,7 +739,98 @@ const consentHarness = async () => {
   return { ...h, definitions };
 };
 
+const deferred = () => {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+
 describe('fulfillStripeWebhook', () => {
+  it('dispatches once after the checkout payment transaction resolves', async () => {
+    const h = await consentHarness();
+    const calls: string[] = [];
+    const transaction = h.deps.paymentTransaction;
+    const commitReached = deferred();
+    const allowCommit = deferred();
+    let depth = 0;
+    h.deps.paymentTransaction = {
+      run: async (operation) => {
+        depth += 1;
+        const result = await transaction.run(operation);
+        depth -= 1;
+        if (depth === 0) {
+          commitReached.resolve();
+          await allowCommit.promise;
+          calls.push('committed');
+        }
+        return result;
+      },
+    };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail').mockImplementation(() => {
+      calls.push('dispatch');
+    });
+    const fulfilled = fulfillStripeWebhook(tenantA,
+      completedEvent({ checkoutConsentCaptureId: 'capture-consent' }), h.deps);
+
+    await commitReached.promise;
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.queued).toHaveLength(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    allowCommit.resolve();
+    expect(await fulfilled).toEqual(ok({ processed: true }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['committed', 'dispatch']);
+
+    expect(await fulfillStripeWebhook(tenantA,
+      completedEvent({ checkoutConsentCaptureId: 'capture-consent' }), h.deps)).toEqual(ok({ processed: false }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dispatch when the payment transaction rejects after queuing email', async () => {
+    const h = harness();
+    const transaction = h.deps.paymentTransaction;
+    h.deps.paymentTransaction = {
+      run: async (operation) => {
+        await transaction.run(operation);
+        expect(h.enrollmentEmails).toHaveLength(1);
+        throw new Error('Payment commit failed');
+      },
+    };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
+
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toMatchObject({
+      ok: false, error: { code: 'internal' },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each(['invoice.payment_failed', 'customer.subscription.deleted'] as const)(
+    'dispatches the %s notice after the payment transaction resolves', async (type) => {
+      const h = await subscribedHarness();
+      const calls: string[] = [];
+      const transaction = h.deps.paymentTransaction;
+      h.deps.paymentTransaction = {
+        run: async (operation) => {
+          const result = await transaction.run(operation);
+          calls.push('committed');
+          return result;
+        },
+      };
+      const dispatch = vi.spyOn(h.deps, 'dispatchEmail').mockImplementation(() => {
+        calls.push('dispatch');
+      });
+      const event = type === 'invoice.payment_failed'
+        ? invoiceEvent({ id: 'evt-notice', type, invoiceId: 'in-notice', subscriptionId: 'sub-1' })
+        : subscriptionEvent({ id: 'evt-notice', type, subscriptionId: 'sub-1' });
+
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+      expect(h.queued).toHaveLength(1);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual(['committed', 'dispatch']);
+    },
+  );
 
   it.each(['none', 'terms', 'confirmation-email'] as const)('records checkout consent exactly once after duplicate delivery (failure: %s)', async (failurePoint) => {
     const h = await consentHarness();
@@ -879,6 +980,7 @@ describe('fulfillStripeWebhook', () => {
         },
       })),
     };
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
 
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(h.orders).toEqual(paidOrders);
@@ -891,11 +993,13 @@ describe('fulfillStripeWebhook', () => {
     expect(h.marketingConsents.snapshot()).toHaveLength(0);
     expect(h.confirmations.rows).toHaveLength(0);
     expect(h.queued.filter((message) => message.payload.kind === 'marketing-consent-confirmation')).toHaveLength(0);
-    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay');
+    expect(h.errors.at(-1)).toBe('[stripe-webhook] tenant=tenant-a event=evt-pending-retry capture=capture-pending-retry error=internal:Confirmation outbox unavailable during replay chain=[{"name":"Error","message":"Confirmation outbox unavailable during replay","code":"internal"}]');
+    expect(dispatch).not.toHaveBeenCalled();
 
     failEnqueue = false;
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(h.consentJobs).toMatchObject([{ completedAt: now }]);
     expect(h.consents).toHaveLength(1);
     expect(h.marketingConsents.snapshot()).toHaveLength(1);
@@ -962,7 +1066,7 @@ describe('fulfillStripeWebhook', () => {
     );
 
     expect(succeeded).toEqual({ ok: true, value: { processed: true } });
-    expect(h.orders).toMatchObject([{ status: 'paid' }]);
+    expect(h.orders).toMatchObject([{ status: 'paid', paidAt: now }]);
     expect(h.grants.size).toBe(1);
     expect(h.autoInvoiceJobs).toHaveLength(1);
   });
@@ -1301,6 +1405,7 @@ describe('fulfillStripeWebhook', () => {
       prices: [monthlyPrice(tenantA.id)],
       rejectPaymentCommit: true,
     });
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
     const result = await fulfillStripeWebhook(
       tenantA,
       completedEvent({ priceId: 'price-monthly', subscriptionId: 'sub-1' }),
@@ -1316,6 +1421,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.sent).toEqual([]);
     expect(h.autoInvoiceJobs).toEqual([]);
     expect(h.queued).toEqual([]);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it('reprocesses an expired claim and creates exactly one order', async () => {
@@ -1367,6 +1473,226 @@ describe('fulfillStripeWebhook', () => {
     expect(h.sent).toEqual(['buyer@example.com']);
   });
 
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('rejects foreign %s metadata before initializing auth or opening a transaction', async (type) => {
+    const h = harness();
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const event = { ...invoiceEvent({ id: 'evt-foreign', type, invoiceId: 'in-foreign', subscriptionId: 'sub-foreign' }), tenantIds: ['tenant-b'] };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(initialize).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+  });
+
+  it.each(['live', 'test'] as const)('skips lookup for a metadata-free invoice without a tenant-local subscription or order in %s mode', async (mode) => {
+    const h = harness();
+    const findOrder = vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds');
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...invoiceEvent({ id: 'evt-unknown', type: 'invoice.paid', invoiceId: 'in-unknown', subscriptionId: 'sub-unknown' }), mode }, h.deps))
+      .toEqual(ok(false));
+    expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-unknown' }, mode);
+  });
+
+  it.each(['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'rejects metadata-free %s belonging to a stored foreign subscription before claiming it',
+    async (type) => {
+      const h = await subscribedHarness();
+      h.subscriptions.set(h.subscription.id, { ...h.subscription, tenantId: 'tenant-b' });
+      const event = type === 'invoice.paid'
+        ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
+        : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' });
+      const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+      const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+      if (type === 'invoice.paid') {
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
+          .toMatchObject({ ok: false, error: { code: 'validation' } });
+      }
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps))
+        .toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(claim).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['customer', 'invoice'] as const)('rejects a stored foreign %s even when the invoice subscription is local', async (record) => {
+    const h = await subscribedHarness();
+    const event = { ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }), customerId: 'cus-foreign' };
+    if (record === 'customer') {
+      const member = Array.from(h.members.values())[0];
+      if (member === undefined) throw new Error('Expected enrolled member');
+      h.members.set('foreign-member', { ...member, id: 'foreign-member', tenantId: 'tenant-b', externalCustomerIds: { stripe: 'cus-foreign' } });
+    } else {
+      const order = h.orders[0];
+      if (order === undefined) throw new Error('Expected paid order');
+      h.orders.push({ ...order, id: 'foreign-order', tenantId: 'tenant-b', providerObjectIds: { invoice: 'in-foreign' } });
+    }
+    expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('accepts a tenant-local subscription invoice when checkout created a new customer for an existing member', async () => {
+    const h = await subscribedHarness();
+    const member = [...h.members.values()][0];
+    if (member === undefined) throw new Error('Expected enrolled member');
+    member.externalCustomerIds = { stripe: 'cus-historical' };
+    const event = invoiceEvent({ id: 'evt-local', type: 'invoice.paid', invoiceId: 'in-local', subscriptionId: 'sub-1' });
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, customerId: 'cus-new-checkout' }, h.deps)).toEqual(ok(true));
+  });
+
+  it('rejects explicit foreign ownership even when the subscription exists locally', async () => {
+    const h = await subscribedHarness();
+    const event = invoiceEvent({ id: 'evt-foreign', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' });
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, tenantIds: ['tenant-b'] }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'ignores metadata-free unknown %s before claiming the event or opening a transaction',
+    async (type) => {
+      const h = harness();
+      const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+      const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+      const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+      const findSubscription = vi.spyOn(h.deps.subscriptions, 'findByProviderSubscriptionId');
+      const event = {
+        ...subscriptionEvent({ id: 'evt-unknown-subscription', type, subscriptionId: 'sub-unknown' }),
+        customerId: 'cus-unknown',
+      };
+      for (const mode of ['live', 'test'] as const) {
+        expect(await fulfillStripeWebhook(tenantA, { ...event, mode, livemode: mode === 'live' }, h.deps))
+          .toEqual(ok({ processed: false }));
+      }
+      expect(findSubscription).toHaveBeenCalledWith(tenantA.id, 'sub-unknown');
+      expect(initialize).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+      expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
+    'accepts metadata-free tenant-local %s with a new checkout customer',
+    async (type) => {
+      const h = await subscribedHarness();
+      const member = [...h.members.values()][0];
+      if (member === undefined) throw new Error('Expected enrolled member');
+      member.externalCustomerIds = { stripe: 'cus-historical' };
+      const event = {
+        ...subscriptionEvent({ id: 'evt-local-subscription', type, subscriptionId: 'sub-1' }),
+        customerId: 'cus-new-checkout',
+      };
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    },
+  );
+
+  it('accepts an untracked subscription with explicit tenant ownership', async () => {
+    const h = harness();
+    const event = {
+      ...subscriptionEvent({ id: 'evt-untracked', type: 'customer.subscription.updated', subscriptionId: 'sub-untracked' }),
+      customerId: 'cus-new', tenantIds: [tenantA.id],
+    };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+  });
+
+  it('rejects foreign subscription metadata even when the subscription exists locally', async () => {
+    const h = await subscribedHarness();
+    const event = {
+      ...subscriptionEvent({ id: 'evt-conflicting', type: 'customer.subscription.updated', subscriptionId: 'sub-1' }),
+      tenantIds: ['tenant-b'],
+    };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('keeps an invoice ignored when checkout commits after its enrichment was skipped', async () => {
+    const h = await subscribedHarness();
+    const event = {
+      ...invoiceEvent({ id: 'evt-unenriched', type: 'invoice.paid', invoiceId: 'in-initial', subscriptionId: 'sub-1' }),
+      invoice: null,
+    };
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.events.has(event.id)).toBe(false);
+  });
+
+  describe.each([false, true])('initial subscription events with tenant metadata: %s', (withMetadata) => {
+    const initialEvents = (): PaymentWebhookEvent[] => [
+      invoiceEvent({ id: 'evt-initial-paid', type: 'invoice.paid', invoiceId: 'in-initial', subscriptionId: 'sub-1' }),
+      invoiceEvent({ id: 'evt-initial-failed', type: 'invoice.payment_failed', invoiceId: 'in-initial', subscriptionId: 'sub-1' }),
+      subscriptionEvent({ id: 'evt-initial-updated', type: 'customer.subscription.updated', subscriptionId: 'sub-1', status: 'incomplete' }),
+      subscriptionEvent({ id: 'evt-initial-deleted', type: 'customer.subscription.deleted', subscriptionId: 'sub-1', status: 'incomplete_expired' }),
+    ].map((event) => ({ ...event, ...(withMetadata ? { tenantIds: [tenantA.id] } : {}) }));
+
+    it.each([0, 1, 2])('ignores event %s arriving before checkout and allows delivery after enrollment', async (index) => {
+      const h = harness({ prices: [monthlyPrice(tenantA.id)] });
+      const event = initialEvents()[index];
+      if (event === undefined) throw new Error('Expected initial event');
+      if (event.invoice != null) {
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(false));
+      }
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expect(h.events.size).toBe(0);
+      expect(h.orders).toHaveLength(0);
+      expect(h.members.size).toBe(0);
+      expect(h.grants.size).toBe(0);
+      expect(h.sent).toEqual([]);
+
+      expect(await fulfillStripeWebhook(tenantA, completedEvent({
+        priceId: 'price-monthly', subscriptionId: 'sub-1', invoiceId: 'in-initial',
+      }), h.deps)).toEqual(ok({ processed: true }));
+      expect(h.orders).toHaveLength(1);
+      expect(h.members.size).toBe(1);
+      expect(h.grants.size).toBe(1);
+      expect(h.sent).toEqual(['buyer@example.com']);
+      if (event.invoice != null) {
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(true));
+      }
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expect(h.members.size).toBe(1);
+      expect(h.grants.size).toBe(1);
+    });
+
+    it('keeps abandoned and failed initial subscriptions ignored across repeated deliveries without checkout', async () => {
+      const h = harness();
+      for (const event of initialEvents().slice(1)) {
+        for (let delivery = 0; delivery < 2; delivery += 1) {
+          if (event.invoice != null) {
+            expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(false));
+          }
+          expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+        }
+      }
+      expect(h.events.size).toBe(0);
+      expect(h.orders).toHaveLength(0);
+      expect(h.subscriptions.size).toBe(0);
+      expect(h.members.size).toBe(0);
+      expect(h.grants.size).toBe(0);
+      expect(h.sent).toEqual([]);
+    });
+  });
+
+  it('awaits auth initialization before the payment transaction and ensureUser', async () => {
+    const h = harness();
+    let start: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => { start = resolve; });
+    let finish: () => void = () => undefined;
+    const initialized = new Promise<void>((resolve) => { finish = resolve; });
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize').mockImplementation(async () => {
+      start();
+      await initialized;
+    });
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    const ensureUser = vi.spyOn(h.deps.authPort, 'ensureUser');
+    const fulfillment = fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+    await started;
+    expect(transaction).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    finish();
+    expect(await fulfillment).toEqual(ok({ processed: true }));
+    expect(initialize.mock.invocationCallOrder[0]).toBeLessThan(transaction.mock.invocationCallOrder[0] ?? 0);
+    expect(transaction.mock.invocationCallOrder[0]).toBeLessThan(ensureUser.mock.invocationCallOrder[0] ?? 0);
+  });
+
   it('rejects tenant metadata mismatch before creating a member or grant', async () => {
     const h = harness();
     const result = await fulfillStripeWebhook(tenantA, completedEvent({ tenantId: 'tenant-b' }), h.deps);
@@ -1406,7 +1732,7 @@ describe('fulfillStripeWebhook', () => {
       cancelAtPeriodEnd: false,
     });
     expect(h.orders).toHaveLength(1);
-    expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900 });
+    expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', paidAt: now, amountCents: 2900 });
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-17T10:00:00.000Z');
   });
 
@@ -1423,6 +1749,8 @@ describe('fulfillStripeWebhook', () => {
     const initialOrder = h.orders[0];
     if (initialOrder === undefined) throw new Error('checkout did not create an order');
     h.orders[0] = { ...initialOrder, billing };
+    const paidAt = '1998-08-14T10:01:00.000Z';
+    h.setNow(paidAt);
 
     const renewal = await fulfillStripeWebhook(
       tenantA,
@@ -1447,6 +1775,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders[1]).toMatchObject({
       kind: 'recurring',
       status: 'paid',
+      paidAt,
       amountCents: 2900,
       providerObjectIds: { invoice: 'in-1', subscription: 'sub-1' },
       billing,
@@ -2340,6 +2669,7 @@ describe('Stripe payment mode isolation', () => {
 
   it('fulfills a recorded test checkout and queues one invoice job without email or consent', async () => {
     const { h, event, liveOrder } = await testCheckout();
+    const dispatch = vi.spyOn(h.deps, 'dispatchEmail');
     const liveGrant = structuredClone([...h.grants.values()][0]);
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
     expect(h.orders).toHaveLength(2);
@@ -2348,6 +2678,7 @@ describe('Stripe payment mode isolation', () => {
     expect([...h.grants.values()].filter((grant) => grant.mode === 'live')).toEqual([liveGrant]);
     expect([...h.grants.values()].filter((grant) => grant.mode === 'test')).toHaveLength(1);
     expect(h.sent).toHaveLength(1);
+    expect(dispatch).not.toHaveBeenCalled();
     expect(h.queued).toEqual([]);
     expect(h.consents).toEqual([]);
     expect(h.autoInvoiceJobs).toHaveLength(2);
@@ -2552,7 +2883,7 @@ it('queues allocated amounts for a coupon-discounted two-line order', async () =
     event.checkoutSession.metadata.salesLinkId = 'link-1';
   }
   expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
-  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 5149, discountCents: 5151, lines });
+  expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, paidAt: now, amountCents: 5149, discountCents: 5151, lines });
   const payload = h.enrollmentEmails[0]?.payload;
   if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
   const amounts = payload.purchase.lines.map((line) => {
@@ -2768,7 +3099,7 @@ it.each(['direct', 'fallback'])('fulfills a staff %s test pending order with tes
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
   expect(h.members.size).toBe(1);
   expect(h.orders).toHaveLength(1);
-  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', billing: { nip: '5260250274' } });
+  expect(h.orders[0]).toMatchObject({ id: 'staff-test-order', memberId: member.id, mode: 'test', status: 'paid', paidAt: now, billing: { nip: '5260250274' } });
   expect([...h.grants.values()].map((grant) => grant.mode)).toEqual(['test', 'test']);
   expect(h.enrollmentEmails).toEqual([]);
   expect(h.queued).toEqual([]);

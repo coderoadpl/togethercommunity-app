@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export const ERROR_CODES = [
   'unauthorized',
   'invalid_credentials',
@@ -82,3 +84,11 @@ export const impersonationReadOnly = (
 ): AppError => appError('impersonation_read_only', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);
+
+export const errorChainEntrySchema = z.object({
+  name: z.string().optional(),
+  message: z.string(),
+  code: z.string().optional(),
+  routine: z.string().optional(),
+  cause: z.unknown().optional(),
+});

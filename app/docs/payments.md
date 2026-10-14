@@ -45,6 +45,13 @@ NIP; orders with a NIP still require complete Polish billing details. iFirma
 retains its domestic-address restriction. Live order lines, grants and confirmation email
 continue through the existing fulfillment flow.
 
+Purchase emails are dispatched immediately after the payment transaction commits.
+The opportunistic dispatcher runs one bounded batch without delaying the webhook
+response, and Vercel keeps the function alive until the dispatch loop finishes.
+The `dispatch-email` cron runs every minute as a safety net behind immediate
+post-commit dispatch: purchase emails must not wait if opportunistic dispatch
+does not complete.
+
 Staff test purchases use the Together checkout page at `/checkout/<productRef>`
 or `/offer/<slug>?checkout=together` and its **Stripe test mode** switch.
 These pages never hand off automatically. The switch uses the tenant's configured
@@ -97,9 +104,10 @@ invoice webhook handling continues to use item billing periods and invoice
 subscription references.
 
 For `invoice.paid` and `invoice.payment_failed`, Clover payment correlation comes
-from `payments.data`, which is not included by default. When that list is missing
-or empty, Together retrieves the invoice with `expand: ['payments']` using the
-tenant's restricted key for the webhook's live or test slot. The key needs read
+from `payments.data`, which is not included by default. For an invoice matched to
+a local subscription or order, when that list is missing or empty, Together
+retrieves the invoice with `expand: ['payments']` using the tenant's restricted
+key for the webhook's live or test slot. The key needs read
 access to Invoices. Only the payment references are taken from the lookup; the
 original event supplies the invoice amounts, currency and billing period.
 Payment-intent or charge IDs are stored on renewal orders so later refunds and
@@ -107,6 +115,25 @@ disputes can find them. Lookup failures fail webhook processing for retry instea
 of acknowledging an event without its payment references. Existing pre-Clover
 top-level payment references remain supported for older events. Signature
 verification and the signed mode check happen before any lookup.
+
+Checkout Sessions propagate `tenantId` to subscription metadata and, for one-time
+payments, PaymentIntent metadata. Signed webhook metadata explicitly naming a
+different tenant returns HTTP 400 before any Stripe API lookup, even if an object
+ID matches a local record. This includes metadata on expanded customers and
+subscriptions and invoice subscription details.
+Customer, subscription and order IDs that resolve to another tenant's stored
+records also return HTTP 400 before any Stripe API lookup.
+
+Uncorrelated invoices and subscriptions without evidence of foreign ownership are
+acknowledged with HTTP 200 and `processed: false`. Invoice events without a local subscription
+or order skip the Stripe lookup. This applies both to older objects without
+metadata and objects with matching tenant metadata: Stripe can deliver invoice or
+subscription events before `checkout.session.completed`, and abandoned or failed
+initial subscriptions may never create a local record. Unrelated objects in a
+BYO or shared Stripe account are ignored under the same policy. Ignored events do
+not mark fulfillment complete; a later delivery can process after checkout has
+created the subscription. Checkout completion remains responsible for the initial
+order and enrollment.
 
 ## Test mode for staff
 

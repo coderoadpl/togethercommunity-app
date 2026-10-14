@@ -2,7 +2,7 @@ import { InMemoryMarketingSignupFormRepository } from '../testing/marketing-sign
 import { confirmMarketingConsent } from './marketing-email.js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { type Suppression, type MarketingContact } from '#core/domain/index.js';
+import { err, internal, type Suppression, type MarketingContact } from '#core/domain/index.js';
 import type { MarketingSignupDeps, MarketingSignupRepos } from '../marketing-signup-ports.js';
 import { marketingContactCtx, marketingContactDeps } from '../testing/marketing-contact-fakes.js';
 import { InMemoryConsentDefinitionRepository, InMemoryMarketingConsentRepository, InMemoryConsentConfirmationTokenRepository, InMemoryEmailOutboxRepository, InMemorySuppressionRepository } from '../testing/marketing-fakes.js';
@@ -48,7 +48,7 @@ const setup = async (doubleOptIn = false, reason?: Suppression['reason'], stored
     directoryEvents: { ...directory.directoryEvents, append: events },
   };
   let sequence = 0;
-  const deps: MarketingSignupDeps = { forms, transaction: { run: async (_, operation) => operation(repos) }, clock: { nowIso: () => now }, ids: { nextId: () => `id-${++sequence}` }, tokens: { nextToken: () => `token-${++sequence}`.padEnd(32, 'x') }, hmac: { compute: (_, email) => email } };
+  const deps: MarketingSignupDeps = { forms, transaction: { run: async (_, operation) => operation(repos) }, clock: { nowIso: () => now }, ids: { nextId: () => `id-${++sequence}` }, tokens: { nextToken: () => `token-${++sequence}`.padEnd(32, 'x') }, hmac: { compute: (_, email) => email }, dispatchEmail: vi.fn() };
   await definitions.create('tenant-a', { id: 'newsletter', tenantId: 'tenant-a', key: 'newsletter', kind: 'optional_marketing', channel: 'email', doubleOptIn, documentRef: { mode: 'url', url: 'https://example.org/privacy' }, status: 'active', createdAt: now, updatedAt: now }, { id: 'v1', tenantId: 'tenant-a', definitionId: 'newsletter', version: 1, label: 'I agree to receive the newsletter.', documentVersionRef: { mode: 'url', url: 'https://example.org/privacy' }, createdAt: now, createdBy: 'owner' });
   if (reason !== undefined) await suppressions.record('tenant-a', { id: 'suppression', tenantId: 'tenant-a', email: 'reader@example.org', emailHmac: 'reader@example.org', reason, sourceRef: null, meta: null, createdAt: now, liftedAt: null, liftedBy: null });
   const input = { slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'newsletter', listId: 'list', tags: ['newsletter'], collectName: true, successText: { en: 'Thank you', pl: 'Thank you' } };
@@ -59,6 +59,54 @@ const setup = async (doubleOptIn = false, reason?: Suppression['reason'], stored
   return { deps, repos, form, input, submit, contacts, consents, suppressions, outbox, submissions, addMembers, events, confirmations, findByEmailForUpdate };
 };
 describe('public signup consent workflow', () => {
+  it('dispatches confirmation once after the signup transaction resolves', async () => {
+    const fixture = await setup(true);
+    const calls: string[] = [];
+    let releaseCommit: () => void = () => undefined;
+    const allowCommit = new Promise<void>((resolve) => { releaseCommit = resolve; });
+    let reachCommit: () => void = () => undefined;
+    const commitReached = new Promise<void>((resolve) => { reachCommit = resolve; });
+    const transaction = fixture.deps.transaction;
+    fixture.deps.transaction = {
+      run: async (tenantId, operation) => {
+        const result = await transaction.run(tenantId, operation);
+        reachCommit();
+        await allowCommit;
+        calls.push('committed');
+        return result;
+      },
+    };
+    const dispatch = vi.spyOn(fixture.deps, 'dispatchEmail').mockImplementation(() => { calls.push('dispatch'); });
+    const submitted = fixture.submit();
+    await commitReached;
+    expect(fixture.outbox.items).toHaveLength(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    releaseCommit();
+    expect(await submitted).toEqual({ ok: true, value: { status: 'pending', form: fixture.form } });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['committed', 'dispatch']);
+  });
+  it.each(['result', 'rejection'] as const)('does not dispatch when the signup transaction fails with a %s after queuing', async (failure) => {
+    const fixture = await setup(true);
+    const transaction = fixture.deps.transaction;
+    fixture.deps.transaction = {
+      run: async (tenantId, operation) => {
+        await transaction.run(tenantId, operation);
+        expect(fixture.outbox.items).toHaveLength(1);
+        if (failure === 'rejection') throw new Error('Signup commit failed');
+        return err(internal('Signup commit failed'));
+      },
+    };
+    if (failure === 'rejection') await expect(fixture.submit()).rejects.toThrow('Signup commit failed');
+    else expect(await fixture.submit()).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
+  });
+  it('does not dispatch when confirmation enqueue fails', async () => {
+    const fixture = await setup(true);
+    vi.spyOn(fixture.outbox, 'enqueue').mockResolvedValue(err(internal('Outbox unavailable')));
+    expect(await fixture.submit()).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
+  });
   it.each([false, true])('records explicit evidence, tags and membership with double opt-in=%s', async (doubleOptIn) => {
     const fixture = await setup(doubleOptIn);
     expect(await fixture.submit()).toMatchObject({ ok: true, value: { status: doubleOptIn ? 'pending' : 'subscribed' } });
@@ -66,6 +114,7 @@ describe('public signup consent workflow', () => {
     expect(fixture.consents.snapshot()[0]).toMatchObject({ status: 'granted', wordingSnapshot: 'I agree to receive the newsletter.', source: 'signup_form', occurredAt: now, evidence: { ipHash: 'hashed-ip', userAgent: 'test-browser', proofRef: 'form:newsletter' } });
     expect(fixture.addMembers).toHaveBeenCalledWith('tenant-a', { listId: 'list', contactIds: ['contact'] });
     expect(fixture.outbox.items).toHaveLength(doubleOptIn ? 1 : 0);
+    expect(fixture.deps.dispatchEmail).toHaveBeenCalledTimes(doubleOptIn ? 1 : 0);
     if (doubleOptIn) expect(fixture.outbox.items[0]?.payload).toMatchObject({ kind: 'marketing-consent-confirmation', wording: 'I agree to receive the newsletter.', language: 'en' });
   });
   it.each(['hard_bounce', 'complaint', 'erasure', 'unsubscribe_global', 'manual'] as const)('silently preserves %s suppression without mutations', async (reason) => {
@@ -77,6 +126,7 @@ describe('public signup consent workflow', () => {
     expect(fixture.contacts).toEqual(before);
     expect(fixture.consents.snapshot()).toHaveLength(0);
     expect(fixture.outbox.items).toHaveLength(0);
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
     expect(fixture.events).not.toHaveBeenCalled();
     expect(fixture.submissions).not.toHaveBeenCalled();
     expect(fixture.addMembers).not.toHaveBeenCalled();
@@ -171,6 +221,7 @@ describe('public signup consent workflow', () => {
     const [granted] = fixture.consents.snapshot();
     if (granted === undefined) throw new Error('Missing granted consent');
     await fixture.consents.record('tenant-a', { ...granted, id: 'confirmed-consent', status: 'confirmed', previousId: granted.id, occurredAt: '2026-09-12T10:05:00.000Z' });
+    vi.mocked(fixture.deps.dispatchEmail).mockClear();
     const contact = fixture.contacts[0];
     if (contact === undefined) throw new Error('Missing contact');
     contact.archivedAt = now;
@@ -181,6 +232,7 @@ describe('public signup consent workflow', () => {
     expect(rows).toHaveLength(3);
     expect(rows[2]).toMatchObject({ status: 'confirmed', previousId: 'confirmed-consent', source: 'signup_form' });
     expect(fixture.outbox.items).toHaveLength(1);
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
   });
   it('does not restore an erased contact from an anonymous submission', async () => {
     const fixture = await setup(false, undefined, { source: 'erasure', email: 'erased+deleted@example.invalid', archivedAt: now });
@@ -188,6 +240,7 @@ describe('public signup consent workflow', () => {
     expect(fixture.consents.snapshot()).toHaveLength(0);
     expect(fixture.addMembers).not.toHaveBeenCalled();
     expect(fixture.submissions).not.toHaveBeenCalled();
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
   });
   it('silently discards honeypots and rejects stale tokens and foreign tenants', async () => {
     const fixture = await setup();
@@ -196,6 +249,7 @@ describe('public signup consent workflow', () => {
     expect(fixture.submissions).not.toHaveBeenCalled();
     expect(await fixture.submit({ token: 'wrong'.repeat(8) })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await fixture.submit({}, 'tenant-b')).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(fixture.deps.dispatchEmail).not.toHaveBeenCalled();
   });
   it('keeps wording from the displayed form revision and rotates the token when the consent wording changes', async () => {
     const fixture = await setup();

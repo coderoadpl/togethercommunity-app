@@ -123,6 +123,21 @@ import {
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
 
+const parseCsp = (response: Response): Map<string, Set<string>> => {
+  const directives = new Map<string, Set<string>>();
+  for (const directive of (response.headers.get('content-security-policy') ?? '').split(';')) {
+    const [name, ...sources] = directive.trim().split(/\s+/u);
+    if (name) directives.set(name, new Set(sources));
+  }
+  return directives;
+};
+
+const scriptNonce = (directives: Map<string, Set<string>>): string => {
+  const nonces = [...(directives.get('script-src') ?? [])].filter((source) => /^'nonce-[^']+'$/u.test(source));
+  expect(nonces).toHaveLength(1);
+  return nonces[0] ?? '';
+};
+
 const acme: Tenant = {
   id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 4,
 };
@@ -3782,20 +3797,22 @@ describe('server edge security baseline', () => {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       expect(response.status).toBe(200);
       expect(response.headers.get('cache-control')).toBe('no-store');
-      const policy = response.headers.get('content-security-policy') ?? '';
-      expect(policy).toContain("script-src 'self' 'nonce-");
-      expect(policy.includes('https://www.googletagmanager.com')).toBe(analyticsTagId !== null);
-      expect(policy.includes('https://*.google-analytics.com')).toBe(analyticsTagId !== null);
-      expect(policy.includes('https://*.analytics.google.com')).toBe(analyticsTagId !== null);
-      expect(policy.includes('https://connect.facebook.net')).toBe(analyticsMetaPixelId !== null);
-      expect(policy.includes('https://www.facebook.com')).toBe(analyticsMetaPixelId !== null);
-      expect(policy).not.toContain('https://*.googletagmanager.com');
-      if (analyticsTagId !== null) expect(policy).toMatch(/script-src [^;]+ https:\/\/www\.googletagmanager\.com/);
-      if (analyticsMetaPixelId !== null) {
-        expect(policy).toMatch(/script-src [^;]+ https:\/\/connect\.facebook\.net;/);
-        expect(policy).toMatch(/connect-src [^;]+ https:\/\/www\.facebook\.com;/);
-        expect(policy).toMatch(/img-src [^;]+ https:\/\/www\.facebook\.com;/);
-      }
+      const directives = parseCsp(response);
+      expect(directives.get('script-src')).toEqual(new Set([
+        "'self'", scriptNonce(directives),
+        ...(analyticsTagId === null ? [] : ['https://www.googletagmanager.com/gtag/']),
+        ...(analyticsMetaPixelId === null ? [] : ['https://connect.facebook.net']),
+      ]));
+      expect(directives.get('connect-src')).toEqual(new Set([
+        "'self'", path.startsWith('/checkout/') ? 'https:' : 'https://*.sentry.io',
+        ...(analyticsTagId === null ? [] : [
+          'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com',
+        ]),
+        ...(analyticsMetaPixelId === null ? [] : ['https://www.facebook.com', 'https://connect.facebook.net']),
+      ]));
+      expect(directives.get('img-src')).toEqual(new Set([
+        "'self'", 'data:', 'https:',
+      ]));
     }
   });
 
@@ -3807,17 +3824,21 @@ describe('server edge security baseline', () => {
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
     const expectBaseline = (response: Response) => {
-      const policy = response.headers.get('content-security-policy');
-      expect(policy).toMatch(/script-src 'self' 'nonce-[^']+';/);
-      expect(policy).not.toContain('google');
-      expect(policy).not.toContain('facebook');
+      const directives = parseCsp(response);
+      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect([
+        new Set(["'self'", 'https:']),
+        new Set(["'self'", 'https://*.sentry.io']),
+      ]).toContainEqual(directives.get('connect-src'));
     };
     for (const path of [
       '/checkout/product-1', '/checkout/product-1?status=cancelled',
+      '/checkout/product-1?status=successful',
       '/checkout/product-1?checkout=together',
       '/checkout/product-1?status=success&test_purchase=1',
       '/checkout/product-1?status=success&session_id=cs_test_one',
       '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together',
+      '/offer/bundle?status=successful',
       '/offer/bundle?status=success&test_purchase=1',
       '/offer/bundle?status=success&session_id=cs_test_one',
       '/offer/bundle', '/panel/settings?status=success', '/my/products?status=success',

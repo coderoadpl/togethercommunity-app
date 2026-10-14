@@ -45,17 +45,21 @@ applicable consent rules.
 
 After the loading rule passes, Consent Mode v2 defaults deny `analytics_storage`,
 `ad_storage`, `ad_user_data` and `ad_personalization`, with `wait_for_update: 500`.
-An immediate update grants all four categories because the creator's banner
-collects a single all-or-nothing choice. The same sequence applies when the owner
-enables loading without a consent-cookie check. GA4 then initializes with
+When the configured cookie rule matches, an immediate update grants all four
+categories because the creator's banner collects a single all-or-nothing choice.
+When the owner enables loading without a consent-cookie check, the update grants
+only `analytics_storage`; all three advertising categories remain denied.
+GA4 then initializes with
 `send_page_view: true`, and the client injects
 `https://www.googletagmanager.com/gtag/js?id=<measurement-id>`.
 
 Meta injects `https://connect.facebook.net/en_US/fbevents.js` with the official
-`fbq` queue stub. With cookie checking enabled, it queues `fbq('consent', 'revoke')`
-before `fbq('consent', 'grant')`; the bypass path queues only the grant. It then
-initializes the configured Pixel ID and sends `PageView`. Both libraries use the
-same consent-cookie rule.
+`fbq` queue stub. When the loading rule passes, it queues
+`fbq('consent', 'grant')` once, initializes the configured Pixel ID and sends
+`PageView`, including when the owner enables the cookie-check bypass. Meta's
+consent API is binary, so the bypass loads Meta Pixel in full. When the rule does
+not pass, it queues `fbq('consent', 'revoke')` without loading or initializing the
+Pixel. Both libraries use the same consent-cookie rule.
 
 When session status becomes `paid` and either ID is configured, its response adds:
 
@@ -100,24 +104,33 @@ the libraries but never emit a purchase event.
 For server-served HTML success returns under `/offer/` and `/checkout/`, the CSP
 adds analytics sources only when `status=success`, the return is live, the request
 is not from a crawler, and the resolved tenant has the corresponding ID configured.
-A GA4 ID adds `https://www.googletagmanager.com` to `script-src` and
-`https://*.google-analytics.com`, `https://*.analytics.google.com` and
-`https://www.googletagmanager.com` to `connect-src`. A Meta Pixel ID adds
-`https://connect.facebook.net` to `script-src` and `https://www.facebook.com` to
-`connect-src` and `img-src`. Existing HTTPS connection and image allowances remain.
-Entry, cancellation, handoff, test and crawler documents, unresolved or unconfigured
-tenants, and all other documents retain the baseline policy. Success documents
-use `Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
-CSP eligibility does not prove consent; the client checks the configured cookie
-before loading either library.
+A GA4 ID adds `https://www.googletagmanager.com/gtag/` to `script-src`;
+a Meta Pixel ID adds `https://connect.facebook.net`. The Google path prefix
+permits its GA4 scripts. Meta needs its host because `fbevents.js` loads further
+scripts under `/signals/config/<id>` and plugin paths.
+For GA4, `connect-src` also adds `https://*.google-analytics.com`,
+`https://*.analytics.google.com` and `https://www.googletagmanager.com`.
+For Meta, it adds `https://www.facebook.com` and `https://connect.facebook.net`.
+These measurement endpoints allow beacons on self-hosted `/offer/` success
+returns, whose baseline connection policy allows only `'self'` and
+`https://*.sentry.io`. The existing `/checkout/` HTTPS connection allowance
+remains. No other directive changes; `img-src` already permits HTTPS images.
+Entry, cancellation, handoff, test and crawler documents, unresolved or
+unconfigured tenants, and all other server documents retain the baseline policy. Success documents use
+`Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
 
-The repository hosting configuration serves these SPA returns statically. Its
-baseline CSP blocks both external libraries; the server's tenant-specific extension does
-not reach those static responses. Static headers cannot resolve tenant settings.
-Enabling hosted analytics therefore requires a separately approved way to serve
-success documents with the tenant-specific policy. Broad static vendor allowlists
-would also weaken entry pages and unconfigured tenants and must not be used.
-Hosting configuration and document routing are unchanged.
+The hosted deployment serves these SPA returns statically. In `vercel.json`,
+the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
+`status=success` and allow
+`script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
+These entries follow the baseline offer headers and catch-all so their policies
+take precedence only on success returns. Offer fallback and cancellation pages,
+other checkout requests and all other header entries retain the baseline policy.
+No other directive changes: `connect-src 'self' https:` and
+`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+Static headers cannot resolve tenant settings, test mode or cookie consent.
+Their script allowance does not load either library: the client still requires a
+configured ID, a live success return and the consent rule before loading.
 
 GA4 uses its default cookie domain. A parent-domain `_ga` cookie is shared across
 the creator's site and the platform subdomain, recognizing the same visitor
@@ -135,8 +148,9 @@ grants analytics storage, advertising storage, advertising user data and
 advertising personalization. A parent-domain analytics cookie links visits to
 our website and purchase confirmation page. You can manage consent through our
 website's consent controls.” When cookie checking is disabled, explain that the
-libraries load without checking that cookie and how consent is obtained. The
-statement must describe the creator's retention, recipients and
+libraries load without checking that cookie, Google receives analytics consent
+only while advertising remains denied, Meta Pixel loads in full, and how consent
+is obtained. The statement must describe the creator's retention, recipients and
 consent-withdrawal arrangements.
 
 ## Direct sales-link checkout

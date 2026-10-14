@@ -177,6 +177,17 @@ describe('direct sales-link page', () => {
     expect(spaIndex).toBeGreaterThan(handoffIndex);
     const staticPolicy = configuration.headers.find((header) => header.source.includes('?!api/'));
     expect(staticPolicy?.source).toContain('|offer/');
-    expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual(offerRewrites.slice(0, 2).map((rewrite) => ({ source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers })));
+    expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual([
+      ...offerRewrites.slice(0, 2).map((rewrite) => ({
+        source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers,
+      })),
+      {
+        source: '/offer/(.*)',
+        has: [{ type: 'query', key: 'status', value: 'success' }],
+        headers: staticPolicy?.headers.map((header) => header.key === 'Content-Security-Policy'
+          ? { ...header, value: header.value.replace("script-src 'self'", "script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net") }
+          : header),
+      },
+    ]);
   });
 });

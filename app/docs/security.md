@@ -117,24 +117,33 @@ envelope delivery.
 For server-served HTML success returns under `/offer/` and `/checkout/`, the CSP
 adds analytics sources only when `status=success`, the return is live, the request
 is not from a crawler, and the resolved tenant has the corresponding ID configured.
-A GA4 ID adds `https://www.googletagmanager.com` to `script-src` and
-`https://*.google-analytics.com`, `https://*.analytics.google.com` and
-`https://www.googletagmanager.com` to `connect-src`. A Meta Pixel ID adds
-`https://connect.facebook.net` to `script-src` and `https://www.facebook.com` to
-`connect-src` and `img-src`. Existing HTTPS connection and image allowances remain.
-Entry, cancellation, handoff, test and crawler documents, unresolved or unconfigured
-tenants, and all other documents retain the baseline policy. Success documents
-use `Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
-CSP eligibility does not prove consent; the client checks the configured cookie
-before loading either library.
+A GA4 ID adds `https://www.googletagmanager.com/gtag/` to `script-src`;
+a Meta Pixel ID adds `https://connect.facebook.net`. The Google path prefix
+permits its GA4 scripts. Meta needs its host because `fbevents.js` loads further
+scripts under `/signals/config/<id>` and plugin paths.
+For GA4, `connect-src` also adds `https://*.google-analytics.com`,
+`https://*.analytics.google.com` and `https://www.googletagmanager.com`.
+For Meta, it adds `https://www.facebook.com` and `https://connect.facebook.net`.
+These measurement endpoints allow beacons on self-hosted `/offer/` success
+returns, whose baseline connection policy allows only `'self'` and
+`https://*.sentry.io`. The existing `/checkout/` HTTPS connection allowance
+remains. No other directive changes; `img-src` already permits HTTPS images.
+Entry, cancellation, handoff, test and crawler documents, unresolved or
+unconfigured tenants, and all other server documents retain the baseline policy. Success documents use
+`Cache-Control: no-store` so a cached policy cannot outlive tenant settings.
 
-The repository hosting configuration serves these SPA returns statically. Its
-baseline CSP blocks both external libraries; the server's tenant-specific extension does
-not reach those static responses. Static headers cannot resolve tenant settings.
-Enabling hosted analytics therefore requires a separately approved way to serve
-success documents with the tenant-specific policy. Broad static vendor allowlists
-would also weaken entry pages and unconfigured tenants and must not be used.
-Hosting configuration and document routing are unchanged.
+The hosted deployment serves these SPA returns statically. In `vercel.json`,
+the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
+`status=success` and allow
+`script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
+These entries follow the baseline offer headers and catch-all so their policies
+take precedence only on success returns. Offer fallback and cancellation pages,
+other checkout requests and all other header entries retain the baseline policy.
+No other directive changes: `connect-src 'self' https:` and
+`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+Static headers cannot resolve tenant settings, test mode or cookie consent.
+Their script allowance does not load either library: the client still requires a
+configured ID, a live success return and the consent rule before loading.
 
 The platform never loads tenant-authored scripts: checkout analytics is limited
 to Google's GA4 `gtag.js` and Meta's `fbevents.js` libraries for tenant-configured
@@ -144,12 +153,15 @@ libraries, as on any site using GA4 or Meta Pixel.
 
 After a checkout tag loads, navigation away from the return page forces a full
 document load before member or Studio content renders. Consent Mode first denies
-all four categories, then grants all four after the consent rule passes,
-including when the consent-cookie check is explicitly bypassed. GA4 uses its
-default parent-domain cookie scope. Meta queues consent revocation before granting
-consent when cookie checking is enabled, and only grants consent when that check
-is explicitly bypassed. Each configured library sends page-view and purchase
-events independently. See [checkout analytics](payments.md#checkout-analytics).
+all four categories. A matching consent cookie grants all four; explicitly
+bypassing the cookie check grants only `analytics_storage`, leaving advertising
+storage, advertising user data and advertising personalization denied. GA4 uses
+its default parent-domain cookie scope. Meta's consent API is binary: it grants
+consent once before initialization and events when the rule passes, including the
+bypass path, which loads Meta Pixel in full. When the rule does not pass, Meta
+consent is revoked without loading or initializing the Pixel. The owner is
+responsible for applicable consent rules when enabling the bypass. Each configured
+library sends page-view and purchase events independently. See [checkout analytics](payments.md#checkout-analytics).
 Ordinary API request bodies
 are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring

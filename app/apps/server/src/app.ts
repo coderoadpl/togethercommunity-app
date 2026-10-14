@@ -101,14 +101,13 @@ export const buildApp = (deps: AppDeps) => {
         : null;
       if (settings?.analyticsTagId) {
         policy = policy
-          .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com')
+          .replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/')
           .replace(/connect-src [^;]+/, '$& https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com');
       }
       if (settings?.analyticsMetaPixelId) {
         policy = policy
           .replace(/script-src [^;]+/, '$& https://connect.facebook.net')
-          .replace(/connect-src [^;]+/, '$& https://www.facebook.com')
-          .replace(/img-src [^;]+/, '$& https://www.facebook.com');
+          .replace(/connect-src [^;]+/, '$& https://www.facebook.com https://connect.facebook.net');
       }
       c.res.headers.set('cache-control', 'no-store');
     }

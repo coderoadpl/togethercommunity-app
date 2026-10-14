@@ -86,12 +86,10 @@ describe('Google tag loading', () => {
     expect(window.dataLayer).toBeUndefined();
   });
 
-  it('supports presence-only consent and the explicit consent bypass', async () => {
+  it('supports presence-only consent', async () => {
     document.cookie = 'analytics_consent=; path=/';
     const { loadGoogleTag } = await import('./analytics.js');
     expect(loadGoogleTag({ ...config, consentCookieValue: null })).toBe(true);
-    document.cookie = 'analytics_consent=; max-age=0; path=/';
-    expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(true);
   });
 
   it('keeps an existing data layer', async () => {
@@ -236,11 +234,8 @@ describe('GA4 consent commands', () => {
   it.each([
     { mode: 'matching cookie', cookie: 'analytics%3Atrue', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
     { mode: 'cookie presence', cookie: '', consentCookieValue: null, loadWithoutConsent: false },
-    { mode: 'explicit bypass without a cookie', cookie: null, consentCookieValue: null, loadWithoutConsent: true },
   ])('grants all four consent types with $mode', async ({ cookie, consentCookieValue, loadWithoutConsent }) => {
-    document.cookie = cookie === null
-      ? 'analytics_consent=; max-age=0; path=/'
-      : `analytics_consent=${cookie}; path=/`;
+    document.cookie = `analytics_consent=${cookie}; path=/`;
     const { loadGoogleTag } = await import('./analytics.js');
     expect(loadGoogleTag({ ...config, consentCookieValue, loadWithoutConsent })).toBe(true);
     expect(window.dataLayer?.slice(0, 2)).toEqual([
@@ -253,6 +248,22 @@ describe('GA4 consent commands', () => {
         ad_user_data: 'granted', ad_personalization: 'granted',
       } }),
     ]);
+  });
+
+  it.each([null, 'analytics:false', 'analytics%3Atrue'])('grants only analytics with the bypass enabled (cookie: %s)', async (cookie) => {
+    document.cookie = cookie === null
+      ? 'analytics_consent=; max-age=0; path=/'
+      : `analytics_consent=${cookie}; path=/`;
+    const { loadGoogleTag } = await import('./analytics.js');
+    expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(true);
+    expect(window.dataLayer?.slice(0, 2)).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'default', 2: {
+        analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied',
+        ad_personalization: 'denied', wait_for_update: 500,
+      } }),
+      expect.objectContaining({ 0: 'consent', 1: 'update', 2: { analytics_storage: 'granted' } }),
+    ]);
+    expect(scripts()).toHaveLength(1);
   });
 });
 
@@ -283,7 +294,6 @@ describe('Meta Pixel', () => {
     expect(window.fbq?.version).toBe('2.0');
     expect(window.fbq?.push).toBe(window.fbq);
     expect(window.fbq?.queue).toEqual([
-      expect.objectContaining({ 0: 'consent', 1: 'revoke' }),
       expect.objectContaining({ 0: 'consent', 1: 'grant' }),
       expect.objectContaining({ 0: 'init', 1: meta.metaPixelId }),
       expect.objectContaining({ 0: 'track', 1: 'PageView' }),
@@ -292,14 +302,34 @@ describe('Meta Pixel', () => {
     expect(metaScripts()).toHaveLength(1);
   });
 
-  it.each(['', 'analytics:false'])('does not load without cookie consent (%s)', async (cookie) => {
+  it.each(['', 'analytics:false'])('revokes consent without loading or initializing when the cookie rule fails (%s)', async (cookie) => {
     document.cookie = cookie === ''
       ? 'analytics_consent=; max-age=0; path=/'
       : `analytics_consent=${cookie}; path=/`;
     const analytics = await import('./analytics.js');
     expect(analytics.loadMetaPixel(meta)).toBe(false);
     expect(metaScripts()).toHaveLength(0);
-    expect(window.fbq).toBeUndefined();
+    expect(window.fbq?.queue).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'revoke' }),
+    ]);
+    analytics.trackCheckoutPurchase(meta, 'cs_live_denied', purchase);
+    expect(window.fbq?.queue).toHaveLength(1);
+  });
+
+  it('loads and grants consent when a previously declined cookie starts matching', async () => {
+    document.cookie = 'analytics_consent=analytics:false; path=/';
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel(meta)).toBe(false);
+    document.cookie = 'analytics_consent=analytics%3Atrue; path=/';
+    expect(analytics.loadMetaPixel(meta)).toBe(true);
+    expect(analytics.loadMetaPixel(meta)).toBe(true);
+    expect(metaScripts()).toHaveLength(1);
+    expect(window.fbq?.queue).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'revoke' }),
+      expect.objectContaining({ 0: 'consent', 1: 'grant' }),
+      expect.objectContaining({ 0: 'init', 1: meta.metaPixelId }),
+      expect.objectContaining({ 0: 'track', 1: 'PageView' }),
+    ]);
   });
 
   it('does not load a pixel when only GA4 is configured', async () => {
@@ -338,8 +368,8 @@ describe('Meta Pixel', () => {
     analytics.trackCheckoutPurchase(both, 'cs_live_both', purchase);
     analytics.trackCheckoutPurchase(both, 'cs_live_both', purchase);
     expect(window.dataLayer).toHaveLength(5);
-    expect(window.fbq?.queue).toHaveLength(5);
-    expect(window.fbq?.queue[4]).toEqual(expect.objectContaining({
+    expect(window.fbq?.queue).toHaveLength(4);
+    expect(window.fbq?.queue[3]).toEqual(expect.objectContaining({
       0: 'track', 1: 'Purchase', 2: metaPayload, 3: { eventID: 'order-1' },
     }));
     vi.resetModules();
@@ -378,7 +408,7 @@ describe('Meta Pixel', () => {
       setItem: () => { throw new Error('Storage unavailable'); },
     });
     analytics.trackCheckoutPurchase(meta, 'cs_live_meta_blocked', purchase);
-    expect(window.fbq?.queue).toHaveLength(4);
+    expect(window.fbq?.queue).toHaveLength(3);
   });
 
   it.each(['test_purchase=1', 'session_id=cs_test_one'])('does nothing in test mode (%s)', async (query) => {

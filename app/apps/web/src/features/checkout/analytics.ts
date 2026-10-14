@@ -55,7 +55,7 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
     ad_personalization: 'denied',
     wait_for_update: 500,
   });
-  gtag('consent', 'update', {
+  gtag('consent', 'update', config.loadWithoutConsent ? { analytics_storage: 'granted' } : {
     ad_storage: 'granted',
     analytics_storage: 'granted',
     ad_user_data: 'granted',
@@ -73,8 +73,7 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
 };
 
 export const loadMetaPixel = (config: CheckoutAnalyticsConfig): boolean => {
-  if (!config.metaPixelId || !isReturnPage() || isTestPurchase() || !shouldLoadCheckoutAnalytics(config, document.cookie)) return false;
-  if (loadedPixelId !== null) return loadedPixelId === config.metaPixelId;
+  if (!config.metaPixelId || !isReturnPage() || isTestPurchase()) return false;
 
   const stub = function (...parameters: unknown[]): void {
     if (fbq.callMethod) fbq.callMethod(...parameters);
@@ -85,12 +84,17 @@ export const loadMetaPixel = (config: CheckoutAnalyticsConfig): boolean => {
   });
   window.fbq = fbq;
   window._fbq ??= fbq;
+  if (!shouldLoadCheckoutAnalytics(config, document.cookie)) {
+    fbq('consent', 'revoke');
+    return false;
+  }
+  if (loadedPixelId !== null) return loadedPixelId === config.metaPixelId;
+
   const script = document.createElement('script');
   script.async = true;
   script.src = 'https://connect.facebook.net/en_US/fbevents.js';
   loadedPixelId = config.metaPixelId;
   document.head.appendChild(script);
-  if (!config.loadWithoutConsent) fbq('consent', 'revoke');
   fbq('consent', 'grant');
   fbq('init', config.metaPixelId);
   fbq('track', 'PageView');

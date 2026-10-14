@@ -1,5 +1,9 @@
 # Payments
 
+## Purchase confirmation and purchased files
+
+The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns only `pending` or `paid` in the API envelope, with no buyer, order, product, or amount data and `Cache-Control: no-store`. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. Polling stops after payment confirmation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+
 ## Direct sales-link checkout
 
 Public `/offer/<slug>` URLs send buyers straight to live Stripe Checkout. The server

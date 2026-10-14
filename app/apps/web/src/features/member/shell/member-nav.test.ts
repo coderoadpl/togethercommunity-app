@@ -20,6 +20,7 @@ describe('activeNavEntry', () => {
     ['/community/space-1/posts/post-1', { kind: 'space', spaceId: 'space-1' }],
     ['/my/courses/course-1', { kind: 'course', courseId: 'course-1' }],
     ['/my/courses/course-1/lessons/lesson-1', { kind: 'course', courseId: 'course-1' }],
+    ['/my/course/product-1', { kind: 'product', productId: 'product-1' }],
     ['/my/products', { kind: 'products' }],
     ['/my/products/product-1', { kind: 'products' }],
     ['/account', { kind: 'account' }],
@@ -30,7 +31,7 @@ describe('activeNavEntry', () => {
   });
 
   it.each([
-    ['/my/course/product-1'],
+    ['/my/course'],
     ['/my/courses'],
     ['/checkout/product-1'],
   ])('highlights nothing on %s', (pathname) => {
@@ -39,6 +40,7 @@ describe('activeNavEntry', () => {
 
   it('decodes encoded identifiers so they match the navigation payload', () => {
     expect(activeNavEntry('/community/space%201')).toEqual({ kind: 'space', spaceId: 'space 1' });
+    expect(activeNavEntry('/my/course/product%201')).toEqual({ kind: 'product', productId: 'product 1' });
   });
 });
 

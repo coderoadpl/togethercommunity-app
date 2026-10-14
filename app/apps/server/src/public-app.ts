@@ -20,6 +20,7 @@ import {
   API_PATHS,
   authResolveRequestSchema,
   checkoutSessionRequestSchema,
+  publicCheckoutSessionStatusInputSchema,
   couponCheckoutValidationRequestSchema,
   courseStructureOutputSchema,
   discussionOutputSchema,
@@ -65,6 +66,7 @@ import {
   fulfillStripeWebhook,
   validateStripeInvoiceTenant,
   getPaymentConfig,
+  getCheckoutSessionStatus,
   testCheckoutRejection,
   getPlayableLesson,
   getPublicCourseStructure,
@@ -328,6 +330,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   registerOpenCors(app, API_PATHS.studentLessonEditions, 'GET');
   registerOpenCors(app, API_PATHS.studentLessonEdition, 'GET');
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
+  registerOpenCors(app, API_PATHS.publicCheckoutSessionStatus, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
@@ -619,6 +622,15 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   app.get(API_PATHS.studentLesson, async (c, next) => {
     if (c.req.path === API_PATHS.studentLessonNext) return next();
     return readerLesson(c, 'current');
+  });
+
+  app.get(API_PATHS.publicCheckoutSessionStatus, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const parsed = publicCheckoutSessionStatusInputSchema.safeParse(c.req.query());
+    if (!parsed.success) return respondPublic(err(validation('Invalid checkout session id')));
+    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps));
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(429);
+    expect(inventory.routes).toHaveLength(431);
     expect(inventory.useCases).toHaveLength(334);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
@@ -76,6 +76,7 @@ describe('permission inventory', () => {
     const inventory = collectPermissionInventory();
     for (const [subject, capability] of [
       ['GET /offer/:slug', 'offer:read'],
+      ['GET /api/public/checkout/session-status', 'checkout:read'],
       ['POST /api/public/sales-links/:slug/checkout', 'checkout:start'],
     ]) {
       expect(inventory.routes.find((row) => row.subject === subject))

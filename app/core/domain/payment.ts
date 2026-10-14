@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { languageSchema } from './language.js';
 import { billingDataSchema, type BillingData } from './commerce.js';
 
+export const checkoutSessionStatusInputSchema = z.object({
+  session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
+});
+
 export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
   salesLinkId: z.string().min(1).optional(),

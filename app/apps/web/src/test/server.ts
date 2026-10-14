@@ -4,6 +4,9 @@ import { setupServer } from 'msw/node';
 import pkg from '../../../../package.json' with { type: 'json' };
 
 export const server = setupServer(
+  http.get('*/api/my/products', () =>
+    HttpResponse.json({ ok: true, data: { products: [] } }),
+  ),
   http.get('*/api/courses/history', () =>
     HttpResponse.json({ ok: true, data: { versions: [] } }),
   ),

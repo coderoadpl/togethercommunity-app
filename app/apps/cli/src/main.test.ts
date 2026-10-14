@@ -11,6 +11,7 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
@@ -67,6 +68,7 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    publicCheckoutSessionStatus: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
@@ -171,6 +173,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
@@ -259,6 +262,7 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
@@ -345,6 +349,29 @@ afterEach(() => {
 
 afterAll(() => {
   process.argv = originalArgv;
+});
+
+describe('checkout session-status CLI', () => {
+  it.each(['pending', 'paid'] as const)('prints the %s status envelope for the requested session', async (status) => {
+    h.publicCheckoutSessionStatus.mockResolvedValue(ok({ status }));
+
+    await run('--json', 'checkout', 'session-status', '--session-id', 'cs_test_one');
+
+    expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('cs_test_one');
+    expect(soleJson()).toEqual({ ok: true, data: { status } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('preserves the validation envelope and exit code for a malformed session', async () => {
+    const failure = err(appError('validation', 'Invalid checkout session id'));
+    h.publicCheckoutSessionStatus.mockResolvedValue(failure);
+
+    await run('--json', 'checkout', 'session-status', '--session-id', 'invalid');
+
+    expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('invalid');
+    expect(soleJson()).toEqual(failure);
+    expect(process.exitCode).toBe(2);
+  });
 });
 
 describe('sales-link checkout CLI', () => {

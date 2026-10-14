@@ -6,6 +6,7 @@ export type MemberNavEntry =
   | { kind: 'messages' }
   | { kind: 'space'; spaceId: string }
   | { kind: 'course'; courseId: string }
+  | { kind: 'product'; productId: string }
   | { kind: 'products' }
   | { kind: 'account' };
 
@@ -42,12 +43,13 @@ export const courseContextFromPath = (pathname: string): CourseContext | null =>
 export const activeNavEntry = (pathname: string): MemberNavEntry | null => {
   if (pathname === memberHomePath() || pathname === anonHomePath()) return { kind: 'start' };
   if (pathname === memberSearchPath()) return { kind: 'search' };
-  const [first, second] = segmentsOf(pathname);
+  const [first, second, productId] = segmentsOf(pathname);
   if (first === 'messages') return { kind: 'messages' };
   if (first === 'community' && second !== undefined) return { kind: 'space', spaceId: second };
   if ((first === 'community' || first === 'my') && second === undefined) return { kind: 'start' };
   const course = courseContextFromPath(pathname);
   if (course !== null) return { kind: 'course', courseId: course.courseId };
+  if (first === 'my' && second === 'course' && productId !== undefined) return { kind: 'product', productId };
   if (first === 'my' && second === 'products') return { kind: 'products' };
   if (first === 'account') return { kind: 'account' };
   return null;

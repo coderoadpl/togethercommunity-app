@@ -30,6 +30,7 @@ const scripts = () => document.querySelectorAll('script[src*="googletagmanager.c
 
 beforeEach(() => {
   vi.resetModules();
+  vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
   window.history.replaceState(null, '', '/checkout/course?status=success');
   document.cookie = 'analytics_consent=analytics%3Atrue; path=/';
   delete window.dataLayer;
@@ -42,6 +43,7 @@ afterEach(() => {
   delete window.gtag;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('Google tag loading', () => {
@@ -60,8 +62,8 @@ describe('Google tag loading', () => {
         ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500,
       } }),
       expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
-        analytics_storage: 'granted', ad_storage: 'granted',
-        ad_user_data: 'granted', ad_personalization: 'granted',
+        analytics_storage: 'granted', ad_storage: 'denied',
+        ad_user_data: 'denied', ad_personalization: 'denied',
       } }),
       ...(consentEvent === null ? [] : [{ event: consentEvent, [consentEvent]: 'granted' }]),
       { 'gtm.start': expect.any(Number), event: 'gtm.js' },
@@ -80,12 +82,12 @@ describe('Google tag loading', () => {
         ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500,
       } }),
       expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
-        analytics_storage: 'granted', ad_storage: 'granted',
-        ad_user_data: 'granted', ad_personalization: 'granted',
+        analytics_storage: 'granted', ad_storage: 'denied',
+        ad_user_data: 'denied', ad_personalization: 'denied',
       } }),
       { event: 'site_consent', site_consent: 'granted' },
       expect.objectContaining({ 0: 'js', 1: expect.any(Date) }),
-      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567' }),
+      expect.objectContaining({ 0: 'config', 1: 'G-ABC1234567', 2: { cookie_domain: 'none' } }),
     ]);
   });
 
@@ -225,4 +227,62 @@ it('decodes JSON cookie values before checking consent', async () => {
   const analytics = await import('./analytics.js');
   expect(analytics.loadGoogleTag({ ...config, consentCookieValue: '"choice":"granted"' })).toBe(true);
   expect(scripts()).toHaveLength(1);
+});
+
+it.each([
+  'togethercommunity.app',
+  'acme.togethercommunity.app',
+  'start.togethercommunity.app',
+  'nested.acme.togethercommunity.app',
+  'ACME.TOGETHERCOMMUNITY.APP.',
+])('rejects the shared-cookie host %s even with consent bypassed', async (hostname) => {
+  vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, hostname });
+  const { loadGoogleTag } = await import('./analytics.js');
+  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(false);
+  expect(scripts()).toHaveLength(0);
+  expect(window.dataLayer).toBeUndefined();
+});
+
+it.each(['', 'LOCALHOST.'])('fails closed with an unknown or matching normalized base domain (%s)', async (baseDomain) => {
+  vi.stubEnv('VITE_APP_BASE_DOMAIN', baseDomain);
+  const { loadGoogleTag } = await import('./analytics.js');
+  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(false);
+  expect(scripts()).toHaveLength(0);
+  expect(window.dataLayer).toBeUndefined();
+});
+
+it.each([
+  '/checkout/course', '/checkout/course?status=cancelled', '/offer/bundle',
+  '/offer/bundle?status=cancelled', '/my/courses?status=success', '/?status=success',
+])('does not load outside a successful checkout return (%s)', async (path) => {
+  window.history.replaceState(null, '', path);
+  const { loadGoogleTag } = await import('./analytics.js');
+  expect(loadGoogleTag({ ...config, loadWithoutConsent: true })).toBe(false);
+  expect(scripts()).toHaveLength(0);
+  expect(window.dataLayer).toBeUndefined();
+});
+
+describe.each(['GTM-ABC1234', 'G-ABC1234567'])('%s consent commands', (tagId) => {
+  it.each([
+    { mode: 'matching cookie', cookie: 'analytics%3Atrue', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+    { mode: 'cookie presence', cookie: '', consentCookieValue: null, loadWithoutConsent: false },
+    { mode: 'explicit bypass without a cookie', cookie: null, consentCookieValue: null, loadWithoutConsent: true },
+  ])('grants only analytics with $mode', async ({ cookie, consentCookieValue, loadWithoutConsent }) => {
+    document.cookie = cookie === null
+      ? 'analytics_consent=; max-age=0; path=/'
+      : `analytics_consent=${cookie}; path=/`;
+    const { loadGoogleTag } = await import('./analytics.js');
+    expect(loadGoogleTag({ ...config, tagId, consentCookieValue, loadWithoutConsent, consentEvent: 'analytics_consent' })).toBe(true);
+    expect(window.dataLayer?.slice(0, 3)).toEqual([
+      expect.objectContaining({ 0: 'consent', 1: 'default', 2: {
+        analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied',
+        ad_personalization: 'denied', wait_for_update: 500,
+      } }),
+      expect.objectContaining({ 0: 'consent', 1: 'update', 2: {
+        analytics_storage: 'granted', ad_storage: 'denied',
+        ad_user_data: 'denied', ad_personalization: 'denied',
+      } }),
+      { event: 'analytics_consent', analytics_consent: 'granted' },
+    ]);
+  });
 });

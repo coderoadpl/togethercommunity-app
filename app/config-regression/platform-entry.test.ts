@@ -24,7 +24,7 @@ const routeMatcherSchema = z.object({
 });
 const vercel = z.object({
   regions: z.array(z.string()),
-  functions: z.record(z.object({ maxDuration: z.number() })),
+  functions: z.record(z.object({ maxDuration: z.number(), includeFiles: z.string().optional() })),
   rewrites: z.array(routeMatcherSchema.extend({ destination: z.string() })),
   headers: z.array(routeMatcherSchema.extend({
     headers: z.array(z.object({ key: z.string(), value: z.string() })),
@@ -142,17 +142,14 @@ describe('Vercel platform entry boundary', () => {
     '/offer/workbook?status=cancelled',
     '/offer/workbook?checkout=together',
     '/offer/workbook?checkout=together&status=success',
-  ])('allows the Google tag on the hosted checkout SPA at %s', (path) => {
-    const url = new URL(path, 'https://acme.example');
-    expect(vercel.rewrites.find((rule) => matchesRequest(rule, url, 'Mozilla/5.0'))?.destination)
-      .toBe('/index.html');
-    const policies = hostedCspFor(url);
-    expect(policies.length).toBeGreaterThan(0);
-    for (const policy of policies) {
-      expect(policy).toContain("script-src 'self' https://www.googletagmanager.com;");
-      expect(policy).toContain("connect-src 'self' https: https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com;");
-      expect(policy).toContain("object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+  ])('requires server domain verification for hosted checkout CSP at %s', (path) => {
+    for (const origin of ['https://example.org', 'https://acme.example.org', 'https://nested.acme.example.org', 'https://learn.acme.example']) {
+      const url = new URL(path, origin);
+      expect(vercel.rewrites.find((rule) => matchesRequest(rule, url, 'Mozilla/5.0'))?.destination)
+        .toBe('/api/index');
+      expect(hostedCspFor(url)).toEqual([]);
     }
+    expect(vercel.functions['api/index.ts']?.includeFiles).toBe('dist/web/index.html');
   });
 
   it.each(['/start', '/home/settings', '/my/products', '/index.html'])(

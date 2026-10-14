@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useRouter } from '@tanstack/react-router';
 
 import type { CheckoutAnalyticsConfig, CheckoutPurchaseAnalytics } from '#core/domain/index.js';
 
@@ -10,11 +11,28 @@ export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
   purchase: CheckoutPurchaseAnalytics | undefined;
   testMode: boolean;
 }) => {
+  const router = useRouter();
   const loaded = useRef<boolean | null>(null);
   useEffect(() => {
-    if (testMode) return;
-    if (loaded.current === null) loaded.current = loadGoogleTag(config);
-    if (loaded.current && purchase !== undefined) trackCheckoutPurchase(config, sessionId, purchase);
+    const unblock = router.history.block({
+      blockerFn: ({ currentLocation, nextLocation }) => {
+        if (!loaded.current || (currentLocation.pathname === nextLocation.pathname &&
+          currentLocation.search === nextLocation.search)) return false;
+        // Keep POP blocked until unload so the router cannot roll back and cancel the document navigation.
+        return new Promise<boolean>(() => {
+          window.location.assign(nextLocation.href);
+        });
+      },
+      enableBeforeUnload: false,
+    });
+    return () => {
+      // Removing settings cannot unload the tag, so its navigation guard must survive this component.
+      if (!loaded.current) unblock();
+    };
+  }, [router]);
+  useEffect(() => {
+    if (!testMode && loaded.current === null) loaded.current = loadGoogleTag(config);
+    if (!testMode && loaded.current && purchase !== undefined) trackCheckoutPurchase(config, sessionId, purchase);
   }, [config, sessionId, purchase, testMode]);
   return null;
 };

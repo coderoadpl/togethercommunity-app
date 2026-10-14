@@ -19,12 +19,15 @@ also available in `tenant settings` and `tenant settings-set` through
 `--analytics-load-without-consent true|false`. An empty string clears a text field.
 
 The public payment configuration exposes only the analytics tag and consent
-configuration under `analytics`, or `null` when no tag is configured. A tag loads
-only when the live success card mounts on `/offer/<slug>?status=success` or
+configuration under `analytics` only on an active tenant's verified custom domain
+with host-only session cookies; otherwise it returns `null`. Hosts on or under
+`APP_BASE_DOMAIN`, the application host and the platform host cannot load tenant
+tags, even if a domain record exists. A tag loads only when the live success card mounts on `/offer/<slug>?status=success` or
 `/checkout/<reference>?status=success`. It never loads for `test_purchase=1`, the
 server-rendered checkout handoff, cancellation, Studio or member pages. The tag
-is injected once per document. Because the SPA is a single document, a tag already
-loaded on the return page stays active during in-app navigation until reload.
+is injected once per document. After loading a tag, leaving the return page forces
+a full document navigation, including navigation to member pages or Studio, so
+the tag cannot persist in those pages through SPA navigation.
 
 The success card reads `document.cookie`. Loading requires a configured tag and
 either **Load without checking consent** or a configured consent cookie that is
@@ -36,10 +39,14 @@ consent bypass makes the creator responsible for the applicable consent rules.
 After the loading rule passes and before loading either Google snippet, Consent
 Mode v2 defaults deny `analytics_storage`, `ad_storage`, `ad_user_data` and
 `ad_personalization`, with `wait_for_update: 500`. An immediate consent update
-grants all four categories. If configured, the consent event follows as
+grants only `analytics_storage`; `ad_storage`, `ad_user_data` and
+`ad_personalization` remain denied. This is also the sequence when the owner
+enables loading without a consent-cookie check: the platform sends an analytics
+grant without verifying the buyer's consent. If configured, the consent event follows as
 `dataLayer.push({ event: name, [name]: 'granted' })`, before the GTM bootstrap or
-GA4 initialization. The creator must ensure their consent rule authorizes these
-categories.
+GA4 initialization. This custom event signals analytics consent only; the creator
+must ensure their container does not use it to grant advertising consent or load
+advertising tags without separate authorization.
 
 When session status becomes `paid` and the tenant has a tag ID, its response adds:
 
@@ -75,33 +82,36 @@ preventing another event for that session on reload. Returns without a session
 ID, including free checkouts and legacy links, may load the tag but never emit a
 purchase event.
 
-Checkout SPA documents served by the server and the hosted static deployment
-extend `script-src` with
-`https://www.googletagmanager.com` and `connect-src` with that origin plus
-`https://*.google-analytics.com`, `https://*.analytics.google.com` and
-`https://*.googletagmanager.com`. The existing `img-src` already allows HTTPS.
-The hosted headers cover `/checkout/` paths and the explicit checkout fallback
-and success or cancellation returns under `/offer/`. Other documents, including
-server-rendered handoff and crawler pages, retain their existing content security
-policy.
+Hosted checkout documents pass through the server so the content security policy
+can use the verified custom-domain record. Only eligible live success documents
+allow Google tag scripts and the Google analytics connection origins
+`https://www.googletagmanager.com`, `https://*.google-analytics.com`,
+`https://*.analytics.google.com` and `https://*.googletagmanager.com`.
+The existing `img-src` already allows HTTPS. Base-domain tenant hosts, unverified
+custom domains, cancellation and fallback pages, server-rendered handoff pages,
+crawler pages and other documents retain their existing script policy. The
+static hosting configuration never grants Google script access.
 
-When the creator's site uses GA4 with a parent-domain `_ga` cookie, the platform
-subdomain reads the same visitor identifier. No additional cross-domain
-configuration is needed for this apex-domain-to-subdomain funnel. The creator
-must configure the desired GA4 destination and purchase handling in their own
-Google tag or GTM container.
+The direct GA4 integration sets `cookie_domain: 'none'` to create host-only
+analytics cookies. It does not use GA4's automatic parent-domain cookie scope;
+a shared visitor identifier across the creator's site and checkout is not
+promised. GTM containers execute tenant-controlled code on the verified custom
+origin and must configure their own GA4 tags with host-only cookies. The creator
+must configure the desired destination and purchase handling in their container,
+and assess any tracking or consent overrides it introduces.
 
 Creators should add a privacy-policy statement describing their actual setup,
-for example: “After you consent to analytics on our website, our purchase
-confirmation page loads Google Analytics through our configured Google tag. It
-uses the shared analytics cookie to connect website visits with purchases and
-sends an order identifier, purchased product identifiers and names, currency and
-gross purchase amounts and the sales-link slug to Google. After the configured
-consent check passes, our confirmation page grants analytics and advertising
-storage, advertising user data and advertising personalization consent. You can
-manage analytics consent through our website's consent controls.” The statement
-must explain any configured consent bypass or GTM overrides and the creator's
-own retention, recipients and consent-withdrawal arrangements.
+for example: “After our configured analytics-consent cookie check passes, our
+purchase confirmation page loads our Google tag. It sends an order identifier,
+purchased product identifiers and names, currency, gross purchase amounts and
+the sales-link slug to Google. The platform grants analytics storage and keeps
+advertising storage, advertising user data and advertising personalization
+denied. The direct GA4 integration uses host-only analytics cookies. You can
+manage analytics consent through our website's consent controls.” When cookie
+checking is disabled, replace the opening sentence with an explanation that
+the tag loads without checking that cookie and explain how consent is obtained.
+The statement must also describe any GTM overrides and the creator's own
+retention, recipients and consent-withdrawal arrangements.
 
 ## Direct sales-link checkout
 

@@ -112,12 +112,32 @@ previews and nothing else.
 All responses receive the secure-header baseline. The CSP permits Emotion's
 runtime styles, HTTPS images and HTTPS lesson embeds. SPA documents allow HTTPS
 network requests; other responses permit same-origin connections and Sentry
-envelope delivery. Checkout SPA documents served by the server and the hosted
-static deployment additionally permit Google Tag Manager scripts and explicitly
-list Google analytics connection origins. Other documents retain their existing
-script policy. Only owners can configure the Google tag. A tag loaded after the
-checkout consent check stays active during in-app navigation until reload; see
-[checkout analytics](payments.md#checkout-analytics). Ordinary API request bodies
+envelope delivery. Checkout analytics is restricted to active tenants' verified
+custom domains outside the base domain and the application and platform hosts.
+Those domains have host-only session cookies. Both the public analytics
+configuration and the checkout success document's Google script CSP permission
+use this restriction. Hosted checkout documents go through the server; static
+hosting headers never permit Google scripts. Base-domain tenant hosts remain
+ineligible even when an owner enables the consent bypass or a matching custom
+domain record exists.
+
+This boundary is necessary because a tenant-controlled GTM container can run
+JavaScript, make credentialed same-origin requests, read non-HttpOnly cookies and
+write parent-domain cookies. On the platform's shared base domain it could act
+with a visitor's shared platform session, including staff or operator sessions.
+Owner-only configuration does not make that code safe on the shared origin.
+A verified custom domain has a separate session scope; its owner still controls
+code running with visitors' privileges on that custom origin. Google script
+sources are not a guarantee about which container executes. Direct GA4 uses
+`cookie_domain: 'none'`, preventing automatic parent-domain analytics cookies;
+container owners must apply equivalent cookie settings to tags inside GTM.
+
+After a checkout tag loads, navigation away from the return page forces a full
+document load before member or Studio content renders. Consent Mode grants only
+analytics storage, including when the consent-cookie check is explicitly bypassed;
+advertising categories stay denied. Owners must configure any custom consent
+event accordingly. See [checkout analytics](payments.md#checkout-analytics).
+Ordinary API request bodies
 are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;

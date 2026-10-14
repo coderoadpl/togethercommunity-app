@@ -120,6 +120,11 @@ so public sales links can render the server checkout handoff and crawler metadat
 The explicit `checkout=together` fallback and `status=success|cancelled` return
 pages serve the existing web app and never restart the automatic handoff.
 
+Checkout analytics isolation (owner decision 2026-10-14): `/checkout/` is
+forwarded, and `/offer/` checkout fallback and return documents also go through
+the server. Their CSP depends on the verified custom-domain record; static
+hosting rules cannot grant tenant Google scripts access on base-domain hosts.
+
 `pnpm run tenant-neutral-lint` (part of `pnpm run check`) fails on the denied
 patterns across every tracked file. An exception needs a line in
 `.tenant-neutral-allow` with a written justification.

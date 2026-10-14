@@ -165,8 +165,6 @@ describe('direct sales-link page', () => {
     expect(crawlerValue).toBe(`.*(${SOCIAL_CRAWLER_PATTERN.source}).*`);
     const offerRewrites = configuration.rewrites.filter((rewrite) => rewrite.source === '/offer/(.*)');
     expect(offerRewrites).toEqual([
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], destination: '/index.html' },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], destination: '/index.html' },
       { source: '/offer/(.*)', destination: '/api/index' },
     ]);
     for (const offerRewrite of offerRewrites) {
@@ -177,6 +175,9 @@ describe('direct sales-link page', () => {
     expect(spaIndex).toBeGreaterThan(handoffIndex);
     const staticPolicy = configuration.headers.find((header) => header.source.includes('?!api/'));
     expect(staticPolicy?.source).toContain('|offer/');
-    expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual(offerRewrites.slice(0, 2).map((rewrite) => ({ source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers })));
+    expect(configuration.headers.filter((header) => ['/offer/(.*)', '/checkout/(.*)'].includes(header.source))).toEqual([]);
+    expect(configuration.headers.some((header) => header.headers.some((entry) => entry.value.includes('googletagmanager')))).toBe(false);
+    expect(configuration.rewrites.find((rewrite) => rewrite.source === '/checkout/(.*)')?.destination).toBe('/api/index');
+    expect(configuration.functions['api/index.ts'].includeFiles).toBe('dist/web/index.html');
   });
 });

@@ -15,13 +15,22 @@ declare global {
 
 let loadedTagId: string | null = null;
 
+const isIsolatedReturnPage = (): boolean => {
+  const baseDomain = import.meta.env.VITE_APP_BASE_DOMAIN?.toLowerCase().replace(/\.$/u, '');
+  if (!baseDomain) return false;
+  const hostname = window.location.hostname.toLowerCase().replace(/\.$/u, '');
+  if (hostname === baseDomain || hostname.endsWith(`.${baseDomain}`)) return false;
+  return /^\/(?:checkout|offer)\/[^/]+$/u.test(window.location.pathname) &&
+    new URLSearchParams(window.location.search).get('status') === 'success';
+};
+
 const isTestPurchase = (): boolean => {
   const query = new URLSearchParams(window.location.search);
   return query.get('test_purchase') === '1' || query.get('session_id')?.startsWith('cs_test_') === true;
 };
 
 export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
-  if (isTestPurchase() || !shouldLoadCheckoutAnalytics(config, document.cookie)) return false;
+  if (!isIsolatedReturnPage() || isTestPurchase() || !shouldLoadCheckoutAnalytics(config, document.cookie)) return false;
   if (loadedTagId !== null) return loadedTagId === config.tagId;
 
   const dataLayer = window.dataLayer ?? [];
@@ -39,10 +48,10 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
     wait_for_update: 500,
   });
   gtag('consent', 'update', {
-    ad_storage: 'granted',
+    ad_storage: 'denied',
     analytics_storage: 'granted',
-    ad_user_data: 'granted',
-    ad_personalization: 'granted',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
   });
   if (config.consentEvent !== null) {
     dataLayer.push({ event: config.consentEvent, [config.consentEvent]: 'granted' });
@@ -55,7 +64,7 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
     script.src = `https://www.googletagmanager.com/gtm.js?id=${config.tagId}`;
   } else {
     gtag('js', new Date());
-    gtag('config', config.tagId);
+    gtag('config', config.tagId, { cookie_domain: 'none' });
     script.src = `https://www.googletagmanager.com/gtag/js?id=${config.tagId}`;
   }
   loadedTagId = config.tagId;

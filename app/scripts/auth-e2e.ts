@@ -27,6 +27,7 @@ import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.
 import { continueWithIdentifier, requestMagicLink, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
 import { prepareWelcomePurchases, restrictBrowserToLocalRequests, runWelcomePurchases } from './purchase-welcome-e2e.js';
+import { prepareCheckoutAnalytics, runCheckoutAnalyticsNavigation } from './checkout-analytics-e2e.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -367,6 +368,7 @@ try {
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(e2eDatabaseUrl);
   await prepareWelcomePurchases(e2eDatabaseUrl);
+  await prepareCheckoutAnalytics(e2eDatabaseUrl);
   console.log('auth-e2e: building the web SPA...');
   await buildWeb();
   const port = await ephemeralPort();
@@ -392,6 +394,7 @@ try {
   await runMagicLinkReturnToPath(webBaseUrl);
   const studioBaseUrl = `http://studio.localhost:${port}`;
   await runWelcomePurchases({ connectUrl, webBaseUrl: studioBaseUrl, canonicalOrigin: studioBaseUrl });
+  await runCheckoutAnalyticsNavigation(studioBaseUrl);
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {

@@ -960,7 +960,7 @@ tenant
   .description('Update tenant settings (owner)')
   .option('--analytics-tag-id <id>', 'GA4 measurement ID; empty string clears')
   .option('--analytics-meta-pixel-id <id>', 'Meta Pixel ID; empty string clears')
-  .option('--analytics-consent-cookie-name <name>', 'parent-domain consent cookie name; empty string clears')
+  .option('--analytics-consent-cookie-name <name>', 'consent cookie name (readable on the checkout host); empty string clears')
   .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')
   .option('--analytics-load-without-consent <value>', "'true' or 'false' — load without checking consent")
   .option('--ksef-submission-mode <mode>', 'automatic or manual')

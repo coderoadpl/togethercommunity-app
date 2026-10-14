@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CheckoutAnalyticsConfig } from '#core/domain/index.js';
 
 const config: CheckoutAnalyticsConfig = {
+  cookieScope: 'host',
   metaPixelId: null,
   tagId: 'G-ABC1234567',
   consentCookieName: 'analytics_consent',
@@ -221,6 +222,16 @@ it.each(['togethercommunity.app', 'acme.togethercommunity.app', 'studio.together
     0: 'config', 1: config.tagId, 2: {
       send_page_view: true, cookie_domain: hostname, cookie_prefix: `together_${hostname}`,
     },
+  }));
+});
+
+it('shares the default GA4 parent-domain cookie on a verified custom domain', async () => {
+  vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, hostname: 'checkout.example.test' });
+  const { loadGoogleTag } = await import('./analytics.js');
+  expect(loadGoogleTag({ ...config, cookieScope: 'parent' })).toBe(true);
+  expect(scripts()).toHaveLength(1);
+  expect(window.dataLayer?.[3]).toEqual(expect.objectContaining({
+    0: 'config', 1: config.tagId, 2: { send_page_view: true },
   }));
 });
 

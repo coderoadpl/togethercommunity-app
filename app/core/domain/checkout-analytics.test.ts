@@ -11,6 +11,7 @@ import {
 import { updateTenantSettingsInputSchema } from './tenant.js';
 
 const config: CheckoutAnalyticsConfig = {
+  cookieScope: 'host',
   tagId: 'G-ABCDEF', metaPixelId: null, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false,
 };
 

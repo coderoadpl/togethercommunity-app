@@ -150,12 +150,16 @@ document load for the sign-in button, router links, programmatic navigation and
 browser history before member or Studio content renders. Consent Mode first denies
 all four categories. A matching consent cookie grants all four; explicitly
 bypassing the cookie check grants only `analytics_storage`, leaving advertising
-storage, advertising user data and advertising personalization denied. GA4 sets
-`cookie_domain` to the current document hostname and uses a host-specific cookie
-prefix, so it neither shares identifiers across workspace subdomains nor adopts
-an existing parent-domain `_ga` identifier. The same isolation applies on custom
-domains; the creator's site and checkout do not automatically share a GA4
-identifier. Meta still uses its vendor-default first-party cookie behavior; the
+storage, advertising user data and advertising personalization denied. The public
+payment configuration computes `cookieScope` from the request host: `parent`
+only for a verified custom domain belonging to the tenant, and `host` on the
+platform base domain and every other host. For `parent`, GA4 omits `cookie_domain`
+and `cookie_prefix`, so its default automatic domain selection shares the
+standard parent-domain `_ga` identifier with the creator's website. For `host`,
+GA4 sets `cookie_domain` to the current document hostname and uses a host-specific
+cookie prefix, so it neither shares identifiers across workspace subdomains nor
+adopts an existing parent-domain `_ga` identifier.
+Meta still uses its vendor-default first-party cookie behavior; the
 loader does not yet isolate its identifiers across workspace subdomains. The
 accepted session-cookie exposure does not authorize shared vendor tracking
 cookies. A consent cookie is separate from these vendor identifiers: it must

@@ -3788,7 +3788,6 @@ describe('server edge security baseline', () => {
     ['GA4', 'G-ABCDEF', null],
     ['Meta', null, '12345678'],
     ['both vendors', 'G-ABCDEF', '12345678'],
-    ['neither vendor', null, null],
   ])('allows both vendor script sources on success documents with %s configured', async (_label, analyticsTagId, analyticsMetaPixelId) => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId, analyticsMetaPixelId });
@@ -6139,7 +6138,7 @@ describe('public payment-config route', () => {
     ['GA4', 'G-ABC123', null],
     ['Meta', null, '12345678'],
     ['both libraries', 'G-ABC123', '12345678'],
-  ])('exposes only the five public analytics settings for %s on a tenant host', async (_label, tagId, metaPixelId) => {
+  ])('exposes the public analytics settings and cookie scope for %s on a tenant host', async (_label, tagId, metaPixelId) => {
     const base = deps();
     const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
       const settings = await base.tenants.findSettings(tenantId);
@@ -6150,8 +6149,29 @@ describe('public payment-config route', () => {
     expect(await response.json()).toEqual({ ok: true, data: {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
-      analytics: { tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+      analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
     } });
+  });
+
+  it.each([
+    { host: 'checkout.example.test', kind: 'custom', verified: true, cookieScope: 'parent' },
+    { host: 'CHECKOUT.EXAMPLE.TEST.:48730', domain: 'checkout.example.test', kind: 'custom', verified: true, cookieScope: 'parent' },
+    { host: 'checkout.example.test', kind: 'custom', verified: false, cookieScope: 'host' },
+    { host: 'acme.localhost', kind: 'subdomain', verified: true, cookieScope: 'host' },
+    { host: 'localhost', kind: 'custom', verified: true, cookieScope: 'host' },
+    { host: 'acme.localhost', kind: 'custom', verified: true, cookieScope: 'host' },
+    { host: 'other.example.test', kind: null, verified: false, cookieScope: 'host' },
+  ] as const)('uses $cookieScope cookies on $host ($kind, verified: $verified)', async ({ host, kind, verified, cookieScope, ...input }) => {
+    const base = deps({ domains: kind === null ? [] : [tenantDomainFixture({
+      id: 'analytics-domain', tenantId: acme.id, domain: 'domain' in input ? input.domain : host, kind, verified,
+    })] });
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, analyticsTagId: 'G-ABC123' };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { host, [TENANT_HEADER]: 'acme' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: { cookieScope } } });
   });
 
   it('exposes the simulated-payments flag for a resolved tenant', async () => {

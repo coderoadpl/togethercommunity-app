@@ -11,6 +11,7 @@ import { CheckoutPage } from './CheckoutPage.js';
 const analytics = vi.hoisted(() => ({ loadGoogleTag: vi.fn(), loadMetaPixel: vi.fn(), trackCheckoutPurchase: vi.fn() }));
 vi.mock('./analytics.js', () => analytics);
 const config = {
+  cookieScope: 'host' as const,
   metaPixelId: null,
   tagId: 'G-ABC1234', consentCookieName: 'consent',
   consentCookieValue: null, loadWithoutConsent: false,

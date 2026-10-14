@@ -12,6 +12,7 @@ vi.mock('./analytics.js', () => analytics);
 const histories: ReturnType<typeof createBrowserHistory>[] = [];
 const returnPath = '/checkout/course?status=success&session_id=cs_live_one';
 const config = {
+  cookieScope: 'host' as const,
   metaPixelId: null,
   tagId: 'G-ABC1234', consentCookieName: 'consent', consentCookieValue: null,
   loadWithoutConsent: false,

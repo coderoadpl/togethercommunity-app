@@ -17,7 +17,10 @@ and `tenant settings-set` through `--analytics-tag-id`, `--analytics-meta-pixel-
 `--analytics-consent-cookie-name`, `--analytics-consent-cookie-value` and
 `--analytics-load-without-consent true|false`. An empty string clears a text field.
 The public payment configuration exposes these settings under `analytics`, or
-`null` when neither ID is configured. GA4 and Meta work independently.
+`null` when neither ID is configured. Its `cookieScope` is computed from the
+request host: `parent` for a verified custom domain belonging to the tenant,
+`host` on the platform base domain and every other host. GA4 and Meta work
+independently.
 
 The platform never loads tenant-authored scripts: checkout analytics is limited
 to Google's GA4 `gtag.js` and Meta's `fbevents.js` libraries for tenant-configured
@@ -130,12 +133,15 @@ Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.
 
-GA4 sets `cookie_domain` to the current checkout hostname and `cookie_prefix` to
-`together_<hostname>`. The distinct cookie name prevents adopting an existing
-parent-domain `_ga` identifier. Workspace subdomains therefore do not share GA4
-identifiers with each other or the platform host. The same restriction applies
-on custom domains: visits to the creator's website and its checkout subdomain
-are not automatically linked through a shared GA4 cookie. Meta still uses its
+On a tenant's verified custom domain, `cookieScope: parent` omits `cookie_domain`
+and `cookie_prefix`, using GA4's default automatic domain selection and standard
+`_ga` cookie. The creator's website and checkout share the parent-domain visitor
+identifier without cross-domain configuration. On the platform base domain and
+every other host, `cookieScope: host` sets `cookie_domain` to the current checkout
+hostname and `cookie_prefix` to `together_<hostname>`. The distinct cookie name
+prevents adopting an existing parent-domain `_ga` identifier, so workspace
+subdomains do not share GA4 identifiers with each other or the platform host.
+Meta still uses its
 vendor-default first-party cookie scope; its identifiers are not yet isolated
 across platform workspace subdomains.
 
@@ -148,8 +154,9 @@ sales-link slug. Meta receives page-view and purchase events with the order
 identifier, product identifiers, quantities, currency and gross purchase amounts.
 Our single consent choice
 grants analytics storage, advertising storage, advertising user data and
-advertising personalization. GA4 cookies are scoped to the purchase confirmation
-host and do not automatically link visits to our separate website. You can
+advertising personalization. On our verified custom checkout domain, GA4 shares
+the parent-domain cookie with our website to link visits and purchases. On a
+platform checkout host, GA4 cookies are limited to that host. You can
 manage consent through our
 website's consent controls.” When cookie checking is disabled, explain that the
 libraries load without checking that cookie, Google receives analytics consent

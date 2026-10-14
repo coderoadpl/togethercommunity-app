@@ -6,6 +6,7 @@ export const analyticsConsentCookieNameSchema = z.string().regex(/^[A-Za-z0-9_.-
 export const analyticsConsentCookieValueSchema = z.string().max(128);
 
 export const checkoutAnalyticsConfigSchema = z.object({
+  cookieScope: z.enum(['parent', 'host']),
   tagId: analyticsTagIdSchema.nullable(),
   metaPixelId: analyticsMetaPixelIdSchema.nullable(),
   consentCookieName: analyticsConsentCookieNameSchema.nullable(),

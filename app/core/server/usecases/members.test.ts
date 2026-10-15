@@ -390,20 +390,20 @@ describe('setMemberBanned', () => {
 });
 
 describe('removeMember', () => {
-  it('reports the number of pending team invitations deleted during erasure', async () => {
+  it('reports the number of pending team invitations deleted in the current tenant during erasure', async () => {
     const deps = depsFor({ 't-acme': [memberRow({ id: 'm1' })] });
     deps.memberErasure = {
       pseudonymize: async () => ({
         alreadyDeleted: false,
         authUserErased: true,
-        deletedTeamInvitations: 2,
+        deletedTeamInvitations: 1,
         erasureRequestId: null,
         avatarUrl: null,
       }),
     };
 
     expect(await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, deps))
-      .toMatchObject({ ok: true, value: { memberId: 'm1', deletedTeamInvitations: 2 } });
+      .toMatchObject({ ok: true, value: { memberId: 'm1', deletedTeamInvitations: 1 } });
   });
 
   it('pseudonymizes the member with tombstone identifiers scoped to the staff tenant', async () => {

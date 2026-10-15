@@ -2755,6 +2755,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           avatarUrl: null,
         };
       }
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, member.userId)).for('update');
       const deletedInvitations = await tx.delete(tenantAdminInvitations).where(and(
         eq(tenantAdminInvitations.tenantId, tenantId),
         eq(tenantAdminInvitations.userId, member.userId),
@@ -2930,7 +2931,12 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select({ value: sql<number>`count(*)::int` })
         .from(tenantAdmins)
         .where(eq(tenantAdmins.userId, member.userId));
-      const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0);
+      const invitationLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(tenantAdminInvitations)
+        .where(eq(tenantAdminInvitations.userId, member.userId));
+      const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0)
+        + (invitationLinks[0]?.value ?? 0);
       if (openErasureRequest !== undefined) {
         await tx
           .update(memberErasureRequests)
@@ -2968,14 +2974,11 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         };
       }
 
-      const remainingInvitations = await tx.delete(tenantAdminInvitations)
-        .where(eq(tenantAdminInvitations.userId, member.userId))
-        .returning({ id: tenantAdminInvitations.id });
       await tx.delete(user).where(eq(user.id, member.userId));
       return {
         alreadyDeleted: false,
         authUserErased: true,
-        deletedTeamInvitations: deletedInvitations.length + remainingInvitations.length,
+        deletedTeamInvitations: deletedInvitations.length,
         erasureRequestId: openErasureRequest?.id ?? null,
         avatarUrl: member.avatarUrl,
       };

@@ -54,10 +54,12 @@ follow the same member-erasure selection as live orders.
 - records `deletedAt`.
 
 The erasure response reports `deletedTeamInvitations`, the number of pending
-invitations deleted by the transaction. If other memberships or staff grants
-retain the auth user, invitations in other tenants remain unchanged. When the
-auth user becomes orphaned, the transaction also deletes and counts its pending
-invitations in every tenant before deleting the user. Migration
+invitations deleted in the current tenant only. Invitations in other tenants
+remain unchanged and are never included in that count. Other memberships,
+staff grants, or pending administrator invitations retain the auth user; the
+transaction deletes the auth user only when none of these links remain.
+Erasing a member therefore cannot silently revoke another tenant's pending
+administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
 key as a safeguard for auth-user deletion through any other path. Invitation
 rows store pending state only; activation and revocation already remove them.

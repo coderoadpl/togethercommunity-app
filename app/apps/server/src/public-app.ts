@@ -20,6 +20,7 @@ import {
   API_PATHS,
   authResolveRequestSchema,
   checkoutSessionRequestSchema,
+  publicCheckoutSessionStatusInputSchema,
   couponCheckoutValidationRequestSchema,
   courseStructureOutputSchema,
   discussionOutputSchema,
@@ -65,6 +66,7 @@ import {
   fulfillStripeWebhook,
   validateStripeInvoiceTenant,
   getPaymentConfig,
+  getCheckoutSessionStatus,
   testCheckoutRejection,
   getPlayableLesson,
   getPublicCourseStructure,
@@ -328,6 +330,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
   registerOpenCors(app, API_PATHS.studentLessonEditions, 'GET');
   registerOpenCors(app, API_PATHS.studentLessonEdition, 'GET');
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
+  registerOpenCors(app, API_PATHS.publicCheckoutSessionStatus, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
   registerOpenCors(app, API_PATHS.authConfig, 'GET');
@@ -621,6 +624,15 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return readerLesson(c, 'current');
   });
 
+  app.get(API_PATHS.publicCheckoutSessionStatus, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const parsed = publicCheckoutSessionStatusInputSchema.safeParse(c.req.query());
+    if (!parsed.success) return respondPublic(err(validation('Invalid checkout session id')));
+    return respondPublic(await getCheckoutSessionStatus(tenant.value.tenant.id, parsed.data.session_id, deps));
+  });
+
   app.get(API_PATHS.publicPaymentConfig, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
@@ -629,9 +641,22 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
+    const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
+    const domain = tenant.value.domain;
+    const baseDomain = deps.baseDomain.toLowerCase();
+    const analytics = (settings?.analyticsTagId || settings?.analyticsMetaPixelId) ? {
+      cookieScope: domain?.kind === 'custom' && domain.verified &&
+        domain.domain.toLowerCase() !== baseDomain && !domain.domain.toLowerCase().endsWith(`.${baseDomain}`)
+        ? 'parent' as const : 'host' as const,
+      tagId: settings.analyticsTagId ?? null,
+      metaPixelId: settings.analyticsMetaPixelId ?? null,
+      consentCookieName: settings.analyticsConsentCookieName ?? null,
+      consentCookieValue: settings.analyticsConsentCookieValue ?? null,
+      loadWithoutConsent: settings.analyticsLoadWithoutConsent ?? false,
+    } : null;
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+        ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );

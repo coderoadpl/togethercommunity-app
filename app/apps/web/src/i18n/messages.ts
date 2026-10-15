@@ -604,6 +604,20 @@ export interface Messages {
     options: { pl: string; en: string };
     save: string;
   };
+  analyticsSettings: {
+    metaPixelId: string;
+    metaPixelIdHint: string;
+    heading: string;
+    intro: string;
+    tagId: string;
+    tagIdHint: string;
+    consentCookieName: string;
+    consentCookieNameHint: string;
+    consentCookieValue: string;
+    consentCookieValueHint: string;
+    loadWithoutConsent: string;
+    loadWithoutConsentHint: string;
+  };
   settingsNavigation: {
     aria: string;
     company: string;
@@ -1693,6 +1707,7 @@ export interface Messages {
     navigationAria: string;
     start: string;
     searchEntry: string;
+    downloadsSection: string;
     spacesSection: string;
     lockedSpaceHint: string;
     courseProgressLabel: (params: { name: string; percent: number }) => string;
@@ -1791,6 +1806,7 @@ export interface Messages {
     subscriptionAccessUntil: (params: { date: string }) => string;
     manageSubscription: string;
     coursesEmptyRenewHint: string;
+    downloadProductBody: string;
     downloadsHeading: string;
     downloadFile: (params: { name: string }) => string;
     downloadNoCopyIdentifier: string;
@@ -2490,6 +2506,11 @@ export interface Messages {
     payPending: string;
     simulatedPaymentNote: string;
     successEyebrow: string;
+    successPendingTitle: string;
+    successPendingBody: string;
+    successPendingTimeout: string;
+    successPaidEyebrow: string;
+    subscriptionSuccessEyebrow: string;
     successTitle: string;
     successBody: string;
     subscriptionSuccessTitle: string;

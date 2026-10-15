@@ -1,4 +1,5 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
+import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { productVatRateSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -22,6 +23,7 @@ import {
   accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
+  checkoutSessionStatusInputSchema,
   couponCheckoutBreakdownSchema,
   couponRecurringDurationSchema,
   couponCreateInputSchema,
@@ -446,7 +448,15 @@ export const stripeTestRemoveOutputSchema = z.object({ removed: z.literal(true) 
 export const stripeTestSessionInputSchema = z.object({ enabled: z.boolean() });
 export const stripeTestSessionOutputSchema = z.object({ enabled: z.boolean() });
 
+export const publicCheckoutSessionStatusInputSchema = checkoutSessionStatusInputSchema;
+
+export const publicCheckoutSessionStatusOutputSchema = z.object({
+  status: z.enum(['pending', 'paid']),
+  analytics: checkoutPurchaseAnalyticsSchema.optional(),
+}).strict();
+
 export const publicPaymentConfigOutputSchema = z.object({
+  analytics: checkoutAnalyticsConfigSchema.nullable().optional(),
   canTest: z.boolean().default(false),
   testConfigured: z.boolean().default(false),
   testEnabled: z.boolean().default(false),
@@ -1882,6 +1892,7 @@ export const API_ROUTES = {
   publicSpaceEvents: { method: 'GET', path: '/api/public/spaces/:spaceId/events' },
   publicSpaceEvent: { method: 'GET', path: '/api/public/spaces/:spaceId/events/:eventId' },
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
+  publicCheckoutSessionStatus: { method: 'GET', path: '/api/public/checkout/session-status' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
   stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
@@ -2275,6 +2286,7 @@ export const API_PATHS = {
   publicSpaceEvents: API_ROUTES.publicSpaceEvents.path,
   publicSpaceEvent: API_ROUTES.publicSpaceEvent.path,
   publicImageAsset: API_ROUTES.publicImageAsset.path,
+  publicCheckoutSessionStatus: API_ROUTES.publicCheckoutSessionStatus.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   stripeTestRemove: API_ROUTES.stripeTestRemove.path,
   stripeTestSession: API_ROUTES.stripeTestSession.path,

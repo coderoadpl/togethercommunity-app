@@ -60,6 +60,7 @@ import {
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
+  createPaymentRefundRepository,
   createPostRepository,
   createPostReportRepository,
   createProcessedPaymentEventRepository,
@@ -825,6 +826,33 @@ describe('product grant repository', () => {
 });
 
 describe('order repository', () => {
+  it('finds checkout sessions only within the requested tenant and payment mode', async () => {
+    const repo = createPaymentRefundRepository(db);
+    await db.update(orders).set({ providerObjectIds: { checkoutSession: 'cs_live_repository123' } })
+      .where(and(eq(orders.tenantId, ACME), eq(orders.id, 'order-acme-1')));
+    await db.update(orders).set({ mode: 'test', providerObjectIds: { checkoutSession: 'cs_test_repository123' } })
+      .where(and(eq(orders.tenantId, GLOBEX), eq(orders.id, 'order-globex')));
+    try {
+      expect(await repo.findOrderByProviderObjectIds(ACME, { checkoutSession: 'cs_live_repository123' }, 'live'))
+        .toMatchObject({ id: 'order-acme-1', tenantId: ACME, mode: 'live', status: 'paid' });
+      expect(await repo.findOrderByProviderObjectIds(ACME, { checkoutSession: 'cs_live_repository123' }, 'test'))
+        .toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(GLOBEX, { checkoutSession: 'cs_live_repository123' }, 'live'))
+        .toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(GLOBEX, { checkoutSession: 'cs_test_repository123' }, 'test'))
+        .toMatchObject({ id: 'order-globex', tenantId: GLOBEX, mode: 'test', status: 'paid' });
+      expect(await repo.findOrderByProviderObjectIds(GLOBEX, { checkoutSession: 'cs_test_repository123' }, 'live'))
+        .toBeNull();
+      expect(await repo.findOrderByProviderObjectIds(ACME, { checkoutSession: 'cs_live_unknown' }, 'live'))
+        .toBeNull();
+    } finally {
+      await db.update(orders).set({ providerObjectIds: {} })
+        .where(and(eq(orders.tenantId, ACME), eq(orders.id, 'order-acme-1')));
+      await db.update(orders).set({ mode: 'live', providerObjectIds: {} })
+        .where(and(eq(orders.tenantId, GLOBEX), eq(orders.id, 'order-globex')));
+    }
+  });
+
   it('paginates, filters by status, and isolates by tenant', async () => {
     const repo = createOrderRepository(db);
     const paid = await repo.list(ACME, { page: 1, pageSize: 20, status: 'paid' });
@@ -1200,6 +1228,27 @@ describe('invoice repository', () => {
 });
 
 describe('tenant, api-key, secret and processed-event repositories', () => {
+  it('persists and clears analytics settings within the selected tenant', async () => {
+    const repo = createTenantRepository(db);
+    const current = await repo.findSettings(ACME);
+    if (current === null) throw new Error('Missing tenant settings');
+    const disabled = {
+      analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: null,
+      analyticsConsentCookieValue: null, analyticsLoadWithoutConsent: false,
+    };
+    expect(current).toMatchObject(disabled);
+    const configured = {
+      analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+    };
+    const updated = await repo.updateSettings(ACME, { ...current, ...configured });
+    expect(updated).toMatchObject(configured);
+    expect(await repo.findSettings(ACME)).toMatchObject(configured);
+    expect(await repo.findSettings(GLOBEX)).toMatchObject(disabled);
+    expect(await repo.updateSettings(ACME, { ...updated, ...disabled })).toMatchObject(disabled);
+    expect(await repo.findSettings(ACME)).toMatchObject(disabled);
+  });
+
   it('reads tenants by id and slug and round-trips settings', async () => {
     let multipleTenantWarnings = 0;
     const repo = createTenantRepository(db, {

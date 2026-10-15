@@ -30,7 +30,7 @@ import {
   type ShellLinkProps,
   type ShellVariant,
 } from './shell-chrome.js';
-import { SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
+import { ProductsIcon, SearchIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading, SubLinkRow } from './sidebar-rows.js';
 
 const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
@@ -118,6 +118,41 @@ const NavigationList = ({ active }: { active: MemberNavEntry | null }) => {
         );
       })}
     </List>
+  );
+};
+
+const DownloadsSection = ({ active }: { active: MemberNavEntry | null }) => {
+  const t = useTranslations();
+  const products = useQuery(actions.myProducts);
+
+  if (products.isPending) return <SidebarLoading />;
+  if (products.isError) {
+    return <SidebarError error={products.error} onRetry={() => void products.refetch()} />;
+  }
+
+  const downloads = products.data.products.filter(
+    (product) => product.grantStatus === 'active' && product.downloads.length > 0,
+  );
+  if (downloads.length === 0) return null;
+
+  return (
+    <Box component="section" data-testid="sidebar-downloads">
+      <Typography variant="overline" component="h2" sx={{ px: '0.6rem', pt: '0.75rem' }}>
+        {t.shell.downloadsSection}
+      </Typography>
+      <List component="div" disablePadding>
+        {downloads.map((product) => (
+          <LinkRow
+            key={product.id}
+            to={`/my/course/${encodeURIComponent(product.id)}`}
+            label={product.title}
+            icon={<ProductsIcon />}
+            active={active?.kind === 'product' && active.productId === product.id}
+            testId={`sidebar-product-${product.id}`}
+          />
+        ))}
+      </List>
+    </Box>
   );
 };
 
@@ -224,6 +259,7 @@ export const MemberSidebar = ({
           {t.shell.spacesSection}
         </Typography>
         <NavigationList active={active} />
+        <DownloadsSection active={active} />
       </Box>
       {variant === 'drawer' ? (
         <>

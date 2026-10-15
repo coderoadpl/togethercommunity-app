@@ -11,6 +11,7 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
   sendInvoice: ReturnType<typeof vi.fn>;
@@ -70,6 +71,7 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    publicCheckoutSessionStatus: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     updateSalesLink: vi.fn(),
     sendInvoice: vi.fn(),
@@ -177,6 +179,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     updateSalesLink: h.updateSalesLink,
     sendInvoice: h.sendInvoice,
@@ -268,6 +271,7 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
   h.sendInvoice.mockReset();
@@ -354,6 +358,29 @@ afterEach(() => {
 
 afterAll(() => {
   process.argv = originalArgv;
+});
+
+describe('checkout session-status CLI', () => {
+  it.each(['pending', 'paid'] as const)('prints the %s status envelope for the requested session', async (status) => {
+    h.publicCheckoutSessionStatus.mockResolvedValue(ok({ status }));
+
+    await run('--json', 'checkout', 'session-status', '--session-id', 'cs_test_one');
+
+    expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('cs_test_one');
+    expect(soleJson()).toEqual({ ok: true, data: { status } });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('preserves the validation envelope and exit code for a malformed session', async () => {
+    const failure = err(appError('validation', 'Invalid checkout session id'));
+    h.publicCheckoutSessionStatus.mockResolvedValue(failure);
+
+    await run('--json', 'checkout', 'session-status', '--session-id', 'invalid');
+
+    expect(h.publicCheckoutSessionStatus).toHaveBeenCalledExactlyOnceWith('invalid');
+    expect(soleJson()).toEqual(failure);
+    expect(process.exitCode).toBe(2);
+  });
 });
 
 describe('sales-link checkout CLI', () => {
@@ -1489,5 +1516,67 @@ describe('team CLI', () => {
     expect(h.removeTenantAdmin).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(process.exitCode).toBe(4);
+  });
+});
+
+describe('tenant analytics settings', () => {
+  it('passes all five analytics settings through the existing update path', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', 'G-ABCD123',
+      '--analytics-meta-pixel-id', '12345678',
+      '--analytics-consent-cookie-name', 'site_consent',
+      '--analytics-consent-cookie-value', 'analytics:true',
+      '--analytics-load-without-consent', 'true');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: 'G-ABCD123',
+      analyticsMetaPixelId: '12345678',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: true,
+    });
+  });
+
+  it('accepts empty strings to clear text settings and false to restore consent checks', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', '',
+      '--analytics-meta-pixel-id', '',
+      '--analytics-consent-cookie-name', '',
+      '--analytics-consent-cookie-value', '',
+      '--analytics-load-without-consent', 'false');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: '',
+      analyticsMetaPixelId: '',
+      analyticsConsentCookieName: '',
+      analyticsConsentCookieValue: '',
+      analyticsLoadWithoutConsent: false,
+    });
+  });
+
+  it('rejects an invalid consent switch value before calling the client', async () => {
+    await run('--json', 'tenant', 'settings-set', '--analytics-load-without-consent', 'yes');
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('prints all five analytics settings', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: {
+      analyticsTagId: 'G-ABCDEF1234',
+      analyticsMetaPixelId: '12345678',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: false,
+    } }));
+    await run('tenant', 'settings');
+    for (const line of [
+      'analytics tag ID: G-ABCDEF1234',
+      'analytics Meta Pixel ID: 12345678',
+      'analytics consent cookie name: site_consent',
+      'analytics consent cookie value: analytics:true',
+      'analytics load without consent: false',
+    ]) {
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(line));
+    }
   });
 });

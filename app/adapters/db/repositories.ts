@@ -3558,7 +3558,9 @@ export const createOrderRepository = (
 export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
   findOrderByProviderObjectIds: async (tenantId, providerObjectIds, mode) => {
     const matches = Object.entries(providerObjectIds).map(
-      ([key, value]) => sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
+      ([key, value]) => key === 'checkoutSession'
+        ? sql`${orders.providerObjectIds} ? 'checkoutSession' and ${orders.providerObjectIds} ->> 'checkoutSession' = ${value}`
+        : sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
     );
     if (matches.length === 0) return null;
     const rows = await db
@@ -4334,6 +4336,11 @@ export const createTenantRepository = (
         logoUrl: tenants.logoUrl,
         logoDarkUrl: tenants.logoDarkUrl,
         signInNotice: tenants.signInNotice,
+        analyticsTagId: tenants.analyticsTagId,
+        analyticsMetaPixelId: tenants.analyticsMetaPixelId,
+        analyticsConsentCookieName: tenants.analyticsConsentCookieName,
+        analyticsConsentCookieValue: tenants.analyticsConsentCookieValue,
+        analyticsLoadWithoutConsent: tenants.analyticsLoadWithoutConsent,
         checkoutAppearance: tenants.checkoutAppearance,
         accentColor: tenants.accentColor,
         accentLight: tenants.accentLight,
@@ -4375,6 +4382,11 @@ export const createTenantRepository = (
           logoUrl: row.logoUrl,
           logoDarkUrl: row.logoDarkUrl,
           signInNotice: row.signInNotice,
+          analyticsTagId: row.analyticsTagId,
+          analyticsMetaPixelId: row.analyticsMetaPixelId,
+          analyticsConsentCookieName: row.analyticsConsentCookieName,
+          analyticsConsentCookieValue: row.analyticsConsentCookieValue,
+          analyticsLoadWithoutConsent: row.analyticsLoadWithoutConsent,
           checkoutAppearance: row.checkoutAppearance === null ? null : checkoutAppearanceSchema.parse(row.checkoutAppearance),
           accentColor: row.accentColor,
           accentLight: row.accentLight,
@@ -4432,6 +4444,11 @@ export const createTenantRepository = (
         logoUrl: settings.logoUrl,
         logoDarkUrl: settings.logoDarkUrl,
         signInNotice: settings.signInNotice,
+        analyticsTagId: settings.analyticsTagId,
+        analyticsMetaPixelId: settings.analyticsMetaPixelId,
+        analyticsConsentCookieName: settings.analyticsConsentCookieName,
+        analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
+        analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
         checkoutAppearance: settings.checkoutAppearance,
         accentColor: settings.accentColor,
         accentLight: settings.accentLight,
@@ -4469,6 +4486,11 @@ export const createTenantRepository = (
       logoUrl: settings.logoUrl,
       logoDarkUrl: settings.logoDarkUrl,
       signInNotice: settings.signInNotice,
+      analyticsTagId: settings.analyticsTagId,
+      analyticsMetaPixelId: settings.analyticsMetaPixelId,
+      analyticsConsentCookieName: settings.analyticsConsentCookieName,
+      analyticsConsentCookieValue: settings.analyticsConsentCookieValue,
+      analyticsLoadWithoutConsent: settings.analyticsLoadWithoutConsent,
       checkoutAppearance: settings.checkoutAppearance,
       accentColor: settings.accentColor,
       accentLight: settings.accentLight,

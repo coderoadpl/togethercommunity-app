@@ -47,6 +47,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: API_PATHS.studentLessonEditions, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview editions with the current lesson access check' },
   { path: API_PATHS.studentLessonEdition, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview edition with the current lesson access check' },
   { path: API_PATHS.studentLesson, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview' },
+  { path: API_PATHS.publicCheckoutSessionStatus, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Rate-limited checkout payment confirmation with opt-in purchase analytics and no buyer details' },
   { path: '/api/public/payment-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Checkout capability discovery' },
   { path: '/api/public/checkout/coupon', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Read-only coupon validation' },
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },

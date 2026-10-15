@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link as MuiLink, Stack } from '@mui/material';
+import { Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -7,9 +7,11 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { MemberSurface } from './MemberSurface.js';
+import { ProductDownloads } from './ProductDownloads.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -74,6 +76,16 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   const grantedCourseIds = new Set(product.accessItems.map((item) => item.courseId));
   const accessibleCourses = (courses.data?.courses ?? []).filter((course) => grantedCourseIds.has(course.id));
 
+  if (grantedCourseIds.size === 0 && product.downloads.length > 0) {
+    return (
+      <MemberSurface title={product.title} eyebrow={t.student.downloadsHeading}>
+        {product.description ? <RichTextContent html={product.description} /> : null}
+        <Typography>{t.student.downloadProductBody}</Typography>
+        <ProductDownloads productId={product.id} downloads={product.downloads} />
+      </MemberSurface>
+    );
+  }
+
   return (
     <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
       {courses.isPending ? (
@@ -109,6 +121,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
           </Stack>
         </SectionCard>
       )}
+      <ProductDownloads productId={product.id} downloads={product.downloads} />
     </MemberSurface>
   );
 };

@@ -23,6 +23,7 @@ import {
 } from './server-harness.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
+import { prepareWelcomePurchases, restrictBrowserToLocalRequests, runWelcomePurchases } from './purchase-welcome-e2e.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -30,6 +31,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const PLATFORM_BASE_DOMAIN = 'platform.localhost';
 const CUSTOM_HOST = `course.acme.${PLATFORM_BASE_DOMAIN}`;
+const STUDIO_CUSTOM_HOST = `files.studio.${PLATFORM_BASE_DOMAIN}`;
 const TENANT_HOST = `acme.${PLATFORM_BASE_DOMAIN}`;
 const CREATOR_PASSWORD = 'demo-password-15';
 const PROTECTED_LESSON_PATH = '/my/courses/course-acme/lessons/lesson-acme-intro';
@@ -118,6 +120,12 @@ const attachCustomDomain = async (databaseUrl: string): Promise<void> => {
        VALUES ($1, $2, $3, 'custom', true)
        ON CONFLICT (domain) DO UPDATE SET verified = true`,
       ['domain-acme-custom', 'tenant-acme', CUSTOM_HOST],
+    );
+    await client.query(
+      `INSERT INTO tenant_domains (id, tenant_id, domain, kind, verified)
+       VALUES ($1, $2, $3, 'custom', true)
+       ON CONFLICT (domain) DO UPDATE SET verified = true`,
+      ['domain-studio-custom', 'tenant-studio', STUDIO_CUSTOM_HOST],
     );
   } finally {
     await client.end();
@@ -260,6 +268,7 @@ const runCustomHostSignIn = async (customBaseUrl: string, tenantBaseUrl: string)
   try {
     browser = await launchBrowser();
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
@@ -292,6 +301,7 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
   const browser = await launchBrowser();
   try {
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
@@ -335,6 +345,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   try {
     browser = await launchBrowser();
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
     await page.addInitScript(
@@ -462,6 +473,7 @@ const runCustomDomainReturnTo = async (
   try {
     browser = await launchBrowser();
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     await page.goto(`${customBaseUrl}${PROTECTED_LESSON_PATH}`, { waitUntil: 'networkidle' });
     await page.waitForURL(
@@ -574,6 +586,7 @@ const runSelfServeAdd = async (input: {
   try {
     browser = await launchBrowser();
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     await page.goto(`${input.tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
@@ -645,6 +658,7 @@ const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
   try {
     browser = await launchBrowser();
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
@@ -671,6 +685,7 @@ try {
   console.log('custom-domain-e2e: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(e2eDatabaseUrl);
+  await prepareWelcomePurchases(e2eDatabaseUrl);
   await attachCustomDomain(e2eDatabaseUrl);
   console.log('custom-domain-e2e: building the web SPA...');
   await buildWeb();
@@ -698,6 +713,24 @@ try {
   await runCustomDomainMagicLink(connectUrl, tenantBaseUrl);
   await runCustomDomainMagicLinkCrossOriginRejected(connectUrl, tenantBaseUrl);
   await runCustomDomainReturnTo(connectUrl, customBaseUrl);
+  const studioBaseUrl = `http://${STUDIO_CUSTOM_HOST}:${port}`;
+  const studioOrigin = `https://${STUDIO_CUSTOM_HOST}`;
+  await runWelcomePurchases({
+    connectUrl,
+    webBaseUrl: studioBaseUrl,
+    canonicalOrigin: studioOrigin,
+    actionOrigin: `${studioOrigin}:${port}`,
+    verify: async (context, link) => {
+      const url = new URL(link);
+      const verified = await requestWithHost(connectUrl, `${url.pathname}${url.search}`, STUDIO_CUSTOM_HOST);
+      assert(verified.status === 302, `welcome verification returned HTTP ${verified.status}: ${verified.body}`);
+      const location = verified.headers.location;
+      assert(location === url.searchParams.get('callbackURL'), `welcome verification changed its callback: ${String(location)}`);
+      assert(location !== undefined, 'welcome verification did not redirect');
+      await addSessionCookie(context, studioBaseUrl, sessionCookiePair(verified.headers));
+      return new URL(new URL(location).pathname, studioBaseUrl).toString();
+    },
+  });
   await runStudioDomainStatus(tenantBaseUrl);
   await runSelfServeAdd({ tenantBaseUrl, connectUrl, databaseUrl: e2eDatabaseUrl });
   console.log(`\ncustom-domain-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

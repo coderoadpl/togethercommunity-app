@@ -58,7 +58,7 @@ invitations deleted by the transaction. If other memberships or staff grants
 retain the auth user, invitations in other tenants remain unchanged. When the
 auth user becomes orphaned, the transaction also deletes and counts its pending
 invitations in every tenant before deleting the user. Migration
-`0147_tenant_admin_invitations_user_fk.sql` adds an `ON DELETE CASCADE` foreign
+`0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
 key as a safeguard for auth-user deletion through any other path. Invitation
 rows store pending state only; activation and revocation already remove them.
 

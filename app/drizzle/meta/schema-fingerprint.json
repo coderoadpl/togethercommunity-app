@@ -1,6 +1,6 @@
 {
-  "hash": "df79b0a0d3e3261f74909d2ae15c3b1fa994840736774887e36c9f9559043b1d",
-  "shortId": "df79b0a0d3e3",
+  "hash": "b53a872391d7dcb09dbadd8f1d802b99f5493bf247a92c43c895876a851fe371",
+  "shortId": "b53a872391d7",
   "schema": {
     "constraints": [
       {
@@ -1152,6 +1152,11 @@
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
         "name": "session_user_id_user_id_fk",
         "table": "session"
+      },
+      {
+        "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
+        "name": "tenant_admin_invitations_user_id_fkey",
+        "table": "tenant_admin_invitations"
       },
       {
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
@@ -4074,6 +4079,14 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "analytics_load_without_consent",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "auto_issue_invoices",
             "notNull": true,
             "type": "boolean"
@@ -4115,6 +4128,38 @@
             "generated": "",
             "identity": "",
             "name": "accent_light",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_pixel_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_tag_id",
             "notNull": false,
             "type": "text"
           },

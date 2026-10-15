@@ -655,6 +655,12 @@ export const publicSpaceEventQuery = (api: ApiClient, input: PublicSpaceEventInp
     call: ({ signal }) => api.publicSpaceEvent(input, signal),
   });
 
+export const publicCheckoutSessionStatusQuery = (api: ApiClient, sessionId: string) =>
+  defineQuery({
+    queryKey: ['checkout-session-status', sessionId] as const,
+    call: ({ signal }) => api.publicCheckoutSessionStatus(sessionId, signal),
+  });
+
 export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: ['payment-config'] as const,

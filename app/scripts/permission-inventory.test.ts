@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(432);
+    expect(inventory.routes).toHaveLength(434);
     expect(inventory.useCases).toHaveLength(337);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
@@ -88,10 +88,25 @@ describe('permission inventory', () => {
     }
   });
 
+  it('keeps all tenant settings updates owner-only', () => {
+    const inventory = collectPermissionInventory();
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'POST /api/tenant/settings'),
+      inventory.useCases.find((entry) => entry.subject === 'tenant-settings.ts#updateTenantSettings'),
+    ]) {
+      expect(row).toMatchObject({
+        capability: 'tenant:settings:write',
+        before: ['owner'],
+        after: ['owner'],
+      });
+    }
+  });
+
   it('classifies sales-link handoffs as public reads and session creation as checkout start', () => {
     const inventory = collectPermissionInventory();
     for (const [subject, capability] of [
       ['GET /offer/:slug', 'offer:read'],
+      ['GET /api/public/checkout/session-status', 'checkout:read'],
       ['POST /api/public/sales-links/:slug/checkout', 'checkout:start'],
     ]) {
       expect(inventory.routes.find((row) => row.subject === subject))

@@ -26,6 +26,8 @@ import {
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import { continueWithIdentifier, requestMagicLink, signInWithPassword } from './login-flow.js';
 import { passwordFixture } from './password-fixture.js';
+import { prepareWelcomePurchases, restrictBrowserToLocalRequests, runWelcomePurchases } from './purchase-welcome-e2e.js';
+import { prepareCheckoutAnalytics, runCheckoutAnalyticsNavigation } from './checkout-analytics-e2e.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -111,6 +113,7 @@ const runPasswordResetPath = async (
         : { channel: 'chrome', headless: true },
     );
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     await page.goto(`${webBaseUrl}/forgot-password`, { waitUntil: 'networkidle' });
     await page.getByTestId('forgot-password-email').fill(email);
@@ -214,6 +217,7 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
         : { channel: 'chrome', headless: true },
     );
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     const step = async (email: string): Promise<'password' | 'magic-link'> => {
       await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
@@ -257,6 +261,7 @@ const runMagicLinkReturnToPath = async (webBaseUrl: string): Promise<void> => {
     );
     for (const language of ['en', 'pl'] as const) {
       const context = await browser.newContext();
+      await restrictBrowserToLocalRequests(context);
       await context.addInitScript((value) => window.localStorage.setItem('together-language', value), language);
       const page = await context.newPage();
       await page.goto(`${webBaseUrl}${protectedLessonUrl}`, { waitUntil: 'networkidle' });
@@ -292,6 +297,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
         : { channel: 'chrome', headless: true },
     );
     const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
     await page.addInitScript(
@@ -361,6 +367,8 @@ try {
   console.log('auth-e2e: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(e2eDatabaseUrl);
+  await prepareWelcomePurchases(e2eDatabaseUrl);
+  await prepareCheckoutAnalytics(e2eDatabaseUrl);
   console.log('auth-e2e: building the web SPA...');
   await buildWeb();
   const port = await ephemeralPort();
@@ -384,6 +392,9 @@ try {
   await runTotpPath({ connectUrl, origin: webBaseUrl });
   await runIdentifierFirstPath(webBaseUrl);
   await runMagicLinkReturnToPath(webBaseUrl);
+  const studioBaseUrl = `http://studio.localhost:${port}`;
+  await runWelcomePurchases({ connectUrl, webBaseUrl: studioBaseUrl, canonicalOrigin: studioBaseUrl });
+  await runCheckoutAnalyticsNavigation(studioBaseUrl);
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {

@@ -187,6 +187,7 @@ import {
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
+  publicCheckoutSessionStatusOutputSchema,
   stripeTestSessionOutputSchema,
   stripeTestRemoveOutputSchema,
   productsCreateOutputSchema,
@@ -974,6 +975,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
         .replace(':spaceId', encodeURIComponent(input.spaceId))
         .replace(':eventId', encodeURIComponent(input.eventId)),
       eventOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicCheckoutSessionStatus: (sessionId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicCheckoutSessionStatus.method,
+      `${API_ROUTES.publicCheckoutSessionStatus.path}?session_id=${encodeURIComponent(sessionId)}`,
+      publicCheckoutSessionStatusOutputSchema,
       undefined,
       signal,
     ),

@@ -6,6 +6,7 @@ describe('selectPublicRateLimitPolicies', () => {
   it('throttles production writes conservatively', () => {
     expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production' })).toEqual({
       redirectHitsPerRedirect: { limit: 600, windowMs: 60_000 },
+      checkoutStatusPerIp: { limit: 600, windowMs: 300_000 },
       signInPerIp: { limit: 60, windowMs: 60_000 },
       signInPerEmail: { limit: 10, windowMs: 600_000 },
       writesPerIp: { limit: 30, windowMs: 60_000 },
@@ -22,6 +23,7 @@ describe('selectPublicRateLimitPolicies', () => {
   it('keeps development and staging generous enough for end-to-end suites', () => {
     expect(selectPublicRateLimitPolicies({})).toMatchObject({
       redirectHitsPerRedirect: { limit: 600 },
+      checkoutStatusPerIp: { limit: 60_000, windowMs: 300_000 },
       writesPerIp: { limit: 3_000 },
       authLinksPerEmail: { limit: 500 },
       authResolvesPerIp: { limit: 6_000 },
@@ -32,10 +34,11 @@ describe('selectPublicRateLimitPolicies', () => {
       .toMatchObject({ writesPerIp: { limit: 3_000 } });
   });
 
-  it('lets the environment override each bucket, including switching it off', () => {
+  it('lets the environment override configurable buckets, including switching them off', () => {
     expect(selectPublicRateLimitPolicies({
       NODE_ENV: 'production',
       PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE: 8,
+      PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES: 1_200,
       PUBLIC_RATE_LIMIT_SIGN_IN_PER_IP_PER_MINUTE: 3,
       PUBLIC_RATE_LIMIT_SIGN_IN_PER_EMAIL_PER_10_MINUTES: 2,
       PUBLIC_RATE_LIMIT_WRITES_PER_IP_PER_MINUTE: 10,
@@ -48,6 +51,7 @@ describe('selectPublicRateLimitPolicies', () => {
       PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES: 2,
     })).toEqual({
       redirectHitsPerRedirect: { limit: 8, windowMs: 60_000 },
+      checkoutStatusPerIp: { limit: 1_200, windowMs: 300_000 },
       signInPerIp: { limit: 3, windowMs: 60_000 },
       signInPerEmail: { limit: 2, windowMs: 600_000 },
       writesPerIp: { limit: 10, windowMs: 60_000 },
@@ -59,5 +63,12 @@ describe('selectPublicRateLimitPolicies', () => {
       signupsPerIp: { limit: 7, windowMs: 60_000 },
       signupsPerEmail: { limit: 2, windowMs: 600_000 },
     });
+  });
+
+  it('allows disabling the checkout status bucket with a zero override', () => {
+    expect(selectPublicRateLimitPolicies({
+      NODE_ENV: 'production',
+      PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES: 0,
+    }).checkoutStatusPerIp).toEqual({ limit: 0, windowMs: 300_000 });
   });
 });

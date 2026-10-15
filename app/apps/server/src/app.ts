@@ -64,12 +64,14 @@ export const buildApp = (deps: AppDeps) => {
   const app = new Hono<AppVars>();
 
   app.use('*', async (c, next) => {
+    const checkoutSuccessPath = ['/checkout/', '/offer/'].some((prefix) => c.req.path.startsWith(prefix))
+      && c.req.query('status') === 'success';
     await secureHeaders({
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: isSpaDocument(c.req.path)
+        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath
           ? ["'self'", 'https:']
           : ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],
@@ -83,8 +85,15 @@ export const buildApp = (deps: AppDeps) => {
       referrerPolicy: 'strict-origin-when-cross-origin',
     })(c, next);
     const redirectOrigin = c.get('signupRedirectOrigin');
-    const policy = c.res.headers.get('content-security-policy');
-    if (redirectOrigin !== undefined && policy !== null) c.res.headers.set('content-security-policy', policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`));
+    let policy = c.res.headers.get('content-security-policy');
+    if (policy === null) return;
+    if (checkoutSuccessPath && c.req.method === 'GET'
+      && c.res.status === 200
+      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html') {
+      policy = policy.replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/ https://connect.facebook.net');
+    }
+    if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
+    c.res.headers.set('content-security-policy', policy);
   });
   app.use('*', marketingSignupCorsMiddleware(deps));
   app.use('*', async (c, next) => {

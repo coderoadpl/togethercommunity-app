@@ -138,6 +138,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
   await call('publicOffer', [], () => api.publicOffer());
   if (scenario.principal !== 'anonymous' && scenario.principal !== 'creator@together.dev') {
   await call('memberNavigation', [], () => api.memberNavigation());
+  await call('myProducts', [], () => api.myProducts());
   await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
   await call('unreadMessageCount', [], () => api.unreadMessageCount());
   }

@@ -91,7 +91,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/image-assets/course-cover/upload' || path === '/api/image-assets/course-cover/complete') return 'course:write';
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
   if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
-  if (path === '/api/public/payment-config' || path === '/api/public/checkout/coupon') return 'checkout:read';
+  if (path === '/api/public/payment-config' || path === '/api/public/checkout/session-status' || path === '/api/public/checkout/coupon') return 'checkout:read';
   if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
   if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';

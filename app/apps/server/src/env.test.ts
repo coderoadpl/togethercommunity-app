@@ -81,6 +81,20 @@ describe('redirect hit rate limit configuration', () => {
   });
 });
 
+describe('checkout status rate limit configuration', () => {
+  it.each(['600', '1200', '0'])('accepts a non-negative override of %s', (count) => {
+    expect(envSchema.parse({
+      PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES: count,
+    }).PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES).toBe(Number(count));
+  });
+
+  it.each(['-1', '1.5', 'invalid'])('rejects an invalid override of %s', (count) => {
+    expect(envSchema.safeParse({
+      PUBLIC_RATE_LIMIT_CHECKOUT_STATUS_PER_IP_PER_5_MINUTES: count,
+    }).success).toBe(false);
+  });
+});
+
 describe('local development detection', () => {
   it('accepts an unset or development APP_ENV outside a production NODE_ENV', () => {
     expect(isLocalDevelopmentEnvironment({})).toBe(true);

@@ -1028,14 +1028,14 @@
       "idx": 146,
       "version": "7",
       "when": 1790964000018,
-      "tag": "0146_tenant_admin_invitations",
+      "tag": "0146_tenant_analytics",
       "breakpoints": true
     },
     {
       "idx": 147,
       "version": "7",
       "when": 1790964000019,
-      "tag": "0147_tenant_admin_invitations_user_fk",
+      "tag": "0147_tenant_admin_invitations",
       "breakpoints": true
     }
   ]

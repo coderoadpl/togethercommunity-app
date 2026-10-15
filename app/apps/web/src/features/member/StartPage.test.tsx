@@ -368,6 +368,23 @@ describe('StartPage', () => {
     );
   });
 
+  it('does not request products or render the withdrawn files tile', async () => {
+    let productsRequested = false;
+    server.use(
+      okCourses([course('c1', 'Introduction')]), okNavigation(), noNotifications(),
+      http.get('/api/my/products', () => {
+        productsRequested = true;
+        return HttpResponse.json({ ok: true, data: { products: [] } });
+      }),
+    );
+
+    await renderStart();
+
+    await screen.findByTestId('start-courses');
+    expect(productsRequested).toBe(false);
+    expect(screen.queryByTestId('start-files')).not.toBeInTheDocument();
+  });
+
   it('sends an anonymous visitor to the tenant home instead of the login page', async () => {
     server.use(
       http.get('/api/student/courses', () =>

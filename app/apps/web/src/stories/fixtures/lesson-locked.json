@@ -7,6 +7,11 @@
         "settings": {
           "accentColor": null,
           "accentLight": null,
+          "analyticsConsentCookieName": null,
+          "analyticsConsentCookieValue": null,
+          "analyticsLoadWithoutConsent": false,
+          "analyticsMetaPixelId": null,
+          "analyticsTagId": null,
           "autoIssueInvoices": false,
           "autoIssueInvoiceScope": "b2b_only",
           "billingPortalUrl": "https://billing.stripe.com/p/login/test_example",
@@ -133,6 +138,36 @@
             }
           ]
         }
+      }
+    },
+    "myProducts:[]": {
+      "ok": true,
+      "value": {
+        "products": [
+          {
+            "accessItems": [
+              {
+                "courseId": "course-js",
+                "level": "modules",
+                "moduleIds": [
+                  "module-js-dom"
+                ]
+              }
+            ],
+            "currency": "PLN",
+            "description": "Access to the DOM module of the JavaScript course.",
+            "downloads": [],
+            "grantExpiresAt": null,
+            "grantStartsAt": "2026-06-17T12:00:00.000Z",
+            "grantStatus": "active",
+            "id": "product-js-dom-module",
+            "priceCents": 9900,
+            "purchasable": true,
+            "subscription": null,
+            "title": "DOM Module Pack",
+            "type": "course"
+          }
+        ]
       }
     },
     "publicOffer:[]": {

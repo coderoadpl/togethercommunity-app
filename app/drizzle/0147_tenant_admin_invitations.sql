@@ -1,7 +1,7 @@
 CREATE TABLE "tenant_admin_invitations" (
   "id" text PRIMARY KEY NOT NULL,
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
-  "user_id" text NOT NULL,
+  "user_id" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
   "email" text NOT NULL,
   "invited_at" text NOT NULL
 );

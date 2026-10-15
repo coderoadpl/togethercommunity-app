@@ -33,6 +33,11 @@ import { SettingsPanel } from './SettingsPanel.js';
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 interface StoredSettings {
+  analyticsTagId?: string | null;
+  analyticsMetaPixelId?: string | null;
+  analyticsConsentCookieName?: string | null;
+  analyticsConsentCookieValue?: string | null;
+  analyticsLoadWithoutConsent?: boolean;
   signInNotice?: { enabled: boolean; text: string };
   name: string;
   socialLinks: Array<{ label: string; url: string }>;
@@ -326,7 +331,7 @@ afterEach(() => {
 });
 
 describe('SettingsPanel information architecture', () => {
-  it('groups settings into five localized tabs', async () => {
+  it('groups settings into six localized tabs', async () => {
     renderPanel();
 
     const tabs = await screen.findAllByRole('tab');
@@ -334,6 +339,7 @@ describe('SettingsPanel information architecture', () => {
       en.settingsNavigation.company,
       en.settingsNavigation.legal,
       en.settingsNavigation.brand,
+      en.analyticsSettings.heading,
       en.settingsNavigation.security,
       en.settingsNavigation.diagnostics,
     ]);
@@ -1595,5 +1601,87 @@ describe('SettingsPanel team', () => {
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.common.remove }));
     await waitFor(() => expect(removed).toEqual([{ userId: admin.userId }]));
     expect(await findToast('success')).toHaveTextContent(en.common.saved);
+  });
+});
+
+describe('SettingsPanel analytics', () => {
+  it('lets the owner save all five analytics fields', async () => {
+    const { updates } = renderPanel(EMPTY_SETTINGS);
+    await openSettingsSection(en.analyticsSettings.heading);
+    const tag = await screen.findByRole('textbox', { name: en.analyticsSettings.tagId });
+    await waitFor(() => expect(tag).toBeEnabled());
+    expect(tag).toHaveAccessibleDescription(en.analyticsSettings.tagIdHint);
+    const cookieName = screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName });
+    const cookieValue = screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue });
+    const consentSwitch = screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent });
+    expect(cookieName).toHaveAccessibleDescription(en.analyticsSettings.consentCookieNameHint);
+    expect(cookieValue).toHaveAccessibleDescription(en.analyticsSettings.consentCookieValueHint);
+    expect(consentSwitch).toHaveAccessibleDescription(en.analyticsSettings.loadWithoutConsentHint);
+    const pixel = screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId });
+    expect(pixel).toHaveAccessibleDescription(en.analyticsSettings.metaPixelIdHint);
+    await userEvent.type(pixel, '123456789012345');
+    await userEvent.type(tag, 'G-ABCD123');
+    await userEvent.type(cookieName, 'site_consent');
+    await userEvent.type(cookieValue, 'analytics:true');
+    await userEvent.click(consentSwitch);
+    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await waitFor(() => expect(updates).toContainEqual({
+      analyticsTagId: 'G-ABCD123',
+      analyticsMetaPixelId: '123456789012345',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: true,
+    }));
+    expect(await findToast('success')).toBeInTheDocument();
+  });
+
+  it('clears configured fields and disables unconditional loading', async () => {
+    const { updates } = renderPanel({
+      ...EMPTY_SETTINGS,
+      analyticsTagId: 'G-ABCDEF1234',
+      analyticsMetaPixelId: '123456789012345',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: true,
+    });
+    await openSettingsSection(en.analyticsSettings.heading);
+    const tag = await screen.findByRole('textbox', { name: en.analyticsSettings.tagId });
+    await waitFor(() => expect(tag).toHaveValue('G-ABCDEF1234'));
+    await userEvent.clear(tag);
+    await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId }));
+    await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName }));
+    await userEvent.clear(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue }));
+    await userEvent.click(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent }));
+    await userEvent.click(screen.getByRole('button', { name: en.common.save }));
+    await waitFor(() => expect(updates).toContainEqual({
+      analyticsTagId: null,
+      analyticsMetaPixelId: null,
+      analyticsConsentCookieName: null,
+      analyticsConsentCookieValue: null,
+      analyticsLoadWithoutConsent: false,
+    }));
+    expect(await findToast('success')).toBeInTheDocument();
+  });
+
+  it.each(['admin', null] as const)('keeps analytics read-only for staff role %s', async (staffRole) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
+    await openSettingsSection(en.analyticsSettings.heading);
+    expect(await screen.findByRole('textbox', { name: en.analyticsSettings.tagId })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: en.analyticsSettings.metaPixelId })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieName })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: en.analyticsSettings.consentCookieValue })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: en.analyticsSettings.loadWithoutConsent })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: en.common.save })).not.toBeInTheDocument();
+  });
+
+  it('renders the Polish analytics copy from the dictionary', async () => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { language: 'pl' });
+    await openSettingsSection(pl.analyticsSettings.heading);
+    expect(await screen.findByText(pl.analyticsSettings.intro)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.tagId })).toHaveAccessibleDescription(pl.analyticsSettings.tagIdHint);
+    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.metaPixelId })).toHaveAccessibleDescription(pl.analyticsSettings.metaPixelIdHint);
+    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieName })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieNameHint);
+    expect(screen.getByRole('textbox', { name: pl.analyticsSettings.consentCookieValue })).toHaveAccessibleDescription(pl.analyticsSettings.consentCookieValueHint);
+    expect(screen.getByRole('switch', { name: pl.analyticsSettings.loadWithoutConsent })).toHaveAccessibleDescription(pl.analyticsSettings.loadWithoutConsentHint);
   });
 });

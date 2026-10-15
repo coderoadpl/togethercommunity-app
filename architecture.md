@@ -241,7 +241,7 @@ Checkout offers the product's active one-time or recurring prices and shows the
 validated discount breakdown and lowest-thirty-day price when a coupon applies;
 coupon attribution follows paid orders without platform tracking cookies; a
 workspace may enable vendor analytics on the checkout success document only
-(owner decision 2026-10-14 in `app/CLAUDE.md`, approved, not yet implemented).
+(owner decision 2026-10-14 in `app/CLAUDE.md`, approved and implemented).
 
 ## Security baseline
 

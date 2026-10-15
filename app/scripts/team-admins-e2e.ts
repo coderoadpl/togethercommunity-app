@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 
-import { AUTH_MAGIC_LINK_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
+import { AUTH_EMAIL_VERIFICATION_PATH, AUTH_MAGIC_LINK_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import {
   API_PATHS,
@@ -30,6 +30,7 @@ databaseUrl.pathname = `/${databaseName}`;
 const webDistDir = join(rootDir, 'dist', `team-admins-e2e-${process.pid}`);
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const inviteeEmail = 'team-admin-e2e@together.dev';
+const passwordInviteeEmail = 'team-admin-verification-e2e@together.dev';
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -45,11 +46,16 @@ const runDatabaseCommand = async (statement: string): Promise<void> => {
   }
 };
 
-const readInvitationLink = async (connectUrl: string, webBaseUrl: string): Promise<string> => {
+const readEmailLink = async (
+  connectUrl: string,
+  email: string,
+  origins: readonly string[],
+  path: string,
+): Promise<string> => {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     const response = await fetch(new URL(
-      `${API_PATHS.devEmail}?to=${encodeURIComponent(inviteeEmail)}`, connectUrl,
+      `${API_PATHS.devEmail}?to=${encodeURIComponent(email)}`, connectUrl,
     ));
     assert(response.ok, `Dev email sink failed (HTTP ${response.status})`);
     const envelope = envelopeSchema(devEmailOutputSchema).parse(await response.json());
@@ -57,27 +63,29 @@ const readInvitationLink = async (connectUrl: string, webBaseUrl: string): Promi
     const candidate = envelope.data.email?.text.match(/https?:\/\/\S+/)?.[0];
     if (candidate !== undefined) {
       const url = new URL(candidate);
-      assert(url.origin === webBaseUrl, 'Invitation link used the wrong workspace origin');
-      assert(url.pathname === AUTH_MAGIC_LINK_VERIFICATION_PATH, 'Invitation did not contain a magic link');
+      assert(origins.includes(url.origin), 'Email link used an unexpected origin');
+      assert(url.pathname === path, `Email did not contain the expected ${path} link`);
       return candidate;
     }
     await delay(100);
   }
-  throw new Error('Invitation email did not reach the dev sink');
+  throw new Error(`Email for ${email} did not reach the dev sink`);
 };
 
 const runInvitationJourney = async (
   browser: Browser,
   connectUrl: string,
   webBaseUrl: string,
+  platformBaseUrl: string,
 ): Promise<void> => {
   const owner = await browser.newContext();
   const invitee = await browser.newContext();
-  for (const context of [owner, invitee]) {
+  const passwordInvitee = await browser.newContext();
+  for (const context of [owner, invitee, passwordInvitee]) {
     await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
     await context.route('**/*', async (route) => {
       const url = new URL(route.request().url());
-      if (url.origin === webBaseUrl) await route.continue();
+      if ([webBaseUrl, platformBaseUrl].includes(url.origin)) await route.continue();
       else await route.abort();
     });
   }
@@ -94,7 +102,9 @@ const runInvitationJourney = async (
   await invitedRow.getByText(en.tenantTeam.invitationSent, { exact: true }).waitFor({
     state: 'visible', timeout: 15000,
   });
-  const invitationLink = await readInvitationLink(connectUrl, webBaseUrl);
+  const invitationLink = await readEmailLink(
+    connectUrl, inviteeEmail, [webBaseUrl], AUTH_MAGIC_LINK_VERIFICATION_PATH,
+  );
 
   const page = await invitee.newPage();
   await page.goto(invitationLink, { waitUntil: 'networkidle' });
@@ -119,9 +129,65 @@ const runInvitationJourney = async (
   await invitedRow.getByText(en.tenantTeam.administrator, { exact: true }).waitFor({
     state: 'visible', timeout: 15000,
   });
+
+  const passwordPage = await passwordInvitee.newPage();
+  await passwordPage.goto(`${webBaseUrl}/register`, { waitUntil: 'networkidle' });
+  await passwordPage.getByLabel(en.auth.nameLabel, { exact: true }).fill('Verification Invitee');
+  await passwordPage.getByLabel(en.auth.emailLabel, { exact: true }).fill(passwordInviteeEmail);
+  await passwordPage.getByLabel(en.auth.passwordLabel, { exact: true }).fill('verification-password-15');
+  await passwordPage.getByRole('button', { name: en.auth.createAccount, exact: true }).click();
+  await passwordPage.getByRole('heading', { name: en.auth.registeredTitle, exact: true }).waitFor({
+    state: 'visible', timeout: 15000,
+  });
+  const unverifiedResponse = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`);
+  assert(unverifiedResponse.status() === 200, 'Password sign-up did not create a session');
+  const unverified = envelopeSchema(meOutputSchema).parse(await unverifiedResponse.json());
+  assert(unverified.ok, 'Password invitee identity returned an error');
+  assert(unverified.data.email === passwordInviteeEmail, 'Password sign-up used the wrong user');
+  assert(!unverified.data.emailVerified, 'Password invitee was already verified');
+  assert(unverified.data.tenant?.staffRole !== 'admin', 'Uninvited user already had administrator access');
+  const verificationLink = await readEmailLink(
+    connectUrl, passwordInviteeEmail, [webBaseUrl, platformBaseUrl], AUTH_EMAIL_VERIFICATION_PATH,
+  );
+  console.log(`team-admins-e2e: verification email origin ${new URL(verificationLink).origin}`);
+
+  await team.getByLabel(en.auth.emailLabel, { exact: true }).fill(passwordInviteeEmail);
+  await team.getByRole('button', { name: en.common.add, exact: true }).click();
+  const passwordInvitedRow = team.getByRole('row').filter({ hasText: passwordInviteeEmail });
+  await passwordInvitedRow.getByText(en.tenantTeam.invitationSent, { exact: true }).waitFor({
+    state: 'visible', timeout: 15000,
+  });
+  const pendingResponse = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`);
+  const pending = envelopeSchema(meOutputSchema).parse(await pendingResponse.json());
+  assert(pending.ok && pending.data.tenant?.staffRole !== 'admin', 'Unverified invitation activated early');
+
+  const verificationResponsePromise = passwordPage.waitForResponse((response) =>
+    response.url() === verificationLink);
+  await passwordPage.goto(verificationLink, { waitUntil: 'networkidle' });
+  const verificationResponse = await verificationResponsePromise;
+  assert(verificationResponse.status() === 302, 'Email verification did not redirect');
+  const sessionToken = await verificationResponse.headerValue('set-auth-token');
+  assert(sessionToken !== null, 'Email verification did not create a session');
+  const headers = { authorization: `Bearer ${sessionToken}` };
+  const verifiedResponse = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`, { headers });
+  assert(verifiedResponse.status() === 200, 'Verification session could not read tenant identity');
+  const verified = envelopeSchema(meOutputSchema).parse(await verifiedResponse.json());
+  assert(verified.ok, 'Verified invitee identity returned an error');
+  assert(verified.data.email === passwordInviteeEmail, 'Verification signed in the wrong user');
+  assert(verified.data.emailVerified, 'Verification did not verify the email');
+  assert(verified.data.tenant?.slug === 'acme', 'Verification resolved the wrong workspace');
+  assert(verified.data.tenant?.staffRole === 'admin', 'Email verification did not activate administrator access');
+  assert(verified.data.tenantAccess === 'staff', 'Verified invitee did not receive staff access');
+  const verifiedOwnerOnly = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.tenantTeam}`, { headers });
+  assert(verifiedOwnerOnly.status() === 403, 'Verified administrator received owner-only team access');
+  await ownerPage.reload({ waitUntil: 'networkidle' });
+  await passwordInvitedRow.getByText(en.tenantTeam.administrator, { exact: true }).waitFor({
+    state: 'visible', timeout: 15000,
+  });
+  await passwordInvitee.close();
   await invitee.close();
   await owner.close();
-  console.log('team-admins-e2e: invitation, magic-link activation and Studio administrator access OK');
+  console.log('team-admins-e2e: magic-link and email-verification activation, Studio access and owner-only denial OK');
 };
 
 const startedAt = Date.now();
@@ -144,12 +210,13 @@ try {
   const port = await ephemeralPort();
   const connectUrl = `http://127.0.0.1:${port}`;
   const webBaseUrl = `http://acme.localhost:${port}`;
+  const platformBaseUrl = `http://start.localhost:${port}`;
   server = await bootServer({
     port,
     healthUrl: `${connectUrl}/api/health`,
     env: {
       DATABASE_URL: databaseUrl.toString(),
-      APP_BASE_URL: webBaseUrl,
+      APP_BASE_URL: platformBaseUrl,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: webDistDir,
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
@@ -160,7 +227,7 @@ try {
   browser = await chromium.launch(chromeExecutablePath
     ? { executablePath: chromeExecutablePath, headless: true }
     : { channel: 'chrome', headless: true });
-  await runInvitationJourney(browser, connectUrl, webBaseUrl);
+  await runInvitationJourney(browser, connectUrl, webBaseUrl, platformBaseUrl);
   console.log(`team-admins-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   console.error(`team-admins-e2e: FAIL\n${String(error)}`);

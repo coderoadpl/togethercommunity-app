@@ -1,4 +1,5 @@
 export const AUTH_MAGIC_LINK_VERIFICATION_PATH = '/api/auth/magic-link/verify';
+export const AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/verify-email';
 
 /**
  * Headless HTTP driver for the Better Auth routes that scripts/auth-e2e.ts

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 
+import { AUTH_MAGIC_LINK_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import {
   API_PATHS,
@@ -57,7 +58,7 @@ const readInvitationLink = async (connectUrl: string, webBaseUrl: string): Promi
     if (candidate !== undefined) {
       const url = new URL(candidate);
       assert(url.origin === webBaseUrl, 'Invitation link used the wrong workspace origin');
-      assert(url.pathname === '/api/auth/magic-link/verify', 'Invitation did not contain a magic link');
+      assert(url.pathname === AUTH_MAGIC_LINK_VERIFICATION_PATH, 'Invitation did not contain a magic link');
       return candidate;
     }
     await delay(100);
@@ -97,7 +98,7 @@ const runInvitationJourney = async (
 
   const page = await invitee.newPage();
   await page.goto(invitationLink, { waitUntil: 'networkidle' });
-  await page.waitForURL((url) => !url.pathname.startsWith('/api/auth/'), { timeout: 15000 });
+  await page.waitForURL((url) => url.pathname !== AUTH_MAGIC_LINK_VERIFICATION_PATH, { timeout: 15000 });
   const meResponse = await invitee.request.get(`${webBaseUrl}${API_PATHS.me}`);
   assert(meResponse.status() === 200, `Invitee session failed (HTTP ${meResponse.status()})`);
   const me = envelopeSchema(meOutputSchema).parse(await meResponse.json());

@@ -1,7 +1,13 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { MemberWithProductIds } from '#core/domain/index.js';
 
@@ -58,13 +64,34 @@ const members: MemberWithProductIds[] = [
 const useMembers = () =>
   server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })));
 
+const renderPanel = async () => {
+  const rootRoute = createRootRoute({ component: MembersPanel });
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/panel/members'] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
 describe('MembersPanel', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/members/erasure-requests', () =>
+        HttpResponse.json({ ok: true, data: { requests: [] } }),
+      ),
+      http.get('/api/tenant/audit-events', () =>
+        HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } }),
+      ),
+    );
+  });
+
   it('offers a dedicated checkout-link navigation action when there are no members', async () => {
     server.use(
       http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
     );
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
 
     expect(await screen.findByText(en.members.empty)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.members.checkoutLinkAction })).toBeInTheDocument();
@@ -74,7 +101,7 @@ describe('MembersPanel', () => {
   it('renders the members table newest-first with emails and product counts', async () => {
     useMembers();
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
 
     expect(await screen.findByText('student1@together.dev')).toBeInTheDocument();
     expect(screen.getByText('Student One')).toBeInTheDocument();
@@ -89,7 +116,7 @@ describe('MembersPanel', () => {
   it('filters members by email or display name through the search box', async () => {
     useMembers();
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     await screen.findByText('student1@together.dev');
 
     await userEvent.type(screen.getByTestId('members-search'), 'Student One');
@@ -106,7 +133,7 @@ describe('MembersPanel', () => {
   it('filters members by active and expired grants', async () => {
     useMembers();
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     await screen.findByText('student1@together.dev');
 
     await userEvent.click(screen.getByTestId('members-grant-filter-active'));
@@ -201,7 +228,7 @@ describe('MembersPanel', () => {
       }),
     );
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     const row = (await screen.findAllByTestId('member-row')).find((candidate) =>
       candidate.textContent?.includes('student1@together.dev'),
     );
@@ -245,7 +272,7 @@ describe('MembersPanel', () => {
     ];
     server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: withDeleted } })));
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     const row = (await screen.findAllByTestId('member-row')).find((candidate) =>
       candidate.textContent?.includes('deleted-member-gone@anonymized.invalid'),
     );
@@ -267,7 +294,7 @@ describe('MembersPanel', () => {
       data: { members: [bannedMember] },
     })));
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     const row = await screen.findByTestId('member-row');
     expect(within(row).getByTestId('member-banned-badge')).toHaveTextContent(
       en.members.bannedBadge,
@@ -291,7 +318,7 @@ describe('MembersPanel', () => {
     }));
     server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: manyMembers } })));
 
-    renderWithProviders(<MembersPanel />);
+    await renderPanel();
     await screen.findByText('member29@together.dev');
 
     expect(screen.getAllByTestId('member-row')).toHaveLength(25);
@@ -299,7 +326,11 @@ describe('MembersPanel', () => {
       en.pagination.displayedRows({ from: 1, to: 25, count: 30 }),
     );
 
-    await userEvent.click(screen.getByRole('button', { name: en.pagination.nextPage }));
+    await userEvent.click(
+      within(screen.getByTestId('members-pagination')).getByRole('button', {
+        name: en.pagination.nextPage,
+      }),
+    );
     expect(screen.getAllByTestId('member-row')).toHaveLength(5);
     expect(screen.getByText('member00@together.dev')).toBeInTheDocument();
 

@@ -32,6 +32,7 @@ const pageScreenNames = new Set([
   'panel-spaces',
   'panel-dashboard',
   'panel-settings-security',
+  'panel-settings-team',
   'panel-settings-domains',
   'panel-settings-domains-active',
   'panel-settings-redirects',

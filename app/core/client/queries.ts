@@ -1,3 +1,4 @@
+import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
@@ -1748,6 +1749,17 @@ export const tenantRoutingQuery = (api: ApiClient) =>
     queryKey: tenantRoutingScopes.all(),
     call: ({ signal }) => api.getTenantRouting(signal),
   });
+
+export const tenantTeamQuery = (api: ApiClient) =>
+  defineQuery({ queryKey: ['tenant-team'], call: ({ signal }) => api.listTenantTeam(signal) });
+
+export const addTenantAdminMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: ['tenant-team', 'add'], call: (input: AddTenantAdminInput) => api.addTenantAdmin(input) });
+
+export const removeTenantAdminMutation = (api: ApiClient) =>
+  defineMutation({ mutationKey: ['tenant-team', 'remove'], call: (input: RemoveTenantAdminInput) => api.removeTenantAdmin(input) });
+
+export const tenantTeamInvalidates = () => ({ queryKey: ['tenant-team'] });
 
 export const tenantRedirectsQuery = (api: ApiClient) => (query: TenantRedirectsQueryInput = {}) =>
   defineQuery({

@@ -120,6 +120,7 @@ const erasureFor = (
       return {
         alreadyDeleted: true,
         authUserErased: false,
+        deletedTeamInvitations: 0,
         erasureRequestId: null,
         avatarUrl: null,
       };
@@ -133,6 +134,7 @@ const erasureFor = (
     return {
       alreadyDeleted: false,
       authUserErased: true,
+      deletedTeamInvitations: 0,
       erasureRequestId: null,
       avatarUrl,
     };
@@ -388,6 +390,22 @@ describe('setMemberBanned', () => {
 });
 
 describe('removeMember', () => {
+  it('reports the number of pending team invitations deleted in the current tenant during erasure', async () => {
+    const deps = depsFor({ 't-acme': [memberRow({ id: 'm1' })] });
+    deps.memberErasure = {
+      pseudonymize: async () => ({
+        alreadyDeleted: false,
+        authUserErased: true,
+        deletedTeamInvitations: 1,
+        erasureRequestId: null,
+        avatarUrl: null,
+      }),
+    };
+
+    expect(await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, deps))
+      .toMatchObject({ ok: true, value: { memberId: 'm1', deletedTeamInvitations: 1 } });
+  });
+
   it('pseudonymizes the member with tombstone identifiers scoped to the staff tenant', async () => {
     const byTenant = {
       't-acme': [memberRow({ id: 'm1', displayName: 'Jan Kowalski', tags: ['vip'] })],
@@ -403,7 +421,7 @@ describe('removeMember', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
+      value: { memberId: 'm1', subscriptionCancellations: [], deletedTeamInvitations: 0, erasureRequestId: null },
     });
     expect(calls).toEqual([
       {
@@ -497,7 +515,7 @@ describe('removeMember', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
+      value: { memberId: 'm1', subscriptionCancellations: [], deletedTeamInvitations: 0, erasureRequestId: null },
     });
     expect(byTenant['t-acme'][0]?.deletedAt).toBe('1998-07-01T00:00:00.000Z');
   });

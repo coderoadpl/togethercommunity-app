@@ -1,3 +1,8 @@
+export const AUTH_MAGIC_LINK_VERIFICATION_PATH = '/api/auth/magic-link/verify';
+export const AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/verify-email';
+export const AUTH_TOTP_VERIFICATION_PATH = '/api/auth/two-factor/verify-totp';
+export const AUTH_PASSKEY_AUTHENTICATION_PATH = '/api/auth/passkey/verify-authentication';
+
 /**
  * Headless HTTP driver for the Better Auth routes that scripts/auth-e2e.ts
  * exercises directly (sign-up, TOTP enrollment, session read). Better Auth

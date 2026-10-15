@@ -1,5 +1,5 @@
 import { passkey } from '@better-auth/passkey';
-import { betterAuth } from 'better-auth';
+import { BASE_ERROR_CODES, betterAuth } from 'better-auth';
 import {
   APIError,
   createAuthMiddleware,
@@ -7,9 +7,9 @@ import {
   sensitiveSessionMiddleware,
 } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { createCookieGetter, getCookies } from 'better-auth/cookies';
+import { createCookieGetter, deleteSessionCookie, getCookies } from 'better-auth/cookies';
 import { bearer, magicLink, oneTap, twoFactor } from 'better-auth/plugins';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -27,9 +27,9 @@ import {
   type Result,
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator, PlatformAuthSendLog, TransactionalEmailSender } from '#core/server/index.js';
-import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
+import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
-import { devMagicLinks, user } from '#adapters/db/schema.js';
+import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;
@@ -53,6 +53,7 @@ export interface AuthSettings {
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
+  activateTeamInvitation?(input: { request: Request; userId: string; email: string; occurredAt: string }): Promise<void>;
   importGoogleAvatar?(input: { userId: string; sourceUrl: string }): Promise<void>;
   logger?: { warn(message: string): void };
   /** Resolves whether a request host is a tenant's verified custom domain. */
@@ -350,6 +351,103 @@ const additionalTwoFactorPaths = new Set([
   '/magic-link/verify',
   '/passkey/verify-authentication',
 ]);
+
+const magicLinkTeamProofSchema = z.object({ userId: z.string(), origin: z.string().url() });
+
+const magicLinkMailboxProof = (db: Db, settings: AuthSettings) => ({
+  id: 'magic-link-mailbox-proof',
+  hooks: {
+    before: [{
+      matcher: (ctx: { path?: string }) => ctx.path === '/magic-link/verify',
+      handler: createAuthMiddleware(async (ctx) => {
+        const adapter = ctx.context.internalAdapter;
+        let mailboxUserId: string | undefined;
+        ctx.context.internalAdapter = {
+          ...adapter,
+          createVerificationValue: async (data) => {
+            const created = await adapter.createVerificationValue(data);
+            if (data.value === mailboxUserId && data.identifier.startsWith('2fa-') && ctx.request) {
+              try {
+                await adapter.createVerificationValue({
+                  identifier: `magic-link-team:${data.identifier}`,
+                  value: JSON.stringify({ userId: mailboxUserId, origin: new URL(ctx.request.url).origin }),
+                  expiresAt: data.expiresAt,
+                });
+              } catch (error) {
+                (settings.logger ?? console).warn(`[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=${serializeErrorChain(error)}`);
+              }
+            }
+            return created;
+          },
+          findUserByEmail: async (...args) => {
+            const found = await adapter.findUserByEmail(...args);
+            if (found === null) return found;
+            // The provider reaches this lookup only after consuming a valid mailbox token.
+            // Return the locked state so it cannot challenge with a revoked 2FA enrollment.
+            const verified = await db.transaction(async (tx) => {
+              const [current] = await tx.select({
+                emailVerified: user.emailVerified, twoFactorEnabled: user.twoFactorEnabled,
+              }).from(user)
+                .where(eq(user.id, found.user.id)).for('update');
+              if (current === undefined) throw new Error('Magic-link user no longer exists');
+              if (current.emailVerified) return current;
+              await tx.delete(account).where(and(
+                eq(account.userId, found.user.id), eq(account.providerId, 'credential'),
+              ));
+              await tx.delete(session).where(eq(session.userId, found.user.id));
+              await tx.delete(passkeyTable).where(eq(passkeyTable.userId, found.user.id));
+              await tx.delete(twoFactorTable).where(eq(twoFactorTable.userId, found.user.id));
+              const pending = await tx.delete(verification).where(or(
+                eq(verification.value, found.user.id),
+                sql`strpos(${verification.value}, ${`"userData":{"id":${JSON.stringify(found.user.id)}`}) > 0`,
+                sql`strpos(${verification.value}, ${`"userId":${JSON.stringify(found.user.id)}`}) > 0`,
+              )).returning({ identifier: verification.identifier });
+              if (pending.length > 0) {
+                await tx.delete(verification).where(inArray(verification.identifier, pending.flatMap(({ identifier }) => [
+                  `2fa-attempts-${identifier}`, `2fa-otp-${identifier}`, `magic-link-team:${identifier}`,
+                ])));
+              }
+              await tx.update(user).set({ emailVerified: true, twoFactorEnabled: false, updatedAt: new Date() })
+                .where(eq(user.id, found.user.id));
+              return { emailVerified: true, twoFactorEnabled: false };
+            });
+            mailboxUserId = found.user.id;
+            return { ...found, user: { ...found.user, ...verified } };
+          },
+        };
+      }),
+    }],
+  },
+});
+
+const passwordSessionGuard = (db: Db) => ({
+  id: 'password-session-guard',
+  hooks: {
+    after: [{
+      matcher: (ctx: { path?: string }) =>
+        ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email',
+      handler: createAuthMiddleware(async (ctx) => {
+        const signedIn = ctx.context.newSession;
+        if (signedIn === null) return;
+        // Password sign-in or sign-up can create a session after mailbox proof removes its credential.
+        const credentialExists = await db.transaction(async (tx) => {
+          await tx.select({ id: user.id }).from(user)
+            .where(eq(user.id, signedIn.user.id)).for('update');
+          const credentials = await tx.select({ id: account.id }).from(account).where(and(
+            eq(account.userId, signedIn.user.id), eq(account.providerId, 'credential'),
+          ));
+          if (credentials.length > 0) return true;
+          await tx.delete(session).where(eq(session.id, signedIn.session.id));
+          return false;
+        });
+        if (credentialExists) return;
+        ctx.context.newSession = null;
+        deleteSessionCookie(ctx);
+        throw APIError.from('UNAUTHORIZED', BASE_ERROR_CODES.INVALID_EMAIL_OR_PASSWORD);
+      }),
+    }],
+  },
+});
 
 export const isAdditionalTwoFactorPath = (path: string | undefined): boolean =>
   path !== undefined && (additionalTwoFactorPaths.has(path) || path.startsWith('/callback/'));
@@ -754,6 +852,8 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     plugins: [
       ...(settings.google ? [oneTap()] : []),
       hostScopedCredentials(settings),
+      passwordSessionGuard(db),
+      magicLinkMailboxProof(db, settings),
       bearer(),
       resetRedirectConfinement(),
       // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.
@@ -818,6 +918,32 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
               const signedIn = ctx.context.newSession;
               if (signedIn === null || ctx.request === undefined) return;
               const request = ctx.request;
+              if (signedIn.user.emailVerified) {
+                try {
+                  let magicLinkSignIn = ctx.path === '/magic-link/verify';
+                  if (ctx.path?.startsWith('/two-factor/verify-')) {
+                    const cookie = ctx.context.createAuthCookie('two_factor');
+                    const challenge = await ctx.getSignedCookie(cookie.name, ctx.context.secret);
+                    const marker = challenge
+                      ? await ctx.context.internalAdapter.consumeVerificationValue(`magic-link-team:${challenge}`)
+                      : null;
+                    if (marker) {
+                      const proof = magicLinkTeamProofSchema.parse(JSON.parse(marker.value));
+                      magicLinkSignIn = proof.userId === signedIn.user.id && proof.origin === new URL(request.url).origin;
+                    }
+                  }
+                  if (magicLinkSignIn) {
+                    await settings.activateTeamInvitation?.({
+                      request,
+                      userId: signedIn.user.id,
+                      email: signedIn.user.email,
+                      occurredAt: signedIn.session.createdAt.toISOString(),
+                    });
+                  }
+                } catch (error) {
+                  (settings.logger ?? console).warn(`[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=${serializeErrorChain(error)}`);
+                }
+              }
               void Promise.resolve()
                 .then(() => settings.recordSignIn?.({
                   request,

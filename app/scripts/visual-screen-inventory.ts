@@ -98,6 +98,22 @@ const waitForFixtureCall = async (page: Page, expected: string): Promise<void> =
   }, expected, { timeout: visible.timeout });
 };
 
+const scrollSettingsSectionIntoView = async (page: Page, testId: string): Promise<void> => {
+  const section = page.getByTestId(testId);
+  const appBar = page.locator('header').filter({ has: page.getByTestId('panel-member-view-link') });
+  await section.waitFor(visible);
+  await appBar.waitFor(visible);
+  await section.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+  const viewportTop = await appBar.evaluate((element) => element.getBoundingClientRect().bottom);
+  await page.evaluate((top) => window.scrollBy(0, -top), viewportTop);
+  const inViewport = await section.evaluate((element, top) => {
+    const rect = element.getBoundingClientRect();
+    return Math.round(rect.top) >= Math.round(top) && rect.top < window.innerHeight && rect.bottom > top
+      && rect.left < window.innerWidth && rect.right > 0;
+  }, viewportTop);
+  assert(inViewport, `${testId} must be in the capture viewport below the app bar`);
+};
+
 export interface AntialiasRepaint {
   waitForTarget: () => Promise<void>;
   setHidden: (hidden: boolean) => Promise<void>;
@@ -594,12 +610,23 @@ export const SCREENS: readonly ScreenSpec[] = [
     name: 'panel-settings-security',
     auth: 'creator',
     path: '/panel/settings#security',
-    ready: (page) => page.getByTestId('security-reset-password').waitFor(visible),
-    settled: async (page) => {
-      await page
-        .getByTestId('security-settings')
-        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    ready: async (page) => {
+      await page.getByTestId('security-reset-password').waitFor(visible);
+      await scrollSettingsSectionIntoView(page, 'security-settings');
     },
+    settled: (page) => scrollSettingsSectionIntoView(page, 'security-settings'),
+  },
+  {
+    name: 'panel-settings-team',
+    auth: 'creator',
+    path: '/panel/settings#team',
+    fixtureName: 'panel-settings-security',
+    ready: async (page) => {
+      await waitForFixtureCall(page, 'listTenantTeam:[]');
+      await page.getByRole('button', { name: en.common.add, exact: true }).waitFor(visible);
+      await scrollSettingsSectionIntoView(page, 'team-settings');
+    },
+    settled: (page) => scrollSettingsSectionIntoView(page, 'team-settings'),
   },
   {
     name: 'panel-settings-redirects',

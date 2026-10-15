@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(431);
-    expect(inventory.useCases).toHaveLength(334);
+    expect(inventory.routes).toHaveLength(434);
+    expect(inventory.useCases).toHaveLength(337);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
@@ -54,6 +54,22 @@ describe('permission inventory', () => {
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'staff-role').length).toBeGreaterThan(0);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'api-key').length).toBeGreaterThan(5);
     expect(inventory.sourceEvidence.filter((row) => row.kind === 'member-scope').length).toBeGreaterThan(10);
+  });
+
+  it('keeps team reads and writes owner-only', () => {
+    const inventory = collectPermissionInventory();
+    for (const [route, useCase] of [
+      ['GET /api/tenant/team', 'listTenantTeam'],
+      ['POST /api/tenant/team', 'addTenantAdmin'],
+      ['POST /api/tenant/team/remove', 'removeTenantAdmin'],
+    ]) {
+      for (const row of [
+        inventory.routes.find((entry) => entry.subject === route),
+        inventory.useCases.find((entry) => entry.subject === `tenant-team.ts#${useCase}`),
+      ]) {
+        expect(row).toMatchObject({ capability: 'tenant:settings:write', before: ['owner'], after: ['owner'] });
+      }
+    }
   });
 
   it('keeps catalog cleanup staff-only at both boundaries', () => {

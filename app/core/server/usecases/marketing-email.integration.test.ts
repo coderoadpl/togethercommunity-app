@@ -1077,6 +1077,7 @@ describe('marketing e-mail use-case integration', () => {
         return {
           alreadyDeleted: false,
           authUserErased: true,
+          deletedTeamInvitations: 0,
           erasureRequestId: null,
           avatarUrl: null,
         };

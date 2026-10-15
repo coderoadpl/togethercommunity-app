@@ -5,6 +5,8 @@ import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, 
 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
+import { user } from './auth-schema.js';
+
 import type {
   MarketingListRule,
   MarketingAudienceSnapshot,
@@ -237,6 +239,18 @@ export const tenantAdmins = pgTable(
     index('tenant_admins_userId_idx').on(table.userId),
     uniqueIndex('tenant_admins_tenant_user_uidx').on(table.tenantId, table.userId),
   ],
+);
+
+export const tenantAdminInvitations = pgTable(
+  'tenant_admin_invitations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    invitedAt: text('invited_at').notNull(),
+  },
+  (table) => [uniqueIndex('tenant_admin_invitations_tenant_user_uidx').on(table.tenantId, table.userId)],
 );
 
 export const members = pgTable(
@@ -2291,6 +2305,11 @@ export const tenantAuditEvents = pgTable(
         'redirect_deleted',
         'post_purged',
         'tenant_provisioned',
+        'team.admin_added',
+        'team.admin_invited',
+        'team.admin_activated',
+        'team.invitation_revoked',
+        'team.admin_removed',
       ],
     }).notNull(),
     actorUserId: text('actor_user_id').notNull(),

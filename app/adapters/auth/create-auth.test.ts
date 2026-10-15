@@ -1,14 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
-import { asc, eq } from 'drizzle-orm';
-import { createHmac } from 'node:crypto';
+import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
-import { emailEvents, members, tenants, user, verification } from '#adapters/db/schema.js';
+import { emailEvents, members, passkey, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
-import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
+import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
 import { createEmailOutboxRepository, createPlatformAuthSendLog } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
@@ -36,6 +35,7 @@ import {
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
+import { totpCode } from './totp-test-helper.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 beforeAll(async () => {
@@ -54,29 +54,6 @@ const SIGN_UP_PASSWORD = passwordFixture('signup-password');
 const OLD_PASSWORD = passwordFixture('old-password');
 const NEW_PASSWORD = passwordFixture('new-password');
 const CURRENT_PASSWORD = passwordFixture('current-password');
-
-const totpCode = (secret: string): string => {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = '';
-  for (const character of secret.toUpperCase().replace(/=+$/u, '')) {
-    const value = alphabet.indexOf(character);
-    if (value < 0) throw new Error('Invalid base32 secret');
-    bits += value.toString(2).padStart(5, '0');
-  }
-  const bytes = Buffer.alloc(Math.floor(bits.length / 8));
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = Number.parseInt(bits.slice(index * 8, index * 8 + 8), 2);
-  }
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
-  const digest = createHmac('sha1', bytes).update(counter).digest();
-  const offset = (digest.at(-1) ?? 0) & 0x0f;
-  const binary = ((digest[offset] ?? 0) & 0x7f) << 24 |
-    (digest[offset + 1] ?? 0) << 16 |
-    (digest[offset + 2] ?? 0) << 8 |
-    (digest[offset + 3] ?? 0);
-  return (binary % 1_000_000).toString().padStart(6, '0');
-};
 
 describe('ASVS authentication policy', () => {
   it.each([
@@ -140,6 +117,378 @@ describe('ASVS authentication policy', () => {
 });
 
 describe('real-provider sign-in and passkey proofs', () => {
+  it('preserves magic-link sign-in and event recording when team activation fails', async () => {
+    const warning = vi.fn();
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async () => {
+      throw new Error('Team activation failed', { cause: new Error('Database unavailable\nConnection refused') });
+    });
+    const { auth, authPort, magicLinks } = buildAuth({
+      logger: { warn: warning }, recordSignIn, activateTeamInvitation,
+    });
+    const email = `activation-failure-${crypto.randomUUID()}@together.dev`;
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/',
+      tenantName: 'Studio',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const signedIn = await auth.handler(new Request(link?.url ?? ''));
+
+    expect(signedIn.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      '[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=[{"name":"Error","message":"Team activation failed"},{"name":"Error","message":"Database unavailable\\nConnection refused"}]',
+    );
+  });
+
+  it.each([false, true])('keeps password credentials and sessions without activating an invitation on email verification (existing session: %s)', async (useExistingSession) => {
+    const tenantId = crypto.randomUUID();
+    const team = createTenantTeamRepository(database.db);
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async (input: { userId: string; email: string; occurredAt: string }) => {
+      await team.activateInvitation(tenantId, input.userId, crypto.randomUUID(), {
+        id: crypto.randomUUID(), tenantId, kind: 'team.admin_activated',
+        actorUserId: input.userId, actorEmail: input.email,
+        subjectMemberId: null, reason: input.userId, at: input.occurredAt,
+      });
+    });
+    const { auth, authPort, db, emails, flushEmails } = buildAuth({ recordSignIn, activateTeamInvitation });
+    const email = `activation-verification-${crypto.randomUUID()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId, slug: `verification-${tenantId}`, name: 'Studio', createdAt: new Date().toISOString(),
+    });
+    const signedUp = await signUp(auth, email);
+    expect(signedUp.status).toBe(200);
+    const originalToken = signedUp.headers.get('set-auth-token');
+    expect(originalToken).not.toBeNull();
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    recordSignIn.mockClear();
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    const userId = account?.user.id ?? '';
+    await team.inviteAdmin(tenantId, userId, normalizeEmail(email), crypto.randomUUID(), {
+      id: crypto.randomUUID(), tenantId, kind: 'team.admin_invited', actorUserId: userId,
+      actorEmail: email, subjectMemberId: null, reason: userId, at: new Date().toISOString(),
+    });
+    expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, status: 'invited' }));
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const verified = await auth.handler(new Request(verificationUrl, {
+      headers: useExistingSession ? { authorization: `Bearer ${originalToken}` } : {},
+    }));
+
+    expect(verified.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${originalToken}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(await internalAdapter.findAccounts(userId)).toContainEqual(
+      expect.objectContaining({ providerId: 'credential' }),
+    );
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, status: 'invited' }));
+    expect(recordSignIn).not.toHaveBeenCalled();
+    const replayed = await auth.handler(new Request(verificationUrl));
+    expect(replayed.status).toBe(302);
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('scopes magic-link credential cleanup to previously unverified users (verified: %s)', async (emailVerified) => {
+    const email = `magic-cleanup-${crypto.randomUUID()}@together.dev`;
+    let originalToken = '';
+    const activationState = vi.fn();
+    const activateTeamInvitation = vi.fn(async (input: { userId: string }) => {
+      const { internalAdapter } = await auth.$context;
+      const verifiedUser = await internalAdapter.findUserById(input.userId);
+      const accounts = await internalAdapter.findAccounts(input.userId);
+      const originalSession = await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${originalToken}`,
+      }));
+      activationState({
+        emailVerified: verifiedUser?.emailVerified,
+        hasCredential: accounts.some((account) => account.providerId === 'credential'),
+        hasOriginalSession: originalSession !== null,
+        hasPasskey: (await db.select().from(passkey).where(eq(passkey.userId, input.userId))).length > 0,
+      });
+    });
+    const { auth, authPort, db, magicLinks } = buildAuth({ activateTeamInvitation });
+    const signedUp = await signUp(auth, email);
+    expect(signedUp.status).toBe(200);
+    originalToken = signedUp.headers.get('set-auth-token') ?? '';
+    expect(originalToken).not.toBe('');
+    const registrant = await authPort.getAuthenticatedUser(new Headers({ authorization: `Bearer ${originalToken}` }));
+    await db.insert(passkey).values({
+      id: crypto.randomUUID(), userId: registrant?.userId ?? '', publicKey: 'test-public-key',
+      credentialID: crypto.randomUUID(), counter: 0, deviceType: 'singleDevice', backedUp: false,
+    });
+    if (emailVerified) await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
+    await authPort.requestMagicLink({
+      email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+      language: 'en', baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const signedIn = await auth.handler(new Request(link?.url ?? ''));
+    expect(signedIn.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    const passwordSignIn = await auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+    expect(activationState).toHaveBeenCalledExactlyOnceWith({
+      emailVerified: true, hasCredential: emailVerified, hasOriginalSession: emailVerified, hasPasskey: emailVerified,
+    });
+    expect(passwordSignIn.status).toBe(emailVerified ? 200 : 401);
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it('revokes existing sessions even when an unverified magic-link user has no password credential', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `magic-passwordless-${crypto.randomUUID()}@together.dev`;
+    const { userId } = await authPort.ensureUser(email);
+    const { internalAdapter } = await auth.$context;
+    const originalSession = await internalAdapter.createSession(userId);
+    expect(originalSession).not.toBeNull();
+    await authPort.requestMagicLink({
+      email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+      language: 'en', baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const signedIn = await auth.handler(new Request(link?.url ?? ''));
+    expect(signedIn.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${originalSession?.token ?? ''}`,
+    }))).toBeNull();
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+  });
+
+  it.each(['invalid', 'expired'])('keeps credentials and sessions when a magic-link token is %s', async (tokenState) => {
+    const activateTeamInvitation = vi.fn(async () => undefined);
+    const { auth, authPort, db, magicLinks } = buildAuth({ activateTeamInvitation });
+    const email = `magic-rejected-${crypto.randomUUID()}@together.dev`;
+    const signedUp = await signUp(auth, email);
+    const headers = new Headers({ authorization: `Bearer ${signedUp.headers.get('set-auth-token') ?? ''}` });
+    const registrant = await authPort.getAuthenticatedUser(headers);
+    expect(registrant).toMatchObject({ email, emailVerified: false });
+    await authPort.requestMagicLink({
+      email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+      language: 'en', baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const url = new URL(link?.url ?? '');
+    if (tokenState === 'invalid') {
+      url.searchParams.set('token', 'invalid-magic-link-token');
+    } else {
+      await db.update(verification).set({ expiresAt: new Date(0) })
+        .where(eq(verification.identifier, url.searchParams.get('token') ?? ''));
+    }
+    const rejected = await auth.handler(new Request(url));
+    expect(rejected.status).toBe(302);
+    expect(rejected.headers.get('set-auth-token')).toBeNull();
+    expect(await authPort.getAuthenticatedUser(headers)).toMatchObject({ email, emailVerified: false });
+    const { internalAdapter } = await auth.$context;
+    expect(await internalAdapter.findAccounts(registrant?.userId ?? '')).toContainEqual(
+      expect.objectContaining({ providerId: 'credential' }),
+    );
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+  });
+
+  it('rolls back magic-link credential and session cleanup when marking the address verified fails', async () => {
+    const activateTeamInvitation = vi.fn(async () => undefined);
+    const { auth, authPort, db, magicLinks } = buildAuth({ activateTeamInvitation });
+    const email = `magic-rollback-${crypto.randomUUID()}@together.dev`;
+    const signedUp = await signUp(auth, email);
+    const headers = new Headers({ authorization: `Bearer ${signedUp.headers.get('set-auth-token') ?? ''}` });
+    const registrant = await authPort.getAuthenticatedUser(headers);
+    expect(registrant).toMatchObject({ email, emailVerified: false });
+    const userId = registrant?.userId ?? '';
+    const authenticatorId = crypto.randomUUID();
+    await db.insert(passkey).values({
+      id: authenticatorId, userId, publicKey: 'rollback-public-key',
+      credentialID: authenticatorId, counter: 0, deviceType: 'singleDevice', backedUp: false,
+    });
+    await db.insert(twoFactor).values({
+      id: authenticatorId, userId, secret: 'rollback-secret', backupCodes: 'rollback-backup-codes',
+    });
+    await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, userId));
+    await db.insert(verification).values({
+      id: authenticatorId, identifier: `2fa-${authenticatorId}`, value: userId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await authPort.requestMagicLink({
+      email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+      language: 'en', baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    await db.execute(sql`CREATE FUNCTION reject_magic_verification() RETURNS trigger AS $$ BEGIN IF NEW.email LIKE 'magic-rollback-%' AND NOT OLD.email_verified AND NEW.email_verified THEN RAISE EXCEPTION 'Test verification failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql`);
+    await db.execute(sql`CREATE TRIGGER reject_magic_verification BEFORE UPDATE ON "user" FOR EACH ROW EXECUTE FUNCTION reject_magic_verification()`);
+    try {
+      const rejected = await auth.handler(new Request(link?.url ?? ''));
+      expect(rejected.status).toBe(500);
+      expect(rejected.headers.get('set-auth-token')).toBeNull();
+      expect(await authPort.getAuthenticatedUser(headers)).toMatchObject({ email, emailVerified: false });
+      const { internalAdapter } = await auth.$context;
+      expect(await internalAdapter.findAccounts(registrant?.userId ?? '')).toContainEqual(
+        expect.objectContaining({ providerId: 'credential' }),
+      );
+      expect(await db.select().from(passkey).where(eq(passkey.userId, userId))).toHaveLength(1);
+      expect(await db.select().from(twoFactor).where(eq(twoFactor.userId, userId))).toHaveLength(1);
+      expect(await db.select().from(verification).where(eq(verification.id, authenticatorId))).toHaveLength(1);
+      expect(await db.select().from(user).where(eq(user.id, userId))).toEqual([
+        expect.objectContaining({ emailVerified: false, twoFactorEnabled: true }),
+      ]);
+      expect(activateTeamInvitation).not.toHaveBeenCalled();
+    } finally {
+      await db.execute(sql`DROP TRIGGER reject_magic_verification ON "user"`);
+      await db.execute(sql`DROP FUNCTION reject_magic_verification()`);
+    }
+  });
+
+  it('rejects a password sign-in that finishes after magic-link sign-in revokes its credential', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `verification-overlap-${crypto.randomUUID()}@together.dev`;
+    expect((await signUp(auth, email)).status).toBe(200);
+    await authPort.requestMagicLink({
+      email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+      language: 'en', baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const verificationUrl = link?.url ?? '';
+    const { password } = await auth.$context;
+    const verifyPassword = password.verify;
+    let releasePassword: () => void = () => undefined;
+    let passwordVerified: () => void = () => undefined;
+    const passwordReleased = new Promise<void>((resolve) => { releasePassword = resolve; });
+    const passwordChecked = new Promise<void>((resolve) => { passwordVerified = resolve; });
+    const verificationSpy = vi.spyOn(password, 'verify').mockImplementation(async (input) => {
+      const valid = await verifyPassword(input);
+      passwordVerified();
+      await passwordReleased;
+      return valid;
+    });
+    const pendingSignIn = auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+    try {
+      await passwordChecked;
+      const verified = await auth.handler(new Request(verificationUrl));
+      expect(verified.status).toBe(302);
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      }))).toMatchObject({ email, emailVerified: true });
+      releasePassword();
+      const delayedSignIn = await pendingSignIn;
+      expect(delayedSignIn.status).toBe(401);
+      expect(delayedSignIn.headers.get('set-auth-token')).toBeNull();
+    } finally {
+      releasePassword();
+      try {
+        await pendingSignIn;
+      } finally {
+        verificationSpy.mockRestore();
+      }
+    }
+  });
+
+  it('rejects a sign-up session created after magic-link sign-in revokes its credential', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `signup-verification-overlap-${crypto.randomUUID()}@together.dev`;
+    const { internalAdapter } = await auth.$context;
+    const createSession = internalAdapter.createSession;
+    let releaseSignUp: () => void = () => undefined;
+    let signUpReady: () => void = () => undefined;
+    const signUpReleased = new Promise<void>((resolve) => { releaseSignUp = resolve; });
+    const signUpPaused = new Promise<void>((resolve) => { signUpReady = resolve; });
+    const sessionSpy = vi.spyOn(internalAdapter, 'createSession').mockImplementationOnce(async (...input) => {
+      signUpReady();
+      await signUpReleased;
+      return createSession(...input);
+    });
+    const pendingSignUp = signUp(auth, email);
+    try {
+      await signUpPaused;
+      await authPort.requestMagicLink({
+        email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
+        language: 'en', baseUrl: 'http://studio.localhost:48730',
+      });
+      const link = await magicLinks.findByEmail(normalizeEmail(email));
+      const verificationUrl = link?.url ?? '';
+      const verified = await auth.handler(new Request(verificationUrl));
+      expect(verified.status).toBe(302);
+      const mailboxOwnerHeaders = new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      });
+      expect(await authPort.getAuthenticatedUser(mailboxOwnerHeaders))
+        .toMatchObject({ email, emailVerified: true });
+      releaseSignUp();
+      const delayedSignUp = await pendingSignUp;
+      expect(delayedSignUp.status).toBe(401);
+      expect(delayedSignUp.headers.get('set-auth-token')).toBeNull();
+      expect(await authPort.getAuthenticatedUser(mailboxOwnerHeaders))
+        .toMatchObject({ email, emailVerified: true });
+    } finally {
+      releaseSignUp();
+      try {
+        await pendingSignUp;
+      } finally {
+        sessionSpy.mockRestore();
+      }
+    }
+  });
+
+  it('does not activate invitations during password sign-in', async () => {
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async () => { throw new Error('Tenant resolution unavailable'); });
+    const warning = vi.fn();
+    const { auth, authPort, db } = buildAuth({ recordSignIn, activateTeamInvitation, logger: { warn: warning } });
+    const email = `activation-password-${crypto.randomUUID()}@together.dev`;
+    expect((await signUp(auth, email)).status).toBe(200);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    recordSignIn.mockClear();
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
+
+    const signedIn = await auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+
+    expect(signedIn.status).toBe(200);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    expect(warning).not.toHaveBeenCalled();
+  });
+
   it('contains sign-in event recorder failures after creating a session', async () => {
     const warning = vi.fn();
     const recordSignIn = vi.fn(async () => {
@@ -177,13 +526,15 @@ describe('real-provider sign-in and passkey proofs', () => {
     });
   });
 
-  it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
+  it.each(['totp', 'backup-code'])('activates only magic-link invitations after %s proof and redeems each backup code once', async (proof) => {
     const recordSignIn = vi.fn(async () => undefined);
-    const { auth } = buildAuth({ recordSignIn });
+    const activateTeamInvitation = vi.fn(async () => undefined);
+    const { auth, db } = buildAuth({ recordSignIn, activateTeamInvitation });
     const email = `two-factor-${Date.now()}@together.dev`;
     const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
     const token = signedUp.headers.get('set-auth-token') ?? '';
+    await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
       new Request(`http://studio.localhost:48730/api/auth${path}`, {
         method: 'POST',
@@ -209,6 +560,7 @@ describe('real-provider sign-in and passkey proofs', () => {
       code: totpCode(secret),
     }, { authorization: `Bearer ${token}` });
     expect(verifiedEnrollment.status).toBe(200);
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
 
     recordSignIn.mockClear();
     const challenged = await post('/sign-in/email', { email, password });
@@ -234,6 +586,7 @@ describe('real-provider sign-in and passkey proofs', () => {
       cookie: challengeCookie,
     });
     expect(completed.status).toBe(200);
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
     expect(recordSignIn).toHaveBeenCalledTimes(1);
     expect(completed.headers.get('set-auth-token')).not.toBeNull();
     const completedCookies = completed.headers.getSetCookie();
@@ -287,8 +640,27 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(magicResponse.headers.get('location')).toBe(
       'http://studio.localhost:48730/login?twoFactor=required',
     );
-    expect(magicResponse.headers.getSetCookie().some((entry) =>
-      entry.startsWith('better-auth.two_factor='))).toBe(true);
+    const magicChallengeCookie = magicResponse.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor='))
+      ?.split(';')[0] ?? '';
+    expect(magicChallengeCookie).not.toBe('');
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    const invalidMagicProof = await post('/two-factor/verify-totp', { code: 'not-a-code' }, {
+      cookie: magicChallengeCookie,
+    });
+    expect(invalidMagicProof.status).toBeGreaterThanOrEqual(400);
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    const magicCompleted = await post(`/two-factor/verify-${proof}`, {
+      code: proof === 'totp' ? totpCode(secret) : enrollment.backupCodes[1],
+    }, { cookie: magicChallengeCookie });
+    expect(magicCompleted.status).toBe(200);
+    expect(magicCompleted.headers.get('set-auth-token')).not.toBeNull();
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    const passwordCompleted = await post('/two-factor/verify-backup-code', {
+      code: enrollment.backupCodes[2],
+    }, { cookie: nextChallengeCookie });
+    expect(passwordCompleted.status).toBe(200);
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
   });
 
   it('issues and accepts the prefixed challenge cookie used by HTTPS deployments', async () => {
@@ -479,6 +851,7 @@ const buildAuth = (options: {
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
+  activateTeamInvitation?(input: { request: Request; userId: string; email: string; occurredAt: string }): Promise<void>;
   platformTransportFails?: boolean;
   platformSendBlocker?: Promise<void>;
   keepAlive?(task: Promise<unknown>): void;
@@ -541,6 +914,7 @@ const buildAuth = (options: {
     defaultTenantName: 'Together',
     google: null,
     ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
+    ...(options.activateTeamInvitation === undefined ? {} : { activateTeamInvitation: options.activateTeamInvitation }),
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     validateSignUpConsent: async ({ accepted }) =>

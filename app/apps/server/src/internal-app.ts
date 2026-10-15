@@ -1,3 +1,5 @@
+import { tenantTeamAddSchema, tenantTeamRemoveSchema } from '#core/contract/index.js';
+import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/index.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
@@ -2377,6 +2379,35 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         }),
     }),
   };
+
+  const tenantTeamDeps = {
+    team: deps.team,
+    authPort: deps.authPort,
+    tenants: deps.tenants,
+    tenantDomains: deps.tenantDomains,
+    ids: deps.ids,
+    clock: deps.clock,
+    appBaseUrl: deps.appBaseUrl,
+    baseDomain: deps.baseDomain,
+    singleTenantMode: deps.singleTenantMode,
+  };
+
+  app.get(API_PATHS.tenantTeam, async (c) =>
+    respond(await listTenantTeam(ctxOf(c), tenantTeamDeps)));
+
+  app.post(API_PATHS.tenantTeamAdd, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = tenantTeamAddSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid team payload', parsed.error.flatten())));
+    return respond(await addTenantAdmin(ctxOf(c), parsed.data, tenantTeamDeps));
+  });
+
+  app.post(API_PATHS.tenantTeamRemove, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = tenantTeamRemoveSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid team payload', parsed.error.flatten())));
+    return respond(await removeTenantAdmin(ctxOf(c), parsed.data, tenantTeamDeps));
+  });
 
   const tenantRedirectDeps = {
     redirects: deps.redirects,

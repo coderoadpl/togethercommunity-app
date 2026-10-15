@@ -39,6 +39,8 @@ follow the same member-erasure selection as live orders.
 - records the erasure in `erasedMemberImports`;
 - deletes all tenant-scoped `download_copies` for the member;
 - deletes all tenant-scoped `survey_responses` linked to the member;
+- deletes pending `tenant_admin_invitations` for the member's auth user in the
+  tenant, including their plaintext e-mail;
 - end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `deletedMemberDisplay()`;
 - relabels the erased side of every `dm_reports` row — `reporter_display`,
@@ -50,6 +52,17 @@ follow the same member-erasure selection as live orders.
   customer identifiers, legacy identifier, avatar URL, and ban state
   (`bannedAt`, `bannedReason`, and `bannedByUserId`); and
 - records `deletedAt`.
+
+The erasure response reports `deletedTeamInvitations`, the number of pending
+invitations deleted in the current tenant only. Invitations in other tenants
+remain unchanged and are never included in that count. Other memberships,
+staff grants, or pending administrator invitations retain the auth user; the
+transaction deletes the auth user only when none of these links remain.
+Erasing a member therefore cannot silently revoke another tenant's pending
+administrator invitation. Migration
+`0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
+key as a safeguard for auth-user deletion through any other path. Invitation
+rows store pending state only; activation and revocation already remove them.
 
 The transaction returns the avatar URL it cleared, and `removeMember` then
 deletes the stored `image-assets/<tenantId>/avatar/<id>.webp` object through the

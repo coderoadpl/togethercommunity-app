@@ -93,4 +93,6 @@ export { productVatRateSchema, resolveProductVat, defaultProductVat, splitProduc
 export * from './sales-link.js';
 
 export * from './consumer-sales.js';
+
+export * from './tenant-team.js';
 export * from './checkout-analytics.js';

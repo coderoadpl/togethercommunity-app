@@ -51,6 +51,7 @@ import {
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
+  tenantTeamMemberSchema,
   termsConsentSchema,
   type Course,
   type CourseLesson,
@@ -145,6 +146,7 @@ import type {
   TenantRepository,
   TenantSecretRepository,
   TenantSecretScanPort,
+  TenantTeamRepository,
   TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
@@ -209,6 +211,7 @@ import {
   spaceSeenMarks,
   spaceSubscriptions,
   tenantAdmins,
+  tenantAdminInvitations,
   tenantApiKeys,
   apiKeyRateLimitBuckets,
   rateLimitBuckets,
@@ -2747,10 +2750,16 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         return {
           alreadyDeleted: true,
           authUserErased: false,
+          deletedTeamInvitations: 0,
           erasureRequestId: null,
           avatarUrl: null,
         };
       }
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, member.userId)).for('update');
+      const deletedInvitations = await tx.delete(tenantAdminInvitations).where(and(
+        eq(tenantAdminInvitations.tenantId, tenantId),
+        eq(tenantAdminInvitations.userId, member.userId),
+      )).returning({ id: tenantAdminInvitations.id });
       await tx.delete(surveyResponses).where(and(eq(surveyResponses.tenantId, tenantId), eq(surveyResponses.memberId, input.memberId)));
       await tx.delete(downloadCopies).where(and(eq(downloadCopies.tenantId, tenantId), eq(downloadCopies.memberId, input.memberId)));
       const [openErasureRequest] = await tx
@@ -2922,7 +2931,12 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .select({ value: sql<number>`count(*)::int` })
         .from(tenantAdmins)
         .where(eq(tenantAdmins.userId, member.userId));
-      const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0);
+      const invitationLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(tenantAdminInvitations)
+        .where(eq(tenantAdminInvitations.userId, member.userId));
+      const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0)
+        + (invitationLinks[0]?.value ?? 0);
       if (openErasureRequest !== undefined) {
         await tx
           .update(memberErasureRequests)
@@ -2954,6 +2968,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         return {
           alreadyDeleted: false,
           authUserErased: false,
+          deletedTeamInvitations: deletedInvitations.length,
           erasureRequestId: openErasureRequest?.id ?? null,
           avatarUrl: member.avatarUrl,
         };
@@ -2963,6 +2978,7 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       return {
         alreadyDeleted: false,
         authUserErased: true,
+        deletedTeamInvitations: deletedInvitations.length,
         erasureRequestId: openErasureRequest?.id ?? null,
         avatarUrl: member.avatarUrl,
       };
@@ -4649,6 +4665,83 @@ export const createAccountSecurityReader = (db: Db): AccountSecurityReader => ({
       twoFactorEnabled: twoFactorRow?.enabled === true && twoFactorRow.verified === true,
     };
   },
+});
+
+export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
+  list: async (tenantId) => {
+    const [active, invited] = await Promise.all([
+      db.select({
+        userId: tenantAdmins.userId,
+        email: user.email,
+        name: user.name,
+        role: tenantAdmins.role,
+      }).from(tenantAdmins)
+        .innerJoin(user, eq(tenantAdmins.userId, user.id))
+        .where(eq(tenantAdmins.tenantId, tenantId))
+        .orderBy(desc(tenantAdmins.role), asc(user.email)),
+      db.select({
+        userId: tenantAdminInvitations.userId,
+        email: tenantAdminInvitations.email,
+        invitedAt: tenantAdminInvitations.invitedAt,
+      }).from(tenantAdminInvitations)
+        .where(eq(tenantAdminInvitations.tenantId, tenantId))
+        .orderBy(asc(tenantAdminInvitations.email)),
+    ]);
+    return [
+      ...active.map((row) => tenantTeamMemberSchema.parse({ ...row, status: 'active' })),
+      ...invited.map((row) => tenantTeamMemberSchema.parse({ ...row, name: null, role: 'admin', status: 'invited' })),
+    ];
+  },
+  inviteAdmin: async (tenantId, userId, email, id, audit) => db.transaction(async (tx) => {
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for('update');
+    const active = await tx.select({ id: tenantAdmins.id }).from(tenantAdmins).where(and(
+      eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, userId),
+    ));
+    if (active.length > 0) return false;
+    const rows = await tx.insert(tenantAdminInvitations)
+      .values({ id, tenantId, userId, email: normalizeEmail(email), invitedAt: audit.at })
+      .onConflictDoNothing({ target: [tenantAdminInvitations.tenantId, tenantAdminInvitations.userId] })
+      .returning({ id: tenantAdminInvitations.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  activateInvitation: async (tenantId, userId, id, audit) => db.transaction(async (tx) => {
+    const accounts = await tx.select({ email: user.email, emailVerified: user.emailVerified }).from(user)
+      .where(eq(user.id, userId)).for('update');
+    const account = accounts[0];
+    if (account?.emailVerified !== true) return false;
+    const invitations = await tx.delete(tenantAdminInvitations).where(and(
+      eq(tenantAdminInvitations.tenantId, tenantId), eq(tenantAdminInvitations.userId, userId),
+      eq(tenantAdminInvitations.email, normalizeEmail(account.email)),
+    )).returning({ id: tenantAdminInvitations.id });
+    if (invitations.length === 0) return false;
+    await tx.insert(tenantAdmins).values({ id, tenantId, userId, role: 'admin' })
+      .onConflictDoNothing({ target: [tenantAdmins.tenantId, tenantAdmins.userId] });
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  revokeInvitation: async (tenantId, userId, audit) => db.transaction(async (tx) => {
+    const rows = await tx.delete(tenantAdminInvitations).where(and(
+      eq(tenantAdminInvitations.tenantId, tenantId), eq(tenantAdminInvitations.userId, userId),
+    )).returning({ id: tenantAdminInvitations.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
+  removeAdmin: async (tenantId, userId, audit) => db.transaction(async (tx) => {
+    const rows = await tx
+      .delete(tenantAdmins)
+      .where(and(
+        eq(tenantAdmins.tenantId, tenantId),
+        eq(tenantAdmins.userId, userId),
+        eq(tenantAdmins.role, 'admin'),
+      ))
+      .returning({ id: tenantAdmins.id });
+    if (rows.length === 0) return false;
+    await tx.insert(tenantAuditEvents).values({ ...audit, tenantId });
+    return true;
+  }),
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {

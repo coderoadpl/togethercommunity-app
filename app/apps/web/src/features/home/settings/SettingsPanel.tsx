@@ -68,6 +68,7 @@ import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { AnalyticsSettingsPanel } from './AnalyticsSettingsPanel.js';
+import { TeamSettingsPanel } from './TeamSettingsPanel.js';
 
 const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'art_113_1' ||
@@ -87,6 +88,7 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
       return 'brand';
     case 'analytics':
       return 'analytics';
+    case 'team':
     case 'security':
     case 'email-verification':
       return 'security';
@@ -1890,6 +1892,7 @@ export const SettingsPanel = () => {
       ) : null}
       {section === 'security' ? (
         <Stack id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" useFlexGap spacing="1.5rem">
+          {canEdit ? <Box id="team"><TeamSettingsPanel /></Box> : null}
           <Box id="email-verification" sx={{ scrollMarginTop: '1rem' }}>
             <EmailVerificationPanel />
           </Box>

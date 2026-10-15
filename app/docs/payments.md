@@ -144,11 +144,14 @@ every other host, `cookieScope: host` sets `cookie_domain` to the current checko
 hostname and `cookie_prefix` to `together_<hostname>`. The distinct cookie name
 prevents adopting an existing parent-domain `_ga` identifier, so workspace
 subdomains do not share GA4 identifiers with each other or the platform host.
+Meta Pixel still uses its vendor-default first-party cookie scope; its identifiers
+(such as `_fbp`) are not yet isolated across platform workspace subdomains. The
+platform scopes only the `_fbc` cookie it writes itself.
 Before initializing Meta Pixel, the success page sets `_fbc` when the consent
 rule passes, a Pixel ID and captured `fbclid` are present, and no `_fbc` cookie
 already exists. Its value is `fb.1.<capture time in epoch milliseconds>.<fbclid>`.
 It expires after 90 days and uses `Path=/`, `SameSite=Lax` and `Secure`.
-With `cookieScope: parent`, its domain is the checkout host's registrable parent
+With `cookieScope: parent`, the `_fbc` domain is the checkout host's registrable parent
 domain; otherwise it is host-only. Existing `_fbc` values are never overwritten,
 and the platform does not set it when the consent rule fails.
 

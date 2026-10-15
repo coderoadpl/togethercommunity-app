@@ -47,6 +47,9 @@ follow the same member-erasure selection as live orders.
   `reported_display`, and the matching `snapshot[].senderDisplay` entries — with
   `deletedMemberDisplay()`;
 - deletes the `member_blocks` rows on either side of the severed `userId`;
+- clears campaign attribution (UTM fields, `fbclid`, `gclid`) from the member's
+  orders and from checkout snapshots bound to those orders' checkout sessions;
+  copies in Stripe Checkout Session and PaymentIntent metadata are not erased;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state

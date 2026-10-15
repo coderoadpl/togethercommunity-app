@@ -1,8 +1,9 @@
 import { jsonb, pgTable, text } from 'drizzle-orm/pg-core';
-import type { OrderLine } from '#core/domain/index.js';
+import type { OrderAttribution, OrderLine } from '#core/domain/index.js';
 import { tenants } from './app-schema.js';
 
 export const checkoutSnapshots = pgTable('checkout_snapshots', {
+  attribution: jsonb('attribution').$type<OrderAttribution>(),
   mode: text('mode'),
   providerSessionId: text('provider_session_id'),
   id: text('id').primaryKey(),

@@ -569,6 +569,7 @@
         "purchases": [
           {
             "amountCents": 4900,
+            "attribution": null,
             "billing": null,
             "couponCode": null,
             "couponId": null,
@@ -611,6 +612,7 @@
           },
           {
             "amountCents": 31920,
+            "attribution": null,
             "billing": null,
             "couponCode": "PARTNER20",
             "couponId": "coupon-studio-partner20",

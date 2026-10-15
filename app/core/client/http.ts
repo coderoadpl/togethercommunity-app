@@ -1200,6 +1200,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
     if (input.search !== undefined) params.set('search', input.search);
+    if (input.source !== undefined) params.set('source', input.source);
+    if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
     if (input.page !== undefined) params.set('page', String(input.page));
     if (input.pageSize !== undefined) params.set('pageSize', String(input.pageSize));
     const suffix = params.toString();
@@ -1287,6 +1289,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
     if (input.search !== undefined) params.set('search', input.search);
+    if (input.source !== undefined) params.set('source', input.source);
+    if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
     return request(
       options,
       API_ROUTES.ordersExport.method,

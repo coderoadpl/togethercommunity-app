@@ -1,4 +1,4 @@
-import { err, ok, resolveProductVat, splitProductGross, validation, type AppError, type OrderLine, type Result } from '#core/domain/index.js';
+import { err, ok, resolveProductVat, splitProductGross, validation, type AppError, type OrderAttribution, type OrderLine, type Result } from '#core/domain/index.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import type { TenantRepository, IdGenerator, Clock } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
@@ -44,6 +44,7 @@ export const captureCheckoutSelection = async (
   tenantId: string,
   selection: CheckoutSelection,
   deps: CheckoutLineDeps,
+  attribution?: OrderAttribution,
 ): Promise<Result<{ lines: OrderLine[]; totalCents: number; currency: string; checkoutSnapshotId?: string }, AppError>> => {
   const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
@@ -51,6 +52,6 @@ export const captureCheckoutSelection = async (
     return selection.salesLinkId === undefined ? built : err(validation('Sales link checkout is not configured'));
   }
   const checkoutSnapshotId = deps.ids.nextId();
-  await deps.checkoutSnapshots.create(tenantId, { id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
+  await deps.checkoutSnapshots.create(tenantId, { attribution: attribution ?? null, id: checkoutSnapshotId, tenantId, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines, currency: built.value.currency, createdAt: deps.clock.nowIso() });
   return ok({ ...built.value, checkoutSnapshotId });
 };

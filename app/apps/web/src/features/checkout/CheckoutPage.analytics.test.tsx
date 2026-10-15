@@ -17,6 +17,8 @@ const config = {
   consentCookieValue: null, loadWithoutConsent: false,
 };
 const purchase = {
+  fbclid: null,
+  attributionAt: null,
   transactionId: 'order-1', value: 99, currency: 'PLN', offerSlug: 'bundle',
   items: [{ itemId: 'course-1', itemName: 'Course', price: 99 }],
 };
@@ -143,6 +145,28 @@ it('loads and tracks when only Meta Pixel is configured', async () => {
     http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'paid', analytics: purchase } })),
   );
   await renderCheckout('/offer/bundle?status=success&session_id=cs_live_meta');
-  expect(analytics.loadMetaPixel).toHaveBeenCalledExactlyOnceWith(meta);
+  expect(analytics.loadMetaPixel).toHaveBeenCalledExactlyOnceWith(meta, purchase);
   expect(analytics.trackCheckoutPurchase).toHaveBeenCalledExactlyOnceWith(meta, 'cs_live_meta', purchase);
+});
+
+it('waits for paid click attribution before initializing Meta', async () => {
+  const meta = { ...config, tagId: null, metaPixelId: '123456789012345' };
+  const attributed = { ...purchase, fbclid: 'click_123', attributionAt: '2026-10-15T10:00:00.000Z' };
+  let paid = false;
+  analytics.loadGoogleTag.mockReturnValue(false);
+  analytics.loadMetaPixel.mockReturnValue(true);
+  server.use(
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: false, analytics: meta,
+    } })),
+    http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data:
+      paid ? { status: 'paid', analytics: attributed } : { status: 'pending' },
+    })),
+  );
+  await renderCheckout('/offer/bundle?status=success&session_id=cs_live_attributed');
+  expect(analytics.loadMetaPixel).not.toHaveBeenCalled();
+  paid = true;
+  await act(() => vi.advanceTimersByTimeAsync(3001));
+  expect(analytics.loadMetaPixel).toHaveBeenCalledExactlyOnceWith(meta, attributed);
+  expect(analytics.trackCheckoutPurchase).toHaveBeenCalledExactlyOnceWith(meta, 'cs_live_attributed', attributed);
 });

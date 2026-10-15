@@ -6,6 +6,7 @@
         "invoice": null,
         "order": {
           "amountCents": 31920,
+          "attribution": null,
           "billing": null,
           "couponCode": "PARTNER20",
           "couponId": "coupon-studio-partner20",

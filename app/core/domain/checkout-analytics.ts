@@ -18,6 +18,8 @@ export type CheckoutAnalyticsConfig = z.infer<typeof checkoutAnalyticsConfigSche
 export const checkoutPurchaseAnalyticsSchema = z.object({
   transactionId: z.string().min(1),
   offerSlug: z.string().nullable(),
+  fbclid: z.string().regex(/^[A-Za-z0-9._-]{1,200}$/).nullable(),
+  attributionAt: z.string().datetime().nullable(),
   value: z.number().nonnegative(),
   currency: z.string().regex(/^[A-Z]{3}$/),
   items: z.array(z.object({

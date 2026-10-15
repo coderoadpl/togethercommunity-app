@@ -658,3 +658,24 @@ it.each(['test', 'live'])('preserves obsolete direct checkout mode %s for server
   const input = { slug: 'offer/one', mode };
   await expect(client.directSalesLinkCheckout(input)).resolves.toEqual(refusal);
 });
+
+
+it('sends source filters for order listing and export and parses tenant source options', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return String(input).includes('/export')
+      ? jsonResponse({ ok: true, data: { filename: 'orders.json', mimeType: 'application/json', content: '[]' } })
+      : jsonResponse({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 20, sources: ['meta / ads'] } });
+  } });
+  expect(await client.listOrders({ source: 'meta / ads' })).toMatchObject({ ok: true, value: { sources: ['meta / ads'] } });
+  await client.exportOrders({ source: 'none', format: 'json' });
+  await client.listOrders({ source: 'none', sourceMatch: 'exact' });
+  await client.exportOrders({ source: 'none', sourceMatch: 'exact', format: 'csv' });
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders?source=meta+%2F+ads',
+    'https://api.example.test/api/orders/export?format=json&source=none',
+    'https://api.example.test/api/orders?source=none&sourceMatch=exact',
+    'https://api.example.test/api/orders/export?format=csv&source=none&sourceMatch=exact',
+  ]);
+});

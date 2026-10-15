@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { salesLinkSchema, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkOfferSchema, tenantBrandingSchema, tenantSocialLinkSchema, languageSchema } from '#core/domain/index.js';
+import { attributionSchema, salesLinkSchema, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkOfferSchema, tenantBrandingSchema, tenantSocialLinkSchema, languageSchema } from '#core/domain/index.js';
 
 const idInput = z.object({ id: z.string().min(1) }).strict();
 const publicTenantSchema = z.object({
@@ -9,7 +9,7 @@ const publicTenantSchema = z.object({
 });
 const marketingConsentSchema = z.object({ definitionId: z.string(), label: z.string(), doubleOptIn: z.boolean(), documentUrl: z.string().nullable() });
 export const salesLinkContracts = {
-  directSalesLinkCheckout: { input: z.object({ returnUrl: z.string().max(2000).optional() }).strict(), output: z.object({ url: z.string().url() }) },
+  directSalesLinkCheckout: { input: z.object({ attribution: attributionSchema, returnUrl: z.string().max(2000).optional() }).strict(), output: z.object({ url: z.string().url() }) },
   listSalesLinks: { input: z.object({}).strict(), output: z.object({ salesLinks: z.array(salesLinkSchema) }) },
   getSalesLink: { input: idInput, output: z.object({ salesLink: salesLinkSchema }) },
   createSalesLink: { input: salesLinkInputSchema, output: z.object({ salesLink: salesLinkSchema }) },

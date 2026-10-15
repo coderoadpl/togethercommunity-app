@@ -1,4 +1,6 @@
 import {
+  attributionSchema,
+  attributionToSearchParams,
   checkoutSessionInputSchema,
   err,
   notFound,
@@ -149,7 +151,10 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
-  const captured = await captureCheckoutSelection(tenant.id, selection, deps);
+  const fields = attributionSchema.parse(input.attribution);
+  if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
+  const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
+  const captured = await captureCheckoutSelection(tenant.id, selection, deps, attribution);
   if (!captured.ok) return captured;
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const mode = testSession?.mode ?? 'live';
@@ -162,6 +167,7 @@ export const startCheckoutSession = async (
   }
   const checkoutPath = selection.salesLinkSlug === undefined ? `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}` : `${tenantBaseUrl}/offer/${encodeURIComponent(selection.salesLinkSlug)}`;
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
+  const campaignQuery = attributionToSearchParams(fields).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   let applied:
     | {
@@ -261,6 +267,7 @@ export const startCheckoutSession = async (
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
+    ...(attribution === undefined ? {} : { attribution }),
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     mode,
     productId: product.id,
@@ -271,7 +278,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${mode === 'test' && selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),
@@ -287,12 +294,20 @@ export const startCheckoutSession = async (
         }),
   });
   if (!created.ok) return created;
+  if (checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined) {
+    try {
+      await deps.checkoutSnapshots.attachProviderSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
+    } catch (cause) {
+      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      throw cause;
+    }
+  }
   if (testSession !== undefined && deps.orders !== undefined && deps.ids !== undefined && deps.clock !== undefined) {
     try {
       await deps.orders.create(tenant.id, {
         id: deps.ids.nextId(), tenantId: tenant.id, memberId: testSession.memberId,
         productId: product.id, priceId: price?.id ?? null, mode: 'test',
-        kind: price?.kind ?? 'one_time', status: 'pending',
+        kind: price?.kind ?? 'one_time', status: 'pending', attribution: attribution ?? null,
         amountCents: totalCents, currency,
         provider: 'stripe', providerObjectIds: { checkoutSession: created.value.sessionId },
         couponId: null, discountCents: 0, billing: null, lines, salesLinkId: selection.salesLinkId ?? null, createdAt: deps.clock.nowIso(),

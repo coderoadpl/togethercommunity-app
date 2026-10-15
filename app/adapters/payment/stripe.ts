@@ -1,3 +1,4 @@
+import { attributionFromMetadata, attributionMetadata } from '#core/domain/index.js';
 import { checkoutProductIdsMetadata } from './metadata.js';
 import Stripe from 'stripe';
 import { randomInt } from 'node:crypto';
@@ -107,6 +108,7 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
 ): Stripe.Checkout.SessionCreateParams => {
+  const attribution = attributionMetadata(input.attribution);
   const locale = localeFor(input.language);
   const productList = input.lines === undefined ? undefined : JSON.stringify(input.lines.map((line) => line.productId));
   const productMetadata: Record<string, string> = {};
@@ -114,11 +116,36 @@ export const stripeCheckoutSessionParams = (
     if (productList.length <= 500) productMetadata['productIds'] = productList;
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
+  const metadata = {
+    ...attribution,
+    ...(input.directCheckout === undefined ? {} : {
+      directCheckout: 'true',
+      ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
+      ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
+    }),
+    ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
+    ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
+    ...productMetadata,
+    tenantId: input.tenantId,
+    productId: input.productId,
+    priceId: input.priceId ?? '',
+    memberEmail: input.customerEmail ?? '',
+    language: input.language ?? '',
+    ...(input.checkoutConsentCaptureId === undefined
+      ? {}
+      : { checkoutConsentCaptureId: input.checkoutConsentCaptureId }),
+    ...(input.couponCheckoutSessionId === undefined
+      ? {}
+      : { couponCheckoutSessionId: input.couponCheckoutSessionId }),
+  };
+  if (Object.keys(metadata).length > 50 || Object.values(metadata).some((value) => value.length > 500)) {
+    throw new Error('Checkout metadata exceeds Stripe limits');
+  }
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.recurringInterval === undefined ? {
-      payment_intent_data: { metadata: { tenantId: input.tenantId } },
+      payment_intent_data: { metadata: { tenantId: input.tenantId, ...attribution } },
     } : {
       subscription_data: { billing_mode: { type: 'classic' as const }, metadata: { tenantId: input.tenantId } },
     }),
@@ -141,27 +168,7 @@ export const stripeCheckoutSessionParams = (
         ...(input.recurringInterval === undefined ? {} : { recurring: { interval: input.recurringInterval } }),
       },
     })),
-    metadata: {
-      ...(input.directCheckout === undefined ? {} : {
-        directCheckout: 'true',
-        ...legalUrlMetadata('termsUrl', input.directCheckout.termsUrl),
-        ...legalUrlMetadata('privacyUrl', input.directCheckout.privacyUrl),
-      }),
-      ...(input.salesLinkId === undefined ? {} : { salesLinkId: input.salesLinkId }),
-      ...(input.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: input.checkoutSnapshotId }),
-      ...productMetadata,
-      tenantId: input.tenantId,
-      productId: input.productId,
-      priceId: input.priceId ?? '',
-      memberEmail: input.customerEmail ?? '',
-      language: input.language ?? '',
-      ...(input.checkoutConsentCaptureId === undefined
-        ? {}
-        : { checkoutConsentCaptureId: input.checkoutConsentCaptureId }),
-      ...(input.couponCheckoutSessionId === undefined
-        ? {}
-        : { couponCheckoutSessionId: input.couponCheckoutSessionId }),
-    },
+    metadata,
     ...(input.promotionCodeId === undefined
       ? {}
       : { discounts: [{ promotion_code: input.promotionCodeId }] }),
@@ -217,6 +224,7 @@ const toCheckoutSessionEvent = (
     amountTotalCents: session.amount_total,
     discountTotalCents: session.total_details?.amount_discount ?? null,
     metadata: {
+      attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,
       ...(session.metadata?.directCheckout !== 'true' ? {} : {
         directCheckout: true,

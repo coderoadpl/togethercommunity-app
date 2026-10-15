@@ -1,4 +1,5 @@
 import type { CheckoutBranding } from '#core/domain/checkout-appearance.js';
+import { attributionFields, type Attribution } from '#core/domain/index.js';
 import type { Language } from '#core/domain/index.js';
 
 import { directSalesLinkCopyEn } from './direct-sales-link-copy.en.js';
@@ -11,6 +12,7 @@ const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (charact
 })[character] ?? character);
 
 export const renderDirectSalesLinkPage = (input: {
+  attribution?: Attribution | undefined;
   heading: string;
   description: string;
   tenantName: string;
@@ -32,6 +34,10 @@ export const renderDirectSalesLinkPage = (input: {
     input.branding?.backgroundColor ? `--background: ${input.branding.backgroundColor}` : '',
   ].filter(Boolean).join('; ');
   const canSubmit = !input.crawler && input.error === undefined;
+  const attribution = Object.entries(attributionFields).flatMap(([fieldName, parameter]) => {
+    const value = Object.entries(input.attribution ?? {}).find(([key]) => key === fieldName)?.[1];
+    return value === undefined ? [] : [{ fieldName, parameter, value }];
+  });
   return `<!doctype html>
 <html lang="${escapeHtml(input.language)}">
 <head>
@@ -65,20 +71,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 </style>
 </head>
 <body style="${escapeHtml(appearance)}">
-<main data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
+<main data-attribution="${escapeHtml(JSON.stringify(input.attribution ?? {}))}" data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
 ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.logoUrl)}" alt="">` : ''}
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
 ${canSubmit ? '<div class="spinner" aria-hidden="true"></div>' : ''}
 <p role="status">${escapeHtml(input.error === undefined ? copy.redirecting : copy[input.error])}</p>
-${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
+${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}${attribution.map(({ parameter, value }) => `<input type="hidden" name="${parameter}" value="${escapeHtml(value)}">`).join('')}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
 </main>
 ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
 (async () => {
   const page = document.querySelector('main');
   const status = document.querySelector('[role="status"]');
   try {
-    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) });
+    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution: JSON.parse(page.dataset.attribution ?? '{}'), ...(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) }) });
     const result = await response.json();
     if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') throw new Error();
     location.replace(result.data.url);

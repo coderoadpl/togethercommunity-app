@@ -2827,6 +2827,7 @@ const bundlePayment = () => {
   };
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
+    attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? {
       id, tenantId, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now,
     } : null,
@@ -2875,6 +2876,7 @@ it('queues allocated amounts for a coupon-discounted two-line order', async () =
   h.deps.products = bundle.deps.products;
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
+    attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, currency: 'PLN', createdAt: now }),
   };
   const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 5149, discountTotalCents: 5151 });
@@ -2991,6 +2993,7 @@ const directBundlePayment = async () => {
   const h = bundlePayment();
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
+    attachProviderSession: async () => undefined,
     findById: async () => ({ id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines: h.lines,
       currency: 'PLN', createdAt: now, mode: 'live', providerSessionId: 'cs-1' }),
   };
@@ -3067,6 +3070,7 @@ const directTestPayment = async () => {
   h.event.livemode = false;
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
+    attachProviderSession: async () => undefined,
     findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1'
       ? { id, tenantId, salesLinkId: 'link-1', lines: h.lines, currency: 'PLN', createdAt: now,
         mode: 'test', providerSessionId: 'cs-1' } : null,
@@ -3127,4 +3131,39 @@ it.each(['checkout.session.completed', 'checkout.session.async_payment_succeeded
   expect(h.grants.size).toBe(0);
   expect(h.consents).toEqual([]);
   expect(h.autoInvoiceJobs).toEqual([]);
+});
+
+it('copies snapshot attribution to the paid order before metadata fallback', async () => {
+  const h = bundlePayment();
+  const attribution = { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X', capturedAt: now };
+  const repository = h.deps.checkoutSnapshots;
+  if (repository === undefined || h.event.checkoutSession === null) throw new Error('Missing checkout fixture');
+  const findById = repository.findById;
+  repository.findById = async (tenantId, id) => {
+    const snapshot = await findById(tenantId, id);
+    return snapshot === null ? null : { ...snapshot, attribution };
+  };
+  h.event.checkoutSession.metadata.attribution = { utmSource: 'other', capturedAt: now };
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+  expect(h.orders[0]?.attribution).toEqual(attribution);
+});
+
+it('uses metadata attribution when a historical checkout has no snapshot', async () => {
+  const h = harness();
+  const event = completedEvent();
+  if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+  const attribution = { utmSource: 'meta', fbclid: 'X', capturedAt: now };
+  event.checkoutSession.metadata.attribution = attribution;
+  expect((await fulfillStripeWebhook(tenantA, event, h.deps)).ok).toBe(true);
+  expect(h.orders[0]?.attribution).toEqual(attribution);
+});
+
+it.each(['stripe', 'simulated'] as const)('binds an unbound checkout snapshot to the %s session for member erasure', async (provider) => {
+  const h = bundlePayment();
+  if (h.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+  const attach = vi.spyOn(h.deps.checkoutSnapshots, 'attachProviderSession');
+  h.event.objectId = provider === 'simulated' ? 'free_session' : 'cs-1';
+  expect((await fulfillStripeWebhook(tenantA, h.event, h.deps, provider)).ok).toBe(true);
+  expect(attach).toHaveBeenCalledExactlyOnceWith(tenantA.id, 'snapshot-1', h.event.objectId);
+  expect(h.orders[0]?.providerObjectIds.checkoutSession).toBe(h.event.objectId);
 });

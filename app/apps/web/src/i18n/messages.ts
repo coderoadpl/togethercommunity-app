@@ -627,6 +627,15 @@ export interface Messages {
     diagnostics: string;
   };
   sales: {
+    source: string;
+    noSource: string;
+    utmSource: string;
+    utmMedium: string;
+    utmCampaign: string;
+    utmContent: string;
+    utmTerm: string;
+    fbclid: string;
+    gclid: string;
     consumerSalesTitle: string;
     consumerSalesHint: string;
     consumerSalesFrom: string;

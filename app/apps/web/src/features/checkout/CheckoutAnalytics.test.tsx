@@ -22,7 +22,8 @@ const renderReturn = async (testMode = false, forward = false) => {
   window.history.replaceState(null, '', '/my?tab=recent#lesson');
   const location = window.location;
   const assign = vi.fn();
-  vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
+  const reload = vi.fn();
+  vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign, reload }));
   const history = createBrowserHistory();
   histories.push(history);
   history.push(returnPath);
@@ -57,7 +58,7 @@ const renderReturn = async (testMode = false, forward = false) => {
   });
   render(<RouterProvider router={router} />);
   await screen.findByText('Purchase return');
-  return { router, assign };
+  return { router, assign, reload };
 };
 
 beforeEach(() => {
@@ -95,14 +96,18 @@ it.each([
   { source: 'browser', action: 'forward' },
   { source: 'browser', action: 'go' },
 ] as const)('turns $source history $action into a document navigation with the full destination URL', async ({ source, action }) => {
-  const { router, assign } = await renderReturn(false, action === 'forward');
+  const { router, assign, reload } = await renderReturn(false, action === 'forward');
   const rollback = vi.spyOn(window.history, 'go');
   const history = source === 'browser' ? window.history : router.history;
   act(() => {
     if (action === 'go') history.go(-1);
     else history[action]();
   });
-  await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith('/my?tab=recent#lesson'));
+  await waitFor(() => expect(reload).toHaveBeenCalledExactlyOnceWith());
+  expect(assign).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/my');
+  expect(window.location.search).toBe('?tab=recent');
+  expect(window.location.hash).toBe('#lesson');
   expect(router.state.location.pathname).toBe('/checkout/course');
   expect(screen.queryByText('Member destination')).not.toBeInTheDocument();
   expect(rollback).toHaveBeenCalledTimes(action === 'go' ? 1 : 0);

@@ -15,12 +15,17 @@ export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
   const loaded = useRef<boolean | null>(null);
   useEffect(() => {
     const unblock = router.history.block({
-      blockerFn: ({ currentLocation, nextLocation }) => {
+      blockerFn: ({ currentLocation, nextLocation, action }) => {
         if (!loaded.current || (currentLocation.pathname === nextLocation.pathname &&
           currentLocation.search === nextLocation.search)) return false;
         // Keep POP blocked until unload so the router cannot roll back and cancel the document navigation.
         return new Promise<boolean>(() => {
-          window.location.assign(nextLocation.href);
+          if (action === 'BACK' || action === 'FORWARD' || action === 'GO') {
+            // POP already changed the URL; assigning it with a fragment would keep this document alive.
+            window.location.reload();
+          } else {
+            window.location.assign(nextLocation.href);
+          }
         });
       },
       enableBeforeUnload: false,

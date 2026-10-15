@@ -85,6 +85,7 @@ describe('fake Stripe webhook verification', () => {
           amountTotalCents: 2449,
           discountTotalCents: 2451,
           metadata: {
+            attribution: null,
             tenantId: 'tenant-a',
             productId: 'product-1',
             priceId: null,
@@ -239,4 +240,13 @@ describe('fake Stripe webhook verification', () => {
 it('reassembles bundle product metadata chunks in fake webhooks', async () => {
   const body = JSON.stringify({ id: 'evt_bundle_chunks', type: 'checkout.session.completed', data: { object: { id: 'cs_bundle_chunks', metadata: { productIds_1: ',"second"]', productIds_0: '["first"' } } } });
   expect(await provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live', payloadRaw: body, signatureHeader: signature(body), webhookSecret: secret })).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { productIds: '["first","second"]' } } } });
+});
+
+it('decodes captured attribution from a signed local webhook', async () => {
+  const capturedAt = '2026-10-15T10:00:00.000Z';
+  const body = JSON.stringify({ id: 'evt_attribution', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_attribution', metadata: { tenantId: 'tenant-a', productId: 'product-1', utm_source: 'meta', fbclid: 'X', attribution_at: capturedAt },
+  } } });
+  const result = await provider.verifyWebhookEvent({ tenantId: 'tenant-a', mode: 'live', payloadRaw: body, signatureHeader: signature(body), webhookSecret: secret });
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { attribution: { utmSource: 'meta', fbclid: 'X', capturedAt } } } } });
 });

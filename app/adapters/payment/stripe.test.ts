@@ -1330,3 +1330,33 @@ it('pins the Stripe SDK to the Clover API release or later for native checkout b
   expect(Stripe.API_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.[a-z]+$/);
   expect(Stripe.API_VERSION >= '2025-09-30.clover').toBe(true);
 });
+
+it('carries attribution on the session and one-time payment intent within Stripe metadata limits', () => {
+  const attribution = { utmSource: 'meta', utmMedium: 'paid', utmCampaign: 'launch', utmContent: 'card', utmTerm: 'guide', fbclid: 'X'.repeat(200), gclid: 'G', capturedAt: '2026-10-15T10:00:00.000Z' };
+  const input = { tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel', attribution };
+  const expected = { utm_source: 'meta', utm_medium: 'paid', utm_campaign: 'launch', utm_content: 'card', utm_term: 'guide', fbclid: 'X'.repeat(200), gclid: 'G', attribution_at: attribution.capturedAt };
+  const params = stripeCheckoutSessionParams(input);
+  expect(params.metadata).toMatchObject(expected);
+  expect(params.payment_intent_data?.metadata).toMatchObject(expected);
+  expect(Object.keys(params.metadata ?? {}).length).toBeLessThanOrEqual(50);
+  for (const value of Object.values(params.metadata ?? {})) expect(String(value).length).toBeLessThanOrEqual(500);
+  const subscription = stripeCheckoutSessionParams({ ...input, recurringInterval: 'month' });
+  expect(subscription.metadata).toMatchObject(expected);
+  expect(subscription.payment_intent_data).toBeUndefined();
+});
+
+it('decodes validated attribution from Stripe session metadata for webhook fallback', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_attribution', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_attribution', metadata: { utm_source: ' meta ', utm_medium: 'paid', fbclid: 'X', gclid: '<invalid>', attribution_at: '2026-10-15T10:00:00.000Z' },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { metadata: { attribution: {
+    utmSource: 'meta', utmMedium: 'paid', fbclid: 'X', capturedAt: '2026-10-15T10:00:00.000Z',
+  } } } } });
+  if (result.ok) expect(result.value.checkoutSession?.metadata.attribution).not.toHaveProperty('gclid');
+});
+
+it('rejects metadata that cannot fit Stripe key and value limits', () => {
+  const input = { tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel', attribution: { utmSource: 'meta', capturedAt: '2026-10-15T10:00:00.000Z' } };
+  expect(() => stripeCheckoutSessionParams({ ...input, lines: Array.from({ length: 50 }, (_, index) => ({ productId: `${index}-${'x'.repeat(500)}`, name: 'Item', grossCents: 20 })) })).toThrow('Checkout metadata exceeds Stripe limits');
+  expect(() => stripeCheckoutSessionParams({ ...input, checkoutSnapshotId: 'x'.repeat(501) })).toThrow('Checkout metadata exceeds Stripe limits');
+});

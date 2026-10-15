@@ -30,6 +30,7 @@ export interface OrdersDeps {
 }
 
 export interface OrdersPage {
+  sources: string[];
   orders: OrderListItem[];
   total: number;
   page: number;
@@ -47,7 +48,7 @@ export const listOrders = async (
   const parsed = listOrdersQuerySchema.safeParse(query);
   if (!parsed.success) return err(validation('Invalid orders query', parsed.error.flatten()));
 
-  const { orders, total } = await deps.orders.list(tenant.value, {
+  const { orders, total, sources } = await deps.orders.list(tenant.value, {
     ...(parsed.data.mode === undefined ? {} : { mode: parsed.data.mode }),
     page: parsed.data.page,
     pageSize: parsed.data.pageSize,
@@ -56,8 +57,10 @@ export const listOrders = async (
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
     ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
+    ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
+    ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
   });
-  return ok({ orders, total, page: parsed.data.page, pageSize: parsed.data.pageSize });
+  return ok({ orders, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
 };
 
 export const getOrder = async (
@@ -80,6 +83,16 @@ const neutralizeFormula = (value: string): string =>
 
 const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 
+const attributionColumns = (order: OrderListItem) => ({
+  utm_source: order.attribution?.utmSource ?? '',
+  utm_medium: order.attribution?.utmMedium ?? '',
+  utm_campaign: order.attribution?.utmCampaign ?? '',
+  utm_content: order.attribution?.utmContent ?? '',
+  utm_term: order.attribution?.utmTerm ?? '',
+  fbclid: order.attribution?.fbclid ?? '',
+  gclid: order.attribution?.gclid ?? '',
+});
+
 const ordersToCsv = (orders: OrderListItem[]): string =>
   [
     [
@@ -99,6 +112,13 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'billing_postal_code',
       'billing_city',
       'billing_country',
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_content',
+      'utm_term',
+      'fbclid',
+      'gclid',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -118,6 +138,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.billing?.postalCode ?? '',
         order.billing?.city ?? '',
         order.billing?.country ?? '',
+        ...Object.values(attributionColumns(order)),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -145,6 +166,8 @@ export const exportOrders = async (
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
     ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
+    ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
+    ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
   });
   const pageCount = Math.ceil(first.total / pageSize);
   const remaining = await Promise.all(
@@ -158,6 +181,8 @@ export const exportOrders = async (
         ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
         ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
         ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
+        ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
+        ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
       }),
     ),
   );
@@ -167,7 +192,7 @@ export const exportOrders = async (
   return ok(
     parsed.data.format === 'csv'
       ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders) },
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order) }))) },
   );
 };
 

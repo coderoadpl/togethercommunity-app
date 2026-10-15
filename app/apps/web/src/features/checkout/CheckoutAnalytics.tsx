@@ -13,6 +13,7 @@ export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
 }) => {
   const router = useRouter();
   const loaded = useRef<boolean | null>(null);
+  const metaAttempted = useRef(false);
   useEffect(() => {
     const unblock = router.history.block({
       blockerFn: ({ currentLocation, nextLocation, action }) => {
@@ -37,9 +38,12 @@ export const CheckoutAnalytics = ({ config, sessionId, purchase, testMode }: {
   }, [router]);
   useEffect(() => {
     if (!testMode && loaded.current === null) {
-      const googleLoaded = loadGoogleTag(config);
-      const metaLoaded = loadMetaPixel(config);
-      loaded.current = googleLoaded || metaLoaded;
+      loaded.current = loadGoogleTag(config);
+    }
+    if (!testMode && !metaAttempted.current && (!config.metaPixelId || !sessionId || purchase !== undefined)) {
+      metaAttempted.current = true;
+      const metaLoaded = purchase === undefined ? loadMetaPixel(config) : loadMetaPixel(config, purchase);
+      loaded.current = loaded.current || metaLoaded;
     }
     if (!testMode && loaded.current && purchase !== undefined) trackCheckoutPurchase(config, sessionId, purchase);
   }, [config, sessionId, purchase, testMode]);

@@ -62,7 +62,7 @@ describe('direct sales-link page', () => {
     expect(html).toContain(`<form method="post" action="${page.endpoint}"><button type="submit">${copy.continueToPayment}</button></form>`);
   });
 
-  it('posts an empty body and redirects to the checkout response URL', async () => {
+  it('posts attribution and redirects to the checkout response URL', async () => {
     const html = renderDirectSalesLinkPage(page);
     const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
     if (script === undefined) throw new Error('Missing checkout script');
@@ -77,7 +77,7 @@ describe('direct sales-link page', () => {
       { replace },
     );
     expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"attribution":{}}',
     });
     expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
     expect(status.textContent).toBe(directSalesLinkCopyEn.redirecting);
@@ -101,7 +101,7 @@ describe('direct sales-link page', () => {
       { replace },
     );
     expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ returnUrl }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution: {}, returnUrl }),
     });
     expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
   });
@@ -189,5 +189,24 @@ describe('direct sales-link page', () => {
           : header),
       },
     ]);
+  });
+});
+
+it('passes attribution in the script POST and every noscript hidden field', async () => {
+  const attribution = { utmSource: 'meta', utmMedium: 'paid', utmCampaign: 'launch', utmContent: 'card', utmTerm: 'guide', fbclid: 'X', gclid: 'G' };
+  const html = renderDirectSalesLinkPage({ ...page, attribution });
+  for (const [name, value] of [['utm_source', 'meta'], ['utm_medium', 'paid'], ['utm_campaign', 'launch'], ['utm_content', 'card'], ['utm_term', 'guide'], ['fbclid', 'X'], ['gclid', 'G']]) {
+    expect(html).toContain(`<input type="hidden" name="${name}" value="${value}">`);
+  }
+  expect(html).toContain('data-attribution="{&quot;utmSource&quot;:&quot;meta&quot;');
+  const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+  if (script === undefined) throw new Error('Missing checkout script');
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
+  await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
+    { querySelector: () => ({ dataset: { endpoint: page.endpoint, attribution: JSON.stringify(attribution) } }) },
+    fetch, { replace: vi.fn() },
+  );
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution }),
   });
 });

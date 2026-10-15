@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -762,18 +762,26 @@ describe('CheckoutPage', () => {
   });
 
   it('renders cancellation guidance and returns to retry', async () => {
-    window.history.replaceState(null, '', '/checkout/course-1?status=cancelled');
+    window.history.replaceState(null, '', '/checkout/course-1?status=cancelled&utm_source=meta&utm_medium=paid&fbclid=X');
+    let payload: unknown;
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
       http.get('/api/public/payment-config', () =>
         HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
       ),
+      http.post('/api/public/checkout/session', async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout unavailable' } }, { status: 400 });
+      }),
     );
     renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(payload).toMatchObject({ attribution: { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X' } }));
   });
 });
 

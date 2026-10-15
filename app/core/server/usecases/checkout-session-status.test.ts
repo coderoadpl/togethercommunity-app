@@ -119,7 +119,7 @@ describe('checkout session purchase analytics', () => {
     ] }], settings);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
       ok: true, value: { status: 'paid', analytics: {
-        transactionId: 'order-1', value: 129.99, currency: 'PLN', offerSlug: null, items: [
+        fbclid: null, attributionAt: null, transactionId: 'order-1', value: 129.99, currency: 'PLN', offerSlug: null, items: [
           { itemId: 'product-1', itemName: 'First product', price: 99 },
           { itemId: 'product-2', itemName: 'Second product', price: 30.99 },
         ],
@@ -167,7 +167,7 @@ describe('checkout session purchase analytics', () => {
     };
     const deps = harness([order], analyticsSettings, product);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({
-      ok: true, value: { status: 'paid', analytics: { transactionId: 'order-1', value: 10, currency: 'PLN', offerSlug: null,
+      ok: true, value: { status: 'paid', analytics: { fbclid: null, attributionAt: null, transactionId: 'order-1', value: 10, currency: 'PLN', offerSlug: null,
         items: [{ itemId: 'product-1', itemName: 'Historical product', price: 10 }],
       } },
     });
@@ -186,5 +186,17 @@ describe('checkout session purchase analytics', () => {
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_unknown', harness([order], analyticsSettings))).toEqual({
       ok: true, value: { status: 'pending' },
     });
+  });
+});
+
+
+it('includes the saved click id and capture time only in configured paid analytics', async () => {
+  const attribution = { fbclid: 'click_123', capturedAt: '2026-10-15T10:00:00.000Z' };
+  const deps = harness([{ ...order, attribution }], analyticsSettings);
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+    ok: true, value: { analytics: { fbclid: attribution.fbclid, attributionAt: attribution.capturedAt } },
+  });
+  expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', harness([{ ...order, attribution }]))).toEqual({
+    ok: true, value: { status: 'paid' },
   });
 });

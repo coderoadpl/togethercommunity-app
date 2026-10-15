@@ -32,6 +32,8 @@ export const getCheckoutSessionStatus = async (
     status: 'paid',
     analytics: {
       transactionId: order.id,
+      fbclid: order.attribution?.fbclid ?? null,
+      attributionAt: order.attribution?.capturedAt ?? null,
       value: order.amountCents / 100,
       currency: order.currency,
       offerSlug: salesLink?.tenantId === tenantId ? salesLink.slug : null,

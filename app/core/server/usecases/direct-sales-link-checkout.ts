@@ -1,4 +1,4 @@
-import { err, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
+import { attributionSchema, attributionToSearchParams, type Attribution, err, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
 
@@ -7,6 +7,7 @@ export const createDirectSalesLinkCheckout = async (
   tenantBaseUrl: string,
   input: {
     slug: string;
+    attribution?: Attribution;
     returnUrl?: string;
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
   },
@@ -35,10 +36,18 @@ export const createDirectSalesLinkCheckout = async (
   const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
   const termsAcceptanceMessage = input.termsAcceptanceMessage(legal, language);
   if (termsAcceptanceMessage.length > 1200) return err(validation('Checkout terms acceptance text exceeds 1200 characters'));
+  const fields = attributionSchema.parse(input.attribution);
+  const attribution = fields === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
   const checkoutSnapshotId = deps.ids.nextId();
   const checkoutBranding = resolveCheckoutBranding(settings, tenantBaseUrl);
   const checkoutPath = `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}`;
   const checkoutQuery = `&salesLinkId=${encodeURIComponent(link.id)}`;
+  let cancelUrl = resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}`;
+  if (fields !== undefined) {
+    const attributedUrl = new URL(cancelUrl);
+    attributionToSearchParams(fields).forEach((value, key) => attributedUrl.searchParams.set(key, value));
+    cancelUrl = attributedUrl.toString();
+  }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     mode,
@@ -46,12 +55,13 @@ export const createDirectSalesLinkCheckout = async (
     productName: selection.value.product.title,
     salesLinkId: link.id,
     checkoutSnapshotId,
+    ...(attribution === undefined ? {} : { attribution }),
     lines: built.value.lines,
     priceCents: built.value.totalCents,
     currency: built.value.currency,
     language,
     successUrl: `${checkoutPath}?status=success&purchase_kind=one_time${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}`,
+    cancelUrl,
     directCheckout: { ...legal, termsAcceptanceMessage },
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
   });
@@ -59,6 +69,7 @@ export const createDirectSalesLinkCheckout = async (
   try {
     await deps.checkoutSnapshots.create(tenant.id, {
       id: checkoutSnapshotId, tenantId: tenant.id, salesLinkId: link.id,
+      attribution: attribution ?? null,
       lines: built.value.lines, currency: built.value.currency,
       mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
     });

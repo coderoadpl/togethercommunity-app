@@ -97,11 +97,13 @@ describe('SalesPanel', () => {
               couponId: null,
               discountCents: 0,
               couponCode: null,
+              attribution: { utmSource: 'meta', utmMedium: 'paid', capturedAt: '2026-10-13T22:37:00.000Z' },
               createdAt: '2026-10-13T22:38:00.000Z',
               memberEmail: 'member@example.com',
               memberName: 'Ada',
               productTitle: 'Workshop',
             }],
+            sources: ['meta', 'newsletter', 'none'],
             total: 1,
             page: 1,
             pageSize: 25,
@@ -148,6 +150,7 @@ describe('SalesPanel', () => {
     expect(within(salesRow).getByRole('link', { name: '14 Oct 2026, 00:38' }))
       .toHaveAttribute('href', '/panel/sales/o1');
     expect(salesRow).toHaveTextContent('Workshop');
+    expect(salesRow).toHaveTextContent('meta / paid');
     expect(screen.getByTestId('sales-row')).toHaveTextContent('Ada');
     expect(screen.getByRole('link', { name: 'Ada' }))
       .toHaveAttribute('href', '/panel/members/m1');
@@ -162,9 +165,23 @@ describe('SalesPanel', () => {
       expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
     );
 
+    await user.click(screen.getByLabelText(en.sales.source));
+    expect(await screen.findByRole('option', { name: 'newsletter' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: en.sales.noSource }));
+    await waitFor(() => expect(listQueries.at(-1)).toContain('source=none'));
+    expect(listQueries.at(-1)).not.toContain('sourceMatch=');
+    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(await screen.findByRole('option', { name: 'meta' }));
+    await waitFor(() => expect(listQueries.at(-1)).toContain('source=meta'));
+
+    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(await screen.findByRole('option', { name: 'none' }));
+    await waitFor(() => expect(listQueries.at(-1)).toContain('source=none&sourceMatch=exact'));
+
     await user.click(screen.getByTestId('sales-export-csv'));
     await waitFor(() => expect(exportQueries).toHaveLength(1));
     expect(exportQueries[0]).toContain('format=csv');
+    expect(exportQueries[0]).toContain('source=none&sourceMatch=exact');
     expect(exportQueries[0]).toContain('status=paid');
     expect(exportQueries[0]).toContain('couponId=coupon-1');
     expect(exportQueries[0]).not.toContain('page=');
@@ -545,5 +562,35 @@ describe('controlled KSeF submission', () => {
     await waitFor(() => expect(bulk).toBeDisabled());
     await userEvent.click(within(secondRow).getByRole('button', { name: en.sales.sendToKsef }));
     await waitFor(() => expect(sent).toEqual(['o1', 'o3', 'o2']));
+  });
+});
+
+
+describe('order attribution', () => {
+  it('shows present campaign and click identifiers in the Source section', async () => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+      order: { ...heldOrder('o1'), attribution: {
+        utmSource: 'meta', utmMedium: 'paid', utmCampaign: 'autumn', utmContent: 'banner',
+        utmTerm: 'workbook', fbclid: 'meta_click', gclid: 'google_click', capturedAt: '2026-10-15T10:00:00.000Z',
+      } }, invoice: null,
+    } })));
+    await renderOrderDetail();
+    expect(await screen.findByText('meta / paid')).toBeVisible();
+    for (const label of [en.sales.source, en.sales.utmSource, en.sales.utmMedium, en.sales.utmCampaign,
+      en.sales.utmContent, en.sales.utmTerm, en.sales.fbclid, en.sales.gclid]) {
+      expect(screen.getByText(label)).toBeVisible();
+    }
+    for (const value of ['autumn', 'banner', 'workbook', 'meta_click', 'google_click']) {
+      expect(screen.getByText(value)).toBeVisible();
+    }
+  });
+
+  it('hides Source for an order without attribution', async () => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: {
+      order: heldOrder('o1'), invoice: null,
+    } })));
+    await renderOrderDetail();
+    expect(await screen.findByText('Workshop')).toBeVisible();
+    expect(screen.queryByText(en.sales.source)).not.toBeInTheDocument();
   });
 });

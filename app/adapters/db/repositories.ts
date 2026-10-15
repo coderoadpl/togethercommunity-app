@@ -165,6 +165,7 @@ import {
   account,
   consents,
   campaignSends,
+  checkoutSnapshots,
   checkoutConsentCaptures,
   couponCheckoutSessions,
   couponRedemptions,
@@ -2774,6 +2775,17 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         )
         .limit(1);
 
+      await tx.update(checkoutSnapshots).set({ attribution: null }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.memberId, input.memberId),
+          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+        ))),
+      ));
+      await tx.update(orders).set({ attribution: null }).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+      ));
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
@@ -3266,6 +3278,9 @@ export const createOrderRepository = (
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
     if (query.productId !== undefined) conditions.push(sql`(${orders.productId} = ${query.productId} OR ${orders.lines} @> ${JSON.stringify([{ productId: query.productId }])}::jsonb)`);
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
+    if (query.source !== undefined) conditions.push(query.source === 'none' && query.sourceMatch !== 'exact'
+      ? isNull(orders.attribution)
+      : sql`${orders.attribution}->>'utmSource' = ${query.source}`);
     if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
@@ -3284,6 +3299,7 @@ export const createOrderRepository = (
       const [row] = await tx.update(orders).set({
         status: 'paid', paidAt: order.paidAt, providerObjectIds: order.providerObjectIds,
         billing: order.billing ?? null,
+        attribution: order.attribution ?? null,
       }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, order.id),
         eq(orders.mode, 'test'), eq(orders.status, 'pending'))).returning();
       if (row === undefined) return null;
@@ -3315,6 +3331,7 @@ export const createOrderRepository = (
           couponId: order.couponId,
           discountCents: order.discountCents,
           billing: order.billing ?? null,
+          attribution: order.attribution ?? null,
           paidAt: order.paidAt ?? null,
           salesLinkId: order.salesLinkId ?? null,
           lines: order.lines ?? [],
@@ -3398,6 +3415,12 @@ export const createOrderRepository = (
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .where(and(...conditions));
+      const sourceRows = await db.selectDistinct({ value: sql<string>`${orders.attribution}->>'utmSource'` })
+        .from(orders).where(and(
+          eq(orders.tenantId, tenantId),
+          ...(query.mode === undefined ? [] : [eq(orders.mode, query.mode)]),
+          sql`${orders.attribution}->>'utmSource' IS NOT NULL`,
+        )).orderBy(sql`${orders.attribution}->>'utmSource'`);
       const invoiceRows = rows.length === 0 ? [] : await db.select().from(invoices)
         .where(and(eq(invoices.tenantId, tenantId), inArray(invoices.orderId, rows.map((row) => row.order.id))))
         .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt), desc(invoices.id));
@@ -3415,6 +3438,7 @@ export const createOrderRepository = (
             }),
         ),
         total: totals[0]?.value ?? 0,
+        sources: sourceRows.map((row) => row.value),
       };
     },
     listForMember: async (tenantId, memberId) => {

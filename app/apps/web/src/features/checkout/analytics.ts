@@ -79,7 +79,27 @@ export const loadGoogleTag = (config: CheckoutAnalyticsConfig): boolean => {
   return true;
 };
 
-export const loadMetaPixel = (config: CheckoutAnalyticsConfig): boolean => {
+const hasMetaClickCookie = (): boolean => document.cookie.split(';').some((cookie) => cookie.trim().startsWith('_fbc='));
+
+const setMetaClickCookie = (config: CheckoutAnalyticsConfig, purchase: CheckoutPurchaseAnalytics | undefined): void => {
+  if (!purchase?.fbclid || !purchase.attributionAt || hasMetaClickCookie()) return;
+  const capturedAt = Date.parse(purchase.attributionAt);
+  if (!Number.isFinite(capturedAt)) return;
+  const cookie = `_fbc=fb.1.${String(capturedAt)}.${purchase.fbclid}; Path=/; Max-Age=7776000; SameSite=Lax; Secure`;
+  if (config.cookieScope === 'host') {
+    document.cookie = cookie;
+    return;
+  }
+  const labels = window.location.hostname.split('.');
+  // Browser cookie acceptance applies its maintained public-suffix list, including multi-label suffixes.
+  for (let count = 2; count <= labels.length; count += 1) {
+    document.cookie = `${cookie}; Domain=.${labels.slice(-count).join('.')}`;
+    if (hasMetaClickCookie()) return;
+  }
+  if (labels.length === 1) document.cookie = cookie;
+};
+
+export const loadMetaPixel = (config: CheckoutAnalyticsConfig, purchase?: CheckoutPurchaseAnalytics): boolean => {
   if (!config.metaPixelId || !isReturnPage() || isTestPurchase()) return false;
 
   const stub = function (...parameters: unknown[]): void {
@@ -103,6 +123,7 @@ export const loadMetaPixel = (config: CheckoutAnalyticsConfig): boolean => {
   loadedPixelId = config.metaPixelId;
   document.head.appendChild(script);
   fbq('consent', 'grant');
+  setMetaClickCookie(config, purchase);
   fbq('init', config.metaPixelId);
   fbq('track', 'PageView');
   return true;

@@ -11,6 +11,8 @@ const config: CheckoutAnalyticsConfig = {
   loadWithoutConsent: false,
 };
 const purchase = {
+  fbclid: null,
+  attributionAt: null,
   offerSlug: 'course-bundle',
   transactionId: 'order-1',
   value: 99.5,
@@ -441,5 +443,68 @@ describe('Meta Pixel', () => {
     const analytics = await import('./analytics.js');
     expect(analytics.loadMetaPixel({ ...meta, loadWithoutConsent: true })).toBe(false);
     expect(metaScripts()).toHaveLength(0);
+  });
+});
+
+
+describe('Meta click attribution cookie', () => {
+  const meta = { ...config, metaPixelId: '123456789012345' };
+  const attributedPurchase = { ...purchase, fbclid: 'click_123', attributionAt: '2026-10-15T10:00:00.000Z' };
+  const value = `fb.1.${String(Date.parse(attributedPurchase.attributionAt))}.click_123`;
+  const cookieHarness = (hostname: string, existing = '', rejectedDomain = '') => {
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, hostname });
+    let cookies = `analytics_consent=analytics%3Atrue${existing ? `; _fbc=${existing}` : ''}`;
+    vi.spyOn(document, 'cookie', 'get').mockImplementation(() => cookies);
+    return vi.spyOn(document, 'cookie', 'set').mockImplementation((cookie) => {
+      if (rejectedDomain && cookie.endsWith(`Domain=${rejectedDomain}`)) return;
+      cookies += `; ${cookie.split(';')[0] ?? ''}`;
+    });
+  };
+
+  it.each([
+    ['checkout.example.test', 'host', ''],
+    ['checkout.example.test', 'parent', '; Domain=.example.test'],
+    ['example.test', 'parent', '; Domain=.example.test'],
+    ['checkout.example.co.uk', 'parent', '; Domain=.example.co.uk'],
+  ] as const)('sets the capture timestamp once before init for %s with %s scope', async (hostname, cookieScope, domain) => {
+    const writes = cookieHarness(hostname, '', '.co.uk');
+    const analytics = await import('./analytics.js');
+    const queue: unknown[] = [];
+    const stub = vi.fn((...parameters: unknown[]) => {
+      if (parameters[0] === 'init') expect(document.cookie).toContain(`_fbc=${value}`);
+    });
+    window.fbq = Object.assign(stub, { queue, push: stub, loaded: true, version: '2.0' });
+    expect(analytics.loadMetaPixel({ ...meta, cookieScope }, attributedPurchase)).toBe(true);
+    expect(analytics.loadMetaPixel({ ...meta, cookieScope }, attributedPurchase)).toBe(true);
+    expect(writes).toHaveBeenLastCalledWith(`_fbc=${value}; Path=/; Max-Age=7776000; SameSite=Lax; Secure${domain}`);
+    expect(writes).toHaveBeenCalledTimes(hostname.endsWith('.co.uk') ? 2 : 1);
+  });
+
+  it('never overwrites an existing click cookie', async () => {
+    const writes = cookieHarness('checkout.example.test', 'existing_click');
+    const analytics = await import('./analytics.js');
+    analytics.loadMetaPixel(meta, attributedPurchase);
+    expect(writes).not.toHaveBeenCalled();
+    expect(document.cookie).toContain('_fbc=existing_click');
+  });
+
+  it.each([
+    { ...meta, consentCookieValue: 'declined' },
+    { ...meta, metaPixelId: null },
+  ])('does not set a click cookie without consent and a configured pixel (%j)', async (settings) => {
+    const writes = cookieHarness('checkout.example.test');
+    const analytics = await import('./analytics.js');
+    expect(analytics.loadMetaPixel(settings, attributedPurchase)).toBe(false);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...attributedPurchase, fbclid: null },
+    { ...attributedPurchase, attributionAt: null },
+  ])('does not fabricate missing click attribution (%j)', async (data) => {
+    const writes = cookieHarness('checkout.example.test');
+    const analytics = await import('./analytics.js');
+    analytics.loadMetaPixel(meta, data);
+    expect(writes).not.toHaveBeenCalled();
   });
 });

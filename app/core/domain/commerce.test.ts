@@ -168,6 +168,12 @@ describe('price interval / kind refinement', () => {
 });
 
 describe('order list / export queries', () => {
+  it('preserves exact source matching for lists and exports', () => {
+    expect(listOrdersQuerySchema.parse({ source: 'none', sourceMatch: 'exact' })).toMatchObject({ source: 'none', sourceMatch: 'exact' });
+    expect(exportOrdersQuerySchema.parse({ format: 'csv', source: 'none', sourceMatch: 'exact' })).toMatchObject({ source: 'none', sourceMatch: 'exact' });
+    expect(listOrdersQuerySchema.safeParse({ source: 'none', sourceMatch: 'partial' }).success).toBe(false);
+  });
+
   it('applies page and pageSize defaults and coerces numeric strings', () => {
     expect(listOrdersQuerySchema.parse({})).toMatchObject({ page: 1, pageSize: 20 });
     expect(listOrdersQuerySchema.parse({ page: '3', pageSize: '50' })).toMatchObject({ page: 3, pageSize: 50 });

@@ -22,6 +22,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { attributionFromSearchParams, attributionToSearchParams } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -220,6 +221,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     const priceId = selectedPrice?.id;
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
+        attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
         productId,
         ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
         email,
@@ -246,8 +248,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   };
 
   const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
+  const retryParams = attributionToSearchParams(attributionFromSearchParams(new URLSearchParams(window.location.search)));
+  if (togetherCheckout) retryParams.set('checkout', 'together');
+  const retryUrl = `${window.location.pathname}${retryParams.size === 0 ? '' : `?${retryParams.toString()}`}`;
   const retry = () => {
-    window.history.replaceState(null, '', `${window.location.pathname}${togetherCheckout ? '?checkout=together' : ''}`);
+    window.history.replaceState(null, '', retryUrl);
     setCheckoutStatus(null);
   };
 
@@ -293,7 +298,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
-          <Button variant="contained" {...(salesLinkSlug === undefined || togetherCheckout ? { onClick: retry } : { href: window.location.pathname })}>
+          <Button variant="contained" {...(salesLinkSlug === undefined || togetherCheckout ? { onClick: retry } : { href: retryUrl })}>
             {t.checkout.retry}
           </Button>
         </Stack>

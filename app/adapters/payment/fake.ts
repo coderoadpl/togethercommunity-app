@@ -1,3 +1,4 @@
+import { attributionFromMetadata } from '#core/domain/index.js';
 import { checkoutProductIdsMetadata } from './metadata.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
@@ -92,6 +93,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
               amountTotalCents: object.amount_total ?? null,
               discountTotalCents: object.total_details?.amount_discount ?? null,
               metadata: {
+                attribution: attributionFromMetadata(object.metadata),
                 tenantId: object.metadata?.tenantId ?? null,
                 productId: object.metadata?.productId ?? null,
                 priceId: object.metadata?.priceId || null,

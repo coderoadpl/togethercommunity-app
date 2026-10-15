@@ -213,6 +213,8 @@ const priceAddOptionsSchema = z.object({
   currency: currencySchema.optional(),
 });
 const ordersListOptionsSchema = z.object({
+  sourceExact: z.boolean().optional(),
+  source: z.string().min(1).max(200).optional(),
   status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
@@ -230,6 +232,8 @@ const ordersListOptionsSchema = z.object({
     .optional(),
 });
 const ordersExportOptionsSchema = z.object({
+  sourceExact: z.boolean().optional(),
+  source: z.string().min(1).max(200).optional(),
   format: z.enum(['csv', 'json']),
   status: z.enum(['paid', 'pending', 'failed', 'refunded', 'partially_refunded']).optional(),
   product: z.string().min(1).optional(),
@@ -1533,6 +1537,8 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
+  .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
   .option('--page <n>')
   .option('--page-size <n>')
@@ -1544,6 +1550,8 @@ ordersCommand
           ...(options.product === undefined ? {} : { productId: options.product }),
           ...(options.kind === undefined ? {} : { kind: options.kind }),
           ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+          ...(options.source === undefined ? {} : { source: options.source }),
+          ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
           ...(options.search === undefined ? {} : { search: options.search }),
           ...(options.page === undefined ? {} : { page: options.page }),
           ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
@@ -1571,6 +1579,8 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
+  .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
   .option('--out <file>', 'write the export to a file instead of stdout')
   .action(
@@ -1581,6 +1591,8 @@ ordersCommand
         ...(options.product === undefined ? {} : { productId: options.product }),
         ...(options.kind === undefined ? {} : { kind: options.kind }),
         ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+        ...(options.source === undefined ? {} : { source: options.source }),
+        ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
         ...(options.search === undefined ? {} : { search: options.search }),
       });
       if (result.ok && options.out !== undefined) {

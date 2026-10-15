@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { attributionSchema } from './attribution.js';
 
 import { languageSchema } from './language.js';
 import { billingDataSchema, type BillingData } from './commerce.js';
@@ -8,6 +9,7 @@ export const checkoutSessionStatusInputSchema = z.object({
 });
 
 export const checkoutSessionInputSchema = z.object({
+  attribution: attributionSchema,
   productId: z.string().min(1),
   salesLinkId: z.string().min(1).optional(),
   salesLinkSlug: z.string().min(1).optional(),

@@ -334,6 +334,7 @@ const claimDiscountedOrder = async (
     couponId: context.coupon.id,
     discountCents,
     billing: billing ?? null,
+    attribution: snapshot?.attribution ?? event.checkoutSession?.metadata.attribution ?? null,
     ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
     createdAt: deps.clock.nowIso(),
   };
@@ -403,6 +404,9 @@ const applyCheckoutCompleted = async (
   if (event.checkoutSession.paymentStatus === 'unpaid') {
     return ok({ processed: false, consumed: true });
   }
+  if (snapshot !== null && snapshot.providerSessionId == null) {
+    await deps.checkoutSnapshots?.attachProviderSession(tenant.id, snapshot.id, event.objectId);
+  }
   const periodEnd =
     price?.kind === 'recurring'
       ? nextPeriodEnd(deps.clock.nowIso(), price.interval ?? 'month')
@@ -418,7 +422,7 @@ const applyCheckoutCompleted = async (
   if (pending !== null && pending.mode !== 'test') return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
   if (pending !== null && pending.status !== 'pending') return ok({ processed: false, consumed: true });
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
-    ...pending, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
+    ...pending, attribution: snapshot?.attribution ?? metadata.attribution ?? pending.attribution ?? null, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
     ...(metadata.salesLinkId != null ? { billing } : {}),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
@@ -493,6 +497,7 @@ const applyCheckoutCompleted = async (
           couponContext?.session.discountCents ??
           0,
         billing,
+        attribution: snapshot?.attribution ?? metadata.attribution ?? null,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
       },
       deps,

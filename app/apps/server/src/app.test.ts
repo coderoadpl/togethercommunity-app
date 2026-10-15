@@ -6028,7 +6028,7 @@ describe('public checkout session-status route', () => {
     const response = await app.request(path('cs_live_paid123'), { headers: { [TENANT_HEADER]: 'acme' } });
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ ok: true, data: { status: 'paid', analytics: {
-      transactionId: 'order-status', value: 99, currency: 'PLN', offerSlug: null,
+      transactionId: 'order-status', value: 99, currency: 'PLN', offerSlug: null, fbclid: null, attributionAt: null,
       items: [{ itemId: 'product-analytics', itemName: 'Analytics product', price: 99 }],
     } } });
   });
@@ -9763,7 +9763,14 @@ const simulatedBundleApp = (couponScope: 'all' | 'first-only' = 'all') => {
   base.orders.create = async (_, order) => { orders.push(order); };
   base.enrollmentTransaction = { run: async (operation) => operation({ members: base.members, grants: base.grants, emailOutbox: base.emailOutbox }) };
   base.paymentRefunds.findOrderByProviderObjectIds = async (_, providerIds) => orders.find((order) => order.providerObjectIds['checkoutSession'] === providerIds['checkoutSession']) ?? null;
-  base.checkoutSnapshots = { create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); }, findById: async (_, id) => snapshots.get(id) ?? null };
+  base.checkoutSnapshots = {
+    create: async (_, snapshot) => { snapshots.set(snapshot.id, snapshot); },
+    attachProviderSession: async (tenantId, id, providerSessionId) => {
+      const snapshot = snapshots.get(id);
+      if (snapshot?.tenantId === tenantId) snapshot.providerSessionId = providerSessionId;
+    },
+    findById: async (_, id) => snapshots.get(id) ?? null,
+  };
   base.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon, create: async () => coupon, archive: async () => coupon };
   base.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async (_, input) => { orders.push(input.order); return true; } };
   base.couponCheckoutSessions = { create: async (_, session) => { couponSessions.set(session.id, session); }, attachProviderSession: async () => undefined, findById: async (_, id) => couponSessions.get(id) ?? null };
@@ -10117,6 +10124,27 @@ describe('direct public sales-link checkout', () => {
     const submission = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{}' });
     expect(submission.status).toBe(403);
     expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('captures validated campaign parameters from the offer and %s submission', async (contentType) => {
+    const h = await directSalesLinkApp();
+    const query = 'utm_source=meta&utm_medium=paid&fbclid=X&gclid=%3Cinvalid%3E';
+    const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+    const html = await page.text();
+    expect(html).toContain('name="utm_source" value="meta"');
+    expect(html).toContain('name="utm_medium" value="paid"');
+    expect(html).toContain('name="fbclid" value="X"');
+    expect(html).not.toContain('name="gclid"');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+      body: contentType === 'application/json'
+        ? JSON.stringify({ attribution: { utmSource: ' meta ', utmMedium: 'paid', fbclid: 'X', gclid: '<invalid>', capturedAt: '2020-01-01T00:00:00.000Z' } })
+        : query,
+    });
+    expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ attribution: {
+      utmSource: 'meta', utmMedium: 'paid', fbclid: 'X', capturedAt: h.base.clock.nowIso(),
+    } }));
   });
 
   it('creates one live session and redirects empty noscript submissions', async () => {

@@ -718,6 +718,7 @@ export const productPriceDeactivateOutputSchema = z.object({
 export type OrdersListQueryInput = z.input<typeof listOrdersQuerySchema>;
 
 export const ordersListOutputSchema = z.object({
+  sources: z.array(z.string()).default([]),
   orders: z.array(orderListItemSchema),
   total: z.number().int().nonnegative(),
   page: z.number().int().positive(),

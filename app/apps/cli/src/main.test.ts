@@ -11,6 +11,8 @@ const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
+  listOrders: ReturnType<typeof vi.fn>;
+  exportOrders: ReturnType<typeof vi.fn>;
   publicCheckoutSessionStatus: ReturnType<typeof vi.fn>;
   directSalesLinkCheckout: ReturnType<typeof vi.fn>;
   updateSalesLink: ReturnType<typeof vi.fn>;
@@ -71,6 +73,8 @@ interface Hoisted {
 
 const h = vi.hoisted(
   (): Hoisted => ({
+    listOrders: vi.fn(),
+    exportOrders: vi.fn(),
     publicCheckoutSessionStatus: vi.fn(),
     directSalesLinkCheckout: vi.fn(),
     updateSalesLink: vi.fn(),
@@ -179,6 +183,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', async (importOriginal) => ({
   ...await importOriginal<typeof ClientModule>(),
   createApiClient: () => ({
+    listOrders: h.listOrders,
+    exportOrders: h.exportOrders,
     publicCheckoutSessionStatus: h.publicCheckoutSessionStatus,
     directSalesLinkCheckout: h.directSalesLinkCheckout,
     updateSalesLink: h.updateSalesLink,
@@ -271,6 +277,7 @@ const soleJson = (): unknown => {
 };
 
 beforeEach(() => {
+  h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
   h.publicCheckoutSessionStatus.mockReset().mockResolvedValue(ok({ status: 'pending' }));
   h.directSalesLinkCheckout.mockReset().mockResolvedValue(ok({ url: 'https://checkout.stripe.test/session' }));
   h.updateSalesLink.mockReset().mockResolvedValue(ok({ salesLink: { id: 'link-1' } }));
@@ -1579,4 +1586,24 @@ describe('tenant analytics settings', () => {
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(line));
     }
   });
+});
+
+
+describe('order attribution CLI', () => {
+  it.each(['meta', 'none'])('passes --source %s and preserves attribution in JSON', async (source) => {
+    const attribution = { utmSource: 'meta', utmMedium: 'paid', capturedAt: '2026-10-15T12:00:00.000Z' };
+    h.listOrders.mockResolvedValue(ok({ orders: [{ id: 'order', attribution }], total: 1, page: 1, pageSize: 20, sources: ['meta'] }));
+    await run('--json', 'orders', 'list', '--source', source);
+    expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ source });
+    expect(soleJson()).toMatchObject({ ok: true, data: { orders: [{ attribution }] } });
+  });
+});
+
+it('distinguishes the campaign source none from missing attribution in CLI lists and exports', async () => {
+  h.listOrders.mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: ['none'] }));
+  h.exportOrders.mockResolvedValue(ok({ filename: 'orders.json', mimeType: 'application/json', content: '[]' }));
+  await run('--json', 'orders', 'list', '--source', 'none', '--source-exact');
+  expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ source: 'none', sourceMatch: 'exact' });
+  await run('--json', 'orders', 'export', '--format', 'json', '--source', 'none', '--source-exact');
+  expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'json', source: 'none', sourceMatch: 'exact' });
 });

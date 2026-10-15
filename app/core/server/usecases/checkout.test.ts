@@ -508,7 +508,7 @@ it('records the sandbox session as a pending test order before returning its URL
   const create = vi.fn(base.payment.createCheckoutSession);
   const { startCheckoutSession } = await import('./checkout.js');
   const result = await startCheckoutSession(tenant, 'https://alpha.example.com',
-    { productId: product.id, email: 'staff@example.test' }, { product, price: null }, {
+    { productId: product.id, email: 'staff@example.test', attribution: { utmSource: 'meta', fbclid: 'X' } }, { product, price: null }, {
       ...base, payment: { ...base.payment, createCheckoutSession: create },
       ids: { nextId: () => 'order-test' }, clock: { nowIso: () => '2026-09-12T12:00:00.000Z' },
       orders: { create: async (_tenantId, order) => { recorded.push(order); }, completeTestCheckout: async () => null,
@@ -517,7 +517,7 @@ it('records the sandbox session as a pending test order before returning its URL
   expect(result).toMatchObject({ ok: true });
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'test', customerEmail: 'staff@example.test',
     successUrl: expect.stringContaining('test_purchase=1') }));
-  expect(recorded).toMatchObject([{ mode: 'test', status: 'pending', memberId: 'staff-member', providerObjectIds: { checkoutSession: 'default' } }]);
+  expect(recorded).toMatchObject([{ attribution: { utmSource: 'meta', fbclid: 'X', capturedAt: '2026-09-12T12:00:00.000Z' }, mode: 'test', status: 'pending', memberId: 'staff-member', providerObjectIds: { checkoutSession: 'default' } }]);
 });
 
 const bundleCheckout = () => {
@@ -544,6 +544,10 @@ const bundleCheckout = () => {
     },
     checkoutSnapshots: {
       create: async (_tenantId, snapshot) => { snapshots.push(snapshot); },
+      attachProviderSession: async (tenantId, id, providerSessionId) => {
+        const snapshot = snapshots.find((item) => item.tenantId === tenantId && item.id === id);
+        if (snapshot !== undefined) snapshot.providerSessionId = providerSessionId;
+      },
       findById: async () => snapshots[0] ?? null,
     },
     payment: { ...base.payment, createCheckoutSession: async (input) => {
@@ -704,7 +708,7 @@ it('keeps the Together checkout cancel URL when the sales link configures an ext
     productId: product.id, salesLinkId: h.link.id,
   }, h.deps)).toMatchObject({ ok: true });
   expect(h.calls[0]).toMatchObject({
-    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1',
+    cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&checkout=together&salesLinkId=link-1',
     successUrl: 'https://workspace.example.com/offer/collection?status=success&purchase_kind=one_time&salesLinkId=link-1&session_id={CHECKOUT_SESSION_ID}',
   });
 });
@@ -759,4 +763,57 @@ it('applies tenant checkout appearance to existing single-product and subscripti
     expect(call).not.toHaveProperty('directCheckout');
   }
   expect(h.calls[1]?.recurringInterval).toBe('month');
+});
+
+it('captures campaign parameters with the server timestamp on direct checkout and its snapshot', async () => {
+  const h = await directCheckout();
+  const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
+  const result = await createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+    slug: h.link.slug, attribution: { utmSource: ' meta ', utmMedium: 'paid', fbclid: 'X' },
+    termsAcceptanceMessage: () => 'I accept the terms and privacy policy.',
+  }, h.deps);
+  expect(result.ok).toBe(true);
+  const attribution = { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X', capturedAt: '2026-10-08T12:00:00.000Z' };
+  expect(h.calls[0]?.attribution).toEqual(attribution);
+  expect(h.snapshots[0]?.attribution).toEqual(attribution);
+  expect(h.calls[0]?.cancelUrl).toBe('https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1&utm_source=meta&utm_medium=paid&fbclid=X');
+});
+
+it('captures SPA attribution in the payment session and binds its snapshot for erasure', async () => {
+  const h = bundleCheckout();
+  const { createCheckoutSession } = await import('./checkout.js');
+  const result = await createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: h.products[0]?.id ?? '', salesLinkId: h.link.id, attribution: { utmSource: 'meta', fbclid: 'X' },
+  }, h.deps);
+  expect(result.ok).toBe(true);
+  const attribution = { utmSource: 'meta', fbclid: 'X', capturedAt: '2026-10-08T12:00:00.000Z' };
+  expect(h.calls[0]?.attribution).toEqual(attribution);
+  expect(h.snapshots[0]?.attribution).toEqual(attribution);
+  expect(h.calls[0]?.cancelUrl).toBe('https://workspace.example.com/offer/collection?status=cancelled&checkout=together&salesLinkId=link-1&utm_source=meta&fbclid=X');
+  expect(h.snapshots[0]?.providerSessionId).toBe('bundle-session');
+});
+
+it('keeps sanitized campaign parameters on a configured direct checkout cancellation return', async () => {
+  const h = await directCheckout('https://sales.example/offer');
+  const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
+  expect(await createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+    slug: h.link.slug,
+    returnUrl: 'https://sales.example/offer?section=details&utm_source=old#buy',
+    attribution: { utmSource: 'meta', utmCampaign: 'Launch + 2026', fbclid: 'X', gclid: '<invalid>' },
+    termsAcceptanceMessage: () => 'I accept the terms and privacy policy.',
+  }, h.deps)).toMatchObject({ ok: true });
+  expect(h.calls[0]?.cancelUrl).toBe('https://sales.example/offer?section=details&utm_source=meta&utm_campaign=Launch+%2B+2026&fbclid=X#buy');
+});
+
+it('expires the SPA payment session when snapshot binding fails', async () => {
+  const h = bundleCheckout();
+  const { createCheckoutSession } = await import('./checkout.js');
+  if (h.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+  h.deps.checkoutSnapshots.attachProviderSession = async () => { throw new Error('Storage unavailable'); };
+  const expired: string[] = [];
+  h.deps.payment.expireCheckoutSession = async ({ sessionId }) => { expired.push(sessionId); return ok({ expired: true }); };
+  await expect(createCheckoutSession(tenant, 'https://workspace.example.com', {
+    productId: product.id, salesLinkId: h.link.id,
+  }, h.deps)).rejects.toThrow('Storage unavailable');
+  expect(expired).toEqual(['bundle-session']);
 });

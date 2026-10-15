@@ -2741,6 +2741,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.get(API_PATHS.orders, async (c) => {
     const query = {
+      ...(c.req.query('source') === undefined ? {} : { source: c.req.query('source') }),
+      ...(c.req.query('sourceMatch') === undefined ? {} : { sourceMatch: c.req.query('sourceMatch') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
@@ -2773,6 +2775,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.get(API_PATHS.ordersExport, async (c) => {
     const query = {
+      ...(c.req.query('source') === undefined ? {} : { source: c.req.query('source') }),
+      ...(c.req.query('sourceMatch') === undefined ? {} : { sourceMatch: c.req.query('sourceMatch') }),
       format: c.req.query('format'),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),

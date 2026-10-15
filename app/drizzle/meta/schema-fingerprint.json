@@ -1,6 +1,6 @@
 {
-  "hash": "b53a872391d7dcb09dbadd8f1d802b99f5493bf247a92c43c895876a851fe371",
-  "shortId": "b53a872391d7",
+  "hash": "575b236ad0e8cc859276c05c0ec36b2c1e90e5442086570db053cb6b854ab98c",
+  "shortId": "575b236ad0e8",
   "schema": {
     "constraints": [
       {
@@ -3590,6 +3590,14 @@
             "name": "amount_cents",
             "notNull": true,
             "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attribution",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -9732,6 +9740,83 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "attribution",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "lines",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "mode",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sales_link_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "checkout_snapshots"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "audience_json",
             "notNull": true,
             "type": "jsonb"
@@ -11852,75 +11937,6 @@
           }
         ],
         "name": "dm_conversations"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "currency",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "lines",
-            "notNull": true,
-            "type": "jsonb"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "mode",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "provider_session_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sales_link_id",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "checkout_snapshots"
       },
       {
         "columns": [

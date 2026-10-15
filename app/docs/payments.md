@@ -77,6 +77,8 @@ When session status becomes `paid` and either ID is configured, its response add
     "value": 99,
     "currency": "PLN",
     "offerSlug": "workbook",
+    "fbclid": "example-click-id",
+    "attributionAt": "2026-10-15T10:00:00.000Z",
     "items": [
       { "itemId": "product-id", "itemName": "Digital workbook", "price": 99 }
     ]
@@ -87,7 +89,8 @@ When session status becomes `paid` and either ID is configured, its response add
 The transaction ID is the order ID; the value is the gross order total in major
 currency units, and each item's price is the gross order-line amount in major
 units. `offerSlug` is the order's sales-link slug, or `null` when no link is
-available. Pending and unknown sessions retain identical responses without analytics.
+available. `fbclid` and `attributionAt` come from the order's captured attribution,
+or are `null` when absent. Pending and unknown sessions retain identical responses without analytics.
 Unconfigured tenants receive no analytics payload even when paid. Rate limits
 and `Cache-Control: no-store` remain unchanged.
 
@@ -141,9 +144,16 @@ every other host, `cookieScope: host` sets `cookie_domain` to the current checko
 hostname and `cookie_prefix` to `together_<hostname>`. The distinct cookie name
 prevents adopting an existing parent-domain `_ga` identifier, so workspace
 subdomains do not share GA4 identifiers with each other or the platform host.
-Meta still uses its
-vendor-default first-party cookie scope; its identifiers are not yet isolated
-across platform workspace subdomains.
+Meta Pixel still uses its vendor-default first-party cookie scope; its identifiers
+(such as `_fbp`) are not yet isolated across platform workspace subdomains. The
+platform scopes only the `_fbc` cookie it writes itself.
+Before initializing Meta Pixel, the success page sets `_fbc` when the consent
+rule passes, a Pixel ID and captured `fbclid` are present, and no `_fbc` cookie
+already exists. Its value is `fb.1.<capture time in epoch milliseconds>.<fbclid>`.
+It expires after 90 days and uses `Path=/`, `SameSite=Lax` and `Secure`.
+With `cookieScope: parent`, the `_fbc` domain is the checkout host's registrable parent
+domain; otherwise it is host-only. Existing `_fbc` values are never overwritten,
+and the platform does not set it when the consent rule fails.
 
 Creators should add a privacy-policy statement describing their actual setup,
 for example: “After our configured consent-cookie check passes, our purchase
@@ -240,6 +250,39 @@ billing and coupon flow remains available. Both tenant legal URLs are required
 on this fallback page and its checkout endpoint too. Success and cancellation return to the
 Together page and cannot restart the automatic redirect. The single-product
 checkout page retains its existing behavior.
+
+## Order campaign attribution
+
+Checkout captures `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`,
+`utm_term`, `fbclid` and `gclid` from sales-link and product-checkout URLs,
+including campaign queries preserved by `/link/<key>` redirects. Both the direct
+checkout handoff and the Together checkout form carry these values. Fields are
+trimmed, limited to 200 characters, and dropped individually if they contain
+unsupported characters. UTM values allow ASCII letters, digits, spaces and
+`._~:/+=@-`; click IDs allow ASCII letters, digits and `._-`.
+
+The server records the capture time. Valid fields and that timestamp are stored
+in the checkout snapshot and the order, including test orders. Stripe Checkout
+Session metadata also receives them; one-time payments copy them to
+PaymentIntent metadata. Fulfillment reads the snapshot first and falls back to
+Session metadata. Existing orders without attribution remain unchanged.
+
+Studio order details show the captured fields under **Source**. The orders list
+shows `utm_source / utm_medium` and filters by a workspace's distinct sources or
+**None**. The CLI supports `orders list --source <utm_source|none>` and includes
+`attribution` in JSON responses. Use `--source none --source-exact` to match the
+literal campaign source `none` in lists and exports; without `--source-exact`,
+`--source none` selects orders without attribution. API clients use
+`source=none&sourceMatch=exact` for the literal value. CSV and JSON exports include seven additional
+fields named after the captured URL parameters, with empty values when absent.
+
+Click IDs are advertising identifiers stored with the order. Member erasure
+clears attribution from that member's orders and their linked checkout snapshots.
+Creators should disclose campaign
+capture and storage in their privacy policies. The success page sets Meta's
+`_fbc` only after the configured consent rule passes, as described above. GA4's
+purchase event does not send UTM fields; GA4 uses its shared `_ga` session for
+attribution.
 
 ## Checkout appearance
 

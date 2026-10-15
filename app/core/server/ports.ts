@@ -1027,6 +1027,7 @@ export interface PaymentWebhookEvent {
     amountTotalCents?: number | null;
     discountTotalCents?: number | null;
     metadata: {
+      attribution?: Order['attribution'];
       tenantId: string | null;
       productId: string | null;
       priceId: string | null;
@@ -1099,6 +1100,7 @@ export interface PaymentProvider {
     webhookEndpointId: string;
   }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
+    attribution?: NonNullable<Order['attribution']>;
     mode?: 'live' | 'test';
     tenantId: string;
     productId: string;
@@ -1542,6 +1544,8 @@ export interface ProductPriceRepository {
 }
 
 export interface OrderListQuery {
+  source?: string;
+  sourceMatch?: 'exact';
   mode?: 'live' | 'test';
   status?: OrderStatus;
   productId?: string;
@@ -1555,7 +1559,7 @@ export interface OrderListQuery {
 export interface OrderRepository {
   completeTestCheckout(tenantId: string, order: Order): Promise<Order | null>;
   create(tenantId: string, order: Order): Promise<void>;
-  list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
+  list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number; sources?: string[] }>;
   listForMember?(tenantId: string, memberId: string): Promise<Order[]>;
   listBillingForMember?(
     tenantId: string,

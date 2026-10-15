@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
 
@@ -196,7 +196,7 @@ describe('exportOrders — CSV', () => {
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
     expect(lines[0]).toBe(
-      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country',
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid',
     );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');
@@ -275,4 +275,35 @@ it('shows the originating sales-link title in staff order details', async () => 
     orders: { findById: async () => order },
   });
   expect(result).toMatchObject({ ok: true, value: { order: { salesLinkId: 'link', salesLinkTitle: 'In-person offer' } } });
+});
+
+
+it('passes the source filter through to the tenant repository and exposes source options', async () => {
+  const h = harness();
+  const list = vi.fn(async () => ({ orders: [], total: 0, sources: ['meta', 'search'] }));
+  h.deps.orders.list = list;
+  expect(await listOrders({ identity: identity('owner') }, { source: 'meta' }, h.deps)).toMatchObject({ ok: true, value: { sources: ['meta', 'search'] } });
+  expect(list).toHaveBeenCalledWith('t1', { source: 'meta', page: 1, pageSize: 20 });
+});
+
+it('exports all seven attribution columns in CSV and JSON with empty absent values', async () => {
+  const attribution = { utmSource: 'meta', utmMedium: 'paid', utmCampaign: 'launch', utmContent: '@creative', utmTerm: 'term', fbclid: 'meta-click', gclid: 'google-click', capturedAt: '2026-10-15T12:00:00.000Z' };
+  const h = harness([orderItem('attributed', { attribution }), orderItem('unattributed')]);
+  const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
+  expect(csv.ok && csv.value.content).toContain('"meta","paid","launch","\'@creative","term","meta-click","google-click"');
+  expect(csv.ok && csv.value.content.split('\n')[2]).toMatch(/,"","","","","","",""$/);
+  const json = await exportOrders({ identity: identity('owner') }, { format: 'json', source: 'meta' }, h.deps);
+  expect(h.queries.at(-1)?.source).toBe('meta');
+  if (!json.ok) throw new Error('Expected JSON export');
+  const exported: unknown = JSON.parse(json.value.content);
+  expect(exported).toMatchObject([{ attribution, utm_source: 'meta', utm_medium: 'paid', utm_campaign: 'launch', utm_content: '@creative', utm_term: 'term', fbclid: 'meta-click', gclid: 'google-click' }, { utm_source: '', utm_medium: '', utm_campaign: '', utm_content: '', utm_term: '', fbclid: '', gclid: '' }]);
+});
+
+it.each(['csv', 'json'] as const)('preserves exact source matching across every %s export page', async (format) => {
+  const h = harness(Array.from({ length: 101 }, (_value, index) => orderItem(`order-${String(index)}`, { attribution: { utmSource: 'none', capturedAt: '2026-10-15T12:00:00.000Z' } })));
+  await listOrders({ identity: identity('owner') }, { source: 'none', sourceMatch: 'exact' }, h.deps);
+  const exported = await exportOrders({ identity: identity('owner') }, { format, source: 'none', sourceMatch: 'exact' }, h.deps);
+  expect(exported.ok).toBe(true);
+  expect(h.queries).toHaveLength(3);
+  expect(h.queries.every((query) => query.source === 'none' && query.sourceMatch === 'exact')).toBe(true);
 });

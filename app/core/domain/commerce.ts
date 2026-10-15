@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { orderAttributionSchema } from './attribution.js';
 
 import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
@@ -145,6 +146,7 @@ export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCe
 };
 
 export const checkoutSnapshotSchema = z.object({
+  attribution: orderAttributionSchema.nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
   providerSessionId: z.string().nullable().optional(),
   id: z.string(),
@@ -158,6 +160,7 @@ export const checkoutSnapshotSchema = z.object({
 export type CheckoutSnapshot = z.infer<typeof checkoutSnapshotSchema>;
 
 export const orderSchema = z.object({
+  attribution: orderAttributionSchema.nullable().optional(),
   mode: stripeModeSchema.default('live'),
   id: z.string(),
   tenantId: z.string(),
@@ -210,6 +213,8 @@ export const orderExportFileSchema = z.object({
 export type OrderExportFile = z.infer<typeof orderExportFileSchema>;
 
 export const listOrdersQuerySchema = z.object({
+  source: z.string().trim().min(1).max(200).optional(),
+  sourceMatch: z.literal('exact').optional(),
   mode: stripeModeSchema.optional(),
   status: orderStatusSchema.optional(),
   productId: z.string().min(1).optional(),

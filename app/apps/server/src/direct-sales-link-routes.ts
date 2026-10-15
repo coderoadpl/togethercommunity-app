@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { err, forbidden, internal, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { attributionFields, attributionFromSearchParams, err, forbidden, internal, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -33,6 +33,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const returnUrl = requestedReturnUrl !== undefined && resolveCancelReturnUrl(link?.cancelReturnUrl, requestedReturnUrl) === requestedReturnUrl
       ? requestedReturnUrl : undefined;
     const page = {
+      attribution: attributionFromSearchParams(new URLSearchParams(new URL(c.req.url).search)),
       heading: offer.ok ? offer.value.salesLink.heading : directSalesLinkCopy(settings?.defaultLanguage ?? 'en').checkoutUnavailable,
       description: offer.ok ? offer.value.salesLink.description : '',
       tenantName: tenant.name,
@@ -80,10 +81,15 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     if (!form && contentType !== 'application/json') return c.body(null, 415);
     const origin = c.req.header('origin');
     if (origin !== undefined && (!URL.canParse(origin) || new URL(origin).host !== (c.req.header('host') ?? new URL(c.req.url).host))) return respond(err(forbidden('Checkout must start from this workspace')));
-    const parsed = salesLinkContracts.directSalesLinkCheckout.input.safeParse(form ? Object.fromEntries(new URLSearchParams(await c.req.text())) : await readJson(c.req.raw));
+    const formFields = form ? new URLSearchParams(await c.req.text()) : null;
+    const parsed = salesLinkContracts.directSalesLinkCheckout.input.safeParse(formFields === null ? await readJson(c.req.raw) : {
+      ...Object.fromEntries([...formFields].filter(([key]) => !Object.values(attributionFields).some((parameter) => parameter === key))),
+      attribution: attributionFromSearchParams(formFields),
+    });
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
+      ...(parsed.data.attribution === undefined ? {} : { attribution: parsed.data.attribution }),
       ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
     }, deps);

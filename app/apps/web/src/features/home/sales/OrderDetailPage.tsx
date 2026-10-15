@@ -57,6 +57,15 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   }
 
   const order = detail.data.order;
+  const attributionRows = [
+    [t.sales.utmSource, order.attribution?.utmSource],
+    [t.sales.utmMedium, order.attribution?.utmMedium],
+    [t.sales.utmCampaign, order.attribution?.utmCampaign],
+    [t.sales.utmContent, order.attribution?.utmContent],
+    [t.sales.utmTerm, order.attribution?.utmTerm],
+    [t.sales.fbclid, order.attribution?.fbclid],
+    [t.sales.gclid, order.attribution?.gclid],
+  ].filter(([, value]) => value !== undefined);
   const paidAt = order.paidAt ?? (order.status === 'paid' ? order.createdAt : null);
   const rows = [
     [t.sales.placed, formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)],
@@ -99,6 +108,21 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
         </Stack>
       </SectionCard>
       {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {attributionRows.length === 0 ? null : (
+        <SectionCard title={t.sales.source}>
+          <Stack useFlexGap spacing="0.75rem">
+            {order.attribution?.utmSource && order.attribution.utmMedium ? (
+              <Typography>{order.attribution.utmSource} / {order.attribution.utmMedium}</Typography>
+            ) : null}
+            {attributionRows.map(([label, value]) => (
+              <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
+                <Typography color="text.secondary">{label}</Typography>
+                <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </SectionCard>
+      )}
       <DownloadCopies query={{ orderId }} />
       {order.billing == null ? null : (
         <SectionCard title={t.sales.billingDetails}>

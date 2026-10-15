@@ -79,10 +79,30 @@ it.each([true, false])('shows the sales-link test success notice only to staff: 
   expect(screen.queryByRole('progressbar')).toBeNull();
 });
 
-it('retries a live sales link through the server handoff after cancellation', async () => {
-  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled');
+it('retries a live sales link through the server handoff with its attribution after cancellation', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled&utm_source=meta&utm_medium=paid&fbclid=X&gclid=%3Cinvalid%3E');
   renderOffer();
-  expect(await screen.findByRole('link', { name: en.checkout.retry })).toHaveAttribute('href', '/offer/complete-bundle');
+  expect(await screen.findByRole('link', { name: en.checkout.retry })).toHaveAttribute('href', '/offer/complete-bundle?utm_source=meta&utm_medium=paid&fbclid=X');
+});
+
+it('resubmits attribution after cancellation on the manual sales-link checkout', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?status=cancelled&checkout=together&utm_source=meta&utm_medium=paid&fbclid=X');
+  let payload: unknown;
+  server.use(
+    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } })),
+    http.post('/api/public/checkout/session', async ({ request }) => {
+      payload = await request.json();
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout unavailable' } }, { status: 400 });
+    }),
+  );
+  renderOffer();
+  await userEvent.click(await screen.findByRole('button', { name: en.checkout.retry }));
+  await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+  await userEvent.click(screen.getByRole('checkbox'));
+  await userEvent.click(screen.getByRole('button', { name: en.salesLinks.buyBundle }));
+  await waitFor(() => expect(payload).toMatchObject({ attribution: { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X' } }));
+  expect(new URLSearchParams(window.location.search).get('checkout')).toBe('together');
 });
 
 it('keeps staff test checkout and cancellation retries on the manual checkout page', async () => {

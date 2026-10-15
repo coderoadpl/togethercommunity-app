@@ -1,3 +1,5 @@
+import { createTenantTeamRepository } from '#adapters/db/repositories.js';
+import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
 import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
@@ -490,6 +492,7 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
   auditEvents: TenantAuditEventRepository;
+  team: TenantTeamRepository;
   impersonationTokens: ImpersonationTokenCodec;
   secureCookies: boolean;
   importAuditEvents: ImportAuditEventRepository;
@@ -1283,6 +1286,7 @@ export const createDeps = (
 
   const members = createMemberRepository(db);
   const memberEvents = createMemberEventRepository(db);
+  const team = createTenantTeamRepository(db);
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
@@ -1300,6 +1304,20 @@ export const createDeps = (
     defaultTenantName: 'Together',
     google,
     logger,
+    activateTeamInvitation: async ({ request, userId, email, occurredAt }) => {
+      const resolved = await resolveTenant(
+        request.headers.get('host') ?? new URL(request.url).host,
+        request.headers.get(TENANT_HEADER),
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
+      );
+      if (!resolved.ok || resolved.value === null) return;
+      const tenantId = resolved.value.tenant.id;
+      await team.activateInvitation(tenantId, userId, ids.nextId(), {
+        id: ids.nextId(), tenantId, kind: 'team.admin_activated',
+        actorUserId: userId, actorEmail: email, subjectMemberId: null,
+        reason: userId, at: occurredAt,
+      });
+    },
     recordSignIn: async ({ request, userId, sessionId, occurredAt }) => {
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
@@ -1446,6 +1464,7 @@ export const createDeps = (
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,
     auditEvents,
+    team,
     impersonationTokens: createImpersonationTokenCodec(env.BETTER_AUTH_SECRET),
     secureCookies: env.SECURE_COOKIES,
     importAuditEvents: createImportAuditEventRepository(db),

@@ -178,6 +178,7 @@ const installSettingsBackend = (
   let routingState = initialRoutingState;
 
   server.use(
+    http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [] } })),
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
     http.get('/api/courses', () =>
       courses === 'unavailable'
@@ -1475,6 +1476,133 @@ describe('SettingsPanel sign-in notice', () => {
   });
 });
 
+describe('SettingsPanel team', () => {
+  const owner = { userId: 'owner-user', email: 'creator3@together.dev', name: 'Studio Owner', role: 'owner', status: 'active' };
+  const admin = { userId: 'admin-user', email: 'admin@example.test', name: null, role: 'admin', status: 'active' };
+  const invited = { userId: 'invited-user', email: 'invited@example.test', name: null, role: 'admin', status: 'invited' };
+
+  it('shows the team to the owner and identifies their row without a remove action', async () => {
+    renderPanel();
+    server.use(http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, admin] } })));
+    await openSettingsSection(en.settingsNavigation.security);
+    const table = await screen.findByRole('table', { name: en.tenantTeam.heading });
+    const ownerRow = within(table).getByRole('row', { name: /creator3@together.dev/ });
+    expect(ownerRow).toHaveTextContent(en.tenantTeam.owner);
+    expect(ownerRow).toHaveTextContent(en.tenantTeam.you);
+    expect(within(ownerRow).queryByRole('button', { name: en.common.remove })).not.toBeInTheDocument();
+    expect(within(table).getByRole('row', { name: /admin@example.test/ })).toHaveTextContent(en.tenantTeam.administrator);
+  });
+
+  it.each(['admin', null] as const)('hides the team and never fetches it for role %s', async (staffRole) => {
+    const list = vi.fn();
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { staffRole });
+    server.use(http.get('/api/tenant/team', () => { list(); return HttpResponse.json({ ok: true, data: { members: [] } }); }));
+    await openSettingsSection(en.settingsNavigation.security);
+    expect(await screen.findByTestId('security-settings')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-settings')).not.toBeInTheDocument();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('submits an email and shows the opaque invitation confirmation in $language', async ({ language, t }) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
+    const added: unknown[] = [];
+    server.use(http.post('/api/tenant/team', async ({ request }) => {
+      added.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { status: 'invitation_sent' } });
+    }));
+    await openSettingsSection(t.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
+    await waitFor(() => expect(added).toEqual([{ email: admin.email }]));
+    expect(await findToast('success')).toHaveTextContent(t.tenantTeam.invitationSuccess);
+    expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue('');
+  });
+
+  it('keeps the entered email and shows an error when adding fails', async () => {
+    renderPanel();
+    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+      ok: false, error: { code: 'forbidden', message: 'Owner role required' },
+    }, { status: 403 })));
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: en.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.add }));
+    expect(await findToast('error')).toBeInTheDocument();
+    expect(within(section).getByRole('textbox', { name: en.auth.emailLabel })).toHaveValue(admin.email);
+  });
+
+  it.each([
+    { language: 'en' as const, t: en },
+    { language: 'pl' as const, t: pl },
+  ])('localizes syntax validation in $language and preserves the email', async ({ language, t }) => {
+    renderPanel(EMPTY_SETTINGS, true, [], [], null, { language });
+    const message = 'Raw backend validation message';
+    server.use(http.post('/api/tenant/team', () => HttpResponse.json({
+      ok: false, error: { code: 'validation', message },
+    }, { status: 400 })));
+    await openSettingsSection(t.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.type(within(section).getByRole('textbox', { name: t.auth.emailLabel }), admin.email);
+    await userEvent.click(within(section).getByRole('button', { name: t.common.add }));
+    const toast = await findToast('error');
+    expect(toast).toHaveTextContent(t.errors.messageValidation);
+    expect(toast).not.toHaveTextContent(message);
+    expect(within(section).getByRole('textbox', { name: t.auth.emailLabel })).toHaveValue(admin.email);
+    expect(queryToast('success')).not.toBeInTheDocument();
+  });
+
+  it('shows pending invitations and requires confirmation before revoking them', async () => {
+    renderPanel();
+    const removed: unknown[] = [];
+    server.use(
+      http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, invited] } })),
+      http.post('/api/tenant/team/remove', async ({ request }) => {
+        removed.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { userId: invited.userId } });
+      }),
+    );
+    await openSettingsSection(en.settingsNavigation.security);
+    const table = await screen.findByRole('table', { name: en.tenantTeam.heading });
+    const row = within(table).getByRole('row', { name: /invited@example.test/ });
+    expect(row).toHaveTextContent(en.tenantTeam.invitationSent);
+    expect(within(row).queryByRole('button', { name: en.common.remove })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole('button', { name: en.tenantTeam.revokeInvitation }));
+    const dialog = await screen.findByRole('dialog', { name: en.tenantTeam.revokeInvitation });
+    expect(dialog).toHaveTextContent(invited.email);
+    expect(removed).toEqual([]);
+    await userEvent.click(within(dialog).getByRole('button', { name: en.tenantTeam.revokeInvitation }));
+    await waitFor(() => expect(removed).toEqual([{ userId: invited.userId }]));
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
+  });
+
+  it('requires confirmation before removing an administrator', async () => {
+    renderPanel();
+    const removed: unknown[] = [];
+    server.use(
+      http.get('/api/tenant/team', () => HttpResponse.json({ ok: true, data: { members: [owner, admin] } })),
+      http.post('/api/tenant/team/remove', async ({ request }) => {
+        removed.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { userId: admin.userId } });
+      }),
+    );
+    await openSettingsSection(en.settingsNavigation.security);
+    const section = await screen.findByTestId('team-settings');
+    await userEvent.click(await within(section).findByRole('button', { name: en.common.remove }));
+    const dialog = await screen.findByRole('dialog', { name: en.tenantTeam.removeConfirm });
+    expect(dialog).toHaveTextContent(admin.email);
+    expect(removed).toEqual([]);
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.cancel }));
+    expect(removed).toEqual([]);
+    await userEvent.click(within(section).getByRole('button', { name: en.common.remove }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.common.remove }));
+    await waitFor(() => expect(removed).toEqual([{ userId: admin.userId }]));
+    expect(await findToast('success')).toHaveTextContent(en.common.saved);
+  });
+});
 
 describe('SettingsPanel analytics', () => {
   it('lets the owner save all five analytics fields', async () => {

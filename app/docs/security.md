@@ -84,6 +84,21 @@ answers a known and an unknown address the same way. These three POST endpoints
 have a 300 ms response floor on accepted and rejected outcomes alike. The floor
 does not bound database or delivery latency above 300 ms.
 
+Administrator invitations activate after any successful mailbox-proving
+magic-link sign-in on the tenant host, including completion of required
+two-factor authentication; the link need not come from the invitation e-mail.
+Ordinary e-mail verification and password sign-in do not activate invitations.
+When magic-link sign-in verifies a previously unverified account, the same
+locked transaction removes its password credentials, passkeys, two-factor
+enrollment and pending user-bound verification values, including two-factor
+challenges, revokes all existing sessions and resets two-factor status before
+invitation activation. This invalidates authenticators and challenges created
+before mailbox ownership was proved. Already verified accounts are untouched,
+and ordinary e-mail verification preserves passwords and sessions. The mailbox
+owner can set a password through the e-mailed reset flow and enroll new
+authenticators. Invitation activation errors are logged without blocking
+sign-in.
+
 Each endpoint has separate IP and normalized email-hash buckets: production
 defaults are 60 requests per minute per IP and 10 per 10 minutes per email,
 with magic links limited to 5 per 10 minutes per email. Existing public auth

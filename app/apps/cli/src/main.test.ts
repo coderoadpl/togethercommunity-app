@@ -56,6 +56,9 @@ interface Hoisted {
   verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
   probeStripePermissions: ReturnType<typeof vi.fn>;
+  listTenantTeam: ReturnType<typeof vi.fn>;
+  addTenantAdmin: ReturnType<typeof vi.fn>;
+  removeTenantAdmin: ReturnType<typeof vi.fn>;
   getTenantSettings: ReturnType<typeof vi.fn>;
   updateTenantSettings: ReturnType<typeof vi.fn>;
   getTenantRouting: ReturnType<typeof vi.fn>;
@@ -120,6 +123,9 @@ const h = vi.hoisted(
     verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
     probeStripePermissions: vi.fn(),
+    listTenantTeam: vi.fn(),
+    addTenantAdmin: vi.fn(),
+    removeTenantAdmin: vi.fn(),
     getTenantSettings: vi.fn(),
     updateTenantSettings: vi.fn(),
     getTenantRouting: vi.fn(),
@@ -202,6 +208,9 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listModules: h.listModules,
     listLessons: h.listLessons,
     updateLesson: h.updateLesson,
+    listTenantTeam: h.listTenantTeam,
+    addTenantAdmin: h.addTenantAdmin,
+    removeTenantAdmin: h.removeTenantAdmin,
     getTenantSettings: h.getTenantSettings,
     updateTenantSettings: h.updateTenantSettings,
     health: h.health,
@@ -1468,6 +1477,47 @@ describe('catalog cleanup commands', () => {
   });
 });
 
+describe('team CLI', () => {
+  beforeEach(() => {
+    h.listTenantTeam.mockReset().mockResolvedValue(ok({
+      members: [{ userId: 'admin-user', email: 'Admin@example.test', name: null, role: 'admin' }],
+    }));
+    h.addTenantAdmin.mockReset().mockResolvedValue(ok({ status: 'invitation_sent' }));
+    h.removeTenantAdmin.mockReset().mockResolvedValue(ok({ userId: 'admin-user' }));
+  });
+
+  it('lists staff in the JSON envelope', async () => {
+    await run('--json', 'team', 'list');
+    expect(h.listTenantTeam).toHaveBeenCalledOnce();
+    expect(soleJson()).toMatchObject({ ok: true, data: { members: [{ userId: 'admin-user' }] } });
+  });
+
+  it('normalizes an address before adding an administrator', async () => {
+    await run('--json', 'team', 'add', ' Admin@Example.test ');
+    expect(h.addTenantAdmin).toHaveBeenCalledWith({ email: 'admin@example.test' });
+    expect(soleJson()).toEqual({ ok: true, data: { status: 'invitation_sent' } });
+  });
+
+  it('resolves an address case-insensitively before removing its user id', async () => {
+    await run('--json', 'team', 'remove', ' ADMIN@EXAMPLE.TEST ');
+    expect(h.removeTenantAdmin).toHaveBeenCalledWith({ userId: 'admin-user' });
+  });
+
+  it('does not remove anything when the email is absent', async () => {
+    await run('--json', 'team', 'remove', 'missing@example.test');
+    expect(h.removeTenantAdmin).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(process.exitCode).toBe(5);
+  });
+
+  it('propagates owner-only authorization failures without attempting a removal', async () => {
+    h.listTenantTeam.mockResolvedValue(err(appError('forbidden', 'Owner role required')));
+    await run('--json', 'team', 'remove', 'admin@example.test');
+    expect(h.removeTenantAdmin).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+});
 
 describe('tenant analytics settings', () => {
   it('passes all five analytics settings through the existing update path', async () => {

@@ -3959,6 +3959,7 @@ describe('member erasure repository', () => {
     expect(result).toEqual({
       alreadyDeleted: false,
       authUserErased: true,
+      deletedTeamInvitations: 0,
       erasureRequestId: null,
       avatarUrl: ERASURE_AVATAR_URL,
     });
@@ -4146,6 +4147,7 @@ describe('member erasure repository', () => {
     expect(result).toEqual({
       alreadyDeleted: true,
       authUserErased: false,
+      deletedTeamInvitations: 0,
       erasureRequestId: null,
       avatarUrl: null,
     });
@@ -4161,6 +4163,7 @@ describe('member erasure repository', () => {
     expect(result).toEqual({
       alreadyDeleted: false,
       authUserErased: false,
+      deletedTeamInvitations: 0,
       erasureRequestId: null,
       avatarUrl: null,
     });

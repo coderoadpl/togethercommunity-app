@@ -190,6 +190,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/api-keys/')) return 'api-key:write';
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
+  if (path.startsWith('/api/tenant/team')) return 'tenant:settings:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/tenant/routing') return 'tenant:domain:read';
   if (path.startsWith('/api/tenant/redirects')) {
@@ -308,6 +309,7 @@ const beforeForRoute = (
   }
   if (path === '/api/integrations/telemetry' && method === 'GET') return staff;
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path.startsWith('/api/tenant/team')) return owner;
   if (path === '/api/tenant/routing') return staff;
   if (path.startsWith('/api/tenant/redirects')) return method === 'GET' ? staff : owner;
   if (path === '/api/support/message') return tenantActors;
@@ -561,6 +563,7 @@ const beforeForUseCase = (
     return capability === 'tenant:domain:read' ? staff : owner;
   }
   if (file === 'telemetry-store.ts') return name.endsWith('Hidden') || name === 'getTelemetryStore' ? staff : owner;
+  if (file === 'tenant-team.ts') return owner;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;

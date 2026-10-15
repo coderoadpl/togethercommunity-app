@@ -41,6 +41,7 @@ export * from './usecases/access.js';
 export * from './usecases/tenant-secrets.js';
 export * from './usecases/tenant-domains.js';
 export * from './usecases/tenant-settings.js';
+export * from './usecases/tenant-team.js';
 export * from './usecases/terms-consent.js';
 export * from './usecases/onboarding.js';
 export * from './usecases/tenant-setup-readiness.js';

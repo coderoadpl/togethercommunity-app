@@ -1,4 +1,5 @@
 import type {
+  TenantTeamMember,
   LessonEdition, LessonEditionInput,
   ActivitySummary,
   ActivitySummaryQuery,
@@ -763,6 +764,7 @@ export interface MemberPseudonymization {
 export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
+  deletedTeamInvitations: number;
   erasureRequestId: string | null;
   /** Avatar serve path cleared from the row, so the caller can delete the stored object the transaction cannot reach. */
   avatarUrl: string | null;
@@ -2516,4 +2518,12 @@ export interface LessonEditionRepositories {
 
 export interface LessonEditionTransaction {
   run<T>(tenantId: string, lessonId: string, operation: (repositories: LessonEditionRepositories) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+export interface TenantTeamRepository {
+  list(tenantId: string): Promise<TenantTeamMember[]>;
+  inviteAdmin(tenantId: string, userId: string, email: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  activateInvitation(tenantId: string, userId: string, id: string, audit: TenantAuditEventInput): Promise<boolean>;
+  revokeInvitation(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
+  removeAdmin(tenantId: string, userId: string, audit: TenantAuditEventInput): Promise<boolean>;
 }

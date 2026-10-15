@@ -33,6 +33,21 @@ const plainStrings = (value: unknown): string[] => {
 };
 
 describe('i18n dictionaries', () => {
+  it.each([
+    'team.admin_invited',
+    'team.admin_activated',
+    'team.invitation_revoked',
+    'team.admin_added',
+    'team.admin_removed',
+  ] as const)('uses an event noun for the Polish %s audit label', (kind) => {
+    const label = pl.members.auditLogKind[kind];
+
+    expect(label.split(' ')).toHaveLength(2);
+    expect(label.split(' ')[0]).toMatch(/(?:ja|nie|cie)$/u);
+    expect(label).not.toBe(pl.tenantTeam.revokeInvitation);
+    expect(label).not.toBe(pl.tenantTeam.invitationSent);
+  });
+
   it('never names the retired sending-settings page', () => {
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });

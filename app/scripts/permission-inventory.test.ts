@@ -72,6 +72,20 @@ describe('permission inventory', () => {
     }
   });
 
+  it('keeps all tenant settings updates owner-only', () => {
+    const inventory = collectPermissionInventory();
+    for (const row of [
+      inventory.routes.find((entry) => entry.subject === 'POST /api/tenant/settings'),
+      inventory.useCases.find((entry) => entry.subject === 'tenant-settings.ts#updateTenantSettings'),
+    ]) {
+      expect(row).toMatchObject({
+        capability: 'tenant:settings:write',
+        before: ['owner'],
+        after: ['owner'],
+      });
+    }
+  });
+
   it('classifies sales-link handoffs as public reads and session creation as checkout start', () => {
     const inventory = collectPermissionInventory();
     for (const [subject, capability] of [

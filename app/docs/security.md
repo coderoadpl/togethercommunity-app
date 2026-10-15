@@ -110,25 +110,85 @@ back to anonymous public capabilities, which reach lessons flagged as free
 previews and nothing else.
 
 All responses receive the secure-header baseline. The CSP permits Emotion's
-runtime styles, HTTPS images, HTTPS lesson embeds, and Sentry envelope delivery
-while keeping other scripts and network requests same-origin. Ordinary API
-request bodies are limited to 100KB. Public HTML mutations are limited to 16KB,
+runtime styles, HTTPS images and HTTPS lesson embeds. SPA documents allow HTTPS
+network requests; other responses permit same-origin connections and Sentry
+envelope delivery.
+
+For server-served HTML success returns under `/offer/` and `/checkout/`, the CSP
+extends `script-src` only when `status=success`, permitting
+`https://www.googletagmanager.com/gtag/` and `https://connect.facebook.net`
+alongside the existing same-origin and nonce sources. The Google path prefix
+permits its GA4 scripts. Meta needs its host because `fbevents.js` loads further
+scripts under `/signals/config/<id>` and plugin paths. These success documents
+use `connect-src 'self' https:`, including `/offer/` success returns whose other
+server responses allow only same-origin and Sentry connections. The existing
+`img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
+are added. Entry, cancellation, handoff
+and other documents retain the baseline script policy.
+
+The hosted deployment serves these SPA returns statically. In `vercel.json`,
+the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
+`status=success` and allow
+`script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
+These entries follow the baseline offer headers and catch-all so their policies
+take precedence only on success returns. Offer fallback and cancellation pages,
+other checkout requests and all other header entries retain the baseline policy.
+No other directive changes: `connect-src 'self' https:` and
+`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+Static headers cannot resolve tenant settings, test mode or cookie consent.
+Their script allowance does not load either library: the client still requires a
+configured ID, a live success return and the consent rule before loading.
+
+The platform never loads tenant-authored scripts: checkout analytics is limited
+to Google's GA4 `gtag.js` and Meta's `fbevents.js` libraries for tenant-configured
+measurement and Pixel IDs, on the checkout success document only, after the
+consent rule passes. The member session is not otherwise isolated from those
+libraries, as on any site using GA4 or Meta Pixel.
+
+After a checkout tag loads, navigation away from the return page forces a full
+document load for the sign-in button, router links, programmatic navigation and
+browser history before member or Studio content renders. Consent Mode first denies
+all four categories. A matching consent cookie grants all four; explicitly
+bypassing the cookie check grants only `analytics_storage`, leaving advertising
+storage, advertising user data and advertising personalization denied. The public
+payment configuration computes `cookieScope` from the request host: `parent`
+only for a verified custom domain belonging to the tenant, and `host` on the
+platform base domain and every other host. For `parent`, GA4 omits `cookie_domain`
+and `cookie_prefix`, so its default automatic domain selection shares the
+standard parent-domain `_ga` identifier with the creator's website. For `host`,
+GA4 sets `cookie_domain` to the current document hostname and uses a host-specific
+cookie prefix, so it neither shares identifiers across workspace subdomains nor
+adopts an existing parent-domain `_ga` identifier.
+Meta still uses its vendor-default first-party cookie behavior; the
+loader does not yet isolate its identifiers across workspace subdomains. The
+accepted session-cookie exposure does not authorize shared vendor tracking
+cookies. A consent cookie is separate from these vendor identifiers: it must
+be readable on the checkout host. A creator's unrelated domain cannot set a
+consent cookie for a platform subdomain; a custom checkout subdomain can read a
+consent cookie set for its shared parent domain. Meta's consent API is binary: it grants
+consent once before initialization and events when the rule passes, including the
+bypass path, which loads Meta Pixel in full. When the rule does not pass, Meta
+consent is revoked without loading or initializing the Pixel. The owner is
+responsible for applicable consent rules when enabling the bypass. Each configured
+library sends page-view and purchase events independently. See [checkout analytics](payments.md#checkout-analytics).
+Ordinary API request bodies
+are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;
 only successful public-offer responses opt into revalidated shared caching.
 
-Exception (owner decision 2026-10-14, approved and recorded in `CLAUDE.md`;
-not yet implemented in this baseline): on the checkout success documents
+Exception (owner decision 2026-10-14, approved, implemented and recorded in
+`CLAUDE.md`): on the checkout success documents
 (`/offer/*` and `/checkout/*` requested with `status=success`) `script-src`
 additionally lists the two vendor script sources named there, Google's tag
 library and Meta's pixel library, and `connect-src` is `'self' https:` as on
-other web-app documents (the static hosting headers already say so; the server
-middleware, which today narrows every `/offer/*` path to `'self'
-https://*.sentry.io`, must permit the same on the success documents). The
+other web-app documents, in both the static hosting headers and the server
+middleware. Other `/offer/*` server responses retain `'self'
+https://*.sentry.io`. The
 policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
-and the implementation must leave that document by a full document
-navigation. The accepted exposure is platform-wide, because the base-domain
+and leaving that document after a vendor library loads uses a full document
+navigation. The accepted session exposure is platform-wide, because the base-domain
 session cookie is valid on every workspace subdomain. Every other document
 keeps the same-origin script policy.
 

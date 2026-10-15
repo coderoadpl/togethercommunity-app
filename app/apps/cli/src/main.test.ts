@@ -1467,3 +1467,66 @@ describe('catalog cleanup commands', () => {
     expect(soleJson()).toEqual({ ok: true, data: { deleted: true } });
   });
 });
+
+
+describe('tenant analytics settings', () => {
+  it('passes all five analytics settings through the existing update path', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', 'G-ABCD123',
+      '--analytics-meta-pixel-id', '12345678',
+      '--analytics-consent-cookie-name', 'site_consent',
+      '--analytics-consent-cookie-value', 'analytics:true',
+      '--analytics-load-without-consent', 'true');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: 'G-ABCD123',
+      analyticsMetaPixelId: '12345678',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: true,
+    });
+  });
+
+  it('accepts empty strings to clear text settings and false to restore consent checks', async () => {
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: {} }));
+    await run('--json', 'tenant', 'settings-set',
+      '--analytics-tag-id', '',
+      '--analytics-meta-pixel-id', '',
+      '--analytics-consent-cookie-name', '',
+      '--analytics-consent-cookie-value', '',
+      '--analytics-load-without-consent', 'false');
+    expect(h.updateTenantSettings).toHaveBeenCalledWith({
+      analyticsTagId: '',
+      analyticsMetaPixelId: '',
+      analyticsConsentCookieName: '',
+      analyticsConsentCookieValue: '',
+      analyticsLoadWithoutConsent: false,
+    });
+  });
+
+  it('rejects an invalid consent switch value before calling the client', async () => {
+    await run('--json', 'tenant', 'settings-set', '--analytics-load-without-consent', 'yes');
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('prints all five analytics settings', async () => {
+    h.getTenantSettings.mockResolvedValue(ok({ settings: {
+      analyticsTagId: 'G-ABCDEF1234',
+      analyticsMetaPixelId: '12345678',
+      analyticsConsentCookieName: 'site_consent',
+      analyticsConsentCookieValue: 'analytics:true',
+      analyticsLoadWithoutConsent: false,
+    } }));
+    await run('tenant', 'settings');
+    for (const line of [
+      'analytics tag ID: G-ABCDEF1234',
+      'analytics Meta Pixel ID: 12345678',
+      'analytics consent cookie name: site_consent',
+      'analytics consent cookie value: analytics:true',
+      'analytics load without consent: false',
+    ]) {
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(line));
+    }
+  });
+});

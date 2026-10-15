@@ -67,6 +67,7 @@ import { BrandSchemePreview, BrandPreviewControl, BrandSwatch, Eyebrow, QuietAct
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
+import { AnalyticsSettingsPanel } from './AnalyticsSettingsPanel.js';
 
 const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'art_113_1' ||
@@ -75,7 +76,7 @@ const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'other_statute' ||
   value === 'other';
 
-type SettingsSection = 'company' | 'legal' | 'brand' | 'security' | 'diagnostics';
+type SettingsSection = 'company' | 'legal' | 'brand' | 'analytics' | 'security' | 'diagnostics';
 
 const settingsSectionFromHash = (hash: string): SettingsSection => {
   switch (hash.replace(/^#/, '')) {
@@ -84,6 +85,8 @@ const settingsSectionFromHash = (hash: string): SettingsSection => {
     case 'brand':
     case 'branding':
       return 'brand';
+    case 'analytics':
+      return 'analytics';
     case 'security':
     case 'email-verification':
       return 'security';
@@ -1837,6 +1840,7 @@ export const SettingsPanel = () => {
         <Tab id="settings-tab-company" aria-controls="settings-panel-company" value="company" label={t.settingsNavigation.company} />
         <Tab id="settings-tab-legal" aria-controls="settings-panel-legal" value="legal" label={t.settingsNavigation.legal} />
         <Tab id="settings-tab-brand" aria-controls="settings-panel-brand" value="brand" label={t.settingsNavigation.brand} />
+        <Tab id="settings-tab-analytics" aria-controls="settings-panel-analytics" value="analytics" label={t.analyticsSettings.heading} />
         <Tab id="settings-tab-security" aria-controls="settings-panel-security" value="security" label={t.settingsNavigation.security} />
         <Tab id="settings-tab-diagnostics" aria-controls="settings-panel-diagnostics" value="diagnostics" label={t.settingsNavigation.diagnostics} />
       </Tabs>
@@ -1877,6 +1881,11 @@ export const SettingsPanel = () => {
       {section === 'brand' ? (
         <Box id="settings-panel-brand" role="tabpanel" aria-labelledby="settings-tab-brand">
           <BrandingSettingsPanel canEdit={canEdit} />
+        </Box>
+      ) : null}
+      {section === 'analytics' ? (
+        <Box id="settings-panel-analytics" role="tabpanel" aria-labelledby="settings-tab-analytics">
+          <AnalyticsSettingsPanel canEdit={canEdit} />
         </Box>
       ) : null}
       {section === 'security' ? (

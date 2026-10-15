@@ -261,6 +261,7 @@
     "publicPaymentConfig:[]": {
       "ok": true,
       "value": {
+        "analytics": null,
         "canTest": false,
         "simulatedPaymentsEnabled": true,
         "stripeConfigured": false,

@@ -851,10 +851,38 @@ const proveEmailVerificationResend = async (port: number, homes: string[]): Prom
   const callback = await fetch(actionUrl, { redirect: 'manual' });
   const redirect = callback.headers.get('location');
   assert(callback.status === 302 && redirect !== null, 'email verification: provider callback did not redirect');
-  const me = z.object({ emailVerified: z.boolean() }).parse(
+  expectError(
+    await cli(['whoami']),
+    'email verification: pre-verification session is revoked',
+    3,
+    'unauthorized',
+  );
+  expectError(
+    await cli(['login', '--email', email, '--password', 'verification-password']),
+    'email verification: pre-verification password is rejected',
+    3,
+    'invalid_credentials',
+  );
+  const token = callback.headers.get('set-auth-token');
+  assert(token !== null, 'email verification: provider callback did not create a mailbox-owner session');
+  const response = await fetch(new URL(API_PATHS.me, url), {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert(response.status === 200, 'email verification: mailbox-owner session is not usable');
+  const verified = envelopeSchema(z.object({ email: z.string(), emailVerified: z.boolean() })).parse(
+    await response.json(),
+  );
+  assert(verified.ok, 'email verification: mailbox-owner identity returned an error');
+  assert(verified.data.email === email, 'email verification: mailbox-owner session used the wrong account');
+  assert(verified.data.emailVerified, 'email verification: provider callback did not verify the account');
+  expectOk(
+    await cli(['login-magic', '--email', email]),
+    'email verification: sign in with mailbox proof',
+  );
+  const me = z.object({ email: z.string(), emailVerified: z.boolean() }).parse(
     expectOk(await cli(['whoami']), 'email verification: inspect verified account'),
   );
-  assert(me.emailVerified, 'email verification: provider callback did not verify the account');
+  assert(me.email === email && me.emailVerified, 'email verification: CLI did not recover the verified account');
 };
 
 const provePasswordReset = async (port: number, homes: string[]): Promise<void> => {

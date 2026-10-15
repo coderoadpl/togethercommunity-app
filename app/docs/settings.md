@@ -18,6 +18,11 @@ the workspace's e-mail activates the administrator role automatically; no owner
 retry is needed. Unverified accounts never receive administrator access before
 proving control of the mailbox.
 
+Email verification revokes existing sessions and removes the unverified password
+before granting access to the mailbox owner's new session, just as magic-link
+verification does. The account can continue using emailed sign-in links or set a
+new password through the password-reset email flow.
+
 Administrators can use Studio except platform settings, secrets, API keys and the
 integration test. Adding an existing team member is idempotent and never
 downgrades an owner. Owners cannot remove themselves or another owner; removing

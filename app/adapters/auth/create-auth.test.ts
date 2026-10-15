@@ -171,7 +171,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     );
   });
 
-  it('activates a pending invitation on verification auto-sign-in without recording another sign-in', async () => {
+  it.each([false, true])('replaces unverified sessions before activating an invitation (existing session: %s)', async (useExistingSession) => {
     const tenantId = crypto.randomUUID();
     const team = createTenantTeamRepository(database.db);
     const recordSignIn = vi.fn(async () => undefined);
@@ -189,6 +189,8 @@ describe('real-provider sign-in and passkey proofs', () => {
     });
     const signedUp = await signUp(auth, email);
     expect(signedUp.status).toBe(200);
+    const originalToken = signedUp.headers.get('set-auth-token');
+    expect(originalToken).not.toBeNull();
     await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
     recordSignIn.mockClear();
     const { internalAdapter } = await auth.$context;
@@ -202,15 +204,123 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(activateTeamInvitation).not.toHaveBeenCalled();
     await flushEmails();
     const message = await emails.findByRecipient(normalizeEmail(email));
-    const verified = await auth.handler(new Request(message?.text.match(/https?:\/\/\S+/)?.[0] ?? ''));
+    const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const verified = await auth.handler(new Request(verificationUrl, {
+      headers: useExistingSession ? { authorization: `Bearer ${originalToken}` } : {},
+    }));
 
     expect(verified.status).toBe(302);
+    expect(verified.headers.get('set-auth-token')).not.toBe(originalToken);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${originalToken}`,
+    }))).toBeNull();
+    expect(await internalAdapter.findAccounts(userId)).not.toContainEqual(
+      expect.objectContaining({ providerId: 'credential' }),
+    );
     expect(await authPort.getAuthenticatedUser(new Headers({
       authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
     }))).toMatchObject({ email, emailVerified: true });
     expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
     expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, role: 'admin', status: 'active' }));
     expect(recordSignIn).not.toHaveBeenCalled();
+    const replayed = await auth.handler(new Request(verificationUrl));
+    expect(replayed.status).toBe(302);
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+  });
+
+  it('rejects a password sign-in that finishes after email verification revokes its credential', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const email = `verification-overlap-${crypto.randomUUID()}@together.dev`;
+    expect((await signUp(auth, email)).status).toBe(200);
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const { password } = await auth.$context;
+    const verifyPassword = password.verify;
+    let releasePassword: () => void = () => undefined;
+    let passwordVerified: () => void = () => undefined;
+    const passwordReleased = new Promise<void>((resolve) => { releasePassword = resolve; });
+    const passwordChecked = new Promise<void>((resolve) => { passwordVerified = resolve; });
+    const verificationSpy = vi.spyOn(password, 'verify').mockImplementation(async (input) => {
+      const valid = await verifyPassword(input);
+      passwordVerified();
+      await passwordReleased;
+      return valid;
+    });
+    const pendingSignIn = auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+    try {
+      await passwordChecked;
+      const verified = await auth.handler(new Request(verificationUrl));
+      expect(verified.status).toBe(302);
+      expect(await authPort.getAuthenticatedUser(new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      }))).toMatchObject({ email, emailVerified: true });
+      releasePassword();
+      const delayedSignIn = await pendingSignIn;
+      expect(delayedSignIn.status).toBe(401);
+      expect(delayedSignIn.headers.get('set-auth-token')).toBeNull();
+    } finally {
+      releasePassword();
+      try {
+        await pendingSignIn;
+      } finally {
+        verificationSpy.mockRestore();
+      }
+    }
+  });
+
+  it('rejects a sign-up session created after email verification revokes its credential', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const email = `signup-verification-overlap-${crypto.randomUUID()}@together.dev`;
+    const { internalAdapter } = await auth.$context;
+    const createSession = internalAdapter.createSession;
+    let releaseSignUp: () => void = () => undefined;
+    let signUpReady: () => void = () => undefined;
+    const signUpReleased = new Promise<void>((resolve) => { releaseSignUp = resolve; });
+    const signUpPaused = new Promise<void>((resolve) => { signUpReady = resolve; });
+    const sessionSpy = vi.spyOn(internalAdapter, 'createSession').mockImplementationOnce(async (...input) => {
+      signUpReady();
+      await signUpReleased;
+      return createSession(...input);
+    });
+    const pendingSignUp = signUp(auth, email);
+    try {
+      await signUpPaused;
+      await flushEmails();
+      const message = await emails.findByRecipient(normalizeEmail(email));
+      const verificationUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+      const verified = await auth.handler(new Request(verificationUrl));
+      expect(verified.status).toBe(302);
+      const mailboxOwnerHeaders = new Headers({
+        authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+      });
+      expect(await authPort.getAuthenticatedUser(mailboxOwnerHeaders))
+        .toMatchObject({ email, emailVerified: true });
+      releaseSignUp();
+      const delayedSignUp = await pendingSignUp;
+      expect(delayedSignUp.status).toBe(401);
+      expect(delayedSignUp.headers.get('set-auth-token')).toBeNull();
+      expect(await authPort.getAuthenticatedUser(mailboxOwnerHeaders))
+        .toMatchObject({ email, emailVerified: true });
+    } finally {
+      releaseSignUp();
+      try {
+        await pendingSignUp;
+      } finally {
+        sessionSpy.mockRestore();
+      }
+    }
   });
 
   it('preserves password sign-in when team activation fails', async () => {

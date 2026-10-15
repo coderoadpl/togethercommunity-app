@@ -1,5 +1,5 @@
 import { passkey } from '@better-auth/passkey';
-import { betterAuth } from 'better-auth';
+import { BASE_ERROR_CODES, betterAuth } from 'better-auth';
 import {
   APIError,
   createAuthMiddleware,
@@ -7,9 +7,9 @@ import {
   sensitiveSessionMiddleware,
 } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { createCookieGetter, getCookies } from 'better-auth/cookies';
+import { createCookieGetter, deleteSessionCookie, getCookies } from 'better-auth/cookies';
 import { bearer, magicLink, oneTap, twoFactor } from 'better-auth/plugins';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -29,7 +29,7 @@ import {
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator, PlatformAuthSendLog, TransactionalEmailSender } from '#core/server/index.js';
 import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
-import { devMagicLinks, user } from '#adapters/db/schema.js';
+import { account, devMagicLinks, session, user } from '#adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;
@@ -351,6 +351,35 @@ const additionalTwoFactorPaths = new Set([
   '/magic-link/verify',
   '/passkey/verify-authentication',
 ]);
+
+const passwordSessionGuard = (db: Db) => ({
+  id: 'password-session-guard',
+  hooks: {
+    after: [{
+      matcher: (ctx: { path?: string }) =>
+        ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email',
+      handler: createAuthMiddleware(async (ctx) => {
+        const signedIn = ctx.context.newSession;
+        if (signedIn === null) return;
+        // Password sign-in or sign-up can create a session after mailbox proof removes its credential.
+        const credentialExists = await db.transaction(async (tx) => {
+          await tx.select({ id: user.id }).from(user)
+            .where(eq(user.id, signedIn.user.id)).for('update');
+          const credentials = await tx.select({ id: account.id }).from(account).where(and(
+            eq(account.userId, signedIn.user.id), eq(account.providerId, 'credential'),
+          ));
+          if (credentials.length > 0) return true;
+          await tx.delete(session).where(eq(session.id, signedIn.session.id));
+          return false;
+        });
+        if (credentialExists) return;
+        ctx.context.newSession = null;
+        deleteSessionCookie(ctx);
+        throw APIError.from('UNAUTHORIZED', BASE_ERROR_CODES.INVALID_EMAIL_OR_PASSWORD);
+      }),
+    }],
+  },
+});
 
 export const isAdditionalTwoFactorPath = (path: string | undefined): boolean =>
   path !== undefined && (additionalTwoFactorPaths.has(path) || path.startsWith('/callback/'));
@@ -729,6 +758,18 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     emailVerification: {
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
+      beforeEmailVerification: async (unverifiedUser) => {
+        // Mailbox proof must not promote a password or session planted by another registrant.
+        await db.transaction(async (tx) => {
+          await tx.select({ id: user.id }).from(user)
+            .where(eq(user.id, unverifiedUser.id)).for('update');
+          await tx.delete(account).where(and(
+            eq(account.userId, unverifiedUser.id),
+            eq(account.providerId, 'credential'),
+          ));
+          await tx.delete(session).where(eq(session.userId, unverifiedUser.id));
+        });
+      },
       sendVerificationEmail: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
         const context = emailVerificationContexts.get(normalizedEmail) ?? {
@@ -755,6 +796,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     plugins: [
       ...(settings.google ? [oneTap()] : []),
       hostScopedCredentials(settings),
+      passwordSessionGuard(db),
       bearer(),
       resetRedirectConfinement(),
       // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.

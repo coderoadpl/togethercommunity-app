@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 
-import { AUTH_EMAIL_VERIFICATION_PATH, AUTH_MAGIC_LINK_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
+import {
+  AUTH_EMAIL_VERIFICATION_PATH, AUTH_MAGIC_LINK_VERIFICATION_PATH, createAuthE2eClient,
+} from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import {
   API_PATHS,
@@ -81,7 +83,8 @@ const runInvitationJourney = async (
   const owner = await browser.newContext();
   const invitee = await browser.newContext();
   const passwordInvitee = await browser.newContext();
-  for (const context of [owner, invitee, passwordInvitee]) {
+  const mailboxOwner = await browser.newContext();
+  for (const context of [owner, invitee, passwordInvitee, mailboxOwner]) {
     await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
     await context.route('**/*', async (route) => {
       const url = new URL(route.request().url());
@@ -161,15 +164,43 @@ const runInvitationJourney = async (
   const pending = envelopeSchema(meOutputSchema).parse(await pendingResponse.json());
   assert(pending.ok && pending.data.tenant?.staffRole !== 'admin', 'Unverified invitation activated early');
 
-  const verificationResponsePromise = passwordPage.waitForResponse((response) =>
+  const passwordAuth = createAuthE2eClient({
+    connectUrl,
+    origin: webBaseUrl,
+    headers: { host: new URL(webBaseUrl).host },
+  });
+  const passwordCredentials = { email: passwordInviteeEmail, password: 'verification-password-15' };
+  const passwordBeforeVerification = await passwordAuth.signInEmail(passwordCredentials);
+  assert(passwordBeforeVerification.status === 200, 'Pre-verification password sign-in failed');
+  assert(passwordBeforeVerification.token !== null, 'Pre-verification password session was missing');
+  const passwordSessionHeaders = { authorization: `Bearer ${passwordBeforeVerification.token}` };
+  const passwordSessionResponse = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`, {
+    headers: passwordSessionHeaders,
+  });
+  const passwordSession = envelopeSchema(meOutputSchema).parse(await passwordSessionResponse.json());
+  assert(passwordSession.ok && passwordSession.data.tenant?.staffRole !== 'admin',
+    'Pre-verification password sign-in activated administrator access');
+
+  const verificationPage = await mailboxOwner.newPage();
+  const verificationResponsePromise = verificationPage.waitForResponse((response) =>
     response.url() === verificationLink);
-  await passwordPage.goto(verificationLink, { waitUntil: 'networkidle' });
+  await verificationPage.goto(verificationLink, { waitUntil: 'networkidle' });
   const verificationResponse = await verificationResponsePromise;
   assert(verificationResponse.status() === 302, 'Email verification did not redirect');
   const sessionToken = await verificationResponse.headerValue('set-auth-token');
   assert(sessionToken !== null, 'Email verification did not create a session');
   const headers = { authorization: `Bearer ${sessionToken}` };
-  const verifiedResponse = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`, { headers });
+  const revokedSignupSession = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`);
+  assert(revokedSignupSession.status() === 401, 'Pre-verification sign-up session retained access');
+  const revokedPasswordSession = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.me}`, {
+    headers: passwordSessionHeaders,
+  });
+  assert(revokedPasswordSession.status() === 401, 'Pre-verification password session retained access');
+  const passwordAfterVerification = await passwordAuth.signInEmail(passwordCredentials);
+  assert(passwordAfterVerification.status === 401, 'Pre-verification password still allowed sign-in');
+  assert(passwordAfterVerification.token === null, 'Pre-verification password created a new session');
+
+  const verifiedResponse = await mailboxOwner.request.get(`${webBaseUrl}${API_PATHS.me}`, { headers });
   assert(verifiedResponse.status() === 200, 'Verification session could not read tenant identity');
   const verified = envelopeSchema(meOutputSchema).parse(await verifiedResponse.json());
   assert(verified.ok, 'Verified invitee identity returned an error');
@@ -178,16 +209,17 @@ const runInvitationJourney = async (
   assert(verified.data.tenant?.slug === 'acme', 'Verification resolved the wrong workspace');
   assert(verified.data.tenant?.staffRole === 'admin', 'Email verification did not activate administrator access');
   assert(verified.data.tenantAccess === 'staff', 'Verified invitee did not receive staff access');
-  const verifiedOwnerOnly = await passwordInvitee.request.get(`${webBaseUrl}${API_PATHS.tenantTeam}`, { headers });
+  const verifiedOwnerOnly = await mailboxOwner.request.get(`${webBaseUrl}${API_PATHS.tenantTeam}`, { headers });
   assert(verifiedOwnerOnly.status() === 403, 'Verified administrator received owner-only team access');
   await ownerPage.reload({ waitUntil: 'networkidle' });
   await passwordInvitedRow.getByText(en.tenantTeam.administrator, { exact: true }).waitFor({
     state: 'visible', timeout: 15000,
   });
+  await mailboxOwner.close();
   await passwordInvitee.close();
   await invitee.close();
   await owner.close();
-  console.log('team-admins-e2e: magic-link and email-verification activation, Studio access and owner-only denial OK');
+  console.log('team-admins-e2e: invitation activation, pre-verification credential revocation, Studio access and owner-only denial OK');
 };
 
 const startedAt = Date.now();

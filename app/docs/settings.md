@@ -13,17 +13,20 @@ Owners manage administrators in **Studio → Settings → Security → Team**. A
 e-mail address creates a pending invitation and sends a sign-in link. Every valid
 address receives the same opaque confirmation, regardless of whether an account
 already exists or has a verified address. Pending invitations appear as
-**Invitation sent**, with a **Revoke invitation** action. Completing sign-in through
-the invitation's magic link activates the administrator role automatically; no
-owner retry is needed. Password sign-in and ordinary e-mail verification do not
-activate pending invitations.
+**Invitation sent**, with a **Revoke invitation** action. Any successful
+mailbox-proving magic-link sign-in on the tenant host activates the administrator
+role automatically, after any required two-factor authentication; the link need
+not come from the invitation e-mail, and no owner retry is needed. Password
+sign-in and ordinary e-mail verification do not activate pending invitations.
 
-If a successful magic-link sign-in verifies a previously unverified account
-with a password credential, verification removes that credential and revokes
-the user's other sessions in the same transaction, before any invitation is
-activated. This prevents a password set before mailbox ownership was proved
-from retaining access. Already verified accounts are unchanged. The person can
-continue using sign-in links or set a password through the e-mailed reset flow.
+If a successful magic-link sign-in verifies a previously unverified account,
+verification removes its password credentials, passkeys, two-factor enrollment
+and pending user-bound verification values, including two-factor challenges,
+revokes all existing sessions and resets two-factor status in the same locked
+transaction, before any invitation is activated. This invalidates authenticators
+and challenges created before mailbox ownership was proved. Already verified
+accounts are unchanged. The person can continue using sign-in links, set a
+password through the e-mailed reset flow and enroll new authenticators.
 
 Administrators can use Studio except platform settings, secrets, API keys and the
 integration test. Adding an existing team member is idempotent and never

@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
 import { asc, eq, sql } from 'drizzle-orm';
-import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
 import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
-import { emailEvents, members, tenants, user, verification } from '#adapters/db/schema.js';
+import { emailEvents, members, passkey, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
@@ -36,6 +35,7 @@ import {
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
+import { totpCode } from './totp-test-helper.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 beforeAll(async () => {
@@ -54,29 +54,6 @@ const SIGN_UP_PASSWORD = passwordFixture('signup-password');
 const OLD_PASSWORD = passwordFixture('old-password');
 const NEW_PASSWORD = passwordFixture('new-password');
 const CURRENT_PASSWORD = passwordFixture('current-password');
-
-const totpCode = (secret: string): string => {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = '';
-  for (const character of secret.toUpperCase().replace(/=+$/u, '')) {
-    const value = alphabet.indexOf(character);
-    if (value < 0) throw new Error('Invalid base32 secret');
-    bits += value.toString(2).padStart(5, '0');
-  }
-  const bytes = Buffer.alloc(Math.floor(bits.length / 8));
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = Number.parseInt(bits.slice(index * 8, index * 8 + 8), 2);
-  }
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
-  const digest = createHmac('sha1', bytes).update(counter).digest();
-  const offset = (digest.at(-1) ?? 0) & 0x0f;
-  const binary = ((digest[offset] ?? 0) & 0x7f) << 24 |
-    (digest[offset + 1] ?? 0) << 16 |
-    (digest[offset + 2] ?? 0) << 8 |
-    (digest[offset + 3] ?? 0);
-  return (binary % 1_000_000).toString().padStart(6, '0');
-};
 
 describe('ASVS authentication policy', () => {
   it.each([
@@ -239,6 +216,7 @@ describe('real-provider sign-in and passkey proofs', () => {
         emailVerified: verifiedUser?.emailVerified,
         hasCredential: accounts.some((account) => account.providerId === 'credential'),
         hasOriginalSession: originalSession !== null,
+        hasPasskey: (await db.select().from(passkey).where(eq(passkey.userId, input.userId))).length > 0,
       });
     });
     const { auth, authPort, db, magicLinks } = buildAuth({ activateTeamInvitation });
@@ -246,6 +224,11 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(signedUp.status).toBe(200);
     originalToken = signedUp.headers.get('set-auth-token') ?? '';
     expect(originalToken).not.toBe('');
+    const registrant = await authPort.getAuthenticatedUser(new Headers({ authorization: `Bearer ${originalToken}` }));
+    await db.insert(passkey).values({
+      id: crypto.randomUUID(), userId: registrant?.userId ?? '', publicKey: 'test-public-key',
+      credentialID: crypto.randomUUID(), counter: 0, deviceType: 'singleDevice', backedUp: false,
+    });
     if (emailVerified) await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
     await authPort.requestMagicLink({
       email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
@@ -267,13 +250,13 @@ describe('real-provider sign-in and passkey proofs', () => {
       body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
     }));
     expect(activationState).toHaveBeenCalledExactlyOnceWith({
-      emailVerified: true, hasCredential: emailVerified, hasOriginalSession: emailVerified,
+      emailVerified: true, hasCredential: emailVerified, hasOriginalSession: emailVerified, hasPasskey: emailVerified,
     });
     expect(passwordSignIn.status).toBe(emailVerified ? 200 : 401);
     expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps existing sessions when an unverified magic-link user has no password credential', async () => {
+  it('revokes existing sessions even when an unverified magic-link user has no password credential', async () => {
     const { auth, authPort, magicLinks } = buildAuth();
     const email = `magic-passwordless-${crypto.randomUUID()}@together.dev`;
     const { userId } = await authPort.ensureUser(email);
@@ -289,6 +272,9 @@ describe('real-provider sign-in and passkey proofs', () => {
     expect(signedIn.status).toBe(302);
     expect(await authPort.getAuthenticatedUser(new Headers({
       authorization: `Bearer ${originalSession?.token ?? ''}`,
+    }))).toBeNull();
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
     }))).toMatchObject({ email, emailVerified: true });
   });
 
@@ -331,6 +317,20 @@ describe('real-provider sign-in and passkey proofs', () => {
     const headers = new Headers({ authorization: `Bearer ${signedUp.headers.get('set-auth-token') ?? ''}` });
     const registrant = await authPort.getAuthenticatedUser(headers);
     expect(registrant).toMatchObject({ email, emailVerified: false });
+    const userId = registrant?.userId ?? '';
+    const authenticatorId = crypto.randomUUID();
+    await db.insert(passkey).values({
+      id: authenticatorId, userId, publicKey: 'rollback-public-key',
+      credentialID: authenticatorId, counter: 0, deviceType: 'singleDevice', backedUp: false,
+    });
+    await db.insert(twoFactor).values({
+      id: authenticatorId, userId, secret: 'rollback-secret', backupCodes: 'rollback-backup-codes',
+    });
+    await db.update(user).set({ twoFactorEnabled: true }).where(eq(user.id, userId));
+    await db.insert(verification).values({
+      id: authenticatorId, identifier: `2fa-${authenticatorId}`, value: userId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
     await authPort.requestMagicLink({
       email, callbackURL: 'http://studio.localhost:48730/', tenantName: 'Studio',
       language: 'en', baseUrl: 'http://studio.localhost:48730',
@@ -347,6 +347,12 @@ describe('real-provider sign-in and passkey proofs', () => {
       expect(await internalAdapter.findAccounts(registrant?.userId ?? '')).toContainEqual(
         expect.objectContaining({ providerId: 'credential' }),
       );
+      expect(await db.select().from(passkey).where(eq(passkey.userId, userId))).toHaveLength(1);
+      expect(await db.select().from(twoFactor).where(eq(twoFactor.userId, userId))).toHaveLength(1);
+      expect(await db.select().from(verification).where(eq(verification.id, authenticatorId))).toHaveLength(1);
+      expect(await db.select().from(user).where(eq(user.id, userId))).toEqual([
+        expect.objectContaining({ emailVerified: false, twoFactorEnabled: true }),
+      ]);
       expect(activateTeamInvitation).not.toHaveBeenCalled();
     } finally {
       await db.execute(sql`DROP TRIGGER reject_magic_verification ON "user"`);
@@ -523,11 +529,12 @@ describe('real-provider sign-in and passkey proofs', () => {
   it.each(['totp', 'backup-code'])('activates only magic-link invitations after %s proof and redeems each backup code once', async (proof) => {
     const recordSignIn = vi.fn(async () => undefined);
     const activateTeamInvitation = vi.fn(async () => undefined);
-    const { auth } = buildAuth({ recordSignIn, activateTeamInvitation });
+    const { auth, db } = buildAuth({ recordSignIn, activateTeamInvitation });
     const email = `two-factor-${Date.now()}@together.dev`;
     const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
     const token = signedUp.headers.get('set-auth-token') ?? '';
+    await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
       new Request(`http://studio.localhost:48730/api/auth${path}`, {
         method: 'POST',

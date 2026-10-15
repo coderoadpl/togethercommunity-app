@@ -9,7 +9,7 @@ import {
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createCookieGetter, deleteSessionCookie, getCookies } from 'better-auth/cookies';
 import { bearer, magicLink, oneTap, twoFactor } from 'better-auth/plugins';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -29,7 +29,7 @@ import {
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator, PlatformAuthSendLog, TransactionalEmailSender } from '#core/server/index.js';
 import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
-import { account, devMagicLinks, session, user } from '#adapters/db/schema.js';
+import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;
@@ -382,21 +382,37 @@ const magicLinkMailboxProof = (db: Db, settings: AuthSettings) => ({
           findUserByEmail: async (...args) => {
             const found = await adapter.findUserByEmail(...args);
             if (found === null) return found;
-            // Magic Link looks up the user only after consuming a valid token. Verify under
-            // the same row lock as cleanup so concurrent sign-ins cannot retain unproven access.
-            await db.transaction(async (tx) => {
-              const [current] = await tx.select({ emailVerified: user.emailVerified }).from(user)
+            // The provider reaches this lookup only after consuming a valid mailbox token.
+            // Return the locked state so it cannot challenge with a revoked 2FA enrollment.
+            const verified = await db.transaction(async (tx) => {
+              const [current] = await tx.select({
+                emailVerified: user.emailVerified, twoFactorEnabled: user.twoFactorEnabled,
+              }).from(user)
                 .where(eq(user.id, found.user.id)).for('update');
-              if (current === undefined || current.emailVerified) return;
-              const removed = await tx.delete(account).where(and(
+              if (current === undefined) throw new Error('Magic-link user no longer exists');
+              if (current.emailVerified) return current;
+              await tx.delete(account).where(and(
                 eq(account.userId, found.user.id), eq(account.providerId, 'credential'),
-              )).returning({ id: account.id });
-              if (removed.length > 0) await tx.delete(session).where(eq(session.userId, found.user.id));
-              await tx.update(user).set({ emailVerified: true, updatedAt: new Date() })
+              ));
+              await tx.delete(session).where(eq(session.userId, found.user.id));
+              await tx.delete(passkeyTable).where(eq(passkeyTable.userId, found.user.id));
+              await tx.delete(twoFactorTable).where(eq(twoFactorTable.userId, found.user.id));
+              const pending = await tx.delete(verification).where(or(
+                eq(verification.value, found.user.id),
+                sql`strpos(${verification.value}, ${`"userData":{"id":${JSON.stringify(found.user.id)}`}) > 0`,
+                sql`strpos(${verification.value}, ${`"userId":${JSON.stringify(found.user.id)}`}) > 0`,
+              )).returning({ identifier: verification.identifier });
+              if (pending.length > 0) {
+                await tx.delete(verification).where(inArray(verification.identifier, pending.flatMap(({ identifier }) => [
+                  `2fa-attempts-${identifier}`, `2fa-otp-${identifier}`, `magic-link-team:${identifier}`,
+                ])));
+              }
+              await tx.update(user).set({ emailVerified: true, twoFactorEnabled: false, updatedAt: new Date() })
                 .where(eq(user.id, found.user.id));
+              return { emailVerified: true, twoFactorEnabled: false };
             });
             mailboxUserId = found.user.id;
-            return { ...found, user: { ...found.user, emailVerified: true } };
+            return { ...found, user: { ...found.user, ...verified } };
           },
         };
       }),

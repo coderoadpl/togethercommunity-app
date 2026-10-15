@@ -1,9 +1,10 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { ok } from '#core/domain/index.js';
 
 import { createAuth, createAuthPort } from '#adapters/auth/create-auth.js';
+import { totpCode } from '#adapters/auth/totp-test-helper.js';
 import { AUTH_EMAIL_VERIFICATION_PATH, createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { authorizeTenant } from '#core/server/authorize.js';
 import { resolveIdentity } from '#core/server/usecases/resolve-identity.js';
@@ -20,7 +21,7 @@ import {
   createTenantRepository,
   createTenantTeamRepository,
 } from './repositories.js';
-import { account, session, tenantAdmins, tenantAuditEvents, tenants, user } from './schema.js';
+import { account, passkey, session, tenantAdmins, tenantAuditEvents, tenants, twoFactor, user, verification } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -34,7 +35,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await database?.close(); });
 
-it('withholds staff access until magic-link sign-in, then activates the invitation and invalidates the unverified password session', async () => {
+it('activates invitations only after invalidating pre-proof passwords, passkeys, sessions and held two-factor challenges', async () => {
   const clock = { nowIso: () => new Date().toISOString() };
   const ids = { nextId: () => crypto.randomUUID() };
   await database.db.insert(tenants).values([
@@ -44,6 +45,7 @@ it('withholds staff access until magic-link sign-in, then activates the invitati
   await database.db.insert(user).values([
     { id: 'owner', email: 'owner@example.test', name: 'Owner', emailVerified: true },
     { id: 'invitee', email: 'invitee@example.test', name: 'Invitee', emailVerified: false },
+    { id: 'invitee-other', email: 'other-invitee@example.test', name: 'Other invitee', emailVerified: false },
   ]);
   await database.db.insert(tenantAdmins).values({
     id: 'owner-grant', tenantId: 'acme', userId: 'owner', role: 'owner',
@@ -84,6 +86,73 @@ it('withholds staff access until magic-link sign-in, then activates the invitati
     id: 'invitee-session', token: 'pre-existing-session-token', userId: 'invitee',
     expiresAt: new Date(Date.now() + 60_000), updatedAt: new Date(),
   });
+  const challengeCookies: string[] = [];
+  const authHttp = createAuthE2eClient({
+    connectUrl: 'http://acme.localhost:48730',
+    origin: 'http://acme.localhost:48730',
+    request: async (input, init) => {
+      const response = await auth.handler(new Request(input, init));
+      const challengeCookie = response.headers.getSetCookie()
+        .find((entry) => entry.startsWith('better-auth.two_factor='))?.split(';')[0];
+      if (challengeCookie !== undefined) challengeCookies.push(challengeCookie);
+      return response;
+    },
+  });
+  const enrollment = await auth.api.enableTwoFactor({
+    body: { password: 'attacker-password-15' },
+    headers: new Headers({
+      authorization: 'Bearer pre-existing-session-token',
+      origin: 'http://acme.localhost:48730',
+    }),
+  });
+  const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+  const enrolled = await authHttp.verifyTotp('pre-existing-session-token', totpCode(secret));
+  expect(enrolled.status).toBe(200);
+  expect(await database.db.select().from(twoFactor).where(eq(twoFactor.userId, 'invitee'))).toHaveLength(1);
+  const attackerSessionToken = enrolled.token ?? '';
+  expect(attackerSessionToken).not.toBe('');
+  await database.db.insert(passkey).values({
+    id: 'pre-proof-passkey', userId: 'invitee', name: 'Unverified passkey',
+    publicKey: 'pre-proof-public-key', credentialID: 'pre-proof-credential',
+    counter: 0, deviceType: 'singleDevice', backedUp: false,
+  });
+  await database.db.insert(verification).values({
+    id: 'pending-passkey', identifier: 'pending-passkey',
+    value: JSON.stringify({ challenge: 'pending-challenge', userData: { id: 'invitee', name: 'Invitee' } }),
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  for (const proof of ['totp', 'backup-code']) {
+    const challenged = await authHttp.signInEmail({ email: 'invitee@example.test', password: 'attacker-password-15' });
+    expect(challenged.status, proof).toBe(200);
+    expect(challenged.json, proof).toMatchObject({ twoFactorRedirect: true });
+  }
+  expect(challengeCookies).toHaveLength(2);
+  const heldChallenges = await database.db.select().from(verification).where(eq(verification.value, 'invitee'));
+  expect(heldChallenges.filter((entry) => entry.identifier.startsWith('2fa-'))).toHaveLength(2);
+  const companionValues = heldChallenges.flatMap(({ identifier }) => [
+    { identifier: `2fa-attempts-${identifier}`, value: '1' },
+    { identifier: `2fa-otp-${identifier}`, value: 'encrypted-code' },
+    { identifier: `magic-link-team:${identifier}`, value: JSON.stringify({ userId: 'invitee', origin: 'http://acme.localhost:48730' }) },
+  ]).map((entry) => ({ ...entry, id: ids.nextId(), expiresAt: new Date(Date.now() + 60_000) }));
+  await database.db.insert(verification).values([
+    ...companionValues,
+    { id: 'pre-proof-reset', identifier: 'reset-password:pre-proof', value: 'invitee', expiresAt: new Date(Date.now() + 60_000) },
+  ]);
+  const pendingIds = ['pending-passkey', 'pre-proof-reset', ...heldChallenges.map((entry) => entry.id), ...companionValues.map((entry) => entry.id)];
+  await database.db.insert(passkey).values({
+    id: 'unrelated-passkey', userId: 'invitee-other', name: 'Other passkey',
+    publicKey: 'unrelated-public-key', credentialID: 'unrelated-credential',
+    counter: 0, deviceType: 'singleDevice', backedUp: false,
+  });
+  await database.db.insert(twoFactor).values({
+    id: 'unrelated-two-factor', userId: 'invitee-other', secret: 'unrelated-secret', backupCodes: 'unrelated-backup-codes',
+  });
+  const unrelatedValues = [
+    { id: 'unrelated-challenge', identifier: '2fa-unrelated', value: 'invitee-other' },
+    { id: 'unrelated-passkey-challenge', identifier: 'unrelated-passkey-challenge', value: JSON.stringify({ userData: { id: 'invitee-other' } }) },
+    { id: 'unrelated-team-marker', identifier: 'magic-link-team:2fa-unrelated', value: JSON.stringify({ userId: 'invitee-other', origin: 'http://acme.localhost:48730' }) },
+  ].map((entry) => ({ ...entry, expiresAt: new Date(Date.now() + 60_000) }));
+  await database.db.insert(verification).values(unrelatedValues);
   const identityDeps = {
     authPort, ids, clock,
     members: createMemberRepository(database.db),
@@ -110,7 +179,7 @@ it('withholds staff access until magic-link sign-in, then activates the invitati
     .where(eq(tenantAuditEvents.kind, 'team.admin_activated'))).toEqual([]);
 
   const authenticated = await authPort.getAuthenticatedUser(new Headers({
-    authorization: 'Bearer pre-existing-session-token',
+    authorization: `Bearer ${attackerSessionToken}`,
   }));
   expect(authenticated).toMatchObject({ userId: 'invitee', emailVerified: false });
   const identity = await resolveIdentity(authenticated, request, identityDeps);
@@ -137,6 +206,46 @@ it('withholds staff access until magic-link sign-in, then activates the invitati
     authorization: 'Bearer pre-existing-session-token',
   }))).toBeNull();
   expect(await database.db.select().from(account).where(eq(account.userId, 'invitee'))).toEqual([]);
+  expect(await authPort.getAuthenticatedUser(new Headers({
+    authorization: `Bearer ${attackerSessionToken}`,
+  }))).toBeNull();
+  expect(await database.db.select().from(passkey).where(eq(passkey.userId, 'invitee'))).toEqual([]);
+  expect(await database.db.select().from(twoFactor).where(eq(twoFactor.userId, 'invitee'))).toEqual([]);
+  expect(await database.db.select().from(verification).where(inArray(verification.id, pendingIds))).toEqual([]);
+  expect(await database.db.select().from(passkey).where(eq(passkey.userId, 'invitee-other')))
+    .toEqual([expect.objectContaining({ id: 'unrelated-passkey', credentialID: 'unrelated-credential' })]);
+  expect(await database.db.select().from(twoFactor).where(eq(twoFactor.userId, 'invitee-other')))
+    .toEqual([expect.objectContaining({ id: 'unrelated-two-factor', secret: 'unrelated-secret', backupCodes: 'unrelated-backup-codes' })]);
+  expect(await database.db.select().from(verification).where(inArray(verification.id, unrelatedValues.map((entry) => entry.id))))
+    .toEqual(expect.arrayContaining(unrelatedValues.map((entry) => expect.objectContaining(entry))));
+  expect(await database.db.select({ emailVerified: user.emailVerified }).from(user).where(eq(user.id, 'invitee-other')))
+    .toEqual([{ emailVerified: false }]);
+  expect(await database.db.select({ emailVerified: user.emailVerified, twoFactorEnabled: user.twoFactorEnabled })
+    .from(user).where(eq(user.id, 'invitee'))).toEqual([{ emailVerified: true, twoFactorEnabled: false }]);
+  const mailboxOwner = await authPort.getAuthenticatedUser(new Headers({
+    authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+  }));
+  const activatedIdentity = await resolveIdentity(mailboxOwner, request, identityDeps);
+  if (!activatedIdentity.ok) throw new Error('Activated invitee identity could not be resolved');
+  expect(activatedIdentity.value).toMatchObject({ tenantAccess: 'staff', staffRole: 'admin' });
+  expect(authorizeTenant({ identity: activatedIdentity.value }, 'order:read')).toMatchObject({ ok: true });
+  const heldTotp = await auth.api.verifyTOTP({
+    body: { code: totpCode(secret) },
+    headers: new Headers({ cookie: challengeCookies[0] ?? '', origin: 'http://acme.localhost:48730' }),
+    asResponse: true,
+  });
+  const heldBackupCode = await auth.api.verifyBackupCode({
+    body: { code: enrollment.backupCodes[0] ?? '' },
+    headers: new Headers({ cookie: challengeCookies[1] ?? '', origin: 'http://acme.localhost:48730' }),
+    asResponse: true,
+  });
+  for (const completed of [heldTotp, heldBackupCode]) {
+    expect(completed.status).toBe(401);
+    expect(completed.headers.get('set-auth-token')).toBeNull();
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${completed.headers.get('set-auth-token') ?? ''}`,
+    }))).toBeNull();
+  }
   expect(await team.list('studio')).toContainEqual(expect.objectContaining({
     userId: 'invitee', status: 'invited',
   }));

@@ -2,11 +2,14 @@ import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type Page } from 'playwright-core';
 
+import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 import {
-  AUTH_EMAIL_VERIFICATION_PATH, AUTH_MAGIC_LINK_VERIFICATION_PATH, createAuthE2eClient,
+  AUTH_EMAIL_VERIFICATION_PATH, AUTH_MAGIC_LINK_VERIFICATION_PATH, AUTH_PASSKEY_AUTHENTICATION_PATH,
+  AUTH_TOTP_VERIFICATION_PATH, createAuthE2eClient,
 } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import {
@@ -34,6 +37,7 @@ const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const inviteeEmail = 'team-admin-e2e@together.dev';
 const passwordInviteeEmail = 'team-admin-password-e2e@together.dev';
 const verificationInviteeEmail = 'team-admin-verification-e2e@together.dev';
+const twoFactorRateLimitResetMilliseconds = 10_100;
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -75,6 +79,46 @@ const readEmailLink = async (
   throw new Error(`Email for ${email} did not reach the dev sink`);
 };
 
+const currentTotp = async (secret: string): Promise<string> => {
+  const periodMilliseconds = AUTH_POLICY.totpPeriodSeconds * 1000;
+  const remainingMilliseconds = periodMilliseconds - (Date.now() % periodMilliseconds);
+  if (remainingMilliseconds < 5000) await delay(remainingMilliseconds + 100);
+  return generate({ secret, digits: AUTH_POLICY.totpDigits, period: AUTH_POLICY.totpPeriodSeconds });
+};
+
+const enrollTwoFactor = async (page: Page, webBaseUrl: string): Promise<string> => {
+  await page.goto(`${webBaseUrl}/account?tab=security`, { waitUntil: 'networkidle' });
+  await page.getByTestId('enable-2fa-open').click();
+  await page.getByTestId('enable-2fa-password').fill('verification-password-15');
+  await page.getByTestId('enable-2fa').click();
+  await page.getByTestId('two-factor-manual-setup').click();
+  const totpUri = await page.getByTestId('totp-uri').textContent();
+  assert(totpUri !== null, 'Two-factor enrollment did not return an authenticator URI');
+  const secret = new URL(totpUri).searchParams.get('secret');
+  assert(secret !== null, 'Two-factor enrollment did not return an authenticator secret');
+  await page.getByTestId('two-factor-next').click();
+  await page.getByTestId('verify-totp-code').fill(await currentTotp(secret));
+  await page.getByTestId('backup-codes').waitFor({ state: 'visible', timeout: 15000 });
+  const codes = await page.getByTestId('backup-codes').locator('li').allTextContents();
+  assert(codes.length === AUTH_POLICY.twoFactorBackupCodeCount, 'Two-factor enrollment omitted backup codes');
+  await page.getByRole('checkbox', { name: en.security.backupCodesSaved }).check();
+  await page.getByTestId('two-factor-finish').click();
+  await page.getByTestId('two-factor-done-close').click();
+  await page.getByTestId('two-factor-manage').waitFor({ state: 'visible', timeout: 15000 });
+  return secret;
+};
+
+const completeTwoFactor = async (page: Page, secret: string, expectedStatus: number): Promise<void> => {
+  await page.getByTestId('two-factor-challenge').waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByTestId('two-factor-code').fill(await currentTotp(secret));
+  const responsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === AUTH_TOTP_VERIFICATION_PATH);
+  await page.getByTestId('verify-login-totp').click();
+  const response = await responsePromise;
+  assert(response.status() === expectedStatus,
+    `Two-factor completion at ${page.url()} returned HTTP ${response.status()} instead of ${expectedStatus}`);
+};
+
 const runInvitationJourney = async (
   browser: Browser,
   connectUrl: string,
@@ -87,7 +131,8 @@ const runInvitationJourney = async (
   const mailboxOwner = await browser.newContext();
   const verificationInvitee = await browser.newContext();
   const verificationMailboxOwner = await browser.newContext();
-  const contexts = [owner, invitee, passwordInvitee, mailboxOwner, verificationInvitee, verificationMailboxOwner];
+  const heldPasswordChallenge = await browser.newContext();
+  const contexts = [heldPasswordChallenge, owner, invitee, passwordInvitee, mailboxOwner, verificationInvitee, verificationMailboxOwner];
   for (const context of contexts) {
     await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
     await context.route('**/*', async (route) => {
@@ -191,6 +236,42 @@ const runInvitationJourney = async (
     assert(passwordSession.ok && passwordSession.data.tenant?.staffRole !== 'admin',
       'Pre-verification password sign-in activated administrator access');
 
+    let unverifiedSecret: string | undefined;
+    let heldChallengePage: Page | undefined;
+    if (mode === 'magic-link') {
+      await passwordPage.addInitScript(
+        "Object.defineProperty(PublicKeyCredential, 'isConditionalMediationAvailable', { configurable: true, value: () => Promise.resolve(false) })",
+      );
+      const cdp = await passwordContext.newCDPSession(passwordPage);
+      await cdp.send('WebAuthn.enable');
+      await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+          protocol: 'ctap2', transport: 'internal', hasResidentKey: true,
+          hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true,
+        },
+      });
+      await passwordPage.goto(`${webBaseUrl}/account?tab=security`, { waitUntil: 'networkidle' });
+      await passwordPage.getByTestId('add-passkey-open').click();
+      await passwordPage.getByTestId('passkey-name').fill('Unverified Invitee Passkey');
+      await passwordPage.getByTestId('passkey-proof-password').fill(passwordCredentials.password);
+      await passwordPage.getByTestId('add-passkey').click();
+      try {
+        await passwordPage.getByText('Unverified Invitee Passkey', { exact: true }).waitFor({
+          state: 'visible', timeout: 15000,
+        });
+      } catch (cause) {
+        const alert = await passwordPage.getByRole('alert').allTextContents();
+        throw new Error(`Unverified passkey enrollment failed: ${alert.join('; ')}\n${String(cause)}`);
+      }
+      unverifiedSecret = await enrollTwoFactor(passwordPage, webBaseUrl);
+      heldChallengePage = await heldPasswordChallenge.newPage();
+      await heldChallengePage.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+      await signInWithPassword(heldChallengePage, email, passwordCredentials.password);
+      await heldChallengePage.getByTestId('two-factor-challenge').waitFor({ state: 'visible', timeout: 15000 });
+      const heldResponse = await heldPasswordChallenge.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(heldResponse.status() === 401, 'Incomplete password challenge created a session');
+    }
+
     const callbackLink = mode === 'magic-link' ? passwordInvitationLink : verificationLink;
     const callbackPage = await mailboxContext.newPage();
     const callbackResponsePromise = callbackPage.waitForResponse((response) => response.url() === callbackLink);
@@ -217,6 +298,23 @@ const runInvitationJourney = async (
       assert(verified.data.tenant?.slug === 'acme', 'Magic link resolved the wrong workspace');
       assert(verified.data.tenant?.staffRole === 'admin', 'Magic link did not activate administrator access');
       assert(verified.data.tenantAccess === 'staff', 'Magic-link invitee did not receive staff access');
+      assert(unverifiedSecret !== undefined && heldChallengePage !== undefined,
+        'Pre-proof authenticators were not enrolled');
+      await completeTwoFactor(heldChallengePage, unverifiedSecret, 401);
+      await heldChallengePage.getByTestId('two-factor-challenge').getByRole('alert').waitFor({
+        state: 'visible', timeout: 15000,
+      });
+      const staleChallengeResponse = await heldPasswordChallenge.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(staleChallengeResponse.status() === 401, 'Pre-proof password challenge reached the activated role');
+      await passwordPage.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+      const passkeyRejectionPromise = passwordPage.waitForResponse((response) =>
+        new URL(response.url()).pathname === AUTH_PASSKEY_AUTHENTICATION_PATH);
+      await passwordPage.getByTestId('signin-passkey').click();
+      const passkeyRejection = await passkeyRejectionPromise;
+      assert(passkeyRejection.status() === 401, 'Server accepted the passkey enrolled before mailbox proof');
+      await passwordPage.getByRole('alert').waitFor({ state: 'visible', timeout: 15000 });
+      const stalePasskeyResponse = await passwordContext.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(stalePasskeyResponse.status() === 401, 'Pre-proof passkey reached the activated role');
       const ownerOnlyResponse = await mailboxContext.request.get(`${webBaseUrl}${API_PATHS.tenantTeam}`);
       assert(ownerOnlyResponse.status() === 403, 'Magic-link administrator received owner-only team access');
     } else {
@@ -236,14 +334,47 @@ const runInvitationJourney = async (
       assert(newPasswordSession.ok && newPasswordSession.data.tenant?.staffRole !== 'admin',
         'Verified password sign-in activated a pending invitation');
     }
+    if (mode === 'email-verification') {
+      await delay(twoFactorRateLimitResetMilliseconds);
+      const secret = await enrollTwoFactor(passwordPage, webBaseUrl);
+      const passwordChallengePage = await mailboxContext.newPage();
+      await passwordChallengePage.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+      await signInWithPassword(passwordChallengePage, email, passwordCredentials.password);
+      await completeTwoFactor(passwordChallengePage, secret, 200);
+      await passwordChallengePage.waitForURL((url) => url.pathname === '/', { timeout: 15000 });
+      const passwordCompletedResponse = await mailboxContext.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(passwordCompletedResponse.status() === 200, 'Password two-factor completion did not create a session');
+      const passwordCompleted = envelopeSchema(meOutputSchema).parse(await passwordCompletedResponse.json());
+      assert(passwordCompleted.ok && passwordCompleted.data.tenant?.staffRole !== 'admin',
+        'Password-originated two-factor completion activated the invitation');
+      await mailboxContext.clearCookies();
+      await passwordChallengePage.goto(passwordInvitationLink, { waitUntil: 'networkidle' });
+      await passwordChallengePage.getByTestId('two-factor-challenge').waitFor({ state: 'visible', timeout: 15000 });
+      const magicLinkChallengeResponse = await mailboxContext.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(magicLinkChallengeResponse.status() === 401, 'Magic link skipped the enrolled two-factor challenge');
+      await ownerPage.reload({ waitUntil: 'networkidle' });
+      await passwordInvitedRow.getByText(en.tenantTeam.invitationSent, { exact: true }).waitFor({
+        state: 'visible', timeout: 15000,
+      });
+      await completeTwoFactor(passwordChallengePage, secret, 200);
+      await passwordChallengePage.waitForURL('**/start', { timeout: 15000 });
+      const magicLinkCompletedResponse = await mailboxContext.request.get(`${webBaseUrl}${API_PATHS.me}`);
+      assert(magicLinkCompletedResponse.status() === 200, 'Magic-link two-factor completion did not create a session');
+      const magicLinkCompleted = envelopeSchema(meOutputSchema).parse(await magicLinkCompletedResponse.json());
+      assert(magicLinkCompleted.ok && magicLinkCompleted.data.email === email
+        && magicLinkCompleted.data.tenant?.staffRole === 'admin' && magicLinkCompleted.data.tenantAccess === 'staff',
+      'Magic-link two-factor completion did not activate administrator access');
+      const twoFactorOwnerOnly = await mailboxContext.request.get(`${webBaseUrl}${API_PATHS.tenantTeam}`);
+      assert(twoFactorOwnerOnly.status() === 403, 'Two-factor administrator received owner-only team access');
+    }
     await ownerPage.reload({ waitUntil: 'networkidle' });
     await passwordInvitedRow.getByText(
-      mode === 'magic-link' ? en.tenantTeam.administrator : en.tenantTeam.invitationSent,
+      en.tenantTeam.administrator,
       { exact: true },
     ).waitFor({ state: 'visible', timeout: 15000 });
   }
   for (const context of contexts) await context.close();
-  console.log('team-admins-e2e: magic-link invitation activation, scoped credential revocation, unchanged email verification and Studio access OK');
+  console.log('team-admins-e2e: magic-link invitation activation, pre-proof passkey and held two-factor challenge revocation, verified two-factor activation and Studio access OK');
 };
 
 const startedAt = Date.now();
@@ -272,7 +403,7 @@ try {
     healthUrl: `${connectUrl}/api/health`,
     env: {
       DATABASE_URL: databaseUrl.toString(),
-      APP_BASE_URL: platformBaseUrl,
+      APP_BASE_URL: webBaseUrl,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: webDistDir,
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',

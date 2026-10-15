@@ -1,4 +1,5 @@
 import { BundleOfferSummary } from './BundleOfferSummary.js';
+import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -264,6 +265,12 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     return (
       <FocusCard brand={<BrandMark size="compact" />} eyebrow={eyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
+          {paymentConfig.data?.analytics ? <CheckoutAnalytics
+            config={paymentConfig.data.analytics}
+            sessionId={sessionId}
+            purchase={paymentStatus.data?.status === 'paid' ? paymentStatus.data.analytics : undefined}
+            testMode={testEnabled || sessionId?.startsWith('cs_test_') === true || new URLSearchParams(window.location.search).get('test_purchase') === '1'}
+          /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">

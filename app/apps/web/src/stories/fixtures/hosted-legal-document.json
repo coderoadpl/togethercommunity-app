@@ -3,6 +3,11 @@
     "settings": {
       "accentColor": "#0E7490",
       "accentLight": null,
+      "analyticsConsentCookieName": null,
+      "analyticsConsentCookieValue": null,
+      "analyticsLoadWithoutConsent": false,
+      "analyticsMetaPixelId": null,
+      "analyticsTagId": null,
       "autoIssueInvoices": false,
       "autoIssueInvoiceScope": "b2b_only",
       "billingPortalUrl": null,

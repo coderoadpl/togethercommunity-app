@@ -123,6 +123,21 @@ import {
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
 
+const parseCsp = (response: Response): Map<string, Set<string>> => {
+  const directives = new Map<string, Set<string>>();
+  for (const directive of (response.headers.get('content-security-policy') ?? '').split(';')) {
+    const [name, ...sources] = directive.trim().split(/\s+/u);
+    if (name) directives.set(name, new Set(sources));
+  }
+  return directives;
+};
+
+const scriptNonce = (directives: Map<string, Set<string>>): string => {
+  const nonces = [...(directives.get('script-src') ?? [])].filter((source) => /^'nonce-[^']+'$/u.test(source));
+  expect(nonces).toHaveLength(1);
+  return nonces[0] ?? '';
+};
+
 const acme: Tenant = {
   id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 4,
 };
@@ -3768,6 +3783,54 @@ describe('server edge security baseline', () => {
     }
   });
 
+  it.each([
+    ['neither vendor', null, null],
+    ['GA4', 'G-ABCDEF', null],
+    ['Meta', null, '12345678'],
+    ['both vendors', 'G-ABCDEF', '12345678'],
+  ])('allows both vendor script sources on success documents with %s configured', async (_label, analyticsTagId, analyticsMetaPixelId) => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId, analyticsMetaPixelId });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together&status=success']) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status).toBe(200);
+      const directives = parseCsp(response);
+      expect(directives.get('script-src')).toEqual(new Set([
+        "'self'", scriptNonce(directives),
+        'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
+      ]));
+      expect(directives.get('connect-src')).toEqual(new Set(["'self'", 'https:']));
+      expect(directives.get('img-src')).toEqual(new Set(["'self'", 'data:', 'https:']));
+    }
+  });
+
+  it('keeps baseline CSP outside checkout success documents', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    for (const path of [
+      '/checkout/product-1', '/checkout/product-1?status=cancelled',
+      '/checkout/product-1?status=successful', '/checkout/product-1?checkout=together',
+      '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together',
+      '/offer/bundle?status=successful', '/offer/bundle',
+      '/panel/settings?status=success', '/my/products?status=success',
+      '/legal/terms', API_PATHS.publicPaymentConfig,
+    ]) {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      const directives = parseCsp(response);
+      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
+      expect(directives.get('connect-src')).toEqual(new Set([
+        "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
+      ]));
+      expect(directives.get('img-src')).toEqual(new Set(["'self'", 'data:', 'https:']));
+    }
+  });
+
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
     const app = buildApp(deps());
     const response = await app.request(API_PATHS.checkoutSession, {
@@ -5924,14 +5987,20 @@ describe('public checkout session-status route', () => {
     currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_live_paid123' },
     couponId: null, discountCents: 0, createdAt: '2026-10-01T12:00:00.000Z',
   };
-  const statusApp = (rows: Order[] = [order]) => {
+  const statusApp = (rows: Order[] = [order], analyticsTagId: string | null = null, analyticsMetaPixelId: string | null = null) => {
     const base = deps();
     const findOrderByProviderObjectIds = vi.fn<AppDeps['paymentRefunds']['findOrderByProviderObjectIds']>(
       async (tenantId, ids, mode) => rows.find((row) => row.tenantId === tenantId
         && row.mode === mode && row.providerObjectIds.checkoutSession === ids.checkoutSession) ?? null,
     );
     return {
-      app: buildApp({ ...base, paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds } }),
+      app: buildApp({ ...base,
+        tenants: { ...base.tenants, findSettings: async (tenantId) => {
+          const settings = await base.tenants.findSettings(tenantId);
+          return settings === null ? null : { ...settings, analyticsTagId, analyticsMetaPixelId };
+        } },
+        paymentRefunds: { ...base.paymentRefunds, findOrderByProviderObjectIds },
+      }),
       findOrderByProviderObjectIds,
     };
   };
@@ -5944,6 +6013,34 @@ describe('public checkout session-status route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ ok: true, data: { status: 'paid' } });
     expect(findOrderByProviderObjectIds).toHaveBeenCalledExactlyOnceWith(acme.id, { checkoutSession: 'cs_live_paid123' }, 'live');
+  });
+
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+    ['both libraries', 'G-ABC123', '12345678'],
+  ])('exposes only purchase analytics when the paid tenant has configured %s', async (_label, tagId, metaPixelId) => {
+    const { app } = statusApp([{ ...order, amountCents: 9900, lines: [{
+      productId: 'product-analytics', name: 'Analytics product', productType: 'digital_download',
+      grossCents: 9900, netCents: 9900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null,
+    }] }], tagId, metaPixelId);
+    const response = await app.request(path('cs_live_paid123'), { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({ ok: true, data: { status: 'paid', analytics: {
+      transactionId: 'order-status', value: 99, currency: 'PLN', offerSlug: null,
+      items: [{ itemId: 'product-analytics', itemName: 'Analytics product', price: 99 }],
+    } } });
+  });
+
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+  ])('keeps %s-configured pending and unknown session bodies identical', async (_label, tagId, metaPixelId) => {
+    const { app } = statusApp([{ ...order, status: 'pending' }], tagId, metaPixelId);
+    for (const sessionId of ['cs_live_paid123', 'cs_live_unknown']) {
+      const response = await app.request(path(sessionId), { headers: { [TENANT_HEADER]: 'acme' } });
+      expect(await response.json()).toEqual({ ok: true, data: { status: 'pending' } });
+    }
   });
 
   it('uses the tenant header and test-session mode', async () => {
@@ -6030,6 +6127,53 @@ describe('public checkout session-status route', () => {
 });
 
 describe('public payment-config route', () => {
+  it('returns null analytics when no tag is configured', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: null } });
+  });
+
+  it.each([
+    ['GA4', 'G-ABC123', null],
+    ['Meta', null, '12345678'],
+    ['both libraries', 'G-ABC123', '12345678'],
+  ])('exposes the public analytics settings and cookie scope for %s on a tenant host', async (_label, tagId, metaPixelId) => {
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, analyticsTagId: tagId, analyticsMetaPixelId: metaPixelId,
+        analyticsConsentCookieName: 'consent', analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: false };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toEqual({ ok: true, data: {
+      stripeConfigured: false, simulatedPaymentsEnabled: false,
+      canTest: false, testConfigured: false, testEnabled: false,
+      analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+    } });
+  });
+
+  it.each([
+    { host: 'checkout.example.test', kind: 'custom', verified: true, cookieScope: 'parent' },
+    { host: 'CHECKOUT.EXAMPLE.TEST.:48730', domain: 'checkout.example.test', kind: 'custom', verified: true, cookieScope: 'parent' },
+    { host: 'checkout.example.test', kind: 'custom', verified: false, cookieScope: 'host' },
+    { host: 'acme.localhost', kind: 'subdomain', verified: true, cookieScope: 'host' },
+    { host: 'localhost', kind: 'custom', verified: true, cookieScope: 'host' },
+    { host: 'acme.localhost', kind: 'custom', verified: true, cookieScope: 'host' },
+    { host: 'other.example.test', kind: null, verified: false, cookieScope: 'host' },
+  ] as const)('uses $cookieScope cookies on $host ($kind, verified: $verified)', async ({ host, kind, verified, cookieScope, ...input }) => {
+    const base = deps({ domains: kind === null ? [] : [tenantDomainFixture({
+      id: 'analytics-domain', tenantId: acme.id, domain: 'domain' in input ? input.domain : host, kind, verified,
+    })] });
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, analyticsTagId: 'G-ABC123' };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { host, [TENANT_HEADER]: 'acme' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: { cookieScope } } });
+  });
+
   it('exposes the simulated-payments flag for a resolved tenant', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
       headers: { [TENANT_HEADER]: 'acme' },

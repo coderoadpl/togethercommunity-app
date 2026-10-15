@@ -54,7 +54,7 @@ const spaceRepo = (stored: Space | null): SpaceRepository => ({
   stats: async () => new Map(),
 });
 
-const identity = (staffRole: 'admin' | null): Identity => ({
+const identity = (staffRole: Identity['staffRole']): Identity => ({
   userId: 'user-1',
   email: 'user@example.com',
   name: 'User',
@@ -340,5 +340,44 @@ describe('updateTenantSettings', () => {
         invoiceExemptionBasis: null,
       },
     });
+  });
+});
+
+
+describe('analytics settings permissions', () => {
+  it('allows the owner to save all five analytics settings', async () => {
+    const result = await updateTenantSettings({ identity: identity('owner') }, {
+      analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+    }, deps);
+    expect(result).toMatchObject({ ok: true, value: {
+      analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+    } });
+  });
+
+  it('denies admins unrelated settings even when included alongside analytics', async () => {
+    expect(await updateTenantSettings({ identity: identity('admin') }, {
+      analyticsTagId: 'G-ABC123', name: 'Changed name',
+    }, deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateTenantSettings({ identity: identity('admin') }, { name: 'Changed name' }, deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it.each(['admin', null] as const)('denies analytics updates for staff role %s', async (staffRole) => {
+    expect(await updateTenantSettings({ identity: identity(staffRole) }, { analyticsTagId: 'G-ABC123' }, deps))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('preserves omitted fields and clears text through the existing patch path', async () => {
+    const configured = { ...deps, tenants: { ...deps.tenants, findSettings: async () => ({
+      ...settings, analyticsTagId: 'G-ABC123', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+    }) } };
+    expect(await updateTenantSettings({ identity: identity('owner') }, { analyticsTagId: '', analyticsMetaPixelId: '' }, configured))
+      .toMatchObject({ ok: true, value: {
+        analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: 'consent',
+        analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+      } });
   });
 });

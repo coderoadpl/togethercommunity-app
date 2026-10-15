@@ -641,9 +641,22 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
+    const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
+    const domain = tenant.value.domain;
+    const baseDomain = deps.baseDomain.toLowerCase();
+    const analytics = (settings?.analyticsTagId || settings?.analyticsMetaPixelId) ? {
+      cookieScope: domain?.kind === 'custom' && domain.verified &&
+        domain.domain.toLowerCase() !== baseDomain && !domain.domain.toLowerCase().endsWith(`.${baseDomain}`)
+        ? 'parent' as const : 'host' as const,
+      tagId: settings.analyticsTagId ?? null,
+      metaPixelId: settings.analyticsMetaPixelId ?? null,
+      consentCookieName: settings.analyticsConsentCookieName ?? null,
+      consentCookieValue: settings.analyticsConsentCookieValue ?? null,
+      loadWithoutConsent: settings.analyticsLoadWithoutConsent ?? false,
+    } : null;
     return respondPublic(
       config.ok
-        ? ok({ ...config.value, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
+        ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
         : config,
     );

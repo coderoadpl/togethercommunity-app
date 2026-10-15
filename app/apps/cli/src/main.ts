@@ -150,6 +150,11 @@ const changePasswordOptionsSchema = z.object({
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
+  analyticsTagId: z.string().optional(),
+  analyticsMetaPixelId: z.string().optional(),
+  analyticsConsentCookieName: z.string().optional(),
+  analyticsConsentCookieValue: z.string().optional(),
+  analyticsLoadWithoutConsent: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   ksefSubmissionMode: z.enum(['automatic', 'manual']).optional(),
   accentColor: z.string().optional(),
   accentLight: z.string().optional(),
@@ -940,6 +945,11 @@ tenant.command('settings').description('Show tenant settings').action(
         `KSeF submission mode: ${data.settings.ksefSubmissionMode ?? 'automatic'}`,
         `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
         `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
+        `analytics tag ID: ${data.settings.analyticsTagId ?? '(not set)'}`,
+        `analytics Meta Pixel ID: ${data.settings.analyticsMetaPixelId ?? '(not set)'}`,
+        `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
+        `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
+        `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
       ].join('\n'),
     );
   }),
@@ -947,7 +957,12 @@ tenant.command('settings').description('Show tenant settings').action(
 
 tenant
   .command('settings-set')
-  .description('Update tenant settings (owner only)')
+  .description('Update tenant settings (owner)')
+  .option('--analytics-tag-id <id>', 'GA4 measurement ID; empty string clears')
+  .option('--analytics-meta-pixel-id <id>', 'Meta Pixel ID; empty string clears')
+  .option('--analytics-consent-cookie-name <name>', 'consent cookie name (readable on the checkout host); empty string clears')
+  .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')
+  .option('--analytics-load-without-consent <value>', "'true' or 'false' — load without checking consent")
   .option('--ksef-submission-mode <mode>', 'automatic or manual')
   .option('--accent-color <hex>', 'dark-scheme accent (#RRGGBB)')
   .option('--accent-light <hex>', 'optional light-scheme accent (#RRGGBB)')
@@ -967,7 +982,12 @@ tenant
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
         options.memberVideoAutoplayOverride === undefined &&
-        options.ksefSubmissionMode === undefined
+        options.ksefSubmissionMode === undefined &&
+        options.analyticsTagId === undefined &&
+        options.analyticsMetaPixelId === undefined &&
+        options.analyticsConsentCookieName === undefined &&
+        options.analyticsConsentCookieValue === undefined &&
+        options.analyticsLoadWithoutConsent === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -977,6 +997,11 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...(options.analyticsTagId === undefined ? {} : { analyticsTagId: options.analyticsTagId }),
+        ...(options.analyticsMetaPixelId === undefined ? {} : { analyticsMetaPixelId: options.analyticsMetaPixelId }),
+        ...(options.analyticsConsentCookieName === undefined ? {} : { analyticsConsentCookieName: options.analyticsConsentCookieName }),
+        ...(options.analyticsConsentCookieValue === undefined ? {} : { analyticsConsentCookieValue: options.analyticsConsentCookieValue }),
+        ...(options.analyticsLoadWithoutConsent === undefined ? {} : { analyticsLoadWithoutConsent: options.analyticsLoadWithoutConsent }),
         ...(options.ksefSubmissionMode === undefined ? {} : { ksefSubmissionMode: options.ksefSubmissionMode }),
         ...(accentColor === undefined ? {} : { accentColor }),
         ...(accentLight === undefined ? {} : { accentLight }),
@@ -995,6 +1020,11 @@ tenant
           `KSeF submission mode: ${data.settings.ksefSubmissionMode ?? 'automatic'}`,
           `video autoplay default: ${String(data.settings.videoAutoplayDefault)}`,
           `member video autoplay override: ${String(data.settings.memberVideoAutoplayOverride)}`,
+          `analytics tag ID: ${data.settings.analyticsTagId ?? '(not set)'}`,
+          `analytics Meta Pixel ID: ${data.settings.analyticsMetaPixelId ?? '(not set)'}`,
+          `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
+          `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
+          `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
         ].join('\n'),
       );
     }),

@@ -1228,6 +1228,27 @@ describe('invoice repository', () => {
 });
 
 describe('tenant, api-key, secret and processed-event repositories', () => {
+  it('persists and clears analytics settings within the selected tenant', async () => {
+    const repo = createTenantRepository(db);
+    const current = await repo.findSettings(ACME);
+    if (current === null) throw new Error('Missing tenant settings');
+    const disabled = {
+      analyticsTagId: null, analyticsMetaPixelId: null, analyticsConsentCookieName: null,
+      analyticsConsentCookieValue: null, analyticsLoadWithoutConsent: false,
+    };
+    expect(current).toMatchObject(disabled);
+    const configured = {
+      analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678', analyticsConsentCookieName: 'consent',
+      analyticsConsentCookieValue: 'analytics:true', analyticsLoadWithoutConsent: true,
+    };
+    const updated = await repo.updateSettings(ACME, { ...current, ...configured });
+    expect(updated).toMatchObject(configured);
+    expect(await repo.findSettings(ACME)).toMatchObject(configured);
+    expect(await repo.findSettings(GLOBEX)).toMatchObject(disabled);
+    expect(await repo.updateSettings(ACME, { ...updated, ...disabled })).toMatchObject(disabled);
+    expect(await repo.findSettings(ACME)).toMatchObject(disabled);
+  });
+
   it('reads tenants by id and slug and round-trips settings', async () => {
     let multipleTenantWarnings = 0;
     const repo = createTenantRepository(db, {

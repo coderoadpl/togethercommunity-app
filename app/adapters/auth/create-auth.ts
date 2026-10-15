@@ -27,7 +27,7 @@ import {
   type Result,
 } from '#core/domain/index.js';
 import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator, PlatformAuthSendLog, TransactionalEmailSender } from '#core/server/index.js';
-import { safeErrorMessage, safeLogMessage } from '#core/server/log-safety.js';
+import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/server/log-safety.js';
 import type { Db } from '#adapters/db/client.js';
 import { devMagicLinks, user } from '#adapters/db/schema.js';
 
@@ -820,13 +820,18 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
               if (signedIn === null || ctx.request === undefined) return;
               const request = ctx.request;
               if (signedIn.user.emailVerified) {
-                await settings.activateTeamInvitation?.({
-                  request,
-                  userId: signedIn.user.id,
-                  email: signedIn.user.email,
-                  occurredAt: signedIn.session.createdAt.toISOString(),
-                });
+                try {
+                  await settings.activateTeamInvitation?.({
+                    request,
+                    userId: signedIn.user.id,
+                    email: signedIn.user.email,
+                    occurredAt: signedIn.session.createdAt.toISOString(),
+                  });
+                } catch (error) {
+                  (settings.logger ?? console).warn(`[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=${serializeErrorChain(error)}`);
+                }
               }
+              if (ctx.path === '/verify-email') return;
               void Promise.resolve()
                 .then(() => settings.recordSignIn?.({
                   request,

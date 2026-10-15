@@ -1780,9 +1780,9 @@ export const pl: Messages = {
     auditLogHeading: 'Dziennik działań zespołu',
     auditLogEmpty: 'Brak zapisanych działań.',
     auditLogKind: {
-      'team.admin_invited': 'Zaproszenie wysłane',
-      'team.admin_activated': 'Administrator',
-      'team.invitation_revoked': 'Cofnij zaproszenie',
+      'team.admin_invited': 'Wysłanie zaproszenia',
+      'team.admin_activated': 'Aktywacja administratora',
+      'team.invitation_revoked': 'Cofnięcie zaproszenia',
       'team.admin_added': 'Dodanie administratora',
       'team.admin_removed': 'Usunięcie administratora',
       impersonation_started: 'Wejście w podgląd uczestnika',

@@ -8,7 +8,7 @@ import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation }
 import { emailEvents, members, tenants, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
-import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
+import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
 import { createEmailOutboxRepository, createPlatformAuthSendLog } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
@@ -140,6 +140,110 @@ describe('ASVS authentication policy', () => {
 });
 
 describe('real-provider sign-in and passkey proofs', () => {
+  it('preserves magic-link sign-in and event recording when team activation fails', async () => {
+    const warning = vi.fn();
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async () => {
+      throw new Error('Team activation failed', { cause: new Error('Database unavailable\nConnection refused') });
+    });
+    const { auth, authPort, magicLinks } = buildAuth({
+      logger: { warn: warning }, recordSignIn, activateTeamInvitation,
+    });
+    const email = `activation-failure-${crypto.randomUUID()}@together.dev`;
+    await authPort.requestMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/',
+      tenantName: 'Studio',
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const signedIn = await auth.handler(new Request(link?.url ?? ''));
+
+    expect(signedIn.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      '[auth] tenant-sign-in-events reason=team_invitation_activation_failed errors=[{"name":"Error","message":"Team activation failed"},{"name":"Error","message":"Database unavailable\\nConnection refused"}]',
+    );
+  });
+
+  it('activates a pending invitation on verification auto-sign-in without recording another sign-in', async () => {
+    const tenantId = crypto.randomUUID();
+    const team = createTenantTeamRepository(database.db);
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async (input: { userId: string; email: string; occurredAt: string }) => {
+      await team.activateInvitation(tenantId, input.userId, crypto.randomUUID(), {
+        id: crypto.randomUUID(), tenantId, kind: 'team.admin_activated',
+        actorUserId: input.userId, actorEmail: input.email,
+        subjectMemberId: null, reason: input.userId, at: input.occurredAt,
+      });
+    });
+    const { auth, authPort, db, emails, flushEmails } = buildAuth({ recordSignIn, activateTeamInvitation });
+    const email = `activation-verification-${crypto.randomUUID()}@together.dev`;
+    await db.insert(tenants).values({
+      id: tenantId, slug: `verification-${tenantId}`, name: 'Studio', createdAt: new Date().toISOString(),
+    });
+    const signedUp = await signUp(auth, email);
+    expect(signedUp.status).toBe(200);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    recordSignIn.mockClear();
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    const userId = account?.user.id ?? '';
+    await team.inviteAdmin(tenantId, userId, normalizeEmail(email), crypto.randomUUID(), {
+      id: crypto.randomUUID(), tenantId, kind: 'team.admin_invited', actorUserId: userId,
+      actorEmail: email, subjectMemberId: null, reason: userId, at: new Date().toISOString(),
+    });
+    expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, status: 'invited' }));
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    await flushEmails();
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    const verified = await auth.handler(new Request(message?.text.match(/https?:\/\/\S+/)?.[0] ?? ''));
+
+    expect(verified.status).toBe(302);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    expect(await team.list(tenantId)).toContainEqual(expect.objectContaining({ userId, role: 'admin', status: 'active' }));
+    expect(recordSignIn).not.toHaveBeenCalled();
+  });
+
+  it('preserves password sign-in when team activation fails', async () => {
+    const recordSignIn = vi.fn(async () => undefined);
+    const activateTeamInvitation = vi.fn(async () => { throw new Error('Tenant resolution unavailable'); });
+    const warning = vi.fn();
+    const { auth, authPort, db } = buildAuth({ recordSignIn, activateTeamInvitation, logger: { warn: warning } });
+    const email = `activation-password-${crypto.randomUUID()}@together.dev`;
+    expect((await signUp(auth, email)).status).toBe(200);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    recordSignIn.mockClear();
+    expect(activateTeamInvitation).not.toHaveBeenCalled();
+    await db.update(user).set({ emailVerified: true }).where(eq(user.email, email));
+
+    const signedIn = await auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+
+    expect(signedIn.status).toBe(200);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email, emailVerified: true });
+    expect(activateTeamInvitation).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => { expect(recordSignIn).toHaveBeenCalledTimes(1); });
+    expect(warning).toHaveBeenCalledTimes(1);
+  });
+
   it('contains sign-in event recorder failures after creating a session', async () => {
     const warning = vi.fn();
     const recordSignIn = vi.fn(async () => {
@@ -479,6 +583,7 @@ const buildAuth = (options: {
   verifiedCustomHosts?: string[];
   trustedOrigins?: string[];
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
+  activateTeamInvitation?(input: { request: Request; userId: string; email: string; occurredAt: string }): Promise<void>;
   platformTransportFails?: boolean;
   platformSendBlocker?: Promise<void>;
   keepAlive?(task: Promise<unknown>): void;
@@ -541,6 +646,7 @@ const buildAuth = (options: {
     defaultTenantName: 'Together',
     google: null,
     ...(options.recordSignIn === undefined ? {} : { recordSignIn: options.recordSignIn }),
+    ...(options.activateTeamInvitation === undefined ? {} : { activateTeamInvitation: options.activateTeamInvitation }),
     ...(options.importGoogleAvatar === undefined ? {} : { importGoogleAvatar: options.importGoogleAvatar }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     validateSignUpConsent: async ({ accepted }) =>

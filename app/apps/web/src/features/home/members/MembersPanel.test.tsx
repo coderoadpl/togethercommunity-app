@@ -194,6 +194,7 @@ describe('MembersPanel', () => {
                 message: 'Stripe is unavailable',
               },
             ],
+            deletedTeamInvitations: 0,
             erasureRequestId: null,
           },
         });

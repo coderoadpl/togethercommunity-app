@@ -5,6 +5,8 @@ import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, 
 
 import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 
+import { user } from './auth-schema.js';
+
 import type {
   MarketingListRule,
   MarketingAudienceSnapshot,
@@ -239,7 +241,7 @@ export const tenantAdminInvitations = pgTable(
   {
     id: text('id').primaryKey(),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-    userId: text('user_id').notNull(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     invitedAt: text('invited_at').notNull(),
   },

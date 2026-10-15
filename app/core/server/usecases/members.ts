@@ -126,6 +126,7 @@ export const removeMember = async (
 ): Promise<Result<{
   memberId: string;
   subscriptionCancellations: MemberSubscriptionCancellation[];
+  deletedTeamInvitations: number;
   erasureRequestId: string | null;
 }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:remove');
@@ -192,6 +193,7 @@ export const removeMember = async (
   return ok({
     memberId: input.memberId,
     subscriptionCancellations,
+    deletedTeamInvitations: result.deletedTeamInvitations,
     erasureRequestId: result.erasureRequestId,
   });
 };

@@ -565,6 +565,7 @@ const memberSubscriptionCancellationSchema = z.object({
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
   subscriptionCancellations: z.array(memberSubscriptionCancellationSchema),
+  deletedTeamInvitations: z.number().int().nonnegative(),
   erasureRequestId: z.string().nullable(),
 });
 

@@ -2750,10 +2750,15 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         return {
           alreadyDeleted: true,
           authUserErased: false,
+          deletedTeamInvitations: 0,
           erasureRequestId: null,
           avatarUrl: null,
         };
       }
+      const deletedInvitations = await tx.delete(tenantAdminInvitations).where(and(
+        eq(tenantAdminInvitations.tenantId, tenantId),
+        eq(tenantAdminInvitations.userId, member.userId),
+      )).returning({ id: tenantAdminInvitations.id });
       await tx.delete(surveyResponses).where(and(eq(surveyResponses.tenantId, tenantId), eq(surveyResponses.memberId, input.memberId)));
       await tx.delete(downloadCopies).where(and(eq(downloadCopies.tenantId, tenantId), eq(downloadCopies.memberId, input.memberId)));
       const [openErasureRequest] = await tx
@@ -2957,15 +2962,20 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         return {
           alreadyDeleted: false,
           authUserErased: false,
+          deletedTeamInvitations: deletedInvitations.length,
           erasureRequestId: openErasureRequest?.id ?? null,
           avatarUrl: member.avatarUrl,
         };
       }
 
+      const remainingInvitations = await tx.delete(tenantAdminInvitations)
+        .where(eq(tenantAdminInvitations.userId, member.userId))
+        .returning({ id: tenantAdminInvitations.id });
       await tx.delete(user).where(eq(user.id, member.userId));
       return {
         alreadyDeleted: false,
         authUserErased: true,
+        deletedTeamInvitations: deletedInvitations.length + remainingInvitations.length,
         erasureRequestId: openErasureRequest?.id ?? null,
         avatarUrl: member.avatarUrl,
       };

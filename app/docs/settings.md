@@ -14,14 +14,16 @@ e-mail address creates a pending invitation and sends a sign-in link. Every vali
 address receives the same opaque confirmation, regardless of whether an account
 already exists or has a verified address. Pending invitations appear as
 **Invitation sent**, with a **Revoke invitation** action. Completing sign-in through
-the workspace's e-mail activates the administrator role automatically; no owner
-retry is needed. Unverified accounts never receive administrator access before
-proving control of the mailbox.
+the invitation's magic link activates the administrator role automatically; no
+owner retry is needed. Password sign-in and ordinary e-mail verification do not
+activate pending invitations.
 
-Email verification revokes existing sessions and removes the unverified password
-before granting access to the mailbox owner's new session, just as magic-link
-verification does. The account can continue using emailed sign-in links or set a
-new password through the password-reset email flow.
+If a successful magic-link sign-in verifies a previously unverified account
+with a password credential, verification removes that credential and revokes
+the user's other sessions in the same transaction, before any invitation is
+activated. This prevents a password set before mailbox ownership was proved
+from retaining access. Already verified accounts are unchanged. The person can
+continue using sign-in links or set a password through the e-mailed reset flow.
 
 Administrators can use Studio except platform settings, secrets, API keys and the
 integration test. Adding an existing team member is idempotent and never

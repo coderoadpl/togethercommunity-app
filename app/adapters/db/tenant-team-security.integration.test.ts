@@ -34,7 +34,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await database?.close(); });
 
-it('withholds staff access until mailbox proof, then activates the invitation and invalidates the unverified session', async () => {
+it('withholds staff access until magic-link sign-in, then activates the invitation and invalidates the unverified password session', async () => {
   const clock = { nowIso: () => new Date().toISOString() };
   const ids = { nextId: () => crypto.randomUUID() };
   await database.db.insert(tenants).values([
@@ -136,13 +136,14 @@ it('withholds staff access until mailbox proof, then activates the invitation an
   expect(await authPort.getAuthenticatedUser(new Headers({
     authorization: 'Bearer pre-existing-session-token',
   }))).toBeNull();
+  expect(await database.db.select().from(account).where(eq(account.userId, 'invitee'))).toEqual([]);
   expect(await team.list('studio')).toContainEqual(expect.objectContaining({
     userId: 'invitee', status: 'invited',
   }));
   await auth.flushAuthEmails();
 });
 
-it('removes the registrant session and password before email verification activates an invitation', async () => {
+it('preserves the password and sessions on email verification and activates invitations only on magic-link sign-in', async () => {
   const clock = { nowIso: () => new Date().toISOString() };
   const ids = { nextId: () => crypto.randomUUID() };
   const email = 'mailbox-owner@example.test';
@@ -197,12 +198,12 @@ it('removes the registrant session and password before email verification activa
     email, name: 'Mailbox owner', password: 'attacker-password-15',
   });
   expect(signedUp.status).toBe(200);
-  const attackerHeaders = new Headers({
+  const registrantHeaders = new Headers({
     authorization: `Bearer ${signedUp.token ?? ''}`,
   });
-  const attacker = await authPort.getAuthenticatedUser(attackerHeaders);
-  if (attacker === null) throw new Error('Registrant session was not created');
-  expect(attacker).toMatchObject({ email, emailVerified: false });
+  const registrant = await authPort.getAuthenticatedUser(registrantHeaders);
+  if (registrant === null) throw new Error('Registrant session was not created');
+  expect(registrant).toMatchObject({ email, emailVerified: false });
   await auth.flushAuthEmails();
   const verificationEmail = await createDevEmailReader(database.db).findByRecipient(email);
   expect(verificationEmail?.subject).toBe('Verify your email address');
@@ -226,17 +227,34 @@ it('removes the registrant session and password before email verification activa
     ...identityDeps, team, appBaseUrl: 'http://localhost:48730',
   })).toEqual({ ok: true, value: { status: 'invitation_sent' } });
   expect(await team.list('akademia')).toContainEqual(expect.objectContaining({
-    userId: attacker.userId, role: 'admin', status: 'invited',
+    userId: registrant.userId, role: 'admin', status: 'invited',
   }));
   const verified = await auth.handler(new Request(verificationLink));
   expect(verified.status).toBe(302);
-  expect(await authPort.getAuthenticatedUser(attackerHeaders)).toBeNull();
+  expect(await authPort.getAuthenticatedUser(registrantHeaders)).toMatchObject({ email, emailVerified: true });
   const passwordSignIn = await authHttp.signInEmail({ email, password: 'attacker-password-15' });
-  expect(passwordSignIn.status).toBe(401);
-  expect(passwordSignIn.token).toBeNull();
-  expect(await database.db.select().from(account).where(eq(account.userId, attacker.userId))).toEqual([]);
+  expect(passwordSignIn.status).toBe(200);
+  expect(passwordSignIn.token).not.toBeNull();
+  expect(await database.db.select().from(account).where(eq(account.userId, registrant.userId)))
+    .toContainEqual(expect.objectContaining({ providerId: 'credential' }));
+  const passwordHeaders = new Headers({ authorization: `Bearer ${passwordSignIn.token ?? ''}` });
+  const passwordUser = await authPort.getAuthenticatedUser(passwordHeaders);
+  const pendingIdentity = await resolveIdentity(passwordUser, tenantRequest, identityDeps);
+  if (!pendingIdentity.ok) throw new Error('Pending invitee identity could not be resolved');
+  expect(pendingIdentity.value).toMatchObject({ tenantAccess: 'none', staffRole: null });
+  expect(authorizeTenant({ identity: pendingIdentity.value }, 'order:read'))
+    .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  expect(await team.list('akademia')).toContainEqual(expect.objectContaining({
+    userId: registrant.userId, role: 'admin', status: 'invited',
+  }));
+  const beforeSignIn = await database.db.select().from(tenantAuditEvents)
+    .where(eq(tenantAuditEvents.tenantId, 'akademia'));
+  expect(beforeSignIn.filter((event) => event.kind === 'team.admin_activated')).toHaveLength(0);
+  const invitationLink = await createDevMagicLinkReader(database.db).findByEmail(email);
+  const signedIn = await auth.handler(new Request(invitationLink?.url ?? ''));
+  expect(signedIn.status).toBe(302);
   const mailboxOwner = await authPort.getAuthenticatedUser(new Headers({
-    authorization: `Bearer ${verified.headers.get('set-auth-token') ?? ''}`,
+    authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
   }));
   expect(mailboxOwner).toMatchObject({ email, emailVerified: true });
   const identity = await resolveIdentity(mailboxOwner, tenantRequest, identityDeps);
@@ -244,19 +262,14 @@ it('removes the registrant session and password before email verification activa
   expect(identity.value).toMatchObject({ tenantAccess: 'staff', staffRole: 'admin' });
   expect(authorizeTenant({ identity: identity.value }, 'order:read')).toMatchObject({ ok: true });
   expect(await team.list('akademia')).toContainEqual(expect.objectContaining({
-    userId: attacker.userId, role: 'admin', status: 'active',
+    userId: registrant.userId, role: 'admin', status: 'active',
   }));
-  expect(await database.db.select().from(tenantAuditEvents)
-    .where(eq(tenantAuditEvents.tenantId, 'akademia'))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'team.admin_invited' }),
-      expect.objectContaining({ kind: 'team.admin_activated' }),
-    ]));
-  const invitationLink = await createDevMagicLinkReader(database.db).findByEmail(email);
-  expect((await auth.handler(new Request(invitationLink?.url ?? ''))).status).toBe(302);
   const auditEvents = await database.db.select().from(tenantAuditEvents)
     .where(eq(tenantAuditEvents.tenantId, 'akademia'));
   expect(auditEvents.filter((event) => event.kind === 'team.admin_activated')).toHaveLength(1);
-  expect(await authPort.getAuthenticatedUser(attackerHeaders)).toBeNull();
-  expect(await database.db.select().from(account).where(eq(account.userId, attacker.userId))).toEqual([]);
+  expect(await authPort.getAuthenticatedUser(registrantHeaders)).toMatchObject({ email, emailVerified: true });
+  expect(await authPort.getAuthenticatedUser(passwordHeaders)).toMatchObject({ email, emailVerified: true });
+  expect(await database.db.select().from(account).where(eq(account.userId, registrant.userId)))
+    .toContainEqual(expect.objectContaining({ providerId: 'credential' }));
   await auth.flushAuthEmails();
 });

@@ -68,6 +68,28 @@ step in the three monitors is conditioned on anything other than the gate.
 Because the state starts empty, the first run of each monitor after this doctrine
 landed is observe-only, and the monitor arms itself on its next green run.
 
+## Database connection faults
+
+- `[database-pool] Idle client removed: … total=… idle=… waiting=…` means
+  the query pool discarded a broken idle connection. The counters describe the
+  remaining total connections, idle connections and callers waiting for a client.
+- `[trusted-origins] Using cached origins after domain lookup failed: … cold=…`
+  is logged once per outage with a sanitized error chain. `cold=true` means no
+  domain lookup has succeeded and only configured origins are trusted;
+  `cold=false` means the last successfully loaded custom origins remain trusted.
+- `[trusted-origins] Domain lookup recovered after N failures` means a refresh
+  succeeded after the reported number of failed lookups. It replaces the cached
+  custom origins and starts the normal 60-second freshness window.
+
+The incident signature is an auth 403 `INVALID_CALLBACK_URL` on a custom domain
+next to a trusted-origins failure line in the same minute. Failed lookups impose
+a one-second backoff instead of renewing the 60-second success cache. Once the
+database answers again, custom-domain sign-in recovers on the next request after
+the backoff, with at most one second of backoff remaining; no background retry
+runs. A link rejected by origin validation remains usable after recovery.
+Unknown origins remain rejected. These diagnostics do not change alerts;
+owner-side monitors follow the observe-only doctrine above.
+
 ## `GET /api/health/deep`
 
 Unauthenticated, rate-limited to 12 requests per minute per address

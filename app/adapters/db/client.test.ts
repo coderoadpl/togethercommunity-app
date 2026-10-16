@@ -56,8 +56,48 @@ describe('node-postgres connection pool', () => {
     expect(() => pool.emit('error', new Error('Connection terminated unexpectedly'))).not.toThrow();
 
     expect(logError).toHaveBeenCalledWith(
-      '[database-pool] Idle client removed:',
-      'Connection terminated unexpectedly',
+      '[database-pool] Idle client removed: [{"name":"Error","message":"Connection terminated unexpectedly"}] total=0 idle=0 waiting=0',
+    );
+    await pool.end();
+  });
+
+  it('overrides only the supplied pool options', async () => {
+    const pool = new pg.Pool();
+    const constructPool = vi.spyOn(pg, 'Pool').mockImplementation(function () {
+      return pool;
+    });
+
+    createDb('node-postgres', 'postgres://user:pass@example.test/database', {
+      connectionTimeoutMillis: 200,
+      idleTimeoutMillis: 500,
+      max: 1,
+    });
+
+    expect(constructPool).toHaveBeenCalledWith({
+      connectionString: 'postgres://user:pass@example.test/database',
+      connectionTimeoutMillis: 200,
+      idleTimeoutMillis: 500,
+      max: 1,
+      keepAlive: true,
+      allowExitOnIdle: true,
+    });
+    await pool.end();
+  });
+
+  it('sanitizes nested error parameters and excludes connection details from pool logs', async () => {
+    const pool = new pg.Pool();
+    vi.spyOn(pg, 'Pool').mockImplementation(function () {
+      return pool;
+    });
+    const logError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    createDb('node-postgres', 'postgres://user:private-password@example.test/database');
+
+    pool.emit('error', new Error('Query failed\nparams: private-value', {
+      cause: new Error('Connection failed\nparams: private-cause'),
+    }));
+
+    expect(logError).toHaveBeenCalledWith(
+      '[database-pool] Idle client removed: [{"name":"Error","message":"Query failed"},{"name":"Error","message":"Connection failed"}] total=0 idle=0 waiting=0',
     );
     await pool.end();
   });

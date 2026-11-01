@@ -1286,6 +1286,7 @@ it.each([
   { mode: 'live', checkout: 'payment' }, { mode: 'test', checkout: 'payment' },
   { mode: 'live', checkout: 'subscription' }, { mode: 'test', checkout: 'subscription' },
   { mode: 'live', checkout: 'direct' }, { mode: 'test', checkout: 'direct' },
+  { mode: 'live', checkout: 'direct-coupon' }, { mode: 'test', checkout: 'direct-coupon' },
 ] as const)('serializes checkout branding for $checkout in $mode mode', async ({ mode, checkout }) => {
   const requests: Request[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -1299,7 +1300,8 @@ it.each([
   expect(await payment.createCheckoutSession({ mode, tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
     priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
     ...(checkout === 'subscription' ? { recurringInterval: 'month' as const } : {}),
-    ...(checkout === 'direct' ? { directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' } } : {}),
+    ...(checkout.startsWith('direct') ? { directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' } } : {}),
+    ...(checkout === 'direct-coupon' ? { promotionCodeId: 'promo-1' } : {}),
     checkoutBranding: { displayName: 'Studio', logoUrl: 'https://example.com/logo.png',
       iconUrl: 'https://example.com/icon.png', backgroundColor: '#FFFFFF', buttonColor: '#123456',
       fontFamily: 'inter', borderStyle: 'pill' },
@@ -1320,9 +1322,10 @@ it.each([
   expect(body.get('subscription_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? 'tenant-a' : null);
   expect(body.get('payment_intent_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? null : 'tenant-a');
   expect(body.get('mode')).toBe(checkout === 'subscription' ? 'subscription' : 'payment');
-  expect(body.get('consent_collection[terms_of_service]')).toBe(checkout === 'direct' ? 'required' : null);
-  expect(body.get('tax_id_collection[enabled]')).toBe(checkout === 'direct' ? 'true' : null);
+  expect(body.get('consent_collection[terms_of_service]')).toBe(checkout.startsWith('direct') ? 'required' : null);
+  expect(body.get('tax_id_collection[enabled]')).toBe(checkout.startsWith('direct') ? 'true' : null);
   expect(body.get('allow_promotion_codes')).toBe(checkout === 'direct' ? 'false' : null);
+  expect(body.get('discounts[0][promotion_code]')).toBe(checkout === 'direct-coupon' ? 'promo-1' : null);
   expect(body.has('billing_address_collection')).toBe(false);
 });
 
@@ -1370,7 +1373,7 @@ it('applies the direct checkout promotion and redemption metadata with manual co
     promotionCodeId: 'promo-1', couponCheckoutSessionId: 'coupon-session-1',
     directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms and privacy policy.' },
   });
-  expect(params.allow_promotion_codes).toBe(false);
+  expect(params).not.toHaveProperty('allow_promotion_codes');
   expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
   expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
 });

@@ -153,7 +153,7 @@ export const stripeCheckoutSessionParams = (
       consent_collection: { terms_of_service: 'required' as const },
       custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
       tax_id_collection: { enabled: true },
-      allow_promotion_codes: false,
+      ...(input.promotionCodeId === undefined ? { allow_promotion_codes: false } : {}),
     }),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,

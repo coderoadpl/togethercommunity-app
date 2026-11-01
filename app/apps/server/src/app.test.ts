@@ -9973,6 +9973,31 @@ const directSalesLinkApp = async (cancelReturnUrl?: string) => {
 };
 
 describe('direct public sales-link checkout', () => {
+  it.each(['coupon-preview:ip', 'coupon-preview:tenant'])('omits coupon previews when %s is exhausted without blocking checkout', async (scope) => {
+    const h = await directSalesLinkApp();
+    const claim = vi.spyOn(h.base.rateLimitBuckets, 'claim').mockImplementation(async (input) => input.scope !== scope);
+    const lookup = vi.spyOn(h.coupons, 'findByCode');
+    const headers = { host: 'acme.localhost' };
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('<form');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(lookup).not.toHaveBeenCalled();
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope: 'coupon-preview:ip', key: 'unattributed', limit: h.base.publicRateLimitPolicies.writesPerIp.limit }));
+    if (scope === 'coupon-preview:tenant') {
+      expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope, key: acme.id, limit: h.base.publicRateLimitPolicies.writesPerTenant.limit }));
+    }
+    h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-bundle' });
+    const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(checkout.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ promotionCodeId: 'promo-bundle' }));
+  });
+
   it.each(['application/json', 'application/x-www-form-urlencoded'])('previews a normalized coupon and applies it from %s', async (contentType) => {
     const h = await directSalesLinkApp();
     const lookup = vi.spyOn(h.coupons, 'findByCode');

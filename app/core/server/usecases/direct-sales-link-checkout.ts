@@ -52,7 +52,7 @@ export const createDirectSalesLinkCheckout = async (
     returnUrl?: string;
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
   },
-  deps: CheckoutDeps,
+  deps: CheckoutDeps & { logger: { warn(message: string): void } },
 ) => {
   const link = await deps.salesLinks?.findBySlug(tenant.id, input.slug);
   const productId = link?.productIds[0];
@@ -85,11 +85,17 @@ export const createDirectSalesLinkCheckout = async (
   }
   let applied: { promotionCodeId: string; couponCheckoutSessionId: string } | undefined;
   if (coupon.value.kind === 'applied') {
-    const captured = await captureCouponCheckout(tenant.id, { ...coupon.value, memberEmail: null }, selection.value, deps);
-    if (!captured.ok) return captured;
     const promotion = await ensureCheckoutCouponPromotion(tenant.id, coupon.value, deps);
-    if (!promotion.ok) return promotion;
-    applied = { promotionCodeId: promotion.value.stripePromotionCodeId, couponCheckoutSessionId: captured.value };
+    if (!promotion.ok) {
+      deps.logger.warn(`[direct-checkout] Coupon promotion unavailable tenant=${tenant.id}: ${promotion.error.message}`);
+    } else {
+      const captured = await captureCouponCheckout(tenant.id, { ...coupon.value, memberEmail: null }, selection.value, deps);
+      if (!captured.ok) {
+        deps.logger.warn(`[direct-checkout] Coupon capture unavailable tenant=${tenant.id}: ${captured.error.message}`);
+      } else {
+        applied = { promotionCodeId: promotion.value.stripePromotionCodeId, couponCheckoutSessionId: captured.value };
+      }
+    }
   }
   const language = settings.defaultLanguage ?? 'en';
   const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };

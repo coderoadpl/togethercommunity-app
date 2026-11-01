@@ -661,13 +661,14 @@ const directCheckout = async (cancelReturnUrl?: string | null) => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
+  const deps = { ...h.deps, logger: { warn: vi.fn() } };
   const start = (returnUrl?: string, couponCode?: string) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug,
     ...(couponCode === undefined ? {} : { couponCode }),
     ...(returnUrl === undefined ? {} : { returnUrl }),
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
-  }, h.deps);
-  return { ...h, settings, start };
+  }, deps);
+  return { ...h, deps, settings, start };
 };
 
 it('creates an anonymous direct session using tenant language, legal URLs and branding', async () => {
@@ -865,6 +866,21 @@ it.each(['unknown', 'archived', 'expired', 'future', 'exhausted', 'scope'] as co
   expect(h.calls[0]).not.toHaveProperty('couponCheckoutSessionId');
   expect(h.sessions).toHaveLength(0);
   expect(h.ensurePromotion).not.toHaveBeenCalled();
+});
+
+it.each(['promotion', 'capture'] as const)('continues direct checkout without a discount when coupon %s fails', async (stage) => {
+  const h = await directCouponCheckout();
+  if (stage === 'promotion') h.deps.payment.ensureCouponPromotion = async () => err(integrationUnavailable('Promotion creation failed'));
+  else delete h.deps.couponCheckoutSessions;
+  expect(await h.start(undefined, 'SAVE')).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]).not.toHaveProperty('promotionCodeId');
+  expect(h.calls[0]).not.toHaveProperty('couponCheckoutSessionId');
+  expect(h.sessions).toHaveLength(0);
+  expect(h.attach).not.toHaveBeenCalled();
+  expect(h.deps.logger.warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(
+    stage === 'promotion' ? 'Promotion creation failed' : 'Coupon checkout is not configured',
+  ));
 });
 
 it('routes a member-limited coupon to email collection before applying a discount', async () => {

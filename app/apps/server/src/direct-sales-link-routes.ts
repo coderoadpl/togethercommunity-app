@@ -7,6 +7,7 @@ import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, res
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { directSalesLinkCopy, renderDirectSalesLinkPage } from './direct-sales-link-page.js';
+import { claimCouponPreview } from './public-rate-limit.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
 import { SOCIAL_CRAWLER_PATTERN } from './social-preview.js';
@@ -58,7 +59,8 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     }
     const code = c.req.query('code');
     const couponCode = code === undefined ? undefined : normalizeCouponCode(code);
-    const coupon = !crawler && !missingLegal && couponCode !== undefined && couponCode.length <= 64
+    const previewAllowed = !crawler && !missingLegal && couponCode !== undefined && await claimCouponPreview(c, tenant.id, deps);
+    const coupon = previewAllowed && couponCode.length <= 64
       ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
     if (coupon !== undefined && !coupon.ok) return respond(coupon);
     const couponDecision = coupon?.ok ? coupon.value : undefined;
@@ -75,7 +77,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       mode: 'live',
       ...(!crawler && couponCode !== undefined && couponCode.length <= 64 ? { couponCode } : {}),
       ...(couponDecision?.kind === 'applied' ? { coupon: couponDecision.breakdown }
-        : !crawler && (couponDecision?.kind === 'invalid' || (couponCode?.length ?? 0) > 64) ? { coupon: null } : {}),
+        : previewAllowed && (couponDecision?.kind === 'invalid' || couponCode.length > 64) ? { coupon: null } : {}),
       ...(missingLegal ? { error: 'legalUrlsMissing' as const } : {}),
     }), missingLegal ? 503 : 200, headers);
   });

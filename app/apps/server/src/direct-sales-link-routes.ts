@@ -1,8 +1,8 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { attributionFields, attributionFromSearchParams, err, forbidden, internal, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
-import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveTenant } from '#core/server/index.js';
+import { attributionFields, attributionFromSearchParams, err, forbidden, internal, normalizeCouponCode, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveDirectSalesLinkCoupon, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
@@ -56,7 +56,13 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       await next();
       return;
     }
-    if (!page.crawler && !missingLegal && products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
+    const code = c.req.query('code');
+    const couponCode = code === undefined ? undefined : normalizeCouponCode(code);
+    const coupon = !crawler && !missingLegal && couponCode !== undefined && couponCode.length <= 64
+      ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
+    if (coupon !== undefined && !coupon.ok) return respond(coupon);
+    const couponDecision = coupon?.ok ? coupon.value : undefined;
+    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'requiresEmail' || products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0))) {
       const query = new URLSearchParams(new URL(c.req.url).search);
       if (returnUrl === undefined) query.delete('return');
       else query.set('return', returnUrl);
@@ -67,6 +73,9 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     return c.html(renderDirectSalesLinkPage({
       ...page,
       mode: 'live',
+      ...(!crawler && couponCode !== undefined && couponCode.length <= 64 ? { couponCode } : {}),
+      ...(couponDecision?.kind === 'applied' ? { coupon: couponDecision.breakdown }
+        : !crawler && (couponDecision?.kind === 'invalid' || (couponCode?.length ?? 0) > 64) ? { coupon: null } : {}),
       ...(missingLegal ? { error: 'legalUrlsMissing' as const } : {}),
     }), missingLegal ? 503 : 200, headers);
   });
@@ -89,6 +98,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     if (!parsed.success) return respond(err(validation('Invalid checkout payload')));
     const result = await createDirectSalesLinkCheckout(resolved.value.tenant, await authLinkBaseUrl(resolved.value, deps), {
       slug: c.req.param('slug') ?? '',
+      ...(parsed.data.couponCode === undefined ? {} : { couponCode: parsed.data.couponCode }),
       ...(parsed.data.attribution === undefined ? {} : { attribution: parsed.data.attribution }),
       ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),

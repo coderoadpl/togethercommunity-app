@@ -1360,3 +1360,17 @@ it('rejects metadata that cannot fit Stripe key and value limits', () => {
   expect(() => stripeCheckoutSessionParams({ ...input, lines: Array.from({ length: 50 }, (_, index) => ({ productId: `${index}-${'x'.repeat(500)}`, name: 'Item', grossCents: 20 })) })).toThrow('Checkout metadata exceeds Stripe limits');
   expect(() => stripeCheckoutSessionParams({ ...input, checkoutSnapshotId: 'x'.repeat(501) })).toThrow('Checkout metadata exceeds Stripe limits');
 });
+
+
+it('applies the direct checkout promotion and redemption metadata with manual codes disabled', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 15900,
+    currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancelled',
+    salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
+    promotionCodeId: 'promo-1', couponCheckoutSessionId: 'coupon-session-1',
+    directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms and privacy policy.' },
+  });
+  expect(params.allow_promotion_codes).toBe(false);
+  expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
+  expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
+});

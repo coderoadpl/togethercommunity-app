@@ -1,4 +1,4 @@
-import type { CheckoutSnapshot } from '#core/domain/index.js';
+import type { CheckoutSnapshot, CouponCheckoutSession } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -661,8 +661,9 @@ const directCheckout = async (cancelReturnUrl?: string | null) => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
-  const start = (returnUrl?: string) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
+  const start = (returnUrl?: string, couponCode?: string) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug,
+    ...(couponCode === undefined ? {} : { couponCode }),
     ...(returnUrl === undefined ? {} : { returnUrl }),
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
   }, h.deps);
@@ -816,4 +817,69 @@ it('expires the SPA payment session when snapshot binding fails', async () => {
     productId: product.id, salesLinkId: h.link.id,
   }, h.deps)).rejects.toThrow('Storage unavailable');
   expect(expired).toEqual(['bundle-session']);
+});
+
+
+const directCouponCheckout = async (patch: Partial<Coupon> = {}) => {
+  const h = await directCheckout();
+  const coupon = { ...freeCoupon, code: 'SAVE', value: 50, ...patch };
+  const sessions: CouponCheckoutSession[] = [];
+  const findByCode = vi.fn(async () => coupon);
+  const attach = vi.fn(async () => undefined);
+  const ensurePromotion = vi.fn(async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promotion-save' }));
+  let nextId = 0;
+  h.deps.ids = { nextId: () => `id-${++nextId}` };
+  h.deps.coupons = { findByCode, findById: async () => coupon, cacheStripeIds: async () => coupon };
+  h.deps.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+  h.deps.couponCheckoutSessions = { create: async (_, session) => { sessions.push(session); }, attachProviderSession: attach, findById: async () => null };
+  h.deps.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
+  h.deps.payment.ensureCouponPromotion = ensurePromotion;
+  return { ...h, coupon, sessions, findByCode, attach, ensurePromotion };
+};
+
+it('applies a direct bundle coupon with the shared snapshot and Stripe metadata', async () => {
+  const h = await directCouponCheckout();
+  expect(await h.start(undefined, ' save ')).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
+  expect(h.findByCode).toHaveBeenCalledWith(tenant.id, 'SAVE');
+  expect(h.calls[0]).toMatchObject({ promotionCodeId: 'promotion-save', couponCheckoutSessionId: 'id-1', checkoutSnapshotId: 'id-2', priceCents: 7000 });
+  expect(h.calls[0]).not.toHaveProperty('customerEmail');
+  expect(h.sessions).toEqual([{
+    id: 'id-1', tenantId: tenant.id, couponId: h.coupon.id, providerSessionId: null,
+    memberEmail: null, productId: product.id, priceId: null, originalCents: 7000,
+    discountCents: 3500, finalCents: 3500, currency: 'PLN', startedAt: '2026-10-08T12:00:00.000Z',
+  }]);
+  expect(h.attach).toHaveBeenCalledWith(tenant.id, 'id-1', 'bundle-session');
+});
+
+it.each(['unknown', 'archived', 'expired', 'future', 'exhausted', 'scope'] as const)('continues direct checkout without an invalid coupon: %s', async (reason) => {
+  const h = await directCouponCheckout(reason === 'archived' ? { status: 'archived' }
+    : reason === 'expired' ? { endsAt: '2026-09-01T00:00:00.000Z' }
+      : reason === 'future' ? { startsAt: '2027-01-01T00:00:00.000Z' }
+        : reason === 'exhausted' ? { maxRedemptions: 1 }
+          : reason === 'scope' ? { scope: { kind: 'products', productIds: [product.id] } } : {});
+  if (reason === 'unknown' && h.deps.coupons !== undefined) h.deps.coupons.findByCode = async () => null;
+  if (reason === 'exhausted' && h.deps.couponRedemptions !== undefined) h.deps.couponRedemptions.counts = async () => ({ total: 1, member: 0 });
+  expect(await h.start(undefined, 'SAVE')).toMatchObject({ ok: true });
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]).not.toHaveProperty('promotionCodeId');
+  expect(h.calls[0]).not.toHaveProperty('couponCheckoutSessionId');
+  expect(h.sessions).toHaveLength(0);
+  expect(h.ensurePromotion).not.toHaveBeenCalled();
+});
+
+it('routes a member-limited coupon to email collection before applying a discount', async () => {
+  const h = await directCouponCheckout({ maxRedemptionsPerMember: 1 });
+  const { resolveDirectSalesLinkCoupon } = await import('./direct-sales-link-checkout.js');
+  expect(await resolveDirectSalesLinkCoupon(tenant.id, { slug: h.link.slug, couponCode: ' save ' }, h.deps)).toEqual(ok({ kind: 'requiresEmail' }));
+  expect(await h.start(undefined, ' save ')).toEqual(ok({ url: 'https://workspace.example.com/offer/collection?checkout=together&code=SAVE' }));
+  expect(h.calls).toHaveLength(0);
+  expect(h.sessions).toHaveLength(0);
+  expect(h.ensurePromotion).not.toHaveBeenCalled();
+});
+
+it('keeps a fully discounted direct checkout on Stripe for buyer details', async () => {
+  const h = await directCouponCheckout({ value: 100 });
+  expect(await h.start(undefined, 'SAVE')).toMatchObject({ ok: true });
+  expect(h.calls[0]).toMatchObject({ promotionCodeId: 'promotion-save', couponCheckoutSessionId: 'id-1' });
+  expect(h.sessions[0]).toMatchObject({ finalCents: 0, discountCents: 7000 });
 });

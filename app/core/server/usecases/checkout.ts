@@ -34,7 +34,7 @@ import type {
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
-import { validateCouponForCheckout } from './coupon-checkout.js';
+import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
 
@@ -187,42 +187,16 @@ export const startCheckoutSession = async (
     ) {
       return err(validation('Coupon checkout is not configured'));
     }
-    const validated = await validateCouponForCheckout(
-      tenant.id,
-      {
-        code: input.couponCode,
-        ...(input.email === undefined ? {} : { email: input.email }),
-        productId: product.id,
-        ...(selection.productPrices === undefined ? {} : { productIds: selection.productPrices.map((item) => item.productId), products: selection.productPrices.map((item) => ({ productId: item.productId, priceId: item.id, amountCents: item.amountCents })) }),
-        priceId: price?.id ?? null,
-        priceKind: price?.kind ?? 'one_time',
-        amountCents: totalCents,
-        currency,
-      },
-      {
-        coupons: deps.coupons,
-        redemptions: deps.couponRedemptions,
-        priceHistory: deps.priceHistory,
-        clock: deps.clock,
-      },
-    );
+    const validated = await validateSelectionCoupon(tenant.id, {
+      code: input.couponCode,
+      ...(input.email === undefined ? {} : { email: input.email }),
+      amountCents: totalCents, currency,
+    }, selection, deps);
     if (!validated.ok) return validated;
     if (input.email === undefined) return err(validation('An email is required to use a coupon'));
-    const checkoutSessionId = deps.ids.nextId();
-    await deps.couponCheckoutSessions.create(tenant.id, {
-      id: checkoutSessionId,
-      tenantId: tenant.id,
-      couponId: validated.value.coupon.id,
-      providerSessionId: null,
-      memberEmail: input.email,
-      productId: product.id,
-      priceId: price?.id ?? null,
-      originalCents: validated.value.breakdown.originalCents,
-      discountCents: validated.value.breakdown.discountCents,
-      finalCents: validated.value.breakdown.finalCents,
-      currency: validated.value.breakdown.currency,
-      startedAt: deps.clock.nowIso(),
-    });
+    const capturedCoupon = await captureCouponCheckout(tenant.id, { ...validated.value, memberEmail: input.email }, selection, deps);
+    if (!capturedCoupon.ok) return capturedCoupon;
+    const checkoutSessionId = capturedCoupon.value;
     if (validated.value.breakdown.finalCents === 0 && price?.kind !== 'recurring') {
       return ok({
         url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
@@ -232,22 +206,8 @@ export const startCheckoutSession = async (
         free: true,
       });
     }
-    if (deps.payment.ensureCouponPromotion === undefined) {
-      return err(validation('Coupon checkout is not configured'));
-    }
-    const promotion = await deps.payment.ensureCouponPromotion({
-      tenantId: tenant.id,
-      couponId: validated.value.coupon.id,
-      code: validated.value.breakdown.code,
-      kind: validated.value.coupon.kind,
-      value: validated.value.coupon.value,
-      currency: validated.value.breakdown.currency,
-      recurringDuration: validated.value.coupon.recurringDuration,
-      stripeCouponId: validated.value.coupon.stripeCouponId,
-      stripePromotionCodeId: validated.value.coupon.stripePromotionCodeId,
-    });
+    const promotion = await ensureCheckoutCouponPromotion(tenant.id, validated.value, deps);
     if (!promotion.ok) return promotion;
-    await deps.coupons.cacheStripeIds(tenant.id, validated.value.coupon.id, promotion.value);
     applied = {
       breakdown: validated.value.breakdown,
       promotionCodeId: promotion.value.stripePromotionCodeId,

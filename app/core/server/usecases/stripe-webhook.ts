@@ -197,6 +197,7 @@ export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 interface CouponPaymentContext {
   coupon: Coupon;
   session: CouponCheckoutSession;
+  memberEmail: string;
   price: ProductPrice | null;
 }
 
@@ -226,7 +227,9 @@ const couponPaymentContext = async (
   const coupon = await deps.coupons.findById(tenant.id, session.couponId);
   if (coupon === null) return null;
   const price = session.priceId === null ? null : await deps.prices.findById(tenant.id, session.priceId);
-  return { coupon, session, price };
+  const memberEmail = session.memberEmail ?? event.checkoutSession?.email;
+  if (memberEmail == null) return null;
+  return { coupon, session, price, memberEmail };
 };
 
 const couponStillAttributable = async (
@@ -246,7 +249,7 @@ const couponStillAttributable = async (
     tenant.id,
     {
       code: context.coupon.code,
-      email: context.session.memberEmail,
+      email: context.memberEmail,
       productId: context.session.productId,
       ...(snapshot?.salesLinkId == null ? {} : { productIds: snapshot.lines.map((line) => line.productId), products: snapshot.lines.map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
       priceId: context.session.priceId,
@@ -347,7 +350,7 @@ const claimDiscountedOrder = async (
       couponId: context.coupon.id,
       orderId: order.id,
       memberId,
-      email: normalizeEmail(context.session.memberEmail),
+      email: normalizeEmail(context.memberEmail),
       discountCents,
       createdAt: order.createdAt,
     },

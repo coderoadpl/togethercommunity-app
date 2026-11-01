@@ -854,7 +854,7 @@ export const couponCheckoutSessions = pgTable(
       .notNull()
       .references(() => coupons.id, { onDelete: 'restrict' }),
     providerSessionId: text('provider_session_id'),
-    memberEmail: text('member_email').notNull(),
+    memberEmail: text('member_email'),
     productId: text('product_id').notNull(),
     priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
     originalCents: integer('original_cents').notNull(),

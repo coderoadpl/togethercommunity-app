@@ -210,3 +210,35 @@ it('passes attribution in the script POST and every noscript hidden field', asyn
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution }),
   });
 });
+
+it('escapes a coupon in the page and noscript form and submits it in JSON', async () => {
+  const couponCode = 'SAVE<"&';
+  const html = renderDirectSalesLinkPage({ ...page, couponCode, coupon: null });
+  expect(html).toContain('data-coupon-code="SAVE&lt;&quot;&amp;"');
+  expect(html).toContain('name="couponCode" value="SAVE&lt;&quot;&amp;"');
+  expect(html).toContain(directSalesLinkCopyEn.couponUnavailable);
+  const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+  if (script === undefined) throw new Error('Missing checkout script');
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
+  const replace = vi.fn();
+  await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
+    { querySelector: () => ({ dataset: { endpoint: page.endpoint, couponCode } }) },
+    fetch, { replace },
+  );
+  expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ couponCode, attribution: {} }),
+  });
+  expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment');
+});
+
+it.each([
+  { language: 'en', copy: directSalesLinkCopyEn },
+  { language: 'pl', copy: directSalesLinkCopyPl },
+] as const)('renders the validated discount and final amount in $language', ({ language, copy }) => {
+  const format = (cents: number) => new Intl.NumberFormat(language, { style: 'currency', currency: 'PLN', minimumFractionDigits: 0 }).format(cents / 100);
+  const html = renderDirectSalesLinkPage({ ...page, language, couponCode: 'SAVE', coupon: {
+    couponId: 'coupon', code: 'SAVE', originalCents: 15900, discountCents: 6000, finalCents: 9900, lowestPriceLast30DaysCents: 15900, currency: 'PLN',
+  } });
+  expect(html).toContain(copy.couponApplied('SAVE', format(6000), format(9900)));
+  expect(html).not.toContain(copy.couponUnavailable);
+});

@@ -1,5 +1,5 @@
 import type { CheckoutBranding } from '#core/domain/checkout-appearance.js';
-import { attributionFields, type Attribution } from '#core/domain/index.js';
+import { attributionFields, type Attribution, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import type { Language } from '#core/domain/index.js';
 
 import { directSalesLinkCopyEn } from './direct-sales-link-copy.en.js';
@@ -23,11 +23,16 @@ export const renderDirectSalesLinkPage = (input: {
   mode: 'test' | 'live';
   endpoint: string;
   returnUrl?: string;
+  couponCode?: string;
+  coupon?: CouponCheckoutBreakdown | null;
   crawler: boolean;
   nonce: string;
   error?: 'checkoutUnavailable' | 'legalUrlsMissing';
 }): string => {
   const copy = directSalesLinkCopy(input.language);
+  const money = (cents: number, currency: string): string => new Intl.NumberFormat(input.language, { style: 'currency', currency, minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+  const couponMessage = input.coupon === undefined ? undefined : input.coupon === null ? copy.couponUnavailable
+    : copy.couponApplied(input.coupon.code, money(input.coupon.discountCents, input.coupon.currency), money(input.coupon.finalCents, input.coupon.currency));
   const displayName = input.branding?.displayName ?? input.tenantName;
   const appearance = [
     input.branding?.buttonColor ? `--accent: ${input.branding.buttonColor}` : '',
@@ -71,20 +76,21 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 </style>
 </head>
 <body style="${escapeHtml(appearance)}">
-<main data-attribution="${escapeHtml(JSON.stringify(input.attribution ?? {}))}" data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
+<main data-attribution="${escapeHtml(JSON.stringify(input.attribution ?? {}))}" data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} ${input.couponCode === undefined ? '' : `data-coupon-code="${escapeHtml(input.couponCode)}" `}data-mode="${escapeHtml(input.mode)}" data-checkout-unavailable="${escapeHtml(copy.checkoutUnavailable)}">
 ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.logoUrl)}" alt="">` : ''}
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
+${!input.crawler && couponMessage !== undefined ? `<p>${escapeHtml(couponMessage)}</p>` : ''}
 ${canSubmit ? '<div class="spinner" aria-hidden="true"></div>' : ''}
 <p role="status">${escapeHtml(input.error === undefined ? copy.redirecting : copy[input.error])}</p>
-${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}${attribution.map(({ parameter, value }) => `<input type="hidden" name="${parameter}" value="${escapeHtml(value)}">`).join('')}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
+${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}${input.couponCode === undefined ? '' : `<input type="hidden" name="couponCode" value="${escapeHtml(input.couponCode)}">`}${attribution.map(({ parameter, value }) => `<input type="hidden" name="${parameter}" value="${escapeHtml(value)}">`).join('')}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}
 </main>
 ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
 (async () => {
   const page = document.querySelector('main');
   const status = document.querySelector('[role="status"]');
   try {
-    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution: JSON.parse(page.dataset.attribution ?? '{}'), ...(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) }) });
+    const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(page.dataset.couponCode === undefined ? {} : { couponCode: page.dataset.couponCode }), attribution: JSON.parse(page.dataset.attribution ?? '{}'), ...(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) }) });
     const result = await response.json();
     if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') throw new Error();
     location.replace(result.data.url);

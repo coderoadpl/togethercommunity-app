@@ -62,7 +62,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     const previewAllowed = !crawler && !missingLegal && couponCode !== undefined && await claimCouponPreview(c, tenant.id, deps);
     const coupon = previewAllowed && couponCode.length <= 64
       ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
-    if (coupon !== undefined && !coupon.ok) return respond(coupon);
+    if (coupon !== undefined && !coupon.ok) deps.logger.warn(`[direct-checkout] Coupon preview unavailable tenant=${tenant.id}: ${coupon.error.message}`);
     const couponDecision = coupon?.ok ? coupon.value : undefined;
     if (!page.crawler && !missingLegal && (couponDecision?.kind === 'requiresEmail' || products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0))) {
       const query = new URLSearchParams(new URL(c.req.url).search);

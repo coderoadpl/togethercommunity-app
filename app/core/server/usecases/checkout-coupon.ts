@@ -15,7 +15,7 @@ interface CheckoutCouponDeps {
 
 export const validateSelectionCoupon = async (
   tenantId: string,
-  input: { code: string; email?: string; amountCents: number; currency: string },
+  input: { code: string; coupon?: Coupon; email?: string; amountCents: number; currency: string },
   selection: CheckoutSelection,
   deps: CheckoutCouponDeps,
 ) => {

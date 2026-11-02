@@ -10042,6 +10042,21 @@ describe('direct public sales-link checkout', () => {
     expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
   });
 
+  it('renders the offer page without a coupon line and logs a warning when the coupon selection fails', async () => {
+    const h = await directSalesLinkApp();
+    const warn = vi.spyOn(h.base.logger, 'warn');
+    vi.spyOn(h.salesLinks, 'findBySlug').mockResolvedValueOnce(h.link).mockResolvedValue(null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(html).toContain('<form');
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('[direct-checkout] Coupon preview unavailable tenant='));
+  });
+
   it('keeps an overlong URL coupon from blocking checkout through the bounded POST contract', async () => {
     const h = await directSalesLinkApp();
     const page = await h.app.request(`/offer/bundle?code=${'X'.repeat(65)}`, { headers: { host: 'acme.localhost' } });

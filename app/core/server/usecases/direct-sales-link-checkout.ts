@@ -21,7 +21,7 @@ const resolveSelectionCoupon = async (
   if (coupon == null) return ok({ kind: 'invalid' });
   if (coupon.maxRedemptionsPerMember !== null) return ok({ kind: 'requiresEmail' });
   const validated = await validateSelectionCoupon(tenantId, {
-    code, amountCents: amount.totalCents, currency: amount.currency,
+    code, coupon, amountCents: amount.totalCents, currency: amount.currency,
   }, selection, deps);
   return validated.ok ? ok({ kind: 'applied', ...validated.value }) : ok({ kind: 'invalid' });
 };

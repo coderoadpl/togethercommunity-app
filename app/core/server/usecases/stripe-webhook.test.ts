@@ -615,6 +615,7 @@ const couponHarness = (
     price?: ProductPrice;
     claim?: boolean;
     session?: Partial<{
+      memberEmail: string | null;
       originalCents: number;
       discountCents: number;
       finalCents: number;
@@ -661,7 +662,7 @@ const couponHarness = (
         options.session?.providerSessionId === undefined
           ? 'cs-coupon'
           : options.session.providerSessionId,
-      memberEmail: 'buyer@example.com',
+      memberEmail: options.session?.memberEmail === undefined ? 'buyer@example.com' : options.session.memberEmail,
       productId: 'product-1',
       priceId: price?.id ?? null,
       originalCents: options.session?.originalCents ?? 4900,
@@ -3166,4 +3167,15 @@ it.each(['stripe', 'simulated'] as const)('binds an unbound checkout snapshot to
   expect((await fulfillStripeWebhook(tenantA, h.event, h.deps, provider)).ok).toBe(true);
   expect(attach).toHaveBeenCalledExactlyOnceWith(tenantA.id, 'snapshot-1', h.event.objectId);
   expect(h.orders[0]?.providerObjectIds.checkoutSession).toBe(h.event.objectId);
+});
+
+
+it('records a direct coupon redemption for the email collected by Stripe', async () => {
+  const h = couponHarness({ session: { memberEmail: null } });
+  const event = completedEvent({ id: 'event-direct-coupon', objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', email: 'direct-buyer@example.com' });
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ couponId: h.coupon.id, amountCents: 2450, discountCents: 2450 }]);
+  expect(h.redemptions).toMatchObject([{ couponId: h.coupon.id, email: 'direct-buyer@example.com', discountCents: 2450 }]);
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.redemptions).toHaveLength(1);
 });

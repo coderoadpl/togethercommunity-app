@@ -9967,10 +9967,148 @@ const directSalesLinkApp = async (cancelReturnUrl?: string) => {
   const create = vi.fn(h.base.payment.createCheckoutSession);
   h.base.payment.createCheckoutSession = create;
   h.base.tenantSecrets.findByKey = async (tenantId, key) => key.startsWith('stripe.test') ? null : ({ id: `secret-${key}`, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
-  return { ...h, create, settings };
+  const coupons = h.base.coupons;
+  if (coupons === undefined) throw new Error('Missing test coupons');
+  return { ...h, create, settings, coupons };
 };
 
 describe('direct public sales-link checkout', () => {
+  it.each(['coupon-preview:ip', 'coupon-preview:tenant'])('omits coupon previews when %s is exhausted without blocking checkout', async (scope) => {
+    const h = await directSalesLinkApp();
+    const claim = vi.spyOn(h.base.rateLimitBuckets, 'claim').mockImplementation(async (input) => input.scope !== scope);
+    const lookup = vi.spyOn(h.coupons, 'findByCode');
+    const headers = { host: 'acme.localhost' };
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('<form');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(lookup).not.toHaveBeenCalled();
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope: 'coupon-preview:ip', key: 'unattributed', limit: h.base.publicRateLimitPolicies.writesPerIp.limit }));
+    if (scope === 'coupon-preview:tenant') {
+      expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope, key: acme.id, limit: h.base.publicRateLimitPolicies.writesPerTenant.limit }));
+    }
+    h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-bundle' });
+    const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(checkout.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ promotionCodeId: 'promo-bundle' }));
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('previews a normalized coupon and applies it from %s', async (contentType) => {
+    const h = await directSalesLinkApp();
+    const lookup = vi.spyOn(h.coupons, 'findByCode');
+    h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-bundle' });
+    const page = await h.app.request('/offer/bundle?code=%20bundle%20', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('data-coupon-code="BUNDLE"');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(html).toContain('Code BUNDLE:');
+    expect(html).toContain('2.13');
+    expect(html).toContain('19.17');
+    expect(lookup).toHaveBeenCalledWith(acme.id, 'BUNDLE');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.couponSessions.size).toBe(0);
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+      body: contentType === 'application/json' ? JSON.stringify({ couponCode: 'BUNDLE' }) : new URLSearchParams({ couponCode: 'BUNDLE' }).toString(),
+    });
+    expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ promotionCodeId: 'promo-bundle', couponCheckoutSessionId: expect.any(String), priceCents: 2130 }));
+    expect([...h.couponSessions.values()]).toMatchObject([{ originalCents: 2130, discountCents: 213, finalCents: 1917 }]);
+  });
+
+  it.each(['en', 'pl'] as const)('shows an invalid coupon in %s and still starts checkout without a discount', async (language) => {
+    const h = await directSalesLinkApp();
+    const settings = await h.base.tenants.findSettings(acme.id);
+    if (settings === null) throw new Error('Missing test settings');
+    h.base.tenants.findSettings = async () => ({ ...settings, defaultLanguage: language });
+    h.coupons.findByCode = async () => null;
+    const page = await h.app.request('/offer/bundle?code=UNKNOWN', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain(language === 'pl' ? directSalesLinkCopyPl.couponUnavailable : 'Coupon cannot be applied.');
+    expect(html).toContain('<form');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'UNKNOWN' }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('promotionCodeId');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
+  });
+
+  it('does not preview or apply a coupon that exists only in another tenant', async () => {
+    const h = await directSalesLinkApp();
+    const coupon = await h.coupons.findByCode(acme.id, 'BUNDLE');
+    if (coupon === null) throw new Error('Missing test coupon');
+    const lookup = vi.spyOn(h.coupons, 'findByCode').mockImplementation(async (tenantId, code) => tenantId === 'tenant-other' && code === 'BUNDLE' ? coupon : null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Coupon cannot be applied.');
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(lookup).toHaveBeenCalledWith(acme.id, 'BUNDLE');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('promotionCodeId');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
+    expect(h.couponSessions.size).toBe(0);
+  });
+
+  it('renders the offer page without a coupon line and logs a warning when the coupon selection fails', async () => {
+    const h = await directSalesLinkApp();
+    const warn = vi.spyOn(h.base.logger, 'warn');
+    vi.spyOn(h.salesLinks, 'findBySlug').mockResolvedValueOnce(h.link).mockResolvedValue(null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(html).toContain('<form');
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('[direct-checkout] Coupon preview unavailable tenant='));
+  });
+
+  it('keeps an overlong URL coupon from blocking checkout through the bounded POST contract', async () => {
+    const h = await directSalesLinkApp();
+    const page = await h.app.request(`/offer/bundle?code=${'X'.repeat(65)}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Coupon cannot be applied.');
+    expect(html).not.toContain('name="couponCode"');
+    expect(html).toContain('<form');
+  });
+
+  it('redirects member-limited coupons with the other query parameters and preserves crawler and SPA behavior', async () => {
+    const h = await directSalesLinkApp();
+    const coupon = await h.coupons.findByCode(acme.id, 'BUNDLE');
+    if (coupon === null) throw new Error('Missing test coupon');
+    h.coupons.findByCode = async () => ({ ...coupon, maxRedemptionsPerMember: 1 });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const query = 'code=BUNDLE&utm_source=printed&source=qr';
+    const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(302);
+    expect(page.headers.get('location')).toBe(`/offer/bundle?${query}&checkout=together`);
+    const crawler = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost', 'user-agent': 'facebookexternalhit' } });
+    expect(crawler.status).toBe(200);
+    const html = await crawler.text();
+    expect(html).toContain('property="og:title"');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('Coupon');
+    const spa = await h.app.request(`/offer/bundle?${query}&checkout=together`, { headers: { host: 'acme.localhost' } });
+    expect(await spa.text()).toBe('<main>Existing checkout</main>');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it.each(['unknown', 'inactive', 'expired'] as const)('renders an HTML error for an %s offer without checkout actions', async (state) => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, defaultLanguage: 'pl' });

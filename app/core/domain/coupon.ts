@@ -157,7 +157,7 @@ export const couponCheckoutSessionSchema = z.object({
   tenantId: z.string(),
   couponId: z.string(),
   providerSessionId: z.string().nullable(),
-  memberEmail: z.string().email(),
+  memberEmail: z.string().email().nullable(),
   productId: z.string(),
   priceId: z.string().nullable(),
   originalCents: z.number().int().nonnegative(),

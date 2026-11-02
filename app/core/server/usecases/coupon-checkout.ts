@@ -30,6 +30,7 @@ export interface CouponCheckoutDeps {
 
 export interface CouponCheckoutInput {
   code: string;
+  coupon?: Coupon;
   email?: string;
   productId: string;
   productIds?: string[];
@@ -52,7 +53,7 @@ export const validateCouponForCheckout = async (
   input: CouponCheckoutInput,
   deps: CouponCheckoutDeps,
 ): Promise<Result<{ coupon: Coupon; breakdown: CouponCheckoutBreakdown }, AppError>> => {
-  const coupon = await deps.coupons.findByCode(tenantId, normalizeCouponCode(input.code));
+  const coupon = input.coupon ?? await deps.coupons.findByCode(tenantId, normalizeCouponCode(input.code));
   if (!coupon) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   if (coupon.maxRedemptionsPerMember !== null && input.email === undefined) {
     return err(validation('An email is required to validate this coupon'));

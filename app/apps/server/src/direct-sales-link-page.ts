@@ -81,6 +81,7 @@ ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
 ${!input.crawler && couponMessage !== undefined ? `<p>${escapeHtml(couponMessage)}</p>` : ''}
+${!input.crawler && input.coupon !== undefined && input.coupon !== null ? `<p>${escapeHtml(copy.couponLowestPrice(money(input.coupon.lowestPriceLast30DaysCents, input.coupon.currency)))}</p>` : ''}
 ${canSubmit ? '<div class="spinner" aria-hidden="true"></div>' : ''}
 <p role="status">${escapeHtml(input.error === undefined ? copy.redirecting : copy[input.error])}</p>
 ${canSubmit ? `<noscript><form method="post" action="${escapeHtml(input.endpoint)}">${input.returnUrl === undefined ? '' : `<input type="hidden" name="returnUrl" value="${escapeHtml(input.returnUrl)}">`}${input.couponCode === undefined ? '' : `<input type="hidden" name="couponCode" value="${escapeHtml(input.couponCode)}">`}${attribution.map(({ parameter, value }) => `<input type="hidden" name="${parameter}" value="${escapeHtml(value)}">`).join('')}<button type="submit">${escapeHtml(copy.continueToPayment)}</button></form></noscript>` : ''}

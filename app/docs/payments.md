@@ -201,7 +201,9 @@ agents are refused as well. This also applies to `?checkout=together` and
 fallback rewrites.
 
 Stripe receives one line per product, the tenant language, tax ID collection and
-a mandatory terms checkbox. Promotion codes are disabled in this direct flow.
+a mandatory terms checkbox. A URL coupon (`?code=`) is applied as a Stripe
+promotion code and the Stripe promotion-code field stays disabled; see
+[Sales links](sales-links.md) for the preview and limiter details.
 Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
 account-level setting even when Together overrides the acceptance message with
 links to the tenant's terms and privacy policy. Together records accepted consent

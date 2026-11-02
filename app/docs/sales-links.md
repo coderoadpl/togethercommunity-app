@@ -119,8 +119,22 @@ exact terms and privacy URLs stored in session metadata. Set a valid account
 terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
 linking the tenant's terms and privacy URLs. A tenant missing either legal URL
 receives an error page without a checkout session, including on the Together
-fallback; its checkout endpoint also enforces both URLs. Promotion codes are disabled
-in direct checkout.
+fallback; its checkout endpoint also enforces both URLs.
+
+A coupon code given in the offer URL as `?code=<code>` is validated server-side,
+previewed on the offer page as the discount, the amount to pay and the lowest
+price of the preceding 30 days, and applied on the Stripe session as a promotion
+code. Buyers cannot type a code on the Stripe page (`allow_promotion_codes`
+stays off; Stripe rejects it together with an applied promotion). An invalid,
+expired or out-of-scope code shows "Coupon cannot be applied." and checkout
+continues at full price. A coupon with a per-member redemption limit redirects
+to the Together checkout (`?checkout=together&code=<code>`) because the direct
+flow has no buyer e-mail before Stripe. The coupon checkout session is stored
+without an e-mail; the webhook records the redemption with the e-mail Stripe
+collected. The preview spends the `coupon-preview:ip` (30 per minute per client
+address) and `coupon-preview:tenant` (300 per minute per tenant) limiter windows;
+when exhausted the page renders without a coupon line and the checkout POST
+still applies the code.
 
 If any included product has purchase consent checkboxes configured, the offer
 uses the existing Together checkout at `?checkout=together`. Attached marketing
@@ -216,3 +230,9 @@ rolling out the bundle-aware release. An older release ignores the checkout
 snapshot metadata and can grant only the first product, recording one line for
 the full payment; reconciliation cannot recover the omitted product list from
 that order. Activate sales links only after the rollout is complete.
+
+Migration 0149 makes `coupon_checkout_sessions.member_email` nullable for
+direct-checkout coupon sessions. A release older than this one parses that
+column as a required e-mail, so after a rollback the Stripe webhook would throw
+on those rows and retry. Roll back only together with a decision about pending
+direct-checkout coupon sessions.

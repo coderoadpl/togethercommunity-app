@@ -10042,6 +10042,27 @@ describe('direct public sales-link checkout', () => {
     expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
   });
 
+  it('does not preview or apply a coupon that exists only in another tenant', async () => {
+    const h = await directSalesLinkApp();
+    const coupon = await h.coupons.findByCode(acme.id, 'BUNDLE');
+    if (coupon === null) throw new Error('Missing test coupon');
+    const lookup = vi.spyOn(h.coupons, 'findByCode').mockImplementation(async (tenantId, code) => tenantId === 'tenant-other' && code === 'BUNDLE' ? coupon : null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Coupon cannot be applied.');
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(lookup).toHaveBeenCalledWith(acme.id, 'BUNDLE');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('promotionCodeId');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
+    expect(h.couponSessions.size).toBe(0);
+  });
+
   it('renders the offer page without a coupon line and logs a warning when the coupon selection fails', async () => {
     const h = await directSalesLinkApp();
     const warn = vi.spyOn(h.base.logger, 'warn');

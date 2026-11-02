@@ -217,6 +217,7 @@ it('escapes a coupon in the page and noscript form and submits it in JSON', asyn
   expect(html).toContain('data-coupon-code="SAVE&lt;&quot;&amp;"');
   expect(html).toContain('name="couponCode" value="SAVE&lt;&quot;&amp;"');
   expect(html).toContain(directSalesLinkCopyEn.couponUnavailable);
+  expect(html).not.toContain('Lowest price in the last 30 days');
   const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
   if (script === undefined) throw new Error('Missing checkout script');
   const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
@@ -240,5 +241,6 @@ it.each([
     couponId: 'coupon', code: 'SAVE', originalCents: 15900, discountCents: 6000, finalCents: 9900, lowestPriceLast30DaysCents: 15900, currency: 'PLN',
   } });
   expect(html).toContain(copy.couponApplied('SAVE', format(6000), format(9900)));
+  expect(html).toContain(copy.couponLowestPrice(format(15900)));
   expect(html).not.toContain(copy.couponUnavailable);
 });

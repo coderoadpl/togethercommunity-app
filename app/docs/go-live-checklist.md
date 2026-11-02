@@ -260,7 +260,11 @@ per request (`core/server/usecases/public-rate-limit.ts`,
 validation and the marketing consent forms allow 30 requests per minute per
 client address and 300 per minute per resolved tenant; magic-link,
 password-reset, sign-up and verification requests share that per-address budget
-and allow 5 per ten minutes per e-mail address. The sign-in method lookup
+and allow 5 per ten minutes per e-mail address. The direct offer page's coupon
+preview spends its own `coupon-preview:ip` and `coupon-preview:tenant` windows
+with the same 30-per-minute-per-address and 300-per-minute-per-tenant budgets
+(they reuse the public-write limits), so an exhausted preview budget hides the
+discount line but never blocks checkout. The sign-in method lookup
 (`/api/public/auth-resolve`) spends its own `auth-resolve:ip` and
 `auth-resolve:tenant` windows — 60 per minute per client address and 1000 per
 minute per resolved tenant — so a shared address exhausting the lookup cannot

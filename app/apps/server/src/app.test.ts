@@ -8100,8 +8100,11 @@ describe('checkout consent ordering', () => {
         } : {}),
       };
       for (const tenantIds of [[], [acme.id], ['t-other']]) {
+        const warn = vi.fn();
+        const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
         const app = buildApp({
           ...base,
+          logger: { ...base.logger, warn },
           payment: { ...base.payment, verifyWebhookEvent: async () => ok({ ...event, tenantIds }) },
         });
         const response = await app.request('/api/webhooks/stripe/t-acme', {
@@ -8109,6 +8112,13 @@ describe('checkout consent ordering', () => {
         });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+        if (tenantIds.includes('t-other')) {
+          expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=${event.id} reason=foreign tenant`);
+          expect(claim).not.toHaveBeenCalled();
+        } else {
+          expect(warn).not.toHaveBeenCalled();
+        }
+        claim.mockRestore();
       }
     },
   );

@@ -1,7 +1,7 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 import {
@@ -691,23 +691,24 @@ describe('verifyWebhookEvent', () => {
     { customer: { id: 'cus-foreign', metadata: { tenantId: 'tenant-b' } } },
     { subscription_details: { metadata: { tenantId: 'tenant-b' } } },
     { parent: { subscription_details: { subscription: 'sub-foreign', metadata: { tenantId: 'tenant-b' } } } },
-  ])('rejects foreign invoice ownership before resolving credentials or retrieving payments: %j', async (ownership) => {
+  ])('marks foreign invoice ownership before resolving credentials or retrieving payments: %j', async (ownership) => {
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
     const payload = JSON.stringify({ id: 'evt-foreign', type: 'invoice.paid', livemode: true,
       data: { object: { id: 'in-foreign', ...ownership } } });
     const result = await api.verify(payload);
-    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(result).toMatchObject({ ok: true, value: { id: 'evt-foreign', type: 'invoice.paid', objectId: 'in-foreign', checkoutSession: null, foreignTenant: true } });
+    if (result.ok) expect(result.value.invoice).toBeUndefined();
     expect(api.resolvedSecrets).toEqual([]);
     expect(api.requests).toEqual([]);
   });
 
   it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'rejects explicit foreign ownership on %s without a lookup', async (type) => {
+    'marks explicit foreign ownership on %s without a lookup', async (type) => {
       const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected Stripe lookup'); });
       const payload = JSON.stringify({ id: 'evt-foreign-subscription', type, livemode: true,
         data: { object: { id: 'sub-foreign', metadata: { tenantId: 'tenant-b' }, status: 'active' } },
       });
-      expect(await api.verify(payload)).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(await api.verify(payload)).toMatchObject({ ok: true, value: { type, objectId: 'sub-foreign', checkoutSession: null, foreignTenant: true } });
       expect(api.resolvedSecrets).toEqual([]);
       expect(api.requests).toEqual([]);
     },
@@ -725,6 +726,19 @@ describe('verifyWebhookEvent', () => {
     expect(api.requests).toEqual([]);
   });
 
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('marks stored foreign ownership on %s before resolving credentials or retrieving payments', async (type) => {
+    const preflight = vi.fn(async () => ok('foreign' as const));
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
+    expect(await api.verify(invoiceWebhook(type))).toEqual(ok({
+      id: 'evt_clover_renewal', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
+    }));
+    expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      invoice: expect.objectContaining({ subscriptionId: 'sub_1' }),
+    }));
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
   it.each([
     ['invoice.paid', undefined], ['invoice.paid', 'tenant-a'],
     ['invoice.payment_failed', undefined], ['invoice.payment_failed', 'tenant-a'],
@@ -732,7 +746,7 @@ describe('verifyWebhookEvent', () => {
     const checked: string[] = [];
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, async (event) => {
       checked.push(event.invoice?.subscriptionId ?? 'missing');
-      return ok(false);
+      return ok('unknown');
     });
     const payload = JSON.stringify({ id: 'evt-initial-invoice', type, livemode: true,
       data: { object: { id: 'in-initial', amount_paid: 4900, amount_due: 4900, currency: 'usd',
@@ -752,7 +766,7 @@ describe('verifyWebhookEvent', () => {
   it('retrieves payments for a metadata-free invoice with a known local subscription', async () => {
     const api = invoiceProviderOverHttp(() => stripeJson({ id: 'in_renewal', payments: {
       data: [{ status: 'paid', payment: { payment_intent: 'pi_renewal' } }],
-    } }), async () => ok(true));
+    } }), async () => ok('owned'));
     expect(await api.verify(invoiceWebhook('invoice.paid'))).toMatchObject({
       ok: true, value: { invoice: { subscriptionId: 'sub_1', paymentIntentId: 'pi_renewal' } },
     });

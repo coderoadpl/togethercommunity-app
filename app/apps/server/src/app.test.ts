@@ -7905,9 +7905,12 @@ describe('checkout consent ordering', () => {
     );
   });
 
-  it('returns HTTP 400 for an invoice naming another tenant without opening a transaction', async () => {
+  it('acknowledges an invoice naming another tenant without opening a transaction', async () => {
     const base = deps({ tenants: [acme] });
+    const initialize = vi.spyOn(base.authPort, 'initialize');
+    const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
     const transaction = vi.spyOn(base.paymentTransaction, 'run');
+    const warn = vi.spyOn(base.logger, 'warn');
     const app = buildApp({
       ...base,
       payment: {
@@ -7922,8 +7925,11 @@ describe('checkout consent ordering', () => {
     const response = await app.request('/api/webhooks/stripe/t-acme', {
       method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
     });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-foreign-invoice reason=foreign tenant`);
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -7958,17 +7964,24 @@ describe('checkout consent ordering', () => {
     'handles a signed invoice with %s ownership before any Stripe API call',
     async (ownership) => {
       const base = deps({ tenants: [acme] });
+      const initialize = vi.spyOn(base.authPort, 'initialize');
+      const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+      const transaction = vi.spyOn(base.paymentTransaction, 'run');
+      const warn = vi.spyOn(base.logger, 'warn');
+      const subscriptionId = ownership === 'foreign-subscription' ? 'sub-foreign' : 'sub-initial';
       const foreignOwner = vi.spyOn(base.stripeWebhookOwnership, 'hasForeignOwner')
-        .mockResolvedValue(ownership === 'foreign-subscription');
+        .mockImplementation(async (_tenantId, ids) => ids.subscription === 'sub-foreign');
       const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
+      const clientFactory = vi.fn(() => { throw new Error('Unexpected Stripe API client'); });
       const payment = createStripePaymentProvider({
         resolver: { resolve },
+        clientFactory,
       });
       const payload = JSON.stringify({
         id: 'evt-signed-initial', type: 'invoice.paid', livemode: true,
         data: { object: {
           id: 'in-initial', customer: 'cus-initial',
-          parent: { subscription_details: { subscription: 'sub-initial' } },
+          parent: { subscription_details: { subscription: subscriptionId } },
           ...(ownership === 'foreign-metadata' ? { metadata: { tenantId: 't-other' } } : {}),
           amount_paid: 1000, currency: 'usd', lines: { data: [] },
         } },
@@ -7979,15 +7992,21 @@ describe('checkout consent ordering', () => {
       const response = await buildApp({ ...base, payment }).request('/api/webhooks/stripe/t-acme', {
         method: 'POST', headers: { 'stripe-signature': signature }, body: payload,
       });
-      expect(response.status).toBe(ownership === 'unknown' ? 200 : 400);
-      expect(await response.json()).toMatchObject(ownership === 'unknown'
-        ? { ok: true, data: { received: true, processed: false } }
-        : { ok: false, error: { code: 'validation' } });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+      if (ownership === 'unknown') expect(warn).not.toHaveBeenCalled();
+      else expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=foreign tenant`);
       if (ownership === 'foreign-metadata') expect(foreignOwner).not.toHaveBeenCalled();
       else expect(foreignOwner).toHaveBeenCalledWith(acme.id, {
-        customer: 'cus-initial', subscription: 'sub-initial', invoice: 'in-initial',
+        customer: 'cus-initial', subscription: subscriptionId, invoice: 'in-initial',
       });
       expect(resolve).not.toHaveBeenCalled();
+      expect(clientFactory).not.toHaveBeenCalled();
+      if (ownership !== 'unknown') {
+        expect(initialize).toHaveBeenCalledTimes(1);
+        expect(claim).not.toHaveBeenCalled();
+        expect(transaction).not.toHaveBeenCalled();
+      }
     },
   );
 
@@ -8070,7 +8089,7 @@ describe('checkout consent ordering', () => {
   });
 
   it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
-    'acknowledges unknown %s with HTTP 200 and rejects explicit foreign metadata with HTTP 400',
+    'acknowledges unknown %s and explicit foreign metadata with HTTP 200',
     async (type) => {
       const base = deps({ tenants: [acme] });
       const event = {
@@ -8088,13 +8107,8 @@ describe('checkout consent ordering', () => {
         const response = await app.request('/api/webhooks/stripe/t-acme', {
           method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
         });
-        if (tenantIds.includes('t-other')) {
-          expect(response.status).toBe(400);
-          expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
-        } else {
-          expect(response.status).toBe(200);
-          expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
-        }
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
       }
     },
   );

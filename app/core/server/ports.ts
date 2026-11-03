@@ -1007,6 +1007,7 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  foreignTenant?: true;
   tenantIds?: string[];
   customerId?: string | null;
   livemode?: boolean;
@@ -1150,7 +1151,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
-    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<boolean, AppError>>;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<'owned' | 'unknown' | 'foreign', AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;

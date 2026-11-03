@@ -622,12 +622,21 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         objectOwnership.parent?.subscription_details?.metadata?.tenantId,
       ].filter((id): id is string => typeof id === 'string' && id.length > 0);
       const tenantCheck = validateStripeWebhookTenant(input.tenantId, { tenantIds, checkoutSession: null });
-      if (!tenantCheck.ok) return tenantCheck;
       const customerId = typeof objectOwnership.customer === 'string' ? objectOwnership.customer : objectOwnership.customer?.id;
       const tenantMetadata = {
         ...(tenantIds.length === 0 ? {} : { tenantIds }),
         ...(customerId === undefined ? {} : { customerId }),
       };
+      const object = event.data.object;
+      const bareEvent = {
+        ...tenantMetadata,
+        livemode: event.livemode,
+        id: event.id,
+        type: event.type,
+        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
+        checkoutSession: null,
+      };
+      if (tenantCheck === 'foreign') return ok({ ...bareEvent, foreignTenant: true });
       if (
         event.type === 'checkout.session.completed' ||
         event.type === 'checkout.session.async_payment_succeeded' ||
@@ -642,8 +651,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           if (mappedInvoice !== null && input.validateInvoiceTenant !== undefined) {
             const ownershipCheck = await input.validateInvoiceTenant({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             if (!ownershipCheck.ok) return ownershipCheck;
+            if (ownershipCheck.value === 'foreign') return ok({ ...bareEvent, foreignTenant: true });
             // Checkout may commit after this lookup; an unenriched invoice must stay ignored for this delivery.
-            if (!ownershipCheck.value) return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
+            if (ownershipCheck.value === 'unknown') return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
           }
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
@@ -675,15 +685,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
         if (mapped) return ok({ ...mapped, ...tenantMetadata, livemode: event.livemode });
       }
-      const object = event.data.object;
-      return ok({
-        ...tenantMetadata,
-        livemode: event.livemode,
-        id: event.id,
-        type: event.type,
-        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
-        checkoutSession: null,
-      });
+      return ok(bareEvent);
     },
   };
 };

@@ -661,14 +661,14 @@ const directCheckout = async (cancelReturnUrl?: string | null) => {
     createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true,
   };
   const { createDirectSalesLinkCheckout } = await import('./direct-sales-link-checkout.js');
-  const deps = { ...h.deps, logger: { warn: vi.fn() } };
   const start = (returnUrl?: string, couponCode?: string) => createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug,
     ...(couponCode === undefined ? {} : { couponCode }),
     ...(returnUrl === undefined ? {} : { returnUrl }),
     termsAcceptanceMessage: ({ termsUrl, privacyUrl }) => `I accept the [Terms](${termsUrl}) and the [Privacy policy](${privacyUrl}).`,
-  }, deps);
-  return { ...h, deps, settings, start };
+    couponDisclosureMessage: (breakdown, language) => `${language}: lowest ${breakdown.lowestPriceLast30DaysCents} ${breakdown.currency}`,
+  }, h.deps);
+  return { ...h, settings, start };
 };
 
 it('creates an anonymous direct session using tenant language, legal URLs and branding', async () => {
@@ -683,6 +683,7 @@ it('creates an anonymous direct session using tenant language, legal URLs and br
     cancelUrl: 'https://workspace.example.com/offer/collection?status=cancelled&salesLinkId=link-1',
   });
   expect(h.calls[0]).not.toHaveProperty('customerEmail');
+  expect(h.calls[0]?.directCheckout).not.toHaveProperty('disclosureMessage');
   expect(h.snapshots[0]).toMatchObject({ mode: 'live', providerSessionId: 'bundle-session', salesLinkId: h.link.id });
 });
 
@@ -773,6 +774,7 @@ it('captures campaign parameters with the server timestamp on direct checkout an
   const result = await createDirectSalesLinkCheckout(tenant, 'https://workspace.example.com', {
     slug: h.link.slug, attribution: { utmSource: ' meta ', utmMedium: 'paid', fbclid: 'X' },
     termsAcceptanceMessage: () => 'I accept the terms and privacy policy.',
+    couponDisclosureMessage: () => 'Lowest price in the last 30 days.',
   }, h.deps);
   expect(result.ok).toBe(true);
   const attribution = { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X', capturedAt: '2026-10-08T12:00:00.000Z' };
@@ -803,6 +805,7 @@ it('keeps sanitized campaign parameters on a configured direct checkout cancella
     returnUrl: 'https://sales.example/offer?section=details&utm_source=old#buy',
     attribution: { utmSource: 'meta', utmCampaign: 'Launch + 2026', fbclid: 'X', gclid: '<invalid>' },
     termsAcceptanceMessage: () => 'I accept the terms and privacy policy.',
+    couponDisclosureMessage: () => 'Lowest price in the last 30 days.',
   }, h.deps)).toMatchObject({ ok: true });
   expect(h.calls[0]?.cancelUrl).toBe('https://sales.example/offer?section=details&utm_source=meta&utm_campaign=Launch+%2B+2026&fbclid=X#buy');
 });
@@ -843,6 +846,7 @@ it('applies a direct bundle coupon with the shared snapshot and Stripe metadata'
   expect(await h.start(undefined, ' save ')).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
   expect(h.findByCode).toHaveBeenCalledWith(tenant.id, 'SAVE');
   expect(h.calls[0]).toMatchObject({ promotionCodeId: 'promotion-save', couponCheckoutSessionId: 'id-1', checkoutSnapshotId: 'id-2', priceCents: 7000 });
+  expect(h.calls[0]?.directCheckout).toMatchObject({ disclosureMessage: 'en: lowest 7000 PLN' });
   expect(h.calls[0]).not.toHaveProperty('customerEmail');
   expect(h.sessions).toEqual([{
     id: 'id-1', tenantId: tenant.id, couponId: h.coupon.id, providerSessionId: null,
@@ -868,34 +872,46 @@ it.each(['unknown', 'archived', 'expired', 'future', 'exhausted', 'scope'] as co
   expect(h.ensurePromotion).not.toHaveBeenCalled();
 });
 
-it.each(['promotion', 'capture'] as const)('continues direct checkout without a discount when coupon %s fails', async (stage) => {
+it.each(['promotion', 'capture'] as const)('fails direct checkout instead of charging full price when coupon %s fails', async (stage) => {
   const h = await directCouponCheckout();
   if (stage === 'promotion') h.deps.payment.ensureCouponPromotion = async () => err(integrationUnavailable('Promotion creation failed'));
   else delete h.deps.couponCheckoutSessions;
-  expect(await h.start(undefined, 'SAVE')).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
-  expect(h.calls).toHaveLength(1);
-  expect(h.calls[0]).not.toHaveProperty('promotionCodeId');
-  expect(h.calls[0]).not.toHaveProperty('couponCheckoutSessionId');
+  expect(await h.start(undefined, 'SAVE')).toMatchObject({
+    ok: false, error: { message: stage === 'promotion' ? 'Promotion creation failed' : 'Coupon checkout is not configured' },
+  });
+  expect(h.calls).toHaveLength(0);
+  expect(h.snapshots).toHaveLength(0);
   expect(h.sessions).toHaveLength(0);
   expect(h.attach).not.toHaveBeenCalled();
-  expect(h.deps.logger.warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(
-    stage === 'promotion' ? 'Promotion creation failed' : 'Coupon checkout is not configured',
-  ));
 });
 
 it('routes a member-limited coupon to email collection before applying a discount', async () => {
   const h = await directCouponCheckout({ maxRedemptionsPerMember: 1 });
   const { resolveDirectSalesLinkCoupon } = await import('./direct-sales-link-checkout.js');
-  expect(await resolveDirectSalesLinkCoupon(tenant.id, { slug: h.link.slug, couponCode: ' save ' }, h.deps)).toEqual(ok({ kind: 'requiresEmail' }));
+  expect(await resolveDirectSalesLinkCoupon(tenant.id, { slug: h.link.slug, couponCode: ' save ' }, h.deps)).toEqual(ok({ kind: 'together' }));
   expect(await h.start(undefined, ' save ')).toEqual(ok({ url: 'https://workspace.example.com/offer/collection?checkout=together&code=SAVE' }));
   expect(h.calls).toHaveLength(0);
   expect(h.sessions).toHaveLength(0);
   expect(h.ensurePromotion).not.toHaveBeenCalled();
 });
 
-it('keeps a fully discounted direct checkout on Stripe for buyer details', async () => {
+it('routes a fully discounted direct checkout to the Together checkout', async () => {
   const h = await directCouponCheckout({ value: 100 });
-  expect(await h.start(undefined, 'SAVE')).toMatchObject({ ok: true });
-  expect(h.calls[0]).toMatchObject({ promotionCodeId: 'promotion-save', couponCheckoutSessionId: 'id-1' });
-  expect(h.sessions[0]).toMatchObject({ finalCents: 0, discountCents: 7000 });
+  const { resolveDirectSalesLinkCoupon } = await import('./direct-sales-link-checkout.js');
+  expect(await resolveDirectSalesLinkCoupon(tenant.id, { slug: h.link.slug, couponCode: 'SAVE' }, h.deps)).toEqual(ok({ kind: 'together' }));
+  expect(await h.start(undefined, 'SAVE')).toEqual(ok({ url: 'https://workspace.example.com/offer/collection?checkout=together&code=SAVE' }));
+  expect(h.calls).toHaveLength(0);
+  expect(h.sessions).toHaveLength(0);
+  expect(h.ensurePromotion).not.toHaveBeenCalled();
+});
+
+it('treats an archived member-limited coupon as invalid instead of routing it to email collection', async () => {
+  const h = await directCouponCheckout({ maxRedemptionsPerMember: 1, status: 'archived' });
+  const { resolveDirectSalesLinkCoupon } = await import('./direct-sales-link-checkout.js');
+  expect(await resolveDirectSalesLinkCoupon(tenant.id, { slug: h.link.slug, couponCode: 'SAVE' }, h.deps)).toEqual(ok({ kind: 'invalid' }));
+  expect(await h.start(undefined, 'SAVE')).toEqual(ok({ url: 'https://checkout.stripe.test/bundle' }));
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]).not.toHaveProperty('promotionCodeId');
+  expect(h.sessions).toHaveLength(0);
+  expect(h.ensurePromotion).not.toHaveBeenCalled();
 });

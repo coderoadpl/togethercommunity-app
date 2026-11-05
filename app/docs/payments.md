@@ -349,6 +349,22 @@ fulfillment.
 Signature verification failures still fail the request. Simulated events with
 mismatched tenant metadata still return a validation error.
 
+Because an ownership conflict is acknowledged with HTTP 200, Stripe does not
+retry it, and the renewal or access change it carried is not applied until
+someone recovers it:
+
+1. Set a log-drain alert on
+   `[stripe-webhook] ignored tenant=<id> event=<id> reason=ownership conflict`.
+2. Find which other tenant holds the conflicting local record. Search by the
+   Stripe IDs of the logged event: `member_subscriptions.provider_subscription_id`,
+   `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
+3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
+   only.
+4. Resend the logged event from the Stripe Dashboard to this tenant's webhook
+   endpoint. The endpoint is idempotent. Then check the renewal order, the
+   subscription period and the member's access. A resend before step 3 is
+   ignored again.
+
 Uncorrelated invoices and subscriptions without evidence of foreign ownership are
 acknowledged with HTTP 200 and `processed: false`. Invoice events without a local subscription
 or order skip the Stripe lookup. This applies both to older objects without

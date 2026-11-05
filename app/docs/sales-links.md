@@ -243,17 +243,22 @@ the full payment; reconciliation cannot recover the omitted product list from
 that order. Activate sales links only after the rollout is complete.
 
 Migration 0149 makes `coupon_checkout_sessions.member_email` nullable for
-direct-checkout coupon sessions. The migration is additive (expand) and needs no
-restore point. A release older than this one parses that column as a required
+direct-checkout coupon sessions. The migration relaxes a NOT NULL constraint
+(expand); record a Neon restore point before promotion, as
+[`deployment-environments.md`](deployment-environments.md) requires for any
+constraint migration. A release older than this one parses that column as a required
 e-mail, so after a rollback the Stripe webhook would throw on rows with a NULL
 `member_email` and retry. Prefer rolling forward. If a rollback past 0149 is
 unavoidable, prepare the data first:
 
-1. Stop new direct coupon checkouts: deactivate the affected sales links or
-   remove `?code=` from the published links. Then wait until every open Stripe
-   Checkout Session referenced by a row with a NULL `member_email` has expired
-   (Stripe expires sessions after 24 hours), or expire those sessions through
-   the Stripe API.
+1. Stop new direct coupon checkouts on the server: deactivate the affected
+   sales links, or deactivate the coupons used with them. Removing `?code=`
+   from published links is not enough, because anyone can still open a link
+   with a code. Keep them inactive until the rollback has finished. Then wait
+   until every open Stripe Checkout Session referenced by a row with a NULL
+   `member_email` has completed or expired (Stripe expires sessions after 24
+   hours), or expire those sessions through the Stripe API. Run steps 2-3 only
+   after these in-flight checkouts have completed or expired.
 2. For every row with a NULL `member_email` whose `provider_session_id` points
    to a completed Stripe Checkout Session, fill `member_email` with that
    session's customer e-mail.

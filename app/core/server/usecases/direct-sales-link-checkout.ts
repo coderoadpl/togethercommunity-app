@@ -55,7 +55,7 @@ export const createDirectSalesLinkCheckout = async (
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
     couponDisclosureMessage: (breakdown: CouponCheckoutBreakdown, language: 'en' | 'pl') => string;
   },
-  deps: CheckoutDeps,
+  deps: CheckoutDeps & { logger: { warn(message: string): void } },
 ) => {
   const link = await deps.salesLinks?.findBySlug(tenant.id, input.slug);
   const productId = link?.productIds[0];
@@ -95,9 +95,15 @@ export const createDirectSalesLinkCheckout = async (
   let applied: { promotionCodeId: string; couponCheckoutSessionId: string } | undefined;
   if (coupon.value.kind === 'applied') {
     const promotion = await ensureCheckoutCouponPromotion(tenant.id, coupon.value, deps);
-    if (!promotion.ok) return promotion;
+    if (!promotion.ok) {
+      deps.logger.warn(`[direct-checkout] Coupon promotion unavailable tenant=${tenant.id}: ${promotion.error.message}`);
+      return promotion;
+    }
     const captured = await captureCouponCheckout(tenant.id, { ...coupon.value, memberEmail: null }, selection.value, deps);
-    if (!captured.ok) return captured;
+    if (!captured.ok) {
+      deps.logger.warn(`[direct-checkout] Coupon capture unavailable tenant=${tenant.id}: ${captured.error.message}`);
+      return captured;
+    }
     applied = { promotionCodeId: promotion.value.stripePromotionCodeId, couponCheckoutSessionId: captured.value };
   }
   const fields = attributionSchema.parse(input.attribution);
@@ -106,7 +112,8 @@ export const createDirectSalesLinkCheckout = async (
   const checkoutBranding = resolveCheckoutBranding(settings, tenantBaseUrl);
   const checkoutPath = `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}`;
   const checkoutQuery = `&salesLinkId=${encodeURIComponent(link.id)}`;
-  let cancelUrl = resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}`;
+  const couponQuery = coupon.value.kind === 'applied' ? `&code=${encodeURIComponent(normalizeCouponCode(input.couponCode ?? ''))}` : '';
+  let cancelUrl = resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}${couponQuery}`;
   if (fields !== undefined) {
     const attributedUrl = new URL(cancelUrl);
     attributionToSearchParams(fields).forEach((value, key) => attributedUrl.searchParams.set(key, value));

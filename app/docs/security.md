@@ -240,14 +240,17 @@ The audit allowlist contains these reviewed advisories:
   copies are overridden to 4.6.7. Every schema parse of attacker-controlled
   input in Together runs on a request body, and bodies are capped before
   parsing by `apps/server/src/body-limits.ts` (16 KiB on public forms, 100 KiB
-  on API bodies, 512 KiB on webhooks and transactional M2M calls, 2 MiB on
-  content and M2M import bodies, 10 MiB on import validation), which bounds
-  the array length and therefore the issue list. Webhook bodies are also
-  signature-verified before any schema runs, provider responses come from the
-  tenant's own configured integrations, and browser-side parsing can only
-  exhaust the visitor's own tab. Revisit with the zod 4 migration; until then a
-  new parse of unbounded, unauthenticated input must add a `.max()` on its
-  array schemas.
+  on API bodies, 512 KiB on webhooks and transactional M2M calls, 1 MiB on
+  contact-import row pages, 2 MiB on content and M2M import bodies, 4 MiB on
+  the contact-import upload, 10 MiB on the authenticated M2M import validation,
+  the largest cap), which bounds the array length and therefore the issue
+  list. Webhook bodies are also signature-verified before any schema runs,
+  provider responses come from the tenant's own configured integrations, and
+  browser-side parsing can only exhaust the visitor's own tab. A zod 3 `.max()`
+  on the array schema is not a mitigation: it records one `too_big` issue and
+  still validates every element. Revisit with the zod 4 migration; until then a
+  new parse of unbounded, unauthenticated input must stay behind a route body
+  limit in `body-limits.ts` or check the array length before the schema runs.
 
 ## Tenant API keys
 

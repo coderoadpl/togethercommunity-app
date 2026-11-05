@@ -33,6 +33,16 @@ describe('OrderShipment', () => {
     expect(onShip).toHaveBeenCalledWith({ carrier: 'inpost', trackingNumber: 'ABCD1234' });
   });
 
+  it('tells staff that no e-mail is sent for a test-mode order', async () => {
+    renderWithProviders(<OrderShipment order={{ ...toPack, mode: 'test' }} canShip pending={false} error={null} onShip={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText('Tracking number'), 'ABCD1234');
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/no e-mail is sent to the buyer/)).toBeVisible();
+    expect(within(dialog).getByText(/ABCD1234/)).toBeVisible();
+    expect(within(dialog).queryByText(/buyer@example\.org/)).toBeNull();
+  });
+
   it('lets staff pick another carrier', async () => {
     const onShip = vi.fn();
     renderWithProviders(<OrderShipment order={toPack} canShip pending={false} error={null} onShip={onShip} />);

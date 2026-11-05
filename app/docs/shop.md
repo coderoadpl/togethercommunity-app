@@ -223,7 +223,8 @@ formulas; a phone number such as `+48…` therefore appears as `'+48…`.
 The order detail **Delivery** card offers **Mark as shipped** for orders to
 pack when the staff role has `order:write`: a carrier select (preset to the
 delivery option's carrier), the tracking number and a confirmation that names
-the buyer e-mail. A shipped order shows the shipment date and time
+the buyer e-mail; for a test-mode order it says instead that no e-mail is sent.
+A shipped order shows the shipment date and time
 (Europe/Warsaw), the staff member who shipped it, the carrier and the tracking
 number with its link.
 

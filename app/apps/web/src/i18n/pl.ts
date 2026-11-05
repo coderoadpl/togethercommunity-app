@@ -698,6 +698,7 @@ export const pl: Messages = {
     shipTrackingHint: 'Od 4 do 64 znaków, tak jak na etykiecie paczki.',
     shipConfirmTitle: 'Oznaczyć zamówienie jako wysłane?',
     shipConfirmBody: ({ email, trackingNumber }) => `Kupujący dostanie e-mail na adres ${email} z numerem przesyłki ${trackingNumber}. Wysłanego zamówienia nie można cofnąć.`,
+    shipConfirmBodyTest: ({ trackingNumber }) => `To zamówienie testowe: zostanie oznaczone jako wysłane z numerem przesyłki ${trackingNumber}, a kupujący nie dostanie e-maila. Wysłanego zamówienia nie można cofnąć.`,
     shipConfirm: 'Oznacz jako wysłane',
     markingShipped: 'Zapisuję…',
     shippedAt: 'Wysłano',

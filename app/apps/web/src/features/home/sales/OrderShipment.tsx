@@ -87,7 +87,9 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
       <ConfirmDialog
         open={confirming}
         title={t.shipping.shipConfirmTitle}
-        body={<Typography>{t.shipping.shipConfirmBody({ email: order.memberEmail, trackingNumber: tracking.success ? tracking.data : trackingNumber })}</Typography>}
+        body={<Typography>{order.mode === 'test'
+          ? t.shipping.shipConfirmBodyTest({ trackingNumber: tracking.success ? tracking.data : trackingNumber })
+          : t.shipping.shipConfirmBody({ email: order.memberEmail, trackingNumber: tracking.success ? tracking.data : trackingNumber })}</Typography>}
         confirmLabel={t.shipping.shipConfirm}
         cancelLabel={t.common.cancel}
         confirmColor="primary"

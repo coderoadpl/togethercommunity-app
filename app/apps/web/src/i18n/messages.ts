@@ -661,6 +661,7 @@ export interface Messages {
     shipTrackingHint: string;
     shipConfirmTitle: string;
     shipConfirmBody: (params: { email: string; trackingNumber: string }) => string;
+    shipConfirmBodyTest: (params: { trackingNumber: string }) => string;
     shipConfirm: string;
     markingShipped: string;
     shippedAt: string;

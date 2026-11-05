@@ -691,6 +691,7 @@ export const en: Messages = {
     shipTrackingHint: '4–64 characters, as printed on the parcel label.',
     shipConfirmTitle: 'Mark the order as shipped?',
     shipConfirmBody: ({ email, trackingNumber }) => `The buyer receives an e-mail at ${email} with tracking number ${trackingNumber}. A shipped order cannot be changed back.`,
+    shipConfirmBodyTest: ({ trackingNumber }) => `This is a test-mode order: it is marked as shipped with tracking number ${trackingNumber} and no e-mail is sent to the buyer. A shipped order cannot be changed back.`,
     shipConfirm: 'Mark as shipped',
     markingShipped: 'Saving…',
     shippedAt: 'Shipped on',

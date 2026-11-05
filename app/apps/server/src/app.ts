@@ -77,7 +77,7 @@ export const buildApp = (deps: AppDeps) => {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath || isCheckoutFormDocument(c.req.path, (key) => c.req.query(key))
+        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath
           ? ["'self'", 'https:']
           : ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],

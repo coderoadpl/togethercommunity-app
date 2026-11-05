@@ -156,8 +156,13 @@ Checkout form documents — `/checkout/<productRef>` without `status=success`,
 `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
-the server middleware and the static hosting headers, with
-`connect-src 'self' https:`. The page injects the map script and stylesheet only
+the server middleware and the static hosting headers. `connect-src` is not part
+of that change: each document keeps its base value, `'self' https:` on
+`/checkout/*` documents and in the static hosting headers, and
+`'self' https://*.sentry.io` on `/offer/*` server responses. On a
+server-rendered `/offer/*` form document the map may therefore fail to reach
+InPost's API; the buyer then enters the locker code in the typed input, which
+the delivery step always shows. The page injects the map script and stylesheet only
 when the workspace has a Geowidget token, the buyer has chosen a parcel locker
 option, the checkout runs in live mode and the viewer holds no staff session
 (owner or admin) for the workspace (owner decision 2026-11-05), so the map code
@@ -166,8 +171,8 @@ sign-in, member and Studio documents never list that origin. Once the map
 script has been injected, leaving the form document by any in-app navigation
 becomes a full document navigation, as on the analytics success document, so the
 map code never runs in sign-in or signed-in views. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
-No other directive changes: `connect-src 'self' https:` and
-`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+No other directive changes: `connect-src` and `img-src 'self' data: https:`
+keep their base values. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.
@@ -216,8 +221,8 @@ Exception (owner decision 2026-10-14, approved, implemented and recorded in
 additionally lists the two vendor script sources named there, Google's tag
 library and Meta's pixel library, and `connect-src` is `'self' https:` as on
 other web-app documents, in both the static hosting headers and the server
-middleware. Other `/offer/*` server responses, apart from the checkout form
-documents, retain `'self' https://*.sentry.io`. The
+middleware. Other `/offer/*` server responses retain `'self'
+https://*.sentry.io`, including the checkout form documents. The
 policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
 and leaving that document after a vendor library loads uses a full document

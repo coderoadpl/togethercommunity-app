@@ -177,9 +177,13 @@ Following the same decision, the checkout form documents add
 - `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled`.
 
 The server middleware (`apps/server/src/app.ts`) and the static hosting headers
-(`vercel.json`) apply the same rule, and these documents use
-`connect-src 'self' https:` as other web-app documents do, which covers the map's
-own requests; `img-src` already allows `https:`. Success documents keep the
+(`vercel.json`) apply the same rule. No `connect-src` change is part of it: each
+document keeps its base value, `'self' https:` on `/checkout/*` documents and in
+the static hosting headers, and `'self' https://*.sentry.io` on `/offer/*`
+server responses. On a server-rendered `/offer/*` form document the map may
+therefore fail to reach InPost's API; the buyer then enters the locker code in
+the typed input, which the delivery step always shows. `img-src` already allows
+`https:`. Success documents keep the
 analytics policy described in [Security](security.md) and never allow the map
 origin. No other document allows it; `vercel.json` keeps its policy entries
 mutually exclusive, so header precedence cannot hand the map origin to a success
@@ -191,9 +195,8 @@ step becomes a full document navigation (the same guard as the analytics success
 document). The guard stays in place after the buyer switches to another
 delivery option, so the map code never runs in sign-in or signed-in views.
 
-Follow-up: `connect-src` stays the broad `https:` until a browser check on
-staging lists the exact origins the map calls; then those origins replace it on
-the checkout form documents.
+Follow-up: a browser check on staging lists the exact origins the map calls;
+any `connect-src` change for them needs a separate owner decision.
 
 ## CLI
 

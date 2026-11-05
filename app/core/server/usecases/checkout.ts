@@ -130,7 +130,7 @@ const selectCheckoutProducts = async (
     }
   }
 
-  if (product.type === 'physical' && price?.kind === 'recurring') {
+  if ((product.type === 'physical' || product.deliveryMethod === 'shipping') && price?.kind === 'recurring') {
     return err(validation('Physical products require a one-time price'));
   }
   if (product.type === 'membership' && price?.kind !== 'recurring') {

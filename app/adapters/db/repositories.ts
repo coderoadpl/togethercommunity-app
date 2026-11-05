@@ -2790,10 +2790,18 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       await tx.update(orders).set({ attribution: null }).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
       ));
+      const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
-        shipping: sql`jsonb_set(jsonb_set(${orders.shipping}, '{address}', (${orders.shipping}->'address') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)), '{phone}', 'null'::jsonb)`,
+        shipping: sql`case
+          when jsonb_typeof(${orders.shipping}->'address') = 'object'
+            then jsonb_set(${orders.shipping}, '{address}', (${orders.shipping}->'address') || ${erasedAddress})
+          when jsonb_typeof(${orders.shipping}->'address') <> 'null'
+            then jsonb_set(${orders.shipping}, '{address}', ${erasedAddress})
+          else ${orders.shipping}
+        end || jsonb_build_object('phone', null)`,
       }).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), isNotNull(orders.shipping),
+        sql`jsonb_typeof(${orders.shipping}) = 'object'`,
       ));
       await tx.update(emailOutbox).set({
         payload: sql`jsonb_set(${emailOutbox.payload}, '{purchase,delivery,address}', (${emailOutbox.payload}#>'{purchase,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,

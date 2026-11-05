@@ -74,6 +74,9 @@ describe('durable Meta consent and outbox', () => {
     const access = await makeOrder('denied');
     const repo = repository();
     await repo.decide('workspace', access, async () => ok({ decision: 'denied', capture }));
+    expect(await repo.listMemberConsents('workspace', 'buyer')).toContainEqual({ orderId: 'denied', consent: 'denied', consentAt: now, withdrawnAt: null });
+    expect(await repo.listMemberConsents('other', 'buyer')).toEqual([]);
+    expect(await repo.listMemberConsents('workspace', 'stranger')).toEqual([]);
     expect(await database.db.select().from(metaCapiOutbox).where(eq(metaCapiOutbox.orderId, 'denied'))).toEqual([]);
     expect((await database.db.select().from(metaCapiEvents).where(eq(metaCapiEvents.transactionId, 'denied')))[0]).toMatchObject({ status: 'blocked', fieldsSent: [] });
     expect((await database.db.select().from(metaCapiConsentEvidence).where(eq(metaCapiConsentEvidence.orderId, 'denied')))[0]).toMatchObject({ textSnapshot: capture.textSnapshot, source: 'return-page' });

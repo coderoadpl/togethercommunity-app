@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lte, ne, sql } from 'drizzle-orm';
 import { err, metaCapiEventSchema, notFound, ok, orderSchema } from '#core/domain/index.js';
 import type { MetaCapiOrder, MetaCapiOrderAccess, MetaCapiRepository } from '#core/server/meta-capi-ports.js';
 import type { Db } from './client.js';
@@ -81,7 +81,7 @@ export const createMetaCapiRepository = (db: Db, resolveOrigin: (tenantId: strin
       .orderBy(desc(metaCapiEvents.recordedAt)).limit(100)).map((row) => metaCapiEventSchema.parse(row)),
     listMemberConsents: async (tenantId, memberId) => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
       withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt }).from(orders)
-      .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), eq(orders.metaCapiConsent, 'granted')))
+      .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
       .orderBy(desc(orders.createdAt))),
   };
 };

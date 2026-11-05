@@ -30,10 +30,12 @@ const effect = (overrides: Partial<StockCommitEffect> = {}): StockCommitEffect =
   productId: 'poster',
   outcome: 'committed',
   onHandBefore: 5,
+  reservedBefore: 0,
   onHandAfter: 4,
   reservedAfter: 0,
   lowStockThreshold: 2,
   lowStockNotifiedAt: null,
+  soldOutNotifiedAt: null,
   oversold: false,
   ...overrides,
 });
@@ -97,27 +99,36 @@ describe('stock inputs', () => {
 });
 
 describe('low-stock alert decision', () => {
+  const notified = '2026-11-05T09:00:00.000Z';
+
   it('alerts the first time availability crosses the threshold', () => {
-    expect(lowStockAlertFor(effect({ onHandAfter: 2 }))).toEqual({ available: 2, oversold: false });
+    expect(lowStockAlertFor(effect({ onHandAfter: 2 }))).toEqual({ available: 2, oversold: false, soldOut: false });
     expect(lowStockAlertFor(effect({ onHandAfter: 3 }))).toBeNull();
   });
 
   it('stays quiet after the first alert until the last piece is sold', () => {
-    const notified = '2026-11-05T09:00:00.000Z';
     expect(lowStockAlertFor(effect({ onHandAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
-    expect(lowStockAlertFor(effect({ onHandBefore: 1, onHandAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
+    expect(lowStockAlertFor(effect({ onHandBefore: 1, onHandAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false, soldOut: true });
   });
 
-  it('sends the zero alert once, for the commit that sells the last piece on hand, not while held pieces keep availability at zero', () => {
-    const notified = '2026-11-05T09:00:00.000Z';
-    expect(lowStockAlertFor(effect({ onHandBefore: 3, onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified }))).toBeNull();
-    expect(lowStockAlertFor(effect({ onHandBefore: 2, onHandAfter: 1, reservedAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
-    expect(lowStockAlertFor(effect({ onHandBefore: 1, onHandAfter: 0, reservedAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
-    expect(lowStockAlertFor(effect({ onHandBefore: 3, onHandAfter: 2, reservedAfter: 2 }))).toEqual({ available: 0, oversold: false });
+  it('sends the zero alert for the commit that sells the last piece on hand, not while held pieces keep availability at zero', () => {
+    expect(lowStockAlertFor(effect({ onHandBefore: 3, reservedBefore: 3, onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ onHandBefore: 2, reservedBefore: 2, onHandAfter: 1, reservedAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ onHandBefore: 1, reservedBefore: 1, onHandAfter: 0, reservedAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false, soldOut: true });
+    expect(lowStockAlertFor(effect({ onHandBefore: 3, reservedBefore: 3, onHandAfter: 2, reservedAfter: 2 }))).toEqual({ available: 0, oversold: false, soldOut: false });
+  });
+
+  it('sends the zero alert when a late commit takes the last free piece while other checkouts hold the rest', () => {
+    expect(lowStockAlertFor(effect({ outcome: 'committed_late', onHandBefore: 3, reservedBefore: 2, onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false, soldOut: true });
+  });
+
+  it('sends the zero alert only once until the marker is reset', () => {
+    expect(lowStockAlertFor(effect({ onHandBefore: 1, reservedBefore: 1, onHandAfter: 0, reservedAfter: 0, lowStockNotifiedAt: notified, soldOutNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ outcome: 'committed_late', onHandBefore: 3, reservedBefore: 2, onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified, soldOutNotifiedAt: notified }))).toBeNull();
   });
 
   it('always alerts an oversold commit, even without a threshold', () => {
-    expect(lowStockAlertFor(effect({ onHandAfter: 0, lowStockThreshold: null, lowStockNotifiedAt: '2026-11-05T09:00:00.000Z', oversold: true }))).toEqual({ available: 0, oversold: true });
+    expect(lowStockAlertFor(effect({ onHandBefore: 0, onHandAfter: 0, lowStockThreshold: null, lowStockNotifiedAt: notified, oversold: true }))).toEqual({ available: 0, oversold: true, soldOut: false });
   });
 
   it('never alerts for an unchanged commit or an untracked threshold', () => {

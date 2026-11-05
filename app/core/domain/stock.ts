@@ -119,18 +119,28 @@ export interface StockCommitEffect {
   productId: string;
   outcome: 'committed' | 'committed_late' | 'unchanged';
   onHandBefore: number;
+  reservedBefore: number;
   onHandAfter: number;
   reservedAfter: number;
   lowStockThreshold: number | null;
   lowStockNotifiedAt: string | null;
+  soldOutNotifiedAt: string | null;
   oversold: boolean;
 }
 
-export const lowStockAlertFor = (effect: StockCommitEffect): { available: number; oversold: boolean } | null => {
+interface LowStockAlert {
+  available: number;
+  oversold: boolean;
+  soldOut: boolean;
+}
+
+export const lowStockAlertFor = (effect: StockCommitEffect): LowStockAlert | null => {
   if (effect.outcome === 'unchanged') return null;
   const available = availableStock({ onHand: effect.onHandAfter, reserved: effect.reservedAfter });
-  if (effect.oversold) return { available, oversold: true };
+  const crossedToZero = availableStock({ onHand: effect.onHandBefore, reserved: effect.reservedBefore }) > 0
+    || (effect.onHandBefore > 0 && effect.onHandAfter === 0);
+  const soldOut = available === 0 && crossedToZero && effect.soldOutNotifiedAt === null;
+  if (effect.oversold) return { available, oversold: true, soldOut };
   if (effect.lowStockThreshold === null || available > effect.lowStockThreshold) return null;
-  const lastPieceSold = effect.onHandBefore > 0 && effect.onHandAfter === 0;
-  return effect.lowStockNotifiedAt === null || lastPieceSold ? { available, oversold: false } : null;
+  return effect.lowStockNotifiedAt === null || soldOut ? { available, oversold: false, soldOut } : null;
 };

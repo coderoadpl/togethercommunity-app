@@ -1,6 +1,6 @@
 {
-  "hash": "ba7284e0393c577bc7e6cda1405d1314b5c4b2d9171f719ef73897da79f64af4",
-  "shortId": "ba7284e0393c",
+  "hash": "a17ecff21bb064ccafe6da1503787bb55b872beca4ef8141227b8ec82a656a31",
+  "shortId": "a17ecff21bb0",
   "schema": {
     "constraints": [
       {
@@ -7372,6 +7372,14 @@
             "name": "product_id",
             "notNull": true,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sold_out_notified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
           },
           {
             "default": null,

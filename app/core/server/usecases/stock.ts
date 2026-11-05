@@ -252,7 +252,7 @@ export const commitCheckoutStock = async (
     }
     if (!queuedAny) continue;
     alertsQueued = true;
-    await deps.stock.markLowStockNotified(tenant.id, { productId: effect.productId, now });
+    await deps.stock.markLowStockNotified(tenant.id, { productId: effect.productId, soldOut: alert.soldOut, now });
   }
   return { alertsQueued };
 };

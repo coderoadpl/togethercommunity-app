@@ -33,7 +33,7 @@ interface FakeStockEvent {
 }
 
 export const createStockRepositoryFake = () => {
-  const levels = new Map<string, StockLevel & { tenantId: string }>();
+  const levels = new Map<string, StockLevel & { tenantId: string; soldOutNotifiedAt: string | null }>();
   const reservations: FakeStockReservation[] = [];
   const events: FakeStockEvent[] = [];
   let sequence = 0;
@@ -64,28 +64,34 @@ export const createStockRepositoryFake = () => {
     record(reservation.tenantId, reservation.productId, 'released', -reservation.quantity, { checkoutSnapshotId: reservation.checkoutSnapshotId, reservationId: reservation.id, reason });
     return 1;
   };
-  const effectOf = (stored: StockLevel, outcome: StockCommitEffect['outcome'], oversold: boolean, notifiedAt: string | null, onHandBefore = stored.onHand): StockCommitEffect => ({
+  const effectOf = (
+    stored: StockLevel & { soldOutNotifiedAt: string | null },
+    outcome: StockCommitEffect['outcome'],
+    oversold: boolean,
+    before: { onHand: number; reserved: number } = stored,
+  ): StockCommitEffect => ({
     productId: stored.productId,
     outcome,
-    onHandBefore,
+    onHandBefore: before.onHand,
+    reservedBefore: before.reserved,
     onHandAfter: stored.onHand,
     reservedAfter: stored.reserved,
     lowStockThreshold: stored.lowStockThreshold,
-    lowStockNotifiedAt: notifiedAt,
+    lowStockNotifiedAt: stored.lowStockNotifiedAt,
+    soldOutNotifiedAt: stored.soldOutNotifiedAt,
     oversold,
   });
   const applyCommit = (tenantId: string, productId: string, releaseReserved: boolean, outcome: 'committed' | 'committed_late', reference: Record<string, string>, now: string): StockCommitEffect | null => {
     const stored = level(tenantId, productId);
     if (stored === null) return null;
-    const notifiedAt = stored.lowStockNotifiedAt;
-    const before = stored.onHand;
-    stored.onHand = Math.max(before - 1, 0);
+    const before = { onHand: stored.onHand, reserved: stored.reserved };
+    stored.onHand = Math.max(before.onHand - 1, 0);
     if (releaseReserved) stored.reserved = Math.max(stored.reserved - 1, 0);
     stored.updatedAt = now;
-    record(tenantId, productId, outcome, stored.onHand - before, reference);
-    const oversold = before < 1;
+    record(tenantId, productId, outcome, stored.onHand - before.onHand, reference);
+    const oversold = before.onHand < 1;
     if (oversold) record(tenantId, productId, 'oversold', -1, reference);
-    return effectOf(stored, outcome, oversold, notifiedAt, before);
+    return effectOf(stored, outcome, oversold, before);
   };
 
   const repository: StockRepository = {
@@ -103,7 +109,7 @@ export const createStockRepositoryFake = () => {
     enableTracking: async (tenantId, input) => {
       if (level(tenantId, input.productId) !== null) return err(appError('conflict', 'Stock tracking is already enabled for this product'));
       if (input.onHand > MAX_STOCK_QUANTITY || (input.lowStockThreshold ?? 0) > MAX_STOCK_QUANTITY) return err(validation('Stock quantities cannot exceed the cap'));
-      const stored = { tenantId, productId: input.productId, onHand: input.onHand, reserved: 0, lowStockThreshold: input.lowStockThreshold, lowStockNotifiedAt: null, updatedAt: input.now };
+      const stored = { tenantId, productId: input.productId, onHand: input.onHand, reserved: 0, lowStockThreshold: input.lowStockThreshold, lowStockNotifiedAt: null, soldOutNotifiedAt: null, updatedAt: input.now };
       levels.set(key(tenantId, input.productId), stored);
       record(tenantId, input.productId, 'tracking_enabled', input.onHand);
       return ok(view(stored));
@@ -116,6 +122,7 @@ export const createStockRepositoryFake = () => {
       stored.onHand += input.delta;
       stored.updatedAt = input.now;
       resetNotification(stored);
+      if (stored.onHand - stored.reserved > 0) stored.soldOutNotifiedAt = null;
       record(tenantId, input.productId, stockAdjustmentEventType(input.delta, input.reason), input.delta, { reason: input.reason });
       return ok(view(stored));
     },
@@ -160,7 +167,7 @@ export const createStockRepositoryFake = () => {
         const stored = level(tenantId, reservation.productId);
         if (stored === null) continue;
         if (reservation.status === 'committed') {
-          effects.push(effectOf(stored, 'unchanged', false, stored.lowStockNotifiedAt));
+          effects.push(effectOf(stored, 'unchanged', false));
           continue;
         }
         const wasActive = reservation.status === 'active';
@@ -172,7 +179,7 @@ export const createStockRepositoryFake = () => {
         const stored = level(tenantId, productId);
         if (own.some((reservation) => reservation.productId === productId) || stored === null) continue;
         if (input.checkoutSnapshotId === null && events.some((event) => event.tenantId === tenantId && event.productId === productId && (event.type === 'committed' || event.type === 'committed_late') && event.reference['orderId'] === input.orderId)) {
-          effects.push(effectOf(stored, 'unchanged', false, stored.lowStockNotifiedAt));
+          effects.push(effectOf(stored, 'unchanged', false));
           continue;
         }
         if (input.checkoutSnapshotId !== null) {
@@ -186,7 +193,9 @@ export const createStockRepositoryFake = () => {
     },
     markLowStockNotified: async (tenantId, input) => {
       const stored = level(tenantId, input.productId);
-      if (stored !== null) stored.lowStockNotifiedAt = input.now;
+      if (stored === null) return;
+      stored.lowStockNotifiedAt = input.now;
+      if (input.soldOut) stored.soldOutNotifiedAt = input.now;
     },
     releaseExpired: async (now, limit, tenantId) => reservations
       .filter((reservation) => reservation.status === 'active' && reservation.expiresAt <= now && (tenantId === undefined || reservation.tenantId === tenantId))
@@ -195,7 +204,7 @@ export const createStockRepositoryFake = () => {
       .reduce((count, reservation) => count + releaseOne(reservation, 'expired', now), 0),
   };
   const track = (tenantId: string, productId: string, onHand: number, lowStockThreshold: number | null = null) => {
-    levels.set(key(tenantId, productId), { tenantId, productId, onHand, reserved: 0, lowStockThreshold, lowStockNotifiedAt: null, updatedAt: '2026-11-05T09:00:00.000Z' });
+    levels.set(key(tenantId, productId), { tenantId, productId, onHand, reserved: 0, lowStockThreshold, lowStockNotifiedAt: null, soldOutNotifiedAt: null, updatedAt: '2026-11-05T09:00:00.000Z' });
   };
   return { repository, levels: { get: (tenantId: string, productId: string) => level(tenantId, productId) }, reservations, events, track };
 };

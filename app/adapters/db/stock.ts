@@ -17,12 +17,14 @@ class SoldOutRollback extends Error {
 
 const iso = (value: string): string => new Date(value).toISOString();
 
+const isoOrNull = (value: string | null): string | null => value === null ? null : iso(value);
+
 const toLevel = (row: StockRow): StockLevel => ({
   productId: row.productId,
   onHand: row.onHand,
   reserved: row.reserved,
   lowStockThreshold: row.lowStockThreshold,
-  lowStockNotifiedAt: row.lowStockNotifiedAt === null ? null : iso(row.lowStockNotifiedAt),
+  lowStockNotifiedAt: isoOrNull(row.lowStockNotifiedAt),
   updatedAt: iso(row.updatedAt),
 });
 
@@ -106,10 +108,12 @@ const applyCommit = async (
     productId: input.productId,
     outcome: input.outcome,
     onHandBefore: current.onHand,
+    reservedBefore: current.reserved,
     onHandAfter,
     reservedAfter,
     lowStockThreshold: current.lowStockThreshold,
-    lowStockNotifiedAt: current.lowStockNotifiedAt === null ? null : iso(current.lowStockNotifiedAt),
+    lowStockNotifiedAt: isoOrNull(current.lowStockNotifiedAt),
+    soldOutNotifiedAt: isoOrNull(current.soldOutNotifiedAt),
     oversold: shortfall > 0,
   };
 };
@@ -132,10 +136,12 @@ const unchanged = async (tx: Executor, tenantId: string, productId: string): Pro
     productId,
     outcome: 'unchanged',
     onHandBefore: row.onHand,
+    reservedBefore: row.reserved,
     onHandAfter: row.onHand,
     reservedAfter: row.reserved,
     lowStockThreshold: row.lowStockThreshold,
-    lowStockNotifiedAt: row.lowStockNotifiedAt === null ? null : iso(row.lowStockNotifiedAt),
+    lowStockNotifiedAt: isoOrNull(row.lowStockNotifiedAt),
+    soldOutNotifiedAt: isoOrNull(row.soldOutNotifiedAt),
     oversold: false,
   };
 };
@@ -187,6 +193,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
       .set({
         onHand,
         lowStockNotifiedAt: resetNotification(current.lowStockThreshold, onHand - current.reserved, current.lowStockNotifiedAt),
+        soldOutNotifiedAt: onHand - current.reserved > 0 ? null : current.soldOutNotifiedAt,
         updatedAt: input.now,
       })
       .where(stockKey(tenantId, input.productId))
@@ -351,7 +358,9 @@ export const createStockRepository = (db: Db): StockRepository => ({
   }),
 
   markLowStockNotified: async (tenantId, input) => {
-    await db.update(productStock).set({ lowStockNotifiedAt: input.now }).where(stockKey(tenantId, input.productId));
+    await db.update(productStock)
+      .set({ lowStockNotifiedAt: input.now, ...(input.soldOut ? { soldOutNotifiedAt: input.now } : {}) })
+      .where(stockKey(tenantId, input.productId));
   },
 
   releaseExpired: async (now, limit, tenantId) => {

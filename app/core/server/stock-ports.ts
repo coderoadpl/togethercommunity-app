@@ -15,6 +15,6 @@ export interface StockRepository {
   reserve(tenantId: string, input: { checkoutSnapshotId: string; productIds: readonly string[]; expiresAt: string; quantity: 1; now: string }): Promise<Result<{ reservationIds: string[] }, { soldOutProductId: string }>>;
   release(tenantId: string, input: StockReleaseInput & ({ checkoutSnapshotId: string } | { reservationIds: readonly string[] })): Promise<number>;
   commit(tenantId: string, input: { checkoutSnapshotId: string | null; orderId: string; productIds: readonly string[]; now: string }): Promise<StockCommitEffect[]>;
-  markLowStockNotified(tenantId: string, input: { productId: string; now: string }): Promise<void>;
+  markLowStockNotified(tenantId: string, input: { productId: string; soldOut: boolean; now: string }): Promise<void>;
   releaseExpired(now: string, limit: number, tenantId?: string): Promise<number>;
 }

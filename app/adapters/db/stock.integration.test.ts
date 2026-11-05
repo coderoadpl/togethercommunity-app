@@ -249,6 +249,22 @@ describe('stock repository on Postgres', () => {
     expect(events.find((event) => event.type === 'committed')?.quantity).toBe(0);
   });
 
+  it('reports the reserved count before a commit and keeps the sold-out marker until an adjustment frees a piece', async () => {
+    const productId = await productFor('workspace', 3, 2);
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-1', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'sold-out-held-2', productIds: [productId], expiresAt: later, quantity: 1, now });
+    const [late] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-late', orderId: 'order-sold-out-late', productIds: [productId], now });
+    expect(late).toMatchObject({ outcome: 'committed_late', onHandBefore: 3, reservedBefore: 2, onHandAfter: 2, reservedAfter: 2, soldOutNotifiedAt: null });
+    await repo.markLowStockNotified('workspace', { productId, soldOut: true, now });
+    const [held] = await repo.commit('workspace', { checkoutSnapshotId: 'sold-out-held-1', orderId: 'order-sold-out-held-1', productIds: [productId], now });
+    expect(held).toMatchObject({ outcome: 'committed', onHandBefore: 2, reservedBefore: 2, onHandAfter: 1, reservedAfter: 1, lowStockNotifiedAt: now, soldOutNotifiedAt: now });
+    expect((await repo.adjust('workspace', { productId, delta: -1, reason: 'damaged', actorUserId: 'staff', now })).ok).toBe(true);
+    expect((await level(productId))?.soldOutNotifiedAt).not.toBeNull();
+    expect((await repo.adjust('workspace', { productId, delta: 2, reason: 'delivery', actorUserId: 'staff', now })).ok).toBe(true);
+    expect(await level(productId)).toMatchObject({ onHand: 2, reserved: 1, soldOutNotifiedAt: null });
+  });
+
   it('commits late after the reservation was released and releases idempotently', async () => {
     const productId = await productFor('workspace', 2);
     const repo = createStockRepository(database.db);
@@ -278,7 +294,7 @@ describe('stock repository on Postgres', () => {
   it('resets the low-stock notification when availability rises above the threshold and keeps tenants apart', async () => {
     const productId = await productFor('workspace', 2, 2);
     const repo = createStockRepository(database.db);
-    await repo.markLowStockNotified('workspace', { productId, now });
+    await repo.markLowStockNotified('workspace', { productId, soldOut: false, now });
     expect((await repo.find('workspace', productId))?.lowStockNotifiedAt).toBe(now);
     await repo.adjust('workspace', { productId, delta: 1, reason: 'delivery', actorUserId: 'staff', now });
     expect((await repo.find('workspace', productId))?.lowStockNotifiedAt).toBeNull();

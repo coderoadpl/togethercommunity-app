@@ -5,6 +5,7 @@ CREATE TABLE "product_stock" (
   "reserved" integer DEFAULT 0 NOT NULL CONSTRAINT "product_stock_reserved_check" CHECK ("reserved" >= 0),
   "low_stock_threshold" integer CONSTRAINT "product_stock_low_stock_threshold_check" CHECK ("low_stock_threshold" >= 0),
   "low_stock_notified_at" timestamp with time zone,
+  "sold_out_notified_at" timestamp with time zone,
   "updated_at" timestamp with time zone NOT NULL,
   CONSTRAINT "product_stock_tenant_id_product_id_pk" PRIMARY KEY ("tenant_id", "product_id"),
   CONSTRAINT "product_stock_tenant_product_fk" FOREIGN KEY ("tenant_id", "product_id") REFERENCES "products"("tenant_id", "id") ON DELETE CASCADE

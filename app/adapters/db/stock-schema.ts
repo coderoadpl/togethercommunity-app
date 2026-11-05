@@ -19,6 +19,7 @@ export const productStock = pgTable('product_stock', {
   reserved: integer('reserved').notNull().default(0),
   lowStockThreshold: integer('low_stock_threshold'),
   lowStockNotifiedAt: timestamp('low_stock_notified_at', { withTimezone: true, mode: 'string' }),
+  soldOutNotifiedAt: timestamp('sold_out_notified_at', { withTimezone: true, mode: 'string' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
   primaryKey({ columns: [table.tenantId, table.productId] }),

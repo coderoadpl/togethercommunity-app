@@ -288,6 +288,35 @@ describe('checkout stock commit', () => {
     ]);
   });
 
+  it('sends the zero alert once when a late commit takes the last free piece while two checkouts hold the rest', async () => {
+    const h = alertHarness();
+    h.stock.track(tenant.id, poster.id, 4, 3);
+    const later = '2026-11-05T10:36:00.000Z';
+    const reserve = (checkoutSnapshotId: string, expiresAt: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, productIds: [poster.id], expiresAt, quantity: 1, now });
+    await h.commit('order-1', 'snapshot-1');
+    expect(h.queued.map((message) => message.payload)).toEqual([expect.objectContaining({ available: 3, threshold: 3, oversold: false })]);
+    await reserve('snapshot-held-1', later);
+    await reserve('snapshot-held-2', later);
+    await reserve('snapshot-late', now);
+    await h.stock.repository.releaseExpired('2026-11-05T10:01:00.000Z', 10);
+    await h.commit('order-late', 'snapshot-late');
+    expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 2, reserved: 2, soldOutNotifiedAt: now });
+    expect(h.queued.map((message) => message.payload)).toEqual([
+      expect.objectContaining({ available: 3, threshold: 3, oversold: false }),
+      expect.objectContaining({ available: 0, threshold: 3, oversold: false }),
+    ]);
+    await h.commit('order-held-1', 'snapshot-held-1');
+    await h.commit('order-held-2', 'snapshot-held-2');
+    expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(h.queued).toHaveLength(2);
+    const restocked = await adjustProductStock(staffCtx(), { productId: poster.id, delta: 1, reason: 'delivery' }, { products: productRepository([poster]), stock: h.stock.repository, clock: { nowIso: () => now } });
+    expect(restocked.ok).toBe(true);
+    expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 1, soldOutNotifiedAt: null });
+    await h.commit('order-restocked', 'snapshot-restocked');
+    expect(h.queued).toHaveLength(3);
+    expect(h.queued[2]?.payload).toMatchObject({ available: 0, oversold: false });
+  });
+
   it('marks the alert sent when at least one recipient was queued even if another enqueue failed', async () => {
     const h = alertHarness();
     h.deps.tenantAccess = { listStaffForTenant: async () => [

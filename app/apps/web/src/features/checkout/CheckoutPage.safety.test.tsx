@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { sampleSalesLink } from '../../test/sales-link-fixtures.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const compliance = {
@@ -71,6 +72,57 @@ describe('checkout product safety information', () => {
     renderCheckout('stand-black');
     expect(await screen.findByText('A sturdy stand.')).toBeVisible();
     expect(screen.queryByTestId('product-safety-info')).toBeNull();
+  });
+});
+
+describe('sales-link product safety information', () => {
+  const line = (productId: string, name: string, type: string, lineCompliance: unknown) => ({
+    productId, name, type, deliveryMethod: 'pickup', compliance: lineCompliance, grossCents: 4900, netCents: 4667, vatCents: 233, vatRate: 5, vatExemptionBasis: null,
+  });
+  const serveLink = (lines: unknown[]) => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme School' }, contentVersion: 1, products: [] } })),
+      http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: {
+        salesLink: sampleSalesLink, descriptionHtml: '<p>All items together.</p>', lines, currency: 'PLN', totalCents: 9800, soldOut: false,
+        tenant: { slug: 'acme', name: 'Acme School', defaultLanguage: 'en', signInNotice: { enabled: false, text: '' }, branding: {}, socialLinks: [], legal: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' }, support: { url: null }, timezone: 'Europe/Warsaw' },
+        marketingConsents: [],
+      } })),
+      http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } })),
+    );
+  };
+  const renderLink = () => {
+    const root = createRootRoute({ component: () => <CheckoutPage productRef="" salesLinkSlug="stand-offer" /> });
+    const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: ['/offer/stand-offer'] }) });
+    return renderWithProviders(<RouterProvider router={router} />);
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/offer/stand-offer');
+  });
+
+  it('shows the safety information of a single-product sales link expanded without the product title', async () => {
+    serveLink([line('black', 'Printed stand', 'physical', compliance)]);
+    renderLink();
+    const section = await screen.findByTestId('product-safety-info');
+    expect(within(section).getByRole('heading', { name: en.productSafety.offerHeading })).toBeVisible();
+    expect(within(section).getByText('STAND-1')).toBeVisible();
+  });
+
+  it('shows one titled block per product with safety information in a bundle', async () => {
+    serveLink([
+      line('black', 'Printed stand', 'physical', compliance),
+      line('guide', 'Assembly guide', 'digital_download', null),
+      line('lamp', 'Printed lamp', 'physical', { ...compliance, modelIdentifier: 'LAMP-1', batchIdentifier: null, instructionsUrl: null }),
+    ]);
+    renderLink();
+    await screen.findByText('All items together.');
+    const [stand, lamp, ...rest] = await screen.findAllByTestId('product-safety-info');
+    if (stand === undefined || lamp === undefined) throw new Error('expected two safety sections');
+    expect(rest).toEqual([]);
+    expect(within(stand).getByRole('heading', { name: en.productSafety.offerHeadingFor({ title: 'Printed stand' }) })).toBeVisible();
+    expect(within(stand).getByText('STAND-1')).toBeVisible();
+    expect(within(lamp).getByRole('heading', { name: en.productSafety.offerHeadingFor({ title: 'Printed lamp' }) })).toBeVisible();
+    expect(within(lamp).getByText('LAMP-1')).toBeVisible();
   });
 });
 

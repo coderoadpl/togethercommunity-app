@@ -32,13 +32,14 @@ const SafetyDetails = ({ compliance }: { compliance: PublicProductCompliance }) 
   );
 };
 
-export const ProductSafetyInfo = ({ compliance, expanded }: { compliance: PublicProductCompliance; expanded: boolean }) => {
+export const ProductSafetyInfo = ({ compliance, expanded, productTitle }: { compliance: PublicProductCompliance; expanded: boolean; productTitle?: string | undefined }) => {
   const t = useTranslations();
   const headingId = useId();
+  const heading = productTitle === undefined ? t.productSafety.offerHeading : t.productSafety.offerHeadingFor({ title: productTitle });
   if (expanded) {
     return (
       <Stack component="section" useFlexGap spacing="0.5rem" aria-labelledby={headingId} data-testid="product-safety-info">
-        <Typography id={headingId} component="h2" variant="h3">{t.productSafety.offerHeading}</Typography>
+        <Typography id={headingId} component="h2" variant="h3">{heading}</Typography>
         <SafetyDetails compliance={compliance} />
       </Stack>
     );
@@ -46,7 +47,7 @@ export const ProductSafetyInfo = ({ compliance, expanded }: { compliance: Public
   return (
     <Accordion disableGutters elevation={0} data-testid="product-safety-info">
       <AccordionSummary expandIcon={<ChevronDownIcon />} sx={{ px: 0 }}>
-        <Typography component="h2" variant="h3">{t.productSafety.offerHeading}</Typography>
+        <Typography component="h2" variant="h3">{heading}</Typography>
       </AccordionSummary>
       <AccordionDetails sx={{ px: 0 }}>
         <SafetyDetails compliance={compliance} />

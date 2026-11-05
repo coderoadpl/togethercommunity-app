@@ -4,6 +4,7 @@ import {
   productVariants,
   publicShippingRates,
   type DeliveryMethod,
+  type ProductCompliance,
   type PublicProductCompliance,
   type PublicProductVariant,
   type PublicShippingRate,
@@ -172,6 +173,9 @@ export const getPublicOffer = async (
   });
 };
 
+export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null =>
+  compliance == null ? null : { ...compliance, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
+
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,
   kind: price.kind,
@@ -184,10 +188,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   id: product.id,
   type: product.type,
   deliveryMethod: product.deliveryMethod,
-  compliance: product.compliance == null ? null : {
-    ...product.compliance,
-    safetyWarningsHtml: renderPostContent(product.compliance.safetyWarnings, 'markdown').html,
-  },
+  compliance: toPublicCompliance(product.compliance),
   variants: [],
   slug: product.slug,
   title: product.title,

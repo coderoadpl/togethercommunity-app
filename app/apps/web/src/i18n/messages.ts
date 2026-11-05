@@ -683,6 +683,7 @@ export interface Messages {
     instructionsUrl: string;
     incomplete: string;
     offerHeading: string;
+    offerHeadingFor: (params: { title: string }) => string;
     manufacturer: string;
     contact: string;
     model: string;

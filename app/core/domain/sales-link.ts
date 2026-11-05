@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { currencySchema, productSlugSchema, productTypeSchema } from './product.js';
+import { publicProductComplianceSchema } from './product-compliance.js';
 import { productVatRateSchema } from './product-vat.js';
 import { deliveryMethodSchema } from './shipping.js';
 
@@ -36,7 +37,7 @@ export const salesLinkInputSchema = z.object(fields).strict().refine(validWindow
 export const salesLinkUpdateSchema = z.object({ ...fields, id: z.string().min(1), expectedRevision: z.number().int().positive() }).strict().refine(validWindow, 'Validity end must follow its start');
 export const salesLinkSchema = z.object({ ...fields, id: z.string(), tenantId: z.string(), revision: z.number().int().positive(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).refine(validWindow, 'Validity end must follow its start');
 const salesLinkLineSchema = z.object({
-  productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
+  productId: z.string(), name: z.string(), type: productTypeSchema, deliveryMethod: deliveryMethodSchema.default('pickup'), compliance: publicProductComplianceSchema.nullable().default(null), grossCents: z.number().int().nonnegative(), netCents: z.number().int().nonnegative(), vatCents: z.number().int().nonnegative(), vatRate: productVatRateSchema, vatExemptionBasis: z.string().nullable(),
 });
 export const salesLinkOfferSchema = z.object({
   salesLink: z.object({ slug: fields.slug, heading: fields.heading, description: fields.description, validFrom: fields.validFrom, validTo: fields.validTo }),

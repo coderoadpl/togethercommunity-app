@@ -713,6 +713,7 @@ export const en: Messages = {
     instructionsUrl: 'Instructions URL (optional, https)',
     incomplete: 'Fill in the manufacturer name, address, e-mail and model identifier, or clear every field to remove the safety information.',
     offerHeading: 'Product safety information',
+    offerHeadingFor: ({ title }) => `Product safety information: ${title}`,
     manufacturer: 'Manufacturer',
     contact: 'Contact',
     model: 'Model',

@@ -720,6 +720,7 @@ export const pl: Messages = {
     instructionsUrl: 'Adres instrukcji (opcjonalnie, https)',
     incomplete: 'Uzupełnij nazwę i adres producenta, e-mail oraz oznaczenie modelu albo wyczyść wszystkie pola, aby usunąć informacje o bezpieczeństwie.',
     offerHeading: 'Informacje o bezpieczeństwie produktu',
+    offerHeadingFor: ({ title }) => `Informacje o bezpieczeństwie produktu: ${title}`,
     manufacturer: 'Producent',
     contact: 'Kontakt',
     model: 'Model',

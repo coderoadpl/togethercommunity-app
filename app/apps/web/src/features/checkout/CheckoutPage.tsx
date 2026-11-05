@@ -172,6 +172,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const soldOut = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productRef || candidate.slug === productRef)?.stock.soldOut === true
     : bundle?.soldOut === true;
+  const safetyEntries = salesLinkSlug === undefined
+    ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
+    : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
+  const titledSafety = (bundle?.lines.length ?? 0) > 1;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
@@ -462,7 +466,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             fallbackTestId="checkout-product-cover-fallback"
           />
           {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
-          {offerProduct?.compliance == null ? null : <ProductSafetyInfo compliance={offerProduct.compliance} expanded={offerProduct.type === 'physical'} />}
+          {safetyEntries.map((entry) => (
+            <ProductSafetyInfo key={entry.productId} compliance={entry.compliance} expanded={entry.type === 'physical'} productTitle={titledSafety ? entry.title : undefined} />
+          ))}
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>

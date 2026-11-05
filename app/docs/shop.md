@@ -257,8 +257,10 @@ images are escaped or dropped). The Together checkout page shows the section
 **Product safety information** directly under the description and renders the
 warnings through the product description sanitiser. For physical products the
 section is always expanded; for other product types it is collapsed until
-opened. Multi-product sales-link checkouts do not show it. The purchase
-confirmation e-mail does not include it.
+opened. Public sales-link offers carry `compliance` on each line the same way,
+and the sales-link checkout shows one section per product with safety
+information, titled with the product name when the link sells more than one
+product. The purchase confirmation e-mail does not include it.
 
 Product snapshots carry the descriptive fields, so the field was added in
 product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7

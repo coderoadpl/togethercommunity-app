@@ -258,6 +258,23 @@ describe('checkout with shipping', () => {
     expect(h.couponSessions).toHaveLength(1);
   });
 
+  it.each([
+    ['a physical product', accessory],
+    ['a product of another type marked for shipping', { ...accessory, type: 'course' as const }],
+  ])('refuses %s with a recurring price before any Stripe call or checkout row', async (_case, product) => {
+    const h = harness([product, course]);
+    h.deps.prices = { ...h.deps.prices, findById: async (_tenantId, id) => id === 'price-monthly' ? {
+      id, tenantId: tenant.id, productId: accessory.id, kind: 'recurring', interval: 'month', amountCents: 4900, currency: 'PLN', active: true, createdAt: now,
+    } : null };
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, priceId: 'price-monthly', email: 'buyer@example.org', shipping: { rateId: 'courier' },
+    }, h.deps);
+    expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Physical products require a one-time price' } });
+    expect(h.calls).toHaveLength(0);
+    expect(h.snapshots).toHaveLength(0);
+    expect(h.orders).toHaveLength(0);
+  });
+
   it('refuses the direct Stripe handoff when any sales-link product needs shipping', async () => {
     const h = harness([accessory, course], [course.id, accessory.id]);
     const result = await createDirectSalesLinkCheckout(tenant, 'https://alpha.example.com', {

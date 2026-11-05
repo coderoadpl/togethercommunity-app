@@ -102,7 +102,7 @@
       ]
     },
     {
-      "source": "/((?!api/|u/|marketing/|legal/|offer/).*)",
+      "source": "/((?!api/|u/|marketing/|legal/|offer/|checkout/).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
@@ -120,6 +120,13 @@
     },
     {
       "source": "/checkout/(.*)",
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
+        }
+      ],
       "headers": [
         {
           "key": "Content-Security-Policy",
@@ -144,6 +151,13 @@
           "value": "together"
         }
       ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
+        }
+      ],
       "headers": [
         {
           "key": "Content-Security-Policy",
@@ -165,7 +179,14 @@
         {
           "type": "query",
           "key": "status",
-          "value": "success|cancelled"
+          "value": "cancelled"
+        }
+      ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "status",
+          "value": "success"
         }
       ],
       "headers": [

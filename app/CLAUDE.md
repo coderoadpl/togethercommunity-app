@@ -149,13 +149,6 @@ and enables the pixel; the bypass switch grants Google analytics storage only
 and enables the pixel without a consent gate, with the workspace owner
 carrying that responsibility.
 
-Parcel locker map (owner decision 2026-11-05): this amends the rule above that
-the checkout success document is the only document permitted to load
-third-party scripts. The checkout form documents (`/checkout/*` without
-`status=success`, `/offer/*?checkout=together` and `/offer/*?status=cancelled`)
-may additionally allow `https://geowidget.inpost.pl` in `script-src` and
-`style-src`, nothing else; see `app/docs/shop.md`.
-
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.
 The explicit `checkout=together` fallback and `status=success|cancelled` return

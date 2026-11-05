@@ -158,8 +158,9 @@ and `fulfilment_status`.
 
 The map loads `https://geowidget.inpost.pl/inpost-geowidget.js` (with `defer`)
 and `https://geowidget.inpost.pl/inpost-geowidget.css` on demand, only when a
-locker option is chosen and the workspace has a token. The checkout form
-documents add `https://geowidget.inpost.pl` to `script-src` and `style-src`:
+locker option is chosen and the workspace has a token. Following the owner
+decision of 2026-11-05, the checkout form documents add
+`https://geowidget.inpost.pl` to `script-src` and `style-src`:
 
 - `/checkout/<productRef>` without `status=success`;
 - `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled`.
@@ -169,9 +170,19 @@ The server middleware (`apps/server/src/app.ts`) and the static hosting headers
 `connect-src 'self' https:` as other web-app documents do, which covers the map's
 own requests; `img-src` already allows `https:`. Success documents keep the
 analytics policy described in [Security](security.md) and never allow the map
-origin. No other document allows it. Follow-up: `connect-src` stays the broad
-`https:` until a browser check on staging lists the exact origins the map
-calls; then those origins replace it on the checkout form documents.
+origin. No other document allows it; `vercel.json` keeps its policy entries
+mutually exclusive, so header precedence cannot hand the map origin to a success
+document.
+
+The injected script cannot be unloaded, so once the map has been shown, leaving
+the form document by an in-app link, programmatic navigation or browser history
+step becomes a full document navigation (the same guard as the analytics success
+document). The guard stays in place after the buyer switches to another
+delivery option, so the map code never runs in sign-in or signed-in views.
+
+Follow-up: `connect-src` stays the broad `https:` until a browser check on
+staging lists the exact origins the map calls; then those origins replace it on
+the checkout form documents.
 
 ## CLI
 

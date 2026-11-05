@@ -146,16 +146,22 @@ The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
-These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. All other header entries retain the
-baseline policy, except the checkout form entries below.
+The content security policy entries are mutually exclusive, so the result does
+not depend on which matching entry takes precedence: the catch-all excludes
+`/checkout/` as well as the server-rendered prefixes, and every checkout form
+entry below lists `status=success` under `missing`. All other header entries
+retain the baseline policy, except the checkout form entries below.
 
 Checkout form documents — `/checkout/<productRef>` without `status=success`,
 `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
-parcel locker map used by shipped products, in both the server middleware and
-the static hosting headers, with `connect-src 'self' https:`. Success documents
-never list that origin. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
+parcel locker map used by shipped products (owner decision 2026-11-05), in both
+the server middleware and the static hosting headers, with
+`connect-src 'self' https:`. Success, sign-in, member and Studio documents never
+list that origin. Once the map script has been injected, leaving the form
+document by any in-app navigation becomes a full document navigation, as on the
+analytics success document, so the map code never runs in sign-in or signed-in
+views. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
 No other directive changes: `connect-src 'self' https:` and
 `img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.

@@ -182,10 +182,10 @@ describe('direct sales-link page', () => {
         .replace("script-src 'self'", "script-src 'self' https://geowidget.inpost.pl")
         .replace("style-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl") }
       : header);
+    const notSuccess = [{ type: 'query', key: 'status', value: 'success' }];
     expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual([
-      ...offerRewrites.slice(0, 2).map((rewrite) => ({
-        source: rewrite.source, has: rewrite.has, headers: checkoutFormHeaders,
-      })),
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], missing: notSuccess, headers: checkoutFormHeaders },
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'cancelled' }], missing: notSuccess, headers: checkoutFormHeaders },
       {
         source: '/offer/(.*)',
         has: [{ type: 'query', key: 'status', value: 'success' }],

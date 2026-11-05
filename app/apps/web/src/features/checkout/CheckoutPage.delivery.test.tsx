@@ -1,8 +1,8 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
 
@@ -115,6 +115,33 @@ describe('checkout delivery step', () => {
     document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
     expect(await screen.findByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop · Main Street 1, 30-001 Cracow');
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+  });
+
+  it('leaves the form by a document navigation once the parcel locker map was loaded', async () => {
+    serve({ token: 'public-map-token' });
+    const location = window.location;
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockImplementation(() => ({ ...location, assign }));
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    const history = createBrowserHistory();
+    const root = createRootRoute({ component: Outlet });
+    const checkout = createRoute({ getParentRoute: () => root, path: '/checkout/$ref', component: () => <CheckoutPage productRef="accessory" /> });
+    const login = createRoute({ getParentRoute: () => root, path: '/login', component: () => <p>Sign-in view</p> });
+    const router = createRouter({ routeTree: root.addChildren([checkout, login]), history });
+    try {
+      renderWithProviders(<RouterProvider router={router} />);
+      await userEvent.click(await screen.findByRole('radio', { name: new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u') }));
+      await screen.findByTestId('checkout-inpost-geowidget');
+      await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
+      expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+      act(() => { void router.navigate({ to: '/login' }); });
+      await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith('/login'));
+      expect(router.state.location.pathname).toBe('/checkout/accessory');
+      expect(screen.queryByText('Sign-in view')).not.toBeInTheDocument();
+    } finally {
+      history.destroy();
+      vi.restoreAllMocks();
+    }
   });
 
   it('explains that a free order cannot be delivered when the server refuses it', async () => {

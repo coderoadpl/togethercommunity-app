@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DELETED_MEMBER_DISPLAY, memberTombstone, orderLineSchema, orderSchema, type Identity, type OrderShipping } from '#core/domain/index.js';
@@ -6,7 +6,7 @@ import { exportOrders } from '#core/server/index.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createMemberErasureRepository, createOrderRepository, createTenantRepository } from './repositories.js';
-import { emailOutbox, members, products, tenants, user } from './schema.js';
+import { emailOutbox, members, orders, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const now = '2026-11-05T12:00:00.000Z';
@@ -137,5 +137,38 @@ describe('order shipping persistence', () => {
       method: 'Parcel locker', pickupPoint: { code: 'WAW01M', name: 'Locker WAW01M', address: 'Main Street 1, Warsaw' }, address: null,
     } } });
     expect(await delivery('outbox-other')).toMatchObject({ purchase: { delivery: { address } } });
+  });
+
+  it('erases a member whose stored delivery data has no address object without failing or keeping a street', async () => {
+    await database.db.insert(user).values({ id: 'legacy-buyer', email: 'legacy@example.org', name: 'Legacy Buyer' });
+    await database.db.insert(members).values({ id: 'legacy-member', tenantId: 'workspace', userId: 'legacy-buyer', email: 'legacy@example.org', displayName: 'Legacy Buyer', createdAt: now });
+    const repository = createOrderRepository(database.db);
+    const legacy = { memberId: 'legacy-member' };
+    await repository.create('workspace', order('legacy-address-object', { ...legacy, shipping }));
+    for (const id of ['legacy-null-address', 'legacy-missing-address', 'legacy-string-address', 'legacy-scalar']) {
+      await repository.create('workspace', order(id, { ...legacy, shipping }));
+    }
+    const withoutAddress = Object.fromEntries(Object.entries(shipping).filter(([key]) => key !== 'address'));
+    const rawShipping = {
+      'legacy-null-address': { ...shipping, address: null },
+      'legacy-missing-address': withoutAddress,
+      'legacy-string-address': { ...shipping, address: 'Garden Street 5' },
+      'legacy-scalar': null,
+    };
+    for (const [id, value] of Object.entries(rawShipping)) {
+      await database.db.update(orders).set({ shipping: sql`${JSON.stringify(value)}::jsonb` }).where(eq(orders.id, id));
+    }
+    await createMemberErasureRepository(database.db, { compute: (tenantId, email) => `${tenantId}:${email}` }).pseudonymize('workspace', {
+      memberId: 'legacy-member', deletedAt: now, tombstoneEmail: memberTombstone('legacy-member').email,
+      severedUserId: memberTombstone('legacy-member').userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+    });
+    const stored = async (id: string) => (await database.db.select({ shipping: sql<unknown>`${orders.shipping}` }).from(orders).where(eq(orders.id, id)))[0]?.shipping;
+    expect(await stored('legacy-address-object')).toMatchObject({
+      phone: null, address: { name: DELETED_MEMBER_DISPLAY, line1: DELETED_MEMBER_DISPLAY, line2: null, postalCode: '00-950' },
+    });
+    expect(await stored('legacy-null-address')).toEqual({ ...shipping, address: null, phone: null });
+    expect(await stored('legacy-missing-address')).toEqual({ ...withoutAddress, phone: null });
+    expect(await stored('legacy-string-address')).toEqual({ ...shipping, address: { name: DELETED_MEMBER_DISPLAY, line1: DELETED_MEMBER_DISPLAY, line2: null }, phone: null });
+    expect(await stored('legacy-scalar')).toBeNull();
   });
 });

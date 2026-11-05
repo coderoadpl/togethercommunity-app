@@ -16,7 +16,12 @@ const vercel: {
   functions: Record<string, { maxDuration: number }>;
   rewrites: Array<{ source: string; destination: string; has?: Array<{ type: string; key: string; value: string }> }>;
   routes?: unknown;
-  headers: Array<{ source: string; has?: Array<{ type: string; key: string; value: string }>; headers: Array<{ key: string; value: string }> }>;
+  headers: Array<{
+    source: string;
+    has?: Array<{ type: string; key: string; value: string }>;
+    missing?: Array<{ type: string; key: string; value: string }>;
+    headers: Array<{ key: string; value: string }>;
+  }>;
 } = JSON.parse(readFileSync(join(appRoot, 'vercel.json'), 'utf8'));
 const platformResetEntry = readFileSync(join(appRoot, 'api', 'platform-reset.ts'), 'utf8');
 
@@ -107,56 +112,104 @@ describe('Vercel platform entry boundary', () => {
     ]);
   });
 
-  it('allows the analytics script sources only on static checkout success documents', () => {
+  describe('static content security policy', () => {
+    const geowidget = 'https://geowidget.inpost.pl';
     const baseline = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     const extended = baseline.replace("script-src 'self'", "script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net");
     const checkoutForm = baseline
-      .replace("script-src 'self'", "script-src 'self' https://geowidget.inpost.pl")
-      .replace("style-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl");
+      .replace("script-src 'self'", `script-src 'self' ${geowidget}`)
+      .replace("style-src 'self' 'unsafe-inline'", `style-src 'self' 'unsafe-inline' ${geowidget}`);
     const securityHeaders = (policy: string) => [
       { key: 'Content-Security-Policy', value: policy },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
     ];
-    expect(vercel.headers).toEqual([
-      { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
-      { source: '/((?!api/|u/|marketing/|legal/|offer/).*)', headers: securityHeaders(baseline) },
-      { source: '/checkout/(.*)', headers: securityHeaders(checkoutForm) },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], headers: securityHeaders(checkoutForm) },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], headers: securityHeaders(checkoutForm) },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
-      { source: '/checkout/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
-    ]);
-    const effectivePolicy = (path: string) => {
-      const url = new URL(path, 'https://acme.example');
-      return vercel.headers
-        .filter(({ source, has }) => new RegExp(`^${source}$`, 'u').test(url.pathname)
-          && (has ?? []).every(({ type, key, value }) => type === 'query'
-            && new RegExp(`^(?:${value})$`, 'u').test(url.searchParams.get(key) ?? '')))
-        .flatMap(({ headers }) => headers.filter(({ key }) => key === 'Content-Security-Policy').map(({ value }) => value))
-        .at(-1);
+    const notSuccess = [{ type: 'query', key: 'status', value: 'success' }];
+    const queryMatchers = {
+      anchored: (pattern: string, actual: string) => new RegExp(`^(?:${pattern})$`, 'u').test(actual),
+      unanchored: (pattern: string, actual: string) => new RegExp(pattern, 'u').test(actual),
     };
-    for (const path of [
+    type QueryMatcher = (pattern: string, actual: string) => boolean;
+    const matchingPolicies = (path: string, matchQuery: QueryMatcher) => {
+      const url = new URL(path, 'https://acme.example');
+      const present = ({ type, key, value }: { type: string; key: string; value: string }) => {
+        expect(type).toBe('query');
+        const actual = url.searchParams.get(key);
+        return actual !== null && matchQuery(value, actual);
+      };
+      return vercel.headers
+        .filter(({ source, has, missing }) => new RegExp(`^${source}$`, 'u').test(url.pathname)
+          && (has ?? []).every(present) && !(missing ?? []).some(present))
+        .flatMap(({ headers }) => headers.filter(({ key }) => key === 'Content-Security-Policy').map(({ value }) => value));
+    };
+    const successDocuments = [
+      '/checkout/reference?status=success',
+      '/checkout/reference?status=success&session_id=cs_live_one',
+      '/checkout/reference?checkout=together&status=success',
       '/offer/workbook?status=success',
       '/offer/workbook?checkout=together&status=success',
-      '/checkout/reference?status=success',
-    ]) {
-      expect(effectivePolicy(path), path).toBe(extended);
-    }
-    for (const path of [
+    ];
+    const formDocuments = [
+      '/checkout/reference',
+      '/checkout/reference?status=cancelled',
+      '/checkout/reference?code=SPRING',
       '/offer/workbook?checkout=together',
       '/offer/workbook?status=cancelled',
       '/offer/workbook?checkout=together&status=cancelled',
-      '/checkout/reference',
-      '/checkout/reference?status=cancelled',
-      '/checkout/reference?status=successful',
-    ]) {
-      expect(effectivePolicy(path), path).toBe(checkoutForm);
-    }
-    for (const path of ['/my?status=success', '/studio?status=success', '/panel/settings']) {
-      expect(effectivePolicy(path), path).toBe(baseline);
-    }
-    expect(effectivePolicy('/offer/workbook')).toBeUndefined();
+    ];
+    const signedInOrSignInDocuments = [
+      '/', '/index.html', '/login', '/login?status=cancelled', '/register', '/my', '/my/products', '/my?status=success',
+      '/my?checkout=together', '/panel', '/panel/settings', '/panel/orders?status=cancelled', '/studio?status=success',
+    ];
+
+    it('lists every header entry with its exact conditions', () => {
+      expect(vercel.headers).toEqual([
+        { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
+        { source: '/((?!api/|u/|marketing/|legal/|offer/|checkout/).*)', headers: securityHeaders(baseline) },
+        { source: '/checkout/(.*)', missing: notSuccess, headers: securityHeaders(checkoutForm) },
+        { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], missing: notSuccess, headers: securityHeaders(checkoutForm) },
+        { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'cancelled' }], missing: notSuccess, headers: securityHeaders(checkoutForm) },
+        { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
+        { source: '/checkout/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
+      ]);
+    });
+
+    it('lists the parcel locker map origin only in entries that exclude the success document', () => {
+      const withOrigin = vercel.headers.filter(({ headers }) => headers.some(({ value }) => value.includes('geowidget.inpost.pl')));
+      expect(withOrigin.map(({ source, has }) => ({ source, has }))).toEqual([
+        { source: '/checkout/(.*)', has: undefined },
+        { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }] },
+        { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'cancelled' }] },
+      ]);
+      for (const entry of withOrigin) {
+        expect(entry.missing, entry.source).toEqual(notSuccess);
+        expect(entry.headers.find(({ key }) => key === 'Content-Security-Policy')?.value).toBe(checkoutForm);
+      }
+    });
+
+    it.each(Object.entries(queryMatchers))('gives every document at most one policy whichever entry wins (%s query matching)', (_label, matchQuery) => {
+      for (const path of [...successDocuments, ...formDocuments, ...signedInOrSignInDocuments, '/offer/workbook', '/checkout/reference?status=successful']) {
+        expect(new Set(matchingPolicies(path, matchQuery)).size, path).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it.each(Object.entries(queryMatchers))('never lets the success, sign-in, member or Studio documents match the map origin (%s query matching)', (_label, matchQuery) => {
+      for (const path of [...successDocuments, ...signedInOrSignInDocuments, '/offer/workbook']) {
+        for (const policy of matchingPolicies(path, matchQuery)) expect(policy, path).not.toContain(geowidget);
+      }
+    });
+
+    it('resolves each document class to its policy', () => {
+      const effectivePolicy = (path: string) => {
+        const policies = matchingPolicies(path, queryMatchers.anchored);
+        expect(new Set(policies).size, path).toBeLessThanOrEqual(1);
+        return policies[0];
+      };
+      for (const path of successDocuments) expect(effectivePolicy(path), path).toBe(extended);
+      for (const path of [...formDocuments, '/checkout/reference?status=successful']) expect(effectivePolicy(path), path).toBe(checkoutForm);
+      for (const path of signedInOrSignInDocuments) expect(effectivePolicy(path), path).toBe(baseline);
+      expect(effectivePolicy('/offer/workbook')).toBeUndefined();
+    });
   });
 
   it('keeps API, public pages, static security headers, and Frankfurt routing explicit', () => {
@@ -172,7 +225,7 @@ describe('Vercel platform entry boundary', () => {
     const cspFor = (source: string) => vercel.headers
       .find((entry) => entry.source === source)
       ?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
-    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/|offer/).*)');
+    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/|offer/|checkout/).*)');
     expect(spaCsp).toContain("default-src 'self'");
     expect(spaCsp).toContain("connect-src 'self' https:;");
   });

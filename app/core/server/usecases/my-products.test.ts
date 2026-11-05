@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, MemberGrant, OrderShipping, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
+import type { Identity, MemberGrant, Order, OrderShipping, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
 import type { ProductGrantRepository, ProductPriceRepository } from '../ports.js';
@@ -147,6 +147,36 @@ describe('listMyProducts', () => {
     expect(await run(shipping)).toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'Warsaw' }, { id: pickedUp.id, shippedTo: null }] });
     expect(await run({ ...shipping, pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null } }))
       .toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'WAW01M' }, { id: pickedUp.id, shippedTo: null }] });
+  });
+
+  it('reports the fulfilment status and tracking link of shipped physical lines', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const shipping: OrderShipping = {
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+      address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+    };
+    const order = (fulfilment: Pick<Order, 'fulfilmentStatus' | 'shipment'>) => ({
+      mode: 'live' as const, id: 'order-1', tenantId: 't-acme', memberId: 'm1', productId: physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, shipping, ...fulfilment,
+      lines: [{ productId: physical.id, name: physical.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 }],
+    });
+    const run = async (fulfilment: Pick<Order, 'fulfilmentStatus' | 'shipment'>) => listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [order(fulfilment)] },
+      products: { findByIds: async () => [physical] },
+    });
+    expect(await run({ fulfilmentStatus: 'to_pack', shipment: null })).toMatchObject({ ok: true, value: [{ fulfilment: {
+      status: 'to_pack', shippedAt: null, carrier: null, trackingNumber: null, trackingUrl: null,
+    } }] });
+    expect(await run({ fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234', shippedAt: '2026-11-05T10:00:00.000Z', shippedBy: 'staff' } }))
+      .toMatchObject({ ok: true, value: [{ fulfilment: {
+        status: 'shipped', shippedAt: '2026-11-05T10:00:00.000Z', carrier: 'inpost', trackingNumber: 'ABCD1234',
+        trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
+      } }] });
+    expect(await run({ fulfilmentStatus: null, shipment: null })).toMatchObject({ ok: true, value: [{ fulfilment: null }] });
   });
 
   it('returns the granted products for a member with an active window', async () => {

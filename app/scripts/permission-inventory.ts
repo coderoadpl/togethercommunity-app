@@ -221,6 +221,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.includes('/prices')) return method === 'GET' ? 'product:price:read' : 'product:price:write';
   if (path === '/api/orders/verify/:reference') return 'order:read';
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
+  if (path === '/api/orders/:orderId/ship') return 'order:write';
+  if (path === '/api/orders/packing-list') return 'order:export';
   if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/consumer-sales-summary') return 'order:export';

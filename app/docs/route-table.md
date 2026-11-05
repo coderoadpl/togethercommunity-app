@@ -205,6 +205,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/sales-links/:id` | authenticated | mutating | delete sales link |
 | `GET /api/orders/verify/:reference` | authenticated | read | verify order |
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
+| `GET /api/orders/packing-list` | authenticated | read | orders packing list |
+| `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |

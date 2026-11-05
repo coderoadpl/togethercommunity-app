@@ -1,6 +1,7 @@
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { DeliveryStep } from './DeliveryStep.js';
+import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
 import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -167,6 +168,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
+  const offerProduct = salesLinkSlug === undefined ? singleOffer.data?.products.find((candidate) => candidate.id === productId) : undefined;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
@@ -438,6 +440,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     >
         <Stack useFlexGap spacing="1rem">
           {bundle === undefined ? <CardTitle variant="h1">{product.title}</CardTitle> : null}
+          {offerProduct === undefined ? null : <ProductVariantChips productId={offerProduct.id} variants={offerProduct.variants} />}
           {bundle === undefined && product.prices.length <= 1 ? (
             <CheckoutPrice component="p">
               <DataValue>
@@ -456,6 +459,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             fallbackTestId="checkout-product-cover-fallback"
           />
           {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
+          {offerProduct?.compliance == null ? null : <ProductSafetyInfo compliance={offerProduct.compliance} expanded={offerProduct.type === 'physical'} />}
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>

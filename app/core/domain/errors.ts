@@ -25,6 +25,7 @@ export const ERROR_CODES = [
   'invoice_exemption_basis_missing',
   'impersonation_read_only',
   'shipping_required',
+  'fulfilment_conflict',
   'internal',
 ] as const;
 

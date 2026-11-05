@@ -1,6 +1,6 @@
 {
-  "hash": "0bdea6750f0fdac5eddea792dcc54d72c9f0864b1af49a98a99f8975ab624f81",
-  "shortId": "0bdea6750f0f",
+  "hash": "1bde2de1c170da9711a781d5cd92407c4137c15a82dc8cbe7f41d00b58c0e433",
+  "shortId": "1bde2de1c170",
   "schema": {
     "constraints": [
       {
@@ -177,6 +177,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((type = 'shipped'::text))",
+        "name": "order_fulfilment_events_type_check",
+        "table": "order_fulfilment_events"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
@@ -757,6 +762,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "notifications_tenant_id_tenants_id_fk",
         "table": "notifications"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_fulfilment_events_tenant_id_fkey",
+        "table": "order_fulfilment_events"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1417,6 +1427,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "notifications_pkey",
         "table": "notifications"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_fulfilment_events_pkey",
+        "table": "order_fulfilment_events"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2363,6 +2378,11 @@
         "table": "product_prices"
       },
       {
+        "definition": "CREATE INDEX products_tenant_variant_group_idx ON products USING btree (tenant_id, variant_group)",
+        "name": "products_tenant_variant_group_idx",
+        "table": "products"
+      },
+      {
         "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
         "name": "rate_limit_buckets_expiry_idx",
         "table": "rate_limit_buckets"
@@ -2701,6 +2721,11 @@
         "definition": "CREATE UNIQUE INDEX notifications_tenant_recipient_source_uidx ON notifications USING btree (tenant_id, recipient_user_id, source_key) WHERE (source_key IS NOT NULL)",
         "name": "notifications_tenant_recipient_source_uidx",
         "table": "notifications"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_fulfilment_events_tenant_order_type_uidx ON order_fulfilment_events USING btree (tenant_id, order_id, type)",
+        "name": "order_fulfilment_events_tenant_order_type_uidx",
+        "table": "order_fulfilment_events"
       },
       {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
@@ -3249,6 +3274,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "compliance",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "cover_url",
             "notNull": false,
             "type": "text"
@@ -3323,6 +3356,22 @@
             "identity": "",
             "name": "title",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "variant_group",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "variant_label",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -3720,6 +3769,14 @@
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipment",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -8956,6 +9013,67 @@
           }
         ],
         "name": "member_erasure_request_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payload",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "type",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "order_fulfilment_events"
       },
       {
         "columns": [

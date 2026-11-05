@@ -21,6 +21,8 @@ import {
   memberRemoveOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
+  orderFulfilmentContracts,
+  ordersExportOutputSchema,
   ordersListOutputSchema,
   ordersReconciliationOutputSchema,
   productPriceCreateOutputSchema,
@@ -670,6 +672,44 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
       && shippedOrder.shipping?.pickupPoint?.code === 'WAW01M' && shippedOrder.shipping.address.country === 'PL'
       && shippedOrder.lines?.at(-1)?.productType === 'shipping',
     `shipped order should be the only order to pack: ${JSON.stringify(toPack.orders)}`,
+  );
+  const shippedOrderId = shippedPurchase.orderId;
+  assert(shippedOrderId !== null, 'shipped purchase should return its order id');
+  const packingList = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'packing-list', '--format', 'csv'], alfaHome),
+    'packing list',
+    ordersExportOutputSchema,
+  );
+  const packingRows = packingList.content.split('\n');
+  assert(
+    packingRows.length === 2 && packingRows[1]?.startsWith(`"${shippedOrderId}",`) === true
+      && packingRows[1].includes('"WAW01M"') && packingRows[1].includes('"Printed accessory × 1"'),
+    `packing list should hold the order to pack: ${packingList.content}`,
+  );
+  const shipped = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'ship', shippedOrderId, '--carrier', 'inpost', '--tracking', '520000011395200025754311'], alfaHome),
+    'order ship',
+    orderFulfilmentContracts.shipOrder.output,
+  ).order;
+  assert(
+    shipped.fulfilmentStatus === 'shipped' && shipped.shipment?.carrier === 'inpost'
+      && shipped.shipment.trackingNumber === '520000011395200025754311',
+    `order should be shipped with the tracking number: ${JSON.stringify(shipped)}`,
+  );
+  expectError(
+    await cli(['--tenant', 'alfa', 'orders', 'ship', shippedOrderId, '--carrier', 'inpost', '--tracking', 'SECOND01'], alfaHome),
+    'second shipment',
+    EXIT_CODE_BY_ERROR_CODE.fulfilment_conflict,
+    'fulfilment_conflict',
+  );
+  const shippedList = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--fulfilment', 'shipped'], alfaHome),
+    'shipped orders',
+    ordersListOutputSchema,
+  );
+  assert(
+    shippedList.orders.map((order) => order.id).join(',') === shippedOrderId,
+    `the shipped order should be listed as shipped: ${JSON.stringify(shippedList.orders)}`,
   );
   steps += 1;
 

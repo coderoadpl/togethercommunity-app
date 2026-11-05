@@ -180,6 +180,19 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
     },
   },
   product: {
+    8: {
+      id: 'product-fixture-8', tenantId: 'tenant-fixture', type: 'physical', slug: 'printed-stand-black',
+      title: 'Printed stand', description: '', coverUrl: null, priceCents: 5900,
+      vatRate: 23, vatExemptionBasis: null, currency: 'PLN', published: true, visibility: 'listed',
+      deliveryMethod: 'shipping',
+      compliance: {
+        manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1, 00-001 Warsaw, Poland',
+        manufacturerEmail: 'safety@example.com', modelIdentifier: 'STAND-1', batchIdentifier: null,
+        safetyWarnings: 'Keep away from open flame.', instructionsUrl: 'https://example.com/stand-manual.pdf',
+      },
+      variantGroup: 'printed-stand', variantLabel: 'Black · ASA',
+      accessItems: [], legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+    },
     7: {
       id: 'product-fixture-7', tenantId: 'tenant-fixture', type: 'physical', slug: 'printed-accessory',
       title: 'Printed accessory', description: '', coverUrl: null, priceCents: 4900,

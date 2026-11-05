@@ -194,6 +194,34 @@ describe('products use-cases', () => {
     expect(await updateProduct(ctx, { id: 'p2', deliveryMethod: 'shipping' }, deps(repo, ['version-3']))).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
+  it('stores product safety information and variant fields, keeps them across unrelated edits and clears them with null', async () => {
+    const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const compliance = {
+      manufacturerName: 'Example Workshop',
+      manufacturerAddress: 'Example Street 1, Warsaw',
+      manufacturerEmail: 'safety@example.com',
+      modelIdentifier: 'STAND-1',
+    };
+    expect(await createProduct(ctx, { title: 'Stand', type: 'physical', priceCents: 4900, compliance, variantGroup: 'stand', variantLabel: 'Black' }, deps(repo)))
+      .toMatchObject({ ok: true, value: { compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'stand', variantLabel: 'Black' } });
+    expect(await updateProduct(ctx, { id: 'p1', compliance, variantGroup: 'stand', variantLabel: 'White' }, deps(repo, ['version-1'])))
+      .toMatchObject({ ok: true, value: { compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'stand', variantLabel: 'White' } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed stand' }, deps(repo, ['version-2'])))
+      .toMatchObject({ ok: true, value: { compliance: { manufacturerName: 'Example Workshop' }, variantGroup: 'stand' } });
+    expect(await updateProduct(ctx, { id: 'p1', compliance: null, variantGroup: null, variantLabel: null }, deps(repo, ['version-3'])))
+      .toMatchObject({ ok: true, value: { compliance: null, variantGroup: null, variantLabel: null } });
+  });
+
+  it('rejects invalid product safety information and variant groups', async () => {
+    const { repo } = fakeRepo();
+    const ctx = { identity: identity('t-acme', 'owner') };
+    expect(await createProduct(ctx, { title: 'Stand', type: 'physical', priceCents: 4900, compliance: { manufacturerName: 'Example Workshop', manufacturerAddress: 'Street 1', manufacturerEmail: 'not-an-email', modelIdentifier: 'S-1' } }, deps(repo)))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createProduct(ctx, { title: 'Stand', type: 'physical', priceCents: 4900, variantGroup: 'Not A Slug' }, deps(repo)))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('keeps implicit VAT linked to Settings through creation and unrelated edits', async () => {
     const { repo, store } = fakeRepo();
     const ctx = { identity: identity('t-acme', 'owner') };

@@ -7,6 +7,7 @@ import { stripeModeSchema } from './integration.js';
 import { currencySchema, PRODUCT_TYPES } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { checkoutShippingSnapshotSchema, fulfilmentStatusSchema, orderShippingSchema } from './shipping.js';
+import { orderShipmentSchema } from './fulfilment.js';
 
 export const priceKindSchema = z.enum(['one_time', 'recurring']);
 
@@ -203,6 +204,7 @@ export const orderSchema = z.object({
   lines: z.array(orderLineSchema).optional(),
   shipping: orderShippingSchema.nullable().optional(),
   fulfilmentStatus: fulfilmentStatusSchema.nullable().optional(),
+  shipment: orderShipmentSchema.nullable().optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
   paidAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
@@ -213,6 +215,7 @@ export type Order = z.infer<typeof orderSchema>;
 export const orderListItemSchema = orderSchema.extend({
   invoice: invoiceSchema.nullable().optional(),
   lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
+  shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
   memberName: z.string().nullable(),

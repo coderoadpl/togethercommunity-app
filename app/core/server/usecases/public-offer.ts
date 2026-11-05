@@ -1,8 +1,11 @@
 import {
   EMPTY_LEGAL_URLS,
   defaultProductVat,
+  productVariants,
   publicShippingRates,
   type DeliveryMethod,
+  type PublicProductCompliance,
+  type PublicProductVariant,
   type PublicShippingRate,
   type ProductVatRate,
   EMPTY_TENANT_BRANDING,
@@ -32,6 +35,7 @@ import type {
   TenantDocumentRepository,
   TenantRepository,
 } from '../ports.js';
+import { renderPostContent } from '../post-content.js';
 
 export interface PublicOffer {
   tenant: {
@@ -65,6 +69,8 @@ interface PublicOfferProduct {
   id: string;
   type: ProductType;
   deliveryMethod: DeliveryMethod;
+  compliance: PublicProductCompliance | null;
+  variants: PublicProductVariant[];
   slug: string;
   title: string;
   description: string;
@@ -145,12 +151,15 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
+      variants: productVariants(product, publishedProducts, soldOutProductIds()),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
     shippingRates: publicShippingRates(settings?.shippingRates),
     inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null,
   });
 };
+
+const soldOutProductIds = (): ReadonlySet<string> => new Set();
 
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,
@@ -164,6 +173,11 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   id: product.id,
   type: product.type,
   deliveryMethod: product.deliveryMethod,
+  compliance: product.compliance == null ? null : {
+    ...product.compliance,
+    safetyWarningsHtml: renderPostContent(product.compliance.safetyWarnings, 'markdown').html,
+  },
+  variants: [],
   slug: product.slug,
   title: product.title,
   description: product.description,

@@ -39,6 +39,22 @@ export interface TransactionalEmailMessages {
     delivery: string;
     pickupPoint: string;
   };
+  orderShipped: {
+    items: string;
+    carrier: string;
+    trackingNumber: string;
+    trackLabel: string;
+    carriers: Record<'inpost' | 'other', string>;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderNumber: string;
+      orderNumberHtml: string;
+      items: RenderedTextParts;
+      delivery: RenderedTextParts;
+      tracking: RenderedTextParts;
+    }) => TransactionalEmailMessageContent;
+  };
   welcomeSignIn: {
     actionLabels: Record<WelcomeSignInProductType, string>;
     render: (input: BrandedInput & {

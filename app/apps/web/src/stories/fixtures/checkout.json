@@ -15,6 +15,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -34,6 +35,7 @@
             "slug": "course-together-101",
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }
@@ -74,6 +76,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -93,10 +96,12 @@
             "slug": "course-together-101",
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -116,10 +121,12 @@
             "slug": "js-full",
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -139,10 +146,12 @@
             "slug": "react-full",
             "title": "React in Practice - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -162,10 +171,12 @@
             "slug": "js-dom-module",
             "title": "DOM Module Pack",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -185,10 +196,12 @@
             "slug": "free-preview",
             "title": "Free preview",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -215,10 +228,12 @@
             "slug": "club",
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -238,6 +253,7 @@
             "slug": "download-workbook",
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }

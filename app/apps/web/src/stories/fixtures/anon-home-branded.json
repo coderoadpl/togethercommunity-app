@@ -26,6 +26,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -45,6 +46,7 @@
             "slug": "akademia-annual",
             "title": "Akademia - annual access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }

@@ -162,6 +162,8 @@ describe('getPublicOffer', () => {
             currency: 'PLN',
             prices: [],
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
           {
             id: 'download',
@@ -177,6 +179,8 @@ describe('getPublicOffer', () => {
             currency: 'PLN',
             prices: [],
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
           {
             id: 'club',
@@ -192,12 +196,54 @@ describe('getPublicOffer', () => {
             currency: 'PLN',
             prices: [],
             marketingConsents: [],
+            compliance: null,
+            variants: [],
           },
         ],
         shippingRates: [],
         inpostGeowidgetToken: null,
       },
     });
+  });
+
+  it('exposes the product safety information and the published variants of the group', async () => {
+    const compliance = {
+      manufacturerName: 'Example Workshop',
+      manufacturerAddress: 'Example Street 1, Warsaw',
+      manufacturerEmail: 'safety@example.com',
+      modelIdentifier: 'STAND-1',
+      safetyWarnings: 'Keep away from **open flame**.<script>alert(1)</script>',
+    };
+    const variant = (id: string, published: boolean, variantLabel: string): Product => ({
+      ...product(id, 't-acme', published, 'physical'), variantGroup: 'stand', variantLabel,
+    });
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([
+        { ...variant('black', true, 'Black · ASA'), compliance },
+        variant('white', true, 'White · PLA'),
+        variant('red', false, 'Red · PETG'),
+        { ...product('lone', 't-acme', true, 'physical'), variantGroup: 'lone', variantLabel: 'Only one' },
+      ]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    }, 'physical-black');
+    if (!result.ok) throw new Error('offer failed');
+    expect(result.value.products).toHaveLength(1);
+    expect(result.value.products[0]?.compliance).toEqual({ ...compliance, safetyWarningsHtml: '<p>Keep away from <strong>open flame</strong>.&lt;script&gt;alert(1)&lt;/script&gt;</p>\n' });
+    expect(result.value.products[0]?.variants).toEqual([
+      { productId: 'black', slug: 'physical-black', label: 'Black · ASA', soldOut: false },
+      { productId: 'white', slug: 'physical-white', label: 'White · PLA', soldOut: false },
+    ]);
+    const lone = await getPublicOffer(tenant, {
+      products: fakeProducts([{ ...product('lone', 't-acme', true, 'physical'), variantGroup: 'lone', variantLabel: 'Only one' }]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    }, 'lone');
+    expect(lone.ok && lone.value.products[0]?.variants).toEqual([]);
   });
 
   it('exposes only lessons marked as free previews', async () => {

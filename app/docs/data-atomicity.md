@@ -45,6 +45,10 @@ at all.
 - Physical collection: `OrderVerificationRepository.issueLine` serializes on the
   order row and writes the physical line counter and append-only issue event in
   one commit.
+- Fulfilment: `OrderFulfilmentRepository.ship` serializes on the order row and
+  writes the `shipped` status, the shipment projection, the append-only
+  `order_fulfilment_events` row and the buyer e-mail in the outbox in one
+  commit.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,
@@ -175,3 +179,12 @@ timestamp and resulting count. Concurrent issue requests serialize on that
 order row: exactly one request can change the count from zero to one, and the
 others return a conflict. The quantity-one cap keeps events consistent with the
 projection and prevents duplicate collection. Reading or scanning a verification token does not write an event.
+
+Marking an order as shipped follows the same pattern. The repository locks the
+tenant-scoped order row with `FOR UPDATE`, re-checks the payment status and the
+`to_pack` fulfilment status, then sets `fulfilment_status = 'shipped'` and
+`orders.shipment`, appends an `order_fulfilment_events` row and inserts the
+`order-shipped` outbox row with its queued e-mail event. If the outbox insert
+fails, the transaction rolls back and the order stays `to_pack`. A unique index
+on the tenant, order and event type backs the row lock. The e-mail is
+dispatched only after commit, so a refused shipment never sends a message.

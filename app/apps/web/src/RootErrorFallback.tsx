@@ -25,6 +25,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'validation':
       return t.errors.headingValidation;
     case 'conflict':
+    case 'fulfilment_conflict':
       return t.errors.headingConflict;
     case 'slug_reserved':
       return t.errors.headingSlugReserved;

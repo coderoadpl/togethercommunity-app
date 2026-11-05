@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, shippingRatesSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -191,6 +191,9 @@ const productCreateOptionsSchema = z.object({
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
+  compliance: z.string().optional(),
+  variantGroup: variantGroupSchema.optional(),
+  variantLabel: variantLabelSchema.optional(),
 });
 const productUpdateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
@@ -201,7 +204,26 @@ const productUpdateOptionsSchema = z.object({
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   clearCover: z.boolean().default(false),
+  compliance: z.string().optional(),
+  variantGroup: variantGroupSchema.optional(),
+  variantLabel: variantLabelSchema.optional(),
+  clearVariant: z.boolean().default(false),
 });
+const ordersShipOptionsSchema = z.object({
+  carrier: shippingCarrierSchema,
+  tracking: z.string().min(1),
+});
+const ordersPackingListOptionsSchema = z.object({
+  format: z.literal('csv'),
+  fulfilment: fulfilmentStatusSchema.optional(),
+  out: z.string().min(1).optional(),
+});
+const productComplianceOption = async (raw: string | undefined): Promise<Result<z.output<typeof productComplianceSchema> | null | undefined, AppError>> => {
+  if (raw === undefined) return ok(undefined);
+  const payload = await readJsonPayload(raw, undefined);
+  if (!payload.ok) return payload;
+  return parsedInput(productComplianceSchema.nullable(), payload.value, 'Invalid product safety information');
+};
 const shippingSelectionOptionsSchema = z.object({
   shippingRate: z.string().min(1).optional(),
   pickupPoint: z.string().min(1).optional(),
@@ -1327,6 +1349,9 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
+  .option('--variant-label <label>', 'label of this product in its variant group, e.g. "Black · ASA"')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
       if (options.price !== undefined && options.priceCents !== undefined) {
@@ -1356,8 +1381,16 @@ product
         }
         accessItems = parsed.value;
       }
+      const compliance = await productComplianceOption(options.compliance);
+      if (!compliance.ok) {
+        emit(compliance, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
+          ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
+          ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
@@ -1415,7 +1448,7 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility or delivery method')
+  .description('Update product title, description, cover, visibility, delivery method, safety information or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
@@ -1424,14 +1457,31 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
+  .option('--variant-label <label>', 'label of this product in its variant group')
+  .option('--clear-variant', 'remove the variant group and label')
   .action(
     withInput(z.tuple([z.string().min(1), productUpdateOptionsSchema]), async (ctx, [id, options]) => {
       if (options.coverUrl !== undefined && options.clearCover) {
         emit(err(validation('Provide only one of --cover-url and --clear-cover')), ctx.json, () => '');
         return;
       }
+      if (options.clearVariant && (options.variantGroup !== undefined || options.variantLabel !== undefined)) {
+        emit(err(validation('Provide only one of --clear-variant and --variant-group/--variant-label')), ctx.json, () => '');
+        return;
+      }
+      const compliance = await productComplianceOption(options.compliance);
+      if (!compliance.ok) {
+        emit(compliance, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
+          ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
+          ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
+          ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
+          ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
           ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           id,
@@ -1590,6 +1640,36 @@ ordersCommand.command('issue <orderId> <productId>').description('Record collect
     emit(await ctx.api.issueOrderLine({ orderId, productId }), ctx.json, (data) => JSON.stringify(data.order, null, 2));
   }),
 );
+ordersCommand
+  .command('ship <orderId>')
+  .description('Mark a paid order to pack as shipped and e-mail the buyer the tracking number')
+  .requiredOption('--carrier <carrier>', 'inpost or other')
+  .requiredOption('--tracking <number>', 'parcel tracking number, 4-64 characters')
+  .action(
+    withInput(z.tuple([z.string().min(1), ordersShipOptionsSchema]), async (ctx, [orderId, options]) => {
+      emit(
+        await ctx.api.shipOrder({ orderId, carrier: options.carrier, trackingNumber: options.tracking }),
+        ctx.json,
+        (data) => `shipped: ${data.order.id} (${data.order.shipment?.carrier ?? ''} ${data.order.shipment?.trackingNumber ?? ''})`,
+      );
+    }),
+  );
+ordersCommand
+  .command('packing-list')
+  .description('Export the orders to pack as a CSV packing list')
+  .requiredOption('--format <format>', 'csv')
+  .option('--fulfilment <status>', 'to_pack (default) or shipped')
+  .option('--out <file>', 'write the packing list to a file instead of stdout')
+  .action(
+    withInput(z.tuple([ordersPackingListOptionsSchema]), async (ctx, [options]) => {
+      const result = await ctx.api.ordersPackingList({
+        format: options.format,
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
+      });
+      if (result.ok && options.out !== undefined) await writeFile(options.out, result.value.content);
+      emit(result, ctx.json, (file) => options.out === undefined ? file.content : `wrote ${file.filename} to ${options.out}`);
+    }),
+  );
 
 
 ordersCommand
@@ -1599,7 +1679,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
-  .option('--fulfilment <status>', 'to_pack: paid orders that still need shipping')
+  .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
@@ -1643,7 +1723,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
-  .option('--fulfilment <status>', 'to_pack: paid orders that still need shipping')
+  .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')

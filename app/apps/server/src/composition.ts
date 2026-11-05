@@ -5,7 +5,8 @@ import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
-import type { OrderVerificationRepository } from '#core/server/index.js';
+import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
+import type { OrderFulfilmentRepository, OrderVerificationRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
@@ -484,6 +485,7 @@ export interface AppDeps {
   orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
   orderVerification?: OrderVerificationRepository;
+  orderFulfilment?: OrderFulfilmentRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -1456,6 +1458,7 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
+    orderFulfilment: createOrderFulfilmentRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),

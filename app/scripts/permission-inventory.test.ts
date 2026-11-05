@@ -13,8 +13,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(434);
-    expect(inventory.useCases).toHaveLength(337);
+    expect(inventory.routes).toHaveLength(436);
+    expect(inventory.useCases).toHaveLength(339);
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
       inventory.useCases.find((entry) => entry.subject === 'invoices.ts#sendInvoice'),
@@ -30,6 +30,8 @@ describe('permission inventory', () => {
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'GET /api/orders/consumer-sales-summary'),
       inventory.useCases.find((entry) => entry.subject === 'consumer-sales.ts#summarizeUninvoicedConsumerSales'),
+      inventory.routes.find((entry) => entry.subject === 'GET /api/orders/packing-list'),
+      inventory.useCases.find((entry) => entry.subject === 'order-fulfilment.ts#exportPackingList'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:export', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
@@ -44,6 +46,8 @@ describe('permission inventory', () => {
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/lines/:productId/issue'),
       inventory.useCases.find((entry) => entry.subject === 'order-verification.ts#issueOrderLine'),
+      inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/ship'),
+      inventory.useCases.find((entry) => entry.subject === 'order-fulfilment.ts#shipOrder'),
     ]) {
       expect(row).toMatchObject({ capability: 'order:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }

@@ -105,6 +105,7 @@ it('activates invitations only after invalidating pre-proof passwords, passkeys,
       origin: 'http://acme.localhost:48730',
     }),
   });
+  if (enrollment.method !== 'totp') throw new Error('Expected TOTP enrollment');
   const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
   const enrolled = await authHttp.verifyTotp('pre-existing-session-token', totpCode(secret));
   expect(enrolled.status).toBe(200);

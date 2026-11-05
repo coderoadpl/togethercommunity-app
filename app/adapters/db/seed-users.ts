@@ -43,7 +43,7 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
           name,
           email,
           emailVerified: true,
-        });
+        }, { method: 'admin' });
         await context.internalAdapter.linkAccount({
           userId: created.id,
           accountId: created.id,

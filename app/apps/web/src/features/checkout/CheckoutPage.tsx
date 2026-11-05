@@ -176,21 +176,16 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...actions.validateCouponForCheckout,
   });
   const appliedCoupon = testEnabled ? undefined : couponValidation.data;
-  const [initialCouponRequested, setInitialCouponRequested] = useState(false);
-  const couponResolving = couponValidation.isPending ||
-    (initialCouponCode !== '' && !initialCouponRequested && completeEmail(email));
+  const [autoValidatedFor, setAutoValidatedFor] = useState<string | null>(null);
+  const autoValidationKey = `${email}|${selectedPrice?.id ?? ''}`;
+  const autoValidationDue = initialCouponCode !== '' && couponCode === initialCouponCode &&
+    completeEmail(email) && autoValidatedFor !== autoValidationKey;
+  const couponResolving = couponValidation.isPending || autoValidationDue;
 
   useEffect(() => {
-    if (
-      initialCouponRequested ||
-      initialCouponCode === '' ||
-      product === undefined ||
-      !completeEmail(email)
-    ) {
-      return;
-    }
+    if (!autoValidationDue || product === undefined) return;
     const timeout = window.setTimeout(() => {
-      setInitialCouponRequested(true);
+      setAutoValidatedFor(autoValidationKey);
       couponValidation.mutate({
         productId,
         ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
@@ -200,7 +195,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [couponValidation, email, initialCouponCode, initialCouponRequested, product, productId, salesLinkSlug, selectedPrice]);
+  }, [autoValidationDue, autoValidationKey, couponValidation, email, initialCouponCode, product, productId, salesLinkSlug, selectedPrice]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);

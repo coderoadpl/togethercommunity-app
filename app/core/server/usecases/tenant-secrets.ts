@@ -94,7 +94,7 @@ export const buildTenantSecret = (
   tenantId,
   key,
   ...deps.secretCrypto.encrypt(value),
-  maskedPreview: maskValue(value),
+  maskedPreview: key === 'analyticsMetaCapiAccessToken' ? 'configured' : maskValue(value),
   updatedAt: deps.clock.nowIso(),
 });
 

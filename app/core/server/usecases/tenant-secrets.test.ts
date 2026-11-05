@@ -93,6 +93,15 @@ const row = (key: TenantSecretKey): TenantSecret => ({
 });
 
 describe('setTenantSecret', () => {
+  it('keeps the Meta access token completely write-only and supports clearing it', async () => {
+    const h = harness();
+    const result = await setTenantSecret(ctx('owner'), { key: 'analyticsMetaCapiAccessToken', value: 'private-meta-token-1234' }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { maskedPreview: 'configured' } });
+    expect(JSON.stringify(await getTenantSecretsMasked(ctx('owner'), h.deps))).not.toMatch(/private-meta-token|1234/);
+    expect(h.rows[0]?.ciphertext).toBe('cipher:private-meta-token-1234');
+    expect(await deleteTenantSecret(ctx('owner'), 'analyticsMetaCapiAccessToken', h.deps)).toMatchObject({ ok: true });
+    expect(h.rows).toHaveLength(0);
+  });
   it('requires the declared tenant secret write capability', async () => {
     const h = harness();
     expect(await setTenantSecret(

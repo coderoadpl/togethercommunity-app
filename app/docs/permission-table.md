@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 434. Exported `Ctx` use-case rows: 337.
+Closed capability count: 123. Route rows: 438. Exported `Ctx` use-case rows: 340.
 
 ## Human-readable diff
 
@@ -32,6 +32,7 @@ no changes
 |---|---|---|---|---|---|
 | `GET /offer/:slug` | offer:read | public | public | yes | public route manifest |
 | `POST /api/public/sales-links/:slug/checkout` | checkout:start | public | public | yes | public route manifest |
+| `POST /api/public/meta-capi/consent` | marketing:consent:write | token | token | yes | public route manifest |
 | `GET /manifest.webmanifest` | offer:read | public | public | yes | public route manifest |
 | `GET /robots.txt` | offer:read | public | public | yes | public route manifest |
 | `GET /sitemap.xml` | offer:read | public | public | yes | public route manifest |
@@ -228,6 +229,9 @@ no changes
 | `DELETE /api/sales-links/:id` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/verify/:reference` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/lines/:productId/issue` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/meta-capi/events` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/me/meta-capi/consents` | member:billing:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/me/meta-capi/withdraw` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -706,6 +710,9 @@ no changes
 | `members.ts#listErasureRequests` | member:erasure:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#rejectErasureRequest` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#setMemberBanned` | member:ban | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
+| `meta-capi.ts#withdrawMetaCapiConsent` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/meta-capi.ts authorization call |
+| `meta-capi.ts#listMetaCapiConsents` | member:billing:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/meta-capi.ts authorization call |
+| `meta-capi.ts#listMetaCapiEvents` | tenant:settings:write | owner | owner | yes | core/server/usecases/meta-capi.ts authorization call |
 | `moderation.ts#reportPost` | community:report | owner, admin, member | owner, admin, member | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#listReports` | community:report:read | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
 | `moderation.ts#resolveReport` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/moderation.ts authorization call |
@@ -813,14 +820,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:26` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:203` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1208` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1210` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1232` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1246` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1769` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:28` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:205` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1212` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1214` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1236` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1250` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1774` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1774` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -829,7 +836,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:641` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:643` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -867,6 +874,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-profile.ts:42` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-profile.ts:50` | `? await deps.members.findById(tenant.value, ctx.identity.memberId)` |
 | member-scope | `core/server/usecases/member-profile.ts:73` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/meta-capi.ts:61` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:64` | `return recordDecision(tenant.value, { orderId: parsed.data.orderId, memberId: ctx.identity.memberId }, 'withdrawn',` |
+| member-scope | `core/server/usecases/meta-capi.ts:71` | `if (ctx.identity.memberId === null) return err(forbidden('Member account required'));` |
+| member-scope | `core/server/usecases/meta-capi.ts:72` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
 | member-scope | `core/server/usecases/my-products.ts:70` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

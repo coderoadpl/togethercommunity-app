@@ -150,7 +150,16 @@ const changePasswordOptionsSchema = z.object({
   signOutOtherSessions: z.boolean().default(false),
 });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
+const metaCapiCliSettingsSchema = z.object({
+  analyticsMetaCapiEnabled: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  analyticsMetaCapiTestEventCode: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentHeading: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentBody: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentAcceptLabel: z.string().transform((value) => value === '' ? null : value).optional(),
+  analyticsMetaCapiConsentDeclineLabel: z.string().transform((value) => value === '' ? null : value).optional(),
+});
 const tenantSettingsOptionsSchema = z.object({
+  ...metaCapiCliSettingsSchema.shape,
   analyticsTagId: z.string().optional(),
   analyticsMetaPixelId: z.string().optional(),
   analyticsConsentCookieName: z.string().optional(),
@@ -941,6 +950,14 @@ tenant
     }),
   );
 
+const metaCapi = program.command('meta-capi').description('Meta conversion delivery evidence');
+metaCapi.command('events').description('List the latest 100 conversion outcomes in the selected workspace').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.metaCapiEvents(), ctx.json, (data) => data.events.map((event) =>
+      `${event.transactionId} ${event.status} ${event.sentAt ?? event.recordedAt} ${event.error ?? ''}`).join('\n'));
+  }),
+);
+
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
@@ -956,6 +973,8 @@ tenant.command('settings').description('Show tenant settings').action(
         `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
         `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
         `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+        `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
+        `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
       ].join('\n'),
     );
   }),
@@ -966,6 +985,12 @@ tenant
   .description('Update tenant settings (owner)')
   .option('--analytics-tag-id <id>', 'GA4 measurement ID; empty string clears')
   .option('--analytics-meta-pixel-id <id>', 'Meta Pixel ID; empty string clears')
+  .option('--analytics-meta-capi-enabled <value>', 'true or false; requires explicit buyer consent')
+  .option('--analytics-meta-capi-test-event-code <code>', 'Meta test event code; empty string clears')
+  .option('--analytics-meta-capi-consent-heading <text>', 'Consent heading; empty string restores the default')
+  .option('--analytics-meta-capi-consent-body <text>', 'Consent body; empty string restores the default')
+  .option('--analytics-meta-capi-consent-accept-label <text>', 'Consent accept label; empty string restores the default')
+  .option('--analytics-meta-capi-consent-decline-label <text>', 'Consent decline label; empty string restores the default')
   .option('--analytics-consent-cookie-name <name>', 'consent cookie name (readable on the checkout host); empty string clears')
   .option('--analytics-consent-cookie-value <value>', 'required consent cookie substring; empty string clears')
   .option('--analytics-load-without-consent <value>', "'true' or 'false' — load without checking consent")
@@ -983,7 +1008,16 @@ tenant
       const accentColor = options.clearAccentColor === true ? null : options.accentColor;
       const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
+      const metaCapi = {
+        analyticsMetaCapiEnabled: options.analyticsMetaCapiEnabled,
+        analyticsMetaCapiTestEventCode: options.analyticsMetaCapiTestEventCode,
+        analyticsMetaCapiConsentHeading: options.analyticsMetaCapiConsentHeading,
+        analyticsMetaCapiConsentBody: options.analyticsMetaCapiConsentBody,
+        analyticsMetaCapiConsentAcceptLabel: options.analyticsMetaCapiConsentAcceptLabel,
+        analyticsMetaCapiConsentDeclineLabel: options.analyticsMetaCapiConsentDeclineLabel,
+      };
       if (
+        Object.values(metaCapi).every((value) => value === undefined) &&
         accentColor === undefined && accentLight === undefined &&
         billingPortalUrl === undefined &&
         options.videoAutoplayDefault === undefined &&
@@ -1003,6 +1037,7 @@ tenant
         return;
       }
       emit(await ctx.api.updateTenantSettings({
+        ...metaCapi,
         ...(options.analyticsTagId === undefined ? {} : { analyticsTagId: options.analyticsTagId }),
         ...(options.analyticsMetaPixelId === undefined ? {} : { analyticsMetaPixelId: options.analyticsMetaPixelId }),
         ...(options.analyticsConsentCookieName === undefined ? {} : { analyticsConsentCookieName: options.analyticsConsentCookieName }),
@@ -1031,6 +1066,8 @@ tenant
           `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
           `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
           `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+          `Meta CAPI enabled: ${String(data.settings.analyticsMetaCapiEnabled ?? false)}`,
+          `Meta CAPI test event code: ${data.settings.analyticsMetaCapiTestEventCode ?? '(not set)'}`,
         ].join('\n'),
       );
     }),

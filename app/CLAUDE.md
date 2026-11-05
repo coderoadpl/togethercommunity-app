@@ -159,17 +159,23 @@ without `status=success`, `/offer/*?checkout=together` and
 `https://geowidget.inpost.pl`, in `script-src` and `style-src`; no other
 directive and no other document changes, and the success document keeps its
 own rule. Load conditions: the InPost script and stylesheet load only when the
-workspace has configured a Geowidget token and the buyer has chosen a
-parcel-locker delivery option; a typed locker code stays available without the
-script. Exit rule: once the vendor script has been injected, leaving the
-document uses a full document navigation (no in-app router transition), so
-the vendor code never runs in sign-in or signed-in views; the server middleware
-and the static hosting headers each list the origin only for the three document
-kinds above, and regression tests assert both. Risk accepted by the owner: the
-InPost library runs on documents where the base-domain session cookie is
-valid for every workspace subdomain and where the buyer types delivery data;
-the owner accepts this on the strength of InPost being the only foreign code
-on those documents, the load conditions and the full-navigation exit.
+workspace has configured a Geowidget token, the buyer has chosen a
+parcel-locker delivery option, the checkout runs in live mode and the viewer
+holds no staff session for the workspace; a staff member or a test-mode
+purchase never injects the vendor code and uses the typed locker code instead,
+and a typed locker code stays available for every buyer without the script.
+Exit rule: once the vendor script has been injected, leaving the document uses
+a full document navigation (no in-app router transition), so the vendor code
+never runs in sign-in views, Studio or member views; the server middleware and
+the static hosting headers each list the origin only for the three document
+kinds above, and regression tests assert the headers and the load conditions.
+Risk accepted by the owner: the
+InPost library runs on buyer checkout documents where the base-domain session
+cookie of a signed-in member is valid for every workspace subdomain and where
+the buyer types delivery data; staff sessions are excluded by the load
+conditions; the owner accepts this exposure on the strength of InPost being
+the only foreign code on those documents, the load conditions and the
+full-navigation exit.
 
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.

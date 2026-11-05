@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { appError, validation, type AppError } from './errors.js';
+import { stripeModeSchema } from './integration.js';
 import { err, ok, type Result } from './result.js';
 import { fulfilmentStatusSchema, shippingCarrierSchema, type FulfilmentStatus, type OrderShipping, type ShippingCarrier } from './shipping.js';
 
@@ -86,4 +87,5 @@ export const memberFulfilmentView = (order: {
 export const packingListQuerySchema = z.object({
   format: z.literal('csv'),
   fulfilmentStatus: fulfilmentStatusSchema.default('to_pack'),
+  mode: stripeModeSchema.default('live'),
 });

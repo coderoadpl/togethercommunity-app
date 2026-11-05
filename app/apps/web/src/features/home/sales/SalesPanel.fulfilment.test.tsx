@@ -86,8 +86,15 @@ describe('sales fulfilment', () => {
 
     await userEvent.click(screen.getByRole('button', { name: en.shipping.packingListDownload }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(packingQueries.map((params) => [params.get('format'), params.get('fulfilmentStatus')])).toEqual([['csv', 'to_pack']]);
+    expect(packingQueries.map((params) => [params.get('format'), params.get('fulfilmentStatus'), params.get('mode')])).toEqual([['csv', 'to_pack', null]]);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole('combobox', { name: en.sales.mode }));
+    await userEvent.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
+    await waitFor(() => expect(listQueries.at(-1)?.get('mode')).toBe('test'));
+    await userEvent.click(await screen.findByRole('button', { name: en.shipping.packingListDownload }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
+    expect(packingQueries.at(-1)?.get('mode')).toBe('test');
   });
 });
 

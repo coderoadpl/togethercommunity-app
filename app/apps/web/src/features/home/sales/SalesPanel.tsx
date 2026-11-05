@@ -121,7 +121,7 @@ export const SalesPanel = () => {
     setPacking(true);
     setExportError(null);
     try {
-      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus })));
+      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, ...(mode === 'all' ? {} : { mode }) })));
     } catch (error) {
       setExportError(localizePanelError(error, t));
     } finally {

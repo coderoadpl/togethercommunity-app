@@ -18,6 +18,7 @@ export const registerOrderFulfilmentRoutes = (
   app.get(API_PATHS.ordersPackingList, async (c) => respond(await exportPackingList(ctxOf(c), {
     format: c.req.query('format'),
     ...(c.req.query('fulfilmentStatus') === undefined ? {} : { fulfilmentStatus: c.req.query('fulfilmentStatus') }),
+    ...(c.req.query('mode') === undefined ? {} : { mode: c.req.query('mode') }),
   }, deps)));
   app.post(API_PATHS.shipOrder, async (c) => {
     if (deps.orderFulfilment === undefined || deps.orderDetails === undefined) return respond(err(internal('Order fulfilment is unavailable')));

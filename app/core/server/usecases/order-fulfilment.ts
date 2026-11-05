@@ -180,7 +180,7 @@ export const exportPackingList = async (
   const parsed = packingListQuerySchema.safeParse(query);
   if (!parsed.success) return err(validation('Invalid packing list query', parsed.error.flatten()));
   const page = (number: number) => deps.orders.list(tenant.value, {
-    mode: 'live',
+    mode: parsed.data.mode,
     fulfilmentStatus: parsed.data.fulfilmentStatus,
     page: number,
     pageSize: PACKING_LIST_PAGE_SIZE,

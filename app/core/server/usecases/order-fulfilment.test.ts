@@ -242,6 +242,15 @@ describe('packing list', () => {
     expect(result.ok && result.value.content.split('\n')).toHaveLength(4);
   });
 
+  it('exports the test-mode list when the request asks for test mode and the live list by default', async () => {
+    const h = listing([baseOrder]);
+    expect(await exportPackingList(ctx(['order:export']), { format: 'csv', mode: 'test' }, h.deps)).toMatchObject({ ok: true });
+    expect(await exportPackingList(ctx(['order:export']), { format: 'csv', mode: 'live' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.list.mock.calls.map(([, query]) => query.mode)).toEqual(['test', 'live']);
+    expect(await exportPackingList(ctx(['order:export']), { format: 'csv', mode: 'sandbox' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.list).toHaveBeenCalledTimes(2);
+  });
+
   it('requires order:export and a CSV format', async () => {
     const h = listing([baseOrder]);
     expect(await exportPackingList(ctx(['order:read', 'order:write']), { format: 'csv' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });

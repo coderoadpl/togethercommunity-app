@@ -206,8 +206,10 @@ confirmation.
 
 With the **To pack** filter selected, the orders page offers **Download packing
 list (CSV)**: `GET /api/orders/packing-list?format=csv` (optionally
-`fulfilmentStatus=to_pack|shipped`, default `to_pack`) needs `order:export` and
-returns live orders, oldest payment first, with the columns `order_number`,
+`fulfilmentStatus=to_pack|shipped`, default `to_pack`, and `mode=live|test`,
+default `live`) needs `order:export` and returns the orders of that payment
+mode, oldest payment first; Studio sends the payment mode selected on the
+orders page. The columns are `order_number`,
 `paid_at` (Europe/Warsaw, `YYYY-MM-DD HH:mm`), `buyer_name`, `email`, `phone`,
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`

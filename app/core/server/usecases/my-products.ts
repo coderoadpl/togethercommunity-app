@@ -151,6 +151,7 @@ export const listMyProducts = async (
       for (const line of order.lines ?? []) {
         if (line.productType !== 'physical') continue;
         purchasedAt.set(line.productId, order.createdAt);
+        if (fulfilment.has(line.productId)) continue;
         shippedTo.set(line.productId, order.shipping == null ? null : order.shipping.pickupPoint?.code ?? order.shipping.address.city);
         fulfilment.set(line.productId, memberFulfilmentView(order));
       }

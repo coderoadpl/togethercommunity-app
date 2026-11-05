@@ -227,7 +227,9 @@ number with its link.
 
 My products shows "Being prepared for shipping" for a physical line of an order
 to pack and "Shipped on <date> · <carrier> <tracking number>" with the tracking
-link once shipped.
+link once shipped, with the date in Europe/Warsaw. When the buyer ordered the
+same product more than once, the status and destination come from the newest
+order.
 
 ## Product safety information (GPSR)
 

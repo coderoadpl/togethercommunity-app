@@ -177,6 +177,14 @@ describe('listMyProducts', () => {
         trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
       } }] });
     expect(await run({ fulfilmentStatus: null, shipment: null })).toMatchObject({ ok: true, value: [{ fulfilment: null }] });
+    const newest = { ...order({ fulfilmentStatus: 'to_pack', shipment: null }), id: 'order-2', shipping: { ...shipping, pickupPoint: { provider: 'inpost' as const, code: 'KRK02M', name: null, address: null } } };
+    const oldest = { ...order({ fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234', shippedAt: '2026-11-05T10:00:00.000Z', shippedBy: 'staff' } }), createdAt: '2026-10-01T10:00:00.000Z' };
+    const repeated = await listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [newest, oldest] },
+      products: { findByIds: async () => [physical] },
+    });
+    expect(repeated).toMatchObject({ ok: true, value: [{ shippedTo: 'KRK02M', fulfilment: { status: 'to_pack', trackingNumber: null } }] });
   });
 
   it('returns the granted products for a member with an active window', async () => {

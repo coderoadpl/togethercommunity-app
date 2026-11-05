@@ -81,8 +81,11 @@ The server validates it again:
 The zero-total rule exists because a free order never reaches Stripe, so
 nothing would collect the delivery address. A fully discounted product with a
 paid delivery option is a normal Stripe checkout for the fee alone: Stripe
-collects the address, and the webhook applies the coupon redemption limit to
-it like any other fully discounted order.
+collects the address, and the webhook claims the coupon redemption. When the
+coupon's redemption limit is reached before that claim, the buyer has already
+paid the delivery fee on Stripe, but the webhook refuses the order and records
+nothing; staff must refund the fee manually in Stripe. A follow-up may record
+such orders instead.
 
 Stripe Checkout receives the product lines as line items and the fee as exactly
 one shipping option (`shipping_rate_data` with a fixed amount, the option label

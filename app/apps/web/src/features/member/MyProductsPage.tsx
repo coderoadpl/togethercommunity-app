@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import type {
   GrantWindowStatus,
   MemberFulfilment,
@@ -71,7 +72,7 @@ const FulfilmentStatusLine = ({ fulfilment, productId }: { fulfilment: MemberFul
   }
   return (
     <Typography color="text.secondary" data-testid={`fulfilment-${productId}`}>
-      {t.shipping.memberShipped({ date: formatDate(fulfilment.shippedAt, language), carrier: t.shipping.carriers[fulfilment.carrier] })}
+      {t.shipping.memberShipped({ date: formatDate(fulfilment.shippedAt, language, SALES_LINK_TIME_ZONE), carrier: t.shipping.carriers[fulfilment.carrier] })}
       {fulfilment.trackingNumber === null ? null : ' '}
       {fulfilment.trackingNumber === null ? null : fulfilment.trackingUrl === null
         ? fulfilment.trackingNumber

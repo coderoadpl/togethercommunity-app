@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -419,9 +419,11 @@ it('shows a shipped physical purchase with its delivery destination instead of i
 });
 
 it('shows the shipment with its tracking link or that the purchase is being prepared', async () => {
+  vi.stubEnv('TZ', 'America/New_York');
+  onTestFinished(() => { vi.unstubAllEnvs(); });
   server.use(http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [
     { ...productsBody.products[0], id: 'physical-shipped', title: 'Printed holder', type: 'physical', accessItems: [], shippedTo: 'WAW01M', fulfilment: {
-      status: 'shipped', shippedAt: '2026-11-05T09:30:00.000Z', carrier: 'inpost', trackingNumber: 'ABCD1234',
+      status: 'shipped', shippedAt: '2026-11-04T23:30:00.000Z', carrier: 'inpost', trackingNumber: 'ABCD1234',
       trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
     } },
     { ...productsBody.products[0], id: 'physical-packing', title: 'Printed stand', type: 'physical', accessItems: [], shippedTo: 'Warsaw', fulfilment: {

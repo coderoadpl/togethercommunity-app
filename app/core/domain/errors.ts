@@ -26,6 +26,7 @@ export const ERROR_CODES = [
   'impersonation_read_only',
   'shipping_required',
   'sold_out',
+  'fulfilment_conflict',
   'internal',
 ] as const;
 

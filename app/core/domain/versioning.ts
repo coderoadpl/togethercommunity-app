@@ -19,7 +19,7 @@ import {
   courseModuleSnapshotV1Schema,
   type CourseModuleSnapshotV1,
 } from './snapshots/course_module/v1.js';
-import { productSnapshotV7Schema, type ProductSnapshotV7 } from './snapshots/product/v7.js';
+import { productSnapshotV8Schema, type ProductSnapshotV8 } from './snapshots/product/v8.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -39,7 +39,7 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV6Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV7Schema,
-  product: productSnapshotV7Schema,
+  product: productSnapshotV8Schema,
 };
 
 /** Typed readers for the current frozen schema; a bump repoints these too. */
@@ -47,7 +47,7 @@ export const currentSnapshotParsers = {
   course: (payload: unknown): CourseSnapshotV6 => courseSnapshotV6Schema.parse(payload),
   course_module: (payload: unknown): CourseModuleSnapshotV1 => courseModuleSnapshotV1Schema.parse(payload),
   course_lesson: (payload: unknown): CourseLessonSnapshotV7 => courseLessonSnapshotV7Schema.parse(payload),
-  product: (payload: unknown): ProductSnapshotV7 => productSnapshotV7Schema.parse(payload),
+  product: (payload: unknown): ProductSnapshotV8 => productSnapshotV8Schema.parse(payload),
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -62,7 +62,7 @@ export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 6,
   course_module: 1,
   course_lesson: 7,
-  product: 7,
+  product: 8,
 };
 
 type Upcaster = (payload: unknown) => unknown;
@@ -134,6 +134,7 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
     4: (payload) => ({ ...z.object({}).passthrough().parse(payload), visibility: 'listed' }),
     5: (payload) => payload,
     6: (payload) => ({ ...z.object({}).passthrough().parse(payload), deliveryMethod: 'pickup' }),
+    7: (payload) => payload,
   },
 };
 
@@ -286,7 +287,7 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '9ef30ced',
   course_module: 'db069353',
   course_lesson: '20a239d8',
-  product: '4806f23b',
+  product: '14bdca65',
 };
 
 // --- read-surface DTOs -----------------------------------------------------

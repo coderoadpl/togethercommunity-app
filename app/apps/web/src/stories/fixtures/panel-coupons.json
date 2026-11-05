@@ -200,6 +200,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -217,12 +218,19 @@
               }
             ],
             "slug": "course-together-101",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -240,12 +248,19 @@
               }
             ],
             "slug": "js-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -263,12 +278,19 @@
               }
             ],
             "slug": "react-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "React in Practice - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -286,12 +308,19 @@
               }
             ],
             "slug": "js-dom-module",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "DOM Module Pack",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -309,12 +338,19 @@
               }
             ],
             "slug": "free-preview",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Free preview",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -339,12 +375,19 @@
               }
             ],
             "slug": "club",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -362,8 +405,14 @@
               }
             ],
             "slug": "download-workbook",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }

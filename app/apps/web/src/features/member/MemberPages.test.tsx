@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -416,4 +416,26 @@ it('shows a shipped physical purchase with its delivery destination instead of i
   const courier = within(screen.getByTestId('my-product-physical-courier'));
   expect(courier.getByText('Will be shipped to Warsaw')).toBeVisible();
   expect(courier.queryByText(en.salesLinks.collectedInPerson)).toBeNull();
+});
+
+it('shows the shipment with its tracking link or that the purchase is being prepared', async () => {
+  vi.stubEnv('TZ', 'America/New_York');
+  onTestFinished(() => { vi.unstubAllEnvs(); });
+  server.use(http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: { products: [
+    { ...productsBody.products[0], id: 'physical-shipped', title: 'Printed holder', type: 'physical', accessItems: [], shippedTo: 'WAW01M', fulfilment: {
+      status: 'shipped', shippedAt: '2026-11-04T23:30:00.000Z', carrier: 'inpost', trackingNumber: 'ABCD1234',
+      trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234',
+    } },
+    { ...productsBody.products[0], id: 'physical-packing', title: 'Printed stand', type: 'physical', accessItems: [], shippedTo: 'Warsaw', fulfilment: {
+      status: 'to_pack', shippedAt: null, carrier: null, trackingNumber: null, trackingUrl: null,
+    } },
+  ] } })));
+  await renderPage(MyProductsPage, '/my/products');
+  const shipped = within(await screen.findByTestId('my-product-physical-shipped'));
+  expect(shipped.getByTestId('fulfilment-physical-shipped')).toHaveTextContent('Shipped on 5 Nov 2026 · InPost ABCD1234');
+  expect(shipped.getByRole('link', { name: 'ABCD1234' })).toHaveAttribute('href', 'https://inpost.pl/sledzenie-przesylek?number=ABCD1234');
+  expect(shipped.queryByText(en.shipping.shippedTo({ destination: 'WAW01M' }))).toBeNull();
+  const packing = within(screen.getByTestId('my-product-physical-packing'));
+  expect(packing.getByText(en.shipping.memberBeingPrepared)).toBeVisible();
+  expect(packing.getByText(en.shipping.shippedTo({ destination: 'Warsaw' }))).toBeVisible();
 });

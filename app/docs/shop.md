@@ -2,9 +2,10 @@
 
 A physical product is either collected in person or shipped by parcel. This
 page covers shipping: delivery methods, delivery options (rates), the parcel
-locker flow, what an order stores, the content security policy for the
-parcel locker map, and the CLI. The last section covers stock tracking with
-checkout reservations.
+locker flow, what an order stores, fulfilment (packing and marking orders as
+shipped), product safety information, product variants, the content security
+policy for the parcel locker map, and the CLI. The last section covers stock
+tracking with checkout reservations.
 
 ## Delivery methods
 
@@ -142,17 +143,153 @@ sent purchase confirmation e-mails is pseudonymised the same way. See
 [Member erasure](member-erasure.md).
 
 My products shows a shipped physical purchase as "Will be shipped to" the
-locker code or, for address delivery, the city; purchases collected in person
-keep "Collected in person".
+locker code or, for address delivery, the city, until the order is shipped;
+purchases collected in person keep "Collected in person". The fulfilment state
+is shown below that line, see [Fulfilment](#fulfilment).
 
 ## Studio
 
 The order detail page shows a **Delivery** card (option, price, locker,
-address, phone) and a **To pack** chip. The orders list has a **Needs shipping**
-filter (`fulfilmentStatus=to_pack`). CSV and JSON exports add the columns
-`shipping_rate`, `shipping_point`, `shipping_name`, `shipping_phone`,
-`shipping_address`, `shipping_postal_code`, `shipping_city`, `shipping_country`
-and `fulfilment_status`.
+address, phone) and a fulfilment chip (**To pack** or **Shipped**). The orders
+list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
+`fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
+JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
+`shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
+`shipping_country` and `fulfilment_status`.
+
+## Fulfilment
+
+`orders.fulfilment_status` is `null` for orders with nothing to ship, `to_pack`
+for paid orders with shipping (set when the payment completes) and `shipped`
+once staff mark the order as shipped. The only transition is `to_pack` →
+`shipped`:
+
+| Situation | Result |
+|---|---|
+| paid, refunded or partially refunded order that is `to_pack` | shipped; refunded orders can still be shipped because the goods may already be on the way |
+| pending or failed order | `validation` |
+| order with nothing to ship (`null`) | `validation` |
+| order that is already `shipped` | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
+
+Marking an order as shipped needs `order:write`, the same capability as
+recording an in-person collection. `POST /api/orders/<orderId>/ship` takes
+`{ carrier: 'inpost' | 'other', trackingNumber }`; the tracking number is
+trimmed and must have 4 to 64 characters. In one transaction the order row is
+locked, the status is checked again, `orders.shipment` receives
+`{ carrier, trackingNumber, shippedAt, shippedBy }`, an immutable
+`order_fulfilment_events` row (`type = 'shipped'`, the carrier and tracking
+number as payload, the staff user and the time) is appended and the buyer
+e-mail is queued. A unique index on the order and event type keeps one shipped
+event per order. Two concurrent requests serialize on the order row: one ships
+the order, the other returns `fulfilment_conflict` and queues nothing.
+
+The tracking link is derived from the carrier and the number by
+`shipmentTrackingUrl` in `core/domain/fulfilment.ts`: InPost parcels link to
+`https://inpost.pl/sledzenie-przesylek?number=<trackingNumber>`; `other` shows
+the number without a link. A new carrier is one entry in that map.
+
+### Shipment e-mail
+
+The buyer receives the `order-shipped` e-mail at the member e-mail address:
+"Your order <number> has been shipped — <workspace>" with the order number, the
+shipped items (product lines, not the delivery line), the delivery option with
+the locker code and details or the postal address, the carrier, the tracking
+number and, for InPost, the tracking link. The language follows the member's
+language, then the workspace default. Test-mode orders send no e-mail, like
+other purchase e-mails. The message is queued in the same transaction as the
+shipment and dispatched right after commit; it uses the workspace transport
+rules of other transactional e-mail and is not auth-bearing. Member erasure
+pseudonymises its delivery name and street lines like the purchase
+confirmation.
+
+### Packing list
+
+With the **To pack** filter selected, the orders page offers **Download packing
+list (CSV)**: `GET /api/orders/packing-list?format=csv` (optionally
+`fulfilmentStatus=to_pack|shipped`, default `to_pack`, and `mode=live|test`,
+default `live`) needs `order:export` and returns the orders of that payment
+mode, oldest payment first; Studio sends the payment mode selected on the
+orders page. The columns are `order_number`,
+`paid_at` (Europe/Warsaw, `YYYY-MM-DD HH:mm`), `buyer_name`, `email`, `phone`,
+`delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
+`address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
+(`name × 1; name × 1`, product lines only) and an empty `notes` column. Every
+cell is quoted and cells starting with `=`, `+`, `-`, `@`, a tab or a carriage
+return are prefixed with an apostrophe so spreadsheets do not run them as
+formulas; a phone number such as `+48…` therefore appears as `'+48…`.
+
+### Studio and My products
+
+The order detail **Delivery** card offers **Mark as shipped** for orders to
+pack when the staff role has `order:write`: a carrier select (preset to the
+delivery option's carrier), the tracking number and a confirmation that names
+the buyer e-mail; for a test-mode order it says instead that no e-mail is sent.
+A shipped order shows the shipment date and time
+(Europe/Warsaw), the staff member who shipped it, the carrier and the tracking
+number with its link.
+
+My products shows "Being prepared for shipping" for a physical line of an order
+to pack and "Shipped on <date> · <carrier> <tracking number>" with the tracking
+link once shipped, with the date in Europe/Warsaw. When the buyer ordered the
+same product more than once, the status and destination come from the newest
+order.
+
+## Product safety information (GPSR)
+
+Products have an optional `compliance` object with the manufacturer and safety
+information the EU General Product Safety Regulation requires on the offer of
+physical goods:
+
+| Field | Values |
+|---|---|
+| `manufacturerName` | 1–200 characters |
+| `manufacturerAddress` | 1–300 characters, postal address |
+| `manufacturerEmail` | contact e-mail |
+| `modelIdentifier` | 1–100 characters, model or type |
+| `batchIdentifier` | optional, 1–100 characters |
+| `safetyWarnings` | 0–5000 characters of Markdown, empty by default |
+| `instructionsUrl` | optional HTTPS URL |
+
+The field is accepted on every product type through the API, the CLI and the
+import API; Studio shows the expandable **Product safety (GPSR)** section in the
+product editor for physical products only. The workspace is responsible for the
+content; the platform only validates the shape.
+
+The public offer returns `compliance` for each product with
+`safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
+used for sales-link descriptions (links, emphasis and lists only; HTML and
+images are escaped or dropped). The Together checkout page shows the section
+**Product safety information** directly under the description and renders the
+warnings through the product description sanitiser. For physical products the
+section is always expanded; for other product types it is collapsed until
+opened. Public sales-link offers carry `compliance` on each line the same way,
+and the sales-link checkout shows one section per product with safety
+information, titled with the product name when the link sells more than one
+product. The purchase confirmation e-mail does not include it.
+
+Product snapshots carry the descriptive fields, so the field was added in
+product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7
+snapshots read unchanged because the field is optional.
+
+## Product variants
+
+Variants are separate products, each with its own price, stock, slug and
+checkout. `variantGroup` (1–60 lowercase letters, digits and hyphens) links
+products of one workspace; `variantLabel` (1–60 characters, for example
+`Black · ASA`) names the variant. Studio shows both under **Variants** in the
+editor of physical products; the API, the CLI and the import API accept them on
+every product.
+
+The public offer returns `variants: [{ productId, slug, label, soldOut }]` for a
+product whose group has at least two published products, including the product
+itself, in creation order; otherwise the list is empty. A variant without a
+label uses its title. The checkout page renders the variants as chips above the
+price: the current product is selected, the others link to their own checkout
+page (campaign parameters are kept), and a sold-out variant is disabled with
+"Sold out". The sold-out flag is the public stock flag of the sibling: a
+tracked variant without an available piece is sold out, an untracked one never
+is. The offer reads the stock of the offered products and of every published
+sibling in their groups in one query.
 
 ## Content security policy for the parcel locker map
 
@@ -198,11 +335,18 @@ pnpm --silent run cli --tenant acme checkout session --product <id> \
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
   --product <id> --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
+pnpm --silent run cli --tenant acme orders packing-list --format csv --out packing-list.csv
+pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
+pnpm --silent run cli --tenant acme orders list --fulfilment shipped
+pnpm --silent run cli --tenant acme product update <id> \
+  --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
+  --variant-group printed-stand --variant-label 'Black · ASA'
 ```
 
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--pickup-point` needs
-`--shipping-rate`.
+`--shipping-rate`. `--compliance null` removes the safety information and
+`--clear-variant` removes the variant group and label.
 
 ## Stock
 

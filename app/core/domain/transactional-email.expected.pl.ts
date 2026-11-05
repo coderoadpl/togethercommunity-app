@@ -18,7 +18,24 @@ export const expectedPurchaseDeliveryPl = {
   addressText: '\n\nDostawa: Kurier\nJan Kowalski\nul. Ogrodowa 5\nm. 2\n00-950 Warszawa\nPL',
 };
 
+export const orderShippedFixturePl = {
+  tenantName: 'Acme Courses',
+  shipment: {
+    orderNumber: 'order-42',
+    items: ['Uchwyt drukowany', 'Podstawka'],
+    delivery: purchaseDeliveryFixturesPl.locker,
+    carrier: 'inpost' as const,
+    trackingNumber: '520000011395200025754311',
+    trackingUrl: 'https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311',
+  },
+};
+
 export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
+  orderShipped: {
+    subject: 'Twoje zamówienie order-42 zostało wysłane — Acme Courses',
+    html: '<p>Cześć!</p><p>Twoje zamówienie order-42 w Acme Courses zostało wysłane.</p><p>Wysłane produkty</p><ul><li>Uchwyt drukowany</li><li>Podstawka</li></ul><p><strong>Dostawa</strong>: Paczkomat InPost<br>Paczkomat: WAW01M<br>Paczkomat WAW01M<br>ul. Prosta 1, Warszawa</p><p><strong>Przewoźnik</strong>: InPost<br>Numer przesyłki: 520000011395200025754311<br><a href="https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311">Śledź przesyłkę</a></p>',
+    text: 'Cześć!\n\nTwoje zamówienie order-42 w Acme Courses zostało wysłane.\n\nWysłane produkty:\n- Uchwyt drukowany\n- Podstawka\n\nDostawa: Paczkomat InPost\nPaczkomat: WAW01M\nPaczkomat WAW01M\nul. Prosta 1, Warszawa\n\nPrzewoźnik: InPost\nNumer przesyłki: 520000011395200025754311\nŚledź przesyłkę: https://inpost.pl/sledzenie-przesylek?number=520000011395200025754311',
+  },
   welcomeSignIn: {
     subject: 'Twoje konto na platformie Acme Courses jest gotowe',
     html: '<p>Cześć!</p><p>Twoje konto na platformie Acme Courses jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p><a href="https://acme.localhost/sign-in?token=abc">Zaloguj się i otwórz kurs</a></p>',

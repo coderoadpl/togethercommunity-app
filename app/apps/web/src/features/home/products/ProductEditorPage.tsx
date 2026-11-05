@@ -38,6 +38,7 @@ import {
 } from '#core/domain/index.js';
 
 import { DeliveryMethodField } from './DeliveryMethodField.js';
+import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -59,6 +60,9 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [vatRate, setVatRate] = useState(product.vatRate);
   const [vatExemptionBasis, setVatExemptionBasis] = useState(product.vatExemptionBasis ?? '');
   const [deliveryMethod, setDeliveryMethod] = useState(product.deliveryMethod);
+  const [compliance, setCompliance] = useState(complianceDraftFrom(product.compliance));
+  const [complianceInvalid, setComplianceInvalid] = useState(false);
+  const [variant, setVariant] = useState({ group: product.variantGroup ?? '', label: product.variantLabel ?? '' });
   const save = useMutation({
     ...actions.updateProduct,
     onSuccess: async () => {
@@ -71,13 +75,21 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const parsedCompliance = complianceFromDraft(compliance);
+    setComplianceInvalid(!parsedCompliance.ok);
+    if (!parsedCompliance.ok) return;
     save.mutate({
       id: product.id,
       title: title.trim(),
       visibility,
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
-      ...(product.type === 'physical' ? { deliveryMethod } : {}),
+      ...(product.type === 'physical' ? {
+        deliveryMethod,
+        compliance: parsedCompliance.value,
+        variantGroup: variant.group.trim() === '' ? null : variant.group.trim(),
+        variantLabel: variant.label.trim() === '' ? null : variant.label.trim(),
+      } : {}),
       description,
       coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
     });
@@ -164,6 +176,12 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
         kind="product-cover"
         testId="product-cover"
       />
+      {product.type === 'physical' ? (
+        <>
+          <ProductVariantFields group={variant.group} label={variant.label} onChange={(value) => { resetFeedback(); setVariant(value); }} />
+          <ProductComplianceFields value={compliance} invalid={complianceInvalid} onChange={(value) => { resetFeedback(); setComplianceInvalid(false); setCompliance(value); }} />
+        </>
+      ) : null}
       {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
       {save.isError ? <Alert severity="error">{localizePanelError(save.error, t)}</Alert> : null}
     </SectionCard>

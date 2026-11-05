@@ -28,7 +28,9 @@ export const requiresWorkspaceCheckout = (product: {
 
 const shippingVatRateSchema = z.union([z.literal(5), z.literal(8), z.literal(23)]);
 
-const shippingCarrierSchema = z.enum(['inpost', 'other']);
+export const shippingCarrierSchema = z.enum(['inpost', 'other']);
+
+export type ShippingCarrier = z.infer<typeof shippingCarrierSchema>;
 
 const pickupPointKindSchema = z.enum(['none', 'inpost_locker']);
 
@@ -160,7 +162,7 @@ export const orderShippingSchema = z.object({
 
 export type OrderShipping = z.infer<typeof orderShippingSchema>;
 
-export const fulfilmentStatusSchema = z.enum(['to_pack']);
+export const fulfilmentStatusSchema = z.enum(['to_pack', 'shipped']);
 
 export type FulfilmentStatus = z.infer<typeof fulfilmentStatusSchema>;
 

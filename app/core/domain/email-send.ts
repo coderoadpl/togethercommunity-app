@@ -19,6 +19,7 @@ const emailSendSourceKindSchema = z.enum([
   'space-event',
   'subscription-payment-failed',
   'subscription-ended',
+  'order-shipped',
   'support-message',
   'member-erasure-request',
   'reputation-alert',

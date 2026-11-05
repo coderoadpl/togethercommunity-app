@@ -1,6 +1,7 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
+import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
 import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
@@ -181,6 +182,9 @@ import {
   productSchema,
   productTypeSchema,
   deliveryMethodSchema,
+  memberFulfilmentSchema,
+  publicProductComplianceSchema,
+  publicProductVariantSchema,
   checkoutShippingInputSchema,
   publicShippingRateSchema,
   progressViewSchema,
@@ -426,6 +430,8 @@ export const publicOfferOutputSchema = z.object({
       id: z.string(),
       type: productTypeSchema,
       deliveryMethod: deliveryMethodSchema.default('pickup'),
+      compliance: publicProductComplianceSchema.nullable().default(null),
+      variants: z.array(publicProductVariantSchema).default([]),
       slug: productSlugSchema,
       title: z.string(),
       description: z.string(),
@@ -528,6 +534,7 @@ export const myProductsOutputSchema = z.object({
       currency: z.string().regex(/^[A-Z]{3}$/),
       purchasable: z.boolean(),
       shippedTo: z.string().nullable().optional(),
+      fulfilment: memberFulfilmentSchema.nullable().optional(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
@@ -1902,6 +1909,7 @@ export const API_ROUTES = {
   ...SURVEY_ROUTES,
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
+  ...ORDER_FULFILMENT_ROUTES,
   health: { method: 'GET', path: '/api/health' },
   healthLive: { method: 'GET', path: '/api/health/live' },
   healthReady: { method: 'GET', path: '/api/health/ready' },
@@ -2221,6 +2229,8 @@ export const API_PATHS = {
   listSalesLinks: API_ROUTES.listSalesLinks.path,
   verifyOrder: API_ROUTES.verifyOrder.path,
   issueOrderLine: API_ROUTES.issueOrderLine.path,
+  shipOrder: API_ROUTES.shipOrder.path,
+  ordersPackingList: API_ROUTES.ordersPackingList.path,
   getSalesLink: API_ROUTES.getSalesLink.path,
   createSalesLink: API_ROUTES.createSalesLink.path,
   updateSalesLink: API_ROUTES.updateSalesLink.path,

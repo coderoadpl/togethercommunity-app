@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Chip,
+  Link as MuiLink,
   Paper,
   Stack,
   Typography,
@@ -11,8 +12,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import type {
   GrantWindowStatus,
+  MemberFulfilment,
   MemberSubscriptionSummary,
   ProductDownloadAssetView,
   ProductType,
@@ -44,6 +47,7 @@ type GrantedProductRow = {
   currency: string;
   purchasable: boolean;
   shippedTo?: string | null | undefined;
+  fulfilment?: MemberFulfilment | null | undefined;
   grantStatus: GrantWindowStatus;
   grantStartsAt: string;
   grantExpiresAt: string | null;
@@ -58,6 +62,23 @@ const subscriptionChipColors: Record<SubscriptionStatus, 'success' | 'warning' |
   active: 'success',
   past_due: 'warning',
   canceled: 'default',
+};
+
+const FulfilmentStatusLine = ({ fulfilment, productId }: { fulfilment: MemberFulfilment; productId: string }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  if (fulfilment.status === 'to_pack' || fulfilment.shippedAt === null || fulfilment.carrier === null) {
+    return <Typography color="text.secondary" data-testid={`fulfilment-${productId}`}>{t.shipping.memberBeingPrepared}</Typography>;
+  }
+  return (
+    <Typography color="text.secondary" data-testid={`fulfilment-${productId}`}>
+      {t.shipping.memberShipped({ date: formatDate(fulfilment.shippedAt, language, SALES_LINK_TIME_ZONE), carrier: t.shipping.carriers[fulfilment.carrier] })}
+      {fulfilment.trackingNumber === null ? null : ' '}
+      {fulfilment.trackingNumber === null ? null : fulfilment.trackingUrl === null
+        ? fulfilment.trackingNumber
+        : <MuiLink href={fulfilment.trackingUrl} target="_blank" rel="noreferrer">{fulfilment.trackingNumber}</MuiLink>}
+    </Typography>
+  );
 };
 
 const statusLabel = (t: Messages, product: GrantedProductRow, language: string): string => {
@@ -125,10 +146,13 @@ const ProductRow = ({
           />
         ) : null}
       </Stack>
-      {product.type === 'physical' ? (
+      {product.type === 'physical' && product.fulfilment?.status !== 'shipped' ? (
         <Typography color="text.secondary">
           {product.shippedTo ? t.shipping.shippedTo({ destination: product.shippedTo }) : t.salesLinks.collectedInPerson}
         </Typography>
+      ) : null}
+      {product.type === 'physical' && product.fulfilment != null ? (
+        <FulfilmentStatusLine fulfilment={product.fulfilment} productId={product.id} />
       ) : null}
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
         <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>

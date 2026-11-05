@@ -4,6 +4,7 @@ import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
 import { renderPostContent } from '../post-content.js';
 import { resolveSalesLinkPrices } from './checkout-selection.js';
+import { toPublicCompliance } from './public-offer.js';
 
 const validatedProducts = async (tenantId: string, link: Pick<SalesLink, 'productIds' | 'active'>, deps: SalesLinkDeps): Promise<Result<{ products: Product[]; prices: ProductPrice[] }, AppError>> => {
   const found = await deps.products.findByIds(tenantId, link.productIds);
@@ -72,7 +73,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
     const vat = resolveProductVat(product, settings);
     if (vat === null || price === undefined) return [];
     const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
+    return [{ productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
   });
   const first = products.value.prices[0];
   if (lines.length !== products.value.products.length || first === undefined) return err(notFound('Sales link was not found'));

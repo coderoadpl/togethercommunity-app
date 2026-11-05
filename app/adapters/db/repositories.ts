@@ -419,6 +419,9 @@ export const createProductRepository = (
           coverUrl: product.coverUrl,
           visibility: product.visibility,
           deliveryMethod: product.deliveryMethod,
+          compliance: product.compliance ?? null,
+          variantGroup: product.variantGroup ?? null,
+          variantLabel: product.variantLabel ?? null,
           priceCents: product.priceCents,
           vatRate: product.vatRate ?? null,
           vatExemptionBasis: product.vatExemptionBasis ?? null,
@@ -446,6 +449,9 @@ export const createProductRepository = (
         coverUrl: product.coverUrl,
         visibility: product.visibility,
         deliveryMethod: product.deliveryMethod,
+        compliance: product.compliance ?? null,
+        variantGroup: product.variantGroup ?? null,
+        variantLabel: product.variantLabel ?? null,
         vatRate: product.vatRate ?? null,
         vatExemptionBasis: product.vatExemptionBasis ?? null,
       })
@@ -2810,6 +2816,13 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
         sql`jsonb_typeof(${emailOutbox.payload}#>'{purchase,delivery,address}') = 'object'`,
       ));
+      await tx.update(emailOutbox).set({
+        payload: sql`jsonb_set(${emailOutbox.payload}, '{shipment,delivery,address}', (${emailOutbox.payload}#>'{shipment,delivery,address}') || jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null))`,
+      }).where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        sql`lower(btrim(${emailOutbox.to})) = ${normalizeEmail(member.email)}`,
+        sql`jsonb_typeof(${emailOutbox.payload}#>'{shipment,delivery,address}') = 'object'`,
+      ));
       await eraseMarketingDeliveryPayloads(tx, tenantId, { email: member.email, deletedAt: input.deletedAt });
       await eraseMarketingMemberContact(tx, tenantId, { ...input, email: normalizeEmail(member.email) }, emailHmac);
 
@@ -3409,7 +3422,10 @@ export const createOrderRepository = (
       const row = rows[0];
       if (row === undefined) return null;
       const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
-      const staffIds = order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [];
+      const staffIds = [
+        ...order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [],
+        ...order.shipment == null ? [] : [order.shipment.shippedBy],
+      ];
       const displayNames = await createUserDisplayReader(db).findDisplayNames(tenantId, staffIds);
       return {
         ...order,
@@ -3417,6 +3433,9 @@ export const createOrderRepository = (
           ...line,
           issuedByDisplayName: line.issuedBy === undefined ? undefined : displayNames.get(line.issuedBy),
         })),
+        ...order.shipment == null ? {} : {
+          shipment: { ...order.shipment, shippedByDisplayName: displayNames.get(order.shipment.shippedBy) },
+        },
       };
     },
     list: async (tenantId, query) => {

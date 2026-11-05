@@ -715,6 +715,7 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:31.000Z",
             "currency": "PLN",
@@ -728,6 +729,8 @@
             "tenantId": "tenant-studio",
             "title": "Together 101 Course",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -735,6 +738,7 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:32.000Z",
             "currency": "PLN",
@@ -748,6 +752,8 @@
             "tenantId": "tenant-studio",
             "title": "Scenario Workshop",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -760,6 +766,7 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:33.000Z",
             "currency": "PLN",
@@ -773,6 +780,8 @@
             "tenantId": "tenant-studio",
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -785,6 +794,7 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:34.000Z",
             "currency": "PLN",
@@ -798,6 +808,8 @@
             "tenantId": "tenant-studio",
             "title": "React in Practice - full access",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -813,6 +825,7 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:35.000Z",
             "currency": "PLN",
@@ -826,6 +839,8 @@
             "tenantId": "tenant-studio",
             "title": "DOM Module Pack",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -852,6 +867,7 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:36.000Z",
             "currency": "PLN",
@@ -865,6 +881,8 @@
             "tenantId": "tenant-studio",
             "title": "Free preview",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -881,6 +899,7 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:38.000Z",
             "currency": "PLN",
@@ -894,6 +913,8 @@
             "tenantId": "tenant-studio",
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -901,6 +922,7 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:39.000Z",
             "currency": "PLN",
@@ -914,11 +936,14 @@
             "tenantId": "tenant-studio",
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
           }
-        ]
+        ],
+        "stock": []
       }
     },
     "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
@@ -1004,6 +1029,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1021,12 +1047,19 @@
               }
             ],
             "slug": "course-together-101",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1044,12 +1077,19 @@
               }
             ],
             "slug": "js-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1067,12 +1107,19 @@
               }
             ],
             "slug": "react-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "React in Practice - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1090,12 +1137,19 @@
               }
             ],
             "slug": "js-dom-module",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "DOM Module Pack",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1113,12 +1167,19 @@
               }
             ],
             "slug": "free-preview",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Free preview",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1143,12 +1204,19 @@
               }
             ],
             "slug": "club",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -1166,8 +1234,14 @@
               }
             ],
             "slug": "download-workbook",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }

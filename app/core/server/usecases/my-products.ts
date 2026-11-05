@@ -1,10 +1,12 @@
 import {
   err,
   forbidden,
+  memberFulfilmentView,
   ok,
   type AppError,
   type GrantedProduct,
   type GrantWindowStatus,
+  type MemberFulfilment,
   type MemberGrant,
   type MemberSubscription,
   type MemberSubscriptionSummary,
@@ -37,6 +39,7 @@ export interface MyProductsDeps {
 export type MyProduct = GrantedProduct & {
   purchasable: boolean;
   shippedTo?: string | null;
+  fulfilment?: MemberFulfilment | null;
   subscription: MemberSubscriptionSummary | null;
   downloads: Array<ProductDownloadAsset & { previousVersions: ProductDownloadAsset[] }>;
 };
@@ -142,12 +145,15 @@ export const listMyProducts = async (
     const orders = await deps.orders.listForMember(tenantId, memberId);
     const purchasedAt = new Map<string, string>();
     const shippedTo = new Map<string, string | null>();
+    const fulfilment = new Map<string, MemberFulfilment | null>();
     for (const order of orders) {
       if (order.mode !== 'live' || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
       for (const line of order.lines ?? []) {
         if (line.productType !== 'physical') continue;
         purchasedAt.set(line.productId, order.createdAt);
+        if (fulfilment.has(line.productId)) continue;
         shippedTo.set(line.productId, order.shipping == null ? null : order.shipping.pickupPoint?.code ?? order.shipping.address.city);
+        fulfilment.set(line.productId, memberFulfilmentView(order));
       }
     }
     const physicalProducts = await deps.products.findByIds(tenantId, [...purchasedAt.keys()]);
@@ -157,6 +163,7 @@ export const listMyProducts = async (
       result.push({
         ...product, purchasable: false, grantStatus: 'active', grantStartsAt: startsAt,
         grantExpiresAt: null, subscription: null, downloads: [], shippedTo: shippedTo.get(product.id) ?? null,
+        fulfilment: fulfilment.get(product.id) ?? null,
       });
     }
   }

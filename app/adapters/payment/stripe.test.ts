@@ -435,8 +435,8 @@ it('creates a coupon promotion through the Clover polymorphic promotion field', 
 });
 
 it.each([
-  { code: 'LATO-20', expected: { code: 'LATO-20' } },
-  { code: 'LATO_20 %', expected: { code: 'LATO20' } },
+  { code: 'SUMMER-20', expected: { code: 'SUMMER-20' } },
+  { code: 'SUMMER_20 %', expected: { code: 'SUMMER20' } },
   { code: '-_-', expected: {} },
 ])('maps the local coupon code $code to Stripe promotion-code characters', async ({ code, expected }) => {
   const requests: Request[] = [];
@@ -471,7 +471,7 @@ it('lets Stripe generate the promotion code when the mapped code is already acti
     return requests.length === 1
       ? stripeJson({ error: {
         type: 'invalid_request_error', code: 'resource_already_exists',
-        message: 'An active promotion code with `code: LATO-20` already exists.',
+        message: 'An active promotion code with `code: SUMMER-20` already exists.',
       } }, 400)
       : stripeJson({ id: 'promo_generated', object: 'promotion_code' });
   };
@@ -481,12 +481,12 @@ it('lets Stripe generate the promotion code when the mapped code is already acti
   });
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
-    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'LATO-20', kind: 'percent', value: 25,
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
     currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
   })).toEqual(ok({ stripeCouponId: 'coupon_existing', stripePromotionCodeId: 'promo_generated' }));
   const bodies = await Promise.all(requests.map(async (request) => Object.fromEntries(new URLSearchParams(await request.text()))));
   const promotion = { 'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_existing', 'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1' };
-  expect(bodies).toEqual([{ ...promotion, code: 'LATO-20' }, promotion]);
+  expect(bodies).toEqual([{ ...promotion, code: 'SUMMER-20' }, promotion]);
 });
 
 it('propagates other promotion-code rejections without retrying', async () => {
@@ -503,7 +503,7 @@ it('propagates other promotion-code rejections without retrying', async () => {
   });
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
-    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'LATO-20', kind: 'percent', value: 25,
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
     currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
   })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Stripe rejected the coupon request: Invalid code' } });
   expect(requests).toHaveLength(1);

@@ -204,8 +204,8 @@ Stripe receives one line per product, the tenant language, tax ID collection and
 a mandatory terms checkbox. A URL coupon (`?code=`) is applied as a Stripe
 promotion code and the Stripe promotion-code field stays disabled. Stripe accepts
 only letters, digits and dashes in a promotion code, so its customer-facing code
-is the local code with every other character removed (`LATO 20%` becomes
-`LATO20`, `LATO-20` stays unchanged). A code with no letters or digits, or one
+is the local code with every other character removed (`SUMMER 20%` becomes
+`SUMMER20`, `SUMMER-20` stays unchanged). A code with no letters or digits, or one
 whose mapped value is already an active Stripe promotion code in the account,
 gets a Stripe-generated code. The Stripe coupon name shows at most the first 40
 characters of the code. Local codes are stored and validated unchanged. See

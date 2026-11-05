@@ -170,12 +170,16 @@ never runs in sign-in views, Studio or member views; the server middleware and
 the static hosting headers each list the origin only for the three document
 kinds above, and regression tests assert the headers and the load conditions.
 Risk accepted by the owner: the
-InPost library runs on buyer checkout documents where the base-domain session
-cookie of a signed-in member is valid for every workspace subdomain and where
-the buyer types delivery data; staff sessions are excluded by the load
-conditions; the owner accepts this exposure on the strength of InPost being
-the only foreign code on those documents, the load conditions and the
-full-navigation exit.
+InPost library runs on buyer checkout documents where the buyer types
+delivery data and where the session cookie, set for the base domain, is valid
+for the platform host and every workspace subdomain, so a signed-in buyer
+runs the vendor script with a credential that is valid for every workspace
+where that buyer has roles, including staff roles in other workspaces, and
+that can reach same-origin account-level auth endpoints; the load conditions
+keep only the current workspace's staff and test-mode purchases away from the
+script. The owner accepts this platform-wide exposure on the strength of
+InPost being the only foreign code on those documents, the load conditions
+and the full-navigation exit.
 
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.

@@ -1,6 +1,6 @@
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
-import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -176,11 +176,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...actions.validateCouponForCheckout,
   });
   const appliedCoupon = testEnabled ? undefined : couponValidation.data;
-  const autoAppliedCoupon = useRef(false);
+  const [initialCouponRequested, setInitialCouponRequested] = useState(false);
+  const couponResolving = couponValidation.isPending ||
+    (initialCouponCode !== '' && !initialCouponRequested && completeEmail(email));
 
   useEffect(() => {
     if (
-      autoAppliedCoupon.current ||
+      initialCouponRequested ||
       initialCouponCode === '' ||
       product === undefined ||
       !completeEmail(email)
@@ -188,7 +190,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       return;
     }
     const timeout = window.setTimeout(() => {
-      autoAppliedCoupon.current = true;
+      setInitialCouponRequested(true);
       couponValidation.mutate({
         productId,
         ...(salesLinkSlug === undefined ? {} : { salesLinkSlug }),
@@ -198,7 +200,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [couponValidation, email, initialCouponCode, product, productId, salesLinkSlug, selectedPrice]);
+  }, [couponValidation, email, initialCouponCode, initialCouponRequested, product, productId, salesLinkSlug, selectedPrice]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -218,6 +220,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (couponResolving) return;
     const priceId = selectedPrice?.id;
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
@@ -250,6 +253,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
   const retryParams = attributionToSearchParams(attributionFromSearchParams(new URLSearchParams(window.location.search)));
   if (togetherCheckout) retryParams.set('checkout', 'together');
+  const retryCouponCode = new URLSearchParams(window.location.search).get('code');
+  if (retryCouponCode !== null && retryCouponCode !== '') retryParams.set('code', retryCouponCode);
   const retryUrl = `${window.location.pathname}${retryParams.size === 0 ? '' : `?${retryParams.toString()}`}`;
   const retry = () => {
     window.history.replaceState(null, '', retryUrl);
@@ -662,6 +667,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             disabled={
               simulatePurchase.isPending ||
               testSession.isPending || checkoutSession.isPending ||
+              couponResolving ||
               (testEnabled && payableCents === 0) ||
               (payableCents > 0 &&
                 !stripeConfigured &&

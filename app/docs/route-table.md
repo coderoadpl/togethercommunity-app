@@ -338,6 +338,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/products/access-issues` | authenticated | read | products access issues |
 | `GET /api/products/:productId/prices` | authenticated | read | product prices |
 | `POST /api/products/prices` | authenticated | mutating | product prices create |
+| `GET /api/products/:productId/stock` | authenticated | read | product stock |
+| `POST /api/products/stock/enable` | authenticated | mutating | product stock enable |
+| `POST /api/products/stock/adjust` | authenticated | mutating | product stock adjust |
+| `POST /api/products/stock/threshold` | authenticated | mutating | product stock threshold |
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
 | `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |

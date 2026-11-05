@@ -324,6 +324,7 @@ export interface Messages {
     headingValidation: string;
     headingConflict: string;
     headingSlugReserved: string;
+    headingSoldOut: string;
     detailGeneric: string;
     traceId: string;
     messageUnauthorized: string;
@@ -349,6 +350,7 @@ export interface Messages {
     messageSlugReservedGeneric: string;
     messageInvoiceExemptionBasisMissing: string;
     messageShippingRequired: string;
+    messageSoldOut: string;
     messageFulfilmentConflict: string;
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
@@ -1394,6 +1396,29 @@ export interface Messages {
     deactivateConfirm: string;
     creatingPrice: string;
     priceCreated: string;
+    stockHeading: string;
+    stockDescription: string;
+    stockTrack: string;
+    stockTrackPermanentHint: string;
+    stockNotTracked: string;
+    stockOnHand: string;
+    stockReserved: string;
+    stockAvailable: string;
+    stockThreshold: string;
+    stockThresholdHint: string;
+    stockEnable: string;
+    stockEnabling: string;
+    stockAdjustDelta: string;
+    stockAdjustReason: string;
+    stockAdjust: string;
+    stockAdjusting: string;
+    stockSaveThreshold: string;
+    stockSavingThreshold: string;
+    stockListSummary: (params: { onHand: number; reserved: number }) => string;
+    stockSoldOut: string;
+    stockLow: string;
+    stockEnableAfterCreateFailed: string;
+    stockOpenProduct: string;
     downloadsHeading: string;
     downloadsDescription: string;
     downloadsEmpty: string;
@@ -2623,6 +2648,7 @@ export interface Messages {
     cancelledBody: string;
     retry: string;
     paymentUnavailable: string;
+    soldOut: string;
   };
   directory: {
     activeConsent: string;
@@ -2895,6 +2921,7 @@ export interface Messages {
       supportMessage: string;
       memberErasureRequest: string;
       reputationAlert: string;
+      stockLow: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

@@ -212,6 +212,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
   if (path === '/api/products/update' || path === '/api/products/delete') return 'product:write';
   if (path === '/api/products/unpublish') return 'product:publish';
+  if (path === '/api/products/:productId/stock' || path.startsWith('/api/products/stock/')) return method === 'GET' ? 'product:read' : 'product:write';
   if (path.startsWith('/api/products/') && path.includes('/downloads')) {
     return method === 'GET' ? 'product:read' : 'product:write';
   }

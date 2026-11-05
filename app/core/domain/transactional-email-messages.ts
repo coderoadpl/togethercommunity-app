@@ -234,4 +234,17 @@ export interface TransactionalEmailMessages {
       dashboardUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
+  stockLowEmail: {
+    noThreshold: string;
+    render: (input: {
+      tenantName: string;
+      productTitle: string;
+      productTitleHtml: string;
+      available: string;
+      threshold: string;
+      oversold: boolean;
+      studioUrl: string;
+      studioUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
 }

@@ -578,6 +578,30 @@ export const memberErasureRequestEmail = (
   }));
 };
 
+export const stockLowEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    productTitle: string;
+    available: number;
+    threshold: number | null;
+    oversold: boolean;
+    studioUrl: string;
+  },
+): EmailMessage => {
+  const messages = messagesFor(language);
+  return emailMessageSchema.parse(messages.stockLowEmail.render({
+    tenantName: input.tenantName,
+    productTitle: input.productTitle,
+    productTitleHtml: escapeHtml(input.productTitle),
+    available: String(input.available),
+    threshold: input.threshold === null ? messages.stockLowEmail.noThreshold : String(input.threshold),
+    oversold: input.oversold,
+    studioUrl: input.studioUrl,
+    studioUrlHtml: escapeHtml(input.studioUrl),
+  }));
+};
+
 export const emailTransportTest = (
   language: string,
   input: { transport: EmailIntegrationTransport | TransactionalEmailTransport },

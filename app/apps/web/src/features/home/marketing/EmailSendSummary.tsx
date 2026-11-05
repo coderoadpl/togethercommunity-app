@@ -37,6 +37,7 @@ const sourceKindLabelKey: Record<EmailSendSourceKind, keyof Messages['marketing'
   'support-message': 'supportMessage',
   'member-erasure-request': 'memberErasureRequest',
   'reputation-alert': 'reputationAlert',
+  'stock-low': 'stockLow',
   'marketing-consent-confirmation': 'marketingConsentConfirmation',
   'm2m-transactional': 'm2mTransactional',
   'marketing-campaign': 'marketingCampaign',

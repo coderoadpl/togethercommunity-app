@@ -48,6 +48,7 @@ import { formatDate, formatFileSize, formatPrice } from '../../../lib/format.js'
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
+import { ProductStockSection } from './ProductStockSection.js';
 
 const ProductDetailsSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
@@ -601,6 +602,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />
       </Box>
+      {product.type === 'physical' ? <ProductStockSection productId={product.id} /> : null}
       {product.type === 'digital_download' ? <><DownloadAssetsSection productId={product.id} /><DownloadCopyLookup productId={product.id} /></> : null}
       <CheckoutConsentsSection product={product} />
       {product.type === 'physical' ? null : <SectionCard title={t.access.heading}>

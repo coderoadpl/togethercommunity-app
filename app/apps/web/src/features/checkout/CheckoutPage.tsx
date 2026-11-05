@@ -169,6 +169,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
   const offerProduct = salesLinkSlug === undefined ? singleOffer.data?.products.find((candidate) => candidate.id === productId) : undefined;
+  const soldOut = salesLinkSlug === undefined
+    ? singleOffer.data?.products.find((candidate) => candidate.id === productRef || candidate.slug === productRef)?.stock.soldOut === true
+    : bundle?.soldOut === true;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
@@ -695,6 +698,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             fullWidth
             data-testid="checkout-pay-cta"
             disabled={
+              soldOut ||
               delivery.status === 'incomplete' ||
               simulatePurchase.isPending ||
               testSession.isPending || checkoutSession.isPending ||
@@ -705,7 +709,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
+            {soldOut ? t.checkout.soldOut : bundle !== undefined && !checkoutSession.isPending && !simulatePurchase.isPending ? t.salesLinks.buyBundle : payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle({ price: formattedPayable })
@@ -731,7 +735,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               <Button
                 type="button"
                 variant="outlined"
-                disabled={delivery.status === 'incomplete' || simulatePurchase.isPending || checkoutSession.isPending}
+                disabled={soldOut || delivery.status === 'incomplete' || simulatePurchase.isPending || checkoutSession.isPending}
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,

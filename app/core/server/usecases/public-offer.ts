@@ -10,6 +10,8 @@ import {
   type ProductVatRate,
   EMPTY_TENANT_BRANDING,
   ok,
+  publicProductStock,
+  type PublicProductStock,
   type AppError,
   type LegalUrls,
   type Language,
@@ -36,6 +38,7 @@ import type {
   TenantRepository,
 } from '../ports.js';
 import { renderPostContent } from '../post-content.js';
+import type { StockRepository } from '../stock-ports.js';
 
 export interface PublicOffer {
   tenant: {
@@ -78,6 +81,7 @@ interface PublicOfferProduct {
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
+  stock: PublicProductStock;
   marketingConsents: Array<{
     definitionId: string;
     label: string;
@@ -94,6 +98,7 @@ export interface PublicOfferDeps {
   tenants: TenantRepository;
   definitions?: ConsentDefinitionRepository | undefined;
   documents?: Pick<TenantDocumentRepository, 'findPublishedVersionById'> | undefined;
+  stock?: Pick<StockRepository, 'listByProducts'> | undefined;
 }
 
 export const getPublicOffer = async (
@@ -123,6 +128,7 @@ export const getPublicOffer = async (
     pricesByProduct.set(price.productId, bucket);
   }
   const settings = await deps.tenants.findSettings(tenant.id);
+  const stock = await deps.stock?.listByProducts(tenant.id, products.map((product) => product.id)) ?? [];
   return ok({
     tenant: {
       slug: tenant.slug,
@@ -152,6 +158,7 @@ export const getPublicOffer = async (
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
       variants: productVariants(product, publishedProducts, soldOutProductIds()),
+      stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
     shippingRates: publicShippingRates(settings?.shippingRates),
@@ -185,6 +192,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   priceCents: product.priceCents,
   currency: product.currency,
   prices,
+  stock: publicProductStock(null),
   marketingConsents: [],
 });
 

@@ -23,6 +23,7 @@ const emailSendSourceKindSchema = z.enum([
   'support-message',
   'member-erasure-request',
   'reputation-alert',
+  'stock-low',
   'marketing-consent-confirmation',
   'm2m-transactional',
   'marketing-campaign',

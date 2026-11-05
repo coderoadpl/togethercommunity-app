@@ -1060,6 +1060,13 @@
       "breakpoints": true
     },
     {
+      "idx": 151,
+      "version": "7",
+      "when": 1790964000031,
+      "tag": "0151_product_stock",
+      "breakpoints": true
+    },
+    {
       "idx": 152,
       "version": "7",
       "when": 1790964000041,

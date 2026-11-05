@@ -25,6 +25,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   invoice_exemption_basis_missing: 422,
   impersonation_read_only: 403,
   shipping_required: 400,
+  sold_out: 409,
   fulfilment_conflict: 409,
   internal: 500,
 };
@@ -54,6 +55,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   invoice_exemption_basis_missing: 22,
   impersonation_read_only: 24,
   shipping_required: 25,
+  sold_out: 26,
   fulfilment_conflict: 27,
   internal: 10,
 };

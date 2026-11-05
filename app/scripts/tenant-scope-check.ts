@@ -61,6 +61,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'PublicRateLimitRepository.claim': 'Public routes are throttled before a tenant is known; the bucket key carries the tenant when one is resolved.',
   'PublicRateLimitRepository.purgeExpired': 'A platform worker removes expired rate-limit windows across all tenants.',
   'SchedulerRunRepository.failStale': 'A platform worker closes stale runs across all tenants.',
+  'StockRepository.releaseExpired': 'The minute tick releases expired checkout reservations across all tenants; each release runs in its own tenant-scoped transaction.',
   'SchedulerRunRepository.finalize': 'A scheduler run is a platform aggregate containing per-tenant results.',
   'SchedulerRunRepository.getWithTenants': 'Operator diagnostics read a platform run and all of its tenant results.',
   'SchedulerRunRepository.listPage': 'Operator diagnostics list platform scheduler runs.',

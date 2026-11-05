@@ -56,6 +56,16 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>member@example.com złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: 17 sierpnia 1998<br>Termin realizacji: 16 września 1998</p><p><a href="https://acme.example.com/panel/members/member-1">Otwórz wniosek w panelu</a></p>',
     text: 'member@example.com złożył(a) wniosek o usunięcie konta i danych.\nZłożono: 17 sierpnia 1998\nTermin realizacji: 16 września 1998\nhttps://acme.example.com/panel/members/member-1',
   },
+  stockLowEmail: {
+    subject: '[Acme] Niski stan magazynowy: Printed <poster>',
+    html: '<p>Kończy się zapas produktu Printed &lt;poster&gt;.</p><p>Dostępne: 1<br>Próg niskiego stanu: 2</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',
+    text: 'Kończy się zapas produktu Printed <poster>.\nDostępne: 1\nPróg niskiego stanu: 2\nhttps://acme.example.com/panel/products/product-1',
+  },
+  stockOversoldEmail: {
+    subject: '[Acme] Sprzedano ponad stan: Printed <poster>',
+    html: '<p>Produkt Printed &lt;poster&gt; został sprzedany po wyczerpaniu zapasu.</p><p>Dostępne: 0<br>Próg niskiego stanu: nie ustawiono</p><p>Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',
+    text: 'Produkt Printed <poster> został sprzedany po wyczerpaniu zapasu.\nDostępne: 0\nPróg niskiego stanu: nie ustawiono\nOpłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.\nhttps://acme.example.com/panel/products/product-1',
+  },
   emailTransportTest: {
     subject: 'Together — wiadomość testowa (resend)',
     html: '<p>Transport resend jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>',

@@ -29,6 +29,8 @@ import {
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
+  productStockOutputSchema,
+  productStockWriteOutputSchema,
   publicOfferOutputSchema,
   simulatePurchaseOutputSchema,
   spaceOutputSchema,
@@ -673,6 +675,42 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
       && shippedOrder.lines?.at(-1)?.productType === 'shipping',
     `shipped order should be the only order to pack: ${JSON.stringify(toPack.orders)}`,
   );
+  const poster = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'product', 'create', '--type', 'physical', '--title', 'Printed Poster', '--price-cents', '4900', '--currency', 'PLN', '--visibility', 'unlisted'],
+      alfaHome,
+    ),
+    'physical product create',
+    productsCreateOutputSchema,
+  ).product;
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', poster.id, '--kind', 'one_time', '--price-cents', '4900'], alfaHome),
+    'physical price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', poster.id], alfaHome), 'physical publish', productsPublishOutputSchema);
+  const tracked = expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'enable', poster.id, '--on-hand', '1'], alfaHome),
+    'stock enable',
+    productStockWriteOutputSchema,
+  );
+  assert(tracked.stock.onHand === 1 && tracked.stock.available === 1, 'stock tracking should start with one piece');
+  const buyPoster = (email: string) =>
+    cli(['--tenant', 'alfa', 'simulate-purchase', '--email', email, '--product', poster.id], buyerHome);
+  expectOk(await buyPoster('poster-first@together.dev'), 'last piece purchase', simulatePurchaseOutputSchema);
+  expectError(await buyPoster('poster-second@together.dev'), 'sold-out purchase', EXIT_CODE_BY_ERROR_CODE.sold_out, 'sold_out');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'adjust', poster.id, '--delta', '1', '--reason', 'restock'], alfaHome),
+    'stock adjust',
+    productStockWriteOutputSchema,
+  );
+  expectOk(await buyPoster('poster-second@together.dev'), 'restocked purchase', simulatePurchaseOutputSchema);
+  const finalStock = expectOk(
+    await cli(['--tenant', 'alfa', 'product', 'stock', 'show', poster.id], alfaHome),
+    'stock show',
+    productStockOutputSchema,
+  ).stock;
+  assert(finalStock !== null && finalStock.onHand === 0 && finalStock.reserved === 0 && finalStock.soldOut, 'both pieces should be sold with no reservation left');
   const shippedOrderId = shippedPurchase.orderId;
   assert(shippedOrderId !== null, 'shipped purchase should return its order id');
   const packingList = expectOk(

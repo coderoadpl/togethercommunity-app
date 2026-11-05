@@ -128,7 +128,13 @@ export const getPublicOffer = async (
     pricesByProduct.set(price.productId, bucket);
   }
   const settings = await deps.tenants.findSettings(tenant.id);
-  const stock = await deps.stock?.listByProducts(tenant.id, products.map((product) => product.id)) ?? [];
+  const variantGroups = new Set(products.flatMap((product) => product.variantGroup == null ? [] : [product.variantGroup]));
+  const stockProductIds = new Set([
+    ...products.map((product) => product.id),
+    ...publishedProducts.filter((product) => product.published && product.variantGroup != null && variantGroups.has(product.variantGroup)).map((product) => product.id),
+  ]);
+  const stock = await deps.stock?.listByProducts(tenant.id, [...stockProductIds]) ?? [];
+  const soldOutProductIds = new Set(stock.filter((level) => publicProductStock(level).soldOut).map((level) => level.productId));
   return ok({
     tenant: {
       slug: tenant.slug,
@@ -157,7 +163,7 @@ export const getPublicOffer = async (
     products: await Promise.all(products.map(async (product) => ({
       ...defaultProductVat(product, settings),
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
-      variants: productVariants(product, publishedProducts, soldOutProductIds()),
+      variants: productVariants(product, publishedProducts, soldOutProductIds),
       stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
@@ -165,8 +171,6 @@ export const getPublicOffer = async (
     inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null,
   });
 };
-
-const soldOutProductIds = (): ReadonlySet<string> => new Set();
 
 const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
   id: price.id,

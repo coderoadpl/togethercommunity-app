@@ -271,6 +271,37 @@ describe('getPublicOffer', () => {
     expect(lone.ok && lone.value.products[0]?.variants).toEqual([]);
   });
 
+  it('marks a sold-out sibling chip from one stock read without changing the offered product stock', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', 'white', 0);
+    stock.track('t-acme', 'green', 3);
+    const reads: string[][] = [];
+    const variant = (id: string, variantLabel: string): Product => ({
+      ...product(id, 't-acme', true, 'physical'), variantGroup: 'stand', variantLabel,
+    });
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([variant('black', 'Black'), variant('white', 'White'), variant('green', 'Green'), product('other', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+      stock: {
+        listByProducts: async (tenantId, productIds) => {
+          reads.push([...productIds].sort());
+          return stock.repository.listByProducts(tenantId, productIds);
+        },
+      },
+    }, 'physical-black');
+    if (!result.ok) throw new Error('offer failed');
+    expect(reads).toEqual([['black', 'green', 'white']]);
+    expect(result.value.products[0]?.stock).toEqual({ tracked: false, soldOut: false, low: false });
+    expect(result.value.products[0]?.variants).toEqual([
+      { productId: 'black', slug: 'physical-black', label: 'Black', soldOut: false },
+      { productId: 'white', slug: 'physical-white', label: 'White', soldOut: true },
+      { productId: 'green', slug: 'physical-green', label: 'Green', soldOut: false },
+    ]);
+  });
+
   it('exposes only lessons marked as free previews', async () => {
     const lessons = [{ id: 'preview', name: 'Try for free', courseId: 'course-1' }];
     const result = await getPublicOffer(tenant, {

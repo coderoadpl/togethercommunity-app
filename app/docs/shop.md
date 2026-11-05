@@ -279,8 +279,10 @@ itself, in creation order; otherwise the list is empty. A variant without a
 label uses its title. The checkout page renders the variants as chips above the
 price: the current product is selected, the others link to their own checkout
 page (campaign parameters are kept), and a sold-out variant is disabled with
-"Sold out". The sold-out flag comes from product stock; until stock tracking is
-available every variant reports `false`.
+"Sold out". The sold-out flag is the public stock flag of the sibling: a
+tracked variant without an available piece is sold out, an untracked one never
+is. The offer reads the stock of the offered products and of every published
+sibling in their groups in one query.
 
 ## Content security policy for the parcel locker map
 

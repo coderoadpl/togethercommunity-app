@@ -212,7 +212,7 @@ export const commitCheckoutStock = async (
     const recipients = deps.tenantAccess === undefined ? [] : await tenantStaffRecipients(tenant.id, { tenants: deps.tenants, tenantAccess: deps.tenantAccess });
     const product = await deps.products.findById(tenant.id, effect.productId);
     const studioUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/products/${encodeURIComponent(effect.productId)}`;
-    let queuedAll = true;
+    let queuedAny = false;
     for (const recipient of recipients) {
       const queued = await deps.emailOutbox.enqueue({
         id: deps.ids.nextId(),
@@ -231,13 +231,14 @@ export const commitCheckoutStock = async (
         now,
       });
       if (queued.ok) {
-        alertsQueued = true;
+        queuedAny = true;
       } else {
-        queuedAll = false;
         deps.logger.warn(`[stock] low-stock alert not queued tenant=${tenant.id} product=${effect.productId}: ${queued.error.message}`);
       }
     }
-    if (queuedAll && recipients.length > 0) await deps.stock.markLowStockNotified(tenant.id, { productId: effect.productId, now });
+    if (!queuedAny) continue;
+    alertsQueued = true;
+    await deps.stock.markLowStockNotified(tenant.id, { productId: effect.productId, now });
   }
   return { alertsQueued };
 };

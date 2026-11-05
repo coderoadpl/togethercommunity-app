@@ -29,6 +29,7 @@ const level = (overrides: Partial<StockLevel> = {}): StockLevel => ({
 const effect = (overrides: Partial<StockCommitEffect> = {}): StockCommitEffect => ({
   productId: 'poster',
   outcome: 'committed',
+  onHandBefore: 5,
   onHandAfter: 4,
   reservedAfter: 0,
   lowStockThreshold: 2,
@@ -104,13 +105,15 @@ describe('low-stock alert decision', () => {
   it('stays quiet after the first alert until the last piece is sold', () => {
     const notified = '2026-11-05T09:00:00.000Z';
     expect(lowStockAlertFor(effect({ onHandAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
-    expect(lowStockAlertFor(effect({ onHandAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
+    expect(lowStockAlertFor(effect({ onHandBefore: 1, onHandAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
   });
 
-  it('alerts again when availability reaches zero while pieces are still reserved', () => {
+  it('sends the zero alert once, for the commit that sells the last piece on hand, not while held pieces keep availability at zero', () => {
     const notified = '2026-11-05T09:00:00.000Z';
-    expect(lowStockAlertFor(effect({ onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
-    expect(lowStockAlertFor(effect({ onHandAfter: 2, reservedAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ onHandBefore: 3, onHandAfter: 2, reservedAfter: 2, lowStockNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ onHandBefore: 2, onHandAfter: 1, reservedAfter: 1, lowStockNotifiedAt: notified }))).toBeNull();
+    expect(lowStockAlertFor(effect({ onHandBefore: 1, onHandAfter: 0, reservedAfter: 0, lowStockNotifiedAt: notified }))).toEqual({ available: 0, oversold: false });
+    expect(lowStockAlertFor(effect({ onHandBefore: 3, onHandAfter: 2, reservedAfter: 2 }))).toEqual({ available: 0, oversold: false });
   });
 
   it('always alerts an oversold commit, even without a threshold', () => {

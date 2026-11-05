@@ -294,9 +294,12 @@ A commit that leaves availability at or below the threshold sends the
 `stock-low` e-mail to the support address, or else to every staff member in
 their language, with the product title, the available count, the threshold, the
 oversold flag and a Studio link. The first crossing records
-`low_stock_notified_at`; later commits stay quiet until availability reaches
-zero (pieces held by open checkouts count as unavailable), which alerts again.
-When the workspace has no recipient the alert is not recorded as sent. An adjustment or threshold
+`low_stock_notified_at`; later commits stay quiet until the commit that sells
+the last piece on hand (`on_hand` from above zero to zero), which alerts once
+more. Pieces held by open checkouts keep availability at zero without a second
+alert: a hold either becomes the sale that empties the shelf or expires and
+returns the piece. The alert counts as sent when at least one recipient was
+queued; when none was it is not recorded. An adjustment or threshold
 change that lifts availability above the threshold clears
 `low_stock_notified_at`. Products without a threshold only alert when oversold.
 The e-mail is queued in the payment transaction.

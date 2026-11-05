@@ -118,6 +118,7 @@ export const stockThresholdInputSchema = z.object({
 export interface StockCommitEffect {
   productId: string;
   outcome: 'committed' | 'committed_late' | 'unchanged';
+  onHandBefore: number;
   onHandAfter: number;
   reservedAfter: number;
   lowStockThreshold: number | null;
@@ -130,5 +131,6 @@ export const lowStockAlertFor = (effect: StockCommitEffect): { available: number
   const available = availableStock({ onHand: effect.onHandAfter, reserved: effect.reservedAfter });
   if (effect.oversold) return { available, oversold: true };
   if (effect.lowStockThreshold === null || available > effect.lowStockThreshold) return null;
-  return effect.lowStockNotifiedAt === null || available === 0 ? { available, oversold: false } : null;
+  const lastPieceSold = effect.onHandBefore > 0 && effect.onHandAfter === 0;
+  return effect.lowStockNotifiedAt === null || lastPieceSold ? { available, oversold: false } : null;
 };

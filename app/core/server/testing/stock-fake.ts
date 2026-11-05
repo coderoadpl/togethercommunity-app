@@ -64,9 +64,10 @@ export const createStockRepositoryFake = () => {
     record(reservation.tenantId, reservation.productId, 'released', -reservation.quantity, { checkoutSnapshotId: reservation.checkoutSnapshotId, reservationId: reservation.id, reason });
     return 1;
   };
-  const effectOf = (stored: StockLevel, outcome: StockCommitEffect['outcome'], oversold: boolean, notifiedAt: string | null): StockCommitEffect => ({
+  const effectOf = (stored: StockLevel, outcome: StockCommitEffect['outcome'], oversold: boolean, notifiedAt: string | null, onHandBefore = stored.onHand): StockCommitEffect => ({
     productId: stored.productId,
     outcome,
+    onHandBefore,
     onHandAfter: stored.onHand,
     reservedAfter: stored.reserved,
     lowStockThreshold: stored.lowStockThreshold,
@@ -84,7 +85,7 @@ export const createStockRepositoryFake = () => {
     record(tenantId, productId, outcome, stored.onHand - before, reference);
     const oversold = before < 1;
     if (oversold) record(tenantId, productId, 'oversold', -1, reference);
-    return effectOf(stored, outcome, oversold, notifiedAt);
+    return effectOf(stored, outcome, oversold, notifiedAt, before);
   };
 
   const repository: StockRepository = {

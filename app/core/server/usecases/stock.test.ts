@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   err,
   integrationUnavailable,
+  internal,
   ok,
   type CheckoutSnapshot,
   type EmailOutboxPayload,
@@ -268,6 +269,38 @@ describe('checkout stock commit', () => {
     expect(h.queued).toHaveLength(2);
     await h.commit('order-6', 'snapshot-6');
     expect(h.queued).toHaveLength(3);
+  });
+
+  it.each(['one buyer after another', 'three open checkouts'] as const)('sends one threshold alert and one zero alert for the last three pieces sold by %s', async (flow) => {
+    const h = alertHarness();
+    h.stock.track(tenant.id, poster.id, 3, 2);
+    const snapshots = ['snapshot-1', 'snapshot-2', 'snapshot-3'];
+    const reserve = (checkoutSnapshotId: string) => h.stock.repository.reserve(tenant.id, { checkoutSnapshotId, productIds: [poster.id], expiresAt: '2026-11-05T10:36:00.000Z', quantity: 1, now });
+    if (flow === 'three open checkouts') for (const snapshot of snapshots) await reserve(snapshot);
+    for (const [index, snapshot] of snapshots.entries()) {
+      if (flow === 'one buyer after another') await reserve(snapshot);
+      await h.commit(`order-${String(index + 1)}`, snapshot);
+    }
+    expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(h.queued.map((message) => message.payload)).toEqual([
+      expect.objectContaining({ kind: 'stock-low', available: flow === 'three open checkouts' ? 0 : 2, threshold: 2, oversold: false }),
+      expect.objectContaining({ kind: 'stock-low', available: 0, threshold: 2, oversold: false }),
+    ]);
+  });
+
+  it('marks the alert sent when at least one recipient was queued even if another enqueue failed', async () => {
+    const h = alertHarness();
+    h.deps.tenantAccess = { listStaffForTenant: async () => [
+      { userId: 'owner', email: 'owner@example.com', staffRole: 'owner', language: 'en' },
+      { userId: 'admin', email: 'admin@example.com', staffRole: 'admin', language: 'en' },
+    ] };
+    const enqueue = h.deps.emailOutbox.enqueue;
+    h.deps.emailOutbox = { enqueue: async (message) => message.to === 'owner@example.com' ? err(internal('Outbox unavailable')) : enqueue(message) };
+    h.stock.track(tenant.id, poster.id, 2, 1);
+    expect(await h.commit('order-1')).toEqual({ alertsQueued: true });
+    expect(h.queued.map((message) => message.to)).toEqual(['admin@example.com']);
+    expect(h.stock.levels.get(tenant.id, poster.id)).toMatchObject({ onHand: 1, lowStockNotifiedAt: now });
+    expect(h.warnings).toEqual([expect.stringContaining('[stock] low-stock alert not queued tenant=tenant-a product=poster: Outbox unavailable')]);
   });
 
   it('keeps the alert pending when the workspace has no recipient for it', async () => {

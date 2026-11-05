@@ -43,6 +43,7 @@ export const salesLinkOfferSchema = z.object({
   lines: z.array(salesLinkLineSchema).min(1),
   currency: currencySchema,
   totalCents: z.number().int().nonnegative(),
+  soldOut: z.boolean().default(false),
 });
 export type SalesLink = z.output<typeof salesLinkSchema>;
 export const salesLinkAvailable = (link: SalesLink, now: string): boolean => link.active

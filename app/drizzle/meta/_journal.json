@@ -1051,6 +1051,13 @@
       "when": 1790964000021,
       "tag": "0149_direct_coupon_checkout_email",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1790964000031,
+      "tag": "0151_product_stock",
+      "breakpoints": true
     }
   ]
 }

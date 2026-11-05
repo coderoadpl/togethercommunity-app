@@ -28,6 +28,7 @@ import { errorCodeOf, localizePanelError, useTranslations } from '../../../i18n/
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { productTypeLabel } from './product-type.js';
+import { emptyStockTrackingDraft, StockTrackingFields, stockTrackingInput, type StockTrackingDraft } from './ProductStockSection.js';
 
 export const ProductCreatePage = () => {
   const t = useTranslations();
@@ -42,16 +43,26 @@ export const ProductCreatePage = () => {
   const [coverUrl, setCoverUrl] = useState('');
   const [vatRate, setVatRate] = useState<ProductVatRate | null>(null);
   const [vatExemptionBasis, setVatExemptionBasis] = useState('');
+  const [stockDraft, setStockDraft] = useState<StockTrackingDraft>(emptyStockTrackingDraft);
+  const enableStock = useMutation(actions.enableProductStock);
+  const [untrackedProductId, setUntrackedProductId] = useState<string | null>(null);
+  const openProduct = (productId: string) => navigate({
+    to: '/panel/products/$productId',
+    params: { productId },
+    hash: hash === 'prices' ? 'prices' : '',
+  });
 
   const createProduct = useMutation({
     ...actions.createProduct,
     onSuccess: async ({ product }) => {
+      const stockInput = product.type === 'physical' ? stockTrackingInput(product.id, stockDraft) : null;
+      const tracked = stockInput === null || await enableStock.mutateAsync(stockInput).then(() => true, () => false);
       await queryClient.invalidateQueries(actions.productsInvalidates());
-      await navigate({
-        to: '/panel/products/$productId',
-        params: { productId: product.id },
-        hash: hash === 'prices' ? 'prices' : '',
-      });
+      if (!tracked) {
+        setUntrackedProductId(product.id);
+        return;
+      }
+      await openProduct(product.id);
     },
   });
   const slugError = createProduct.isError && errorCodeOf(createProduct.error) === 'slug_reserved'
@@ -143,12 +154,24 @@ export const ProductCreatePage = () => {
           kind="product-cover"
           testId="product-cover"
         />
-        <Button type="submit" variant="contained" disabled={createProduct.isPending}>
+        {type === 'physical' ? (
+          <StockTrackingFields draft={stockDraft} onChange={setStockDraft} disabled={createProduct.isPending} />
+        ) : null}
+        <Button type="submit" variant="contained" disabled={createProduct.isPending || untrackedProductId !== null || (type === 'physical' && stockDraft.track && stockTrackingInput('', stockDraft) === null)}>
           {createProduct.isPending ? t.products.creating : t.products.create}
         </Button>
         {createProduct.isError && slugError === null
           ? <Alert severity="error">{localizePanelError(createProduct.error, t)}</Alert>
           : null}
+        {untrackedProductId === null ? null : (
+          <Alert
+            severity="error"
+            data-testid="product-stock-enable-error"
+            action={<Button color="inherit" size="small" onClick={() => { void openProduct(untrackedProductId); }}>{t.products.stockOpenProduct}</Button>}
+          >
+            {t.products.stockEnableAfterCreateFailed} {localizePanelError(enableStock.error, t)}
+          </Alert>
+        )}
       </SectionCard>
     </PanelPage>
   );

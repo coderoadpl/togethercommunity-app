@@ -6,6 +6,7 @@ import { registerPublicRoutes } from './public-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
+import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -588,10 +589,13 @@ const deps = (input: {
           confirmations: appDeps.marketing?.confirmations ?? new InMemoryConsentConfirmationTokenRepository(),
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
+          stock: appDeps.stock,
         }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
+    stock: createStockRepositoryFake().repository,
+    releaseExpiredStockReservations: async () => ok({ released: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -3130,6 +3134,33 @@ describe('email dispatch route', () => {
     expect(response.status).toBe(200);
     expect(dispatchEmails).toHaveBeenCalledOnce();
     expect(dispatchEmails).toHaveBeenCalledWith('cron');
+  });
+
+  it('releases expired stock reservations on the same tick before dispatching', async () => {
+    const order: string[] = [];
+    const base = deps({ dispatchEmails: async () => { order.push('dispatch'); return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }); } });
+    base.releaseExpiredStockReservations = async () => { order.push('sweep'); return ok({ released: 2 }); };
+    const app = buildApp(base);
+    const unauthorized = await app.request(API_PATHS.emailDispatch);
+    expect(unauthorized.status).toBe(401);
+    expect(order).toEqual([]);
+    await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect(order).toEqual(['sweep', 'dispatch', 'sweep', 'dispatch']);
+  });
+
+  it('keeps dispatching e-mail when the expired reservation sweep fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const base = deps({ dispatchEmails, logger });
+    base.releaseExpiredStockReservations = async () => { throw new Error('database unavailable'); };
+    const app = buildApp(base);
+    const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect([cron.status, manual.status]).toEqual([200, 200]);
+    expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
   });
 
   it('surfaces a dispatch failure as an error envelope', async () => {
@@ -6230,6 +6261,26 @@ describe('public offer route', () => {
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
   });
 
+  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 1);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', productIds: ['acme-published'], expiresAt: '2026-11-05T10:35:00.000Z', quantity: 1, now: '2026-11-05T10:00:00.000Z' });
+    const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(soldOut.status).toBe(200);
+    expect(soldOut.headers.get('etag')).not.toBe(etag);
+    const body = await soldOut.json();
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(JSON.stringify(body)).not.toContain('onHand');
+  });
+
   it('changes the offer ETag after adding a price to a published product', async () => {
     const base = deps();
     const prices: ProductPrice[] = [];
@@ -9324,6 +9375,32 @@ describe('unlisted and free checkout', () => {
     expect(createOrder).toHaveBeenCalledWith('t-acme', expect.objectContaining({ productId: hidden.id, amountCents: 0, status: 'paid' }));
     expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
   });
+
+  it('commits the last tracked piece of a free checkout and refuses the next buyer with sold_out', async () => {
+    const base = deps({ products: [hidden] });
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', hidden.id, 1);
+    base.stock = stock.repository;
+    base.tenants.findSettings = async () => ({
+      name: 'Acme', logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null,
+      faviconUrl: null, socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null,
+      bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+      ogTitle: null, ogDescription: null, ogImageUrl: null,
+      supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',
+      privacyUrl: 'https://acme.example/privacy', defaultHomeSpaceId: null,
+    });
+    const app = buildApp(base);
+    const start = (email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST', headers,
+      body: JSON.stringify({ productId: hidden.id, email, termsAccepted: true }),
+    });
+    expect((await start('first@example.com')).status).toBe(200);
+    expect(stock.levels.get('t-acme', hidden.id)).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toContain('committed_late');
+    const second = await start('second@example.com');
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ ok: false, error: { code: 'sold_out' } });
+  });
 });
 
 describe('post purge route', () => {
@@ -9816,6 +9893,21 @@ it.each([undefined, 'BUNDLE'])('simulates the full sales link through the HTTP r
   }
 });
 
+it.each(['consent capture', 'coupon session'] as const)('releases the simulated coupon stock hold when the %s write fails', async (stage) => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release');
+  h.base.stock = stock.repository;
+  if (stage === 'consent capture') h.base.checkoutConsentCaptures.create = async () => { throw new Error('Consent storage unavailable'); };
+  else if (h.base.couponCheckoutSessions !== undefined) h.base.couponCheckoutSessions.create = async () => { throw new Error('Coupon storage unavailable'); };
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(response.status).toBe(500);
+  expect(release).toHaveBeenCalledOnce();
+  expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 0 });
+  expect(h.orders).toHaveLength(0);
+});
+
 it('rejects a simulated bundle coupon that applies only to the first product', async () => {
   const h = simulatedBundleApp('first-only');
   const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
@@ -9995,6 +10087,61 @@ const directSalesLinkApp = async (cancelReturnUrl?: string) => {
   if (coupons === undefined) throw new Error('Missing test coupons');
   return { ...h, create, settings, coupons };
 };
+
+describe('stock-tracked sales links', () => {
+  it('renders the unavailable handoff for a sold-out link and refuses its checkout with sold_out', async () => {
+    const h = await directSalesLinkApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 0);
+    h.base.stock = stock.repository;
+    h.base.salesLinkManagement = { ...h.base.salesLinkManagement ?? { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids }, stock: stock.repository };
+    const page = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(409);
+    const html = await page.text();
+    expect(html).toContain('Checkout is unavailable');
+    expect(html).not.toContain('<form');
+    const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({}),
+    });
+    expect(checkout.status).toBe(409);
+    expect(await checkout.json()).toMatchObject({ ok: false, error: { code: 'sold_out', message: '"Printed item" is sold out' } });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('reserves the last piece for the direct checkout with a 31-minute session and releases it when Stripe fails', async () => {
+    const h = await directSalesLinkApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 1);
+    h.base.stock = stock.repository;
+    const checkout = () => h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({}),
+    });
+    expect((await checkout()).status).toBe(200);
+    const expiresAt = h.create.mock.calls[0]?.[0].expiresAt;
+    expect(Date.parse(expiresAt ?? '') - Date.parse(h.base.clock.nowIso())).toBe(31 * 60_000);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 1 });
+    expect((await checkout()).status).toBe(409);
+    stock.track(acme.id, 'print', 1);
+    h.create.mockResolvedValueOnce(err(integrationUnavailable('Stripe is down')));
+    expect((await checkout()).status).toBe(503);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 0 });
+  });
+
+  it('decrements stock on a simulated purchase and returns sold_out for the next buyer', async () => {
+    const h = simulatedBundleApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 1);
+    h.base.stock = stock.repository;
+    const first = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'first@example.test' });
+    expect(first.status).toBe(200);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
+    const second = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'second@example.test' });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ ok: false, error: { code: 'sold_out' } });
+    expect(h.orders).toHaveLength(1);
+  });
+});
 
 describe('direct public sales-link checkout', () => {
   it.each(['coupon-preview:ip', 'coupon-preview:tenant'])('omits coupon previews when %s is exhausted without blocking checkout', async (scope) => {

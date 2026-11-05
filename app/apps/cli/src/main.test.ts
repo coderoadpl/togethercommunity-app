@@ -41,6 +41,11 @@ interface Hoisted {
   restoreCourse: ReturnType<typeof vi.fn>;
   restoreContentVersion: ReturnType<typeof vi.fn>;
   deleteProductDraft: ReturnType<typeof vi.fn>;
+  listProducts: ReturnType<typeof vi.fn>;
+  getProductStock: ReturnType<typeof vi.fn>;
+  enableProductStock: ReturnType<typeof vi.fn>;
+  adjustProductStock: ReturnType<typeof vi.fn>;
+  setProductStockThreshold: ReturnType<typeof vi.fn>;
   listCourses: ReturnType<typeof vi.fn>;
   listModules: ReturnType<typeof vi.fn>;
   listLessons: ReturnType<typeof vi.fn>;
@@ -110,6 +115,11 @@ const h = vi.hoisted(
     restoreCourse: vi.fn(),
     restoreContentVersion: vi.fn(),
     deleteProductDraft: vi.fn(),
+    listProducts: vi.fn(),
+    getProductStock: vi.fn(),
+    enableProductStock: vi.fn(),
+    adjustProductStock: vi.fn(),
+    setProductStockThreshold: vi.fn(),
     listCourses: vi.fn(),
     listModules: vi.fn(),
     listLessons: vi.fn(),
@@ -210,6 +220,11 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     restoreCourse: h.restoreCourse,
     restoreContentVersion: h.restoreContentVersion,
     deleteProductDraft: h.deleteProductDraft,
+    listProducts: h.listProducts,
+    getProductStock: h.getProductStock,
+    enableProductStock: h.enableProductStock,
+    adjustProductStock: h.adjustProductStock,
+    setProductStockThreshold: h.setProductStockThreshold,
     listCourses: h.listCourses,
     listModules: h.listModules,
     listLessons: h.listLessons,
@@ -1481,6 +1496,71 @@ describe('catalog cleanup commands', () => {
     await run('--json', 'product', 'delete', 'draft-1', '--confirm');
     expect(h.deleteProductDraft).toHaveBeenCalledExactlyOnceWith({ productId: 'draft-1' });
     expect(soleJson()).toEqual({ ok: true, data: { deleted: true } });
+  });
+});
+
+describe('product stock CLI', () => {
+  const stock = { productId: 'poster', onHand: 3, reserved: 1, available: 2, lowStockThreshold: 2, lowStockNotifiedAt: null, low: true, soldOut: false, updatedAt: '2026-11-05T10:00:00.000Z' };
+
+  beforeEach(() => {
+    h.getProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.enableProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.adjustProductStock.mockReset().mockResolvedValue(ok({ stock }));
+    h.setProductStockThreshold.mockReset().mockResolvedValue(ok({ stock }));
+    h.listProducts.mockReset().mockResolvedValue(ok({
+      products: [
+        { id: 'poster', title: 'Poster', priceCents: 4900, currency: 'PLN', published: true },
+        { id: 'course', title: 'Course', priceCents: 9900, currency: 'PLN', published: true },
+      ],
+      stock: [stock],
+    }));
+  });
+
+  it('shows stock in the JSON envelope', async () => {
+    await run('--json', 'product', 'stock', 'show', 'poster');
+    expect(h.getProductStock).toHaveBeenCalledExactlyOnceWith('poster');
+    expect(soleJson()).toEqual({ ok: true, data: { stock } });
+  });
+
+  it('enables tracking with an optional threshold', async () => {
+    await run('--json', 'product', 'stock', 'enable', 'poster', '--on-hand', '3', '--threshold', '2');
+    await run('--json', 'product', 'stock', 'enable', 'poster', '--on-hand', '0');
+    expect(h.enableProductStock.mock.calls).toEqual([
+      [{ productId: 'poster', onHand: 3, lowStockThreshold: 2 }],
+      [{ productId: 'poster', onHand: 0, lowStockThreshold: null }],
+    ]);
+  });
+
+  it('adjusts by a signed delta with a reason and rejects a zero delta before calling the API', async () => {
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '-1', '--reason', 'damaged');
+    expect(h.adjustProductStock).toHaveBeenCalledExactlyOnceWith({ productId: 'poster', delta: -1, reason: 'damaged' });
+    logSpy.mockClear();
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '0', '--reason', 'count');
+    expect(h.adjustProductStock).toHaveBeenCalledTimes(1);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sets or clears the low-stock threshold', async () => {
+    await run('--json', 'product', 'stock', 'threshold', 'poster', '--value', '4');
+    await run('--json', 'product', 'stock', 'threshold', 'poster', '--value', 'none');
+    expect(h.setProductStockThreshold.mock.calls).toEqual([
+      [{ productId: 'poster', lowStockThreshold: 4 }],
+      [{ productId: 'poster', lowStockThreshold: null }],
+    ]);
+  });
+
+  it('maps a sold-out refusal to its own exit code', async () => {
+    h.adjustProductStock.mockResolvedValue(err(appError('sold_out', '"Poster" is sold out')));
+    await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '1', '--reason', 'count');
+    expect(process.exitCode).toBe(25);
+  });
+
+  it('shows stock next to tracked products in the product list', async () => {
+    await run('product', 'list');
+    const output = String(logSpy.mock.calls[0]?.[0]);
+    expect(output).toContain('- Poster  4900 PLN  [published]  {2 available · 3 on hand · 1 reserved · low}  (poster)');
+    expect(output).toContain('- Course  9900 PLN  [published]  (course)');
   });
 });
 

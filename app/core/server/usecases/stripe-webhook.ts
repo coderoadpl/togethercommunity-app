@@ -35,13 +35,16 @@ import type {
   PaymentProvider,
   PaymentTransactionPort,
   StripeWebhookOwnershipReader,
+  TenantAccessReader,
 } from '../ports.js';
+import type { StockRepository } from '../stock-ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import { recordFulfilledCheckoutConsents, type FulfilledCheckoutConsentDeps } from './fulfilled-checkout-consents.js';
 import { resolveTenantOrigin } from '../tenant-url.js';
 import { fulfillEnrollment, queueEnrollmentWelcome, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
+import { commitCheckoutStock } from './stock.js';
 import {
   appendOrder,
   failSubscriptionPayment,
@@ -64,6 +67,8 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   priceHistory?: ProductPriceHistoryRepository;
   payment: Pick<PaymentProvider, 'cancelSubscription'>;
   paymentTransaction: PaymentTransactionPort;
+  stock?: StockRepository;
+  tenantAccess?: TenantAccessReader;
   logger: { warn(message: string): void; error(message: string): void };
 }
 
@@ -515,7 +520,14 @@ const applyCheckoutCompleted = async (
       deps,
     ));
 
-  let emailsQueued = false;
+  const stockCommit = event.mode === 'test'
+    ? { alertsQueued: false }
+    : await commitCheckoutStock(tenant, {
+      checkoutSnapshotId: snapshot?.id ?? null,
+      orderId: paidOrder.id,
+      productIds: snapshot === null ? [metadata.productId] : snapshot.lines.map((line) => line.productId),
+    }, deps);
+  let emailsQueued = stockCommit.alertsQueued;
   if (event.mode !== 'test' && product !== null) {
     const member = await deps.members.findById(tenant.id, fulfilled.value.memberId);
     if (member === null) return err(internal('Purchased order member is missing'));

@@ -7,6 +7,8 @@ import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
 import type { OrderVerificationRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
+import { createStockRepository } from '#adapters/db/stock.js';
+import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -583,6 +585,8 @@ export interface AppDeps {
   salesLinkManagement?: SalesLinkDeps;
   salesLinks?: SalesLinkRepository;
   checkoutSnapshots?: CheckoutSnapshotRepository;
+  stock: StockRepository;
+  releaseExpiredStockReservations(): Promise<Result<{ released: number }, AppError>>;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -896,6 +900,7 @@ export const createDeps = (
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
+  const stock = createStockRepository(db);
   const autoInvoiceJobs = createAutoInvoiceJobRepository(db);
   const ksefCredentials = createKsefCredentialResolver(secretResolver);
   const ksefNumbers = createKsefNumberRepository(db);
@@ -1567,9 +1572,11 @@ export const createDeps = (
     authTrustedProxyHeader: selectAuthTrustedProxyHeader(env),
     marketingContacts,
     surveys: { surveys: createSurveyRepository(db), clock, ids, tokens },
-    salesLinkManagement: { salesLinks: createSalesLinkRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids },
+    salesLinkManagement: { salesLinks: createSalesLinkRepository(db), products: createProductRepository(db), prices: createProductPriceRepository(db), tenants, clock, ids, stock },
     salesLinks: createSalesLinkRepository(db),
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
+    stock,
+    releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

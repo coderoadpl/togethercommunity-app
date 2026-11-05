@@ -142,6 +142,7 @@ import type {
   StripePermissionCheck,
   WipedTable,
 } from '#core/domain/index.js';
+import type { StockRepository } from './stock-ports.js';
 
 /**
  * Ports: interfaces the core depends on, implemented in `adapters/`.
@@ -1122,6 +1123,7 @@ export interface PaymentProvider {
     checkoutConsentCaptureId?: string;
     promotionCodeId?: string;
     couponCheckoutSessionId?: string;
+    expiresAt?: string;
   }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   ensureCouponPromotion?(input: {
     tenantId: string;
@@ -1809,6 +1811,7 @@ export interface PaymentTransactionPort {
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
+      stock?: StockRepository;
     }) => Promise<Result<T, AppError>>,
   ): Promise<Result<T, AppError>>;
 }

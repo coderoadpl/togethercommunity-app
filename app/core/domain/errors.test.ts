@@ -10,6 +10,7 @@ import {
   internal,
   invalidCredentials,
   notFound,
+  soldOut,
   tenantNotFound,
   unauthorized,
   unavailable,
@@ -51,6 +52,14 @@ describe('error constructors', () => {
       expect(error.code).toBe(code);
       expect(error.message.length).toBeGreaterThan(0);
     }
+  });
+
+  it('names the product title in the sold-out message and keeps the product id in details', () => {
+    expect(soldOut('Printed poster', 'product-1')).toEqual({
+      code: 'sold_out',
+      message: '"Printed poster" is sold out',
+      details: { productId: 'product-1' },
+    });
   });
 
   it('lets callers override the message', () => {

@@ -27,6 +27,7 @@ import {
 
 import { InMemoryConsentDefinitionRepository, InMemoryMarketingConsentRepository, InMemoryConsentConfirmationTokenRepository } from '../testing/marketing-fakes.js';
 import { createInMemoryTenantDomainRepository, tenantDomainFixture } from '../testing/tenant-domain-fakes.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 
 import type { CheckoutConsentJob, AutoInvoiceJob, PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
@@ -2711,6 +2712,38 @@ const testCheckout = async (recurring = false) => {
     ...(recurring ? { priceId: 'price-monthly', subscriptionId: 'sub-test' } : {}) }), mode: 'test', livemode: false };
   return { h, event, liveOrder };
 };
+
+describe('checkout stock commit in the payment webhook', () => {
+  it('decrements a tracked product once for a paid live checkout and ignores the retried event', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 2);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toEqual(ok({ processed: true }));
+    expect(await fulfillStripeWebhook(tenantA, completedEvent(), h.deps)).toEqual(ok({ processed: false }));
+    expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 1, reserved: 0 });
+    expect(stock.events).toEqual([expect.objectContaining({ type: 'committed_late', quantity: -1, reference: { orderId: h.orders[0]?.id } })]);
+  });
+
+  it('does not commit stock while the checkout session is still unpaid', async () => {
+    const h = harness({ productType: 'physical' });
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 2);
+    h.deps.stock = stock.repository;
+    await fulfillStripeWebhook(tenantA, completedEvent({ paymentStatus: 'unpaid' }), h.deps);
+    expect(stock.events).toEqual([]);
+  });
+
+  it('never touches live stock for a test-mode order', async () => {
+    const { h, event } = await testCheckout();
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-1', 2);
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(stock.levels.get(tenantA.id, 'product-1')).toMatchObject({ onHand: 2, reserved: 0 });
+    expect(stock.events).toEqual([]);
+  });
+});
 
 describe('Stripe payment mode isolation', () => {
   it.each([

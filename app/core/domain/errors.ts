@@ -24,6 +24,7 @@ export const ERROR_CODES = [
   'slug_reserved',
   'invoice_exemption_basis_missing',
   'impersonation_read_only',
+  'sold_out',
   'internal',
 ] as const;
 
@@ -82,6 +83,9 @@ export const slugReserved = (message: string): AppError => appError('slug_reserv
 export const impersonationReadOnly = (
   message = 'This action is blocked while viewing as a member',
 ): AppError => appError('impersonation_read_only', message);
+
+export const soldOut = (productTitle: string, productId: string): AppError =>
+  appError('sold_out', `"${productTitle}" is sold out`, { productId });
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);
 

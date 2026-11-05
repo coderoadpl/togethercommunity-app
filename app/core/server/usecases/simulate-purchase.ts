@@ -2,19 +2,22 @@ import {
   err,
   normalizeEmail,
   ok,
+  tenantNotFound,
   validation,
   type AppError,
   type Result,
   type BillingData,
 } from '#core/domain/index.js';
 
-import type { AuthPort, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { StockRepository } from '../stock-ports.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { validateCheckoutSelection } from './checkout.js';
 import { createOrRenewGrant } from './grant-window.js';
 import { ensureMember } from './ensure-member.js';
 import { appendOrder, startSubscription, type SubscriptionLifecycleDeps } from './subscription-lifecycle.js';
+import { commitCheckoutStock, reserveCheckoutStock, type CommitCheckoutStockDeps } from './stock.js';
 
 export interface SimulatePurchaseResult {
   memberId: string;
@@ -24,15 +27,16 @@ export interface SimulatePurchaseResult {
   orderId: string | null;
 }
 
-export interface SimulatePurchaseDeps extends SubscriptionLifecycleDeps {
+export interface SimulatePurchaseDeps extends SubscriptionLifecycleDeps, Omit<CommitCheckoutStockDeps, 'stock' | 'emailOutbox'> {
   products: ProductRepository;
   purchases: PurchaseRepository;
   members: MemberRepository;
   authPort: AuthPort;
-  tenants?: TenantRepository;
+  tenants: TenantRepository;
   salesLinks?: SalesLinkRepository;
+  stock?: StockRepository;
   paymentTransaction?: {
-    run<T>(operation: (transaction: Pick<SimulatePurchaseDeps, 'members' | 'orders' | 'grants'>) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+    run<T>(operation: (transaction: Pick<SimulatePurchaseDeps, 'members' | 'orders' | 'grants' | 'stock'> & { emailOutbox: Pick<EmailOutboxRepository, 'enqueue'> }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
   };
 }
 
@@ -56,9 +60,13 @@ export const simulatePurchase = async (
   const { product, price } = selection.value;
   const built = await buildCheckoutLines(tenantId, selection.value, deps);
   if (!built.ok) return built;
-  if (selection.value.salesLinkId !== undefined || product.type === 'physical') {
+  const selectedProducts = selection.value.products ?? [product];
+  const tracked = price?.kind !== 'recurring' && deps.stock !== undefined &&
+    (await deps.stock.listByProducts(tenantId, selectedProducts.map((item) => item.id))).length > 0;
+  if (selection.value.salesLinkId !== undefined || product.type === 'physical' || tracked) {
     if (deps.paymentTransaction === undefined) return err(validation('Simulated purchase transaction is not configured'));
     return deps.paymentTransaction.run(async (transaction) => {
+      const checkoutSession = `sim_cs_${deps.ids.nextId()}`;
       const member = await ensureMember(tenantId, input.email, { ...deps, members: transaction.members });
       if (!member.ok) return member;
       for (const line of built.value.lines) {
@@ -68,9 +76,16 @@ export const simulatePurchase = async (
       const order = await appendOrder(tenantId, {
         memberId: member.value.id, productId: product.id, priceId: price?.id ?? null,
         kind: 'one_time', status: 'paid', amountCents: built.value.totalCents, currency: built.value.currency,
-        provider: 'simulated', providerObjectIds: { checkoutSession: `sim_cs_${deps.ids.nextId()}` },
+        provider: 'simulated', providerObjectIds: { checkoutSession },
         billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
       }, { ...deps, orders: transaction.orders });
+      const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts }, { stock: transaction.stock, clock: deps.clock });
+      if (!hold.ok) return hold;
+      if (hold.value !== null) {
+        const tenant = await deps.tenants.findById(tenantId);
+        if (tenant === null) return err(tenantNotFound());
+        await commitCheckoutStock(tenant, { checkoutSnapshotId: checkoutSession, orderId: order.id, productIds: selectedProducts.map((item) => item.id) }, { ...deps, stock: transaction.stock, emailOutbox: transaction.emailOutbox });
+      }
       return ok({ memberId: member.value.id, productId: product.id, alreadyOwned: false, subscriptionId: null, orderId: order.id });
     });
   }

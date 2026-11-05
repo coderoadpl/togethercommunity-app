@@ -57,6 +57,9 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       await next();
       return;
     }
+    if (!crawler && offer.value.soldOut) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+      status: HTTP_STATUS_BY_ERROR_CODE.sold_out, headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
+    });
     const code = c.req.query('code');
     const couponCode = code === undefined ? undefined : normalizeCouponCode(code);
     const previewAllowed = !crawler && !missingLegal && couponCode !== undefined && await claimCouponPreview(c, tenant.id, deps);

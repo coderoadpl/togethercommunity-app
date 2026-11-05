@@ -14,6 +14,8 @@ import {
 } from '#core/domain/index.js';
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
+
 const tenant: Tenant = {
   id: 'tenant-a',
   slug: 'alpha',
@@ -898,4 +900,63 @@ it('keeps a fully discounted direct checkout on Stripe for buyer details', async
   expect(await h.start(undefined, 'SAVE')).toMatchObject({ ok: true });
   expect(h.calls[0]).toMatchObject({ promotionCodeId: 'promotion-save', couponCheckoutSessionId: 'id-1' });
   expect(h.sessions[0]).toMatchObject({ finalCents: 0, discountCents: 7000 });
+});
+
+const trackPrintedItem = (deps: CheckoutDeps) => {
+  const stock = createStockRepositoryFake();
+  stock.track(tenant.id, 'physical-1', 1);
+  const release = vi.spyOn(stock.repository, 'release');
+  deps.stock = stock.repository;
+  return { stock, release };
+};
+
+it('releases the stock hold when binding the SPA snapshot and expiring the session both fail', async () => {
+  const h = bundleCheckout();
+  const held = trackPrintedItem(h.deps);
+  if (h.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+  h.deps.checkoutSnapshots.attachProviderSession = async () => { throw new Error('Storage unavailable'); };
+  h.deps.payment.expireCheckoutSession = async () => { throw new Error('Stripe unavailable'); };
+  const { createCheckoutSession } = await import('./checkout.js');
+  await expect(createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id }, h.deps)).rejects.toThrow('Stripe unavailable');
+  expect(held.release).toHaveBeenCalledOnce();
+  expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
+});
+
+it('releases the stock hold when binding the SPA coupon session fails', async () => {
+  const h = bundleCheckout();
+  const held = trackPrintedItem(h.deps);
+  const coupon = { ...freeCoupon, code: 'SAVE', value: 50 };
+  h.deps.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon };
+  h.deps.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+  h.deps.couponCheckoutSessions = { create: async () => undefined, findById: async () => null, attachProviderSession: async () => { throw new Error('Coupon storage unavailable'); } };
+  h.deps.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
+  h.deps.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promotion-save' });
+  const { createCheckoutSession } = await import('./checkout.js');
+  await expect(createCheckoutSession(tenant, 'https://workspace.example.com', { productId: product.id, salesLinkId: h.link.id, couponCode: 'SAVE', email: 'buyer@example.test' }, h.deps)).rejects.toThrow('Coupon storage unavailable');
+  expect(h.calls).toHaveLength(1);
+  expect(held.release).toHaveBeenCalledOnce();
+  expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
+});
+
+it('releases the direct handoff stock hold when the snapshot insert and the session expiry both fail', async () => {
+  const h = await directCheckout();
+  const held = trackPrintedItem(h.deps);
+  if (h.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+  h.deps.checkoutSnapshots.create = async () => { throw new Error('Storage unavailable'); };
+  h.deps.payment.expireCheckoutSession = async () => { throw new Error('Stripe unavailable'); };
+  await expect(h.start()).rejects.toThrow('Stripe unavailable');
+  expect(held.release).toHaveBeenCalledOnce();
+  expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
+});
+
+it('expires the session and releases the direct handoff stock hold when binding the coupon session fails', async () => {
+  const h = await directCouponCheckout();
+  const held = trackPrintedItem(h.deps);
+  const expired: string[] = [];
+  h.deps.payment.expireCheckoutSession = async ({ sessionId }) => { expired.push(sessionId); return ok({ expired: true }); };
+  h.attach.mockRejectedValueOnce(new Error('Coupon storage unavailable'));
+  await expect(h.start(undefined, 'SAVE')).rejects.toThrow('Coupon storage unavailable');
+  expect(expired).toEqual(['bundle-session']);
+  expect(held.release).toHaveBeenCalledOnce();
+  expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
 });

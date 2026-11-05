@@ -1,5 +1,6 @@
 import { tenantTeamAddSchema, tenantTeamRemoveSchema } from '#core/contract/index.js';
 import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/index.js';
+import { safeErrorMessage } from '#core/server/log-safety.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
@@ -118,6 +119,9 @@ import {
   reportsListInputSchema,
   postUpdateInputSchema,
   productPriceCreateInputSchema,
+  productStockAdjustInputSchema,
+  productStockEnableInputSchema,
+  productStockThresholdInputSchema,
   productPriceDeactivateInputSchema,
   productsAccessItemsInputSchema,
   productsCreateInputSchema,
@@ -341,6 +345,13 @@ import {
   listProductDownloadAssets,
   listDownloadCopies,
   listProductPrices,
+  listProductStock,
+  getProductStock,
+  enableProductStock,
+  adjustProductStock,
+  setProductStockThreshold,
+  reserveCheckoutStock,
+  releaseCheckoutStock,
   listDmReports,
   listReports,
   listProducts,
@@ -776,6 +787,14 @@ export const registerAuthSendLogLatestRoute = (
   });
 };
 
+const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpiredStockReservations' | 'logger'>): Promise<void> => {
+  try {
+    await deps.releaseExpiredStockReservations();
+  } catch (error) {
+    deps.logger.error(`[stock] expired reservation sweep failed: ${safeErrorMessage(error)}`);
+  }
+};
+
 export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   const selfAuthenticatingRouteStart = app.routes.length;
   registerOperatorTenantRoutes(app, deps);
@@ -788,6 +807,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     await deps.drainNotificationFanout();
+    await sweepExpiredStockReservations(deps);
     return respond(await deps.dispatchEmails('manual'));
   });
 
@@ -796,6 +816,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     await deps.drainNotificationFanout();
+    await sweepExpiredStockReservations(deps);
     return respond(await deps.dispatchEmails('cron'));
   });
 
@@ -1005,88 +1026,96 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         } else {
           const captured = await captureCheckoutSelection(tenant.value.tenant.id, selection.value, deps);
           if (!captured.ok) return respond(captured);
-          const couponSessionId = deps.ids.nextId();
-          const objectId = `simulated_${couponSessionId}`;
-          const captureId = deps.ids.nextId();
-          await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
-            id: captureId,
-            capture: {
-              termsAccepted: parsed.data.termsAccepted === true,
-              selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-              attachedDefinitionIds,
-              collectedAt: deps.clock.nowIso(),
-              confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
-              ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
-              ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
-            },
-            createdAt: deps.clock.nowIso(),
-          });
-          await deps.couponCheckoutSessions.create(tenant.value.tenant.id, {
-            id: couponSessionId,
-            tenantId: tenant.value.tenant.id,
-            couponId: validated.value.coupon.id,
-            providerSessionId: objectId,
-            memberEmail: parsed.data.email,
-            productId: selection.value.product.id,
-            priceId: price?.id ?? null,
-            originalCents: validated.value.breakdown.originalCents,
-            discountCents: validated.value.breakdown.discountCents,
-            finalCents: validated.value.breakdown.finalCents,
-            currency: validated.value.breakdown.currency,
-            startedAt: deps.clock.nowIso(),
-          });
-          const event: PaymentWebhookEvent = {
-            id: `event_${objectId}`,
-            type: 'checkout.session.completed',
-            objectId,
-            checkoutSession: {
-              email: parsed.data.email,
-              subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
-              paymentIntentId: null,
-              invoiceId: null,
-              amountTotalCents: validated.value.breakdown.finalCents,
-              discountTotalCents: validated.value.breakdown.discountCents,
-              metadata: {
-                tenantId: tenant.value.tenant.id,
-                productId: selection.value.product.id,
-                priceId: price?.id ?? null,
-                memberEmail: parsed.data.email,
-                language,
-                couponCheckoutSessionId: couponSessionId,
-                checkoutConsentCaptureId: captureId,
-                ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId, productIds: selectedProducts.map((product) => product.id).join(',') }),
-                ...(captured.value.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: captured.value.checkoutSnapshotId }),
+          const hold = await reserveCheckoutStock(tenant.value.tenant.id, { checkoutSnapshotId: captured.value.checkoutSnapshotId, products: selectedProducts }, deps);
+          if (!hold.ok) return respond(hold);
+          try {
+            const couponSessionId = deps.ids.nextId();
+            const objectId = `simulated_${couponSessionId}`;
+            const captureId = deps.ids.nextId();
+            await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
+              id: captureId,
+              capture: {
+                termsAccepted: parsed.data.termsAccepted === true,
+                selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+                attachedDefinitionIds,
+                collectedAt: deps.clock.nowIso(),
+                confirmationBaseUrl: `${await authLinkBaseUrl(tenant.value, deps)}/marketing/confirm`,
+                ...checkoutConsentEvidence(c, deps.authTrustedProxyHeader),
+                ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
               },
-            },
-          };
-          const fulfilled = await fulfillStripeWebhook(
-            tenant.value.tenant,
-            event,
-            { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
-            'simulated',
-          );
-          if (!fulfilled.ok) {
-            result = fulfilled;
-          } else {
-            const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
-              tenant.value.tenant.id,
-              { checkoutSession: objectId },
+              createdAt: deps.clock.nowIso(),
+            });
+            await deps.couponCheckoutSessions.create(tenant.value.tenant.id, {
+              id: couponSessionId,
+              tenantId: tenant.value.tenant.id,
+              couponId: validated.value.coupon.id,
+              providerSessionId: objectId,
+              memberEmail: parsed.data.email,
+              productId: selection.value.product.id,
+              priceId: price?.id ?? null,
+              originalCents: validated.value.breakdown.originalCents,
+              discountCents: validated.value.breakdown.discountCents,
+              finalCents: validated.value.breakdown.finalCents,
+              currency: validated.value.breakdown.currency,
+              startedAt: deps.clock.nowIso(),
+            });
+            const event: PaymentWebhookEvent = {
+              id: `event_${objectId}`,
+              type: 'checkout.session.completed',
+              objectId,
+              checkoutSession: {
+                email: parsed.data.email,
+                subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
+                paymentIntentId: null,
+                invoiceId: null,
+                amountTotalCents: validated.value.breakdown.finalCents,
+                discountTotalCents: validated.value.breakdown.discountCents,
+                metadata: {
+                  tenantId: tenant.value.tenant.id,
+                  productId: selection.value.product.id,
+                  priceId: price?.id ?? null,
+                  memberEmail: parsed.data.email,
+                  language,
+                  couponCheckoutSessionId: couponSessionId,
+                  checkoutConsentCaptureId: captureId,
+                  ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId, productIds: selectedProducts.map((product) => product.id).join(',') }),
+                  ...(captured.value.checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId: captured.value.checkoutSnapshotId }),
+                },
+              },
+            };
+            const fulfilled = await fulfillStripeWebhook(
+              tenant.value.tenant,
+              event,
+              { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+              'simulated',
             );
-            const subscription = order === null
-              ? undefined
-              : (await deps.subscriptions.listForMember(
+            if (!fulfilled.ok) {
+              await releaseCheckoutStock(tenant.value.tenant.id, hold.value, 'checkout_failed', deps);
+              result = fulfilled;
+            } else {
+              const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
                 tenant.value.tenant.id,
-                order.memberId,
-              )).find((candidate) => candidate.productId === selection.value.product.id);
-            result = order === null
-              ? err(internal('Coupon fulfillment did not create an order'))
-              : ok({
-                memberId: order.memberId,
-                productId: selection.value.product.id,
-                alreadyOwned: false,
-                subscriptionId: subscription?.id ?? null,
-                orderId: order.id,
-              });
+                { checkoutSession: objectId },
+              );
+              const subscription = order === null
+                ? undefined
+                : (await deps.subscriptions.listForMember(
+                  tenant.value.tenant.id,
+                  order.memberId,
+                )).find((candidate) => candidate.productId === selection.value.product.id);
+              result = order === null
+                ? err(internal('Coupon fulfillment did not create an order'))
+                : ok({
+                  memberId: order.memberId,
+                  productId: selection.value.product.id,
+                  alreadyOwned: false,
+                  subscriptionId: subscription?.id ?? null,
+                  orderId: order.id,
+                });
+            }
+          } catch (cause) {
+            await releaseCheckoutStock(tenant.value.tenant.id, hold.value, 'checkout_failed', deps);
+            throw cause;
           }
         }
       }
@@ -2010,7 +2039,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
 
   app.get(API_PATHS.products, async (c) => {
     const result = await listProducts(ctxOf(c), deps);
-    return respond(result.ok ? ok({ products: result.value }) : result);
+    if (!result.ok) return respond(result);
+    const stock = await listProductStock(ctxOf(c), result.value.map((product) => product.id), deps);
+    return respond(stock.ok ? ok({ products: result.value, stock: stock.value }) : stock);
   });
 
   app.get(API_PATHS.productDownloadAssets, async (c) => {
@@ -2729,6 +2760,35 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     if (!parsed.success) return respond(err(validation('Invalid price payload', parsed.error.flatten())));
     const result = await createProductPrice(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ price: result.value }) : result);
+  });
+
+  app.get(API_PATHS.productStock, async (c) => {
+    const result = await getProductStock(ctxOf(c), c.req.param('productId'), deps);
+    return respond(result.ok ? ok({ stock: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productStockEnable, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = productStockEnableInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid stock tracking payload', parsed.error.flatten())));
+    const result = await enableProductStock(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ stock: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productStockAdjust, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = productStockAdjustInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid stock adjustment payload', parsed.error.flatten())));
+    const result = await adjustProductStock(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ stock: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productStockThreshold, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    const parsed = productStockThresholdInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid low-stock threshold payload', parsed.error.flatten())));
+    const result = await setProductStockThreshold(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ stock: result.value }) : result);
   });
 
   app.post(API_PATHS.productPriceDeactivate, async (c) => {

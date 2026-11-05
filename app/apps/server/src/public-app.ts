@@ -46,6 +46,7 @@ import {
   normalizeEmail,
   notFound,
   ok,
+  publicStockVersion,
   resolveEmailLanguage,
   tenantNotFound,
   unauthorized,
@@ -380,7 +381,9 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const listedLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : (await deps.salesLinkManagement.salesLinks.list(tenant.value.tenant.id))
       .filter((link) => link.listed && salesLinkAvailable(link, deps.clock.nowIso()));
     const linkVersion = listedLinks.length === 0 ? '' : `-${createHash('sha256').update(JSON.stringify(listedLinks.map((link) => [link.id, link.revision]).sort())).digest('hex')}`;
-    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}"`;
+    const stockLevels = await deps.stock.listByTenant(tenant.value.tenant.id);
+    const stockVersion = stockLevels.length === 0 ? '' : `-${createHash('sha256').update(publicStockVersion(stockLevels)).digest('hex')}`;
+    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}${productRef === undefined ? '' : `-${encodeURIComponent(productRef)}`}${linkVersion}${stockVersion}"`;
     if (c.req.header('if-none-match') === etag) {
       return respondNotModified(publicHeaders(etag));
     }
@@ -393,6 +396,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       tenants: deps.tenants,
       definitions: deps.marketing?.definitions,
       documents: deps.marketing?.documents,
+      stock: deps.stock,
     }, productRef);
     if (!result.ok) return respondPublic(result, etag);
     const salesLinks = deps.salesLinkManagement === undefined || productRef !== undefined ? [] : await listPublicSalesLinks(tenant.value.tenant.id, deps.salesLinkManagement, listedLinks);
@@ -805,7 +809,12 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
         'simulated',
       );
-      if (!fulfilled.ok) return respondPublic(fulfilled);
+      if (!fulfilled.ok) {
+        if (session.value.checkoutSnapshotId !== undefined) {
+          await deps.stock.release(tenant.value.tenant.id, { checkoutSnapshotId: session.value.checkoutSnapshotId, reason: 'checkout_failed', now: deps.clock.nowIso() });
+        }
+        return respondPublic(fulfilled);
+      }
     }
     c.res = respondPublic(session);
     if (session.ok && testMode) deleteCookie(c, 'together_stripe_test', { path: '/' });

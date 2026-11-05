@@ -1,4 +1,4 @@
-import { err, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError } from '#core/domain/index.js';
+import { err, firstSoldOutProductId, ok, notFound, validation, salesLinkInputSchema, salesLinkUpdateSchema, salesLinkAvailable, resolveProductVat, splitProductGross, type SalesLink, type Product, type ProductPrice, type Result, type AppError } from '#core/domain/index.js';
 import { authorizeRequiredTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
 import type { SalesLinkDeps } from '../sales-link-ports.js';
@@ -76,7 +76,9 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
   });
   const first = products.value.prices[0];
   if (lines.length !== products.value.products.length || first === undefined) return err(notFound('Sales link was not found'));
-  return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0) });
+  const stock = await deps.stock?.listByProducts(tenantId, salesLink.productIds) ?? [];
+  const soldOut = firstSoldOutProductId(salesLink.productIds, stock) !== null;
+  return ok({ salesLink: { slug: salesLink.slug, heading: salesLink.heading, description: salesLink.description, validFrom: salesLink.validFrom, validTo: salesLink.validTo }, descriptionHtml: renderPostContent(salesLink.description, 'markdown').html, lines, currency: first.currency, totalCents: lines.reduce((sum, line) => sum + line.grossCents, 0), soldOut });
 };
 
 export const getPublicSalesLink = async (tenantId: string, slug: string, deps: SalesLinkDeps) => {

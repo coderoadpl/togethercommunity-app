@@ -34,9 +34,11 @@ import type {
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
 import type { SalesLinkRepository } from '../sales-link-ports.js';
+import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
+import { ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold } from './stock.js';
 
 export interface CheckoutDeps {
   salesLinks?: SalesLinkRepository;
@@ -54,6 +56,7 @@ export interface CheckoutDeps {
   secretCrypto?: SecretCrypto;
   ids?: IdGenerator;
   clock?: Clock;
+  stock?: StockRepository;
 }
 
 export type { CheckoutSelection } from './checkout-selection.js';
@@ -85,7 +88,7 @@ export const testCheckoutRejection = (
 export const validateCheckoutSelection = async (
   tenantId: string,
   input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug'>,
-  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'stock'>,
 ): Promise<Result<CheckoutSelection, AppError>> => {
   if (input.salesLinkId !== undefined || input.salesLinkSlug !== undefined) {
     if (input.salesLinkId !== undefined && input.salesLinkSlug !== undefined) return err(validation('Invalid sales link selection'));
@@ -110,6 +113,8 @@ export const validateCheckoutSelection = async (
     if (!resolvedPrices.ok) return resolvedPrices;
     const product = products[0];
     if (product === undefined) return err(notFound('Sales link not found'));
+    const inStock = await ensureProductsInStock(tenantId, products, deps);
+    if (!inStock.ok) return inStock;
     return ok({ product, price: null, products, productPrices: resolvedPrices.value, salesLinkId: link.id, salesLinkSlug: link.slug });
   }
   const product = await deps.products.findById(tenantId, input.productId);
@@ -131,6 +136,8 @@ export const validateCheckoutSelection = async (
   if (product.type === 'membership' && price?.kind !== 'recurring') {
     return err(validation('Membership products require a recurring price'));
   }
+  const inStock = await ensureProductsInStock(tenantId, [product], deps);
+  if (!inStock.ok) return inStock;
 
   return ok({ product, price });
 };
@@ -169,6 +176,7 @@ export const startCheckoutSession = async (
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
+  const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product] }, deps);
   let applied:
     | {
         breakdown: CouponCheckoutBreakdown;
@@ -198,6 +206,8 @@ export const startCheckoutSession = async (
     if (!capturedCoupon.ok) return capturedCoupon;
     const checkoutSessionId = capturedCoupon.value;
     if (validated.value.breakdown.finalCents === 0 && price?.kind !== 'recurring') {
+      const freeHold = await reserveStock();
+      if (!freeHold.ok) return freeHold;
       return ok({
         url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
         coupon: validated.value.breakdown,
@@ -216,6 +226,8 @@ export const startCheckoutSession = async (
   }
   if (totalCents === 0 && price?.kind !== 'recurring') {
     if (input.email === undefined) return err(validation('An email is required for free checkout'));
+    const freeHold = await reserveStock();
+    if (!freeHold.ok) return freeHold;
     return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true, ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }) });
   }
   if (input.couponCode === undefined) {
@@ -225,7 +237,9 @@ export const startCheckoutSession = async (
   }
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
-  const created = await deps.payment.createCheckoutSession({
+  const hold = await reserveStock();
+  if (!hold.ok) return hold;
+  const created = await withCheckoutStockHold(tenant.id, hold.value, deps, () => deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     ...(attribution === undefined ? {} : { attribution }),
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
@@ -252,13 +266,18 @@ export const startCheckoutSession = async (
           promotionCodeId: applied.promotionCodeId,
           couponCheckoutSessionId: applied.checkoutSessionId,
         }),
-  });
+    ...(hold.value === null ? {} : { expiresAt: hold.value.sessionExpiresAt }),
+  }));
   if (!created.ok) return created;
   if (checkoutSnapshotId !== undefined && deps.checkoutSnapshots !== undefined) {
     try {
       await deps.checkoutSnapshots.attachProviderSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
     } catch (cause) {
-      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      try {
+        await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
+      } finally {
+        await releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps);
+      }
       throw cause;
     }
   }
@@ -278,11 +297,16 @@ export const startCheckoutSession = async (
     }
   }
   if (applied !== undefined && deps.couponCheckoutSessions !== undefined) {
-    await deps.couponCheckoutSessions.attachProviderSession(
-      tenant.id,
-      applied.checkoutSessionId,
-      created.value.sessionId,
-    );
+    try {
+      await deps.couponCheckoutSessions.attachProviderSession(
+        tenant.id,
+        applied.checkoutSessionId,
+        created.value.sessionId,
+      );
+    } catch (cause) {
+      await releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps);
+      throw cause;
+    }
   }
   return ok({
     url: created.value.url,

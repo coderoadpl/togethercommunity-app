@@ -91,6 +91,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageSlugReservedGeneric;
     case 'invoice_exemption_basis_missing':
       return t.errors.messageInvoiceExemptionBasisMissing;
+    case 'sold_out':
+      return t.errors.messageSoldOut;
     case 'internal':
       return t.errors.messageInternal;
   }
@@ -126,6 +128,7 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'pending_confirmation':
     case 'slug_reserved':
     case 'impersonation_read_only':
+    case 'sold_out':
     case 'internal':
       return null;
   }

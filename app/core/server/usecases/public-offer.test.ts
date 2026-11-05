@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Course, Product, ProductType, Tenant } from '#core/domain/index.js';
 
 import type { ConsentDefinitionRepository, ProductRepository, TenantRepository } from '../ports.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { getPublicOffer } from './public-offer.js';
 
 const tenant: Tenant = {
@@ -116,6 +117,27 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
 });
 
 describe('getPublicOffer', () => {
+  it('exposes sold-out and low flags for tracked products without the exact count', async () => {
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', 'download', 2, 3);
+    stock.track('t-acme', 'club', 0);
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([product('published', 't-acme', true), product('download', 't-acme', true, 'digital_download'), product('club', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+      stock: stock.repository,
+    });
+    if (!result.ok) throw new Error('offer failed');
+    expect(Object.fromEntries(result.value.products.map((item) => [item.id, item.stock]))).toEqual({
+      published: { tracked: false, soldOut: false, low: false },
+      download: { tracked: true, soldOut: false, low: true },
+      club: { tracked: true, soldOut: true, low: false },
+    });
+    expect(JSON.stringify(result.value)).not.toContain('onHand');
+  });
+
   it('returns only public product fields for published products', async () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([
@@ -159,6 +181,7 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
           },
           {
@@ -173,6 +196,7 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
           },
           {
@@ -187,6 +211,7 @@ describe('getPublicOffer', () => {
             vatExemptionBasis: null,
             currency: 'PLN',
             prices: [],
+            stock: { tracked: false, soldOut: false, low: false },
             marketingConsents: [],
           },
         ],

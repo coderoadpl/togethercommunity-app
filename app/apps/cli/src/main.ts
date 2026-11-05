@@ -64,6 +64,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerTeamCommands } from './team-commands.js';
+import { formatProductStock, registerStockCommands } from './stock-commands.js';
 import { emit } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
@@ -1229,14 +1230,16 @@ product.command('list').description('List products').action(
       data.products.length === 0
         ? 'no products'
         : data.products
-            .map(
-              (p) =>
-                `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]  (${p.id.slice(0, 8)})`,
-            )
+            .map((p) => {
+              const stock = data.stock.find((entry) => entry.productId === p.id);
+              return `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]${stock === undefined ? '' : `  {${formatProductStock(stock)}}`}  (${p.id.slice(0, 8)})`;
+            })
             .join('\n'),
     );
   }),
 );
+
+registerStockCommands(product, cliCtx);
 
 product
   .command('copies')

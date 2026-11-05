@@ -1,7 +1,8 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
-import { productVatRateSchema } from '#core/domain/index.js';
+import { productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
+import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -379,6 +380,7 @@ export const tenantListOutputSchema = z.object({
 
 export const productsListOutputSchema = z.object({
   products: z.array(productSchema),
+  stock: z.array(productStockSchema).default([]),
 });
 
 const publicOfferPriceSchema = z.object({
@@ -429,6 +431,7 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
+      stock: publicProductStockSchema.default({ tracked: false, soldOut: false, low: false }),
       marketingConsents: z.array(z.object({
         definitionId: z.string().min(1),
         label: z.string().min(1),
@@ -713,6 +716,22 @@ export type ProductPriceDeactivateInput = z.input<typeof productPriceDeactivateI
 
 export const productPriceDeactivateOutputSchema = z.object({
   price: productPriceSchema,
+});
+
+export const productStockOutputSchema = z.object({
+  stock: productStockSchema.nullable(),
+});
+
+export const productStockEnableInputSchema = enableStockTrackingInputSchema;
+export const productStockAdjustInputSchema = adjustStockInputSchema;
+export const productStockThresholdInputSchema = stockThresholdInputSchema;
+
+export type ProductStockEnableInput = z.input<typeof productStockEnableInputSchema>;
+export type ProductStockAdjustInput = z.input<typeof productStockAdjustInputSchema>;
+export type ProductStockThresholdInput = z.input<typeof productStockThresholdInputSchema>;
+
+export const productStockWriteOutputSchema = z.object({
+  stock: productStockSchema,
 });
 
 export type OrdersListQueryInput = z.input<typeof listOrdersQuerySchema>;
@@ -1928,6 +1947,10 @@ export const API_ROUTES = {
   productPricesCreate: { method: 'POST', path: '/api/products/prices' },
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
+  productStock: { method: 'GET', path: '/api/products/:productId/stock' },
+  productStockEnable: { method: 'POST', path: '/api/products/stock/enable' },
+  productStockAdjust: { method: 'POST', path: '/api/products/stock/adjust' },
+  productStockThreshold: { method: 'POST', path: '/api/products/stock/threshold' },
   orders: { method: 'GET', path: '/api/orders' },
   ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
@@ -2318,6 +2341,10 @@ export const API_PATHS = {
   productPricesCreate: API_ROUTES.productPricesCreate.path,
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
+  productStock: API_ROUTES.productStock.path,
+  productStockEnable: API_ROUTES.productStockEnable.path,
+  productStockAdjust: API_ROUTES.productStockAdjust.path,
+  productStockThreshold: API_ROUTES.productStockThreshold.path,
   orders: API_ROUTES.orders.path,
   ordersReconciliation: API_ROUTES.ordersReconciliation.path,
   order: API_ROUTES.order.path,

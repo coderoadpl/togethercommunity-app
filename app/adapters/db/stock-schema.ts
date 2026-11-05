@@ -41,6 +41,9 @@ export const stockEvents = pgTable('stock_events', {
   foreignKey({ name: 'stock_events_tenant_product_fk', columns: [table.tenantId, table.productId], foreignColumns: [products.tenantId, products.id] }).onDelete('cascade'),
   check('stock_events_type_check', sql`${table.type} IN ('tracking_enabled', 'adjusted', 'reserved', 'released', 'committed', 'committed_late', 'oversold', 'returned')`),
   index('stock_events_tenant_product_idx').on(table.tenantId, table.productId, table.occurredAt),
+  index('stock_events_tenant_product_order_commit_idx')
+    .on(table.tenantId, table.productId, sql`(${table.reference} ->> 'orderId')`)
+    .where(sql`${table.type} IN ('committed', 'committed_late')`),
 ]);
 
 export const stockReservations = pgTable('stock_reservations', {

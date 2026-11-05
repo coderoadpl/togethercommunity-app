@@ -24,6 +24,8 @@ CREATE TABLE "stock_events" (
 --> statement-breakpoint
 CREATE INDEX "stock_events_tenant_product_idx" ON "stock_events" ("tenant_id", "product_id", "occurred_at");
 --> statement-breakpoint
+CREATE INDEX "stock_events_tenant_product_order_commit_idx" ON "stock_events" ("tenant_id", "product_id", ("reference" ->> 'orderId')) WHERE "type" IN ('committed', 'committed_late');
+--> statement-breakpoint
 CREATE TABLE "stock_reservations" (
   "id" text PRIMARY KEY DEFAULT gen_random_uuid()::text NOT NULL,
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,

@@ -1,6 +1,6 @@
 {
-  "hash": "451b96b8c04a1a05b8b13e26caa38c4147e085a7b9decbb61e510c3dff290d55",
-  "shortId": "451b96b8c04a",
+  "hash": "ba7284e0393c577bc7e6cda1405d1314b5c4b2d9171f719ef73897da79f64af4",
+  "shortId": "ba7284e0393c",
   "schema": {
     "constraints": [
       {
@@ -2485,6 +2485,11 @@
       {
         "definition": "CREATE INDEX stock_events_tenant_product_idx ON stock_events USING btree (tenant_id, product_id, occurred_at)",
         "name": "stock_events_tenant_product_idx",
+        "table": "stock_events"
+      },
+      {
+        "definition": "CREATE INDEX stock_events_tenant_product_order_commit_idx ON stock_events USING btree (tenant_id, product_id, ((reference ->> 'orderId'::text))) WHERE (type = ANY (ARRAY['committed'::text, 'committed_late'::text]))",
+        "name": "stock_events_tenant_product_order_commit_idx",
         "table": "stock_events"
       },
       {

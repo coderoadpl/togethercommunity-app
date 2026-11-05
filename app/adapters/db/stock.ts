@@ -105,6 +105,7 @@ const applyCommit = async (
   return {
     productId: input.productId,
     outcome: input.outcome,
+    onHandBefore: current.onHand,
     onHandAfter,
     reservedAfter,
     lowStockThreshold: current.lowStockThreshold,
@@ -118,8 +119,8 @@ const orderAlreadyCommitted = async (tx: Executor, tenantId: string, productId: 
     .where(and(
       eq(stockEvents.tenantId, tenantId),
       eq(stockEvents.productId, productId),
-      inArray(stockEvents.type, ['committed', 'committed_late']),
-      sql`${stockEvents.reference}->>'orderId' = ${orderId}`,
+      sql`${stockEvents.type} IN ('committed', 'committed_late')`,
+      sql`(${stockEvents.reference} ->> 'orderId') = ${orderId}`,
     ))
     .limit(1);
   return row !== undefined;
@@ -130,6 +131,7 @@ const unchanged = async (tx: Executor, tenantId: string, productId: string): Pro
   return row === undefined ? null : {
     productId,
     outcome: 'unchanged',
+    onHandBefore: row.onHand,
     onHandAfter: row.onHand,
     reservedAfter: row.reserved,
     lowStockThreshold: row.lowStockThreshold,

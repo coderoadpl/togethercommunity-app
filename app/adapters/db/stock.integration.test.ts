@@ -148,6 +148,68 @@ describe('stock repository on Postgres', () => {
     expect((await eventTypes(productId)).filter((type) => type === 'committed_late')).toHaveLength(2);
   });
 
+  it('finishes a bundle commit and a concurrent reserve of the same products without a deadlock', async () => {
+    const [unreserved, reserved] = [await productFor('workspace', 2), await productFor('workspace', 2)].toSorted();
+    if (unreserved === undefined || reserved === undefined) throw new Error('Missing products');
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-commit', productIds: [reserved], expiresAt: later, quantity: 1, now });
+    const blocker = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await blocker.connect();
+    await observer.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query(
+        "INSERT INTO stock_reservations (tenant_id, product_id, checkout_snapshot_id, quantity, status, expires_at, created_at, updated_at) VALUES ($1, $2, $3, 1, 'active', $4, $4, $4)",
+        ['workspace', unreserved, 'lock-order-reserve', later],
+      );
+      let settledCount = 0;
+      const track = <T>(operation: Promise<T>) => Promise.allSettled([operation]).finally(() => { settledCount += 1; });
+      const waitForLockWaiters = async (waiters: number) => {
+        for (;;) {
+          expect(settledCount).toBe(0);
+          const waiting = await observer.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+          );
+          if ((waiting.rows[0]?.count ?? 0) >= waiters) return;
+        }
+      };
+      const reserving = track(repo.reserve('workspace', { checkoutSnapshotId: 'lock-order-reserve', productIds: [reserved, unreserved], expiresAt: later, quantity: 1, now }));
+      await waitForLockWaiters(1);
+      const committing = track(repo.commit('workspace', { checkoutSnapshotId: 'lock-order-commit', orderId: 'lock-order', productIds: [unreserved, reserved], now }));
+      await waitForLockWaiters(2);
+      await blocker.query('ROLLBACK');
+      const [[reserveOutcome], [commitOutcome]] = await Promise.all([reserving, committing]);
+      expect(reserveOutcome).toEqual({ status: 'fulfilled', value: { ok: true, value: { reservationIds: [expect.any(String), expect.any(String)] } } });
+      expect(commitOutcome).toEqual({ status: 'fulfilled', value: expect.any(Array) });
+      if (commitOutcome?.status === 'fulfilled') {
+        expect(commitOutcome.value.map((effect) => [effect.productId, effect.outcome]).toSorted()).toEqual([[reserved, 'committed'], [unreserved, 'committed_late']].toSorted());
+      }
+      expect(await level(reserved)).toMatchObject({ onHand: 1, reserved: 1 });
+      expect(await level(unreserved)).toMatchObject({ onHand: 1, reserved: 1 });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+  });
+
+  it('lets the order lookup of a commit without a snapshot use its partial index', async () => {
+    const client = new pg.Client({ connectionString: database.url });
+    await client.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL enable_seqscan = off');
+      const plan = await client.query<{ 'QUERY PLAN': string }>(
+        "EXPLAIN SELECT id FROM stock_events WHERE tenant_id = $1 AND product_id = $2 AND type IN ('committed', 'committed_late') AND (reference ->> 'orderId') = $3 LIMIT 1",
+        ['workspace', 'product', 'order'],
+      );
+      expect(plan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain('stock_events_tenant_product_order_commit_idx');
+    } finally {
+      await client.query('ROLLBACK');
+      await client.end();
+    }
+  });
+
   it('ends committed or released but never both when the expiry sweep races a commit', async () => {
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const productId = await productFor('workspace', 1);

@@ -3359,6 +3359,24 @@ describe('shipped checkout fulfilment', () => {
     expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(6648);
   });
 
+  it('records a fully discounted shipped product at the shipping fee and claims the coupon redemption', async () => {
+    const bundle = shippedPayment((lines) => lines.slice(0, 2));
+    const h = couponHarness({ coupon: { kind: 'percent', value: 100, maxRedemptions: 1 }, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
+    h.deps.products = bundle.deps.products;
+    if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+    h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+    event.checkoutSession.shippingCostCents = 1499;
+    event.checkoutSession.shipping = collectedShipping;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 1499, discountCents: 10300, fulfilmentStatus: 'to_pack', shipping: { amountCents: 1499 } });
+    expect(h.redemptions).toHaveLength(1);
+  });
+
   it('refuses a fully discounted shipped product once the coupon redemption limit is consumed', async () => {
     const bundle = shippedPayment((lines) => lines.slice(0, 2));
     const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });

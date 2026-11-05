@@ -237,6 +237,8 @@ describe('checkout with shipping', () => {
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({
       promotionCodeId: 'promotion-gift',
+      priceCents: 4900,
+      cancelUrl: expect.stringContaining('&code=GIFT'),
       shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Courier', amountCents: 1999, currency: 'PLN' } },
     });
     expect(h.snapshots).toHaveLength(1);

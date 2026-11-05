@@ -157,11 +157,15 @@ Checkout form documents — `/checkout/<productRef>` without `status=success`,
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
 the server middleware and the static hosting headers, with
-`connect-src 'self' https:`. Success, sign-in, member and Studio documents never
-list that origin. Once the map script has been injected, leaving the form
-document by any in-app navigation becomes a full document navigation, as on the
-analytics success document, so the map code never runs in sign-in or signed-in
-views. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
+`connect-src 'self' https:`. The page injects the map script and stylesheet only
+when the workspace has a Geowidget token, the buyer has chosen a parcel locker
+option, the checkout runs in live mode and the viewer holds no staff session
+(owner or admin) for the workspace (owner decision 2026-11-05), so the map code
+never runs next to a staff session or a Stripe test-mode purchase. Success,
+sign-in, member and Studio documents never list that origin. Once the map
+script has been injected, leaving the form document by any in-app navigation
+becomes a full document navigation, as on the analytics success document, so the
+map code never runs in sign-in or signed-in views. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
 No other directive changes: `connect-src 'self' https:` and
 `img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.

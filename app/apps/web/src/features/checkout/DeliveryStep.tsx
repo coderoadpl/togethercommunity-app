@@ -16,15 +16,15 @@ import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutPriceOption, FinePrint } from '../../theme.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
-import type { CheckoutEvent, CheckoutState } from './index.web.js';
+import type { CheckoutEvent, CheckoutState, GeowidgetAccess } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidgetToken, disabled }: {
+export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
   currency: string;
   language: 'pl' | 'en';
-  geowidgetToken: string | null;
+  geowidget: GeowidgetAccess;
   disabled: boolean;
 }) => {
   const t = useTranslations();
@@ -63,7 +63,10 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       )}
       {selected !== null && selected.pickupPoint === 'inpost_locker' ? (
         <Stack useFlexGap spacing="0.75rem" sx={{ mt: '0.5rem' }}>
-          {geowidgetToken === null ? null : <InpostGeowidget token={geowidgetToken} language={language} dispatch={dispatch} />}
+          {geowidget.status === 'map' ? <InpostGeowidget token={geowidget.token} language={language} dispatch={dispatch} /> : null}
+          {geowidget.status === 'withheld_for_staff' ? (
+            <Typography variant="body2" color="text.secondary" data-testid="checkout-locker-map-staff-hint">{t.shipping.lockerMapStaffHint}</Typography>
+          ) : null}
           <FormControl fullWidth error={codeInvalid}>
             <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
             <OutlinedInput

@@ -55,10 +55,12 @@ the link.
 
 The checkout page renders a **Delivery** step above the pay button with the
 active options and their prices. For a parcel locker option it shows a
-**Parcel locker code** input (upper-cased, 4–12 letters or digits) and, when the
-workspace has a Geowidget token, the InPost map. Choosing a locker on the map
-fills the code and shows the locker name and address. The pay button stays
-disabled until an option, and a valid code when the option needs one, is chosen.
+**Parcel locker code** input (upper-cased, 4–12 letters or digits) and the
+InPost map under the rule in
+[Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).
+Choosing a locker on the map fills the code and shows the locker name and
+address. The pay button stays disabled until an option, and a valid code when
+the option needs one, is chosen.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
@@ -155,10 +157,20 @@ and `fulfilment_status`.
 
 ## Content security policy for the parcel locker map
 
-The map loads `https://geowidget.inpost.pl/inpost-geowidget.js` (with `defer`)
-and `https://geowidget.inpost.pl/inpost-geowidget.css` on demand, only when a
-locker option is chosen and the workspace has a token. Following the owner
-decision of 2026-11-05, the checkout form documents add
+Following the owner decision of 2026-11-05, the page injects
+`https://geowidget.inpost.pl/inpost-geowidget.js` (with `defer`) and
+`https://geowidget.inpost.pl/inpost-geowidget.css` on demand, only when all of
+these hold: the workspace has a Geowidget token, the buyer has chosen a parcel
+locker option, the checkout runs in live mode (the Stripe test-mode switch is
+off), and the viewer holds no staff session (owner or admin) for the workspace.
+The page learns the last two from `GET /api/public/payment-config`: `canTest`
+is true for a signed-in owner or admin of the workspace, and `testEnabled` for
+the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
+and `/offer/*?checkout=together` for test-mode purchases, never load the map:
+their delivery step shows only the locker code input with the hint "The
+parcel-locker map is available to buyers; enter the locker code."
+
+Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:
 
 - `/checkout/<productRef>` without `status=success`;

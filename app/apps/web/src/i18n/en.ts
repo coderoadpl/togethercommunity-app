@@ -643,6 +643,7 @@ export const en: Messages = {
     lockerCodeHint: 'Pick a locker on the map or type its code, for example WAW01M.',
     lockerCodeInvalid: 'A parcel locker code has 4–12 letters or digits.',
     lockerSelected: 'Selected parcel locker',
+    lockerMapStaffHint: 'The parcel-locker map is available to buyers; enter the locker code.',
     chooseDelivery: 'Choose a delivery option to continue.',
     noDeliveryOptions: 'Delivery is not available for this product right now.',
     freeOrderUnavailable: 'Delivery is not available for free orders',

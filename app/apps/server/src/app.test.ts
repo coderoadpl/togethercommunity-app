@@ -9446,7 +9446,7 @@ describe('unlisted and free checkout', () => {
     expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
   });
 
-  it('commits the last tracked piece of a free checkout and refuses the next buyer with sold_out', async () => {
+  const trackedFreeCheckout = () => {
     const base = deps({ products: [hidden] });
     const stock = createStockRepositoryFake();
     stock.track('t-acme', hidden.id, 1);
@@ -9459,17 +9459,45 @@ describe('unlisted and free checkout', () => {
       supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',
       privacyUrl: 'https://acme.example/privacy', defaultHomeSpaceId: null,
     });
-    const app = buildApp(base);
-    const start = (email: string) => app.request(API_PATHS.checkoutSession, {
+    const start = (app: ReturnType<typeof buildApp>, email: string) => app.request(API_PATHS.checkoutSession, {
       method: 'POST', headers,
       body: JSON.stringify({ productId: hidden.id, email, termsAccepted: true }),
     });
-    expect((await start('first@example.com')).status).toBe(200);
+    return { base, stock, start };
+  };
+
+  it('commits the last tracked piece of a free checkout and refuses the next buyer with sold_out', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    const app = buildApp(base);
+    expect((await start(app, 'first@example.com')).status).toBe(200);
     expect(stock.levels.get('t-acme', hidden.id)).toMatchObject({ onHand: 0, reserved: 0 });
     expect(stock.events.map((event) => event.type)).toContain('committed_late');
-    const second = await start('second@example.com');
+    const second = await start(app, 'second@example.com');
     expect(second.status).toBe(409);
     expect(await second.json()).toMatchObject({ ok: false, error: { code: 'sold_out' } });
+  });
+
+  it('returns the free fulfilment failure and logs the release failure when releasing the hold throws', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    base.logger = logger;
+    const response = await start(buildApp(base), 'first@example.com');
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Checkout snapshot not found' } });
+    expect(release).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
+  });
+
+  it('releases the free checkout hold when fulfilment throws', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    base.processedPaymentEvents.claim = async () => { throw new Error('Payment event storage unavailable'); };
+    const response = await start(buildApp(base), 'first@example.com');
+    expect(response.status).toBe(500);
+    expect(stock.levels.get('t-acme', hidden.id)).toMatchObject({ onHand: 1, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'released']);
   });
 });
 
@@ -10000,6 +10028,23 @@ it.each(['consent capture', 'coupon session'] as const)('surfaces the %s write f
   });
   expect(response.status).toBe(500);
   expect(surfaced).toEqual([original]);
+  expect(release).toHaveBeenCalledOnce();
+  expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
+  expect(h.orders).toHaveLength(0);
+});
+
+it('returns the simulated coupon fulfilment failure and logs the release failure when releasing the hold throws', async () => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+  const logger = { error: vi.fn(), warn: vi.fn() };
+  h.base.stock = stock.repository;
+  h.base.logger = logger;
+  if (h.base.checkoutSnapshots !== undefined) h.base.checkoutSnapshots.findById = async () => null;
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Checkout snapshot not found' } });
   expect(release).toHaveBeenCalledOnce();
   expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
   expect(h.orders).toHaveLength(0);

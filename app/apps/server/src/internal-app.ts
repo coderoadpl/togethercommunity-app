@@ -1096,7 +1096,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
               'simulated',
             );
             if (!fulfilled.ok) {
-              await releaseCheckoutStock(tenant.value.tenant.id, hold.value, 'checkout_failed', deps);
+              const tenantId = tenant.value.tenant.id;
+              await cleanUpFailedCheckout([() => releaseCheckoutStock(tenantId, hold.value, 'checkout_failed', deps)], deps.logger);
               result = fulfilled;
             } else {
               const order = await deps.paymentRefunds.findOrderByProviderObjectIds(

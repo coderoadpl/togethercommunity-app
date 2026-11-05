@@ -64,6 +64,7 @@ import {
   submitSurvey,
   listLessonEditions,
   authLinkBaseUrl,
+  cleanUpFailedCheckout,
   fulfillStripeWebhook,
   validateStripeInvoiceTenant,
   getPaymentConfig,
@@ -804,16 +805,26 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
           },
         },
       };
-      const fulfilled = await fulfillStripeWebhook(
-        tenant.value.tenant,
-        event,
-        { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
-        'simulated',
+      const tenantId = tenant.value.tenant.id;
+      const { checkoutSnapshotId } = session.value;
+      const releaseHold = () => cleanUpFailedCheckout(
+        checkoutSnapshotId === undefined ? [] : [() => deps.stock.release(tenantId, { checkoutSnapshotId, reason: 'checkout_failed', now: deps.clock.nowIso() })],
+        deps.logger,
       );
+      let fulfilled: Awaited<ReturnType<typeof fulfillStripeWebhook>>;
+      try {
+        fulfilled = await fulfillStripeWebhook(
+          tenant.value.tenant,
+          event,
+          { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+          'simulated',
+        );
+      } catch (cause) {
+        await releaseHold();
+        throw cause;
+      }
       if (!fulfilled.ok) {
-        if (session.value.checkoutSnapshotId !== undefined) {
-          await deps.stock.release(tenant.value.tenant.id, { checkoutSnapshotId: session.value.checkoutSnapshotId, reason: 'checkout_failed', now: deps.clock.nowIso() });
-        }
+        await releaseHold();
         return respondPublic(fulfilled);
       }
     }

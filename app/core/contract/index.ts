@@ -1,6 +1,7 @@
 export * from './envelope.js';
 export * from './http-status.js';
 export * from './routes.js';
+export * from './meta-capi.js';
 export {
   MEMBER_ROUTE_PATHS,
   PUBLIC_OFFER_ANCHOR,

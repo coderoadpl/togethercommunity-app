@@ -1,6 +1,6 @@
 {
-  "hash": "7c01ca39a25056227493acd4961700fed5021eae8f2967cfa331334e9d324218",
-  "shortId": "7c01ca39a250",
+  "hash": "6f989dc04926fc40465c699dba12e1e3c81e8b376d6cdc4442c90bf4230c372f",
+  "shortId": "6f989dc04926",
   "schema": {
     "constraints": [
       {
@@ -79,6 +79,11 @@
         "table": "posts"
       },
       {
+        "definition": "CHECK ((decision = ANY (ARRAY['granted'::text, 'denied'::text, 'withdrawn'::text])))",
+        "name": "meta_capi_consent_evidence_decision_check",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
         "name": "tenants_default_language_check",
         "table": "tenants"
@@ -102,6 +107,11 @@
         "definition": "CHECK ((length(comment) <= 2000))",
         "name": "survey_responses_comment_check",
         "table": "survey_responses"
+      },
+      {
+        "definition": "CHECK ((meta_capi_consent = ANY (ARRAY['undecided'::text, 'granted'::text, 'denied'::text])))",
+        "name": "orders_meta_capi_consent_check",
+        "table": "orders"
       },
       {
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
@@ -172,6 +182,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
         "name": "email_outbox_status_check",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['sent'::text, 'blocked'::text, 'expired'::text, 'failed'::text])))",
+        "name": "meta_capi_events_status_check",
+        "table": "meta_capi_events"
       },
       {
         "definition": "CHECK ((type = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))",
@@ -337,6 +352,16 @@
         "definition": "FOREIGN KEY (marketing_consent_row_id) REFERENCES marketing_consents(id) ON DELETE CASCADE",
         "name": "consent_confirmation_tokens_marketing_consent_row_id_marketing_",
         "table": "consent_confirmation_tokens"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_evidence_order_id_fkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_order_id_fkey",
+        "table": "meta_capi_outbox"
       },
       {
         "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT",
@@ -745,6 +770,21 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_evidence_tenant_id_fkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_events_tenant_id_fkey",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_tenant_id_fkey",
+        "table": "meta_capi_outbox"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "notification_fanout_jobs_tenant_id_tenants_id_fk",
         "table": "notification_fanout_jobs"
       },
@@ -1089,6 +1129,21 @@
         "table": "product_grants"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_consent_tenant_order_fk",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_events_tenant_order_fk",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id) ON DELETE CASCADE",
+        "name": "meta_capi_outbox_tenant_order_fk",
+        "table": "meta_capi_outbox"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1137,6 +1192,11 @@
         "definition": "FOREIGN KEY (tenant_id, survey_id) REFERENCES surveys(tenant_id, id) ON DELETE CASCADE",
         "name": "survey_responses_survey_fk",
         "table": "survey_responses"
+      },
+      {
+        "definition": "FOREIGN KEY (transaction_id) REFERENCES orders(id) ON DELETE CASCADE",
+        "name": "meta_capi_events_transaction_id_fkey",
+        "table": "meta_capi_events"
       },
       {
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
@@ -1589,6 +1649,11 @@
         "table": "fiscal_artifacts"
       },
       {
+        "definition": "PRIMARY KEY (order_id)",
+        "name": "meta_capi_outbox_pkey",
+        "table": "meta_capi_outbox"
+      },
+      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -1709,6 +1774,11 @@
         "table": "marketing_member_sync_jobs"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, order_id, decision)",
+        "name": "meta_capi_consent_evidence_pkey",
+        "table": "meta_capi_consent_evidence"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, order_id, product_id, issued_count)",
         "name": "order_issue_events_pkey",
         "table": "order_issue_events"
@@ -1727,6 +1797,11 @@
         "definition": "PRIMARY KEY (tenant_id, survey_id, revision)",
         "name": "survey_events_pkey",
         "table": "survey_events"
+      },
+      {
+        "definition": "PRIMARY KEY (transaction_id)",
+        "name": "meta_capi_events_pkey",
+        "table": "meta_capi_events"
       },
       {
         "definition": "UNIQUE (email)",
@@ -2256,6 +2331,16 @@
         "definition": "CREATE INDEX members_tenant_banned_idx ON members USING btree (tenant_id, banned_at) WHERE (banned_at IS NOT NULL)",
         "name": "members_tenant_banned_idx",
         "table": "members"
+      },
+      {
+        "definition": "CREATE INDEX meta_capi_events_tenant_recorded_idx ON meta_capi_events USING btree (tenant_id, recorded_at)",
+        "name": "meta_capi_events_tenant_recorded_idx",
+        "table": "meta_capi_events"
+      },
+      {
+        "definition": "CREATE INDEX meta_capi_outbox_due_idx ON meta_capi_outbox USING btree (tenant_id, available_at)",
+        "name": "meta_capi_outbox_due_idx",
+        "table": "meta_capi_outbox"
       },
       {
         "definition": "CREATE INDEX notification_fanout_jobs_due_idx ON notification_fanout_jobs USING btree (status, next_attempt_at)",
@@ -3560,6 +3645,14 @@
             "type": "text"
           },
           {
+            "default": "'undecided'::text",
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "'{}'::jsonb",
             "generated": "",
             "identity": "",
@@ -3653,6 +3746,38 @@
             "identity": "",
             "name": "member_id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_source",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_text_version",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "meta_capi_consent_withdrawn_at",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -4095,6 +4220,14 @@
             "default": "false",
             "generated": "",
             "identity": "",
+            "name": "analytics_meta_capi_enabled",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
             "name": "auto_issue_invoices",
             "notNull": true,
             "type": "boolean"
@@ -4152,6 +4285,46 @@
             "generated": "",
             "identity": "",
             "name": "analytics_consent_cookie_value",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_accept_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_body",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_decline_label",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_consent_heading",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "analytics_meta_capi_test_event_code",
             "notNull": false,
             "type": "text"
           },
@@ -6505,6 +6678,91 @@
           }
         ],
         "name": "telemetry_outbox"
+      },
+      {
+        "columns": [
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "available_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "consent_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fbp",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "ip",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_snapshot",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_version",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_agent",
+            "notNull": false,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_outbox"
       },
       {
         "columns": [
@@ -10871,6 +11129,99 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "consent_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_time",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fbtrace_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "fields_sent",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "recorded_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sent_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "transaction_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "consent_row_id",
             "notNull": false,
             "type": "text"
@@ -12725,6 +13076,67 @@
           }
         ],
         "name": "tenant_documents"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "decision",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "source",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_snapshot",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "text_version",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "meta_capi_consent_evidence"
       },
       {
         "columns": [

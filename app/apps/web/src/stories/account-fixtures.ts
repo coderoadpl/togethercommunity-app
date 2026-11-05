@@ -16,7 +16,7 @@ const ok = (value: unknown) => ({ ok: true, value });
 const erasure = (status: 'open' | 'completed') => ({ id: 'erasure-demo', tenantId: 'tenant-studio', memberId: me.tenant.memberId, requestedAt: '2026-06-20T12:00:00.000Z', createdAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', status, resolvedAt: status === 'open' ? null : '2026-06-30T12:00:00.000Z', resolutionNote: null, reason: null, resolvedByUserId: null });
 
 export const accountFixture = (scenario: string, avatarUrl?: string) => {
-  const calls: Record<string, unknown> = { ...fixture.calls, 'listAccountSessions:[]': ok({ sessions: [accountSessions[1]] }) };
+  const calls: Record<string, unknown> = { ...fixture.calls, 'listAccountSessions:[]': ok({ sessions: [accountSessions[1]] }), 'metaCapiConsents:[]': ok({ consents: [] }) };
   let route = '/account';
   if (scenario.startsWith('Security')) route += '?tab=security';
   if (scenario.startsWith('Notifications')) route += '?tab=notifications';

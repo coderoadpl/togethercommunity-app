@@ -17,6 +17,7 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: API_PATHS.publicMetaCapiConsent, methods: ['POST'], mutating: true, why: 'Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes' },
   { path: '/offer/:slug', methods: ['GET'], mutating: false, why: 'Sales-link metadata and checkout redirect without creating sessions for crawlers' },
   { path: API_PATHS.directSalesLinkCheckout, methods: ['POST'], mutating: true, why: 'Rate-limited direct sales-link checkout session creation' },
   { path: API_PATHS.publicOrderQr, methods: ['GET'], mutating: false, why: 'Opaque order token QR image without order or buyer details; verification requires staff authorization' },

@@ -1,6 +1,8 @@
 import { tenantTeamAddSchema, tenantTeamRemoveSchema } from '#core/contract/index.js';
 import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/index.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
+import { registerMetaCapiRoutes } from './meta-capi-routes.js';
+import { dispatchMetaCapi } from '#core/server/usecases/meta-capi.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
@@ -796,7 +798,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     await deps.drainNotificationFanout();
-    return respond(await deps.dispatchEmails('cron'));
+    const emails = await deps.dispatchEmails('cron');
+    if (deps.metaCapi) await dispatchMetaCapi(deps.metaCapi);
+    return respond(emails);
   });
 
   app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
@@ -1322,6 +1326,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSurveyRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
+  registerMetaCapiRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

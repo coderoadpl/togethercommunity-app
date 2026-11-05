@@ -10,3 +10,4 @@ export { surveyContracts } from '#core/contract/index.js';
 export { salesLinkActions } from './sales-links.js';
 export { salesLinkContracts } from '#core/contract/index.js';
 export * from './order-verification.js';
+export { metaCapiActions } from './meta-capi.js';

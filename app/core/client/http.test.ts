@@ -53,6 +53,27 @@ describe('createApiClient', () => {
     await expect(client.deleteProductDraft({ productId: 'draft-1' })).resolves.toEqual(ok({ deleted: true }));
   });
 
+  it('reads and writes product stock through the typed contract and surfaces sold_out', async () => {
+    const stock = { productId: 'poster/1', onHand: 2, reserved: 1, available: 1, lowStockThreshold: 1, lowStockNotifiedAt: null, low: true, soldOut: false, updatedAt: '2026-11-05T10:00:00.000Z' };
+    const calls: Array<[string, string | undefined, unknown]> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push([String(input), init?.method, init?.body]);
+      if (String(input).endsWith('/adjust')) return jsonResponse({ ok: false, error: { code: 'sold_out', message: '"Poster" is sold out' } }, 409);
+      return jsonResponse({ ok: true, data: { stock } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.getProductStock('poster/1')).resolves.toEqual(ok({ stock }));
+    await expect(client.enableProductStock({ productId: 'poster/1', onHand: 2, lowStockThreshold: 1 })).resolves.toEqual(ok({ stock }));
+    await expect(client.setProductStockThreshold({ productId: 'poster/1', lowStockThreshold: 1 })).resolves.toEqual(ok({ stock }));
+    await expect(client.adjustProductStock({ productId: 'poster/1', delta: -1, reason: 'damaged' })).resolves.toEqual({ ok: false, error: { code: 'sold_out', message: '"Poster" is sold out' } });
+    expect(calls).toEqual([
+      ['https://api.example.test/api/products/poster%2F1/stock', 'GET', null],
+      ['https://api.example.test/api/products/stock/enable', 'POST', JSON.stringify({ productId: 'poster/1', onHand: 2, lowStockThreshold: 1 })],
+      ['https://api.example.test/api/products/stock/threshold', 'POST', JSON.stringify({ productId: 'poster/1', lowStockThreshold: 1 })],
+      ['https://api.example.test/api/products/stock/adjust', 'POST', JSON.stringify({ productId: 'poster/1', delta: -1, reason: 'damaged' })],
+    ]);
+  });
+
   it.each(['live', 'test'] as const)('selects the %s KSeF credential slot for a connection test', async (mode) => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('https://api.example.test/api/integrations/ksef/test');

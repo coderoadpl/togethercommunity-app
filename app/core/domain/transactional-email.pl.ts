@@ -148,4 +148,12 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       text: `Reputacja nadawcy e-mail platformy ${tenantName}: ${status}.\nOdsetek twardych odbić (hard bounce): ${hardBounceRate}\nOdsetek zgłoszeń spamu: ${complaintRate}\nOkres: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
   },
+  stockLowEmail: {
+    noThreshold: 'nie ustawiono',
+    render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({
+      subject: oversold ? `[${tenantName}] Sprzedano ponad stan: ${productTitle}` : `[${tenantName}] Niski stan magazynowy: ${productTitle}`,
+      html: `<p>${oversold ? `Produkt ${productTitleHtml} został sprzedany po wyczerpaniu zapasu.` : `Kończy się zapas produktu ${productTitleHtml}.`}</p><p>Dostępne: ${available}<br>Próg niskiego stanu: ${threshold}</p>${oversold ? '<p>Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.</p>' : ''}<p><a href="${studioUrlHtml}">Otwórz produkt</a></p>`,
+      text: `${oversold ? `Produkt ${productTitle} został sprzedany po wyczerpaniu zapasu.` : `Kończy się zapas produktu ${productTitle}.`}\nDostępne: ${available}\nPróg niskiego stanu: ${threshold}\n${oversold ? 'Opłacone zamówienie wpłynęło, gdy nie było już żadnej sztuki. Sprawdź zamówienie i popraw stan magazynowy.\n' : ''}${studioUrl}`,
+    }),
+  },
 };

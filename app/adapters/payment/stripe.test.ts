@@ -290,6 +290,20 @@ describe('stripeCancelAlreadySettled', () => {
 });
 
 describe('stripeCheckoutSessionParams', () => {
+  it('maps the checkout expiry to Stripe expires_at in epoch seconds and omits it by default', () => {
+    const input = {
+      tenantId: 'tenant-a',
+      productId: 'product-1',
+      productName: 'Printed poster',
+      priceCents: 4900,
+      currency: 'PLN',
+      successUrl: 'https://alpha.example.com/checkout/product-1?status=success',
+      cancelUrl: 'https://alpha.example.com/checkout/product-1?status=cancelled',
+    };
+    expect(stripeCheckoutSessionParams({ ...input, expiresAt: '2026-11-05T10:30:00.000Z' }).expires_at).toBe(1793874600);
+    expect('expires_at' in stripeCheckoutSessionParams(input)).toBe(false);
+  });
+
   it('maps checkout intent into hosted payment fields and fulfillment metadata', () => {
     const params = stripeCheckoutSessionParams({
       tenantId: 'tenant-a',

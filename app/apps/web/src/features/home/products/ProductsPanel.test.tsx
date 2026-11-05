@@ -11,6 +11,7 @@ import {
   type Product,
   type ProductAccessIssues,
   type ProductPrice,
+  type ProductStock,
   type ProductDownloadAssetMetadata,
   type StaffSpace,
 } from '#core/domain/index.js';
@@ -62,6 +63,7 @@ const renderProductsPanel = async (
   seededPrices = initialPrices,
   seededAssets: ProductDownloadAssetMetadata[] = [],
   seededSpaces: StaffSpace[] = [],
+  seededStock: ProductStock[] = [],
 ) => {
   let products = [...seededProducts];
   let prices = [...seededPrices];
@@ -71,7 +73,7 @@ const renderProductsPanel = async (
   const created: Product[] = [];
 
   server.use(
-    http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
+    http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products, stock: seededStock } })),
     http.get('/api/products/access-issues', () => HttpResponse.json({ ok: true, data: { issues } })),
     http.post('/api/products', async ({ request }) => {
       const input = newProductSchema.parse(await request.json());
@@ -118,6 +120,9 @@ const renderProductsPanel = async (
     }),
     http.get('/api/products/:productId/prices', () =>
       HttpResponse.json({ ok: true, data: { prices } }),
+    ),
+    http.get('/api/products/:productId/stock', () =>
+      HttpResponse.json({ ok: true, data: { stock: null } }),
     ),
     http.get('/api/products/:productId/downloads', () =>
       HttpResponse.json({ ok: true, data: { assets, personalisationMaxBytes: 20 * 1024 * 1024 } }),
@@ -343,6 +348,64 @@ describe('ProductsPanel', () => {
         coverUrl: 'https://cdn.test/cover.jpg',
       }),
     ]);
+  });
+
+  it('starts stock tracking right after creating a physical product', async () => {
+    const user = userEvent.setup();
+    const enabled: unknown[] = [];
+    await renderProductsPanel([], '/panel/products/new');
+    server.use(http.post('/api/products/stock/enable', async ({ request }) => {
+      enabled.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { stock: { productId: 'product-2', onHand: 5, reserved: 0, available: 5, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T11:00:00.000Z' } } });
+    }));
+
+    await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
+    await user.type(screen.getByLabelText(en.products.titleLabel), 'Printed poster');
+    await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
+    expect(screen.getByRole('button', { name: en.products.create })).toBeDisabled();
+    await user.type(screen.getByTestId('stock-on-hand-input'), '5');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
+
+    expect(await screen.findByRole('heading', { name: 'Printed poster', level: 1 })).toBeInTheDocument();
+    expect(enabled).toEqual([{ productId: 'product-2', onHand: 5, lowStockThreshold: null }]);
+    expect(await screen.findByTestId('product-stock-section')).toBeInTheDocument();
+  });
+
+  it('stays on the create page with an error when stock tracking fails after creating a physical product', async () => {
+    const user = userEvent.setup();
+    const { router, created } = await renderProductsPanel([], '/panel/products/new');
+    server.use(http.post('/api/products/stock/enable', () =>
+      HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Stock storage unavailable' } }, { status: 500 })));
+
+    await user.click(await screen.findByRole('combobox', { name: en.products.typeLabel }));
+    await user.click(screen.getByRole('option', { name: productTypeLabel('physical', en) }));
+    await user.type(screen.getByLabelText(en.products.titleLabel), 'Printed poster');
+    await user.click(screen.getByRole('switch', { name: en.products.stockTrack }));
+    await user.type(screen.getByTestId('stock-on-hand-input'), '5');
+    await user.click(screen.getByRole('button', { name: en.products.create }));
+
+    const alert = await screen.findByTestId('product-stock-enable-error');
+    expect(alert).toHaveTextContent(en.products.stockEnableAfterCreateFailed);
+    expect(alert).toHaveTextContent(en.errors.messageInternal);
+    expect(router.state.location.pathname).toBe('/panel/products/new');
+    expect(screen.getByRole('button', { name: en.products.create })).toBeDisabled();
+    expect(created).toHaveLength(1);
+
+    await user.click(within(alert).getByRole('button', { name: en.products.stockOpenProduct }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/products/product-2'));
+    expect(await screen.findByText(en.products.stockNotTracked)).toBeInTheDocument();
+  });
+
+  it('shows the stock column only for tracked products in the list', async () => {
+    const poster: Product = {
+      id: 'poster', tenantId: 't1', type: 'physical', deliveryMethod: 'pickup', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', published: true, accessItems: [], legacyId: null, createdAt: '2026-07-12T09:00:00.000Z',
+    };
+    const stock: ProductStock = { productId: 'poster', onHand: 12, reserved: 1, available: 11, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T10:00:00.000Z' };
+    await renderProductsPanel([], '/panel/products', [...initialProducts, poster], initialPrices, [], [], [stock]);
+    expect(await screen.findByTestId('product-stock-poster')).toHaveTextContent('12 · 1 reserved');
+    expect(screen.queryByTestId('product-stock-draft-1')).not.toBeInTheDocument();
   });
 
   it('continues the onboarding product flow at the price editor', async () => {

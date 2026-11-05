@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ok, salesLinkSchema, tenantSettingsSchema } from '#core/domain/index.js';
+import { ok, salesLinkSchema, tenantSettingsSchema, type EmailOutboxPayload } from '#core/domain/index.js';
 
 import type {
   Member,
@@ -11,7 +11,8 @@ import type {
   ProductPrice,
 } from '#core/domain/index.js';
 
-import type { AuthPort, ProductRepository, PurchaseRepository } from '../ports.js';
+import type { AuthPort, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
 const product = (id: string, tenantId: string, published: boolean): Product => ({
@@ -117,6 +118,16 @@ const fakeAuth = (): AuthPort => ({
   createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
 });
 
+const fakeTenants = (): TenantRepository => ({
+  findById: async (tenantId) => ({ id: tenantId, slug: tenantId, name: `Workspace ${tenantId}`, status: 'active', plan: 'hosted', contentVersion: 1 }),
+  findBySlug: async () => null,
+  findSole: async () => null,
+  findSettings: async () => null,
+  updateSettings: async (_tenantId, settings) => settings,
+  createTenantWithOwnerGrant: async () => null,
+  hasAny: async () => true,
+});
+
 const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
   const purchases = fakePurchases();
   const members: Member[] = [];
@@ -203,6 +214,12 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
     },
     ids: { nextId: () => `id-${++sequence}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
+    tenants: fakeTenants(),
+    tenantDomains: { listByTenant: async () => [] },
+    logger: { warn: () => undefined },
+    appBaseUrl: 'https://together.example.com',
+    baseDomain: 'together.example.com',
+    singleTenantMode: false,
   };
 
   return { deps, purchases, orders, subscriptions, grants, members };
@@ -296,13 +313,15 @@ const bundleHarness = () => {
   h.deps.salesLinks = { list: async () => [link], findById: async (tenantId, id) => tenantId === link.tenantId && id === link.id ? link : null, findBySlug: async () => link, save: async (_, next) => ok(next), delete: async () => ok(undefined) };
   let transactionCalls = 0;
   let rejectOrder = false;
+  const queued: { to: string; payload: EmailOutboxPayload }[] = [];
+  const emailOutbox = { enqueue: async (message: { id: string; to: string; payload: EmailOutboxPayload }) => { queued.push({ to: message.to, payload: message.payload }); return ok({ id: message.id }); } };
   h.deps.paymentTransaction = { run: async (operation) => {
     transactionCalls += 1;
     const membersBefore = [...h.members];
     const grantsBefore = new Map(h.grants);
     const ordersBefore = [...h.orders];
     try {
-      return await operation({ members: h.deps.members, grants: h.deps.grants, orders: { ...h.deps.orders, create: async (tenantId, order) => {
+      return await operation({ members: h.deps.members, grants: h.deps.grants, ...(h.deps.stock === undefined ? {} : { stock: h.deps.stock }), emailOutbox, orders: { ...h.deps.orders, create: async (tenantId, order) => {
         if (rejectOrder) throw new Error('Order write failed');
         await h.deps.orders.create(tenantId, order);
       } } });
@@ -314,7 +333,7 @@ const bundleHarness = () => {
       throw error;
     }
   } };
-  return { ...h, transactionCalls: () => transactionCalls, rejectOrderWrite: () => { rejectOrder = true; } };
+  return { ...h, queued, transactionCalls: () => transactionCalls, rejectOrderWrite: () => { rejectOrder = true; } };
 };
 
 it('simulates one mixed-rate bundle payment and grants only its digital products in one transaction', async () => {
@@ -362,6 +381,35 @@ it('records a standalone physical purchase without creating any access grant', a
   expect(h.orders[0]).toMatchObject({ salesLinkId: null, amountCents: 1050, lines: [{ productId: 'print', issuedCount: 0 }] });
 });
 
+it('alerts staff about low stock from a simulated purchase like the paid webhook does', async () => {
+  const h = bundleHarness();
+  const stock = createStockRepositoryFake();
+  stock.track('workspace', 'print', 2, 1);
+  h.deps.stock = stock.repository;
+  h.deps.tenantAccess = { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.test', staffRole: 'owner', language: 'en' }] };
+  expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print' }, h.deps)).toMatchObject({ ok: true });
+  expect(stock.levels.get('workspace', 'print')).toMatchObject({ onHand: 1, reserved: 0, lowStockNotifiedAt: '1998-07-12T00:00:00.000Z' });
+  expect(h.queued).toEqual([{ to: 'owner@example.test', payload: expect.objectContaining({ kind: 'stock-low', available: 1, threshold: 1, oversold: false, productTitle: 'Product print' }) }]);
+  expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
+});
+
+it('records the order before locking stock, in the same order as the paid webhook', async () => {
+  const h = bundleHarness();
+  const stock = createStockRepositoryFake();
+  stock.track('workspace', 'print', 1);
+  const steps: string[] = [];
+  const orders = h.deps.orders;
+  h.deps.orders = { ...orders, create: async (tenantId, order) => { steps.push('order'); await orders.create(tenantId, order); } };
+  h.deps.stock = {
+    ...stock.repository,
+    reserve: async (tenantId, input) => { steps.push('reserve'); return stock.repository.reserve(tenantId, input); },
+    commit: async (tenantId, input) => { steps.push('commit'); return stock.repository.commit(tenantId, input); },
+  };
+  expect(await simulatePurchase('workspace', { email: 'buyer@example.test', productId: 'print', salesLinkId: 'link' }, h.deps)).toMatchObject({ ok: true });
+  expect(steps).toEqual(['order', 'reserve', 'commit']);
+  expect(stock.levels.get('workspace', 'print')).toMatchObject({ onHand: 0, reserved: 0 });
+});
+
 describe('simulated shipped purchase', () => {
   const shippedHarness = () => {
     const shipped: Product = { ...product('accessory', 't-acme', true), type: 'physical', deliveryMethod: 'shipping', priceCents: 4900, vatRate: 23 };
@@ -373,7 +421,7 @@ describe('simulated shipped purchase', () => {
       ] }),
       updateSettings: async (_tenantId, value) => value, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
     };
-    h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants }) };
+    h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
     return h;
   };
 

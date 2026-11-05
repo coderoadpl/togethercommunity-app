@@ -4,6 +4,8 @@ import { setupServer } from 'msw/node';
 import pkg from '../../../../package.json' with { type: 'json' };
 
 export const server = setupServer(
+  http.get('*/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [] } })),
+  http.get('*/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets: [], stripeMode: null, stripeWebhookUrl: 'https://example.org/api/webhooks/stripe' } })),
   http.get('*/api/my/products', () =>
     HttpResponse.json({ ok: true, data: { products: [] } }),
   ),

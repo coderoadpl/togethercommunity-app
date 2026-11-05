@@ -48,6 +48,35 @@ never paste literal tokens into shell history or shared command output. Copy fla
 kebab case, for example `--analytics-meta-capi-consent-heading`; an empty string
 restores the default.
 
+## Studio and buyer experience
+
+In **Studio → Settings → Analytics**, configure CAPI next to the Meta pixel
+ID. The toggle, test event code and four consent-copy fields save with the
+analytics form. Empty copy fields restore the defaults shown as placeholders.
+The separate write-only token card saves or removes the encrypted secret and
+shows only whether it is configured. Only workspace owners can manage it.
+
+On `/checkout/<slug>?status=success` and `/offer/<slug>?status=success`, an eligible
+paid order with no decision opens an accessible consent dialog over the return
+page. Accept and decline have equal visual weight. Neither is preselected;
+Escape or the backdrop closes the dialog without recording a choice. Dismissal
+is remembered for that browser tab session; a later session can ask again only
+while the order remains undecided. The expandable field list and privacy-policy
+link are available before choosing.
+
+Either choice closes the dialog immediately; the purchase never waits for the
+write request. The request includes the current `_fbp` cookie when available.
+A failed write shows an error and clears the session dismissal marker so that
+reloading can retry with fresh consent text. Browser pixel behavior is unchanged.
+
+Members can review decisions per order and withdraw under **Account →
+Notifications → Purchase sharing with Meta**. Guests return to the original
+purchase-success link containing `session_id` to withdraw: the return page
+shows granted consent and a withdrawal action, including when CAPI has since
+been disabled. This uses the existing session credential, not the staff order
+verification page. Preserve that success link; there is no separate guest
+order page. Withdrawal stops future sends, not data already delivered to Meta.
+
 ## Consent and access
 
 The paid checkout status response can contain `metaCapi`: enabled, the current
@@ -70,7 +99,7 @@ preflight.
 A decision is once per order. Repeated or contradictory decisions return the
 original state without creating another job. Withdrawal is idempotent and
 permanent for that order. It sets the withdrawal timestamp, cancels pending work,
-and prevents regranting. Accounts list their grants with
+and prevents regranting. Accounts list their recorded decisions with
 `GET /api/me/meta-capi/consents` and withdraw with
 `POST /api/me/meta-capi/withdraw` and `{ "orderId": "..." }`; the repository checks
 the signed-in member's ownership. Guests can withdraw with the order-link token
@@ -143,6 +172,16 @@ withdrawal. Consent/evidence retention follows workspace data-retention policy;
 this feature does not invent an automatic retention period. Before enabling it,
 the controller must document specific evidence-retention periods, recipient
 agreements, international transfers and the procedure for data-subject requests.
+
+## Local verification
+
+Run `pnpm run check`, `pnpm run db:up`, `pnpm run smoke` and `pnpm run visual`.
+The focused browser specification runs with `pnpm exec tsx scripts/meta-capi-e2e.ts`.
+It creates and removes its own local PostgreSQL database, builds and starts the
+real SPA/API, blocks non-local browser requests, and dispatches through a fake
+Meta gateway. It covers decline without an outbox job, acceptance with one job
+and a sent receipt, Escape without a decision, a disabled tenant, and guest
+withdrawal after disabling CAPI. No Meta access token or external API is used.
 
 ## Verification before enabling production
 

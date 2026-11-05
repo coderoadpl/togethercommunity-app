@@ -129,16 +129,12 @@ export interface CheckoutStockHold {
 export interface CheckoutStockDeps {
   stock?: StockRepository | undefined;
   clock?: Clock | undefined;
-  logger?: CheckoutCleanupLogger | undefined;
-}
-
-interface CheckoutCleanupLogger {
-  error(message: string): void;
+  logger?: { error(message: string): void } | undefined;
 }
 
 export const cleanUpFailedCheckout = async (
   cleanups: readonly (() => Promise<unknown>)[],
-  logger: CheckoutCleanupLogger | undefined,
+  logger: CheckoutStockDeps['logger'],
 ): Promise<void> => {
   for (const cleanup of cleanups) {
     try {

@@ -1109,7 +1109,7 @@ export interface PaymentProvider {
     salesLinkId?: string;
     checkoutSnapshotId?: string;
     checkoutBranding?: CheckoutBranding;
-    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
+    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string; disclosureMessage?: string };
     lines?: { productId: string; name: string; grossCents: number }[];
     priceCents: number;
     currency: string;
@@ -1151,7 +1151,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
-    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<'owned' | 'unknown' | 'foreign', AppError>>;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<'owned' | 'unknown' | 'foreign' | 'conflict', AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;

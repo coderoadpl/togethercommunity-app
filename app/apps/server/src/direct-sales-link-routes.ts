@@ -1,12 +1,12 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { attributionFields, attributionFromSearchParams, err, forbidden, internal, normalizeCouponCode, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { attributionFields, attributionFromSearchParams, COUPON_CODE_MAX_LENGTH, err, forbidden, internal, normalizeCouponCode, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveDirectSalesLinkCoupon, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
-import { directSalesLinkCopy, renderDirectSalesLinkPage } from './direct-sales-link-page.js';
+import { directSalesLinkCopy, formatDirectSalesLinkMoney, renderDirectSalesLinkPage } from './direct-sales-link-page.js';
 import { claimCouponPreview } from './public-rate-limit.js';
 import { readJson } from './read-json.js';
 import { respond } from './respond.js';
@@ -59,12 +59,13 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     }
     const code = c.req.query('code');
     const couponCode = code === undefined ? undefined : normalizeCouponCode(code);
-    const previewAllowed = !crawler && !missingLegal && couponCode !== undefined && await claimCouponPreview(c, tenant.id, deps);
-    const coupon = previewAllowed && couponCode.length <= 64
+    const couponTooLong = couponCode !== undefined && couponCode.length > COUPON_CODE_MAX_LENGTH;
+    const previewAllowed = !crawler && !missingLegal && couponCode !== undefined && (couponTooLong || await claimCouponPreview(c, tenant.id, deps));
+    const coupon = previewAllowed && !couponTooLong
       ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
     if (coupon !== undefined && !coupon.ok) deps.logger.warn(`[direct-checkout] Coupon preview unavailable tenant=${tenant.id}: ${coupon.error.message}`);
     const couponDecision = coupon?.ok ? coupon.value : undefined;
-    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'requiresEmail' || products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0))) {
+    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'together' || products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0))) {
       const query = new URLSearchParams(new URL(c.req.url).search);
       if (returnUrl === undefined) query.delete('return');
       else query.set('return', returnUrl);
@@ -75,9 +76,9 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
     return c.html(renderDirectSalesLinkPage({
       ...page,
       mode: 'live',
-      ...(!crawler && couponCode !== undefined && couponCode.length <= 64 ? { couponCode } : {}),
+      ...(!crawler && couponCode !== undefined && !couponTooLong ? { couponCode } : {}),
       ...(couponDecision?.kind === 'applied' ? { coupon: couponDecision.breakdown }
-        : previewAllowed && (couponDecision?.kind === 'invalid' || couponCode.length > 64) ? { coupon: null } : {}),
+        : previewAllowed && (couponDecision?.kind === 'invalid' || couponTooLong) ? { coupon: null } : {}),
       ...(missingLegal ? { error: 'legalUrlsMissing' as const } : {}),
     }), missingLegal ? 503 : 200, headers);
   });
@@ -104,6 +105,9 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ...(parsed.data.attribution === undefined ? {} : { attribution: parsed.data.attribution }),
       ...(parsed.data.returnUrl === undefined ? {} : { returnUrl: parsed.data.returnUrl }),
       termsAcceptanceMessage: (legal, language) => directSalesLinkCopy(language).termsAcceptanceMessage(legal),
+      couponDisclosureMessage: (breakdown, language) => directSalesLinkCopy(language).couponLowestPrice(
+        formatDirectSalesLinkMoney(language, breakdown.lowestPriceLast30DaysCents, breakdown.currency),
+      ),
     }, deps);
     if (!result.ok) return respond(result);
     const output = salesLinkContracts.directSalesLinkCheckout.output.safeParse(result.value);

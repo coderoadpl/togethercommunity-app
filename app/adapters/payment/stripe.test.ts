@@ -62,12 +62,12 @@ const stripeJson = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json', 'request-id': 'req_123' },
   });
 
-const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payments?: unknown, livemode = true): string =>
+const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payments?: unknown, livemode = true, subscriptionMetadata?: Record<string, string>): string =>
   JSON.stringify({
     id: 'evt_clover_renewal', type, api_version: '2025-09-30.clover', livemode,
     data: { object: {
       id: 'in_renewal', payments,
-      parent: { subscription_details: { subscription: 'sub_1' } },
+      parent: { subscription_details: { subscription: 'sub_1', ...(subscriptionMetadata === undefined ? {} : { metadata: subscriptionMetadata }) } },
       amount_paid: 4900, amount_due: 5900, currency: 'pln',
       lines: { data: [{ period: { end: 916_387_200 } }] },
     } },
@@ -396,6 +396,11 @@ describe('stripeCouponParams', () => {
       }),
     ).toMatchObject({ duration: 'forever', amount_off: 1200, currency: 'pln' });
   });
+
+  it('truncates the display name to the Stripe coupon name limit', () => {
+    const code = `${'A'.repeat(40)}TAIL`;
+    expect(stripeCouponParams({ ...input, code })).toMatchObject({ name: 'A'.repeat(40) });
+  });
 });
 
 it('creates a coupon promotion through the Clover polymorphic promotion field', async () => {
@@ -427,6 +432,81 @@ it('creates a coupon promotion through the Clover polymorphic promotion field', 
     'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_created', code: 'SAVE',
     'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1',
   });
+});
+
+it.each([
+  { code: 'LATO-20', expected: { code: 'LATO-20' } },
+  { code: 'LATO_20 %', expected: { code: 'LATO20' } },
+  { code: '-_-', expected: {} },
+])('maps the local coupon code $code to Stripe promotion-code characters', async ({ code, expected }) => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return stripeJson({ id: 'promo_created', object: 'promotion_code' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code, kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toEqual(ok({ stripeCouponId: 'coupon_existing', stripePromotionCodeId: 'promo_created' }));
+  const request = requests[0];
+  if (request === undefined) throw new Error('Promotion request missing');
+  expect(requests).toHaveLength(1);
+  expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+    'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_existing', ...expected,
+    'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1',
+  });
+});
+
+it('lets Stripe generate the promotion code when the mapped code is already active', async () => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return requests.length === 1
+      ? stripeJson({ error: {
+        type: 'invalid_request_error', code: 'resource_already_exists',
+        message: 'An active promotion code with `code: LATO-20` already exists.',
+      } }, 400)
+      : stripeJson({ id: 'promo_generated', object: 'promotion_code' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'LATO-20', kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toEqual(ok({ stripeCouponId: 'coupon_existing', stripePromotionCodeId: 'promo_generated' }));
+  const bodies = await Promise.all(requests.map(async (request) => Object.fromEntries(new URLSearchParams(await request.text()))));
+  const promotion = { 'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_existing', 'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1' };
+  expect(bodies).toEqual([{ ...promotion, code: 'LATO-20' }, promotion]);
+});
+
+it('propagates other promotion-code rejections without retrying', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, {
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push(new Request(input, init));
+        return stripeJson({ error: { type: 'invalid_request_error', code: 'parameter_invalid_string', message: 'Invalid code' } }, 400);
+      }),
+    }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'LATO-20', kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Stripe rejected the coupon request: Invalid code' } });
+  expect(requests).toHaveLength(1);
 });
 
 describe('verifyWebhookEvent', () => {
@@ -726,7 +806,7 @@ describe('verifyWebhookEvent', () => {
     expect(api.requests).toEqual([]);
   });
 
-  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('marks stored foreign ownership on %s before resolving credentials or retrieving payments', async (type) => {
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('marks stored foreign ownership on metadata-free %s before resolving credentials or retrieving payments', async (type) => {
     const preflight = vi.fn(async () => ok('foreign' as const));
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
     expect(await api.verify(invoiceWebhook(type))).toEqual(ok({
@@ -735,6 +815,17 @@ describe('verifyWebhookEvent', () => {
     expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       invoice: expect.objectContaining({ subscriptionId: 'sub_1' }),
     }));
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('keeps the invoice correlation of an explicitly owned ownership conflict without retrieving payments', async () => {
+    const preflight = vi.fn(async () => ok('conflict' as const));
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
+    const result = await api.verify(invoiceWebhook('invoice.paid', undefined, true, { tenantId: 'tenant-a' }));
+    expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tenantIds: ['tenant-a'] }));
+    expect(result).toMatchObject({ ok: true, value: { objectId: 'in_renewal', tenantIds: ['tenant-a'], invoice: { subscriptionId: 'sub_1' } } });
+    if (result.ok) expect(result.value).not.toHaveProperty('foreignTenant');
     expect(api.resolvedSecrets).toEqual([]);
     expect(api.requests).toEqual([]);
   });
@@ -1187,7 +1278,8 @@ it('creates direct checkout with required consent, tax IDs and exact lines witho
     tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
     currency: 'PLN', language: 'en', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
     salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
-    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message },
+    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message,
+      disclosureMessage: 'Lowest price in the last 30 days: PLN 70' },
     lines: [{ productId: 'product-1', name: 'Course One', grossCents: 4900 }, { productId: 'product-2', name: 'Book', grossCents: 2100 }],
   });
   expect(params).toEqual({
@@ -1385,9 +1477,14 @@ it('applies the direct checkout promotion and redemption metadata with manual co
     currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancelled',
     salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
     promotionCodeId: 'promo-1', couponCheckoutSessionId: 'coupon-session-1',
-    directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms and privacy policy.' },
+    directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms and privacy policy.',
+      disclosureMessage: 'Lowest price in the last 30 days: PLN 159' },
   });
   expect(params).not.toHaveProperty('allow_promotion_codes');
+  expect(params.custom_text).toEqual({
+    terms_of_service_acceptance: { message: 'I accept the terms and privacy policy.' },
+    submit: { message: 'Lowest price in the last 30 days: PLN 159' },
+  });
   expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
   expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
 });

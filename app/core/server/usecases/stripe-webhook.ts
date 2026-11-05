@@ -102,6 +102,15 @@ const ignoreForeignTenant = (
   return ok({ processed: false });
 };
 
+const ignoreOwnershipConflict = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Result<{ processed: boolean }, AppError> => {
+  deps.logger.error(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} reason=ownership conflict`);
+  return ok({ processed: false });
+};
+
 const enqueueAutoInvoice = async (
   tenantId: string,
   event: PaymentWebhookEvent,
@@ -963,9 +972,9 @@ export const validateStripeInvoiceTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
-): Promise<Result<'owned' | 'unknown' | 'foreign', AppError>> => {
+): Promise<Result<'owned' | 'unknown' | 'foreign' | 'conflict', AppError>> => {
   const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
-  if (ownership === 'foreign') return ok('foreign');
+  if (ownership !== 'owned') return ok(ownership);
   const subscriptionId = event.invoice?.subscriptionId;
   const subscription = subscriptionId == null ? null :
     await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
@@ -978,7 +987,7 @@ const validateStoredStripeWebhookTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
-): Promise<'owned' | 'foreign'> => {
+): Promise<'owned' | 'foreign' | 'conflict'> => {
   const metadata = validateStripeWebhookTenant(tenantId, event);
   if (metadata === 'foreign') return metadata;
   const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
@@ -995,7 +1004,8 @@ const validateStoredStripeWebhookTenant = async (
     ...(charge == null ? {} : { charge }),
     ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
   });
-  return foreign ? 'foreign' : 'owned';
+  if (!foreign) return 'owned';
+  return (event.tenantIds?.length ?? 0) > 0 || event.checkoutSession !== null ? 'conflict' : 'foreign';
 };
 
 export const fulfillStripeWebhook = async (
@@ -1008,6 +1018,7 @@ export const fulfillStripeWebhook = async (
   const ownership = provider === 'stripe'
     ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
     : validateStripeWebhookTenant(tenant.id, event);
+  if (ownership === 'conflict') return ignoreOwnershipConflict(tenant, event, deps);
   if (ownership === 'foreign') {
     return provider === 'stripe'
       ? ignoreForeignTenant(tenant, event, deps)

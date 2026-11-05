@@ -3,7 +3,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { products, productStock, stockEvents, stockReservations, tenants } from './schema.js';
-import { createStockRepository } from './stock.js';
+import { createStockRepository, orderCommitLookup } from './stock.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -199,10 +199,8 @@ describe('stock repository on Postgres', () => {
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL enable_seqscan = off');
-      const plan = await client.query<{ 'QUERY PLAN': string }>(
-        "EXPLAIN SELECT id FROM stock_events WHERE tenant_id = $1 AND product_id = $2 AND type IN ('committed', 'committed_late') AND (reference ->> 'orderId') = $3 LIMIT 1",
-        ['workspace', 'product', 'order'],
-      );
+      const lookup = orderCommitLookup(database.db, 'workspace', 'product', 'order').toSQL();
+      const plan = await client.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${lookup.sql}`, lookup.params);
       expect(plan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain('stock_events_tenant_product_order_commit_idx');
     } finally {
       await client.query('ROLLBACK');

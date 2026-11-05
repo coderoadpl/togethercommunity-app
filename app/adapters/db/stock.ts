@@ -118,8 +118,8 @@ const applyCommit = async (
   };
 };
 
-const orderAlreadyCommitted = async (tx: Executor, tenantId: string, productId: string, orderId: string): Promise<boolean> => {
-  const [row] = await tx.select({ id: stockEvents.id }).from(stockEvents)
+export const orderCommitLookup = (executor: Pick<Executor, 'select'>, tenantId: string, productId: string, orderId: string) =>
+  executor.select({ id: stockEvents.id }).from(stockEvents)
     .where(and(
       eq(stockEvents.tenantId, tenantId),
       eq(stockEvents.productId, productId),
@@ -127,6 +127,9 @@ const orderAlreadyCommitted = async (tx: Executor, tenantId: string, productId: 
       sql`(${stockEvents.reference} ->> 'orderId') = ${orderId}`,
     ))
     .limit(1);
+
+const orderAlreadyCommitted = async (tx: Executor, tenantId: string, productId: string, orderId: string): Promise<boolean> => {
+  const [row] = await orderCommitLookup(tx, tenantId, productId, orderId);
   return row !== undefined;
 };
 

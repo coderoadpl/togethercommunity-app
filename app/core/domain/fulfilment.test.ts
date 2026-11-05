@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   memberFulfilmentView,
   orderShipmentAllowed,
+  orderShipmentSchema,
   packingListQuerySchema,
   shipOrderInputSchema,
   shipmentTrackingUrl,
@@ -30,6 +31,14 @@ describe('ship order input', () => {
     expect(shipOrderInputSchema.safeParse({ orderId: 'order', carrier: 'inpost', trackingNumber: ' ABC ' }).success).toBe(false);
     expect(shipOrderInputSchema.safeParse({ orderId: 'order', carrier: 'other', trackingNumber: 'x'.repeat(64) }).success).toBe(true);
     expect(shipOrderInputSchema.safeParse({ orderId: 'order', carrier: 'other', trackingNumber: 'x'.repeat(65) }).success).toBe(false);
+  });
+
+  it('holds a stored shipment to the same 4 to 64 character tracking number', () => {
+    const stored = { carrier: 'inpost', shippedAt: '2026-11-05T10:00:00.000Z', shippedBy: 'staff' };
+    expect(orderShipmentSchema.safeParse({ ...stored, trackingNumber: 'ABCD' }).success).toBe(true);
+    expect(orderShipmentSchema.safeParse({ ...stored, trackingNumber: 'x'.repeat(64) }).success).toBe(true);
+    expect(orderShipmentSchema.safeParse({ ...stored, trackingNumber: 'ABC' }).success).toBe(false);
+    expect(orderShipmentSchema.safeParse({ ...stored, trackingNumber: 'x'.repeat(65) }).success).toBe(false);
   });
 
   it('rejects unknown carriers and extra fields', () => {

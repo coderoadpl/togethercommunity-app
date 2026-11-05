@@ -16,7 +16,7 @@ export const trackingNumberSchema = z
 
 export const orderShipmentSchema = z.object({
   carrier: shippingCarrierSchema,
-  trackingNumber: z.string().min(1).max(TRACKING_NUMBER_MAX_LENGTH),
+  trackingNumber: z.string().min(TRACKING_NUMBER_MIN_LENGTH).max(TRACKING_NUMBER_MAX_LENGTH),
   shippedAt: z.string().datetime(),
   shippedBy: z.string().min(1),
 });

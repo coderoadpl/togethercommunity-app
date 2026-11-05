@@ -247,7 +247,9 @@ example damaged goods); a later commit then records `oversold` and alerts.
    default.
 4. A failed Stripe session creation, a failure to record the direct handoff
    snapshot, or any other checkout failure after the reservation releases it
-   immediately, also when expiring the Stripe session fails as well.
+   immediately, also when expiring the Stripe session fails as well. A cleanup
+   step that fails (expiring the session or releasing the hold) is logged, and
+   the checkout fails with the original error.
 5. Free and fully discounted checkouts keep the reservation and fulfil at once;
    the fulfilment commits it.
 6. Staff test checkouts never reserve or commit live stock. The simulated

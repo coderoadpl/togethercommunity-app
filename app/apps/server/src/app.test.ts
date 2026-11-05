@@ -3,6 +3,7 @@ import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
@@ -9950,6 +9951,33 @@ it.each(['consent capture', 'coupon session'] as const)('releases the simulated 
   expect(response.status).toBe(500);
   expect(release).toHaveBeenCalledOnce();
   expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 0 });
+  expect(h.orders).toHaveLength(0);
+});
+
+it.each(['consent capture', 'coupon session'] as const)('surfaces the %s write failure when releasing the simulated coupon stock hold fails too', async (stage) => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+  const logger = { error: vi.fn(), warn: vi.fn() };
+  h.base.stock = stock.repository;
+  h.base.logger = logger;
+  const original = new Error(`The ${stage} storage is unavailable`);
+  if (stage === 'consent capture') h.base.checkoutConsentCaptures.create = async () => { throw original; };
+  else if (h.base.couponCheckoutSessions !== undefined) h.base.couponCheckoutSessions.create = async () => { throw original; };
+  const surfaced: unknown[] = [];
+  const app = new Hono<AppVars>();
+  app.onError((error) => { surfaced.push(error); return new Response(null, { status: 500 }); });
+  registerInternalRoutes(app, h.base);
+  const response = await app.request(API_PATHS.devSimulatePurchase, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', host: 'acme.localhost' },
+    body: JSON.stringify({ productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' }),
+  });
+  expect(response.status).toBe(500);
+  expect(surfaced).toEqual([original]);
+  expect(release).toHaveBeenCalledOnce();
+  expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
   expect(h.orders).toHaveLength(0);
 });
 

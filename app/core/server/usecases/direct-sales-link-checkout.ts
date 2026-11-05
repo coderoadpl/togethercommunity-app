@@ -2,7 +2,7 @@ import { attributionSchema, attributionToSearchParams, COUPON_CODE_MAX_LENGTH, t
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, evaluateSelectionCoupon } from './checkout-coupon.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps, type CheckoutSelection } from './checkout.js';
-import { releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold } from './stock.js';
+import { cleanUpFailedCheckout, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold } from './stock.js';
 
 type DirectSalesLinkCoupon =
   | { kind: 'none' | 'invalid' | 'together' }
@@ -153,11 +153,10 @@ export const createDirectSalesLinkCheckout = async (
       mode, providerSessionId: created.value.sessionId, createdAt: deps.clock.nowIso(),
     });
   } catch (cause) {
-    try {
-      await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
-    } finally {
-      await releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps);
-    }
+    await cleanUpFailedCheckout([
+      () => deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode }),
+      () => releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps),
+    ], deps.logger);
     throw cause;
   }
   return ok({ url: created.value.url });

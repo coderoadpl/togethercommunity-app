@@ -43,7 +43,7 @@ import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveSalesLinkPrices, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection } from './checkout-lines.js';
-import { ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold } from './stock.js';
+import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
 export interface CheckoutDeps {
   salesLinks?: SalesLinkRepository;
@@ -62,6 +62,7 @@ export interface CheckoutDeps {
   ids?: IdGenerator;
   clock?: Clock;
   stock?: StockRepository;
+  logger?: CheckoutStockDeps['logger'];
 }
 
 export type { CheckoutSelection } from './checkout-selection.js';
@@ -332,11 +333,10 @@ export const startCheckoutSession = async (
     try {
       await deps.checkoutSnapshots.attachProviderSession(tenant.id, checkoutSnapshotId, created.value.sessionId);
     } catch (cause) {
-      try {
-        await deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode });
-      } finally {
-        await releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps);
-      }
+      await cleanUpFailedCheckout([
+        () => deps.payment.expireCheckoutSession({ tenantId: tenant.id, sessionId: created.value.sessionId, mode }),
+        () => releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps),
+      ], deps.logger);
       throw cause;
     }
   }
@@ -363,7 +363,7 @@ export const startCheckoutSession = async (
         created.value.sessionId,
       );
     } catch (cause) {
-      await releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps);
+      await cleanUpFailedCheckout([() => releaseCheckoutStock(tenant.id, hold.value, 'checkout_failed', deps)], deps.logger);
       throw cause;
     }
   }

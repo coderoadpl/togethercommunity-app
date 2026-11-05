@@ -129,7 +129,25 @@ export interface CheckoutStockHold {
 export interface CheckoutStockDeps {
   stock?: StockRepository | undefined;
   clock?: Clock | undefined;
+  logger?: CheckoutCleanupLogger | undefined;
 }
+
+interface CheckoutCleanupLogger {
+  error(message: string): void;
+}
+
+export const cleanUpFailedCheckout = async (
+  cleanups: readonly (() => Promise<unknown>)[],
+  logger: CheckoutCleanupLogger | undefined,
+): Promise<void> => {
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch (cleanupError) {
+      logger?.error(`[checkout] cleanup after a failed checkout failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+    }
+  }
+};
 
 export const reserveCheckoutStock = async (
   tenantId: string,
@@ -175,10 +193,10 @@ export const withCheckoutStockHold = async <T>(
   try {
     result = await operation();
   } catch (cause) {
-    await releaseCheckoutStock(tenantId, hold, 'checkout_failed', deps);
+    await cleanUpFailedCheckout([() => releaseCheckoutStock(tenantId, hold, 'checkout_failed', deps)], deps.logger);
     throw cause;
   }
-  if (!result.ok) await releaseCheckoutStock(tenantId, hold, 'checkout_failed', deps);
+  if (!result.ok) await cleanUpFailedCheckout([() => releaseCheckoutStock(tenantId, hold, 'checkout_failed', deps)], deps.logger);
   return result;
 };
 

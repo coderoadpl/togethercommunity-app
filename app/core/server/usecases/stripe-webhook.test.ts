@@ -54,6 +54,7 @@ const product = (tenantId: string, overrides: Partial<Product> = {}): Product =>
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
   legacyId: null,
@@ -747,6 +748,12 @@ const deferred = () => {
     resolve = done;
   });
   return { promise, resolve };
+};
+
+const expectIgnoredLog = (h: { warnings: string[]; errors: string[] }, eventId: string, conflict: boolean): void => {
+  const line = `[stripe-webhook] ignored tenant=${tenantA.id} event=${eventId} reason=${conflict ? 'ownership conflict' : 'foreign tenant'}`;
+  expect(conflict ? h.errors : h.warnings).toEqual([line]);
+  expect(conflict ? h.warnings : h.errors).toEqual([]);
 };
 
 describe('fulfillStripeWebhook', () => {
@@ -1509,11 +1516,17 @@ describe('fulfillStripeWebhook', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it.each(['checkout.session.completed', 'charge.refunded', 'charge.dispute.created'] as const)('acknowledges %s with a stored foreign payment intent before fulfillment', async (type) => {
+  it.each([
+    { type: 'checkout.session.completed', metadata: true },
+    { type: 'charge.refunded', metadata: true },
+    { type: 'charge.refunded', metadata: false },
+    { type: 'charge.dispute.created', metadata: true },
+    { type: 'charge.dispute.created', metadata: false },
+  ] as const)('acknowledges $type with a stored foreign payment intent and tenant metadata $metadata before fulfillment', async ({ type, metadata }) => {
     const h = harness();
     const event = type === 'checkout.session.completed'
       ? completedEvent({ paymentIntentId: 'pi-foreign' })
-      : adjustmentEvent({ type, paymentIntentId: 'pi-foreign' });
+      : { ...adjustmentEvent({ type, paymentIntentId: 'pi-foreign' }), ...(metadata ? { tenantIds: [tenantA.id] } : {}) };
     const ownership = vi.spyOn(h.deps.stripeWebhookOwnership, 'hasForeignOwner')
       .mockImplementation(async (_tenantId, ids) => ids.paymentIntent === 'pi-foreign');
     const initialize = vi.spyOn(h.deps.authPort, 'initialize');
@@ -1521,7 +1534,7 @@ describe('fulfillStripeWebhook', () => {
     const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
     expect(ownership).toHaveBeenCalledWith(tenantA.id, expect.objectContaining({ paymentIntent: 'pi-foreign' }));
-    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+    expectIgnoredLog(h, event.id, metadata);
     expect(initialize).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
@@ -1535,32 +1548,42 @@ describe('fulfillStripeWebhook', () => {
     expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-unknown' }, mode);
   });
 
-  it.each(['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'acknowledges metadata-free %s belonging to a stored foreign subscription before claiming it',
-    async (type) => {
+  it.each([false, true].flatMap((metadata) => (
+    ['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const
+  ).map((type) => ({ type, metadata }))))(
+    'acknowledges $type belonging to a stored foreign subscription with tenant metadata $metadata before claiming it',
+    async ({ type, metadata }) => {
       const h = await subscribedHarness();
       h.subscriptions.set(h.subscription.id, { ...h.subscription, tenantId: 'tenant-b' });
-      const event = type === 'invoice.paid'
-        ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
-        : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' });
+      const event = {
+        ...(type === 'invoice.paid'
+          ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
+          : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' })),
+        ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+      };
       const initialize = vi.spyOn(h.deps.authPort, 'initialize');
       const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
       const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
       if (type === 'invoice.paid') {
         expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-          .toEqual(ok('foreign'));
+          .toEqual(ok(metadata ? 'conflict' : 'foreign'));
       }
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-      expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+      expectIgnoredLog(h, event.id, metadata);
       expect(initialize).not.toHaveBeenCalled();
       expect(claim).not.toHaveBeenCalled();
       expect(transaction).not.toHaveBeenCalled();
     },
   );
 
-  it.each(['customer', 'invoice'] as const)('acknowledges a stored foreign %s even when the invoice subscription is local', async (record) => {
+  it.each([false, true].flatMap((metadata) => (['customer', 'invoice'] as const).map((record) => ({ record, metadata }))))(
+    'acknowledges a stored foreign $record with tenant metadata $metadata even when the invoice subscription is local', async ({ record, metadata }) => {
     const h = await subscribedHarness();
-    const event = { ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }), customerId: 'cus-foreign' };
+    const event = {
+      ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }),
+      customerId: 'cus-foreign',
+      ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+    };
     if (record === 'customer') {
       const member = Array.from(h.members.values())[0];
       if (member === undefined) throw new Error('Expected enrolled member');
@@ -1571,12 +1594,12 @@ describe('fulfillStripeWebhook', () => {
       h.orders.push({ ...order, id: 'foreign-order', tenantId: 'tenant-b', providerObjectIds: { invoice: 'in-foreign' } });
     }
     expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-      .toEqual(ok('foreign'));
+      .toEqual(ok(metadata ? 'conflict' : 'foreign'));
     const initialize = vi.spyOn(h.deps.authPort, 'initialize');
     const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
     const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+    expectIgnoredLog(h, event.id, metadata);
     expect(initialize).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
@@ -2924,7 +2947,7 @@ const bundlePayment = () => {
   ];
   h.deps.products.findById = async (tenantId, id) => {
     const line = lines.find((item) => item.productId === id);
-    return line === undefined ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
+    return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: 'Edited after checkout', priceCents: 1 });
   };
   h.deps.checkoutSnapshots = {
     create: async () => undefined,
@@ -3279,4 +3302,142 @@ it('records a direct coupon redemption for the email collected by Stripe', async
   expect(h.redemptions).toMatchObject([{ couponId: h.coupon.id, email: 'direct-buyer@example.com', discountCents: 2450 }]);
   expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
   expect(h.redemptions).toHaveLength(1);
+});
+
+const shippingLine: OrderLine = { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 1499, netCents: 1219, vatRate: 23, vatCents: 280, vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: null };
+const lockerShipping = {
+  rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const,
+  pickupPoint: { provider: 'inpost' as const, code: 'WAW01M', name: 'Locker WAW01M', address: 'Main Street 1, Warsaw' },
+  allowedCountries: ['PL'],
+};
+const collectedShipping = {
+  name: 'Jane Buyer', phone: '+48600100200',
+  address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null },
+};
+
+const shippedPayment = (productLinesFor: (lines: OrderLine[]) => OrderLine[] = (lines) => lines) => {
+  const bundle = bundlePayment();
+  const lines = [...productLinesFor(bundle.lines), shippingLine];
+  const snapshot = { id: 'snapshot-1', tenantId: tenantA.id, salesLinkId: 'link-1', lines, shipping: lockerShipping, currency: 'PLN', createdAt: now };
+  bundle.deps.checkoutSnapshots = {
+    create: async () => undefined,
+    attachProviderSession: async () => undefined,
+    findById: async (tenantId, id) => tenantId === tenantA.id && id === 'snapshot-1' ? snapshot : null,
+  };
+  if (bundle.event.checkoutSession === null) throw new Error('Missing checkout fixture');
+  bundle.event.checkoutSession.amountTotalCents = 13899;
+  bundle.event.checkoutSession.shippingCostCents = 1499;
+  bundle.event.checkoutSession.shipping = collectedShipping;
+  return { ...bundle, lines, snapshot, session: bundle.event.checkoutSession };
+};
+
+describe('shipped checkout fulfilment', () => {
+  it('stores the delivery address, marks the order to pack and grants only purchased products', async () => {
+    const h = shippedPayment();
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({
+      amountCents: 13899, lines: h.lines, fulfilmentStatus: 'to_pack',
+      shipping: {
+        rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: lockerShipping.pickupPoint,
+        address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
+        phone: '+48600100200',
+      },
+    });
+    expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);
+    expect(h.enrollmentEmails[0]?.payload).toMatchObject({ purchase: {
+      lines: [
+        { name: 'Digital item', grossCents: 4900, vatRate: 23 },
+        { name: 'Course item', grossCents: 5400, vatRate: 8 },
+        { name: 'Printed item', grossCents: 2100, vatRate: 5 },
+        { name: 'Parcel locker', grossCents: 1499, vatRate: 23 },
+      ],
+      totalCents: 13899,
+      delivery: { method: 'Parcel locker', pickupPoint: { code: 'WAW01M', name: 'Locker WAW01M', address: 'Main Street 1, Warsaw' }, address: null },
+    } });
+  });
+
+  it.each([
+    ['a shipping cost that differs from the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = 999; }],
+    ['a missing shipping cost', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; }],
+    ['a missing address', (session: ReturnType<typeof shippedPayment>['session']) => { session.shipping = null; }],
+    ['an address outside the allowed countries', (session: ReturnType<typeof shippedPayment>['session']) => { session.shipping = { ...collectedShipping, address: { ...collectedShipping.address, country: 'DE' } }; }],
+    ['a total that leaves out the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.amountTotalCents = 12400; }],
+  ])('rejects a shipped payment with %s before fulfilment', async (_case, mutate) => {
+    const h = shippedPayment();
+    mutate(h.session);
+    expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(false);
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants.size).toBe(0);
+  });
+
+  it('accepts a coupon that discounts products while shipping stays at face value', async () => {
+    const bundle = shippedPayment((lines) => lines.slice(0, 2));
+    const h = couponHarness({ session: { originalCents: 10300, discountCents: 5151, finalCents: 5149 } });
+    h.deps.products = bundle.deps.products;
+    if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+    h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 6648, discountTotalCents: 5151 });
+    if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+    event.checkoutSession.shippingCostCents = 1499;
+    event.checkoutSession.shipping = collectedShipping;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 6648, discountCents: 5151, fulfilmentStatus: 'to_pack', shipping: { rateId: 'locker' } });
+    const payload = h.enrollmentEmails[0]?.payload;
+    if (payload?.kind !== 'welcome-sign-in' || payload.purchase === undefined) throw new Error('Expected a purchase confirmation');
+    const amounts = payload.purchase.lines.map((line) => typeof line === 'string' ? 0 : line.grossCents);
+    expect(amounts).toEqual([2450, 2699, 1499]);
+    expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(6648);
+  });
+
+  it('records a fully discounted shipped product at the shipping fee and claims the coupon redemption', async () => {
+    const bundle = shippedPayment((lines) => lines.slice(0, 2));
+    const h = couponHarness({ coupon: { kind: 'percent', value: 100, maxRedemptions: 1 }, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
+    h.deps.products = bundle.deps.products;
+    if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+    h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+    event.checkoutSession.shippingCostCents = 1499;
+    event.checkoutSession.shipping = collectedShipping;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ couponId: h.coupon.id, amountCents: 1499, discountCents: 10300, fulfilmentStatus: 'to_pack', shipping: { amountCents: 1499 } });
+    expect(h.redemptions).toHaveLength(1);
+  });
+
+  it('refuses a fully discounted shipped product once the coupon redemption limit is consumed', async () => {
+    const bundle = shippedPayment((lines) => lines.slice(0, 2));
+    const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
+    h.deps.products = bundle.deps.products;
+    if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+    h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+    event.checkoutSession.shippingCostCents = 1499;
+    event.checkoutSession.shipping = collectedShipping;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: false,
+      error: { code: 'validation', message: 'Coupon redemption limit reached' },
+    });
+    expect(h.orders).toHaveLength(0);
+    expect(h.redemptions).toHaveLength(0);
+  });
+
+  it('never revokes a grant for the shipping line after a full refund', async () => {
+    const h = shippedPayment();
+    expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(true);
+    const lookups = vi.spyOn(h.deps.paymentRefunds, 'listAccessRetainingOrdersForMemberProduct');
+    expect((await fulfillStripeWebhook(tenantA, {
+      id: 'shipped-refund', type: 'charge.refunded', objectId: 'charge-1', checkoutSession: null,
+      adjustment: { chargeId: 'charge-1', paymentIntentId: 'pi-1', invoiceId: null, refund: { full: true, amountRefundedCents: 13899, amountCents: 13899 } },
+    }, h.deps)).ok).toBe(true);
+    expect(lookups.mock.calls.map(([, , productId]) => productId).sort()).toEqual(['product-1', 'product-2']);
+  });
 });

@@ -36,6 +36,8 @@ export interface TransactionalEmailMessages {
     subject: (orderNumber: string, tenantName: string) => string;
     verification: string;
     qrAlt: string;
+    delivery: string;
+    pickupPoint: string;
   };
   welcomeSignIn: {
     actionLabels: Record<WelcomeSignInProductType, string>;

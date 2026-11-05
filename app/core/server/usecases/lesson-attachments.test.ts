@@ -112,6 +112,7 @@ const product: Product = {
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,

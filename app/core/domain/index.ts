@@ -53,6 +53,7 @@ export * from './stream-video.js';
 export * from './payment.js';
 export * from './attribution.js';
 export * from './commerce.js';
+export * from './shipping.js';
 export * from './order-vat.js';
 export * from './coupon.js';
 export * from './invoice.js';

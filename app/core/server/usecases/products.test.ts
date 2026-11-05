@@ -97,6 +97,7 @@ const draft = (id: string, tenantId: string, published = false): Product => ({
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,
@@ -175,6 +176,22 @@ describe('products use-cases', () => {
     expect(await createProduct(ctx, { title: 'Printed material', type: 'physical', priceCents: 10500, vatRate: 5 }, deps(repo))).toMatchObject({ ok: true, value: { type: 'physical', vatRate: 5, accessItems: [] } });
     expect(await createProduct(ctx, { title: 'Invalid material', type: 'physical', priceCents: 10500, accessItems: [{ level: 'course', courseId: 'c1' }] }, deps(repo))).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await createProduct(ctx, { title: 'Exempt material', priceCents: 10500, vatRate: 'exempt' }, deps(repo))).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('ships only physical products and keeps collection in person as the default', async () => {
+    const { repo } = fakeRepo();
+    const ctx = { identity: identity('t-acme', 'owner') };
+    expect(await createProduct(ctx, { title: 'Printed accessory', type: 'physical', priceCents: 4900, deliveryMethod: 'shipping' }, deps(repo))).toMatchObject({ ok: true, value: { deliveryMethod: 'shipping' } });
+    expect(await createProduct(ctx, { title: 'Printed handout', type: 'physical', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { deliveryMethod: 'pickup' } });
+    expect(await createProduct(ctx, { title: 'Course', type: 'course', priceCents: 4900, deliveryMethod: 'shipping' }, deps(repo, ['product-3']))).toMatchObject({ ok: false, error: { code: 'validation', message: 'Only physical products can be shipped' } });
+  });
+
+  it('switches a physical product to shipping and refuses shipping for other product types', async () => {
+    const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical' }, draft('p2', 't-acme')]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    expect(await updateProduct(ctx, { id: 'p1', deliveryMethod: 'shipping' }, deps(repo, ['version-1']))).toMatchObject({ ok: true, value: { deliveryMethod: 'shipping' } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed accessory' }, deps(repo, ['version-2']))).toMatchObject({ ok: true, value: { deliveryMethod: 'shipping', title: 'Renamed accessory' } });
+    expect(await updateProduct(ctx, { id: 'p2', deliveryMethod: 'shipping' }, deps(repo, ['version-3']))).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('keeps implicit VAT linked to Settings through creation and unrelated edits', async () => {

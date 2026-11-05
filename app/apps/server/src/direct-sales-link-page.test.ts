@@ -177,9 +177,14 @@ describe('direct sales-link page', () => {
     expect(spaIndex).toBeGreaterThan(handoffIndex);
     const staticPolicy = configuration.headers.find((header) => header.source.includes('?!api/'));
     expect(staticPolicy?.source).toContain('|offer/');
+    const checkoutFormHeaders = staticPolicy?.headers.map((header) => header.key === 'Content-Security-Policy'
+      ? { ...header, value: header.value
+        .replace("script-src 'self'", "script-src 'self' https://geowidget.inpost.pl")
+        .replace("style-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl") }
+      : header);
     expect(configuration.headers.filter((header) => header.source === '/offer/(.*)')).toEqual([
       ...offerRewrites.slice(0, 2).map((rewrite) => ({
-        source: rewrite.source, has: rewrite.has, headers: staticPolicy?.headers,
+        source: rewrite.source, has: rewrite.has, headers: checkoutFormHeaders,
       })),
       {
         source: '/offer/(.*)',

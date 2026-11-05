@@ -1053,6 +1053,13 @@
       "breakpoints": true
     },
     {
+      "idx": 150,
+      "version": "7",
+      "when": 1790964000022,
+      "tag": "0150_product_shipping",
+      "breakpoints": true
+    },
+    {
       "idx": 151,
       "version": "7",
       "when": 1790964000031,

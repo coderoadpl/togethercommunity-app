@@ -1,12 +1,16 @@
 import {
   err,
+  isShippingLine,
   normalizeEmail,
   ok,
+  orderShippingFrom,
+  SIMULATED_SHIPPING_DETAILS,
   tenantNotFound,
   validation,
   type AppError,
   type Result,
   type BillingData,
+  type CheckoutShippingInput,
 } from '#core/domain/index.js';
 
 import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
@@ -47,6 +51,7 @@ export interface SimulatePurchaseInputData {
   salesLinkSlug?: string;
   priceId?: string;
   billing?: BillingData;
+  shipping?: CheckoutShippingInput;
 }
 
 export const simulatePurchase = async (
@@ -60,6 +65,8 @@ export const simulatePurchase = async (
   const { product, price } = selection.value;
   const built = await buildCheckoutLines(tenantId, selection.value, deps);
   if (!built.ok) return built;
+  const shipping = selection.value.shipping === undefined ? null : orderShippingFrom(selection.value.shipping, SIMULATED_SHIPPING_DETAILS);
+  if (shipping !== null && !shipping.ok) return shipping;
   const selectedProducts = selection.value.products ?? [product];
   const tracked = price?.kind !== 'recurring' && deps.stock !== undefined &&
     (await deps.stock.listByProducts(tenantId, selectedProducts.map((item) => item.id))).length > 0;
@@ -70,14 +77,15 @@ export const simulatePurchase = async (
       const member = await ensureMember(tenantId, input.email, { ...deps, members: transaction.members });
       if (!member.ok) return member;
       for (const line of built.value.lines) {
-        if (line.productType === 'physical') continue;
+        if (line.productType === 'physical' || isShippingLine(line)) continue;
         await createOrRenewGrant(tenantId, { memberId: member.value.id, productId: line.productId, expiresAt: null, source: 'simulated' }, { ...deps, grants: transaction.grants });
       }
       const order = await appendOrder(tenantId, {
         memberId: member.value.id, productId: product.id, priceId: price?.id ?? null,
-        kind: 'one_time', status: 'paid', amountCents: built.value.totalCents, currency: built.value.currency,
+        kind: 'one_time', status: 'paid', amountCents: built.value.totalCents + (built.value.shippingCents ?? 0), currency: built.value.currency,
         provider: 'simulated', providerObjectIds: { checkoutSession },
         billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
+        ...(shipping === null ? {} : { shipping: shipping.value, fulfilmentStatus: 'to_pack' as const }),
       }, { ...deps, orders: transaction.orders });
       const hold = await reserveCheckoutStock(tenantId, { checkoutSnapshotId: checkoutSession, products: selectedProducts }, { stock: transaction.stock, clock: deps.clock });
       if (!hold.ok) return hold;

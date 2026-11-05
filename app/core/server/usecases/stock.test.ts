@@ -32,6 +32,7 @@ const poster: Product = {
   id: 'poster',
   tenantId: tenant.id,
   type: 'physical',
+  deliveryMethod: 'pickup',
   slug: 'poster',
   title: 'Printed poster',
   description: '',

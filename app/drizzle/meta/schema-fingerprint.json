@@ -1,6 +1,6 @@
 {
-  "hash": "bc0eb32dae4d6115152033f1262a936c9ea59fd278dd096e6b030e47004e2220",
-  "shortId": "bc0eb32dae4d",
+  "hash": "451b96b8c04a1a05b8b13e26caa38c4147e085a7b9decbb61e510c3dff290d55",
+  "shortId": "451b96b8c04a",
   "schema": {
     "constraints": [
       {
@@ -82,6 +82,11 @@
         "definition": "CHECK ((default_language = ANY (ARRAY['pl'::text, 'en'::text])))",
         "name": "tenants_default_language_check",
         "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((delivery_method = ANY (ARRAY['pickup'::text, 'shipping'::text])))",
+        "name": "products_delivery_method_check",
+        "table": "products"
       },
       {
         "definition": "CHECK ((email = lower(btrim(email))))",
@@ -2353,6 +2358,11 @@
         "table": "orders"
       },
       {
+        "definition": "CREATE INDEX orders_tenant_fulfilment_created_idx ON orders USING btree (tenant_id, fulfilment_status, created_at DESC NULLS LAST) WHERE (fulfilment_status IS NOT NULL)",
+        "name": "orders_tenant_fulfilment_created_idx",
+        "table": "orders"
+      },
+      {
         "definition": "CREATE INDEX orders_tenant_member_idx ON orders USING btree (tenant_id, member_id)",
         "name": "orders_tenant_member_idx",
         "table": "orders"
@@ -3307,6 +3317,14 @@
             "type": "text"
           },
           {
+            "default": "'pickup'::text",
+            "generated": "",
+            "identity": "",
+            "name": "delivery_method",
+            "notNull": true,
+            "type": "text"
+          },
+          {
             "default": "false",
             "generated": "",
             "identity": "",
@@ -3730,6 +3748,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "fulfilment_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "id",
             "notNull": true,
             "type": "text"
@@ -3789,6 +3815,14 @@
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipping",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,
@@ -4110,6 +4144,14 @@
             "default": "'[]'::jsonb",
             "generated": "",
             "identity": "",
+            "name": "shipping_rates",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
             "name": "social_links",
             "notNull": true,
             "type": "jsonb"
@@ -4328,6 +4370,14 @@
             "identity": "",
             "name": "id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "inpost_geowidget_token",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -10101,6 +10151,14 @@
             "name": "sales_link_id",
             "notNull": false,
             "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "shipping",
+            "notNull": false,
+            "type": "jsonb"
           },
           {
             "default": null,

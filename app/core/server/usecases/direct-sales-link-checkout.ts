@@ -1,11 +1,11 @@
-import { attributionSchema, attributionToSearchParams, type Attribution, type AppError, type Coupon, type CouponCheckoutBreakdown, type Result, err, normalizeCouponCode, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
-import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
+import { attributionSchema, attributionToSearchParams, COUPON_CODE_MAX_LENGTH, type Attribution, type AppError, type Coupon, type CouponCheckoutBreakdown, type Result, err, normalizeCouponCode, notFound, ok, requiresWorkspaceCheckout, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
+import { captureCouponCheckout, ensureCheckoutCouponPromotion, evaluateSelectionCoupon } from './checkout-coupon.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps, type CheckoutSelection } from './checkout.js';
 import { releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold } from './stock.js';
 
 type DirectSalesLinkCoupon =
-  | { kind: 'none' | 'invalid' | 'requiresEmail' }
+  | { kind: 'none' | 'invalid' | 'together' }
   | { kind: 'applied'; coupon: Coupon; breakdown: CouponCheckoutBreakdown };
 
 const resolveSelectionCoupon = async (
@@ -17,14 +17,16 @@ const resolveSelectionCoupon = async (
 ): Promise<Result<DirectSalesLinkCoupon, AppError>> => {
   if (couponCode === undefined || normalizeCouponCode(couponCode) === '') return ok({ kind: 'none' });
   const code = normalizeCouponCode(couponCode);
-  if (code.length > 64) return ok({ kind: 'invalid' });
+  if (code.length > COUPON_CODE_MAX_LENGTH) return ok({ kind: 'invalid' });
   const coupon = await deps.coupons?.findByCode(tenantId, code);
   if (coupon == null) return ok({ kind: 'invalid' });
-  if (coupon.maxRedemptionsPerMember !== null) return ok({ kind: 'requiresEmail' });
-  const validated = await validateSelectionCoupon(tenantId, {
+  const evaluated = await evaluateSelectionCoupon(tenantId, {
     code, coupon, amountCents: amount.totalCents, currency: amount.currency,
   }, selection, deps);
-  return validated.ok ? ok({ kind: 'applied', ...validated.value }) : ok({ kind: 'invalid' });
+  if (!evaluated.ok) return ok({ kind: 'invalid' });
+  // A per-member limit needs the buyer e-mail, and a zero-total Stripe session cannot enforce the redemption limit.
+  if (evaluated.value.kind === 'emailRequired' || evaluated.value.breakdown.finalCents === 0) return ok({ kind: 'together' });
+  return ok({ kind: 'applied', coupon: evaluated.value.coupon, breakdown: evaluated.value.breakdown });
 };
 
 export const resolveDirectSalesLinkCoupon = async (
@@ -36,7 +38,7 @@ export const resolveDirectSalesLinkCoupon = async (
   const link = await deps.salesLinks?.findBySlug(tenantId, input.slug);
   const productId = link?.productIds[0];
   if (productId === undefined) return err(notFound('Sales link not found'));
-  const selection = await validateCheckoutSelection(tenantId, { productId, salesLinkSlug: input.slug }, deps);
+  const selection = await validateCheckoutSelection(tenantId, { productId, salesLinkSlug: input.slug }, deps, { shipping: 'ignore' });
   if (!selection.ok) return selection;
   const built = await buildCheckoutLines(tenantId, selection.value, deps);
   if (!built.ok) return built;
@@ -52,15 +54,16 @@ export const createDirectSalesLinkCheckout = async (
     attribution?: Attribution;
     returnUrl?: string;
     termsAcceptanceMessage: (legal: { termsUrl: string; privacyUrl: string }, language: 'en' | 'pl') => string;
+    couponDisclosureMessage: (breakdown: CouponCheckoutBreakdown, language: 'en' | 'pl') => string;
   },
   deps: CheckoutDeps & { logger: { warn(message: string): void } },
 ) => {
   const link = await deps.salesLinks?.findBySlug(tenant.id, input.slug);
   const productId = link?.productIds[0];
   if (link == null || productId === undefined) return err(notFound('Sales link not found'));
-  const selection = await validateCheckoutSelection(tenant.id, { productId, salesLinkSlug: input.slug }, deps);
+  const selection = await validateCheckoutSelection(tenant.id, { productId, salesLinkSlug: input.slug }, deps, { shipping: 'ignore' });
   if (!selection.ok) return selection;
-  if (selection.value.products?.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
+  if (selection.value.products?.some(requiresWorkspaceCheckout)) {
     return err(validation('This sales link requires the workspace checkout page'));
   }
   const settings = await deps.tenants?.findSettings(tenant.id);
@@ -76,7 +79,7 @@ export const createDirectSalesLinkCheckout = async (
   if (!built.ok) return built;
   const coupon = await resolveSelectionCoupon(tenant.id, input.couponCode, selection.value, built.value, deps);
   if (!coupon.ok) return coupon;
-  if (coupon.value.kind === 'requiresEmail') {
+  if (coupon.value.kind === 'together') {
     const query = attributionToSearchParams(input.attribution);
     query.set('checkout', 'together');
     query.set('code', normalizeCouponCode(input.couponCode ?? ''));
@@ -84,31 +87,34 @@ export const createDirectSalesLinkCheckout = async (
     if (returnUrl !== undefined && returnUrl !== null) query.set('return', returnUrl);
     return ok({ url: `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}?${query}` });
   }
+  const language = settings.defaultLanguage ?? 'en';
+  const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
+  const termsAcceptanceMessage = input.termsAcceptanceMessage(legal, language);
+  if (termsAcceptanceMessage.length > 1200) return err(validation('Checkout terms acceptance text exceeds 1200 characters'));
+  const disclosureMessage = coupon.value.kind === 'applied' ? input.couponDisclosureMessage(coupon.value.breakdown, language) : undefined;
+  if (disclosureMessage !== undefined && disclosureMessage.length > 1200) return err(validation('Checkout coupon disclosure text exceeds 1200 characters'));
   let applied: { promotionCodeId: string; couponCheckoutSessionId: string } | undefined;
   if (coupon.value.kind === 'applied') {
     const promotion = await ensureCheckoutCouponPromotion(tenant.id, coupon.value, deps);
     if (!promotion.ok) {
       deps.logger.warn(`[direct-checkout] Coupon promotion unavailable tenant=${tenant.id}: ${promotion.error.message}`);
-    } else {
-      const captured = await captureCouponCheckout(tenant.id, { ...coupon.value, memberEmail: null }, selection.value, deps);
-      if (!captured.ok) {
-        deps.logger.warn(`[direct-checkout] Coupon capture unavailable tenant=${tenant.id}: ${captured.error.message}`);
-      } else {
-        applied = { promotionCodeId: promotion.value.stripePromotionCodeId, couponCheckoutSessionId: captured.value };
-      }
+      return promotion;
     }
+    const captured = await captureCouponCheckout(tenant.id, { ...coupon.value, memberEmail: null }, selection.value, deps);
+    if (!captured.ok) {
+      deps.logger.warn(`[direct-checkout] Coupon capture unavailable tenant=${tenant.id}: ${captured.error.message}`);
+      return captured;
+    }
+    applied = { promotionCodeId: promotion.value.stripePromotionCodeId, couponCheckoutSessionId: captured.value };
   }
-  const language = settings.defaultLanguage ?? 'en';
-  const legal = { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl };
-  const termsAcceptanceMessage = input.termsAcceptanceMessage(legal, language);
-  if (termsAcceptanceMessage.length > 1200) return err(validation('Checkout terms acceptance text exceeds 1200 characters'));
   const fields = attributionSchema.parse(input.attribution);
   const attribution = fields === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
   const checkoutSnapshotId = deps.ids.nextId();
   const checkoutBranding = resolveCheckoutBranding(settings, tenantBaseUrl);
   const checkoutPath = `${tenantBaseUrl}/offer/${encodeURIComponent(input.slug)}`;
   const checkoutQuery = `&salesLinkId=${encodeURIComponent(link.id)}`;
-  let cancelUrl = resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}`;
+  const couponQuery = coupon.value.kind === 'applied' ? `&code=${encodeURIComponent(normalizeCouponCode(input.couponCode ?? ''))}` : '';
+  let cancelUrl = resolveCancelReturnUrl(link.cancelReturnUrl, input.returnUrl) ?? `${checkoutPath}?status=cancelled${checkoutQuery}${couponQuery}`;
   if (fields !== undefined) {
     const attributedUrl = new URL(cancelUrl);
     attributionToSearchParams(fields).forEach((value, key) => attributedUrl.searchParams.set(key, value));
@@ -130,7 +136,7 @@ export const createDirectSalesLinkCheckout = async (
     language,
     successUrl: `${checkoutPath}?status=success&purchase_kind=one_time${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl,
-    directCheckout: { ...legal, termsAcceptanceMessage },
+    directCheckout: { ...legal, termsAcceptanceMessage, ...(disclosureMessage === undefined ? {} : { disclosureMessage }) },
     ...applied,
     ...(checkoutBranding === undefined ? {} : { checkoutBranding }),
     ...(hold.value === null ? {} : { expiresAt: hold.value.sessionExpiresAt }),

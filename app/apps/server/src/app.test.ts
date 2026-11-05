@@ -162,6 +162,7 @@ const product = (input: {
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: input.published,
   accessItems: [],
   legacyId: null,
@@ -3838,6 +3839,25 @@ describe('server edge security baseline', () => {
     }
   });
 
+  it('allows the parcel locker map sources only on checkout form documents', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/my/products', (c) => c.html('<main>Products</main>'));
+    for (const path of ['/checkout/product-1', '/checkout/product-1?status=cancelled', '/offer/bundle?checkout=together', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together&status=cancelled']) {
+      const directives = parseCsp(await h.app.request(path, { headers: { host: 'acme.localhost' } }));
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives), 'https://geowidget.inpost.pl']));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'", 'https://geowidget.inpost.pl']));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
+    }
+    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?checkout=together&status=success', '/my/products', '/legal/terms']) {
+      const policy = (await h.app.request(path, { headers: { host: 'acme.localhost' } })).headers.get('content-security-policy');
+      expect(policy, path).not.toContain('geowidget.inpost.pl');
+    }
+  });
+
   it('keeps baseline CSP outside checkout success documents', async () => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
@@ -3854,8 +3874,12 @@ describe('server edge security baseline', () => {
     ]) {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       const directives = parseCsp(response);
-      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
-      const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
+      expect(directives.get('script-src')).toEqual(new Set([
+        "'self'", scriptNonce(directives),
+        ...(path.startsWith('/checkout/') || path.includes('checkout=together') || path.includes('status=cancelled') ? ['https://geowidget.inpost.pl'] : []),
+      ]));
+      const serverDocument = (path.startsWith('/offer/') && !path.includes('checkout=together') && !path.includes('status=cancelled'))
+        || path.startsWith('/legal/') || path.startsWith('/api/');
       expect(directives.get('connect-src')).toEqual(new Set([
         "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
       ]));
@@ -6182,6 +6206,23 @@ describe('public payment-config route', () => {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
       analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+      shippingRates: [], inpostGeowidgetToken: null,
+    } });
+  });
+
+  it('exposes only active shipping rates with public fields and the parcel locker map token', async () => {
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token', shippingRates: [
+        { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
+        { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
+      ] };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toMatchObject({ ok: true, data: {
+      inpostGeowidgetToken: 'public-map-token',
+      shippingRates: [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } }],
     } });
   });
 
@@ -8011,7 +8052,7 @@ describe('checkout consent ordering', () => {
     },
   );
 
-  it.each(['unknown', 'foreign-metadata', 'foreign-subscription'] as const)(
+  it.each(['unknown', 'foreign-metadata', 'foreign-subscription', 'conflicting-subscription'] as const)(
     'handles a signed invoice with %s ownership before any Stripe API call',
     async (ownership) => {
       const base = deps({ tenants: [acme] });
@@ -8019,7 +8060,8 @@ describe('checkout consent ordering', () => {
       const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
       const transaction = vi.spyOn(base.paymentTransaction, 'run');
       const warn = vi.spyOn(base.logger, 'warn');
-      const subscriptionId = ownership === 'foreign-subscription' ? 'sub-foreign' : 'sub-initial';
+      const error = vi.spyOn(base.logger, 'error');
+      const subscriptionId = ownership === 'foreign-subscription' || ownership === 'conflicting-subscription' ? 'sub-foreign' : 'sub-initial';
       const foreignOwner = vi.spyOn(base.stripeWebhookOwnership, 'hasForeignOwner')
         .mockImplementation(async (_tenantId, ids) => ids.subscription === 'sub-foreign');
       const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
@@ -8034,6 +8076,7 @@ describe('checkout consent ordering', () => {
           id: 'in-initial', customer: 'cus-initial',
           parent: { subscription_details: { subscription: subscriptionId } },
           ...(ownership === 'foreign-metadata' ? { metadata: { tenantId: 't-other' } } : {}),
+          ...(ownership === 'conflicting-subscription' ? { metadata: { tenantId: acme.id } } : {}),
           amount_paid: 1000, currency: 'usd', lines: { data: [] },
         } },
       });
@@ -8045,8 +8088,10 @@ describe('checkout consent ordering', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
-      if (ownership === 'unknown') expect(warn).not.toHaveBeenCalled();
-      else expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=foreign tenant`);
+      if (ownership === 'foreign-metadata' || ownership === 'foreign-subscription') expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=foreign tenant`);
+      else expect(warn).not.toHaveBeenCalled();
+      if (ownership === 'conflicting-subscription') expect(error).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=ownership conflict`);
+      else expect(error).not.toHaveBeenCalled();
       if (ownership === 'foreign-metadata') expect(foreignOwner).not.toHaveBeenCalled();
       else expect(foreignOwner).toHaveBeenCalledWith(acme.id, {
         customer: 'cus-initial', subscription: subscriptionId, invoice: 'in-initial',
@@ -10166,7 +10211,10 @@ describe('direct public sales-link checkout', () => {
       method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
     });
     expect(checkout.status).toBe(200);
-    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ promotionCodeId: 'promo-bundle' }));
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      promotionCodeId: 'promo-bundle',
+      directCheckout: expect.objectContaining({ disclosureMessage: expect.stringMatching(/^Lowest price in the last 30 days: /) }),
+    }));
   });
 
   it.each(['application/json', 'application/x-www-form-urlencoded'])('previews a normalized coupon and applies it from %s', async (contentType) => {
@@ -10251,8 +10299,10 @@ describe('direct public sales-link checkout', () => {
 
   it('keeps an overlong URL coupon from blocking checkout through the bounded POST contract', async () => {
     const h = await directSalesLinkApp();
-    const page = await h.app.request(`/offer/bundle?code=${'X'.repeat(65)}`, { headers: { host: 'acme.localhost' } });
+    const claim = vi.spyOn(h.base.rateLimitBuckets, 'claim');
+    const page = await h.app.request(`/offer/bundle?code=${'X'.repeat(101)}`, { headers: { host: 'acme.localhost' } });
     expect(page.status).toBe(200);
+    expect(claim).not.toHaveBeenCalledWith(expect.objectContaining({ scope: expect.stringMatching(/^coupon-preview:/) }));
     const html = await page.text();
     expect(html).toContain('Coupon cannot be applied.');
     expect(html).not.toContain('name="couponCode"');
@@ -10553,6 +10603,23 @@ describe('direct public sales-link checkout', () => {
       const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
       expect(await page.text()).toBe('<main>Existing checkout</main>');
     }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps offers with a shipped product on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.type = 'physical';
+    item.deliveryMethod = 'shipping';
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const page = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).toBe('<main>Existing checkout</main>');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
     expect(h.create).not.toHaveBeenCalled();
   });
 

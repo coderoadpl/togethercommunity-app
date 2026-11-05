@@ -1,6 +1,9 @@
 import {
   EMPTY_LEGAL_URLS,
   defaultProductVat,
+  publicShippingRates,
+  type DeliveryMethod,
+  type PublicShippingRate,
   type ProductVatRate,
   EMPTY_TENANT_BRANDING,
   ok,
@@ -47,6 +50,8 @@ export interface PublicOffer {
   contentVersion: number;
   previewLessons: CourseLessonPreview[];
   products: PublicOfferProduct[];
+  shippingRates: PublicShippingRate[];
+  inpostGeowidgetToken: string | null;
 }
 
 interface PublicOfferPrice {
@@ -62,6 +67,7 @@ interface PublicOfferProduct {
   vatExemptionBasis?: string | null | undefined;
   id: string;
   type: ProductType;
+  deliveryMethod: DeliveryMethod;
   slug: string;
   title: string;
   description: string;
@@ -148,6 +154,8 @@ export const getPublicOffer = async (
       stock: publicProductStock(stock.find((level) => level.productId === product.id) ?? null),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
+    shippingRates: publicShippingRates(settings?.shippingRates),
+    inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null,
   });
 };
 
@@ -162,6 +170,7 @@ const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
 const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOfferProduct => ({
   id: product.id,
   type: product.type,
+  deliveryMethod: product.deliveryMethod,
   slug: product.slug,
   title: product.title,
   description: product.description,

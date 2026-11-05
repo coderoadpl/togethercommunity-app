@@ -6,6 +6,18 @@ export const expectedPurchaseConfirmationPl = {
   notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
 };
 
+export const purchaseDeliveryFixturesPl = {
+  locker: { method: 'Paczkomat InPost', pickupPoint: { code: 'WAW01M', name: 'Paczkomat WAW01M', address: 'ul. Prosta 1, Warszawa' }, address: null },
+  address: { method: 'Kurier', pickupPoint: null, address: { name: 'Jan Kowalski', line1: 'ul. Ogrodowa 5', line2: 'm. 2', postalCode: '00-950', city: 'Warszawa', country: 'PL' } },
+};
+
+export const expectedPurchaseDeliveryPl = {
+  lockerHtml: '<p><strong>Dostawa</strong>: Paczkomat InPost<br>Paczkomat: WAW01M<br>Paczkomat WAW01M<br>ul. Prosta 1, Warszawa</p>',
+  lockerText: '\n\nDostawa: Paczkomat InPost\nPaczkomat: WAW01M\nPaczkomat WAW01M\nul. Prosta 1, Warszawa',
+  addressHtml: '<p><strong>Dostawa</strong>: Kurier<br>Jan Kowalski<br>ul. Ogrodowa 5<br>m. 2<br>00-950 Warszawa<br>PL</p>',
+  addressText: '\n\nDostawa: Kurier\nJan Kowalski\nul. Ogrodowa 5\nm. 2\n00-950 Warszawa\nPL',
+};
+
 export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
   welcomeSignIn: {
     subject: 'Twoje konto na platformie Acme Courses jest gotowe',

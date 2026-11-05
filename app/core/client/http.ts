@@ -1219,6 +1219,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
+    if (input.fulfilmentStatus !== undefined) params.set('fulfilmentStatus', input.fulfilmentStatus);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
@@ -1308,6 +1309,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.couponId !== undefined) params.set('couponId', input.couponId);
+    if (input.fulfilmentStatus !== undefined) params.set('fulfilmentStatus', input.fulfilmentStatus);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);

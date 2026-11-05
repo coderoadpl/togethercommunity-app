@@ -1553,7 +1553,7 @@ describe('product stock CLI', () => {
   it('maps a sold-out refusal to its own exit code', async () => {
     h.adjustProductStock.mockResolvedValue(err(appError('sold_out', '"Poster" is sold out')));
     await run('--json', 'product', 'stock', 'adjust', 'poster', '--delta', '1', '--reason', 'count');
-    expect(process.exitCode).toBe(25);
+    expect(process.exitCode).toBe(26);
   });
 
   it('shows stock next to tracked products in the product list', async () => {
@@ -1686,4 +1686,44 @@ it('distinguishes the campaign source none from missing attribution in CLI lists
   expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ source: 'none', sourceMatch: 'exact' });
   await run('--json', 'orders', 'export', '--format', 'json', '--source', 'none', '--source-exact');
   expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'json', source: 'none', sourceMatch: 'exact' });
+});
+
+describe('shipping CLI', () => {
+  it('creates and updates a shipped product with --delivery-method', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed accessory', '--type', 'physical', '--price-cents', '4900', '--delivery-method', 'shipping');
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ type: 'physical', deliveryMethod: 'shipping' }));
+    await run('--json', 'product', 'update', 'product-1', '--delivery-method', 'pickup');
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', deliveryMethod: 'pickup' });
+  });
+
+  it('rejects an unknown delivery method before calling the server', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed accessory', '--price-cents', '4900', '--delivery-method', 'drone');
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('filters and exports orders that still need shipping', async () => {
+    h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
+    h.exportOrders.mockReset().mockResolvedValue(ok({ filename: 'orders.csv', mimeType: 'text/csv', content: '' }));
+    await run('--json', 'orders', 'list', '--fulfilment', 'to_pack');
+    expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ fulfilmentStatus: 'to_pack' });
+    await run('--json', 'orders', 'export', '--format', 'csv', '--fulfilment', 'to_pack');
+    expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'csv', fulfilmentStatus: 'to_pack' });
+  });
+
+  it('sets shipping rates from inline JSON and the parcel locker map token', async () => {
+    const rates = [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true }];
+    h.updateTenantSettings.mockResolvedValue(ok({ settings: { shippingRates: [{ ...rates[0], vatRatePercent: 23 }], inpostGeowidgetToken: 'public-token' } }));
+    await run('tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates), '--inpost-geowidget-token', 'public-token');
+    expect(h.updateTenantSettings).toHaveBeenCalledExactlyOnceWith({ shippingRates: [{ ...rates[0], vatRatePercent: 23 }], inpostGeowidgetToken: 'public-token' });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('shipping rates: locker Parcel locker 1499 (active)'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('InPost parcel locker map token: (set)'));
+  });
+
+  it('rejects more than five shipping rates before calling the server', async () => {
+    const rates = Array.from({ length: 6 }, (_, index) => ({ id: `rate-${index}`, label: 'Rate', amountCents: 100, carrier: 'other', pickupPoint: 'none', active: true }));
+    await run('--json', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates));
+    expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
 });

@@ -1,4 +1,4 @@
-import { stripeProbePermissionsInputSchema } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, shippingRatesSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -166,6 +166,8 @@ const tenantSettingsOptionsSchema = z.object({
   clearBillingPortalUrl: z.boolean().optional(),
   videoAutoplayDefault: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   memberVideoAutoplayOverride: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  shippingRates: z.string().optional(),
+  inpostGeowidgetToken: z.string().optional(),
 });
 const storageConfigurationOptionsSchema = z.object({
   provider: storageProviderKindSchema,
@@ -180,6 +182,7 @@ const productCreateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  deliveryMethod: deliveryMethodSchema.optional(),
   type: z.enum(['course', 'digital_download', 'membership', 'physical']).optional(),
   slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
@@ -194,12 +197,17 @@ const productUpdateOptionsSchema = z.object({
   vatRate: productVatOptionSchema.optional(),
   vatExemptionBasis: z.string().optional(),
   visibility: productVisibilitySchema.optional(),
+  deliveryMethod: deliveryMethodSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().optional(),
   coverUrl: z.string().url().optional(),
   clearCover: z.boolean().default(false),
 });
-const simulatePurchaseOptionsSchema = z.object({
+const shippingSelectionOptionsSchema = z.object({
+  shippingRate: z.string().min(1).optional(),
+  pickupPoint: z.string().min(1).optional(),
+});
+const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
   email: z.string().email(),
   product: z.string().min(1),
@@ -220,6 +228,7 @@ const ordersListOptionsSchema = z.object({
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
   search: z.string().min(1).optional(),
   page: z
     .string()
@@ -240,6 +249,7 @@ const ordersExportOptionsSchema = z.object({
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
   coupon: z.string().min(1).optional(),
+  fulfilment: fulfilmentStatusSchema.optional(),
   search: z.string().min(1).optional(),
   out: z.string().min(1).optional(),
 });
@@ -277,7 +287,7 @@ const couponExportOptionsSchema = z.object({
   partner: z.string().trim().min(1).optional(),
   out: z.string().min(1).optional(),
 });
-const checkoutSessionOptionsSchema = z.object({
+const checkoutSessionOptionsSchema = shippingSelectionOptionsSchema.extend({
   salesLink: z.string().min(1).optional(),
   product: z.string().min(1),
   email: z.string().email().optional(),
@@ -878,20 +888,40 @@ checkout
   .requiredOption('--product <id>')
   .option('--email <email>')
   .option('--language <language>', 'checkout language (pl or en)')
+  .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
+  .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .action(
     withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
+      const shipping = shippingSelection(options);
+      if (!shipping.ok) {
+        emit(shipping, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createCheckoutSession({
           productId: options.product,
           ...(options.salesLink === undefined ? {} : { salesLinkId: options.salesLink }),
           ...(options.email === undefined ? {} : { email: options.email }),
           ...(options.language === undefined ? {} : { language: options.language }),
+          ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,
         (data) => data.url,
       );
     }),
   );
+
+const shippingSelection = (
+  options: z.output<typeof shippingSelectionOptionsSchema>,
+): Result<CheckoutShippingInput | null, AppError> => {
+  if (options.shippingRate === undefined) {
+    return options.pickupPoint === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point <code>'));
+  }
+  return ok({
+    rateId: options.shippingRate,
+    ...(options.pickupPoint === undefined ? {} : { pickupPoint: { provider: 'inpost' as const, code: options.pickupPoint } }),
+  });
+};
 
 const tenant = program.command('tenant').description('Tenant staff access');
 
@@ -942,6 +972,12 @@ tenant
     }),
   );
 
+const shippingSettingsLines = (settings: TenantSettings): string[] => [
+  `shipping rates: ${(settings.shippingRates ?? []).length === 0 ? '(none)' : (settings.shippingRates ?? [])
+    .map((rate) => `${rate.id} ${rate.label} ${rate.amountCents} (${rate.active ? 'active' : 'inactive'})`).join('; ')}`,
+  `InPost parcel locker map token: ${settings.inpostGeowidgetToken == null ? '(not set)' : '(set)'}`,
+];
+
 tenant.command('settings').description('Show tenant settings').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
@@ -957,6 +993,7 @@ tenant.command('settings').description('Show tenant settings').action(
         `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
         `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
         `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+        ...shippingSettingsLines(data.settings),
       ].join('\n'),
     );
   }),
@@ -979,8 +1016,24 @@ tenant
   .option('--clear-billing-portal-url', 'remove the billing portal URL')
   .option('--video-autoplay-default <value>', "'true' or 'false' — default lesson video autoplay")
   .option('--member-video-autoplay-override <value>', "'true' or 'false' — let members override autoplay")
+  .option('--shipping-rates <json>', 'inline JSON array of up to five shipping rates, e.g. [{"id":"locker","label":"Parcel locker","amountCents":1499,"carrier":"inpost","pickupPoint":"inpost_locker","active":true}]')
+  .option('--inpost-geowidget-token <token>', 'public InPost parcel locker map token; empty string clears')
   .action(
     withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      let shippingRates: ShippingRate[] | undefined;
+      if (options.shippingRates !== undefined) {
+        const payload = await readJsonPayload(options.shippingRates, undefined);
+        if (!payload.ok) {
+          emit(payload, ctx.json, () => '');
+          return;
+        }
+        const parsed = parsedInput(shippingRatesSchema, payload.value, 'Invalid shipping rates');
+        if (!parsed.ok) {
+          emit(parsed, ctx.json, () => '');
+          return;
+        }
+        shippingRates = parsed.value;
+      }
       const accentColor = options.clearAccentColor === true ? null : options.accentColor;
       const accentLight = options.clearAccentLight === true ? null : options.accentLight;
       const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
@@ -994,7 +1047,9 @@ tenant
         options.analyticsMetaPixelId === undefined &&
         options.analyticsConsentCookieName === undefined &&
         options.analyticsConsentCookieValue === undefined &&
-        options.analyticsLoadWithoutConsent === undefined
+        options.analyticsLoadWithoutConsent === undefined &&
+        shippingRates === undefined &&
+        options.inpostGeowidgetToken === undefined
       ) {
         emit(
           err(validation('Pass at least one tenant setting option')),
@@ -1019,6 +1074,8 @@ tenant
         ...(options.memberVideoAutoplayOverride === undefined
           ? {}
           : { memberVideoAutoplayOverride: options.memberVideoAutoplayOverride }),
+        ...(shippingRates === undefined ? {} : { shippingRates }),
+        ...(options.inpostGeowidgetToken === undefined ? {} : { inpostGeowidgetToken: options.inpostGeowidgetToken }),
       }), ctx.json, (data) =>
         [
           `dark accent: ${data.settings.accentColor ?? '(not set)'}`,
@@ -1032,6 +1089,7 @@ tenant
           `analytics consent cookie name: ${data.settings.analyticsConsentCookieName ?? '(not set)'}`,
           `analytics consent cookie value: ${data.settings.analyticsConsentCookieValue ?? '(not set)'}`,
           `analytics load without consent: ${String(data.settings.analyticsLoadWithoutConsent ?? false)}`,
+          ...shippingSettingsLines(data.settings),
         ].join('\n'),
       );
     }),
@@ -1260,6 +1318,7 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--delivery-method <method>', 'pickup or shipping (shipping requires --type physical)')
   .requiredOption('--title <title>')
   .option('--type <type>', 'course, digital_download, membership or physical')
   .option('--slug <slug>', 'tenant-unique product slug')
@@ -1303,6 +1362,7 @@ product
       emit(
         await ctx.api.createProduct({
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
           title: options.title,
@@ -1358,8 +1418,9 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover or visibility')
+  .description('Update product title, description, cover, visibility or delivery method')
   .option('--visibility <visibility>', 'listed or unlisted')
+  .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
   .option('--vat-rate <rate>', '5, 8, 23 or exempt')
   .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
   .option('--title <title>')
@@ -1375,6 +1436,7 @@ product
       emit(
         await ctx.api.updateProduct({
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.deliveryMethod === undefined ? {} : { deliveryMethod: options.deliveryMethod }),
           id,
           ...(options.vatRate === undefined ? {} : { vatRate: options.vatRate }),
           ...(options.vatExemptionBasis === undefined ? {} : { vatExemptionBasis: options.vatExemptionBasis }),
@@ -1540,6 +1602,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--fulfilment <status>', 'to_pack: paid orders that still need shipping')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
@@ -1553,6 +1616,7 @@ ordersCommand
           ...(options.product === undefined ? {} : { productId: options.product }),
           ...(options.kind === undefined ? {} : { kind: options.kind }),
           ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+          ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
           ...(options.source === undefined ? {} : { source: options.source }),
           ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
           ...(options.search === undefined ? {} : { search: options.search }),
@@ -1582,6 +1646,7 @@ ordersCommand
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
   .option('--coupon <id>')
+  .option('--fulfilment <status>', 'to_pack: paid orders that still need shipping')
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
@@ -1594,6 +1659,7 @@ ordersCommand
         ...(options.product === undefined ? {} : { productId: options.product }),
         ...(options.kind === undefined ? {} : { kind: options.kind }),
         ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
+        ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
         ...(options.source === undefined ? {} : { source: options.source }),
         ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
         ...(options.search === undefined ? {} : { search: options.search }),
@@ -3056,10 +3122,17 @@ program
   .requiredOption('--email <email>')
   .requiredOption('--product <id>')
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
+  .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
+  .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
         emit(err(validation('Select a tenant with --tenant to simulate a purchase')), ctx.json, () => '');
+        return;
+      }
+      const shipping = shippingSelection(options);
+      if (!shipping.ok) {
+        emit(shipping, ctx.json, () => '');
         return;
       }
       emit(
@@ -3068,6 +3141,7 @@ program
           email: options.email,
           productId: options.product,
           ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+          ...(shipping.value === null ? {} : { shipping: shipping.value }),
         }),
         ctx.json,
         (data) => {

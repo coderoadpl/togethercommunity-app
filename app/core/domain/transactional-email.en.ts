@@ -21,6 +21,8 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     subject: (orderNumber, tenantName) => `Purchase confirmation ${orderNumber} — ${tenantName}`,
     verification: 'Order verification code for the seller',
     qrAlt: 'Order QR code',
+    delivery: 'Delivery',
+    pickupPoint: 'Parcel locker',
   },
   welcomeSignIn: {
     actionLabels: {

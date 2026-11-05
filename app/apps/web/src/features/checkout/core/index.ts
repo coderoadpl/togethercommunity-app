@@ -1,1 +1,7 @@
-export { createCheckoutState, reduceCheckoutState } from './checkout-state.js';
+export {
+  createCheckoutState,
+  parseGeowidgetPoint,
+  reduceCheckoutState,
+  selectDelivery,
+  type CheckoutState,
+} from './checkout-state.js';

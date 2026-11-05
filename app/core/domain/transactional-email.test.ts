@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedPurchaseConfirmationPl, expectedTransactionalEmailPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -755,6 +755,33 @@ describe('purchase confirmation amounts', () => {
     expect(message.html).not.toContain(`<a href="${details.verificationUrl}">`);
     expect(message.text.split('\n')).toContain(labels.verification);
     expect(message.text).not.toContain(details.verificationUrl);
+  });
+
+  it.each([
+    ['pl', expectedPurchaseDeliveryPl, purchaseDeliveryFixturesPl],
+    ['en', {
+      lockerHtml: '<p><strong>Delivery</strong>: Parcel locker<br>Parcel locker: WAW01M<br>Locker &lt;WAW01M&gt;<br>Main Street 1, Warsaw</p>',
+      lockerText: '\n\nDelivery: Parcel locker\nParcel locker: WAW01M\nLocker <WAW01M>\nMain Street 1, Warsaw',
+      addressHtml: '<p><strong>Delivery</strong>: Courier<br>Jane Buyer<br>Garden Street 5<br>00-950 Warsaw<br>PL</p>',
+      addressText: '\n\nDelivery: Courier\nJane Buyer\nGarden Street 5\n00-950 Warsaw\nPL',
+    }, {
+      locker: { method: 'Parcel locker', pickupPoint: { code: 'WAW01M', name: 'Locker <WAW01M>', address: 'Main Street 1, Warsaw' }, address: null },
+      address: { method: 'Courier', pickupPoint: null, address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' } },
+    }],
+  ] as const)('adds the delivery paragraph after the purchased items in %s', (language, expected, deliveries) => {
+    const labels = (language === 'pl' ? transactionalEmailMessagesPl : transactionalEmailMessagesEn).purchase;
+    for (const [kind, delivery] of [['locker', deliveries.locker], ['address', deliveries.address]] as const) {
+      const message = welcomeSignIn(language, {
+        tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in',
+        purchase: purchaseEmailDetailsSchema.parse({ ...purchase, delivery }),
+      });
+      const html = kind === 'locker' ? expected.lockerHtml : expected.addressHtml;
+      const text = kind === 'locker' ? expected.lockerText : expected.addressText;
+      expect(message.html).toContain(`</table>${html}<p>${labels.notInvoice}</p>`);
+      expect(message.text).toContain(`${text}\n\n${labels.notInvoice}`);
+    }
+    const without = welcomeSignIn(language, { tenantName: 'Workspace', actionUrl: 'https://shop.example.org/sign-in', purchase: purchaseEmailDetailsSchema.parse(purchase) });
+    expect(without.html).not.toContain(labels.delivery);
   });
 
   it.each(['en', 'pl'])('retains name lists for legacy and mixed lines in %s', (language) => {

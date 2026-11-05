@@ -1,7 +1,7 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
-import { productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
+import { COUPON_CODE_MAX_LENGTH, productStockSchema, productVatRateSchema, publicProductStockSchema } from '#core/domain/index.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
@@ -180,6 +180,9 @@ import {
   productSlugSchema,
   productSchema,
   productTypeSchema,
+  deliveryMethodSchema,
+  checkoutShippingInputSchema,
+  publicShippingRateSchema,
   progressViewSchema,
   searchPostsInputSchema,
   sendSupportMessageInputSchema,
@@ -422,6 +425,7 @@ export const publicOfferOutputSchema = z.object({
     z.object({
       id: z.string(),
       type: productTypeSchema,
+      deliveryMethod: deliveryMethodSchema.default('pickup'),
       slug: productSlugSchema,
       title: z.string(),
       description: z.string(),
@@ -440,6 +444,8 @@ export const publicOfferOutputSchema = z.object({
       })).default([]),
     }),
   ),
+  shippingRates: z.array(publicShippingRateSchema).default([]),
+  inpostGeowidgetToken: z.string().nullable().default(null),
 });
 
 export const publicNavigationOutputSchema = z.object({
@@ -465,6 +471,8 @@ export const publicPaymentConfigOutputSchema = z.object({
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
+  shippingRates: z.array(publicShippingRateSchema).default([]),
+  inpostGeowidgetToken: z.string().nullable().default(null),
 });
 
 export const checkoutSessionRequestSchema = checkoutSessionInputSchema;
@@ -519,6 +527,7 @@ export const myProductsOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       purchasable: z.boolean(),
+      shippedTo: z.string().nullable().optional(),
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
@@ -681,8 +690,9 @@ export const simulatePurchaseInputSchema = z.object({
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
-  couponCode: z.string().trim().min(1).max(100).optional(),
+  couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
+  shipping: checkoutShippingInputSchema.optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;

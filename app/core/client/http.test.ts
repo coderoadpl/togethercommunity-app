@@ -693,10 +693,14 @@ it('sends source filters for order listing and export and parses tenant source o
   await client.exportOrders({ source: 'none', format: 'json' });
   await client.listOrders({ source: 'none', sourceMatch: 'exact' });
   await client.exportOrders({ source: 'none', sourceMatch: 'exact', format: 'csv' });
+  await client.listOrders({ fulfilmentStatus: 'to_pack' });
+  await client.exportOrders({ fulfilmentStatus: 'to_pack', format: 'csv' });
   expect(urls).toEqual([
     'https://api.example.test/api/orders?source=meta+%2F+ads',
     'https://api.example.test/api/orders/export?format=json&source=none',
     'https://api.example.test/api/orders?source=none&sourceMatch=exact',
     'https://api.example.test/api/orders/export?format=csv&source=none&sourceMatch=exact',
+    'https://api.example.test/api/orders?fulfilmentStatus=to_pack',
+    'https://api.example.test/api/orders/export?format=csv&fulfilmentStatus=to_pack',
   ]);
 });

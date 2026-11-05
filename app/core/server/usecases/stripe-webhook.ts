@@ -8,6 +8,9 @@ import {
   nextPeriodEnd,
   normalizeEmail,
   ok,
+  isShippingLine,
+  orderShippingFrom,
+  productLines,
   resolveEmailLanguage,
   validation,
   type AppError,
@@ -17,6 +20,7 @@ import {
   type Coupon,
   type CouponCheckoutSession,
   type Order,
+  type OrderShipping,
   type CheckoutSnapshot,
   type ProductPrice,
   type StripeMode,
@@ -104,6 +108,15 @@ const ignoreForeignTenant = (
   deps: StripeWebhookDeps,
 ): Result<{ processed: boolean }, AppError> => {
   deps.logger.warn(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} reason=foreign tenant`);
+  return ok({ processed: false });
+};
+
+const ignoreOwnershipConflict = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Result<{ processed: boolean }, AppError> => {
+  deps.logger.error(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} reason=ownership conflict`);
   return ok({ processed: false });
 };
 
@@ -265,7 +278,7 @@ const couponStillAttributable = async (
       code: context.coupon.code,
       email: context.memberEmail,
       productId: context.session.productId,
-      ...(snapshot?.salesLinkId == null ? {} : { productIds: snapshot.lines.map((line) => line.productId), products: snapshot.lines.map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
+      ...(snapshot?.salesLinkId == null ? {} : { productIds: productLines(snapshot.lines).map((line) => line.productId), products: productLines(snapshot.lines).map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
       priceId: context.session.priceId,
       priceKind: context.price?.kind ?? 'one_time',
       amountCents: context.session.originalCents,
@@ -318,6 +331,7 @@ const claimDiscountedOrder = async (
   context: CouponPaymentContext,
   billing: Order['billing'],
   snapshot: CheckoutSnapshot | null,
+  shipping: OrderShipping | null,
   deps: StripeWebhookDeps,
 ): Promise<{ order: Order; coupon: Coupon } | null> => {
   if (deps.couponRedemptions === undefined) return null;
@@ -353,6 +367,7 @@ const claimDiscountedOrder = async (
     billing: billing ?? null,
     attribution: snapshot?.attribution ?? event.checkoutSession?.metadata.attribution ?? null,
     ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+    ...shippingFields(shipping),
     createdAt: deps.clock.nowIso(),
   };
   const redemptionId = deps.ids.nextId();
@@ -383,6 +398,20 @@ const claimDiscountedOrder = async (
   return claimed ? { order, coupon: context.coupon } : null;
 };
 
+const shippingFields = (shipping: OrderShipping | null): Pick<Order, 'shipping' | 'fulfilmentStatus'> =>
+  shipping === null ? {} : { shipping, fulfilmentStatus: 'to_pack' };
+
+const checkoutShipping = (
+  snapshot: CheckoutSnapshot | null,
+  event: PaymentWebhookEvent,
+): Result<OrderShipping | null, AppError> => {
+  const line = snapshot?.lines.find(isShippingLine);
+  if (snapshot === null || line === undefined) return ok(null);
+  if (snapshot.shipping == null) return err(validation('Checkout snapshot is missing its shipping selection'));
+  if (event.checkoutSession?.shippingCostCents !== line.grossCents) return err(validation('Checkout shipping cost does not match its shipping line'));
+  return orderShippingFrom(snapshot.shipping, event.checkoutSession.shipping);
+};
+
 const applyCheckoutCompleted = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
@@ -411,6 +440,8 @@ const applyCheckoutCompleted = async (
   }
   if (snapshot !== null && event.checkoutSession.amountTotalCents != null &&
       event.checkoutSession.amountTotalCents + (event.checkoutSession.discountTotalCents ?? 0) !== snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0)) return err(validation('Checkout total does not match its lines'));
+  const shipping = checkoutShipping(snapshot, event);
+  if (!shipping.ok) return shipping;
   const email = event.checkoutSession.email ?? metadata.memberEmail;
   if (!email) return err(validation('Stripe checkout session is missing the member email'));
 
@@ -431,7 +462,7 @@ const applyCheckoutCompleted = async (
   const couponContext = event.mode === 'test' ? null : await couponPaymentContext(tenant, event, deps);
   const billing = await billingForCheckout(tenant.id, event, deps);
   const couponCoversFullPrice =
-    couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === 0;
+    couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === (event.checkoutSession.shippingCostCents ?? 0);
 
   const pending = event.mode === 'test'
     ? await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId })
@@ -441,6 +472,7 @@ const applyCheckoutCompleted = async (
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
     ...pending, attribution: snapshot?.attribution ?? metadata.attribution ?? pending.attribution ?? null, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
     ...(metadata.salesLinkId != null ? { billing } : {}),
+    ...shippingFields(shipping.value),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const fulfilled = await fulfillEnrollment(
@@ -459,7 +491,7 @@ const applyCheckoutCompleted = async (
     deps,
   );
   if (!fulfilled.ok) return fulfilled;
-  for (const line of snapshot?.lines.slice(1) ?? []) {
+  for (const line of productLines(snapshot?.lines ?? []).slice(1)) {
     const additional = await fulfillEnrollment(tenant, {
       email, productId: line.productId, expiresAt: null, language: metadata.language ?? null,
       source: provider, mode: event.mode ?? 'live', sendEmail: false, allowUnpublished: true,
@@ -477,6 +509,7 @@ const applyCheckoutCompleted = async (
           couponContext,
           billing,
           snapshot,
+          shipping.value,
           deps,
         );
   if (couponCoversFullPrice && discounted === null) {
@@ -516,6 +549,7 @@ const applyCheckoutCompleted = async (
         billing,
         attribution: snapshot?.attribution ?? metadata.attribution ?? null,
         ...(snapshot === null ? {} : { lines: snapshot.lines, salesLinkId: snapshot.salesLinkId }),
+        ...shippingFields(shipping.value),
       },
       deps,
     ));
@@ -525,7 +559,7 @@ const applyCheckoutCompleted = async (
     : await commitCheckoutStock(tenant, {
       checkoutSnapshotId: snapshot?.id ?? null,
       orderId: paidOrder.id,
-      productIds: snapshot === null ? [metadata.productId] : snapshot.lines.map((line) => line.productId),
+      productIds: snapshot === null ? [metadata.productId] : productLines(snapshot.lines).map((line) => line.productId),
     }, deps);
   let emailsQueued = stockCommit.alertsQueued;
   if (event.mode !== 'test' && product !== null) {
@@ -726,7 +760,7 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
-  const refundedProductIds = order.lines?.filter((line) => line.productType !== 'physical').map((line) => line.productId) ?? [order.productId];
+  const refundedProductIds = order.lines === undefined ? [order.productId] : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.productId);
   for (const productId of refundedProductIds) {
   const remainingOrders = await deps.paymentRefunds.listAccessRetainingOrdersForMemberProduct(
     tenant.id,
@@ -975,9 +1009,9 @@ export const validateStripeInvoiceTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
-): Promise<Result<'owned' | 'unknown' | 'foreign', AppError>> => {
+): Promise<Result<'owned' | 'unknown' | 'foreign' | 'conflict', AppError>> => {
   const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
-  if (ownership === 'foreign') return ok('foreign');
+  if (ownership !== 'owned') return ok(ownership);
   const subscriptionId = event.invoice?.subscriptionId;
   const subscription = subscriptionId == null ? null :
     await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
@@ -990,7 +1024,7 @@ const validateStoredStripeWebhookTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
-): Promise<'owned' | 'foreign'> => {
+): Promise<'owned' | 'foreign' | 'conflict'> => {
   const metadata = validateStripeWebhookTenant(tenantId, event);
   if (metadata === 'foreign') return metadata;
   const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
@@ -1007,7 +1041,8 @@ const validateStoredStripeWebhookTenant = async (
     ...(charge == null ? {} : { charge }),
     ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
   });
-  return foreign ? 'foreign' : 'owned';
+  if (!foreign) return 'owned';
+  return (event.tenantIds?.length ?? 0) > 0 || event.checkoutSession !== null ? 'conflict' : 'foreign';
 };
 
 export const fulfillStripeWebhook = async (
@@ -1020,6 +1055,7 @@ export const fulfillStripeWebhook = async (
   const ownership = provider === 'stripe'
     ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
     : validateStripeWebhookTenant(tenant.id, event);
+  if (ownership === 'conflict') return ignoreOwnershipConflict(tenant, event, deps);
   if (ownership === 'foreign') {
     return provider === 'stripe'
       ? ignoreForeignTenant(tenant, event, deps)

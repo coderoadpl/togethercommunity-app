@@ -121,15 +121,23 @@ use `connect-src 'self' https:`, including `/offer/` success returns whose other
 server responses allow only same-origin and Sentry connections. The existing
 `img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
 are added. Entry, cancellation, handoff
-and other documents retain the baseline script policy.
+and other documents retain the baseline script policy, except that checkout form
+documents allow the InPost parcel locker map origin as described below.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
 These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. Offer fallback and cancellation pages,
-other checkout requests and all other header entries retain the baseline policy.
+take precedence only on success returns. All other header entries retain the
+baseline policy, except the checkout form entries below.
+
+Checkout form documents — `/checkout/<productRef>` without `status=success`,
+`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+`https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
+parcel locker map used by shipped products, in both the server middleware and
+the static hosting headers, with `connect-src 'self' https:`. Success documents
+never list that origin. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
 No other directive changes: `connect-src 'self' https:` and
 `img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
@@ -202,7 +210,13 @@ fallback rewrites.
 
 Stripe receives one line per product, the tenant language, tax ID collection and
 a mandatory terms checkbox. A URL coupon (`?code=`) is applied as a Stripe
-promotion code and the Stripe promotion-code field stays disabled; see
+promotion code and the Stripe promotion-code field stays disabled. Stripe accepts
+only letters, digits and dashes in a promotion code, so its customer-facing code
+is the local code with every other character removed (`SUMMER 20%` becomes
+`SUMMER20`, `SUMMER-20` stays unchanged). A code with no letters or digits, or one
+whose mapped value is already an active Stripe promotion code in the account,
+gets a Stripe-generated code. The Stripe coupon name shows at most the first 40
+characters of the code. Local codes are stored and validated unchanged. See
 [Sales links](sales-links.md) for the preview and limiter details.
 Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
 account-level setting even when Together overrides the acceptance message with
@@ -252,6 +266,22 @@ billing and coupon flow remains available. Both tenant legal URLs are required
 on this fallback page and its checkout endpoint too. Success and cancellation return to the
 Together page and cannot restart the automatic redirect. The single-product
 checkout page retains its existing behavior.
+
+## Shipping in Stripe Checkout
+
+A checkout with a shipped product passes the delivery fee to Stripe as exactly
+one shipping option instead of a line item: `shipping_options[0].shipping_rate_data`
+is `{ type: 'fixed_amount', fixed_amount: { amount, currency }, display_name,
+tax_behavior: 'inclusive' }`, with `delivery_estimate` in business days when the
+option has one. The session also sets `shipping_address_collection.allowed_countries`
+to the allowed shipping countries (`PL`) and `phone_number_collection.enabled`.
+Stripe coupons discount line items, never shipping rates.
+
+The webhook reads the address from `collected_information.shipping_details`, the
+phone number from `customer_details.phone` and the fee from
+`shipping_cost.amount_total`. It rejects a session whose fee differs from the
+snapshot's shipping line or whose address is missing or outside the allowed
+countries. See [Shop](shop.md) for the delivery options and the stored order data.
 
 ## Order campaign attribution
 
@@ -330,11 +360,34 @@ payments, PaymentIntent metadata. Signature-verified webhook metadata explicitly
 naming a different tenant is acknowledged with HTTP 200 and `processed: false`,
 even if an object ID matches a local record. This includes metadata on expanded customers and
 subscriptions and invoice subscription details.
-Customer, subscription and order IDs that resolve to another tenant's stored
-records are also acknowledged with HTTP 200 and `processed: false`. Each foreign
-event emits one warning log and stops before any Stripe API lookup or fulfillment.
+Metadata-free events whose customer, subscription, invoice, payment or order ID
+resolves to another tenant's stored records are foreign too, because shared and
+BYO Stripe accounts routinely deliver other tenants' objects without metadata.
+Each foreign event emits one warning log (`reason=foreign tenant`) and stops
+before any Stripe API lookup or fulfillment. When the metadata explicitly names
+this tenant but such an ID resolves to another tenant's stored records, the event
+is an ownership conflict (for example one subscription adopted into two tenants):
+it is also acknowledged with HTTP 200 and `processed: false`, but logs an error
+(`reason=ownership conflict`) and stops before any Stripe API lookup or
+fulfillment.
 Signature verification failures still fail the request. Simulated events with
 mismatched tenant metadata still return a validation error.
+
+Because an ownership conflict is acknowledged with HTTP 200, Stripe does not
+retry it, and the renewal or access change it carried is not applied until
+someone recovers it:
+
+1. Set a log-drain alert on
+   `[stripe-webhook] ignored tenant=<id> event=<id> reason=ownership conflict`.
+2. Find which other tenant holds the conflicting local record. Search by the
+   Stripe IDs of the logged event: `member_subscriptions.provider_subscription_id`,
+   `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
+3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
+   only.
+4. Resend the logged event from the Stripe Dashboard to this tenant's webhook
+   endpoint. The endpoint is idempotent. Then check the renewal order, the
+   subscription period and the member's access. A resend before step 3 is
+   ignored again.
 
 Uncorrelated invoices and subscriptions without evidence of foreign ownership are
 acknowledged with HTTP 200 and `processed: false`. Invoice events without a local subscription

@@ -1,7 +1,7 @@
 import { err, ok, validation, type Coupon, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import type { Clock, CouponCheckoutSessionRepository, CouponRedemptionRepository, CouponRepository, IdGenerator, PaymentProvider, ProductPriceHistoryRepository } from '../ports.js';
 import type { CheckoutSelection } from './checkout-selection.js';
-import { validateCouponForCheckout } from './coupon-checkout.js';
+import { evaluateCouponForCheckout, requireCouponEmail } from './coupon-checkout.js';
 
 interface CheckoutCouponDeps {
   coupons?: CouponRepository;
@@ -13,16 +13,18 @@ interface CheckoutCouponDeps {
   payment: PaymentProvider;
 }
 
-export const validateSelectionCoupon = async (
+type SelectionCouponInput = { code: string; coupon?: Coupon; email?: string; amountCents: number; currency: string };
+
+export const evaluateSelectionCoupon = async (
   tenantId: string,
-  input: { code: string; coupon?: Coupon; email?: string; amountCents: number; currency: string },
+  input: SelectionCouponInput,
   selection: CheckoutSelection,
   deps: CheckoutCouponDeps,
 ) => {
   if (deps.coupons === undefined || deps.couponRedemptions === undefined || deps.priceHistory === undefined || deps.clock === undefined) {
     return err(validation('Coupon checkout is not configured'));
   }
-  return validateCouponForCheckout(tenantId, {
+  return evaluateCouponForCheckout(tenantId, {
     ...input,
     productId: selection.product.id,
     ...(selection.productPrices === undefined ? {} : {
@@ -33,6 +35,13 @@ export const validateSelectionCoupon = async (
     priceKind: selection.price?.kind ?? 'one_time',
   }, { coupons: deps.coupons, redemptions: deps.couponRedemptions, priceHistory: deps.priceHistory, clock: deps.clock });
 };
+
+export const validateSelectionCoupon = async (
+  tenantId: string,
+  input: SelectionCouponInput,
+  selection: CheckoutSelection,
+  deps: CheckoutCouponDeps,
+) => requireCouponEmail(await evaluateSelectionCoupon(tenantId, input, selection, deps));
 
 export const captureCouponCheckout = async (
   tenantId: string,

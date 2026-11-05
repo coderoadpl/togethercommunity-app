@@ -11,7 +11,7 @@ import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetry
 import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { adoptStripeSubscriptionRequestSchema } from '#core/contract/index.js';
-import { listStripeSubscriptionsInputSchema } from '#core/domain/index.js';
+import { listStripeSubscriptionsInputSchema, SIMULATED_SHIPPING_DETAILS } from '#core/domain/index.js';
 import { adoptStripeSubscription, listStripeSubscriptions, m2mAdoptStripeSubscription, m2mListStripeSubscriptions } from '#core/server/index.js';
 import { registerSessionMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { marketingCampaignAudienceInputSchema } from '#core/contract/index.js';
@@ -990,6 +990,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             ...(selection.value.salesLinkId === undefined ? {} : { salesLinkId: selection.value.salesLinkId }),
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
             ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
+            ...(parsed.data.shipping === undefined ? {} : { shipping: parsed.data.shipping }),
           },
           deps,
         );
@@ -1068,8 +1069,12 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
                 subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
                 paymentIntentId: null,
                 invoiceId: null,
-                amountTotalCents: validated.value.breakdown.finalCents,
+                amountTotalCents: validated.value.breakdown.finalCents + (captured.value.shippingCents ?? 0),
                 discountTotalCents: validated.value.breakdown.discountCents,
+                ...(captured.value.shippingCents === undefined ? {} : {
+                  shipping: SIMULATED_SHIPPING_DETAILS,
+                  shippingCostCents: captured.value.shippingCents,
+                }),
                 metadata: {
                   tenantId: tenant.value.tenant.id,
                   productId: selection.value.product.id,
@@ -2170,6 +2175,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
             priceCents: product.priceCents,
             currency: product.currency,
             purchasable: product.purchasable,
+            ...(product.shippedTo == null ? {} : { shippedTo: product.shippedTo }),
             grantStatus: product.grantStatus,
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
@@ -2807,6 +2813,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
+      ...(c.req.query('fulfilmentStatus') === undefined ? {} : { fulfilmentStatus: c.req.query('fulfilmentStatus') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
@@ -2842,6 +2849,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
+      ...(c.req.query('fulfilmentStatus') === undefined ? {} : { fulfilmentStatus: c.req.query('fulfilmentStatus') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     };
     const parsed = ordersExportQuerySchema.safeParse(query);

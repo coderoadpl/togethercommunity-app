@@ -84,6 +84,8 @@ describe('fake Stripe webhook verification', () => {
           invoiceId: 'in_123',
           amountTotalCents: 2449,
           discountTotalCents: 2451,
+          shipping: null,
+          shippingCostCents: null,
           metadata: {
             attribution: null,
             tenantId: 'tenant-a',

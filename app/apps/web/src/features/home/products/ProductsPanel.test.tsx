@@ -36,6 +36,7 @@ const initialProducts: Product[] = [
     priceCents: 2500,
     currency: 'PLN',
     visibility: 'listed',
+    deliveryMethod: 'pickup',
     published: false,
     accessItems: [{ level: 'course', courseId: 'c1' }],
     legacyId: null,
@@ -87,6 +88,7 @@ const renderProductsPanel = async (
         priceCents: input.priceCents,
         currency: input.currency,
         visibility: 'listed',
+        deliveryMethod: 'pickup',
         published: false,
         accessItems: input.accessItems,
         legacyId: null,
@@ -397,7 +399,7 @@ describe('ProductsPanel', () => {
 
   it('shows the stock column only for tracked products in the list', async () => {
     const poster: Product = {
-      id: 'poster', tenantId: 't1', type: 'physical', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
+      id: 'poster', tenantId: 't1', type: 'physical', deliveryMethod: 'pickup', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
       priceCents: 4900, currency: 'PLN', visibility: 'listed', published: true, accessItems: [], legacyId: null, createdAt: '2026-07-12T09:00:00.000Z',
     };
     const stock: ProductStock = { productId: 'poster', onHand: 12, reserved: 1, available: 11, lowStockThreshold: null, lowStockNotifiedAt: null, low: false, soldOut: false, updatedAt: '2026-07-12T10:00:00.000Z' };

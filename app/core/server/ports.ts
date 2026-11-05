@@ -141,6 +141,8 @@ import type {
   StripeMode,
   StripePermissionCheck,
   WipedTable,
+  CollectedShipping,
+  FulfilmentStatus,
 } from '#core/domain/index.js';
 import type { StockRepository } from './stock-ports.js';
 
@@ -1028,6 +1030,8 @@ export interface PaymentWebhookEvent {
     invoiceId?: string | null;
     amountTotalCents?: number | null;
     discountTotalCents?: number | null;
+    shipping?: CollectedShipping | null;
+    shippingCostCents?: number | null;
     metadata: {
       attribution?: Order['attribution'];
       tenantId: string | null;
@@ -1110,8 +1114,18 @@ export interface PaymentProvider {
     salesLinkId?: string;
     checkoutSnapshotId?: string;
     checkoutBranding?: CheckoutBranding;
-    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
+    directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string; disclosureMessage?: string };
     lines?: { productId: string; name: string; grossCents: number }[];
+    shipping?: {
+      allowedCountries: string[];
+      phone: true;
+      option: {
+        label: string;
+        amountCents: number;
+        currency: string;
+        deliveryEstimateDays?: { min: number; max: number };
+      };
+    };
     priceCents: number;
     currency: string;
     successUrl: string;
@@ -1153,7 +1167,7 @@ export interface PaymentProvider {
     payloadRaw: string;
     signatureHeader: string;
     webhookSecret: string;
-    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<'owned' | 'unknown' | 'foreign', AppError>>;
+    validateInvoiceTenant?: (event: PaymentWebhookEvent) => Promise<Result<'owned' | 'unknown' | 'foreign' | 'conflict', AppError>>;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
   test(input: {
     tenantId: string;
@@ -1554,6 +1568,7 @@ export interface OrderListQuery {
   productId?: string;
   kind?: PriceKind;
   couponId?: string;
+  fulfilmentStatus?: FulfilmentStatus;
   search?: string;
   page: number;
   pageSize: number;

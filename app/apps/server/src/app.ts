@@ -31,6 +31,12 @@ import { recordException, telemetryMiddleware } from './telemetry.js';
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
 const isServerRenderedDocument = (path: string): boolean =>
   ['/u/', '/marketing/', '/legal/', '/offer/'].some((prefix) => path.startsWith(prefix));
+const INPOST_GEOWIDGET_ORIGIN = 'https://geowidget.inpost.pl';
+
+const isCheckoutFormDocument = (path: string, query: (key: string) => string | undefined): boolean =>
+  query('status') !== 'success' && (path.startsWith('/checkout/')
+    || (path.startsWith('/offer/') && (query('checkout') === 'together' || query('status') === 'cancelled')));
+
 const isSpaDocument = (path: string): boolean =>
   path !== '/api' && !path.startsWith('/api/') && !isServerRenderedDocument(path);
 
@@ -71,7 +77,7 @@ export const buildApp = (deps: AppDeps) => {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath
+        connectSrc: isSpaDocument(c.req.path) || checkoutSuccessPath || isCheckoutFormDocument(c.req.path, (key) => c.req.query(key))
           ? ["'self'", 'https:']
           : ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],
@@ -87,10 +93,15 @@ export const buildApp = (deps: AppDeps) => {
     const redirectOrigin = c.get('signupRedirectOrigin');
     let policy = c.res.headers.get('content-security-policy');
     if (policy === null) return;
-    if (checkoutSuccessPath && c.req.method === 'GET'
-      && c.res.status === 200
-      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html') {
+    const htmlDocument = c.req.method === 'GET' && c.res.status === 200
+      && c.res.headers.get('content-type')?.split(';')[0] === 'text/html';
+    if (checkoutSuccessPath && htmlDocument) {
       policy = policy.replace(/script-src [^;]+/, '$& https://www.googletagmanager.com/gtag/ https://connect.facebook.net');
+    }
+    if (htmlDocument && isCheckoutFormDocument(c.req.path, (key) => c.req.query(key))) {
+      policy = policy
+        .replace(/script-src [^;]+/, `$& ${INPOST_GEOWIDGET_ORIGIN}`)
+        .replace(/style-src [^;]+/, `$& ${INPOST_GEOWIDGET_ORIGIN}`);
     }
     if (redirectOrigin !== undefined) policy = policy.replace("form-action 'self'", `form-action 'self' ${redirectOrigin}`);
     c.res.headers.set('content-security-policy', policy);

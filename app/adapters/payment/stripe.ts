@@ -10,7 +10,9 @@ import {
   err,
   ok,
   refundCoverage,
+  SHIPPING_ALLOWED_COUNTRIES,
   stripeCancelErrorSchema,
+  stripeCheckoutShippingSchema,
   stripeAdoptionObjectSchema,
   stripeSubscriptionSnapshotSchema,
   stripeChargeObjectSchema,
@@ -22,6 +24,7 @@ import {
   stripeKeyModeConflicts,
   type AppError,
   type CheckoutBranding,
+  type CollectedShipping,
   type Result,
   type StripePermissionCheck,
 } from '#core/domain/index.js';
@@ -65,6 +68,62 @@ export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readon
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
+const STRIPE_SHIPPING_COUNTRIES = SHIPPING_ALLOWED_COUNTRIES satisfies readonly Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
+
+const stripeShippingCountry = (country: string) =>
+  STRIPE_SHIPPING_COUNTRIES.find((allowed) => allowed === country) ?? null;
+
+const checkoutShippingParams = (
+  shipping: CreateCheckoutSessionRequest['shipping'],
+): Stripe.Checkout.SessionCreateParams => {
+  if (shipping === undefined) return {};
+  const estimate = shipping.option.deliveryEstimateDays;
+  return {
+    shipping_address_collection: {
+      allowed_countries: shipping.allowedCountries.flatMap((country) => {
+        const allowed = stripeShippingCountry(country);
+        return allowed === null ? [] : [allowed];
+      }),
+    },
+    phone_number_collection: { enabled: shipping.phone },
+    shipping_options: [{
+      shipping_rate_data: {
+        type: 'fixed_amount',
+        fixed_amount: { amount: shipping.option.amountCents, currency: shipping.option.currency.toLowerCase() },
+        display_name: shipping.option.label,
+        tax_behavior: 'inclusive',
+        ...(estimate === undefined ? {} : {
+          delivery_estimate: {
+            minimum: { unit: 'business_day', value: estimate.min },
+            maximum: { unit: 'business_day', value: estimate.max },
+          },
+        }),
+      },
+    }],
+  };
+};
+
+const checkoutShipping = (session: unknown): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
+  const parsed = stripeCheckoutShippingSchema.safeParse(session);
+  if (!parsed.success) return { shipping: null, shippingCostCents: null };
+  const details = parsed.data.collected_information?.shipping_details ?? null;
+  return {
+    shipping: details === null ? null : {
+      name: details.name,
+      phone: parsed.data.customer_details?.phone ?? null,
+      address: {
+        line1: details.address.line1,
+        line2: details.address.line2,
+        postalCode: details.address.postal_code,
+        city: details.address.city,
+        country: details.address.country,
+        state: details.address.state,
+      },
+    },
+    shippingCostCents: parsed.data.shipping_cost?.amount_total ?? null,
+  };
+};
+
 const checkoutBrandingParams = (branding: CheckoutBranding | undefined): Stripe.Checkout.SessionCreateParams => {
   if (branding === undefined || Object.keys(branding).length === 0) return {};
   return {
@@ -84,7 +143,7 @@ export const stripeCouponParams = (
   input: EnsureCouponRequest,
 ): Stripe.CouponCreateParams => ({
   duration: input.recurringDuration === 'forever' ? 'forever' : 'once',
-  name: input.code,
+  name: input.code.slice(0, 40),
   metadata: { tenantId: input.tenantId, couponId: input.couponId },
   ...(input.kind === 'percent'
     ? { percent_off: input.value }
@@ -103,6 +162,17 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
   const chunks: string[] = [];
   for (let index = 0; metadata[`${key}_${index}`] !== undefined; index += 1) chunks.push(metadata[`${key}_${index}`] ?? '');
   return chunks.length === 0 ? null : chunks.join('');
+};
+
+const stripePromotionCode = (code: string): string => {
+  const mapped = code.replace(/[^A-Za-z0-9-]/g, '');
+  return /[A-Za-z0-9]/.test(mapped) ? mapped : '';
+};
+
+const stripePromotionCodeTaken = (cause: unknown): boolean => {
+  const parsed = stripeCancelErrorSchema.safeParse(cause);
+  return parsed.success &&
+    (parsed.data.code === 'resource_already_exists' || /already exists/i.test(parsed.data.message ?? ''));
 };
 
 export const stripeCheckoutSessionParams = (
@@ -143,6 +213,7 @@ export const stripeCheckoutSessionParams = (
   }
   return {
     ...checkoutBrandingParams(input.checkoutBranding),
+    ...checkoutShippingParams(input.shipping),
     mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     ...(input.recurringInterval === undefined ? {
       payment_intent_data: { metadata: { tenantId: input.tenantId, ...attribution } },
@@ -151,7 +222,11 @@ export const stripeCheckoutSessionParams = (
     }),
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
-      custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
+      custom_text: {
+        terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage },
+        ...(input.promotionCodeId === undefined || input.directCheckout.disclosureMessage === undefined
+          ? {} : { submit: { message: input.directCheckout.disclosureMessage } }),
+      },
       tax_id_collection: { enabled: true },
       ...(input.promotionCodeId === undefined ? { allow_promotion_codes: false } : {}),
     }),
@@ -224,6 +299,7 @@ const toCheckoutSessionEvent = (
     invoiceId: idOrNull(session.invoice),
     amountTotalCents: session.amount_total,
     discountTotalCents: session.total_details?.amount_discount ?? null,
+    ...checkoutShipping(session),
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,
@@ -546,11 +622,18 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         let stripePromotionCodeId = input.stripePromotionCodeId;
         if (stripePromotionCodeId === null) {
-          const created = await client.value.promotionCodes.create({
+          const code = stripePromotionCode(input.code);
+          const params: Stripe.PromotionCodeCreateParams = {
             promotion: { type: 'coupon', coupon: stripeCouponId },
-            code: input.code,
             metadata: { tenantId: input.tenantId, couponId: input.couponId },
-          });
+          };
+          let created: Stripe.PromotionCode;
+          try {
+            created = await client.value.promotionCodes.create(code === '' ? params : { ...params, code });
+          } catch (cause) {
+            if (code === '' || !stripePromotionCodeTaken(cause)) throw cause;
+            created = await client.value.promotionCodes.create(params);
+          }
           stripePromotionCodeId = created.id;
         }
         return ok({ stripeCouponId, stripePromotionCodeId });
@@ -653,6 +736,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             const ownershipCheck = await input.validateInvoiceTenant({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             if (!ownershipCheck.ok) return ownershipCheck;
             if (ownershipCheck.value === 'foreign') return ok({ ...bareEvent, foreignTenant: true });
+            if (ownershipCheck.value === 'conflict') return ok({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             // Checkout may commit after this lookup; an unenriched invoice must stay ignored for this delivery.
             if (ownershipCheck.value === 'unknown') return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
           }

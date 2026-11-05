@@ -474,6 +474,9 @@ the next successful removal (`apps/server/src/composition.ts:472`,
 configure a log drain and alert for `[member-removal]`, and capture failures from
 the response array or panel warning when they occur.
 
+Before launch, also alert on `[stripe-webhook] ignored ... reason=ownership conflict`
+and follow the recovery steps in [`docs/payments.md`](payments.md).
+
 The `already_canceled` outcome is also an operational risk. The Stripe adapter
 maps `resource_missing` and every 404 to that outcome, although either can mean
 a stale subscription ID or credentials for the wrong Stripe account, and the

@@ -17,6 +17,7 @@ import {
   PRODUCT_TYPES,
   productSlugFromTitle,
   productVatRateSchema,
+  type DeliveryMethod,
   type ProductVatRate,
   type ProductType,
 } from '#core/domain/index.js';
@@ -27,6 +28,7 @@ import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { errorCodeOf, localizePanelError, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { ImageAssetField } from '../ImageAssetField.js';
+import { DeliveryMethodField } from './DeliveryMethodField.js';
 import { productTypeLabel } from './product-type.js';
 import { emptyStockTrackingDraft, StockTrackingFields, stockTrackingInput, type StockTrackingDraft } from './ProductStockSection.js';
 
@@ -43,6 +45,7 @@ export const ProductCreatePage = () => {
   const [coverUrl, setCoverUrl] = useState('');
   const [vatRate, setVatRate] = useState<ProductVatRate | null>(null);
   const [vatExemptionBasis, setVatExemptionBasis] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
   const [stockDraft, setStockDraft] = useState<StockTrackingDraft>(emptyStockTrackingDraft);
   const enableStock = useMutation(actions.enableProductStock);
   const [untrackedProductId, setUntrackedProductId] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export const ProductCreatePage = () => {
     event.preventDefault();
     createProduct.mutate({
       type,
+      deliveryMethod: type === 'physical' ? deliveryMethod : 'pickup',
       vatRate,
       vatExemptionBasis: vatRate === 'exempt' ? vatExemptionBasis : null,
       slug: slug.trim(),
@@ -107,6 +111,7 @@ export const ProductCreatePage = () => {
             ))}
           </Select>
         </FormControl>
+        {type === 'physical' ? <DeliveryMethodField value={deliveryMethod} onChange={setDeliveryMethod} /> : null}
         <FormControl fullWidth>
           <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
           <OutlinedInput

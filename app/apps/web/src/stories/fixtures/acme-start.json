@@ -97,11 +97,13 @@
       "ok": true,
       "value": {
         "contentVersion": 1,
+        "inpostGeowidgetToken": null,
         "previewLessons": [],
         "products": [
           {
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-acme-course",
             "marketingConsents": [],
@@ -123,6 +125,7 @@
           }
         ],
         "salesLinks": [],
+        "shippingRates": [],
         "tenant": {
           "branding": {
             "accentColor": null,

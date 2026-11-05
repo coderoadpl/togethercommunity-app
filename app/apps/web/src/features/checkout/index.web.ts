@@ -1,1 +1,8 @@
-export { createCheckoutState, reduceCheckoutState } from './core/index.js';
+export {
+  createCheckoutState,
+  parseGeowidgetPoint,
+  reduceCheckoutState,
+  selectDelivery,
+  type CheckoutState,
+} from './core/index.js';
+export type { CheckoutEvent } from './core/events.js';

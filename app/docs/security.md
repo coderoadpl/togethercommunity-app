@@ -139,15 +139,23 @@ use `connect-src 'self' https:`, including `/offer/` success returns whose other
 server responses allow only same-origin and Sentry connections. The existing
 `img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
 are added. Entry, cancellation, handoff
-and other documents retain the baseline script policy.
+and other documents retain the baseline script policy, except that checkout form
+documents allow the InPost parcel locker map origin as described below.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
 These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. Offer fallback and cancellation pages,
-other checkout requests and all other header entries retain the baseline policy.
+take precedence only on success returns. All other header entries retain the
+baseline policy, except the checkout form entries below.
+
+Checkout form documents — `/checkout/<productRef>` without `status=success`,
+`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+`https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
+parcel locker map used by shipped products, in both the server middleware and
+the static hosting headers, with `connect-src 'self' https:`. Success documents
+never list that origin. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
 No other directive changes: `connect-src 'self' https:` and
 `img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
@@ -198,14 +206,15 @@ Exception (owner decision 2026-10-14, approved, implemented and recorded in
 additionally lists the two vendor script sources named there, Google's tag
 library and Meta's pixel library, and `connect-src` is `'self' https:` as on
 other web-app documents, in both the static hosting headers and the server
-middleware. Other `/offer/*` server responses retain `'self'
-https://*.sentry.io`. The
+middleware. Other `/offer/*` server responses, apart from the checkout form
+documents, retain `'self' https://*.sentry.io`. The
 policy is static per document; the libraries are loaded
 only when the workspace has configured analytics and its consent rule passes,
 and leaving that document after a vendor library loads uses a full document
 navigation. The accepted session exposure is platform-wide, because the base-domain
 session cookie is valid on every workspace subdomain. Every other document
-keeps the same-origin script policy.
+keeps the same-origin script policy, except the checkout form documents, which
+also list the InPost parcel locker map origin as described above.
 
 ## Accepted dependency advisories
 

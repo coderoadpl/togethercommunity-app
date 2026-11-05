@@ -104,10 +104,34 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+            {order.fulfilmentStatus === 'to_pack' ? <Chip size="small" color="warning" label={t.shipping.toPack} data-testid="order-to-pack" /> : null}
           </Stack>
         </Stack>
       </SectionCard>
       {order.lines === undefined || order.lines.length === 0 ? null : <SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} /></SectionCard>}
+      {order.shipping == null ? null : (
+        <SectionCard title={t.shipping.orderDeliveryHeading} data-testid="order-delivery">
+          <Stack useFlexGap spacing="0.75rem">
+            {[
+              [t.shipping.orderRate, order.shipping.label],
+              [t.shipping.orderPrice, formatPrice(order.shipping.amountCents, order.currency, language)],
+              ...(order.shipping.pickupPoint === null ? [] : [[t.shipping.orderPickupPoint, [order.shipping.pickupPoint.code, order.shipping.pickupPoint.name, order.shipping.pickupPoint.address].filter((value) => value !== null && value !== '').join(', ')]]),
+              [t.shipping.orderAddress, [
+                order.shipping.address.name,
+                [order.shipping.address.line1, order.shipping.address.line2].filter((value) => value !== null && value !== '').join(', '),
+                `${order.shipping.address.postalCode} ${order.shipping.address.city}`.trim(),
+                order.shipping.address.country,
+              ].filter((value) => value !== '').join(', ')],
+              [t.shipping.orderPhone, order.shipping.phone ?? '—'],
+            ].map(([label, value]) => (
+              <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
+                <Typography color="text.secondary">{label}</Typography>
+                <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </SectionCard>
+      )}
       {attributionRows.length === 0 ? null : (
         <SectionCard title={t.sales.source}>
           <Stack useFlexGap spacing="0.75rem">

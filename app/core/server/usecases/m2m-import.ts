@@ -572,6 +572,7 @@ const prepareProduct = async (
       priceCents: record.priceCents,
       currency: record.currency,
       visibility: 'listed',
+      deliveryMethod: 'pickup',
       published: false,
       accessItems: accessItems.value,
       checkoutConsentDefinitionIds: [],

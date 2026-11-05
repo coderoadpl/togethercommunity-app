@@ -141,6 +141,8 @@ import type {
   StripeMode,
   StripePermissionCheck,
   WipedTable,
+  CollectedShipping,
+  FulfilmentStatus,
 } from '#core/domain/index.js';
 
 /**
@@ -1027,6 +1029,8 @@ export interface PaymentWebhookEvent {
     invoiceId?: string | null;
     amountTotalCents?: number | null;
     discountTotalCents?: number | null;
+    shipping?: CollectedShipping | null;
+    shippingCostCents?: number | null;
     metadata: {
       attribution?: Order['attribution'];
       tenantId: string | null;
@@ -1111,6 +1115,16 @@ export interface PaymentProvider {
     checkoutBranding?: CheckoutBranding;
     directCheckout?: { termsUrl: string; privacyUrl: string; termsAcceptanceMessage: string };
     lines?: { productId: string; name: string; grossCents: number }[];
+    shipping?: {
+      allowedCountries: string[];
+      phone: true;
+      option: {
+        label: string;
+        amountCents: number;
+        currency: string;
+        deliveryEstimateDays?: { min: number; max: number };
+      };
+    };
     priceCents: number;
     currency: string;
     successUrl: string;
@@ -1552,6 +1566,7 @@ export interface OrderListQuery {
   productId?: string;
   kind?: PriceKind;
   couponId?: string;
+  fulfilmentStatus?: FulfilmentStatus;
   search?: string;
   page: number;
   pageSize: number;

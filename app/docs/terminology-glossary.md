@@ -30,7 +30,12 @@ add it here before using it in either dictionary.
 | Products purchased together | pakiet | bundle | One payment for all products on a sales link. |
 | Order or invoice position | pozycja | line | One product with its own price and VAT rate. |
 | Product tax rate | stawka VAT | VAT rate | Rates are 5%, 8%, 23%, or exempt with a legal basis. |
-| Item collected in person | produkt fizyczny | physical product | No shipping or access grant. |
+| Item collected in person | produkt fizyczny | physical product | No access grant. Delivery is collected in person by default or shipped by parcel. |
+| How a physical product reaches the buyer | dostawa | delivery | Product setting and checkout step heading. Values: odbiór osobisty / collected in person, wysyłka paczką / shipped by parcel. |
+| Sending products by parcel | wysyłka | shipping | Studio settings section and the order filter Do wysyłki / Needs shipping. |
+| Workspace-configured delivery choice | sposób dostawy | delivery option | Has a name shown to buyers, a price and a VAT rate; at most five. |
+| InPost parcel locker | paczkomat | parcel locker | Identified by a 4–12 character code, for example WAW01M. |
+| Paid shipped order awaiting packing | do spakowania | to pack | The only fulfilment status in this release. |
 | Physical collection status | wydano | issued | Counts physical items handed to the buyer. |
 | First physical collection time | Wydano po raz pierwszy | First issued | Timestamp of the first handover; distinct from a content edition. |
 | Staff order verification action | Zweryfikuj zamówienie | Verify order | Opens the paid status, purchased lines, and physical collection status. |

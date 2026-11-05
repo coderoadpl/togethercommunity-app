@@ -37,9 +37,18 @@ Gross prices use integer cents. For a taxable line, net is
 `round(gross × 100 / (100 + rate))`; VAT is the difference. Exempt lines have
 zero VAT and net equal to gross.
 
-Physical products use one-time prices and are collected in person. They have no shipping, course access,
-download or grant. Their purchased record appears in My products with the
-collection note. Each physical order line starts with `issuedCount = 0`.
+Physical products use one-time prices and grant no course access, download or
+access grant. Each has a delivery method. Collected in person (`pickup`, the
+default and the behaviour of every product created before delivery methods)
+keeps the purchased record in My products with the collection note, and each
+such order line starts with `issuedCount = 0` for the **issued N of 1** count.
+Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
+page: the buyer picks a workspace delivery option, and a parcel locker when the
+option needs one, before Stripe collects the address and phone number. A link
+with a shipped product never hands off to Stripe automatically; it keeps the
+Together page at `?checkout=together`, like a link with purchase consent
+checkboxes. The delivery fee is a separate shipping line after the product
+lines. See [Shop](shop.md) for delivery options, the order data and the CLI.
 
 ## Checkout and accounting
 

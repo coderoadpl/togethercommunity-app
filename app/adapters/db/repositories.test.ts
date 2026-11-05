@@ -166,6 +166,7 @@ const product = (over: Partial<Product> & { id: string; tenantId: string }): Pro
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
   legacyId: null,

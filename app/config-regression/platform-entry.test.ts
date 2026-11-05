@@ -110,6 +110,9 @@ describe('Vercel platform entry boundary', () => {
   it('allows the analytics script sources only on static checkout success documents', () => {
     const baseline = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; font-src 'self' data:; img-src 'self' data: https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     const extended = baseline.replace("script-src 'self'", "script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net");
+    const checkoutForm = baseline
+      .replace("script-src 'self'", "script-src 'self' https://geowidget.inpost.pl")
+      .replace("style-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline' https://geowidget.inpost.pl");
     const securityHeaders = (policy: string) => [
       { key: 'Content-Security-Policy', value: policy },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -118,8 +121,9 @@ describe('Vercel platform entry boundary', () => {
     expect(vercel.headers).toEqual([
       { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
       { source: '/((?!api/|u/|marketing/|legal/|offer/).*)', headers: securityHeaders(baseline) },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], headers: securityHeaders(baseline) },
-      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], headers: securityHeaders(baseline) },
+      { source: '/checkout/(.*)', headers: securityHeaders(checkoutForm) },
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'checkout', value: 'together' }], headers: securityHeaders(checkoutForm) },
+      { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success|cancelled' }], headers: securityHeaders(checkoutForm) },
       { source: '/offer/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
       { source: '/checkout/(.*)', has: [{ type: 'query', key: 'status', value: 'success' }], headers: securityHeaders(extended) },
     ]);
@@ -146,9 +150,10 @@ describe('Vercel platform entry boundary', () => {
       '/checkout/reference',
       '/checkout/reference?status=cancelled',
       '/checkout/reference?status=successful',
-      '/my?status=success',
-      '/studio?status=success',
     ]) {
+      expect(effectivePolicy(path), path).toBe(checkoutForm);
+    }
+    for (const path of ['/my?status=success', '/studio?status=success', '/panel/settings']) {
       expect(effectivePolicy(path), path).toBe(baseline);
     }
     expect(effectivePolicy('/offer/workbook')).toBeUndefined();

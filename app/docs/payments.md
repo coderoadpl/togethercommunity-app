@@ -121,15 +121,23 @@ use `connect-src 'self' https:`, including `/offer/` success returns whose other
 server responses allow only same-origin and Sentry connections. The existing
 `img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
 are added. Entry, cancellation, handoff
-and other documents retain the baseline script policy.
+and other documents retain the baseline script policy, except that checkout form
+documents allow the InPost parcel locker map origin as described below.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
 These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. Offer fallback and cancellation pages,
-other checkout requests and all other header entries retain the baseline policy.
+take precedence only on success returns. All other header entries retain the
+baseline policy, except the checkout form entries below.
+
+Checkout form documents — `/checkout/<productRef>` without `status=success`,
+`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+`https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
+parcel locker map used by shipped products, in both the server middleware and
+the static hosting headers, with `connect-src 'self' https:`. Success documents
+never list that origin. See [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
 No other directive changes: `connect-src 'self' https:` and
 `img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
@@ -252,6 +260,22 @@ billing and coupon flow remains available. Both tenant legal URLs are required
 on this fallback page and its checkout endpoint too. Success and cancellation return to the
 Together page and cannot restart the automatic redirect. The single-product
 checkout page retains its existing behavior.
+
+## Shipping in Stripe Checkout
+
+A checkout with a shipped product passes the delivery fee to Stripe as exactly
+one shipping option instead of a line item: `shipping_options[0].shipping_rate_data`
+is `{ type: 'fixed_amount', fixed_amount: { amount, currency }, display_name,
+tax_behavior: 'inclusive' }`, with `delivery_estimate` in business days when the
+option has one. The session also sets `shipping_address_collection.allowed_countries`
+to the allowed shipping countries (`PL`) and `phone_number_collection.enabled`.
+Stripe coupons discount line items, never shipping rates.
+
+The webhook reads the address from `collected_information.shipping_details`, the
+phone number from `customer_details.phone` and the fee from
+`shipping_cost.amount_total`. It rejects a session whose fee differs from the
+snapshot's shipping line or whose address is missing or outside the allowed
+countries. See [Shop](shop.md) for the delivery options and the stored order data.
 
 ## Order campaign attribution
 

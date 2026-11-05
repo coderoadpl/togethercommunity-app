@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, salesLinkContracts, TENANT_HEADER } from '#core/contract/index.js';
-import { attributionFields, attributionFromSearchParams, err, forbidden, internal, normalizeCouponCode, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
+import { attributionFields, attributionFromSearchParams, err, forbidden, internal, normalizeCouponCode, requiresWorkspaceCheckout, resolveCancelReturnUrl, resolveCheckoutBranding, tenantNotFound, validation } from '#core/domain/index.js';
 import { authLinkBaseUrl, createDirectSalesLinkCheckout, getPublicSalesLink, resolveDirectSalesLinkCoupon, resolveTenant } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -64,7 +64,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ? await resolveDirectSalesLinkCoupon(tenant.id, { slug, couponCode }, deps) : undefined;
     if (coupon !== undefined && !coupon.ok) deps.logger.warn(`[direct-checkout] Coupon preview unavailable tenant=${tenant.id}: ${coupon.error.message}`);
     const couponDecision = coupon?.ok ? coupon.value : undefined;
-    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'requiresEmail' || products.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0))) {
+    if (!page.crawler && !missingLegal && (couponDecision?.kind === 'requiresEmail' || products.some(requiresWorkspaceCheckout))) {
       const query = new URLSearchParams(new URL(c.req.url).search);
       if (returnUrl === undefined) query.delete('return');
       else query.set('return', returnUrl);

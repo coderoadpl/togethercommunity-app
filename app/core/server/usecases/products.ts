@@ -1,5 +1,6 @@
 import {
   buildSnapshot,
+  deliveryMethodAllowed,
   resolveProductVat,
   err,
   newProductSchema,
@@ -90,6 +91,9 @@ export const createProduct = async (
   if (parsed.data.type === 'physical' && parsed.data.accessItems.length > 0) {
     return err(validation('Physical products cannot grant access items'));
   }
+  if (!deliveryMethodAllowed(parsed.data.type, parsed.data.deliveryMethod)) {
+    return err(validation('Only physical products can be shipped'));
+  }
   const settings = await deps.tenants?.findSettings(tenant.value) ?? null;
   if (parsed.data.vatRate === 'exempt' && resolveProductVat(parsed.data, settings) === null) {
     return err(validation('VAT exemption requires a legal basis'));
@@ -113,6 +117,7 @@ export const createProduct = async (
     currency: parsed.data.currency,
     published: false,
     visibility: parsed.data.visibility,
+    deliveryMethod: parsed.data.deliveryMethod,
     accessItems: parsed.data.accessItems,
     checkoutConsentDefinitionIds: [],
     legacyId: null,
@@ -141,6 +146,10 @@ export const updateProduct = async (
 
   const existing = await deps.products.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No product "${parsed.data.id}" in this tenant`));
+  const deliveryMethod = parsed.data.deliveryMethod ?? existing.deliveryMethod;
+  if (!deliveryMethodAllowed(existing.type, deliveryMethod)) {
+    return err(validation('Only physical products can be shipped'));
+  }
 
   const vatInput = {
     vatRate: parsed.data.vatRate === undefined ? existing.vatRate : parsed.data.vatRate,
@@ -158,6 +167,7 @@ export const updateProduct = async (
     vatRate: vatInput.vatRate ?? null,
     vatExemptionBasis: vatInput.vatRate === 'exempt' && vat?.kind === 'exempt' ? vat.basis : null,
     visibility: parsed.data.visibility ?? existing.visibility,
+    deliveryMethod,
     title: parsed.data.title ?? existing.title,
     description: parsed.data.description ?? existing.description,
     coverUrl: parsed.data.coverUrl === undefined ? existing.coverUrl : parsed.data.coverUrl,

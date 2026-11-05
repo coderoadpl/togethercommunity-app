@@ -1,5 +1,6 @@
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
+import { DeliveryStep } from './DeliveryStep.js';
 import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -22,7 +23,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, FREE_ORDER_DELIVERY_UNAVAILABLE } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -43,7 +44,7 @@ import {
   EmberCtaButton,
   FinePrint,
 } from '../../theme.js';
-import { createCheckoutState, reduceCheckoutState } from './index.web.js';
+import { createCheckoutState, reduceCheckoutState, selectDelivery } from './index.web.js';
 
 type OfferPrice = {
   id: string;
@@ -86,6 +87,14 @@ const couponError = (
       return localizeError(error, t);
   }
 };
+
+const checkoutSessionError = (
+  error: unknown,
+  t: ReturnType<typeof useTranslations>,
+): string =>
+  error instanceof ApiError && error.appError.message === FREE_ORDER_DELIVERY_UNAVAILABLE
+    ? t.shipping.freeOrderUnavailable
+    : localizeError(error, t);
 
 export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string; salesLinkSlug?: string }) => {
   const t = useTranslations();
@@ -159,6 +168,15 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
+  const shippingRequired = salesLinkSlug === undefined
+    ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
+    : bundle?.lines.some((line) => line.deliveryMethod === 'shipping') === true;
+  const shippingRates = paymentConfig.data?.shippingRates ?? [];
+  const delivery = selectDelivery(checkoutState, { required: shippingRequired, rates: shippingRates });
+  const deliveryCents = delivery.status === 'ready'
+    ? shippingRates.find((rate) => rate.id === delivery.shipping.rateId)?.amountCents ?? 0
+    : 0;
+  const shipping = delivery.status === 'ready' ? { shipping: delivery.shipping } : {};
 
   const simulatePurchase = useMutation({
     ...actions.simulatePurchase,
@@ -218,6 +236,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (delivery.status === 'incomplete') return;
     const priceId = selectedPrice?.id;
     if (stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
@@ -229,6 +248,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
         ...billing,
+        ...shipping,
         ...(priceId === undefined ? {} : { priceId }),
         ...(appliedCoupon === undefined ? {} : { couponCode }),
       });
@@ -242,6 +262,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
       ...billing,
+      ...shipping,
       ...(priceId === undefined ? {} : { priceId }),
       ...(appliedCoupon === undefined ? {} : { couponCode }),
     });
@@ -377,7 +398,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   const selectedAmountCents = selectedPrice?.amountCents ?? product.priceCents;
   const selectedCurrency = selectedPrice?.currency ?? product.currency;
-  const payableCents = appliedCoupon?.breakdown.finalCents ?? selectedAmountCents;
+  const payableCents = (appliedCoupon?.breakdown.finalCents ?? selectedAmountCents) + deliveryCents;
   const formattedPayable = formatPrice(payableCents, selectedCurrency, language);
 
   if (purchaseComplete) {
@@ -654,12 +675,24 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               </Stack>
             </FormControl>
           ) : null}
+          {shippingRequired ? (
+            <DeliveryStep
+              rates={shippingRates}
+              state={checkoutState}
+              dispatch={dispatchCheckout}
+              currency={selectedCurrency}
+              language={language}
+              geowidgetToken={paymentConfig.data.inpostGeowidgetToken}
+              disabled={simulatePurchase.isPending || checkoutSession.isPending}
+            />
+          ) : null}
           <EmberCtaButton
             type="submit"
             variant="contained"
             fullWidth
             data-testid="checkout-pay-cta"
             disabled={
+              delivery.status === 'incomplete' ||
               simulatePurchase.isPending ||
               testSession.isPending || checkoutSession.isPending ||
               (testEnabled && payableCents === 0) ||
@@ -694,7 +727,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               <Button
                 type="button"
                 variant="outlined"
-                disabled={simulatePurchase.isPending || checkoutSession.isPending}
+                disabled={delivery.status === 'incomplete' || simulatePurchase.isPending || checkoutSession.isPending}
                 onClick={() => simulatePurchase.mutate({
                   email,
                   productId,
@@ -703,6 +736,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                   ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                   ...consent,
                   ...billing,
+                  ...shipping,
                   ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                   ...(appliedCoupon === undefined ? {} : { couponCode }),
                 })}
@@ -725,7 +759,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           {checkoutSession.isError ? (
             <Alert severity="error">
-              {localizeError(checkoutSession.error, t)}
+              {checkoutSessionError(checkoutSession.error, t)}
             </Alert>
           ) : null}
           {simulatePurchase.isError ? (

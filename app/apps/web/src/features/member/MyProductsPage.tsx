@@ -43,6 +43,7 @@ type GrantedProductRow = {
   priceCents: number;
   currency: string;
   purchasable: boolean;
+  shippedTo?: string | null | undefined;
   grantStatus: GrantWindowStatus;
   grantStartsAt: string;
   grantExpiresAt: string | null;
@@ -124,7 +125,11 @@ const ProductRow = ({
           />
         ) : null}
       </Stack>
-      {product.type === 'physical' ? <Typography color="text.secondary">{t.salesLinks.collectedInPerson}</Typography> : null}
+      {product.type === 'physical' ? (
+        <Typography color="text.secondary">
+          {product.shippedTo ? t.shipping.shippedTo({ destination: product.shippedTo }) : t.salesLinks.collectedInPerson}
+        </Typography>
+      ) : null}
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
         <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
       </Typography>

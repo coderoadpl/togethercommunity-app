@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Identity, MemberGrant, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
+import type { Identity, MemberGrant, OrderShipping, Product, ProductPrice, ProductDownloadAsset } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
 import type { ProductGrantRepository, ProductPriceRepository } from '../ports.js';
@@ -36,6 +36,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'unlisted',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,
@@ -122,6 +123,30 @@ describe('listMyProducts', () => {
     })).toMatchObject({ ok: true, value: [{ type: 'physical', downloads: [], subscription: null }] });
     expect(orders.listForMember).toHaveBeenCalledWith('t-acme', 'm1');
     expect(products.findByIds).toHaveBeenCalledWith('t-acme', [physical.id]);
+  });
+
+  it('names the parcel locker or city for physical lines of a shipped order', async () => {
+    const physical: Product = { ...granted, type: 'physical', accessItems: [] };
+    const pickedUp: Product = { ...physical, id: 'collected-item' };
+    const line = (product: Product) => ({ productId: product.id, name: product.title, productType: 'physical' as const, grossCents: 9900, netCents: 9429, vatCents: 471, vatRate: 5 as const, vatExemptionBasis: null, issuedCount: 0 });
+    const order = (id: string, lines: ReturnType<typeof line>[], shipping: OrderShipping | null) => ({
+      mode: 'live' as const, id, tenantId: 't-acme', memberId: 'm1', productId: lines[0]?.productId ?? physical.id,
+      priceId: null, kind: 'one_time' as const, status: 'paid' as const, amountCents: 9900, currency: 'PLN',
+      provider: 'stripe' as const, providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: clock.nowIso(),
+      memberEmail: 'buyer@example.test', memberName: null, productTitle: physical.title, couponCode: null, lines, shipping,
+    });
+    const shipping: OrderShipping = {
+      rateId: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'other', pickupPoint: null,
+      address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+    };
+    const run = async (shipped: OrderShipping) => listMyProducts({ identity: identity('t-acme', 'm1') }, {
+      grants: grants([], []), prices, subscriptions, downloadAssets, clock,
+      orders: { listForMember: async () => [order('order-shipped', [line(physical)], shipped), order('order-collected', [line(pickedUp)], null)] },
+      products: { findByIds: async () => [physical, pickedUp] },
+    });
+    expect(await run(shipping)).toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'Warsaw' }, { id: pickedUp.id, shippedTo: null }] });
+    expect(await run({ ...shipping, pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null } }))
+      .toMatchObject({ ok: true, value: [{ id: physical.id, shippedTo: 'WAW01M' }, { id: pickedUp.id, shippedTo: null }] });
   });
 
   it('returns the granted products for a member with an active window', async () => {

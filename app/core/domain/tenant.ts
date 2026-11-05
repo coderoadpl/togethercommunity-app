@@ -13,6 +13,7 @@ import {
 } from './custom-domain.js';
 import { staffRoleSchema } from './identity.js';
 import { languageSchema } from './language.js';
+import { inpostGeowidgetTokenSchema, shippingRatesSchema } from './shipping.js';
 import { storageCorsStatusSchema } from './storage.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
@@ -186,6 +187,8 @@ export const tenantSettingsSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).nullable().optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
+  shippingRates: shippingRatesSchema.optional(),
+  inpostGeowidgetToken: inpostGeowidgetTokenSchema.nullable().optional(),
 }).extend(tenantSocialSchema.shape);
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -282,6 +285,8 @@ export const updateTenantSettingsInputSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().trim().min(1).nullable().optional(),
   invoiceSellerAddress: z.string().trim().min(1).nullable().optional(),
+  shippingRates: shippingRatesSchema.optional(),
+  inpostGeowidgetToken: inpostGeowidgetTokenSchema.or(z.literal('')).nullable().transform((value) => value === '' ? null : value).optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

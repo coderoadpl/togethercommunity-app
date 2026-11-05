@@ -30,6 +30,7 @@ const product = (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,
@@ -150,6 +151,7 @@ describe('getPublicOffer', () => {
           {
             id: 'published',
             type: 'course',
+            deliveryMethod: 'pickup',
             slug: 'course-published',
             title: 'Product published',
             description: '<p>Description published</p>',
@@ -164,6 +166,7 @@ describe('getPublicOffer', () => {
           {
             id: 'download',
             type: 'digital_download',
+            deliveryMethod: 'pickup',
             slug: 'digital-download-download',
             title: 'Product download',
             description: '<p>Description download</p>',
@@ -178,6 +181,7 @@ describe('getPublicOffer', () => {
           {
             id: 'club',
             type: 'membership',
+            deliveryMethod: 'pickup',
             slug: 'membership-club',
             title: 'Product club',
             description: '<p>Description club</p>',
@@ -190,6 +194,8 @@ describe('getPublicOffer', () => {
             marketingConsents: [],
           },
         ],
+        shippingRates: [],
+        inpostGeowidgetToken: null,
       },
     });
   });

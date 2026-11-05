@@ -353,3 +353,15 @@ it('sends one iFirma position per mixed-rate line', () => {
   ]);
   expect(payload.Zaplacono).toBe(228);
 });
+
+it('sends the shipping fee as one more iFirma position without new payload fields', () => {
+  const payload = ifirmaInvoicePayload({ ...input, order: { ...input.order, amountCents: 6399 }, positions: [
+    { name: 'Printed accessory', grossCents: 4900, netCents: 4667, vatCents: 233, vat: { kind: 'rate', percent: 5 } },
+    { name: 'Parcel locker', grossCents: 1499, netCents: 1219, vatCents: 280, vat: { kind: 'rate', percent: 23 } },
+  ] }, '2026-11-05');
+  expect(payload.Pozycje).toEqual([
+    { StawkaVat: 0.05, Ilosc: 1, CenaJednostkowa: 49, NazwaPelna: 'Printed accessory', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+    { StawkaVat: 0.23, Ilosc: 1, CenaJednostkowa: 14.99, NazwaPelna: 'Parcel locker', Jednostka: 'szt.', PKWiU: '', TypStawkiVat: 'PRC' },
+  ]);
+  expect(payload.Zaplacono).toBe(63.99);
+});

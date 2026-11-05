@@ -73,7 +73,7 @@ describe('operator tenant routes', () => {
     h.products.push({
       id: 'product-1', tenantId: 'id-1', type: 'course', slug: 'sample', title: 'Sample',
       description: '', coverUrl: null, priceCents: 100, currency: 'USD', published: true,
-      visibility: 'listed', accessItems: [], legacyId: null, createdAt: h.deps.clock.nowIso(),
+      visibility: 'listed', deliveryMethod: 'pickup', accessItems: [], legacyId: null, createdAt: h.deps.clock.nowIso(),
     });
     const configured = await read();
     expect(configured).toMatchObject({ ok: true, data: { storageConfigured: true, lastProbeOk: true, stripeConfigured: true, mode: 'live', webhookEndpointRegistered: true, legalUrlsSet: true, publishedProducts: 1 } });

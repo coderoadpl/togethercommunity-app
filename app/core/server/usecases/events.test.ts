@@ -128,6 +128,7 @@ const product = (id: string): Product => ({
   priceCents: 0,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
   legacyId: null,

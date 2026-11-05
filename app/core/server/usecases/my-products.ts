@@ -36,6 +36,7 @@ export interface MyProductsDeps {
 
 export type MyProduct = GrantedProduct & {
   purchasable: boolean;
+  shippedTo?: string | null;
   subscription: MemberSubscriptionSummary | null;
   downloads: Array<ProductDownloadAsset & { previousVersions: ProductDownloadAsset[] }>;
 };
@@ -140,10 +141,13 @@ export const listMyProducts = async (
   if (deps.orders !== undefined && deps.products !== undefined) {
     const orders = await deps.orders.listForMember(tenantId, memberId);
     const purchasedAt = new Map<string, string>();
+    const shippedTo = new Map<string, string | null>();
     for (const order of orders) {
       if (order.mode !== 'live' || (order.status !== 'paid' && order.status !== 'partially_refunded')) continue;
       for (const line of order.lines ?? []) {
-        if (line.productType === 'physical') purchasedAt.set(line.productId, order.createdAt);
+        if (line.productType !== 'physical') continue;
+        purchasedAt.set(line.productId, order.createdAt);
+        shippedTo.set(line.productId, order.shipping == null ? null : order.shipping.pickupPoint?.code ?? order.shipping.address.city);
       }
     }
     const physicalProducts = await deps.products.findByIds(tenantId, [...purchasedAt.keys()]);
@@ -152,7 +156,7 @@ export const listMyProducts = async (
       if (product.type !== 'physical' || startsAt === undefined || seen.has(product.id)) continue;
       result.push({
         ...product, purchasable: false, grantStatus: 'active', grantStartsAt: startsAt,
-        grantExpiresAt: null, subscription: null, downloads: [],
+        grantExpiresAt: null, subscription: null, downloads: [], shippedTo: shippedTo.get(product.id) ?? null,
       });
     }
   }

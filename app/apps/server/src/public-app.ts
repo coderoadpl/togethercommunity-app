@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
+import { publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
@@ -657,7 +657,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     return respondPublic(
       config.ok
         ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
-          testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
+          testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments,
+          shippingRates: publicShippingRates(settings?.shippingRates), inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null })
         : config,
     );
   });
@@ -671,7 +672,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (!parsed.success) {
       return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
     }
-    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps, { shipping: 'ignore' });
     if (!selection.ok) return respondPublic(selection);
     if (
       deps.coupons === undefined ||

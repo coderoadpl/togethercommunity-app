@@ -49,6 +49,7 @@ const product = (id: string, published: boolean): Product => ({
   priceCents: 9900,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,

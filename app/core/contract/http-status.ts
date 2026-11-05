@@ -24,6 +24,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   slug_reserved: 422,
   invoice_exemption_basis_missing: 422,
   impersonation_read_only: 403,
+  shipping_required: 400,
   internal: 500,
 };
 
@@ -51,5 +52,6 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   slug_reserved: 21,
   invoice_exemption_basis_missing: 22,
   impersonation_read_only: 24,
+  shipping_required: 25,
   internal: 10,
 };

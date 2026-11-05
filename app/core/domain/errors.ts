@@ -24,6 +24,7 @@ export const ERROR_CODES = [
   'slug_reserved',
   'invoice_exemption_basis_missing',
   'impersonation_read_only',
+  'shipping_required',
   'internal',
 ] as const;
 

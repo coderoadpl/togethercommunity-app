@@ -35,6 +35,7 @@ const product: Product = {
   priceCents: 4900,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [],
   legacyId: null,

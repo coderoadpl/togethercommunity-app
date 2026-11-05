@@ -21,6 +21,7 @@ import {
   memberRemoveOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
+  ordersListOutputSchema,
   ordersReconciliationOutputSchema,
   productPriceCreateOutputSchema,
   productsCreateOutputSchema,
@@ -32,6 +33,7 @@ import {
   supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
+  tenantSettingsOutputSchema,
 } from '#core/contract/index.js';
 import { memberDataExportSchema } from '#core/domain/index.js';
 
@@ -606,6 +608,68 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
         request.status === 'completed',
     ),
     'member erasure request should be completed',
+  );
+  steps += 1;
+
+  const shippingRates = [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true }];
+  const shippingSettings = expectOk(
+    await cli(['--tenant', 'alfa', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(shippingRates)], alfaHome),
+    'shipping rates set',
+    tenantSettingsOutputSchema,
+  );
+  assert(shippingSettings.settings.shippingRates?.[0]?.vatRatePercent === 23, 'shipping rate should default to 23 percent VAT');
+  const shippedProduct = expectOk(
+    await cli(
+      [
+        '--tenant', 'alfa', 'product', 'create', '--title', 'Printed accessory', '--type', 'physical',
+        '--delivery-method', 'shipping', '--price-cents', '4900', '--currency', 'PLN', '--vat-rate', '23',
+      ],
+      alfaHome,
+    ),
+    'shipped product create',
+    productsCreateOutputSchema,
+  ).product;
+  assert(shippedProduct.deliveryMethod === 'shipping', 'shipped product should keep its delivery method');
+  expectOk(
+    await cli(['--tenant', 'alfa', 'price', 'add', '--product', shippedProduct.id, '--kind', 'one_time', '--price-cents', '4900'], alfaHome),
+    'shipped price add',
+    productPriceCreateOutputSchema,
+  );
+  expectOk(await cli(['--tenant', 'alfa', 'product', 'publish', shippedProduct.id], alfaHome), 'shipped publish', productsPublishOutputSchema);
+  expectError(
+    await cli(['--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id], buyerHome),
+    'shipped purchase without delivery',
+    EXIT_CODE_BY_ERROR_CODE.shipping_required,
+    'shipping_required',
+  );
+  expectError(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
+    ], buyerHome),
+    'shipped purchase with a malformed locker code',
+    EXIT_CODE_BY_ERROR_CODE.validation,
+    'validation',
+  );
+  const shippedPurchase = expectOk(
+    await cli([
+      '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
+      '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
+    ], buyerHome),
+    'shipped purchase',
+    simulatePurchaseOutputSchema,
+  );
+  const toPack = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'list', '--fulfilment', 'to_pack'], alfaHome),
+    'orders to pack',
+    ordersListOutputSchema,
+  );
+  const shippedOrder = toPack.orders.find((order) => order.id === shippedPurchase.orderId);
+  assert(
+    toPack.orders.length === 1 && shippedOrder?.fulfilmentStatus === 'to_pack' && shippedOrder.amountCents === 6399
+      && shippedOrder.shipping?.pickupPoint?.code === 'WAW01M' && shippedOrder.shipping.address.country === 'PL'
+      && shippedOrder.lines?.at(-1)?.productType === 'shipping',
+    `shipped order should be the only order to pack: ${JSON.stringify(toPack.orders)}`,
   );
   steps += 1;
 

@@ -6,11 +6,13 @@ import {
   Chip,
   Checkbox,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Link as MuiLink,
   MenuItem,
   Select,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -51,6 +53,7 @@ export const SalesPanel = () => {
   const [kind, setKind] = useState<PriceKind | 'all'>('all');
   const [couponId, setCouponId] = useState('all');
   const [source, setSource] = useState('');
+  const [needsShipping, setNeedsShipping] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState<OrderExportFormat | null>(null);
@@ -64,6 +67,7 @@ export const SalesPanel = () => {
     ...(kind === 'all' ? {} : { kind }),
     ...(couponId === 'all' ? {} : { couponId }),
     ...(source === '' ? {} : source === 'none' ? { source } : { source: source.slice(6), sourceMatch: 'exact' as const }),
+    ...(needsShipping ? { fulfilmentStatus: 'to_pack' as const } : {}),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
@@ -262,6 +266,11 @@ export const SalesPanel = () => {
                   <MenuItem value="recurring">{t.sales.recurring}</MenuItem>
                 </Select>
               </FormControl>
+              <FormControlLabel
+                label={t.shipping.needsShipping}
+                control={<Switch size="small" checked={needsShipping} data-testid="sales-needs-shipping-filter"
+                  onChange={(_event, checked) => { setNeedsShipping(checked); resetPage(); }} />}
+              />
             </Stack>
           ),
           actions: (
@@ -299,7 +308,7 @@ export const SalesPanel = () => {
             />
           ) : undefined
         }
-        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && source === '' && debouncedSearch.length === 0}
+        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && source === '' && !needsShipping && debouncedSearch.length === 0}
         empty={
           <StatusView
             state={{
@@ -362,7 +371,10 @@ export const SalesPanel = () => {
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
                     <TableCell>{order.couponCode ?? '—'}</TableCell>
                     <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>
-                    <TableCell><Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} /></TableCell>
+                    <TableCell>
+                      <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
+                      {order.fulfilmentStatus === 'to_pack' ? <Chip size="small" color="warning" variant="outlined" label={t.shipping.toPack} sx={{ ml: '0.25rem' }} /> : null}
+                    </TableCell>
                     <TableCell>
                       {order.invoice == null ? null : <Stack useFlexGap spacing="0.5rem">
                         <Typography variant="body2">{order.invoice.ksef == null

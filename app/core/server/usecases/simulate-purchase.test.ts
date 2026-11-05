@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ok, salesLinkSchema } from '#core/domain/index.js';
+import { ok, salesLinkSchema, tenantSettingsSchema } from '#core/domain/index.js';
 
 import type {
   Member,
@@ -25,6 +25,7 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published,
   accessItems: [],
   legacyId: null,
@@ -359,4 +360,45 @@ it('records a standalone physical purchase without creating any access grant', a
   expect(h.grants.size).toBe(0);
   expect(h.purchases.grants).toHaveLength(0);
   expect(h.orders[0]).toMatchObject({ salesLinkId: null, amountCents: 1050, lines: [{ productId: 'print', issuedCount: 0 }] });
+});
+
+describe('simulated shipped purchase', () => {
+  const shippedHarness = () => {
+    const shipped: Product = { ...product('accessory', 't-acme', true), type: 'physical', deliveryMethod: 'shipping', priceCents: 4900, vatRate: 23 };
+    const h = harness({ products: [shipped] });
+    h.deps.tenants = {
+      findById: async () => null, findBySlug: async () => null, findSole: async () => null,
+      findSettings: async () => tenantSettingsSchema.parse({ name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+        { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+      ] }),
+      updateSettings: async (_tenantId, value) => value, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
+    };
+    h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants }) };
+    return h;
+  };
+
+  it('synthesises a Polish address and records the same shipped order shape as a paid checkout', async () => {
+    const h = shippedHarness();
+    const result = await simulatePurchase('t-acme', {
+      email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { alreadyOwned: false } });
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({
+      amountCents: 6399, fulfilmentStatus: 'to_pack',
+      lines: [{ productId: 'accessory', productType: 'physical', grossCents: 4900 }, { productId: 'shipping:locker', productType: 'shipping', grossCents: 1499, vatRate: 23, issuedCount: null }],
+      shipping: {
+        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        address: { country: 'PL' }, phone: expect.any(String),
+      },
+    });
+    expect(h.grants.size).toBe(0);
+  });
+
+  it('requires a delivery choice for a shipped product', async () => {
+    const h = shippedHarness();
+    expect(await simulatePurchase('t-acme', { email: 'buyer@together.dev', productId: 'accessory' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'shipping_required' } });
+    expect(h.orders).toHaveLength(0);
+  });
 });

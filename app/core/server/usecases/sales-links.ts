@@ -72,7 +72,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
     const vat = resolveProductVat(product, settings);
     if (vat === null || price === undefined) return [];
     const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ productId: product.id, name: product.title, type: product.type, ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
+    return [{ productId: product.id, name: product.title, type: product.type, deliveryMethod: product.deliveryMethod, ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null }];
   });
   const first = products.value.prices[0];
   if (lines.length !== products.value.products.length || first === undefined) return err(notFound('Sales link was not found'));

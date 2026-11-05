@@ -1488,3 +1488,58 @@ it('applies the direct checkout promotion and redemption metadata with manual co
   expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
   expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
 });
+
+it('collects a Polish shipping address and phone with exactly one inclusive fixed shipping option', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'accessory', productName: 'Printed accessory', priceCents: 4900, currency: 'PLN',
+    successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/cancel', checkoutSnapshotId: 'snapshot-1',
+    shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
+  });
+  expect(params.shipping_address_collection).toEqual({ allowed_countries: ['PL'] });
+  expect(params.phone_number_collection).toEqual({ enabled: true });
+  expect(params.shipping_options).toEqual([{ shipping_rate_data: {
+    type: 'fixed_amount', fixed_amount: { amount: 1499, currency: 'pln' }, display_name: 'Parcel locker', tax_behavior: 'inclusive',
+    delivery_estimate: { minimum: { unit: 'business_day', value: 1 }, maximum: { unit: 'business_day', value: 2 } },
+  } }]);
+  expect(params.line_items).toEqual([{ quantity: 1, price_data: { currency: 'pln', unit_amount: 4900, product_data: { name: 'Printed accessory' } } }]);
+  expect(params).not.toHaveProperty('expires_at');
+  const withoutEstimate = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'accessory', productName: 'Printed accessory', priceCents: 4900, currency: 'PLN',
+    successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/cancel',
+    shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Courier', amountCents: 1999, currency: 'PLN' } },
+  });
+  expect(withoutEstimate.shipping_options).toEqual([{ shipping_rate_data: {
+    type: 'fixed_amount', fixed_amount: { amount: 1999, currency: 'pln' }, display_name: 'Courier', tax_behavior: 'inclusive',
+  } }]);
+});
+
+it('leaves shipping collection out of sessions without delivery', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'course', productName: 'Course', priceCents: 4900, currency: 'PLN',
+    successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/cancel',
+  });
+  expect(params).not.toHaveProperty('shipping_address_collection');
+  expect(params).not.toHaveProperty('phone_number_collection');
+  expect(params).not.toHaveProperty('shipping_options');
+});
+
+it('parses the collected shipping address, phone and shipping cost from a signed session', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_shipping', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_shipping', amount_total: 6399, customer_details: { email: 'buyer@example.test', name: 'Jane Buyer', phone: '+48600100200', address: null },
+    collected_information: { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } },
+    shipping_cost: { amount_subtotal: 1499, amount_tax: 0, amount_total: 1499, shipping_rate: 'shr_1' },
+    metadata: { tenantId: 'tenant-a', productId: 'accessory' },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    amountTotalCents: 6399,
+    shippingCostCents: 1499,
+    shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+  } } });
+});
+
+it('reports no shipping details for sessions that collected none', async () => {
+  const result = await verify(JSON.stringify({ id: 'evt_no_shipping', type: 'checkout.session.completed', data: { object: {
+    id: 'cs_no_shipping', customer_details: { email: 'buyer@example.test' }, metadata: { tenantId: 'tenant-a', productId: 'course' },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: { shipping: null, shippingCostCents: null } } });
+});

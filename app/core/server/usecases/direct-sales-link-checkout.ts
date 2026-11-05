@@ -1,4 +1,4 @@
-import { attributionSchema, attributionToSearchParams, COUPON_CODE_MAX_LENGTH, type Attribution, type AppError, type Coupon, type CouponCheckoutBreakdown, type Result, err, normalizeCouponCode, notFound, ok, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
+import { attributionSchema, attributionToSearchParams, COUPON_CODE_MAX_LENGTH, type Attribution, type AppError, type Coupon, type CouponCheckoutBreakdown, type Result, err, normalizeCouponCode, notFound, ok, requiresWorkspaceCheckout, resolveCancelReturnUrl, resolveCheckoutBranding, validation, type Tenant } from '#core/domain/index.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, evaluateSelectionCoupon } from './checkout-coupon.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { getPaymentConfig, validateCheckoutSelection, type CheckoutDeps, type CheckoutSelection } from './checkout.js';
@@ -37,7 +37,7 @@ export const resolveDirectSalesLinkCoupon = async (
   const link = await deps.salesLinks?.findBySlug(tenantId, input.slug);
   const productId = link?.productIds[0];
   if (productId === undefined) return err(notFound('Sales link not found'));
-  const selection = await validateCheckoutSelection(tenantId, { productId, salesLinkSlug: input.slug }, deps);
+  const selection = await validateCheckoutSelection(tenantId, { productId, salesLinkSlug: input.slug }, deps, { shipping: 'ignore' });
   if (!selection.ok) return selection;
   const built = await buildCheckoutLines(tenantId, selection.value, deps);
   if (!built.ok) return built;
@@ -60,9 +60,9 @@ export const createDirectSalesLinkCheckout = async (
   const link = await deps.salesLinks?.findBySlug(tenant.id, input.slug);
   const productId = link?.productIds[0];
   if (link == null || productId === undefined) return err(notFound('Sales link not found'));
-  const selection = await validateCheckoutSelection(tenant.id, { productId, salesLinkSlug: input.slug }, deps);
+  const selection = await validateCheckoutSelection(tenant.id, { productId, salesLinkSlug: input.slug }, deps, { shipping: 'ignore' });
   if (!selection.ok) return selection;
-  if (selection.value.products?.some((product) => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0)) {
+  if (selection.value.products?.some(requiresWorkspaceCheckout)) {
     return err(validation('This sales link requires the workspace checkout page'));
   }
   const settings = await deps.tenants?.findSettings(tenant.id);

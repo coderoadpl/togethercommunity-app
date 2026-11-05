@@ -87,7 +87,9 @@ describe('member fulfilment view', () => {
 
 describe('packing list query', () => {
   it('defaults to orders to pack and only offers CSV', () => {
-    expect(packingListQuerySchema.parse({ format: 'csv' })).toEqual({ format: 'csv', fulfilmentStatus: 'to_pack' });
+    expect(packingListQuerySchema.parse({ format: 'csv' })).toEqual({ format: 'csv', fulfilmentStatus: 'to_pack', mode: 'live' });
+    expect(packingListQuerySchema.parse({ format: 'csv', mode: 'test' })).toMatchObject({ mode: 'test' });
+    expect(packingListQuerySchema.safeParse({ format: 'csv', mode: 'sandbox' }).success).toBe(false);
     expect(packingListQuerySchema.safeParse({ format: 'json' }).success).toBe(false);
   });
 });

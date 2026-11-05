@@ -783,6 +783,111 @@ describe('CheckoutPage', () => {
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(payload).toMatchObject({ attribution: { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X' } }));
   });
+
+  it('keeps the coupon code from the cancelled return URL when retrying', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?status=cancelled&code=SAVE&utm_source=meta');
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+    renderCheckout('course-1');
+
+    expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
+    expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    const retried = new URLSearchParams(window.location.search);
+    expect(retried.get('code')).toBe('SAVE');
+    expect(retried.get('utm_source')).toBe('meta');
+    expect(retried.get('status')).toBeNull();
+    expect(screen.getByLabelText(en.checkout.couponLabel)).toHaveValue('SAVE');
+  });
+
+  it('blocks payment until the coupon code from the URL has been validated', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?code=save');
+    let releaseCoupon = () => {};
+    const couponGate = new Promise<void>((resolve) => { releaseCoupon = resolve; });
+    let couponRequested = false;
+    let payload: unknown;
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } }),
+      ),
+      http.post('/api/public/checkout/coupon', async () => {
+        couponRequested = true;
+        await couponGate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            recurringDuration: 'first_invoice',
+            breakdown: {
+              couponId: 'coupon-1', code: 'SAVE', originalCents: 4900, discountCents: 980,
+              finalCents: 3920, lowestPriceLast30DaysCents: 4900, currency: 'PLN',
+            },
+          },
+        });
+      }),
+      http.post('/api/public/checkout/session', async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout unavailable' } }, { status: 400 });
+      }),
+    );
+    renderCheckout('course-1');
+
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@together.dev');
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    await waitFor(() => expect(couponRequested).toBe(true));
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    releaseCoupon();
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(3920) })));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(payload).toMatchObject({ couponCode: 'save' }));
+  });
+
+  it('re-validates the coupon code from the URL after the e-mail changes and keeps payment blocked meanwhile', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?code=save');
+    const couponRequests: unknown[] = [];
+    let payload: unknown;
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: false } }),
+      ),
+      http.post('/api/public/checkout/coupon', async ({ request }) => {
+        couponRequests.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            recurringDuration: 'first_invoice',
+            breakdown: {
+              couponId: 'coupon-1', code: 'SAVE', originalCents: 4900, discountCents: 980,
+              finalCents: 3920, lowestPriceLast30DaysCents: 4900, currency: 'PLN',
+            },
+          },
+        });
+      }),
+      http.post('/api/public/checkout/session', async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout unavailable' } }, { status: 400 });
+      }),
+    );
+    renderCheckout('course-1');
+
+    const emailField = await screen.findByLabelText(en.checkout.emailLabel);
+    await userEvent.type(emailField, 'buyer@together.de');
+    await waitFor(() => expect(couponRequests).toMatchObject([{ email: 'buyer@together.de', couponCode: 'save' }]));
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    await userEvent.type(emailField, 'v');
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    await waitFor(() => expect(couponRequests).toMatchObject([{ email: 'buyer@together.de' }, { email: 'buyer@together.dev', couponCode: 'save' }]));
+    await waitFor(() => expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled());
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(textPattern(en.checkout.payIdle({ price: pln(3920) })));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(payload).toMatchObject({ email: 'buyer@together.dev', couponCode: 'save' }));
+  });
 });
 
 

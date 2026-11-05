@@ -119,8 +119,33 @@ exact terms and privacy URLs stored in session metadata. Set a valid account
 terms URL once in the Stripe Dashboard. Together supplies a per-session agreement
 linking the tenant's terms and privacy URLs. A tenant missing either legal URL
 receives an error page without a checkout session, including on the Together
-fallback; its checkout endpoint also enforces both URLs. Promotion codes are disabled
-in direct checkout.
+fallback; its checkout endpoint also enforces both URLs.
+
+A coupon code given in the offer URL as `?code=<code>` is validated server-side,
+previewed on the offer page as the discount, the amount to pay and the lowest
+price of the preceding 30 days, and applied on the Stripe session as a promotion
+code. Buyers cannot type a code on the Stripe page (`allow_promotion_codes`
+stays off; Stripe rejects it together with an applied promotion). An unknown,
+archived, expired, exhausted or out-of-scope code, or one longer than the
+100-character coupon code limit, shows "Coupon cannot be applied." and checkout
+continues at full price. A valid code always gets its discount: if Stripe
+promotion preparation or the coupon checkout capture fails, the checkout POST
+returns an error instead of opening a full-price session. A valid coupon with a
+per-member redemption limit, and a valid coupon that discounts the order to
+zero, redirect to the Together checkout (`?checkout=together&code=<code>`): the
+direct flow has no buyer e-mail before Stripe, and a zero-total Stripe session
+cannot enforce the redemption limit, while the Together checkout records free
+orders locally. Validity is checked first, so an invalid per-member code shows
+the same message as an unknown one. The coupon checkout session is stored
+without an e-mail; the webhook records the redemption with the e-mail Stripe
+collected. When a coupon is applied, the Stripe page also shows the lowest price
+of the preceding 30 days next to the payment button (Checkout `custom_text.submit`,
+in the tenant language), because the offer page redirects to Stripe immediately
+and its preview can be hidden. The preview spends the `coupon-preview:ip` (30 per
+minute per client address) and `coupon-preview:tenant` (300 per minute per
+tenant) limiter windows; codes over the length limit do not spend them. When the
+windows are exhausted the page renders without a coupon line, and the checkout
+POST still applies the code together with the Stripe-page disclosure.
 
 If any included product has purchase consent checkboxes configured, the offer
 uses the existing Together checkout at `?checkout=together`. Attached marketing
@@ -216,3 +241,29 @@ rolling out the bundle-aware release. An older release ignores the checkout
 snapshot metadata and can grant only the first product, recording one line for
 the full payment; reconciliation cannot recover the omitted product list from
 that order. Activate sales links only after the rollout is complete.
+
+Migration 0149 makes `coupon_checkout_sessions.member_email` nullable for
+direct-checkout coupon sessions. The migration relaxes a NOT NULL constraint
+(expand); record a Neon restore point before promotion, as
+[`deployment-environments.md`](deployment-environments.md) requires for any
+constraint migration. A release older than this one parses that column as a required
+e-mail, so after a rollback the Stripe webhook would throw on rows with a NULL
+`member_email` and retry. Prefer rolling forward. If a rollback past 0149 is
+unavoidable, prepare the data first:
+
+1. Stop new direct coupon checkouts on the server: deactivate the affected
+   sales links, or deactivate the coupons used with them. Removing `?code=`
+   from published links is not enough, because anyone can still open a link
+   with a code. Keep them inactive until the rollback has finished. Then wait
+   until every open Stripe Checkout Session referenced by a row with a NULL
+   `member_email` has completed or expired (Stripe expires sessions after 24
+   hours), or expire those sessions through the Stripe API. Run steps 2-3 only
+   after these in-flight checkouts have completed or expired.
+2. For every row with a NULL `member_email` whose `provider_session_id` points
+   to a completed Stripe Checkout Session, fill `member_email` with that
+   session's customer e-mail.
+3. Delete the remaining rows with a NULL `member_email`: rows without a
+   `provider_session_id` and rows whose Stripe session expired without
+   completing payment.
+4. Never delete rows tied to paid orders.
+5. Only then roll back the release.

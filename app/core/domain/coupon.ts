@@ -75,9 +75,11 @@ export const couponSchema = z
   });
 export type Coupon = z.infer<typeof couponSchema>;
 
+export const COUPON_CODE_MAX_LENGTH = 100;
+
 export const couponCreateInputSchema = z
   .object({
-    code: z.string().trim().min(1).max(100),
+    code: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH),
     kind: couponKindSchema,
     value: z.number().int().positive(),
     currency: couponCurrencySchema.nullable().default(null),
@@ -157,7 +159,7 @@ export const couponCheckoutSessionSchema = z.object({
   tenantId: z.string(),
   couponId: z.string(),
   providerSessionId: z.string().nullable(),
-  memberEmail: z.string().email(),
+  memberEmail: z.string().email().nullable(),
   productId: z.string(),
   priceId: z.string().nullable(),
   originalCents: z.number().int().nonnegative(),

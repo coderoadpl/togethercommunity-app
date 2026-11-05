@@ -15,3 +15,5 @@ ignoredBuiltDependencies:
 auditConfig:
   ignoreGhsas:
     - GHSA-67mh-4wv8-2f99
+    # zod 3 has no fix (patched only in zod 4.6.6); request bodies are size-limited by apps/server/src/body-limits.ts
+    - GHSA-mrhx-c7xc-m3w5

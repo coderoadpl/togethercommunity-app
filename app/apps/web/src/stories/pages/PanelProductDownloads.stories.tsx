@@ -1,4 +1,4 @@
-import { userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -68,10 +68,13 @@ const copyLookupStory = (colorScheme: 'light' | 'dark', viewport: 'desktop' | 'm
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const t = locale === 'pl' ? pl : en;
-    await userEvent.type(await canvas.findByRole('textbox', { name: t.downloadCopies.identifier }), 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA');
+    const identifier = await canvas.findByRole('textbox', { name: t.downloadCopies.identifier });
+    await userEvent.type(identifier, 'copy_AAAAAAAAAAAAAAAAAAAAAAAAAA');
     await userEvent.keyboard('{Enter}');
     await canvas.findByRole('link', { name: 'member-studio-active' });
     await userEvent.click(canvas.getByRole('heading', { name: t.downloadCopies.title }));
+    identifier.blur();
+    await waitFor(() => expect(identifier).not.toHaveFocus());
   },
 });
 

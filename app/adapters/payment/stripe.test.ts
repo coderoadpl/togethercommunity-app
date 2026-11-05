@@ -1,7 +1,7 @@
 import { probeStripePermissions } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 import {
@@ -62,12 +62,12 @@ const stripeJson = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json', 'request-id': 'req_123' },
   });
 
-const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payments?: unknown, livemode = true): string =>
+const invoiceWebhook = (type: 'invoice.paid' | 'invoice.payment_failed', payments?: unknown, livemode = true, subscriptionMetadata?: Record<string, string>): string =>
   JSON.stringify({
     id: 'evt_clover_renewal', type, api_version: '2025-09-30.clover', livemode,
     data: { object: {
       id: 'in_renewal', payments,
-      parent: { subscription_details: { subscription: 'sub_1' } },
+      parent: { subscription_details: { subscription: 'sub_1', ...(subscriptionMetadata === undefined ? {} : { metadata: subscriptionMetadata }) } },
       amount_paid: 4900, amount_due: 5900, currency: 'pln',
       lines: { data: [{ period: { end: 916_387_200 } }] },
     } },
@@ -396,6 +396,11 @@ describe('stripeCouponParams', () => {
       }),
     ).toMatchObject({ duration: 'forever', amount_off: 1200, currency: 'pln' });
   });
+
+  it('truncates the display name to the Stripe coupon name limit', () => {
+    const code = `${'A'.repeat(40)}TAIL`;
+    expect(stripeCouponParams({ ...input, code })).toMatchObject({ name: 'A'.repeat(40) });
+  });
 });
 
 it('creates a coupon promotion through the Clover polymorphic promotion field', async () => {
@@ -427,6 +432,81 @@ it('creates a coupon promotion through the Clover polymorphic promotion field', 
     'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_created', code: 'SAVE',
     'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1',
   });
+});
+
+it.each([
+  { code: 'SUMMER-20', expected: { code: 'SUMMER-20' } },
+  { code: 'SUMMER_20 %', expected: { code: 'SUMMER20' } },
+  { code: '-_-', expected: {} },
+])('maps the local coupon code $code to Stripe promotion-code characters', async ({ code, expected }) => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return stripeJson({ id: 'promo_created', object: 'promotion_code' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code, kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toEqual(ok({ stripeCouponId: 'coupon_existing', stripePromotionCodeId: 'promo_created' }));
+  const request = requests[0];
+  if (request === undefined) throw new Error('Promotion request missing');
+  expect(requests).toHaveLength(1);
+  expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+    'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_existing', ...expected,
+    'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1',
+  });
+});
+
+it('lets Stripe generate the promotion code when the mapped code is already active', async () => {
+  const requests: Request[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return requests.length === 1
+      ? stripeJson({ error: {
+        type: 'invalid_request_error', code: 'resource_already_exists',
+        message: 'An active promotion code with `code: SUMMER-20` already exists.',
+      } }, 400)
+      : stripeJson({ id: 'promo_generated', object: 'promotion_code' });
+  };
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toEqual(ok({ stripeCouponId: 'coupon_existing', stripePromotionCodeId: 'promo_generated' }));
+  const bodies = await Promise.all(requests.map(async (request) => Object.fromEntries(new URLSearchParams(await request.text()))));
+  const promotion = { 'promotion[type]': 'coupon', 'promotion[coupon]': 'coupon_existing', 'metadata[tenantId]': 'tenant-a', 'metadata[couponId]': 'coupon-1' };
+  expect(bodies).toEqual([{ ...promotion, code: 'SUMMER-20' }, promotion]);
+});
+
+it('propagates other promotion-code rejections without retrying', async () => {
+  const requests: Request[] = [];
+  const payment = createStripePaymentProvider({
+    resolver: { resolve: async () => ok('rk_live_unused') },
+    clientFactory: (key) => new Stripe(key, {
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push(new Request(input, init));
+        return stripeJson({ error: { type: 'invalid_request_error', code: 'parameter_invalid_string', message: 'Invalid code' } }, 400);
+      }),
+    }),
+  });
+  if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
+  expect(await payment.ensureCouponPromotion({
+    tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
+    currency: 'PLN', recurringDuration: 'first_invoice', stripeCouponId: 'coupon_existing', stripePromotionCodeId: null,
+  })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Stripe rejected the coupon request: Invalid code' } });
+  expect(requests).toHaveLength(1);
 });
 
 describe('verifyWebhookEvent', () => {
@@ -691,23 +771,24 @@ describe('verifyWebhookEvent', () => {
     { customer: { id: 'cus-foreign', metadata: { tenantId: 'tenant-b' } } },
     { subscription_details: { metadata: { tenantId: 'tenant-b' } } },
     { parent: { subscription_details: { subscription: 'sub-foreign', metadata: { tenantId: 'tenant-b' } } } },
-  ])('rejects foreign invoice ownership before resolving credentials or retrieving payments: %j', async (ownership) => {
+  ])('marks foreign invoice ownership before resolving credentials or retrieving payments: %j', async (ownership) => {
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); });
     const payload = JSON.stringify({ id: 'evt-foreign', type: 'invoice.paid', livemode: true,
       data: { object: { id: 'in-foreign', ...ownership } } });
     const result = await api.verify(payload);
-    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(result).toMatchObject({ ok: true, value: { id: 'evt-foreign', type: 'invoice.paid', objectId: 'in-foreign', checkoutSession: null, foreignTenant: true } });
+    if (result.ok) expect(result.value.invoice).toBeUndefined();
     expect(api.resolvedSecrets).toEqual([]);
     expect(api.requests).toEqual([]);
   });
 
   it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'rejects explicit foreign ownership on %s without a lookup', async (type) => {
+    'marks explicit foreign ownership on %s without a lookup', async (type) => {
       const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected Stripe lookup'); });
       const payload = JSON.stringify({ id: 'evt-foreign-subscription', type, livemode: true,
         data: { object: { id: 'sub-foreign', metadata: { tenantId: 'tenant-b' }, status: 'active' } },
       });
-      expect(await api.verify(payload)).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(await api.verify(payload)).toMatchObject({ ok: true, value: { type, objectId: 'sub-foreign', checkoutSession: null, foreignTenant: true } });
       expect(api.resolvedSecrets).toEqual([]);
       expect(api.requests).toEqual([]);
     },
@@ -725,6 +806,30 @@ describe('verifyWebhookEvent', () => {
     expect(api.requests).toEqual([]);
   });
 
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('marks stored foreign ownership on metadata-free %s before resolving credentials or retrieving payments', async (type) => {
+    const preflight = vi.fn(async () => ok('foreign' as const));
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
+    expect(await api.verify(invoiceWebhook(type))).toEqual(ok({
+      id: 'evt_clover_renewal', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
+    }));
+    expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      invoice: expect.objectContaining({ subscriptionId: 'sub_1' }),
+    }));
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('keeps the invoice correlation of an explicitly owned ownership conflict without retrieving payments', async () => {
+    const preflight = vi.fn(async () => ok('conflict' as const));
+    const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
+    const result = await api.verify(invoiceWebhook('invoice.paid', undefined, true, { tenantId: 'tenant-a' }));
+    expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tenantIds: ['tenant-a'] }));
+    expect(result).toMatchObject({ ok: true, value: { objectId: 'in_renewal', tenantIds: ['tenant-a'], invoice: { subscriptionId: 'sub_1' } } });
+    if (result.ok) expect(result.value).not.toHaveProperty('foreignTenant');
+    expect(api.resolvedSecrets).toEqual([]);
+    expect(api.requests).toEqual([]);
+  });
+
   it.each([
     ['invoice.paid', undefined], ['invoice.paid', 'tenant-a'],
     ['invoice.payment_failed', undefined], ['invoice.payment_failed', 'tenant-a'],
@@ -732,7 +837,7 @@ describe('verifyWebhookEvent', () => {
     const checked: string[] = [];
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, async (event) => {
       checked.push(event.invoice?.subscriptionId ?? 'missing');
-      return ok(false);
+      return ok('unknown');
     });
     const payload = JSON.stringify({ id: 'evt-initial-invoice', type, livemode: true,
       data: { object: { id: 'in-initial', amount_paid: 4900, amount_due: 4900, currency: 'usd',
@@ -752,7 +857,7 @@ describe('verifyWebhookEvent', () => {
   it('retrieves payments for a metadata-free invoice with a known local subscription', async () => {
     const api = invoiceProviderOverHttp(() => stripeJson({ id: 'in_renewal', payments: {
       data: [{ status: 'paid', payment: { payment_intent: 'pi_renewal' } }],
-    } }), async () => ok(true));
+    } }), async () => ok('owned'));
     expect(await api.verify(invoiceWebhook('invoice.paid'))).toMatchObject({
       ok: true, value: { invoice: { subscriptionId: 'sub_1', paymentIntentId: 'pi_renewal' } },
     });
@@ -1173,7 +1278,8 @@ it('creates direct checkout with required consent, tax IDs and exact lines witho
     tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
     currency: 'PLN', language: 'en', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
     salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
-    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message },
+    directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message,
+      disclosureMessage: 'Lowest price in the last 30 days: PLN 70' },
     lines: [{ productId: 'product-1', name: 'Course One', grossCents: 4900 }, { productId: 'product-2', name: 'Book', grossCents: 2100 }],
   });
   expect(params).toEqual({
@@ -1286,6 +1392,7 @@ it.each([
   { mode: 'live', checkout: 'payment' }, { mode: 'test', checkout: 'payment' },
   { mode: 'live', checkout: 'subscription' }, { mode: 'test', checkout: 'subscription' },
   { mode: 'live', checkout: 'direct' }, { mode: 'test', checkout: 'direct' },
+  { mode: 'live', checkout: 'direct-coupon' }, { mode: 'test', checkout: 'direct-coupon' },
 ] as const)('serializes checkout branding for $checkout in $mode mode', async ({ mode, checkout }) => {
   const requests: Request[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -1299,7 +1406,8 @@ it.each([
   expect(await payment.createCheckoutSession({ mode, tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
     priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
     ...(checkout === 'subscription' ? { recurringInterval: 'month' as const } : {}),
-    ...(checkout === 'direct' ? { directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' } } : {}),
+    ...(checkout.startsWith('direct') ? { directCheckout: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' } } : {}),
+    ...(checkout === 'direct-coupon' ? { promotionCodeId: 'promo-1' } : {}),
     checkoutBranding: { displayName: 'Studio', logoUrl: 'https://example.com/logo.png',
       iconUrl: 'https://example.com/icon.png', backgroundColor: '#FFFFFF', buttonColor: '#123456',
       fontFamily: 'inter', borderStyle: 'pill' },
@@ -1320,9 +1428,10 @@ it.each([
   expect(body.get('subscription_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? 'tenant-a' : null);
   expect(body.get('payment_intent_data[metadata][tenantId]')).toBe(checkout === 'subscription' ? null : 'tenant-a');
   expect(body.get('mode')).toBe(checkout === 'subscription' ? 'subscription' : 'payment');
-  expect(body.get('consent_collection[terms_of_service]')).toBe(checkout === 'direct' ? 'required' : null);
-  expect(body.get('tax_id_collection[enabled]')).toBe(checkout === 'direct' ? 'true' : null);
+  expect(body.get('consent_collection[terms_of_service]')).toBe(checkout.startsWith('direct') ? 'required' : null);
+  expect(body.get('tax_id_collection[enabled]')).toBe(checkout.startsWith('direct') ? 'true' : null);
   expect(body.get('allow_promotion_codes')).toBe(checkout === 'direct' ? 'false' : null);
+  expect(body.get('discounts[0][promotion_code]')).toBe(checkout === 'direct-coupon' ? 'promo-1' : null);
   expect(body.has('billing_address_collection')).toBe(false);
 });
 
@@ -1359,4 +1468,23 @@ it('rejects metadata that cannot fit Stripe key and value limits', () => {
   const input = { tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel', attribution: { utmSource: 'meta', capturedAt: '2026-10-15T10:00:00.000Z' } };
   expect(() => stripeCheckoutSessionParams({ ...input, lines: Array.from({ length: 50 }, (_, index) => ({ productId: `${index}-${'x'.repeat(500)}`, name: 'Item', grossCents: 20 })) })).toThrow('Checkout metadata exceeds Stripe limits');
   expect(() => stripeCheckoutSessionParams({ ...input, checkoutSnapshotId: 'x'.repeat(501) })).toThrow('Checkout metadata exceeds Stripe limits');
+});
+
+
+it('applies the direct checkout promotion and redemption metadata with manual codes disabled', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 15900,
+    currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancelled',
+    salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1',
+    promotionCodeId: 'promo-1', couponCheckoutSessionId: 'coupon-session-1',
+    directCheckout: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms and privacy policy.',
+      disclosureMessage: 'Lowest price in the last 30 days: PLN 159' },
+  });
+  expect(params).not.toHaveProperty('allow_promotion_codes');
+  expect(params.custom_text).toEqual({
+    terms_of_service_acceptance: { message: 'I accept the terms and privacy policy.' },
+    submit: { message: 'Lowest price in the last 30 days: PLN 159' },
+  });
+  expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
+  expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
 });

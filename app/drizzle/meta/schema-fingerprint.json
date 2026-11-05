@@ -1,6 +1,6 @@
 {
-  "hash": "575b236ad0e8cc859276c05c0ec36b2c1e90e5442086570db053cb6b854ab98c",
-  "shortId": "575b236ad0e8",
+  "hash": "7c01ca39a25056227493acd4961700fed5021eae8f2967cfa331334e9d324218",
+  "shortId": "7c01ca39a250",
   "schema": {
     "constraints": [
       {
@@ -11573,7 +11573,7 @@
             "generated": "",
             "identity": "",
             "name": "member_email",
-            "notNull": true,
+            "notNull": false,
             "type": "text"
           },
           {

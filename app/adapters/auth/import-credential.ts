@@ -62,7 +62,7 @@ export const createImportAuthGateway = (auth: Auth): ImportAuthGateway => {
             name: importedDisplayName(input),
             email,
             emailVerified: true,
-          });
+          }, { method: 'admin' });
           userAction = 'create';
         } catch (cause) {
           // A concurrent writer may have won the unique-email race; re-read before failing.

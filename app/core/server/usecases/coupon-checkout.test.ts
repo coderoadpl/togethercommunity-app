@@ -109,6 +109,25 @@ describe('validateCouponForCheckout', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
+  it('rejects an archived per-member coupon without an email as unavailable', async () => {
+    const result = await validateCouponForCheckout(
+      'tenant-1',
+      {
+        code: 'SAVE50',
+        productId: 'product-1',
+        priceId: 'price-1',
+        priceKind: 'one_time',
+        amountCents: 1000,
+        currency: 'PLN',
+      },
+      deps({ ...baseCoupon, maxRedemptionsPerMember: 1, status: 'archived' }),
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'validation', message: COUPON_UNAVAILABLE_MESSAGE },
+    });
+  });
+
   it.each([
     [{ ...baseCoupon, status: 'archived' }, { total: 0, member: 0 }, validInput],
     [{ ...baseCoupon, startsAt: '2026-08-01T00:00:00.000Z' }, { total: 0, member: 0 }, validInput],

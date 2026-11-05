@@ -3357,6 +3357,17 @@ describe('shipped checkout fulfilment', () => {
     } });
   });
 
+  it('commits stock for the product lines only, never for the shipping line', async () => {
+    const h = shippedPayment();
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-3', 2);
+    const commit = vi.spyOn(stock.repository, 'commit');
+    h.deps.stock = stock.repository;
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(commit).toHaveBeenCalledExactlyOnceWith(tenantA.id, expect.objectContaining({ checkoutSnapshotId: 'snapshot-1', productIds: ['product-1', 'product-2', 'product-3'] }));
+    expect(stock.levels.get(tenantA.id, 'product-3')).toMatchObject({ onHand: 1, reserved: 0 });
+  });
+
   it.each([
     ['a shipping cost that differs from the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = 999; }],
     ['a missing shipping cost', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; }],

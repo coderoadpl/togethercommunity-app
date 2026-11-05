@@ -5,6 +5,7 @@ import {
   checkoutShippingInputSchema,
   err,
   FREE_ORDER_DELIVERY_UNAVAILABLE,
+  normalizeCouponCode,
   notFound,
   ok,
   productLines,
@@ -270,6 +271,7 @@ export const startCheckoutSession = async (
   }
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
+  const couponQuery = applied === undefined || input.couponCode === undefined ? '' : `&code=${encodeURIComponent(normalizeCouponCode(input.couponCode))}`;
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     ...(attribution === undefined ? {} : { attribution }),
@@ -295,7 +297,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}`,
+    cancelUrl: `${checkoutPath}?status=cancelled${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),

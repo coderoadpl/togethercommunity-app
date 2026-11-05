@@ -246,7 +246,7 @@ describe('checkout with shipping', () => {
   it('refuses the direct Stripe handoff when any sales-link product needs shipping', async () => {
     const h = harness([accessory, course], [course.id, accessory.id]);
     const result = await createDirectSalesLinkCheckout(tenant, 'https://alpha.example.com', {
-      slug: h.link.slug, termsAcceptanceMessage: () => 'I accept the terms.',
+      slug: h.link.slug, termsAcceptanceMessage: () => 'I accept the terms.', couponDisclosureMessage: () => 'Lowest price in the last 30 days.',
     }, { ...h.deps, logger: { warn: vi.fn() } });
     expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
     expect(h.calls).toHaveLength(0);

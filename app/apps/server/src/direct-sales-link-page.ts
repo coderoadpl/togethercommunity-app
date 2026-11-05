@@ -7,6 +7,9 @@ import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
 
 export const directSalesLinkCopy = (language: Language) => language === 'pl' ? directSalesLinkCopyPl : directSalesLinkCopyEn;
 
+export const formatDirectSalesLinkMoney = (language: Language, cents: number, currency: string): string =>
+  new Intl.NumberFormat(language, { style: 'currency', currency, minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character] ?? character);
@@ -30,7 +33,7 @@ export const renderDirectSalesLinkPage = (input: {
   error?: 'checkoutUnavailable' | 'legalUrlsMissing';
 }): string => {
   const copy = directSalesLinkCopy(input.language);
-  const money = (cents: number, currency: string): string => new Intl.NumberFormat(input.language, { style: 'currency', currency, minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+  const money = (cents: number, currency: string): string => formatDirectSalesLinkMoney(input.language, cents, currency);
   const couponMessage = input.coupon === undefined ? undefined : input.coupon === null ? copy.couponUnavailable
     : copy.couponApplied(input.coupon.code, money(input.coupon.discountCents, input.coupon.currency), money(input.coupon.finalCents, input.coupon.currency));
   const displayName = input.branding?.displayName ?? input.tenantName;

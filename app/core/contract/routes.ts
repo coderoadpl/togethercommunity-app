@@ -1,7 +1,7 @@
 import { tenantTeamMemberSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
-import { productVatRateSchema } from '#core/domain/index.js';
+import { COUPON_CODE_MAX_LENGTH, productVatRateSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
@@ -687,7 +687,7 @@ export const simulatePurchaseInputSchema = z.object({
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
-  couponCode: z.string().trim().min(1).max(100).optional(),
+  couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
   shipping: checkoutShippingInputSchema.optional(),
 });

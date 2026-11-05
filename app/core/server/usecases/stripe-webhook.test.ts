@@ -749,6 +749,12 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+const expectIgnoredLog = (h: { warnings: string[]; errors: string[] }, eventId: string, conflict: boolean): void => {
+  const line = `[stripe-webhook] ignored tenant=${tenantA.id} event=${eventId} reason=${conflict ? 'ownership conflict' : 'foreign tenant'}`;
+  expect(conflict ? h.errors : h.warnings).toEqual([line]);
+  expect(conflict ? h.warnings : h.errors).toEqual([]);
+};
+
 describe('fulfillStripeWebhook', () => {
   it('dispatches once after the checkout payment transaction resolves', async () => {
     const h = await consentHarness();
@@ -1509,11 +1515,17 @@ describe('fulfillStripeWebhook', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it.each(['checkout.session.completed', 'charge.refunded', 'charge.dispute.created'] as const)('acknowledges %s with a stored foreign payment intent before fulfillment', async (type) => {
+  it.each([
+    { type: 'checkout.session.completed', metadata: true },
+    { type: 'charge.refunded', metadata: true },
+    { type: 'charge.refunded', metadata: false },
+    { type: 'charge.dispute.created', metadata: true },
+    { type: 'charge.dispute.created', metadata: false },
+  ] as const)('acknowledges $type with a stored foreign payment intent and tenant metadata $metadata before fulfillment', async ({ type, metadata }) => {
     const h = harness();
     const event = type === 'checkout.session.completed'
       ? completedEvent({ paymentIntentId: 'pi-foreign' })
-      : adjustmentEvent({ type, paymentIntentId: 'pi-foreign' });
+      : { ...adjustmentEvent({ type, paymentIntentId: 'pi-foreign' }), ...(metadata ? { tenantIds: [tenantA.id] } : {}) };
     const ownership = vi.spyOn(h.deps.stripeWebhookOwnership, 'hasForeignOwner')
       .mockImplementation(async (_tenantId, ids) => ids.paymentIntent === 'pi-foreign');
     const initialize = vi.spyOn(h.deps.authPort, 'initialize');
@@ -1521,7 +1533,7 @@ describe('fulfillStripeWebhook', () => {
     const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
     expect(ownership).toHaveBeenCalledWith(tenantA.id, expect.objectContaining({ paymentIntent: 'pi-foreign' }));
-    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+    expectIgnoredLog(h, event.id, metadata);
     expect(initialize).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
@@ -1535,32 +1547,42 @@ describe('fulfillStripeWebhook', () => {
     expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-unknown' }, mode);
   });
 
-  it.each(['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'acknowledges metadata-free %s belonging to a stored foreign subscription before claiming it',
-    async (type) => {
+  it.each([false, true].flatMap((metadata) => (
+    ['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const
+  ).map((type) => ({ type, metadata }))))(
+    'acknowledges $type belonging to a stored foreign subscription with tenant metadata $metadata before claiming it',
+    async ({ type, metadata }) => {
       const h = await subscribedHarness();
       h.subscriptions.set(h.subscription.id, { ...h.subscription, tenantId: 'tenant-b' });
-      const event = type === 'invoice.paid'
-        ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
-        : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' });
+      const event = {
+        ...(type === 'invoice.paid'
+          ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
+          : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' })),
+        ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+      };
       const initialize = vi.spyOn(h.deps.authPort, 'initialize');
       const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
       const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
       if (type === 'invoice.paid') {
         expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-          .toEqual(ok('foreign'));
+          .toEqual(ok(metadata ? 'conflict' : 'foreign'));
       }
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-      expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+      expectIgnoredLog(h, event.id, metadata);
       expect(initialize).not.toHaveBeenCalled();
       expect(claim).not.toHaveBeenCalled();
       expect(transaction).not.toHaveBeenCalled();
     },
   );
 
-  it.each(['customer', 'invoice'] as const)('acknowledges a stored foreign %s even when the invoice subscription is local', async (record) => {
+  it.each([false, true].flatMap((metadata) => (['customer', 'invoice'] as const).map((record) => ({ record, metadata }))))(
+    'acknowledges a stored foreign $record with tenant metadata $metadata even when the invoice subscription is local', async ({ record, metadata }) => {
     const h = await subscribedHarness();
-    const event = { ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }), customerId: 'cus-foreign' };
+    const event = {
+      ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }),
+      customerId: 'cus-foreign',
+      ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+    };
     if (record === 'customer') {
       const member = Array.from(h.members.values())[0];
       if (member === undefined) throw new Error('Expected enrolled member');
@@ -1571,12 +1593,12 @@ describe('fulfillStripeWebhook', () => {
       h.orders.push({ ...order, id: 'foreign-order', tenantId: 'tenant-b', providerObjectIds: { invoice: 'in-foreign' } });
     }
     expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-      .toEqual(ok('foreign'));
+      .toEqual(ok(metadata ? 'conflict' : 'foreign'));
     const initialize = vi.spyOn(h.deps.authPort, 'initialize');
     const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
     const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+    expectIgnoredLog(h, event.id, metadata);
     expect(initialize).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();

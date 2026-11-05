@@ -210,7 +210,13 @@ fallback rewrites.
 
 Stripe receives one line per product, the tenant language, tax ID collection and
 a mandatory terms checkbox. A URL coupon (`?code=`) is applied as a Stripe
-promotion code and the Stripe promotion-code field stays disabled; see
+promotion code and the Stripe promotion-code field stays disabled. Stripe accepts
+only letters, digits and dashes in a promotion code, so its customer-facing code
+is the local code with every other character removed (`SUMMER 20%` becomes
+`SUMMER20`, `SUMMER-20` stays unchanged). A code with no letters or digits, or one
+whose mapped value is already an active Stripe promotion code in the account,
+gets a Stripe-generated code. The Stripe coupon name shows at most the first 40
+characters of the code. Local codes are stored and validated unchanged. See
 [Sales links](sales-links.md) for the preview and limiter details.
 Set a valid terms URL once in the Stripe account Dashboard; Stripe requires this
 account-level setting even when Together overrides the acceptance message with
@@ -354,11 +360,34 @@ payments, PaymentIntent metadata. Signature-verified webhook metadata explicitly
 naming a different tenant is acknowledged with HTTP 200 and `processed: false`,
 even if an object ID matches a local record. This includes metadata on expanded customers and
 subscriptions and invoice subscription details.
-Customer, subscription and order IDs that resolve to another tenant's stored
-records are also acknowledged with HTTP 200 and `processed: false`. Each foreign
-event emits one warning log and stops before any Stripe API lookup or fulfillment.
+Metadata-free events whose customer, subscription, invoice, payment or order ID
+resolves to another tenant's stored records are foreign too, because shared and
+BYO Stripe accounts routinely deliver other tenants' objects without metadata.
+Each foreign event emits one warning log (`reason=foreign tenant`) and stops
+before any Stripe API lookup or fulfillment. When the metadata explicitly names
+this tenant but such an ID resolves to another tenant's stored records, the event
+is an ownership conflict (for example one subscription adopted into two tenants):
+it is also acknowledged with HTTP 200 and `processed: false`, but logs an error
+(`reason=ownership conflict`) and stops before any Stripe API lookup or
+fulfillment.
 Signature verification failures still fail the request. Simulated events with
 mismatched tenant metadata still return a validation error.
+
+Because an ownership conflict is acknowledged with HTTP 200, Stripe does not
+retry it, and the renewal or access change it carried is not applied until
+someone recovers it:
+
+1. Set a log-drain alert on
+   `[stripe-webhook] ignored tenant=<id> event=<id> reason=ownership conflict`.
+2. Find which other tenant holds the conflicting local record. Search by the
+   Stripe IDs of the logged event: `member_subscriptions.provider_subscription_id`,
+   `orders.provider_object_ids` and `members.external_customer_ids ->> 'stripe'`.
+3. Remove or re-assign the wrong record so the Stripe ID belongs to one tenant
+   only.
+4. Resend the logged event from the Stripe Dashboard to this tenant's webhook
+   endpoint. The endpoint is idempotent. Then check the renewal order, the
+   subscription period and the member's access. A resend before step 3 is
+   ignored again.
 
 Uncorrelated invoices and subscriptions without evidence of foreign ownership are
 acknowledged with HTTP 200 and `processed: false`. Invoice events without a local subscription

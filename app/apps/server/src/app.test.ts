@@ -3814,17 +3814,41 @@ describe('server edge security baseline', () => {
       termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
     h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
     h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
-    h.app.get('/my/products', (c) => c.html('<main>Products</main>'));
+    for (const shellPath of ['/', '/login', '/register', '/my', '/my/products', '/panel', '/panel/settings', '/panel/orders']) {
+      h.app.get(shellPath, (c) => c.html('<main>Application shell</main>'));
+    }
+    const htmlDocument = async (path: string) => {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toMatch(/^text\/html/u);
+      return parseCsp(response);
+    };
     for (const path of ['/checkout/product-1', '/checkout/product-1?status=cancelled', '/offer/bundle?checkout=together', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together&status=cancelled']) {
-      const directives = parseCsp(await h.app.request(path, { headers: { host: 'acme.localhost' } }));
+      const directives = await htmlDocument(path);
       expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives), 'https://geowidget.inpost.pl']));
       expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'", 'https://geowidget.inpost.pl']));
       expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
     }
-    for (const path of ['/checkout/product-1?status=success', '/offer/bundle?checkout=together&status=success', '/my/products', '/legal/terms']) {
-      const policy = (await h.app.request(path, { headers: { host: 'acme.localhost' } })).headers.get('content-security-policy');
-      expect(policy, path).not.toContain('geowidget.inpost.pl');
+    for (const path of [
+      '/checkout/product-1?status=success', '/checkout/product-1?status=success&session_id=cs_live_one',
+      '/checkout/product-1?checkout=together&status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together&status=success',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set([
+        "'self'", scriptNonce(directives), 'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
+      ]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
     }
+    for (const path of [
+      '/', '/login', '/login?status=cancelled', '/register', '/my', '/my?checkout=together', '/my/products', '/my/products?status=cancelled',
+      '/panel', '/panel/settings', '/panel/orders?status=cancelled', '/panel/orders?checkout=together', '/offer/bundle',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+    }
+    const legal = await h.app.request('/legal/terms', { headers: { host: 'acme.localhost' } });
+    expect(legal.headers.get('content-security-policy')).not.toContain('geowidget.inpost.pl');
   });
 
   it('keeps baseline CSP outside checkout success documents', async () => {

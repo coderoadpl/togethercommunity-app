@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
 
 import { parseGeowidgetPoint, type CheckoutEvent } from './index.web.js';
+import { useFullNavigationExit } from './use-full-navigation-exit.js';
 
 const GEOWIDGET_ORIGIN = 'https://geowidget.inpost.pl';
 const GEOWIDGET_POINT_EVENT = 'together-inpost-point';
@@ -29,11 +30,13 @@ export const InpostGeowidget = ({ token, language, dispatch }: {
   dispatch: (event: CheckoutEvent) => void;
 }) => {
   const container = useRef<HTMLDivElement>(null);
+  const armFullNavigationExit = useFullNavigationExit();
 
   useEffect(() => {
     const host = container.current;
     if (host === null) return;
     ensureGeowidgetAssets();
+    armFullNavigationExit();
     const widget = document.createElement('inpost-geowidget');
     widget.setAttribute('token', token);
     widget.setAttribute('language', language);
@@ -51,7 +54,7 @@ export const InpostGeowidget = ({ token, language, dispatch }: {
       document.removeEventListener(GEOWIDGET_POINT_EVENT, onPoint);
       host.replaceChildren();
     };
-  }, [dispatch, language, token]);
+  }, [armFullNavigationExit, dispatch, language, token]);
 
   return <Box ref={container} data-testid="checkout-inpost-geowidget" sx={{ height: '26rem', width: '100%', overflow: 'hidden' }} />;
 };

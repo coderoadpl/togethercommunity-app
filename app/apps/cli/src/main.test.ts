@@ -1757,10 +1757,20 @@ describe('fulfilment CLI', () => {
     await run('--json', 'orders', 'list', '--fulfilment', 'shipped');
     expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ fulfilmentStatus: 'shipped' });
     await run('orders', 'packing-list', '--format', 'csv');
-    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv' });
+    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv', mode: 'live' });
     expect(logSpy).toHaveBeenCalledWith('order_number,paid_at');
     await run('--json', 'orders', 'packing-list', '--format', 'json');
     expect(h.ordersPackingList).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the requested payment mode with the packing list and rejects an unknown one', async () => {
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'test', '--fulfilment', 'shipped');
+    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv', mode: 'test', fulfilmentStatus: 'shipped' });
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'live');
+    expect(h.ordersPackingList).toHaveBeenLastCalledWith({ format: 'csv', mode: 'live' });
+    await run('--json', 'orders', 'packing-list', '--format', 'csv', '--mode', 'staging');
+    expect(h.ordersPackingList).toHaveBeenCalledTimes(2);
     expect(process.exitCode).toBe(2);
   });
 

@@ -210,8 +210,10 @@ With the **To pack** filter selected, the orders page offers **Download packing
 list (CSV)**: `GET /api/orders/packing-list?format=csv` (optionally
 `fulfilmentStatus=to_pack|shipped`, default `to_pack`, and `mode=live|test`,
 default `live`) needs `order:export` and returns the orders of that payment
-mode, oldest payment first; Studio sends the payment mode selected on the
-orders page. The columns are `order_number`,
+mode, oldest payment first. Studio sends the payment mode selected on the
+orders page; with the **All** payment-mode filter it sends `live` and shows
+"Live orders only" next to the button. The CLI takes `--mode live|test`
+(default `live`). The columns are `order_number`,
 `paid_at` (Europe/Warsaw, `YYYY-MM-DD HH:mm`), `buyer_name`, `email`, `phone`,
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
@@ -356,6 +358,7 @@ pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com 
   --product <id> --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
 pnpm --silent run cli --tenant acme orders packing-list --format csv --out packing-list.csv
+pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
 pnpm --silent run cli --tenant acme product update <id> \

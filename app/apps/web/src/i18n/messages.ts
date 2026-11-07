@@ -656,6 +656,7 @@ export interface Messages {
     fulfilmentColumn: string;
     packingListDownload: string;
     packingListDownloading: string;
+    packingListLiveOnly: string;
     markShipped: string;
     shipCarrier: string;
     shipTracking: string;

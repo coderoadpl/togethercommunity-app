@@ -693,6 +693,7 @@ export const pl: Messages = {
     fulfilmentColumn: 'Wysyłka',
     packingListDownload: 'Pobierz listę do spakowania (CSV)',
     packingListDownloading: 'Przygotowuję listę do spakowania…',
+    packingListLiveOnly: 'Tylko zamówienia produkcyjne',
     markShipped: 'Oznacz jako wysłane',
     shipCarrier: 'Przewoźnik',
     shipTracking: 'Numer przesyłki',

@@ -86,8 +86,9 @@ describe('sales fulfilment', () => {
 
     await userEvent.click(screen.getByRole('button', { name: en.shipping.packingListDownload }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(packingQueries.map((params) => [params.get('format'), params.get('fulfilmentStatus'), params.get('mode')])).toEqual([['csv', 'to_pack', null]]);
+    expect(packingQueries.map((params) => [params.get('format'), params.get('fulfilmentStatus'), params.get('mode')])).toEqual([['csv', 'to_pack', 'live']]);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('sales-packing-list-live-only')).toHaveTextContent(en.shipping.packingListLiveOnly);
 
     await userEvent.click(screen.getByRole('combobox', { name: en.sales.mode }));
     await userEvent.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
@@ -95,6 +96,15 @@ describe('sales fulfilment', () => {
     await userEvent.click(await screen.findByRole('button', { name: en.shipping.packingListDownload }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
     expect(packingQueries.at(-1)?.get('mode')).toBe('test');
+    expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+
+    await userEvent.click(screen.getByRole('combobox', { name: en.sales.mode }));
+    await userEvent.click(await screen.findByRole('option', { name: en.integrations.stripeLiveMode }));
+    await waitFor(() => expect(listQueries.at(-1)?.get('mode')).toBe('live'));
+    await userEvent.click(await screen.findByRole('button', { name: en.shipping.packingListDownload }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(3));
+    expect(packingQueries.at(-1)?.get('mode')).toBe('live');
+    expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
   });
 });
 

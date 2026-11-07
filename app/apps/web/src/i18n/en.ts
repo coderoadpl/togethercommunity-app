@@ -686,6 +686,7 @@ export const en: Messages = {
     fulfilmentColumn: 'Fulfilment',
     packingListDownload: 'Download packing list (CSV)',
     packingListDownloading: 'Preparing packing list…',
+    packingListLiveOnly: 'Live orders only',
     markShipped: 'Mark as shipped',
     shipCarrier: 'Carrier',
     shipTracking: 'Tracking number',

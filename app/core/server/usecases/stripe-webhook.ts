@@ -120,6 +120,22 @@ const ignoreOwnershipConflict = (
   return ok({ processed: false });
 };
 
+const REFUND_REQUIRED = 'refund_required';
+
+const refundRequired = (error: AppError): boolean =>
+  typeof error.details === 'object' && error.details !== null && 'reason' in error.details && error.details.reason === REFUND_REQUIRED;
+
+const acknowledgeRefundRequired = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  workerId: string,
+  deps: StripeWebhookDeps,
+): Promise<Result<{ processed: boolean }, AppError>> => {
+  await deps.processedPaymentEvents.finalize(tenant.id, event.id, workerId, deps.clock.nowIso());
+  deps.logger.error(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} session=${event.objectId ?? 'none'} amount=${String(event.checkoutSession?.amountTotalCents ?? 0)} reason=${REFUND_REQUIRED}`);
+  return ok({ processed: false });
+};
+
 const enqueueAutoInvoice = async (
   tenantId: string,
   event: PaymentWebhookEvent,
@@ -513,7 +529,9 @@ const applyCheckoutCompleted = async (
           deps,
         );
   if (couponCoversFullPrice && discounted === null) {
-    return err(validation('Coupon redemption limit reached'));
+    return err((event.checkoutSession.shippingCostCents ?? 0) > 0
+      ? appError('validation', 'Coupon redemption limit reached after the shipping fee was paid', { reason: REFUND_REQUIRED })
+      : validation('Coupon redemption limit reached'));
   }
   const product = await deps.products.findById(tenant.id, metadata.productId);
   if (event.mode === 'test') deps.logger.warn(`[stripe-test] fulfilled tenant=${tenant.id} checkout=${event.objectId}; member email suppressed`);
@@ -1159,6 +1177,7 @@ export const fulfillStripeWebhook = async (
     return err(error);
   }
 
+  if (!applied.ok && refundRequired(applied.error)) return acknowledgeRefundRequired(tenant, event, workerId, deps);
   if (!applied.ok) {
     logPaymentFailure(tenant, event, deps, applied.error);
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);

@@ -3421,24 +3421,35 @@ describe('shipped checkout fulfilment', () => {
     expect(h.redemptions).toHaveLength(1);
   });
 
-  it('refuses a fully discounted shipped product once the coupon redemption limit is consumed', async () => {
+  it('acknowledges a fully discounted shipped product whose coupon limit is consumed and logs a required refund once', async () => {
     const bundle = shippedPayment((lines) => lines.slice(0, 2));
     const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
     h.deps.products = bundle.deps.products;
     if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
     h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const dispatchEmail = vi.spyOn(h.deps, 'dispatchEmail');
     const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
     if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
     event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
     event.checkoutSession.metadata.salesLinkId = 'link-1';
     event.checkoutSession.shippingCostCents = 1499;
     event.checkoutSession.shipping = collectedShipping;
-    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
-      ok: false,
-      error: { code: 'validation', message: 'Coupon redemption limit reached' },
-    });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.errors).toEqual([
+      `[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} session=cs-coupon amount=1499 reason=refund_required`,
+    ]);
     expect(h.orders).toHaveLength(0);
     expect(h.redemptions).toHaveLength(0);
+    expect(h.grants.size).toBe(0);
+    expect(h.members.size).toBe(0);
+    expect(h.enrollmentEmails).toHaveLength(0);
+    expect(h.queued).toHaveLength(0);
+    expect(dispatchEmail).not.toHaveBeenCalled();
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.errors).toHaveLength(1);
+    expect(h.orders).toHaveLength(0);
+    expect(h.grants.size).toBe(0);
   });
 
   it('never revokes a grant for the shipping line after a full refund', async () => {

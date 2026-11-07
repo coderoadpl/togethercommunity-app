@@ -5,6 +5,7 @@ import {
   notFound,
   ok,
   stockAdjustmentEventType,
+  stockAlertMarkers,
   validation,
   type StockCommitEffect,
   type StockEventType,
@@ -50,8 +51,8 @@ export const createStockRepositoryFake = () => {
   const record = (tenantId: string, productId: string, type: StockEventType, quantity: number, reference: Record<string, string> = {}) => {
     events.push({ tenantId, productId, type, quantity, reference });
   };
-  const resetNotification = (stored: StockLevel) => {
-    if (stored.lowStockThreshold === null || stored.onHand - stored.reserved > stored.lowStockThreshold) stored.lowStockNotifiedAt = null;
+  const resetMarkers = (stored: StockLevel & { soldOutNotifiedAt: string | null }) => {
+    Object.assign(stored, stockAlertMarkers(stored));
   };
   const releaseOne = (reservation: FakeStockReservation, reason: string, now: string): number => {
     if (reservation.status !== 'active') return 0;
@@ -60,6 +61,7 @@ export const createStockRepositoryFake = () => {
     if (stored !== null) {
       stored.reserved = Math.max(stored.reserved - reservation.quantity, 0);
       stored.updatedAt = now;
+      resetMarkers(stored);
     }
     record(reservation.tenantId, reservation.productId, 'released', -reservation.quantity, { checkoutSnapshotId: reservation.checkoutSnapshotId, reservationId: reservation.id, reason });
     return 1;
@@ -121,8 +123,7 @@ export const createStockRepositoryFake = () => {
       if (stored.onHand + input.delta > MAX_STOCK_QUANTITY) return err(validation('Stock quantities cannot exceed the cap'));
       stored.onHand += input.delta;
       stored.updatedAt = input.now;
-      resetNotification(stored);
-      if (stored.onHand - stored.reserved > 0) stored.soldOutNotifiedAt = null;
+      resetMarkers(stored);
       record(tenantId, input.productId, stockAdjustmentEventType(input.delta, input.reason), input.delta, { reason: input.reason });
       return ok(view(stored));
     },
@@ -131,7 +132,7 @@ export const createStockRepositoryFake = () => {
       if (stored === null) return err(notFound('Stock tracking is not enabled for this product'));
       stored.lowStockThreshold = input.lowStockThreshold;
       stored.updatedAt = input.now;
-      resetNotification(stored);
+      stored.lowStockNotifiedAt = stockAlertMarkers(stored).lowStockNotifiedAt;
       return ok(view(stored));
     },
     reserve: async (tenantId, input) => {

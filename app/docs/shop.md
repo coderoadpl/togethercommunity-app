@@ -483,10 +483,12 @@ comes first, and records `sold_out_notified_at`. Pieces held by open checkouts
 keep availability at zero without a second alert, and a later commit that
 empties the shelf stays quiet while `sold_out_notified_at` is set. An alert
 counts as sent when at least one recipient was queued; when none was it is not
-recorded. An adjustment or threshold change that lifts availability above the
-threshold clears `low_stock_notified_at`; an adjustment that leaves any piece
-available clears `sold_out_notified_at`. Products without a threshold only
-alert when oversold.
+recorded. An adjustment, a released reservation (explicit or by the expiry
+sweep) or a threshold change that lifts availability above the threshold clears
+`low_stock_notified_at`; an adjustment or a released reservation that leaves any
+piece available clears `sold_out_notified_at`, so the next commit that empties
+the shelf sends the zero alert again. Products without a threshold only alert
+when oversold.
 The e-mail is queued in the payment transaction.
 
 ### Public offer

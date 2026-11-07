@@ -10,6 +10,7 @@ import {
   publicProductStock,
   publicStockVersion,
   stockAdjustmentEventType,
+  stockAlertMarkers,
   stockCheckoutExpiry,
   stockIsLow,
   type StockCommitEffect,
@@ -134,6 +135,24 @@ describe('low-stock alert decision', () => {
   it('never alerts for an unchanged commit or an untracked threshold', () => {
     expect(lowStockAlertFor(effect({ outcome: 'unchanged', onHandAfter: 0 }))).toBeNull();
     expect(lowStockAlertFor(effect({ onHandAfter: 0, lowStockThreshold: null }))).toBeNull();
+  });
+});
+
+describe('stock alert markers after availability changes', () => {
+  const notified = '2026-11-05T09:00:00.000Z';
+  const markers = { lowStockNotifiedAt: notified, soldOutNotifiedAt: notified };
+
+  it('keeps both markers while nothing is available', () => {
+    expect(stockAlertMarkers({ onHand: 1, reserved: 1, lowStockThreshold: 1, ...markers })).toEqual(markers);
+  });
+
+  it('clears the zero marker once a piece is available and keeps the low marker at or below the threshold', () => {
+    expect(stockAlertMarkers({ onHand: 2, reserved: 1, lowStockThreshold: 1, ...markers })).toEqual({ lowStockNotifiedAt: notified, soldOutNotifiedAt: null });
+  });
+
+  it('clears both markers above the threshold, or above zero without a threshold', () => {
+    expect(stockAlertMarkers({ onHand: 3, reserved: 1, lowStockThreshold: 1, ...markers })).toEqual({ lowStockNotifiedAt: null, soldOutNotifiedAt: null });
+    expect(stockAlertMarkers({ onHand: 1, reserved: 0, lowStockThreshold: null, ...markers })).toEqual({ lowStockNotifiedAt: null, soldOutNotifiedAt: null });
   });
 });
 

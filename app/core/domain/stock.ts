@@ -60,6 +60,20 @@ export const availableStock = (level: Pick<StockLevel, 'onHand' | 'reserved'>): 
 export const stockIsLow = (level: Pick<StockLevel, 'onHand' | 'reserved' | 'lowStockThreshold'>): boolean =>
   level.lowStockThreshold !== null && availableStock(level) <= level.lowStockThreshold;
 
+export const stockAlertMarkers = (level: {
+  onHand: number;
+  reserved: number;
+  lowStockThreshold: number | null;
+  lowStockNotifiedAt: string | null;
+  soldOutNotifiedAt: string | null;
+}): { lowStockNotifiedAt: string | null; soldOutNotifiedAt: string | null } => {
+  const available = availableStock(level);
+  return {
+    lowStockNotifiedAt: level.lowStockThreshold === null || available > level.lowStockThreshold ? null : level.lowStockNotifiedAt,
+    soldOutNotifiedAt: available > 0 ? null : level.soldOutNotifiedAt,
+  };
+};
+
 export const productStockView = (level: StockLevel): ProductStock => ({
   ...level,
   available: availableStock(level),

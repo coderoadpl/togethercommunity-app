@@ -313,7 +313,11 @@ is true for a signed-in owner or admin of the workspace, and `testEnabled` for
 the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
 and `/offer/*?checkout=together` for test-mode purchases, never load the map:
 their delivery step shows only the locker code input with the hint "The
-parcel-locker map is available to buyers; enter the locker code."
+parcel-locker map is available to buyers; enter the locker code." As defence in
+depth the endpoint itself returns `inpostGeowidgetToken: null` with
+`inpostGeowidgetWithheld: true` to a staff session, and to an owner or admin
+viewing the workspace as a member (impersonation), so the page shows the same
+hint without the map.
 
 Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:

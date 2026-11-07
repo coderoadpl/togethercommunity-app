@@ -6231,7 +6231,7 @@ describe('public payment-config route', () => {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
       analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
-      shippingRates: [], inpostGeowidgetToken: null,
+      shippingRates: [], inpostGeowidgetToken: null, inpostGeowidgetWithheld: false,
     } });
   });
 
@@ -9025,6 +9025,22 @@ describe('impersonation HTTP surface', () => {
     });
   });
 
+  it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {
+    const base = deps();
+    const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token' };
+    } } });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: 'support ticket 42' }),
+    });
+    expect(started.status).toBe(200);
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers: { ...headers, cookie: cookieOf(started) } });
+    expect(await config.json()).toMatchObject({ ok: true, data: { canTest: false, testEnabled: false, inpostGeowidgetToken: null, inpostGeowidgetWithheld: true } });
+  });
+
   it('takes the __Host- prefix once cookies are secure', async () => {
     const { app } = impersonatingApp({ secureCookies: true });
 
@@ -9590,6 +9606,24 @@ describe('staff Stripe test mode routes', () => {
     encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
     decrypt: (value) => ok(value.ciphertext),
   };
+
+  it.each(['member', 'none', 'staff', 'owner'] as const)('returns the parcel locker map token to buyers only, never to tenant staff: %s', async (scope) => {
+    const base = deps();
+    const app = scopedApp(scope, { overrides: { tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token' };
+    } } } });
+    const staff = scope === 'staff' || scope === 'owner';
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ ok: true, data: {
+      canTest: staff, inpostGeowidgetToken: staff ? null : 'public-map-token', inpostGeowidgetWithheld: staff,
+    } });
+  });
+
+  it('reports no withheld map for staff when the workspace has no parcel locker map token', async () => {
+    const config = await scopedApp('owner').request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ ok: true, data: { canTest: true, inpostGeowidgetToken: null, inpostGeowidgetWithheld: false } });
+  });
 
   it.each(['member', 'none', 'staff', 'owner'] as const)('exposes the switch only to tenant staff: %s', async (scope) => {
     const app = scopedApp(scope);

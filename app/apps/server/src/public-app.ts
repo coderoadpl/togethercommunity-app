@@ -647,6 +647,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     const testConfig = await getPaymentConfig(tenant.value.tenant.id, deps, 'test');
     const config = await getPaymentConfig(tenant.value.tenant.id, deps);
     const settings = await deps.tenants.findSettings(tenant.value.tenant.id);
+    const geowidgetToken = settings?.inpostGeowidgetToken ?? null;
+    const geowidgetWithheld = geowidgetToken !== null && (canTest || c.get('impersonation') !== undefined);
     const domain = tenant.value.domain;
     const baseDomain = deps.baseDomain.toLowerCase();
     const analytics = (settings?.analyticsTagId || settings?.analyticsMetaPixelId) ? {
@@ -663,7 +665,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       config.ok
         ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments,
-          shippingRates: publicShippingRates(settings?.shippingRates), inpostGeowidgetToken: settings?.inpostGeowidgetToken ?? null })
+          shippingRates: publicShippingRates(settings?.shippingRates),
+          inpostGeowidgetToken: geowidgetWithheld ? null : geowidgetToken, inpostGeowidgetWithheld: geowidgetWithheld })
         : config,
     );
   });

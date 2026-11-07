@@ -676,7 +676,7 @@ export const pl: Messages = {
     carriers: { inpost: 'InPost', other: 'Inny przewoźnik' },
     pickupPoints: { none: 'Dostawa pod adres', inpost_locker: 'Paczkomat InPost' },
     geowidgetToken: 'Token mapy paczkomatów InPost',
-    geowidgetTokenHint: 'Publiczny token z portalu InPost Geowidget. Z tokenem strona zakupu pokazuje mapę paczkomatów; bez niego kupujący wpisuje kod paczkomatu.',
+    geowidgetTokenHint: 'Publiczny token z portalu InPost Geowidget. Z tokenem strona zakupu pokazuje mapę paczkomatów; bez niego kupujący wpisuje kod paczkomatu. Właściciele i administratorzy zamiast mapy widzą na swojej stronie zakupu pole na kod paczkomatu.',
     deliveryMethodLabel: 'Dostawa',
     deliveryMethodHint: 'Wysyłka dodaje krok dostawy do zakupu. Sposoby dostawy ustawisz w Ustawieniach → Wysyłka.',
     deliveryMethods: { pickup: 'Odbiór osobisty', shipping: 'Wysyłka paczką' },

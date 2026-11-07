@@ -1709,6 +1709,9 @@ describe('SettingsPanel shipping', () => {
     await userEvent.type(screen.getByRole('textbox', { name: `${en.shipping.rateEstimateMin} 2` }), '1');
     await userEvent.type(screen.getByRole('textbox', { name: `${en.shipping.rateEstimateMax} 2` }), '3');
     await userEvent.click(screen.getByRole('switch', { name: `${en.shipping.rateActive} 1` }));
+    expect(screen.getByRole('textbox', { name: en.shipping.geowidgetToken })).toHaveAccessibleDescription(
+      expect.stringContaining('Owners and admins see the typed locker code instead of the map on their own checkout.'),
+    );
     await userEvent.type(screen.getByRole('textbox', { name: en.shipping.geowidgetToken }), 'public-map-token');
     await userEvent.click(screen.getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(updates).toContainEqual({

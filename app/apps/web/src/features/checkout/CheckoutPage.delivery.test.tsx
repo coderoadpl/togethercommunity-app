@@ -13,6 +13,7 @@ import { server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
+const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 
 const offer = (deliveryMethod: 'pickup' | 'shipping') => ({
@@ -29,11 +30,19 @@ const shippingRates = [
   { id: 'courier', label: 'Courier', amountCents: 1999, carrier: 'other', pickupPoint: 'none' },
 ];
 
-const serve = (input: { deliveryMethod?: 'pickup' | 'shipping'; token?: string | null; onSession?: (body: unknown) => void; sessionError?: string }) => {
+const serve = (input: {
+  deliveryMethod?: 'pickup' | 'shipping';
+  token?: string | null;
+  canTest?: boolean;
+  testEnabled?: boolean;
+  onSession?: (body: unknown) => void;
+  sessionError?: string;
+}) => {
   server.use(
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(input.deliveryMethod ?? 'shipping') })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
       stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null,
+      canTest: input.canTest ?? false, testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
     } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
       input.onSession?.(await request.json());
@@ -115,6 +124,50 @@ describe('checkout delivery step', () => {
     document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
     expect(await screen.findByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop · Main Street 1, 30-001 Cracow');
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+  });
+
+  it('loads the parcel locker map for a buyer only after the locker option is chosen', async () => {
+    serve({ token: 'public-map-token' });
+    renderCheckout();
+    await userEvent.click(await screen.findByLabelText(exact(`Courier — ${pln(1999)}`)));
+    expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+    await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    expect(await screen.findByTestId('checkout-inpost-geowidget')).toBeInTheDocument();
+    expect(document.getElementById('inpost-geowidget-script')).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
+    expect(screen.queryByTestId('checkout-locker-map-staff-hint')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { viewer: 'a staff session in live mode', canTest: true, testEnabled: false },
+    { viewer: 'a staff session in test mode', canTest: true, testEnabled: true },
+    { viewer: 'test mode without a staff session', canTest: false, testEnabled: true },
+  ])('never loads the parcel locker map for $viewer and asks for the locker code', async ({ canTest, testEnabled }) => {
+    const bodies: unknown[] = [];
+    serve({ token: 'public-map-token', canTest, testEnabled, onSession: (body) => bodies.push(body) });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    expect(await screen.findByTestId('checkout-locker-map-staff-hint')).toHaveTextContent(exact(en.shipping.lockerMapStaffHint));
+    expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+    expect(document.querySelector('inpost-geowidget')).toBeNull();
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+    expect(document.getElementById('inpost-geowidget-style')).toBeNull();
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+  });
+
+  it('never loads the parcel locker map without a workspace token', async () => {
+    serve({ token: null });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    expect(await screen.findByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-locker-map-staff-hint')).not.toBeInTheDocument();
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+    expect(document.getElementById('inpost-geowidget-style')).toBeNull();
   });
 
   it('leaves the form by a document navigation once the parcel locker map was loaded', async () => {

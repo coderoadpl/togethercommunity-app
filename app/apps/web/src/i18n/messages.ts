@@ -615,6 +615,7 @@ export interface Messages {
     lockerCodeHint: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
+    lockerMapStaffHint: string;
     chooseDelivery: string;
     noDeliveryOptions: string;
     freeOrderUnavailable: string;

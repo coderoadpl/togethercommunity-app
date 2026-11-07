@@ -138,13 +138,18 @@ Checkout form documents — `/checkout/<productRef>` without `status=success`,
 `/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
 `https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
 parcel locker map used by shipped products (owner decision 2026-11-05), in both
-the server middleware and the static hosting headers, with
-`connect-src 'self' https:`. Success, sign-in, member and Studio documents never
+the server middleware and the static hosting headers. `connect-src` is not part
+of that change: each document keeps its base value, `'self' https:` on
+`/checkout/*` documents and in the static hosting headers, and
+`'self' https://*.sentry.io` on `/offer/*` server responses. On a
+server-rendered `/offer/*` form document the map may therefore fail to reach
+InPost's API; the buyer then enters the locker code in the typed input, which
+the delivery step always shows. Success, sign-in, member and Studio documents never
 list that origin, and leaving a form document after the map script was injected
 uses a full document navigation. See
 [Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
-No other directive changes: `connect-src 'self' https:` and
-`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+No other directive changes: `connect-src` and `img-src 'self' data: https:`
+keep their base values. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.

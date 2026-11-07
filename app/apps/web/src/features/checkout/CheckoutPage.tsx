@@ -45,7 +45,7 @@ import {
   EmberCtaButton,
   FinePrint,
 } from '../../theme.js';
-import { createCheckoutState, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
 
 type OfferPrice = {
   id: string;
@@ -694,7 +694,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               dispatch={dispatchCheckout}
               currency={selectedCurrency}
               language={language}
-              geowidgetToken={paymentConfig.data.inpostGeowidgetToken}
+              geowidget={geowidgetAccess({
+                token: paymentConfig.data.inpostGeowidgetToken,
+                staffSession: paymentConfig.data.canTest,
+                testMode: testEnabled,
+              })}
               disabled={simulatePurchase.isPending || checkoutSession.isPending}
             />
           ) : null}

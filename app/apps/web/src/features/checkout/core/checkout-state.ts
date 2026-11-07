@@ -92,3 +92,18 @@ export const parseGeowidgetPoint = (detail: unknown): PickedPickupPoint | null =
     address: address === '' ? null : address,
   };
 };
+
+export type GeowidgetAccess =
+  | { status: 'map'; token: string }
+  | { status: 'withheld_for_staff' }
+  | { status: 'unavailable' };
+
+export const geowidgetAccess = (input: {
+  token: string | null;
+  staffSession: boolean;
+  testMode: boolean;
+}): GeowidgetAccess => {
+  if (input.token === null) return { status: 'unavailable' };
+  if (input.staffSession || input.testMode) return { status: 'withheld_for_staff' };
+  return { status: 'map', token: input.token };
+};

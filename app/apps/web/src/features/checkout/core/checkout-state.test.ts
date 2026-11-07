@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicShippingRate } from '#core/domain/index.js';
 
-import { createCheckoutState, parseGeowidgetPoint, reduceCheckoutState, selectDelivery } from './checkout-state.js';
+import { createCheckoutState, geowidgetAccess, parseGeowidgetPoint, reduceCheckoutState, selectDelivery } from './checkout-state.js';
 
 const rates: PublicShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
@@ -86,5 +86,14 @@ describe('delivery selection', () => {
     expect(parseGeowidgetPoint({ name: 'KRA010' })).toEqual({ code: 'KRA010', name: null, address: null });
     expect(parseGeowidgetPoint({ name: 'not a code' })).toBeNull();
     expect(parseGeowidgetPoint(null)).toBeNull();
+  });
+
+  it('offers the parcel locker map only to a buyer without a staff session in live mode', () => {
+    expect(geowidgetAccess({ token: 'public-map-token', staffSession: false, testMode: false })).toEqual({ status: 'map', token: 'public-map-token' });
+    expect(geowidgetAccess({ token: 'public-map-token', staffSession: true, testMode: false })).toEqual({ status: 'withheld_for_staff' });
+    expect(geowidgetAccess({ token: 'public-map-token', staffSession: true, testMode: true })).toEqual({ status: 'withheld_for_staff' });
+    expect(geowidgetAccess({ token: 'public-map-token', staffSession: false, testMode: true })).toEqual({ status: 'withheld_for_staff' });
+    expect(geowidgetAccess({ token: null, staffSession: false, testMode: false })).toEqual({ status: 'unavailable' });
+    expect(geowidgetAccess({ token: null, staffSession: true, testMode: true })).toEqual({ status: 'unavailable' });
   });
 });

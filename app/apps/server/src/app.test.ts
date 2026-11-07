@@ -3859,7 +3859,7 @@ describe('server edge security baseline', () => {
       const directives = await htmlDocument(path);
       expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives), 'https://geowidget.inpost.pl']));
       expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'", 'https://geowidget.inpost.pl']));
-      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", path.startsWith('/offer/') ? 'https://*.sentry.io' : 'https:']));
     }
     for (const path of [
       '/checkout/product-1?status=success', '/checkout/product-1?status=success&session_id=cs_live_one',
@@ -3870,6 +3870,7 @@ describe('server edge security baseline', () => {
         "'self'", scriptNonce(directives), 'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
       ]));
       expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
     }
     for (const path of [
       '/', '/login', '/login?status=cancelled', '/register', '/my', '/my?checkout=together', '/my/products', '/my/products?status=cancelled',
@@ -3903,8 +3904,7 @@ describe('server edge security baseline', () => {
         "'self'", scriptNonce(directives),
         ...(path.startsWith('/checkout/') || path.includes('checkout=together') || path.includes('status=cancelled') ? ['https://geowidget.inpost.pl'] : []),
       ]));
-      const serverDocument = (path.startsWith('/offer/') && !path.includes('checkout=together') && !path.includes('status=cancelled'))
-        || path.startsWith('/legal/') || path.startsWith('/api/');
+      const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
       expect(directives.get('connect-src')).toEqual(new Set([
         "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
       ]));

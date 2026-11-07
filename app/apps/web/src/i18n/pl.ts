@@ -653,6 +653,7 @@ export const pl: Messages = {
     lockerCodeHint: 'Wybierz paczkomat na mapie albo wpisz jego kod, na przykład WAW01M.',
     lockerCodeInvalid: 'Kod paczkomatu ma od 4 do 12 liter lub cyfr.',
     lockerSelected: 'Wybrany paczkomat',
+    lockerMapStaffHint: 'Mapa paczkomatów jest dostępna dla kupujących; wpisz kod paczkomatu.',
     chooseDelivery: 'Wybierz sposób dostawy, aby przejść dalej.',
     noDeliveryOptions: 'Dostawa tego produktu jest teraz niedostępna.',
     freeOrderUnavailable: 'Dostawa nie jest dostępna dla darmowych zamówień',

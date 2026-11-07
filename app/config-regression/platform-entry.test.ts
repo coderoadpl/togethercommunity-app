@@ -187,6 +187,20 @@ describe('Vercel platform entry boundary', () => {
       }
     });
 
+    it('keeps every directive except script-src and style-src of the checkout form policy equal to the baseline', () => {
+      const directives = (policy: string) => new Map(policy.split('; ').map((directive) => {
+        const [name = '', ...sources] = directive.split(' ');
+        return [name, sources.join(' ')];
+      }));
+      const form = directives(checkoutForm);
+      const base = directives(baseline);
+      expect(form.get('connect-src')).toBe("'self' https:");
+      expect([...form.keys()]).toEqual([...base.keys()]);
+      for (const [name, sources] of base) {
+        if (name !== 'script-src' && name !== 'style-src') expect(form.get(name), name).toBe(sources);
+      }
+    });
+
     it.each(Object.entries(queryMatchers))('gives every document at most one policy whichever entry wins (%s query matching)', (_label, matchQuery) => {
       for (const path of [...successDocuments, ...formDocuments, ...signedInOrSignInDocuments, '/offer/workbook', '/checkout/reference?status=successful']) {
         expect(new Set(matchingPolicies(path, matchQuery)).size, path).toBeLessThanOrEqual(1);

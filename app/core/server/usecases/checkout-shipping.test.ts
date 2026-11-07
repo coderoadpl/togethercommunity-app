@@ -283,4 +283,17 @@ describe('checkout with shipping', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
     expect(h.calls).toHaveLength(0);
   });
+
+  it('refuses the direct Stripe handoff when a collected sales-link product carries product safety information', async () => {
+    const collected: Product = {
+      ...accessory, deliveryMethod: 'pickup',
+      compliance: { manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com', modelIdentifier: 'M-1', safetyWarnings: '' },
+    };
+    const h = harness([collected, course], [course.id, collected.id]);
+    const result = await createDirectSalesLinkCheckout(tenant, 'https://alpha.example.com', {
+      slug: h.link.slug, termsAcceptanceMessage: () => 'I accept the terms.', couponDisclosureMessage: () => 'Lowest price in the last 30 days.',
+    }, { ...h.deps, logger: { warn: vi.fn(), error: vi.fn() } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
+    expect(h.calls).toHaveLength(0);
+  });
 });

@@ -10720,6 +10720,27 @@ describe('direct public sales-link checkout', () => {
     expect(h.create).not.toHaveBeenCalled();
   });
 
+  it('keeps offers with product safety information on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[0];
+    if (item === undefined) throw new Error('Missing test product');
+    expect(item).toMatchObject({ type: 'physical', deliveryMethod: 'pickup' });
+    expect(item.checkoutConsentDefinitionIds ?? []).toEqual([]);
+    item.compliance = {
+      manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
+      modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
+    };
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const page = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).toBe('<main>Existing checkout</main>');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it('omits a rejected return address from the consent fallback redirect', async () => {
     const h = await directSalesLinkApp('https://sales.example/offer');
     const item = h.products[1];

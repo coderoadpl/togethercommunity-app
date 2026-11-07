@@ -267,7 +267,12 @@ section is always expanded; for other product types it is collapsed until
 opened. Public sales-link offers carry `compliance` on each line the same way,
 and the sales-link checkout shows one section per product with safety
 information, titled with the product name when the link sells more than one
-product. The purchase confirmation e-mail does not include it.
+product. A sales link with any product that carries safety information never
+takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
+consent-bound products it stays on the Together page at `?checkout=together`,
+so the section is shown before payment, and
+`POST /api/public/sales-links/<slug>/checkout` refuses the link. The purchase
+confirmation e-mail does not include it.
 
 Product snapshots carry the descriptive fields, so the field was added in
 product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7

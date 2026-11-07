@@ -293,6 +293,22 @@ phone number from `customer_details.phone` and the fee from
 snapshot's shipping line or whose address is missing or outside the allowed
 countries. See [Shop](shop.md) for the delivery options and the stored order data.
 
+A coupon that discounts every product leaves the delivery fee as the whole
+Stripe total. When the coupon's redemption limit is reached before the webhook
+claims it, the buyer has already paid the fee but the coupon no longer covers
+the products. The webhook acknowledges the event with HTTP 200 and
+`processed: false`, so Stripe does not retry it, and records nothing: no order,
+no member access, no e-mail. It logs one error:
+`[stripe-webhook] ignored tenant=<id> event=<id> session=<checkout session id> amount=<cents> reason=refund_required`.
+A resend of the same event is ignored.
+
+1. Set a log-drain alert on `reason=refund_required`.
+2. Find the buyer by the session id in Stripe: the log carries no e-mail, so
+   open the Checkout Session from the logged `session` in the Stripe Dashboard
+   and refund the delivery fee manually in Stripe.
+3. Tell the buyer that the coupon was used up; they can buy again at the
+   current price.
+
 ## Order campaign attribution
 
 Checkout captures `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`,

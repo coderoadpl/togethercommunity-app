@@ -87,9 +87,9 @@ nothing would collect the delivery address. A fully discounted product with a
 paid delivery option is a normal Stripe checkout for the fee alone: Stripe
 collects the address, and the webhook claims the coupon redemption. When the
 coupon's redemption limit is reached before that claim, the buyer has already
-paid the delivery fee on Stripe, but the webhook refuses the order and records
-nothing; staff must refund the fee manually in Stripe. A follow-up may record
-such orders instead.
+paid the delivery fee on Stripe; the webhook acknowledges the event, records
+nothing and logs `reason=refund_required`, and staff refund the fee manually in
+Stripe (see [Payments](payments.md#shipping-in-stripe-checkout)).
 
 Stripe Checkout receives the product lines as line items and the fee as exactly
 one shipping option (`shipping_rate_data` with a fixed amount, the option label
@@ -517,3 +517,17 @@ the same summary for tracked products. All writes require `product:write`.
 Stock is not part of the product content snapshot (`core/domain/snapshots/product`):
 it is operational state with its own event history, so restoring a product
 version never changes stock.
+
+## Follow-ups
+
+These parts of the shop are not built yet and are handled as described:
+
+- Bundles: a sales link that sells more than one product shows no variant
+  chips; the chips appear only on the checkout of a single product.
+- Returns (RMA): there is no return flow. Staff refund the buyer in Stripe and
+  put the goods back with a stock adjustment whose reason is `returned`.
+- Carrier labels: no carrier label purchase or InPost label API is integrated.
+  Staff buy the label with the carrier and type the tracking number when they
+  mark the order as shipped.
+- Parcel-locker map origins: the `connect-src` decision stays as described in
+  [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).

@@ -40,8 +40,8 @@
     "#adapters/*": "./dist/adapters/*"
   },
   "dependencies": {
-    "@better-auth/passkey": "^1.6.25",
-    "better-auth": "^1.6.25",
+    "@better-auth/passkey": "^1.7.15",
+    "better-auth": "^1.7.15",
     "zod": "^3.25.76"
   },
   "peerDependencies": {

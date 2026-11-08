@@ -120,22 +120,6 @@ const ignoreOwnershipConflict = (
   return ok({ processed: false });
 };
 
-const REFUND_REQUIRED = 'refund_required';
-
-const refundRequired = (error: AppError): boolean =>
-  typeof error.details === 'object' && error.details !== null && 'reason' in error.details && error.details.reason === REFUND_REQUIRED;
-
-const acknowledgeRefundRequired = async (
-  tenant: Tenant,
-  event: PaymentWebhookEvent,
-  workerId: string,
-  deps: StripeWebhookDeps,
-): Promise<Result<{ processed: boolean }, AppError>> => {
-  await deps.processedPaymentEvents.finalize(tenant.id, event.id, workerId, deps.clock.nowIso());
-  deps.logger.error(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} session=${event.objectId ?? 'none'} amount=${String(event.checkoutSession?.amountTotalCents ?? 0)} reason=${REFUND_REQUIRED}`);
-  return ok({ processed: false });
-};
-
 const enqueueAutoInvoice = async (
   tenantId: string,
   event: PaymentWebhookEvent,
@@ -1180,7 +1164,6 @@ export const fulfillStripeWebhook = async (
     return err(error);
   }
 
-  if (!applied.ok && refundRequired(applied.error)) return acknowledgeRefundRequired(tenant, event, workerId, deps);
   if (!applied.ok) {
     logPaymentFailure(tenant, event, deps, applied.error);
     await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);

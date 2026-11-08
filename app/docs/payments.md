@@ -287,11 +287,18 @@ option has one. The session also sets `shipping_address_collection.allowed_count
 to the allowed shipping countries (`PL`) and `phone_number_collection.enabled`.
 Stripe coupons discount line items, never shipping rates.
 
-The webhook reads the address from `collected_information.shipping_details`, the
-phone number from `customer_details.phone` and the fee from
+The webhook reads the address from `collected_information.shipping_details`,
+falling back to the top-level `shipping_details` of events in API versions
+before `2025-03-31.basil`, the phone number from `customer_details.phone` and the fee from
 `shipping_cost.amount_total`. It rejects a session whose fee differs from the
 snapshot's shipping line or whose address is missing or outside the allowed
-countries. See [Shop](shop.md) for the delivery options and the stored order data.
+countries. A session whose coupon covered every product line but which charged
+the delivery fee is recorded even when the coupon redemption claim loses a race
+at the redemption limit: the order keeps the coupon and Stripe's discount, no
+redemption row is written, so the coupon is over-redeemed by one shipped order,
+and the webhook logs `reason=coupon_over_redeemed`. Staff see the order on the
+Studio Orders page; nothing is refunded automatically. See [Shop](shop.md) for
+the delivery options and the stored order data.
 
 ## Order campaign attribution
 
@@ -362,7 +369,12 @@ original event supplies the invoice amounts, currency and billing period.
 Payment-intent or charge IDs are stored on renewal orders so later refunds and
 disputes can find them. Lookup failures fail webhook processing for retry instead
 of acknowledging an event without its payment references. Existing pre-Clover
-top-level payment references remain supported for older events. Signature
+top-level payment references remain supported for older events. Both Checkout
+Session delivery address locations are supported for the same reason: tenant
+webhook endpoints are registered without a pinned API version, so Stripe sends
+events in the account's default version, and versions before `2025-03-31.basil`
+carry the address in the top-level `shipping_details` instead of
+`collected_information.shipping_details`. Signature
 verification and the signed mode check happen before any lookup.
 
 Checkout Sessions propagate `tenantId` to subscription metadata and, for one-time

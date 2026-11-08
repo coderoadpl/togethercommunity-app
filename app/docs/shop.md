@@ -214,8 +214,10 @@ With the **To pack** filter selected, the orders page offers **Download packing
 list (CSV)**: `GET /api/orders/packing-list?format=csv` (optionally
 `fulfilmentStatus=to_pack|shipped`, default `to_pack`, and `mode=live|test`,
 default `live`) needs `order:export` and returns the orders of that payment
-mode, oldest payment first; Studio sends the payment mode selected on the
-orders page. The columns are `order_number`,
+mode, oldest payment first. Studio sends the payment mode selected on the
+orders page; with the **All** payment-mode filter it sends `live` and shows
+"Live orders only" next to the button. The CLI takes `--mode live|test`
+(default `live`). The columns are `order_number`,
 `paid_at` (Europe/Warsaw, `YYYY-MM-DD HH:mm`), `buyer_name`, `email`, `phone`,
 `delivery`, `pickup_point_code`, `pickup_point_address`, `shipping_name`,
 `address_line1`, `address_line2`, `postal_code`, `city`, `country`, `items`
@@ -237,8 +239,8 @@ number with its link.
 My products shows "Being prepared for shipping" for a physical line of an order
 to pack and "Shipped on <date> · <carrier> <tracking number>" with the tracking
 link once shipped, with the date in Europe/Warsaw. When the buyer ordered the
-same product more than once, the status and destination come from the newest
-order.
+same product more than once, the purchase date, the status and the destination
+all come from the newest order.
 
 ## Product safety information (GPSR)
 
@@ -271,7 +273,12 @@ section is always expanded; for other product types it is collapsed until
 opened. Public sales-link offers carry `compliance` on each line the same way,
 and the sales-link checkout shows one section per product with safety
 information, titled with the product name when the link sells more than one
-product. The purchase confirmation e-mail does not include it.
+product. A sales link with any product that carries safety information never
+takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
+consent-bound products it stays on the Together page at `?checkout=together`,
+so the section is shown before payment, and
+`POST /api/public/sales-links/<slug>/checkout` refuses the link. The purchase
+confirmation e-mail does not include it.
 
 Product snapshots carry the descriptive fields, so the field was added in
 product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7
@@ -310,7 +317,11 @@ is true for a signed-in owner or admin of the workspace, and `testEnabled` for
 the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
 and `/offer/*?checkout=together` for test-mode purchases, never load the map:
 their delivery step shows only the locker code input with the hint "The
-parcel-locker map is available to buyers; enter the locker code."
+parcel-locker map is available to buyers; enter the locker code." As defence in
+depth the endpoint itself returns `inpostGeowidgetToken: null` with
+`inpostGeowidgetWithheld: true` to a staff session, and to an owner or admin
+viewing the workspace as a member (impersonation), so the page shows the same
+hint without the map.
 
 Following the same decision, the checkout form documents add
 `https://geowidget.inpost.pl` to `script-src` and `style-src`:
@@ -355,6 +366,7 @@ pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com 
   --product <id> --shipping-rate locker --pickup-point WAW01M
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
 pnpm --silent run cli --tenant acme orders packing-list --format csv --out packing-list.csv
+pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
 pnpm --silent run cli --tenant acme product update <id> \
@@ -479,10 +491,12 @@ comes first, and records `sold_out_notified_at`. Pieces held by open checkouts
 keep availability at zero without a second alert, and a later commit that
 empties the shelf stays quiet while `sold_out_notified_at` is set. An alert
 counts as sent when at least one recipient was queued; when none was it is not
-recorded. An adjustment or threshold change that lifts availability above the
-threshold clears `low_stock_notified_at`; an adjustment that leaves any piece
-available clears `sold_out_notified_at`. Products without a threshold only
-alert when oversold.
+recorded. An adjustment, a released reservation (explicit or by the expiry
+sweep) or a threshold change that lifts availability above the threshold clears
+`low_stock_notified_at`; an adjustment or a released reservation that leaves any
+piece available clears `sold_out_notified_at`, so the next commit that empties
+the shelf sends the zero alert again. Products without a threshold only alert
+when oversold.
 The e-mail is queued in the payment transaction.
 
 ### Public offer
@@ -507,3 +521,17 @@ the same summary for tracked products. All writes require `product:write`.
 Stock is not part of the product content snapshot (`core/domain/snapshots/product`):
 it is operational state with its own event history, so restoring a product
 version never changes stock.
+
+## Follow-ups
+
+These parts of the shop are not built yet and are handled as described:
+
+- Bundles: a sales link that sells more than one product shows no variant
+  chips; the chips appear only on the checkout of a single product.
+- Returns (RMA): there is no return flow. Staff refund the buyer in Stripe and
+  put the goods back with a stock adjustment whose reason is `returned`.
+- Carrier labels: no carrier label purchase or InPost label API is integrated.
+  Staff buy the label with the carrier and type the tracking number when they
+  mark the order as shipped.
+- Parcel-locker map origins: the `connect-src` decision stays as described in
+  [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).

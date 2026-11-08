@@ -2,6 +2,8 @@ import { and, asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { lowStockAlertFor, type StockCommitEffect } from '#core/domain/index.js';
+
 import { products, productStock, stockEvents, stockReservations, tenants } from './schema.js';
 import { createStockRepository, orderCommitLookup } from './stock.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -261,6 +263,39 @@ describe('stock repository on Postgres', () => {
     expect((await level(productId))?.soldOutNotifiedAt).not.toBeNull();
     expect((await repo.adjust('workspace', { productId, delta: 2, reason: 'delivery', actorUserId: 'staff', now })).ok).toBe(true);
     expect(await level(productId)).toMatchObject({ onHand: 2, reserved: 1, soldOutNotifiedAt: null });
+  });
+
+  it('sends the zero alert again after the expiry sweep frees the piece that sold out', async () => {
+    const productId = await productFor('workspace', 2, 1);
+    const repo = createStockRepository(database.db);
+    const alertAndMark = async (effect: StockCommitEffect | undefined) => {
+      if (effect === undefined) throw new Error('Missing commit effect');
+      const alert = lowStockAlertFor(effect);
+      if (alert !== null) await repo.markLowStockNotified('workspace', { productId, soldOut: alert.soldOut, now });
+      return alert;
+    };
+    await repo.reserve('workspace', { checkoutSnapshotId: 'zero-held', productIds: [productId], expiresAt: '2026-11-05T09:30:00.000Z', quantity: 1, now });
+    const [first] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-first', orderId: 'order-zero-first', productIds: [productId], now });
+    expect(await alertAndMark(first)).toEqual({ available: 0, oversold: false, soldOut: true });
+    expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 1, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: expect.any(String) });
+
+    expect(await repo.releaseExpired(now, 10, 'workspace')).toBe(1);
+    expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: null });
+
+    const [second] = await repo.commit('workspace', { checkoutSnapshotId: 'zero-second', orderId: 'order-zero-second', productIds: [productId], now });
+    expect(await alertAndMark(second)).toEqual({ available: 0, oversold: false, soldOut: true });
+  });
+
+  it('clears both alert markers when an explicit release lifts availability above the threshold', async () => {
+    const productId = await productFor('workspace', 2, 1);
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'release-a', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.reserve('workspace', { checkoutSnapshotId: 'release-b', productIds: [productId], expiresAt: later, quantity: 1, now });
+    await repo.markLowStockNotified('workspace', { productId, soldOut: true, now });
+    expect(await repo.release('workspace', { checkoutSnapshotId: 'release-a', reason: 'checkout_failed', now })).toBe(1);
+    expect(await level(productId)).toMatchObject({ reserved: 1, lowStockNotifiedAt: expect.any(String), soldOutNotifiedAt: null });
+    expect(await repo.release('workspace', { checkoutSnapshotId: 'release-b', reason: 'checkout_failed', now })).toBe(1);
+    expect(await level(productId)).toMatchObject({ reserved: 0, lowStockNotifiedAt: null, soldOutNotifiedAt: null });
   });
 
   it('commits late after the reservation was released and releases idempotently', async () => {

@@ -121,7 +121,7 @@ export const SalesPanel = () => {
     setPacking(true);
     setExportError(null);
     try {
-      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, ...(mode === 'all' ? {} : { mode }) })));
+      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, mode: mode === 'all' ? 'live' : mode })));
     } catch (error) {
       setExportError(localizePanelError(error, t));
     } finally {
@@ -309,9 +309,14 @@ export const SalesPanel = () => {
                 </Button>
               ) : null}
               {fulfilment === 'to_pack' ? (
-                <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
-                  {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
-                </Button>
+                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+                  <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
+                    {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
+                  </Button>
+                  {mode === 'all' ? (
+                    <Typography variant="caption" color="text.secondary" data-testid="sales-packing-list-live-only">{t.shipping.packingListLiveOnly}</Typography>
+                  ) : null}
+                </Stack>
               ) : null}
               <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
                 {exporting === 'csv' ? t.sales.exporting : t.sales.exportCsv}

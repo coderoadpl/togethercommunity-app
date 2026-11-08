@@ -479,6 +479,7 @@ export const publicPaymentConfigOutputSchema = z.object({
   simulatedPaymentsEnabled: z.boolean(),
   shippingRates: z.array(publicShippingRateSchema).default([]),
   inpostGeowidgetToken: z.string().nullable().default(null),
+  inpostGeowidgetWithheld: z.boolean().default(false),
 });
 
 export const checkoutSessionRequestSchema = checkoutSessionInputSchema;

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
-import { appError, err, MAX_STOCK_QUANTITY, notFound, ok, stockAdjustmentEventType, validation, type StockCommitEffect, type StockEventType, type StockLevel } from '#core/domain/index.js';
+import { appError, err, MAX_STOCK_QUANTITY, notFound, ok, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel } from '#core/domain/index.js';
 import type { StockRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -55,9 +55,13 @@ const releaseReservation = async (tx: Executor, tenantId: string, reservationId:
     .where(and(eq(stockReservations.tenantId, tenantId), eq(stockReservations.id, reservationId), eq(stockReservations.status, 'active')))
     .returning({ productId: stockReservations.productId, quantity: stockReservations.quantity, checkoutSnapshotId: stockReservations.checkoutSnapshotId });
   if (released === undefined) return 0;
-  await tx.update(productStock)
-    .set({ reserved: sql`greatest(${productStock.reserved} - ${released.quantity}, 0)`, updatedAt: now })
-    .where(stockKey(tenantId, released.productId));
+  const current = await lockStock(tx, tenantId, released.productId);
+  if (current !== null) {
+    const reserved = Math.max(current.reserved - released.quantity, 0);
+    await tx.update(productStock)
+      .set({ reserved, ...stockAlertMarkers({ ...current, reserved }), updatedAt: now })
+      .where(stockKey(tenantId, released.productId));
+  }
   await appendEvent(tx, tenantId, {
     productId: released.productId,
     type: 'released',
@@ -149,9 +153,6 @@ const unchanged = async (tx: Executor, tenantId: string, productId: string): Pro
   };
 };
 
-const resetNotification = (threshold: number | null, available: number, notifiedAt: string | null): string | null =>
-  threshold === null || available > threshold ? null : notifiedAt;
-
 export const createStockRepository = (db: Db): StockRepository => ({
   find: async (tenantId, productId) => {
     const [row] = await db.select().from(productStock).where(stockKey(tenantId, productId));
@@ -195,8 +196,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
     const [row] = await tx.update(productStock)
       .set({
         onHand,
-        lowStockNotifiedAt: resetNotification(current.lowStockThreshold, onHand - current.reserved, current.lowStockNotifiedAt),
-        soldOutNotifiedAt: onHand - current.reserved > 0 ? null : current.soldOutNotifiedAt,
+        ...stockAlertMarkers({ ...current, onHand }),
         updatedAt: input.now,
       })
       .where(stockKey(tenantId, input.productId))
@@ -219,7 +219,7 @@ export const createStockRepository = (db: Db): StockRepository => ({
     const [row] = await tx.update(productStock)
       .set({
         lowStockThreshold: input.lowStockThreshold,
-        lowStockNotifiedAt: resetNotification(input.lowStockThreshold, current.onHand - current.reserved, current.lowStockNotifiedAt),
+        lowStockNotifiedAt: stockAlertMarkers({ ...current, lowStockThreshold: input.lowStockThreshold }).lowStockNotifiedAt,
         updatedAt: input.now,
       })
       .where(stockKey(tenantId, input.productId))

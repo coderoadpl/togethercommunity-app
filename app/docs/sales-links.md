@@ -45,10 +45,11 @@ such order line starts with `issuedCount = 0` for the **issued N of 1** count.
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
 option needs one, before Stripe collects the address and phone number. A link
-with a shipped product never hands off to Stripe automatically; it keeps the
-Together page at `?checkout=together`, like a link with purchase consent
-checkboxes. The delivery fee is a separate shipping line after the product
-lines. See [Shop](shop.md) for delivery options, the order data and the CLI.
+with a shipped product, or with any product that carries product safety
+information, never hands off to Stripe automatically; it keeps the Together
+page at `?checkout=together`, like a link with purchase consent checkboxes. The
+delivery fee is a separate shipping line after the product lines. See
+[Shop](shop.md) for delivery options, the order data and the CLI.
 
 ## Checkout and accounting
 

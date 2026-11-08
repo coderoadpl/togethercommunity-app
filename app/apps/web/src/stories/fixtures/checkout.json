@@ -332,6 +332,7 @@
         "analytics": null,
         "canTest": false,
         "inpostGeowidgetToken": null,
+        "inpostGeowidgetWithheld": false,
         "shippingRates": [],
         "simulatedPaymentsEnabled": true,
         "stripeConfigured": false,

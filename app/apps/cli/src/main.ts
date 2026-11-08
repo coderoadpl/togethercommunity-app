@@ -1,4 +1,4 @@
-import { deliveryMethodSchema, fulfilmentStatusSchema, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { deliveryMethodSchema, fulfilmentStatusSchema, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -217,6 +217,7 @@ const ordersShipOptionsSchema = z.object({
 const ordersPackingListOptionsSchema = z.object({
   format: z.literal('csv'),
   fulfilment: fulfilmentStatusSchema.optional(),
+  mode: stripeModeSchema.default('live'),
   out: z.string().min(1).optional(),
 });
 const productComplianceOption = async (raw: string | undefined): Promise<Result<z.output<typeof productComplianceSchema> | null | undefined, AppError>> => {
@@ -1662,11 +1663,13 @@ ordersCommand
   .description('Export the orders to pack as a CSV packing list')
   .requiredOption('--format <format>', 'csv')
   .option('--fulfilment <status>', 'to_pack (default) or shipped')
+  .option('--mode <mode>', 'live (default) or test')
   .option('--out <file>', 'write the packing list to a file instead of stdout')
   .action(
     withInput(z.tuple([ordersPackingListOptionsSchema]), async (ctx, [options]) => {
       const result = await ctx.api.ordersPackingList({
         format: options.format,
+        mode: options.mode,
         ...(options.fulfilment === undefined ? {} : { fulfilmentStatus: options.fulfilment }),
       });
       if (result.ok && options.out !== undefined) await writeFile(options.out, result.value.content);

@@ -33,6 +33,7 @@ const shippingRates = [
 const serve = (input: {
   deliveryMethod?: 'pickup' | 'shipping';
   token?: string | null;
+  withheld?: boolean;
   canTest?: boolean;
   testEnabled?: boolean;
   onSession?: (body: unknown) => void;
@@ -41,7 +42,7 @@ const serve = (input: {
   server.use(
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(input.deliveryMethod ?? 'shipping') })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
-      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null,
+      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
       canTest: input.canTest ?? false, testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
     } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
@@ -157,6 +158,20 @@ describe('checkout delivery step', () => {
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+  });
+
+  it.each([
+    { viewer: 'a staff session', canTest: true },
+    { viewer: 'an impersonated member view', canTest: false },
+  ])('shows the locker code hint without a map when the server withholds the token from $viewer', async ({ canTest }) => {
+    serve({ token: null, withheld: true, canTest });
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    expect(await screen.findByTestId('checkout-locker-map-staff-hint')).toHaveTextContent(exact(en.shipping.lockerMapStaffHint));
+    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+    expect(document.getElementById('inpost-geowidget-style')).toBeNull();
   });
 
   it('never loads the parcel locker map without a workspace token', async () => {

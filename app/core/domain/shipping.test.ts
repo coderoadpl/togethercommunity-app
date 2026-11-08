@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import { allocateOrderLineGross, allocatePaidOrderLineGross, orderLineSchema } from './commerce.js';
 import { newProductSchema, productSchema } from './product.js';
+import type { ProductCompliance } from './product-compliance.js';
 import {
   deliveryMethodAllowed,
   orderShippingFrom,
@@ -82,6 +83,17 @@ describe('delivery method', () => {
     expect(requiresWorkspaceCheckout({ deliveryMethod: 'shipping' })).toBe(true);
     expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', checkoutConsentDefinitionIds: ['consent'] })).toBe(true);
     expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', checkoutConsentDefinitionIds: [] })).toBe(false);
+  });
+
+  it('routes products with product safety information to the workspace checkout page', () => {
+    const compliance = {
+      manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
+      modelIdentifier: 'M-1', safetyWarnings: '',
+    };
+    expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', compliance })).toBe(true);
+    expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', compliance: null })).toBe(false);
+    expectTypeOf<Parameters<typeof requiresWorkspaceCheckout>[0]['compliance']>()
+      .toEqualTypeOf<ProductCompliance | null | undefined>();
   });
 });
 

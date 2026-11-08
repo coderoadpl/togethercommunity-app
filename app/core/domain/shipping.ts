@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { appError, validation, type AppError } from './errors.js';
+import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
 
 export const SHIPPING_ALLOWED_COUNTRIES = ['PL'] as const;
@@ -24,7 +25,8 @@ const needsShipping = (product: { deliveryMethod?: DeliveryMethod | undefined })
 export const requiresWorkspaceCheckout = (product: {
   checkoutConsentDefinitionIds?: string[] | undefined;
   deliveryMethod?: DeliveryMethod | undefined;
-}): boolean => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0 || needsShipping(product);
+  compliance?: ProductCompliance | null | undefined;
+}): boolean => (product.checkoutConsentDefinitionIds?.length ?? 0) > 0 || needsShipping(product) || product.compliance != null;
 
 const shippingVatRateSchema = z.union([z.literal(5), z.literal(8), z.literal(23)]);
 

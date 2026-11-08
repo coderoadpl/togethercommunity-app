@@ -1,6 +1,6 @@
 {
-  "hash": "5b2eb0abb0d846997fbf9472b6d6ba0e277c2316febfff2a2a30de77ece6076a",
-  "shortId": "5b2eb0abb0d8",
+  "hash": "87c634356563dccd8eb464366ed7f2a79cadbfdc13734370a0ee0cdcb7cea9a7",
+  "shortId": "87c634356563",
   "schema": {
     "constraints": [
       {
@@ -10968,6 +10968,14 @@
             "name": "operation_started_at",
             "notNull": false,
             "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "operation_token",
+            "notNull": false,
+            "type": "text"
           },
           {
             "default": null,

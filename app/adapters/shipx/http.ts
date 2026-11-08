@@ -2,7 +2,7 @@ import {
   err,
   ok,
   sanitizeShipxError,
-  SHIPX_RECONCILE_MAX_PAGES,
+  SHIPX_RECONCILE_PAGE_SIZE,
   SHIPX_REQUEST_TIMEOUT_MS,
   shipxRejected,
   shipxUnavailable,
@@ -23,7 +23,6 @@ const SHIPX_BASE_URLS: Record<ShipxEnvironment, string> = {
 
 const LABEL_MAX_BYTES = 5 * 1024 * 1024;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46];
-const LIST_PAGE_SIZE = 100;
 
 export interface ShipxHttpClientOptions {
   fetchImpl?: typeof fetch;
@@ -55,14 +54,13 @@ const readShipment: Reader<ShipxRemoteShipment> = async (response) => {
   return parsed.success ? ok(toRemoteShipment(parsed.data)) : err(shipxUnavailable('InPost ShipX returned an unexpected shipment'));
 };
 
-const readShipmentList: Reader<{ items: ShipxRemoteShipment[]; complete: boolean }> = async (response) => {
+const readShipmentList: Reader<ShipxRemoteShipment[]> = async (response) => {
   const parsed = wireShipmentListSchema.safeParse(await response.json());
   if (!parsed.success) return err(shipxUnavailable('InPost ShipX returned an unexpected shipment list'));
-  const items = parsed.data.items.flatMap((item) => {
+  return ok(parsed.data.items.flatMap((item) => {
     const shipment = wireShipmentSchema.safeParse(item);
     return shipment.success ? [toRemoteShipment(shipment.data)] : [];
-  });
-  return ok({ items, complete: parsed.data.items.length < LIST_PAGE_SIZE });
+  }));
 };
 
 const readLabel: Reader<ShipxLabel> = async (response) => {
@@ -76,11 +74,6 @@ const readLabel: Reader<ShipxLabel> = async (response) => {
     return err(shipxUnavailable('InPost ShipX did not return a PDF label'));
   }
   return ok({ contentType: 'application/pdf', bytes });
-};
-
-const createdBefore = (shipment: ShipxRemoteShipment | undefined, threshold: string): boolean => {
-  const created = shipment?.createdAt == null ? Number.NaN : Date.parse(shipment.createdAt);
-  return !Number.isNaN(created) && created < Date.parse(threshold);
 };
 
 export const createShipxHttpClient = (options: ShipxHttpClientOptions = {}): ShipxClient => {
@@ -153,21 +146,16 @@ export const createShipxHttpClient = (options: ShipxHttpClientOptions = {}): Shi
       accept: 'application/json',
       retry: false,
     }, readShipment),
-    findShipmentByReference: async (credentials, reference, createdAfter) => {
-      for (let page = 1; page <= SHIPX_RECONCILE_MAX_PAGES; page += 1) {
-        const query = new URLSearchParams({ page: String(page), per_page: String(LIST_PAGE_SIZE), sort_by: 'id', sort_order: 'desc' });
-        const listed = await call(credentials, {
-          method: 'GET',
-          path: `/organizations/${segment(credentials.organizationId)}/shipments?${query.toString()}`,
-          accept: 'application/json',
-          retry: true,
-        }, readShipmentList);
-        if (!listed.ok) return listed;
-        const match = listed.value.items.find((shipment) => shipment.reference === reference);
-        if (match !== undefined) return ok(match);
-        if (listed.value.complete || createdBefore(listed.value.items.at(-1), createdAfter)) return ok(null);
-      }
-      return ok(null);
+    findShipmentByReference: async (credentials, reference) => {
+      const query = new URLSearchParams({ page: '1', per_page: String(SHIPX_RECONCILE_PAGE_SIZE), sort_by: 'created_at', sort_order: 'desc' });
+      const listed = await call(credentials, {
+        method: 'GET',
+        path: `/organizations/${segment(credentials.organizationId)}/shipments?${query.toString()}`,
+        accept: 'application/json',
+        retry: false,
+      }, readShipmentList);
+      if (!listed.ok) return listed;
+      return ok(listed.value.find((shipment) => shipment.reference === reference) ?? null);
     },
     buyOffer: async (credentials, shipmentId, offerId) => call(credentials, {
       method: 'POST',

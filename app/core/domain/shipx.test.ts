@@ -134,7 +134,7 @@ describe('ShipX domain', () => {
 
   it('reports a failed payment or a dead offer and ignores running or earlier failures', () => {
     expect(shipxPurchaseFailure(remote({ status: 'offer_selected', transactions: [{ status: 'failure' }] }), 'inpost_locker_standard', 0)).toMatchObject({
-      code: 'shipx_rejected', details: { error: 'transaction_failed' },
+      code: 'shipx_rejected', details: { error: 'transaction_failed', state: 'failed' },
     });
     expect(shipxPurchaseFailure(remote({ status: 'offer_selected', transactions: [{ status: 'failure' }] }), 'inpost_locker_standard', 1)).toBeNull();
     expect(shipxPurchaseFailure(remote({ status: 'offer_selected', transactions: [{ status: 'failure' }, { status: 'initiated' }] }), 'inpost_locker_standard', 0)).toBeNull();

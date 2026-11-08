@@ -51,9 +51,8 @@ export const SHIPX_POLL_ATTEMPTS = 10;
 export const SHIPX_POLL_INTERVAL_MS = 2000;
 export const SHIPX_REQUEST_TIMEOUT_MS = 5000;
 export const SHIPX_OPERATION_DEADLINE_MS = 20_000;
-export const SHIPX_OPERATION_LEASE_MS = SHIPX_OPERATION_DEADLINE_MS + 2 * SHIPX_REQUEST_TIMEOUT_MS;
-export const SHIPX_RECONCILE_LOOKBACK_MS = 10 * 60_000;
-export const SHIPX_RECONCILE_MAX_PAGES = 3;
+export const SHIPX_OPERATION_LEASE_MS = 90_000;
+export const SHIPX_RECONCILE_PAGE_SIZE = 50;
 export const SHIPX_COURIER_PARCEL_WEIGHT_KG = 5;
 
 export const SHIPX_PARCEL_DIMENSIONS_MM: Record<ParcelTemplate, { length: number; width: number; height: number }> = {
@@ -157,7 +156,6 @@ export interface ShipxRemoteShipment {
   status: string;
   trackingNumber: string | null;
   reference?: string | null;
-  createdAt?: string | null;
   offers: ShipxOffer[];
   selectedOffer: ShipxOffer | null;
   transactions: Array<{ status: string }>;
@@ -344,10 +342,12 @@ export const shipxUnavailable = (message = 'InPost ShipX is unavailable; retry i
 
 const DEAD_OFFER_ERRORS: Readonly<Record<string, string>> = { unavailable: 'offer_unavailable', expired: 'offer_expired' };
 
+const purchaseRejected = (details: ShipxErrorDetails): AppError => ({ ...shipxRejected(details), details: { ...details, state: 'failed' } });
+
 export const shipxPurchaseFailure = (shipment: ShipxRemoteShipment, service: ShipxService, failuresBefore: number): AppError | null => {
   if (shipxShipmentBought(shipment) || paymentRunning(shipment)) return null;
   if (shipxFailedTransactions(shipment) > failuresBefore) {
-    return shipxRejected({ status: 200, error: 'transaction_failed', description: null, fields: {} });
+    return purchaseRejected({ status: 200, error: 'transaction_failed', description: null, fields: {} });
   }
   if (shipment.status !== 'offers_prepared' && shipment.status !== 'offer_selected') return null;
   if (shipxOfferToBuy(shipment, service) !== null) return null;
@@ -355,5 +355,5 @@ export const shipxPurchaseFailure = (shipment: ShipxRemoteShipment, service: Shi
   const error = offer === null ? undefined : DEAD_OFFER_ERRORS[offer.status];
   if (offer === null || error === undefined) return null;
   const reasons = (offer.unavailabilityReasons ?? []).map(cleanDescription).filter((reason): reason is string => reason !== null);
-  return shipxRejected({ status: 200, error, description: reasons.length === 0 ? null : reasons.join('; ').slice(0, DESCRIPTION_MAX_LENGTH), fields: {} });
+  return purchaseRejected({ status: 200, error, description: reasons.length === 0 ? null : reasons.join('; ').slice(0, DESCRIPTION_MAX_LENGTH), fields: {} });
 };

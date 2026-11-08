@@ -53,7 +53,7 @@ describe('ShipX HTTP client', () => {
     expect(result).toEqual({
       ok: true,
       value: {
-        id: '12345', status: 'created', trackingNumber: null, reference: 'Test', createdAt: '2023-12-19T00:02:05.991+01:00',
+        id: '12345', status: 'created', trackingNumber: null, reference: 'Test',
         offers: [], selectedOffer: null, transactions: [],
       },
     });
@@ -104,7 +104,7 @@ describe('ShipX HTTP client', () => {
     expect(await client.getShipment(credentials, '12345')).toEqual({
       ok: true,
       value: {
-        id: '12345', status: 'confirmed', trackingNumber: '523000015611700083038270', reference: 'Test', createdAt: '2023-12-19T00:02:05.991+01:00',
+        id: '12345', status: 'confirmed', trackingNumber: '523000015611700083038270', reference: 'Test',
         offers: [], selectedOffer: { id: '1456', status: 'bought', service: 'inpost_locker_standard', unavailabilityReasons: [] },
         transactions: [{ status: 'success' }],
       },
@@ -216,45 +216,40 @@ describe('ShipX HTTP client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('finds the shipment of an order reference in the newest organization shipments', async () => {
-    const page = (references: string[], createdAt: string) => {
-      const list = listFixture();
-      const [template] = list.items;
-      return json(JSON.stringify({ ...list, items: references.map((reference, index) => ({ ...template, id: 5000 - index, reference, created_at: createdAt })) }));
-    };
-    const fetchImpl = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(page(Array.from({ length: 100 }, (_value, index) => `other-${String(index)}`), '2026-11-08T11:00:00.000+01:00'))
-      .mockResolvedValueOnce(page(['order-9', 'order-1'], '2026-11-08T10:58:00.000+01:00'));
-    const found = await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1', '2026-11-08T09:50:00.000Z');
+  it('finds the shipment of an order reference among the 50 newest organization shipments', async () => {
+    const list = listFixture();
+    const [template] = list.items;
+    const page = json(JSON.stringify({ ...list, items: ['order-9', 'order-1'].map((reference, index) => ({ ...template, id: 5000 - index, reference })) }));
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(page);
+    const found = await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1');
     expect(found).toMatchObject({ ok: true, value: { id: '4999', reference: 'order-1', status: 'confirmed', trackingNumber: '523000015611700083038270' } });
     expect(requestOf(fetchImpl, 0)).toMatchObject({
-      url: 'https://sandbox-api-shipx-pl.easypack24.net/v1/organizations/1234/shipments?page=1&per_page=100&sort_by=id&sort_order=desc',
+      url: 'https://sandbox-api-shipx-pl.easypack24.net/v1/organizations/1234/shipments?page=1&per_page=50&sort_by=created_at&sort_order=desc',
       method: 'GET',
       authorization: 'Bearer sandbox-secret-token',
     });
-    expect(requestOf(fetchImpl, 1).url).toContain('page=2&');
   });
 
-  it('stops looking for a reference at shipments older than the attempt window or at the last page', async () => {
-    const full = (createdAt: string) => {
-      const list = listFixture();
-      const [template] = list.items;
-      return json(JSON.stringify({ ...list, items: Array.from({ length: 100 }, (_value, index) => ({ ...template, id: 9000 - index, reference: `other-${String(index)}`, created_at: createdAt })) }));
-    };
-    const old = vi.fn<typeof fetch>(async () => full('2026-11-08T09:00:00.000Z'));
-    expect(await createShipxHttpClient({ fetchImpl: old }).findShipmentByReference(credentials, 'order-1', '2026-11-08T09:50:00.000Z')).toEqual({ ok: true, value: null });
-    expect(old).toHaveBeenCalledTimes(1);
-    const short = vi.fn<typeof fetch>(async () => json(fixture('shipments-list.json')));
-    expect(await createShipxHttpClient({ fetchImpl: short }).findShipmentByReference(credentials, 'order-1', '2020-01-01T00:00:00.000Z')).toEqual({ ok: true, value: null });
-    expect(short).toHaveBeenCalledTimes(1);
-    const recent = vi.fn<typeof fetch>(async () => full('2026-11-08T10:00:00.000Z'));
-    expect(await createShipxHttpClient({ fetchImpl: recent }).findShipmentByReference(credentials, 'order-1', '2026-11-08T09:50:00.000Z')).toEqual({ ok: true, value: null });
-    expect(recent).toHaveBeenCalledTimes(3);
+  it('reads one page per lookup and never retries it', async () => {
+    const list = listFixture();
+    const [template] = list.items;
+    const full = vi.fn<typeof fetch>(async () => json(JSON.stringify({
+      ...list,
+      items: Array.from({ length: 50 }, (_value, index) => ({ ...template, id: 9000 - index, reference: `other-${String(index)}` })),
+    })));
+    expect(await createShipxHttpClient({ fetchImpl: full }).findShipmentByReference(credentials, 'order-1')).toEqual({ ok: true, value: null });
+    expect(full).toHaveBeenCalledTimes(1);
+    const failing = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }));
+    expect(await createShipxHttpClient({ fetchImpl: failing }).findShipmentByReference(credentials, 'order-1')).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable' },
+    });
+    expect(failing).toHaveBeenCalledTimes(1);
   });
 
   it('reports an unreadable shipment list as unavailable', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => json('{"unexpected":true}'));
-    expect(await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1', '2026-11-08T09:50:00.000Z')).toMatchObject({
+    expect(await createShipxHttpClient({ fetchImpl }).findShipmentByReference(credentials, 'order-1')).toMatchObject({
       ok: false,
       error: { code: 'shipx_unavailable', message: 'InPost ShipX returned an unexpected shipment list' },
     });

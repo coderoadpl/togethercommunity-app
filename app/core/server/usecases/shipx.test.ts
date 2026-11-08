@@ -8,6 +8,9 @@ import {
   ok,
   orderListItemSchema,
   productSchema,
+  SHIPX_OPERATION_DEADLINE_MS,
+  SHIPX_OPERATION_LEASE_MS,
+  SHIPX_REQUEST_TIMEOUT_MS,
   shipxRejected,
   shipxUnavailable,
   type Capability,
@@ -321,6 +324,119 @@ describe('create InPost shipment', () => {
     expect(h.row()).toMatchObject({ shipxShipmentId: '1001', status: 'offer_selected', operationStartedAt: null });
   });
 
+  it('surfaces a payment that fails after it started and never buys twice in one request', async () => {
+    const offer = { id: '55', status: 'available', service: 'inpost_locker_standard' };
+    const real = createScriptedShipxClient({
+      polls: [
+        (id) => ok(remoteShipment(id, { status: 'offers_prepared', offers: [offer] })),
+        (id) => ok(remoteShipment(id, { status: 'offer_selected', offers: [offer], transactions: [{ status: 'initiated' }] })),
+        (id) => ok(remoteShipment(id, { status: 'offers_prepared', offers: [offer], transactions: [{ status: 'failure' }] })),
+        (id) => ok(remoteShipment(id, { status: 'confirmed', trackingNumber: TRACKING })),
+      ],
+    });
+    const h = harness({ real });
+    h.seed({ shipxShipmentId: '1001', status: 'offers_prepared' });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'shipx_rejected',
+        message: 'InPost could not charge the shipment; check the funds or the payment method in Manager Paczek',
+        details: { error: 'transaction_failed', state: 'failed' },
+      },
+    });
+    expect(real.calls.buy).toEqual([{ shipmentId: '1001', offerId: '55' }]);
+    expect(real.calls.get).toHaveLength(3);
+    expect(h.ship).not.toHaveBeenCalled();
+    expect(h.row()).toMatchObject({ shipxShipmentId: '1001', status: 'offers_prepared', trackingNumber: null, operationToken: null });
+  });
+
+  it('checks the deadline before the purchase and buys nothing once it passed', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offers_prepared' });
+    const slow = createScriptedShipxClient({
+      polls: [(id) => {
+        h.advance(SHIPX_OPERATION_DEADLINE_MS);
+        return ok(remoteShipment(id, { status: 'offers_prepared', offers: [{ id: '55', status: 'available', service: 'inpost_locker_standard' }] }));
+      }],
+    });
+    h.deps.shipx.real = slow.client;
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable', details: { state: 'pending', shipmentId: '1001', status: 'offers_prepared' } },
+    });
+    expect(slow.calls.get).toEqual(['1001']);
+    expect(slow.calls.buy).toEqual([]);
+    expect(h.row()).toMatchObject({ shipxShipmentId: '1001', operationStartedAt: null });
+  });
+
+  it('checks the deadline before creating and before reconciling', async () => {
+    const h = harness();
+    h.deps.products = {
+      findByIds: async () => {
+        h.advance(SHIPX_OPERATION_DEADLINE_MS);
+        return [product('stand', 'small')];
+      },
+    };
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable', details: { state: 'pending', shipmentId: null } },
+    });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.row()).toMatchObject({ status: 'creating', createAttemptedAt: null, operationStartedAt: null });
+
+    const unconfirmed = harness();
+    unconfirmed.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
+    unconfirmed.deps.clock = { nowIso: () => NOW };
+    unconfirmed.deps.shipxShipments = {
+      ...unconfirmed.shipments.repository,
+      acquire: async (tenantId, input) => {
+        const acquired = await unconfirmed.shipments.repository.acquire(tenantId, input);
+        unconfirmed.deps.clock = { nowIso: () => new Date(Date.parse(NOW) + SHIPX_OPERATION_DEADLINE_MS).toISOString() };
+        return acquired;
+      },
+    };
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, unconfirmed.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable', details: { state: 'pending', status: 'unknown' } },
+    });
+    expect(unconfirmed.real.calls).toEqual(noCalls);
+    expect(unconfirmed.row()).toMatchObject({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
+  });
+
+  it('holds the lease well past the deadline and the slowest last call', async () => {
+    expect(SHIPX_OPERATION_LEASE_MS).toBe(90_000);
+    expect(SHIPX_OPERATION_LEASE_MS).toBeGreaterThan(SHIPX_OPERATION_DEADLINE_MS + SHIPX_REQUEST_TIMEOUT_MS);
+    const running = harness();
+    const startedAt = new Date(Date.parse(NOW) - SHIPX_OPERATION_DEADLINE_MS - SHIPX_REQUEST_TIMEOUT_MS).toISOString();
+    running.seed({ shipxShipmentId: '1001', status: 'offers_prepared', operationToken: 'other', operationStartedAt: startedAt });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, running.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict' } });
+    expect(running.real.calls).toEqual(noCalls);
+    const stuck = harness();
+    const expired = new Date(Date.parse(NOW) - SHIPX_OPERATION_LEASE_MS - 1).toISOString();
+    stuck.seed({ shipxShipmentId: '1001', status: 'offer_selected', operationToken: 'crashed', operationStartedAt: expired });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, stuck.deps)).toMatchObject({ ok: true });
+  });
+
+  it('stops without touching ShipX again when another request took the claim over', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'offers_prepared' });
+    const real = createScriptedShipxClient({
+      polls: [(id) => {
+        const current = h.row();
+        if (current !== undefined) h.shipments.rows.set(h.shipments.key('workspace', 'order-1'), { ...current, operationToken: 'other', operationStartedAt: NOW });
+        return ok(remoteShipment(id, { status: 'offers_prepared', offers: [{ id: '55', status: 'available', service: 'inpost_locker_standard' }] }));
+      }],
+    });
+    h.deps.shipx.real = real.client;
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'fulfilment_conflict', details: { state: 'lost_lock' } },
+    });
+    expect(real.calls.get).toEqual(['1001']);
+    expect(real.calls.buy).toEqual([]);
+    expect(h.row()).toMatchObject({ status: 'offers_prepared', operationToken: 'other', operationStartedAt: NOW });
+  });
+
   it('releases the row when ShipX definitely rejects the shipment so the next click starts over', async () => {
     const real = createScriptedShipxClient({
       create: () => err(shipxRejected({ status: 400, error: 'validation_failed', description: 'Invalid', fields: { 'receiver.phone': ['invalid'] } })),
@@ -349,7 +465,7 @@ describe('create InPost shipment', () => {
       error: { code: 'conflict', message: 'ShipX did not confirm the previous attempt; check Manager Paczek', details: { state: 'unconfirmed', attemptedAt: NOW } },
     });
     expect(real.calls.create).toHaveLength(1);
-    expect(real.calls.find).toEqual([{ reference: 'order-1', createdAfter: '2026-11-08T09:50:00.000Z' }]);
+    expect(real.calls.find).toEqual(['order-1']);
     expect(h.row()).toMatchObject({ status: 'unknown', createAttemptedAt: NOW });
     expect(h.ship).not.toHaveBeenCalled();
   });

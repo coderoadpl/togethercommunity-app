@@ -49,12 +49,16 @@ at all.
   writes the `shipped` status, the shipment projection, the append-only
   `order_fulfilment_events` row and the buyer e-mail in the outbox in one
   commit.
-- InPost shipments: `ShipxShipmentRepository.acquire` takes the lease on the
+- InPost shipments: `ShipxShipmentRepository.acquire` takes the claim on the
   one `order_shipments` row per order with a single `INSERT … ON CONFLICT DO
-  NOTHING` or a single conditional `UPDATE` of `operation_started_at`, so two
-  concurrent clicks cannot both create or pay a ShipX shipment;
-  `finishOperation` clears the lease on every path. The shipment is then
-  marked as shipped through `OrderFulfilmentRepository.ship` above.
+  NOTHING` or a single conditional `UPDATE` that sets a random
+  `operation_token` and `operation_started_at` (free, or older than the
+  90-second lease), so two concurrent clicks cannot both create or pay a ShipX
+  shipment. `update`, `release` and `finishOperation` are conditional on the
+  request's `operation_token` and report `lost_lock` without changing anything
+  when another request holds the row, so a finished request never clears the
+  next one's claim. The shipment is then marked as shipped through
+  `OrderFulfilmentRepository.ship` above.
 - Stock: `StockRepository.reserve`, `StockRepository.release`,
   `StockRepository.commit`, `StockRepository.enableTracking`,
   `StockRepository.adjust`, and `StockRepository.setThreshold` each write the

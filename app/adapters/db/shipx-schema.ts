@@ -13,6 +13,7 @@ export const orderShipments = pgTable('order_shipments', {
   status: text('status').notNull(),
   trackingNumber: text('tracking_number'),
   createAttemptedAt: timestamp('create_attempted_at', { withTimezone: true, mode: 'string' }),
+  operationToken: text('operation_token'),
   operationStartedAt: timestamp('operation_started_at', { withTimezone: true, mode: 'string' }),
   boughtAt: timestamp('bought_at', { withTimezone: true, mode: 'string' }),
   labelFetchedAt: timestamp('label_fetched_at', { withTimezone: true, mode: 'string' }),

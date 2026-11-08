@@ -40,7 +40,7 @@ describe('fake ShipX client', () => {
 
   it('finds the shipment of an order reference like the one it creates', async () => {
     const client = createFakeShipxClient();
-    expect(await client.findShipmentByReference(credentials, 'order-1', '2026-11-08T09:50:00.000Z')).toMatchObject({
+    expect(await client.findShipmentByReference(credentials, 'order-1')).toMatchObject({
       ok: true,
       value: { id: fakeShipxShipmentId('order-1'), reference: 'order-1', status: 'confirmed' },
     });

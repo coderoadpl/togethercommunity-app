@@ -15,7 +15,6 @@ import {
   SHIPX_OPERATION_LEASE_MS,
   SHIPX_POLL_ATTEMPTS,
   SHIPX_POLL_INTERVAL_MS,
-  SHIPX_RECONCILE_LOOKBACK_MS,
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
   shipxClientKind,
@@ -61,6 +60,7 @@ import type {
   ShipxCredentials,
   ShipxSettings,
   ShipxSettingsRepository,
+  ShipxShipmentPatch,
   ShipxShipmentRecord,
   ShipxShipmentRepository,
 } from '../shipx-ports.js';
@@ -220,21 +220,15 @@ const loadOrder = async (tenantId: string, orderId: string, deps: Pick<ShipxOrde
   return order === null ? err(notFound('Order was not found')) : ok(order);
 };
 
-const recordRemote = async (
-  tenantId: string,
-  orderId: string,
-  remote: ShipxRemoteShipment,
-  deps: Pick<ShipxOrderDeps, 'shipxShipments' | 'clock'>,
-): Promise<ShipxShipmentRecord | null> => {
-  const now = deps.clock.nowIso();
-  return deps.shipxShipments.update(tenantId, orderId, {
-    shipxShipmentId: remote.id,
-    status: remote.status,
-    trackingNumber: remote.trackingNumber,
-    ...(shipxShipmentBought(remote) ? { boughtAt: now } : {}),
-    updatedAt: now,
-  });
-};
+const remotePatch = (remote: ShipxRemoteShipment, now: string): ShipxShipmentPatch => ({
+  shipxShipmentId: remote.id,
+  status: remote.status,
+  trackingNumber: remote.trackingNumber,
+  ...(shipxShipmentBought(remote) ? { boughtAt: now } : {}),
+  updatedAt: now,
+});
+
+const leaseExpiredBefore = (now: string): string => new Date(Date.parse(now) - SHIPX_OPERATION_LEASE_MS).toISOString();
 
 const refreshedShipment = async (
   tenantId: string,
@@ -250,7 +244,8 @@ const refreshedShipment = async (
   if (!credentials.ok || !client.ok) return shipment;
   const remote = await client.value.getShipment(credentials.value, shipment.shipxShipmentId);
   if (!remote.ok) return shipment;
-  return await recordRemote(tenantId, order.id, remote.value, deps) ?? shipment;
+  const now = deps.clock.nowIso();
+  return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), remotePatch(remote.value, now)) ?? shipment;
 };
 
 export const getInpostShipment = async (
@@ -287,43 +282,11 @@ export const getInpostShipment = async (
 const pendingPayment = (shipmentId: string, status: string | null): AppError =>
   shipxUnavailable('InPost has not confirmed the payment yet; refresh the order in a moment', { state: 'pending', shipmentId, status });
 
-const pollUntilBought = async (
-  client: ShipxClient,
-  credentials: ShipxCredentials,
-  shipmentId: string,
-  service: ShipxService,
-  allowBuy: boolean,
-  deadline: number,
-  deps: Pick<CreateInpostShipmentDeps, 'wait' | 'clock'>,
-): Promise<{ outcome: Result<ShipxRemoteShipment, AppError>; latest: ShipxRemoteShipment | null }> => {
-  let buyAttempted = false;
-  let failuresBefore: number | null = allowBuy ? null : 0;
-  let latest: ShipxRemoteShipment | null = null;
-  for (let attempt = 0; attempt < SHIPX_POLL_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) {
-      if (Date.parse(deps.clock.nowIso()) + SHIPX_POLL_INTERVAL_MS > deadline) break;
-      await deps.wait(SHIPX_POLL_INTERVAL_MS);
-    }
-    const current = await client.getShipment(credentials, shipmentId);
-    if (!current.ok) return { outcome: current, latest };
-    latest = current.value;
-    failuresBefore ??= shipxFailedTransactions(latest);
-    if (shipxShipmentBought(latest)) return { outcome: ok(latest), latest };
-    const offerId = allowBuy && !buyAttempted ? shipxOfferToBuy(latest, service) : null;
-    if (offerId !== null) {
-      buyAttempted = true;
-      failuresBefore = shipxFailedTransactions(latest);
-      const purchase = await client.buyOffer(credentials, shipmentId, offerId);
-      if (!purchase.ok && purchase.error.code !== 'shipx_unavailable') return { outcome: purchase, latest };
-      continue;
-    }
-    const failure = shipxPurchaseFailure(latest, service, failuresBefore);
-    if (failure !== null) return { outcome: err(failure), latest };
-  }
-  return { outcome: err(pendingPayment(shipmentId, latest?.status ?? null)), latest };
-};
+const pendingShipment = (status: string): AppError =>
+  shipxUnavailable('InPost ShipX is answering slowly; refresh the order in a moment', { state: 'pending', shipmentId: null, status });
 
-const leaseExpiredBefore = (now: string): string => new Date(Date.parse(now) - SHIPX_OPERATION_LEASE_MS).toISOString();
+const lostLock = (): AppError =>
+  appError('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' });
 
 interface ShipmentRun {
   tenantId: string;
@@ -333,8 +296,70 @@ interface ShipmentRun {
   sender: ShipxSender;
   shipment: ShipxShipmentRecord;
   credentials: ShipxCredentials;
+  token: string;
   deadline: number;
 }
+
+const pastDeadline = (run: ShipmentRun, deps: Pick<CreateInpostShipmentDeps, 'clock'>): boolean =>
+  Date.parse(deps.clock.nowIso()) >= run.deadline;
+
+const save = async (
+  run: ShipmentRun,
+  patch: ShipxShipmentPatch,
+  deps: Pick<CreateInpostShipmentDeps, 'shipxShipments'>,
+): Promise<Result<ShipxShipmentRecord, AppError>> => {
+  const saved = await deps.shipxShipments.update(run.tenantId, run.order.id, run.token, patch);
+  return saved.kind === 'lost_lock' ? err(lostLock()) : ok(saved.shipment);
+};
+
+const saveRemote = async (
+  run: ShipmentRun,
+  remote: ShipxRemoteShipment,
+  deps: Pick<CreateInpostShipmentDeps, 'shipxShipments' | 'clock'>,
+): Promise<Result<ShipxRemoteShipment, AppError>> => {
+  const saved = await save(run, remotePatch(remote, deps.clock.nowIso()), deps);
+  return saved.ok ? ok(remote) : saved;
+};
+
+const releaseAttempt = async <T>(run: ShipmentRun, outcome: Result<T, AppError>, deps: Pick<CreateInpostShipmentDeps, 'shipxShipments'>): Promise<Result<T, AppError>> => {
+  const released = await deps.shipxShipments.release(run.tenantId, run.order.id, run.token);
+  return released.kind === 'lost_lock' ? err(lostLock()) : outcome;
+};
+
+const pollUntilBought = async (
+  run: ShipmentRun,
+  client: ShipxClient,
+  shipmentId: string,
+  allowBuy: boolean,
+  deps: CreateInpostShipmentDeps,
+): Promise<Result<ShipxRemoteShipment, AppError>> => {
+  let buyAttempted = false;
+  let failuresBefore: number | null = allowBuy ? null : 0;
+  let latest: ShipxRemoteShipment | null = null;
+  for (let attempt = 0; attempt < SHIPX_POLL_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      if (Date.parse(deps.clock.nowIso()) + SHIPX_POLL_INTERVAL_MS > run.deadline) break;
+      await deps.wait(SHIPX_POLL_INTERVAL_MS);
+    }
+    if (pastDeadline(run, deps)) break;
+    const current = await client.getShipment(run.credentials, shipmentId);
+    if (!current.ok) return current;
+    const saved = await saveRemote(run, current.value, deps);
+    if (!saved.ok) return saved;
+    latest = current.value;
+    if (shipxShipmentBought(latest)) return ok(latest);
+    failuresBefore ??= shipxFailedTransactions(latest);
+    const failure = shipxPurchaseFailure(latest, run.service, failuresBefore);
+    if (failure !== null) return err(failure);
+    const offerId = allowBuy && !buyAttempted ? shipxOfferToBuy(latest, run.service) : null;
+    if (offerId === null) continue;
+    if (pastDeadline(run, deps)) break;
+    buyAttempted = true;
+    const purchase = await client.buyOffer(run.credentials, shipmentId, offerId);
+    if (!purchase.ok && purchase.error.code !== 'shipx_unavailable') return purchase;
+  }
+  return err(pendingPayment(shipmentId, latest?.status ?? null));
+};
 
 const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateInpostShipmentDeps): Promise<Result<ShipxRemoteShipment, AppError>> => {
   const request = buildShipxShipmentRequest({
@@ -344,25 +369,20 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
     sender: run.sender,
     parcelTemplate: await orderParcelTemplate(run.tenantId, run.order, deps),
   });
-  if (!request.ok) {
-    await deps.shipxShipments.release(run.tenantId, run.order.id);
-    return request;
-  }
+  if (!request.ok) return releaseAttempt(run, request, deps);
+  if (pastDeadline(run, deps)) return err(pendingShipment(run.shipment.status));
   const attemptedAt = deps.clock.nowIso();
-  await deps.shipxShipments.update(run.tenantId, run.order.id, { status: SHIPX_STATUS_UNCONFIRMED, createAttemptedAt: attemptedAt, updatedAt: attemptedAt });
+  const marked = await save(run, { status: SHIPX_STATUS_UNCONFIRMED, createAttemptedAt: attemptedAt, updatedAt: attemptedAt }, deps);
+  if (!marked.ok) return marked;
   const created = await client.createShipment(run.credentials, request.value);
   if (!created.ok) {
-    if (created.error.code === 'shipx_unavailable') {
-      return err(shipxUnavailable(
-        'InPost ShipX did not confirm the shipment; the next attempt looks it up in ShipX before creating anything',
-        { state: 'unconfirmed', cause: created.error.message },
-      ));
-    }
-    await deps.shipxShipments.release(run.tenantId, run.order.id);
-    return created;
+    if (created.error.code !== 'shipx_unavailable') return releaseAttempt(run, created, deps);
+    return err(shipxUnavailable(
+      'InPost ShipX did not confirm the shipment; the next attempt looks it up in ShipX before creating anything',
+      { state: 'unconfirmed', cause: created.error.message },
+    ));
   }
-  await recordRemote(run.tenantId, run.order.id, created.value, deps);
-  return created;
+  return saveRemote(run, created.value, deps);
 };
 
 const reconcileRemote = async (
@@ -371,14 +391,13 @@ const reconcileRemote = async (
   client: ShipxClient,
   deps: CreateInpostShipmentDeps,
 ): Promise<Result<ShipxRemoteShipment, AppError>> => {
-  const createdAfter = new Date(Date.parse(attemptedAt) - SHIPX_RECONCILE_LOOKBACK_MS).toISOString();
-  const found = await client.findShipmentByReference(run.credentials, shipxReference(run.order.id), createdAfter);
+  if (pastDeadline(run, deps)) return err(pendingShipment(run.shipment.status));
+  const found = await client.findShipmentByReference(run.credentials, shipxReference(run.order.id));
   if (!found.ok) return found;
   if (found.value === null) {
     return err(appError('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt }));
   }
-  await recordRemote(run.tenantId, run.order.id, found.value, deps);
-  return ok(found.value);
+  return saveRemote(run, found.value, deps);
 };
 
 const runShipment = async (
@@ -408,12 +427,11 @@ const runShipment = async (
 
   let trackingNumber = run.shipment.trackingNumber;
   if (remote !== null || trackingNumber === null) {
-    const polled = remote !== null && shipxShipmentBought(remote)
-      ? { outcome: ok(remote), latest: remote }
-      : await pollUntilBought(client.value, credentials.value, shipmentId, run.service, !createdNow, run.deadline, deps);
-    if (polled.latest !== null) await recordRemote(run.tenantId, run.order.id, polled.latest, deps);
-    if (!polled.outcome.ok) return polled.outcome;
-    trackingNumber = polled.outcome.value.trackingNumber;
+    const bought = remote !== null && shipxShipmentBought(remote)
+      ? ok(remote)
+      : await pollUntilBought(scoped, client.value, shipmentId, !createdNow, deps);
+    if (!bought.ok) return bought;
+    trackingNumber = bought.value.trackingNumber;
   }
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
 
@@ -455,9 +473,11 @@ export const createInpostShipment = async (
   if (!selected.ok) return selected;
 
   const startedAt = deps.clock.nowIso();
+  const token = deps.ids.nextId();
   const acquired = await deps.shipxShipments.acquire(tenant.value, {
     id: deps.ids.nextId(),
     orderId: order.value.id,
+    token,
     environment: settings.environment,
     organizationId: credentials.value.organizationId,
     now: startedAt,
@@ -475,10 +495,11 @@ export const createInpostShipment = async (
       sender: settings.sender,
       shipment: acquired.shipment,
       credentials: credentials.value,
+      token,
       deadline: Date.parse(startedAt) + SHIPX_OPERATION_DEADLINE_MS,
     }, deps);
   } finally {
-    await deps.shipxShipments.finishOperation(tenant.value, order.value.id);
+    await deps.shipxShipments.finishOperation(tenant.value, order.value.id, token);
   }
 };
 
@@ -530,7 +551,7 @@ export const inpostShipmentLabel = async (
   if (!client.ok) return client;
   const label = await client.value.fetchLabel(credentials.value, shipment.shipxShipmentId);
   if (!label.ok) return label;
-  await deps.shipxShipments.update(tenant.value, order.value.id, { labelFetchedAt: deps.clock.nowIso(), updatedAt: deps.clock.nowIso() });
+  await deps.shipxShipments.markLabelFetched(tenant.value, order.value.id, deps.clock.nowIso());
   const name = (shipment.trackingNumber ?? shipment.shipxShipmentId).replace(/[^A-Za-z0-9-]/g, '');
   return ok({ filename: `inpost-${name}.pdf`, contentType: label.value.contentType, bytes: label.value.bytes });
 };

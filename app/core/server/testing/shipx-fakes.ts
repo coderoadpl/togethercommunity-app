@@ -5,6 +5,7 @@ import type {
   ShipxCredentials,
   ShipxSettings,
   ShipxSettingsRepository,
+  ShipxShipmentPatch,
   ShipxShipmentRecord,
   ShipxShipmentRepository,
 } from '../shipx-ports.js';
@@ -20,8 +21,19 @@ export const shipmentRecord = (change: Partial<ShipxShipmentRecord> = {}): Shipx
   createdAt: '2026-11-08T09:00:00.000Z',
   updatedAt: '2026-11-08T09:00:00.000Z',
   organizationId: '1234',
+  operationToken: null,
   operationStartedAt: null,
   ...change,
+});
+
+const applyPatch = (row: ShipxShipmentRecord, patch: ShipxShipmentPatch): ShipxShipmentRecord => ({
+  ...row,
+  ...(patch.shipxShipmentId === undefined ? {} : { shipxShipmentId: patch.shipxShipmentId }),
+  ...(patch.status === undefined ? {} : { status: patch.status }),
+  ...(patch.trackingNumber === undefined ? {} : { trackingNumber: patch.trackingNumber }),
+  ...(patch.createAttemptedAt === undefined ? {} : { createAttemptedAt: patch.createAttemptedAt }),
+  ...(patch.boughtAt === undefined ? {} : { boughtAt: row.boughtAt ?? patch.boughtAt }),
+  updatedAt: patch.updatedAt,
 });
 
 export const createShipxShipmentRepositoryFake = () => {
@@ -29,6 +41,10 @@ export const createShipxShipmentRepositoryFake = () => {
   const key = (tenantId: string, orderId: string) => `${tenantId}/${orderId}`;
   const free = (row: ShipxShipmentRecord, leaseExpiredBefore: string) =>
     row.operationStartedAt === null || row.operationStartedAt < leaseExpiredBefore;
+  const owned = (tenantId: string, orderId: string, token: string) => {
+    const row = rows.get(key(tenantId, orderId));
+    return row?.operationToken === token ? row : null;
+  };
   const repository: ShipxShipmentRepository = {
     findByOrder: async (tenantId, orderId) => rows.get(key(tenantId, orderId)) ?? null,
     acquire: async (tenantId, input) => {
@@ -37,6 +53,7 @@ export const createShipxShipmentRepositoryFake = () => {
         const shipment = shipmentRecord({
           environment: input.environment,
           organizationId: input.organizationId,
+          operationToken: input.token,
           operationStartedAt: input.now,
           createdAt: input.now,
           updatedAt: input.now,
@@ -45,32 +62,38 @@ export const createShipxShipmentRepositoryFake = () => {
         return { kind: 'acquired', shipment };
       }
       if (!free(existing, input.leaseExpiredBefore)) return { kind: 'in_progress', shipment: existing };
-      const taken = { ...existing, operationStartedAt: input.now };
+      const taken = { ...existing, operationToken: input.token, operationStartedAt: input.now };
       rows.set(key(tenantId, input.orderId), taken);
       return { kind: 'acquired', shipment: taken };
     },
-    update: async (tenantId, orderId, patch) => {
-      const existing = rows.get(key(tenantId, orderId));
-      if (existing === undefined) return null;
-      const updated: ShipxShipmentRecord = {
-        ...existing,
-        ...(patch.shipxShipmentId === undefined ? {} : { shipxShipmentId: patch.shipxShipmentId }),
-        ...(patch.status === undefined ? {} : { status: patch.status }),
-        ...(patch.trackingNumber === undefined ? {} : { trackingNumber: patch.trackingNumber }),
-        ...(patch.createAttemptedAt === undefined ? {} : { createAttemptedAt: patch.createAttemptedAt }),
-        ...(patch.boughtAt === undefined ? {} : { boughtAt: existing.boughtAt ?? patch.boughtAt }),
-        ...(patch.labelFetchedAt === undefined ? {} : { labelFetchedAt: patch.labelFetchedAt }),
-        updatedAt: patch.updatedAt,
-      };
-      rows.set(key(tenantId, orderId), updated);
-      return updated;
+    update: async (tenantId, orderId, token, patch) => {
+      const existing = owned(tenantId, orderId, token);
+      if (existing === null) return { kind: 'lost_lock' };
+      const shipment = applyPatch(existing, patch);
+      rows.set(key(tenantId, orderId), shipment);
+      return { kind: 'updated', shipment };
     },
-    finishOperation: async (tenantId, orderId) => {
-      const existing = rows.get(key(tenantId, orderId));
-      if (existing !== undefined) rows.set(key(tenantId, orderId), { ...existing, operationStartedAt: null });
+    finishOperation: async (tenantId, orderId, token) => {
+      const existing = owned(tenantId, orderId, token);
+      if (existing === null) return { kind: 'lost_lock' };
+      rows.set(key(tenantId, orderId), { ...existing, operationToken: null, operationStartedAt: null });
+      return { kind: 'finished' };
     },
-    release: async (tenantId, orderId) => {
-      if (rows.get(key(tenantId, orderId))?.shipxShipmentId === null) rows.delete(key(tenantId, orderId));
+    release: async (tenantId, orderId, token) => {
+      if (owned(tenantId, orderId, token)?.shipxShipmentId !== null) return { kind: 'lost_lock' };
+      rows.delete(key(tenantId, orderId));
+      return { kind: 'released' };
+    },
+    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch) => {
+      const existing = rows.get(key(tenantId, orderId));
+      if (existing === undefined || !free(existing, leaseExpiredBefore)) return null;
+      const shipment = applyPatch(existing, patch);
+      rows.set(key(tenantId, orderId), shipment);
+      return shipment;
+    },
+    markLabelFetched: async (tenantId, orderId, at) => {
+      const existing = rows.get(key(tenantId, orderId));
+      if (existing !== undefined) rows.set(key(tenantId, orderId), { ...existing, labelFetchedAt: at, updatedAt: at });
     },
     discardUnconfirmed: async (tenantId, orderId, leaseExpiredBefore) => {
       const existing = rows.get(key(tenantId, orderId));
@@ -102,14 +125,14 @@ export const remoteShipment = (id: string, change: Partial<ShipxRemoteShipment> 
 export const createScriptedShipxClient = (options: {
   create?: (request: ShipxShipmentRequest) => Result<ShipxRemoteShipment, AppError> | Promise<Result<ShipxRemoteShipment, AppError>>;
   polls?: Step[];
-  find?: (reference: string, createdAfter: string) => Result<ShipxRemoteShipment | null, AppError>;
+  find?: (reference: string) => Result<ShipxRemoteShipment | null, AppError>;
   buy?: (shipmentId: string) => Result<ShipxRemoteShipment, AppError> | Promise<Result<ShipxRemoteShipment, AppError>>;
   label?: Result<{ contentType: string; bytes: Uint8Array }, AppError>;
 } = {}) => {
   const calls: {
     create: ShipxShipmentRequest[];
     get: string[];
-    find: Array<{ reference: string; createdAfter: string }>;
+    find: string[];
     buy: Array<{ shipmentId: string; offerId: string }>;
     label: string[];
     credentials: ShipxCredentials[];
@@ -128,10 +151,10 @@ export const createScriptedShipxClient = (options: {
       const step = polls.length > 1 ? polls.shift() : polls[0];
       return (step ?? confirmed)(shipmentId);
     },
-    findShipmentByReference: async (credentials, reference, createdAfter) => {
+    findShipmentByReference: async (credentials, reference) => {
       calls.credentials.push(credentials);
-      calls.find.push({ reference, createdAfter });
-      return options.find?.(reference, createdAfter) ?? ok(null);
+      calls.find.push(reference);
+      return options.find?.(reference) ?? ok(null);
     },
     buyOffer: async (credentials, shipmentId, offerId) => {
       calls.credentials.push(credentials);

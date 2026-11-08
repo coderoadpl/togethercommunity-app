@@ -345,10 +345,11 @@ order id (cut to 100 characters).
 
 `POST /api/orders/<orderId>/shipx` then:
 
-1. acquires the order's `order_shipments` row (one row per order, unique on the
-   workspace and the order): it inserts the row or sets
-   `operation_started_at` with one conditional statement, so only one request
-   at a time works on an order (see [Concurrency](#concurrency));
+1. claims the order's `order_shipments` row (one row per order, unique on the
+   workspace and the order): it inserts the row or sets a fresh random
+   `operation_token` and `operation_started_at` with one conditional
+   statement, so only one request at a time works on an order (see
+   [Concurrency](#concurrency));
 2. when the row has no ShipX id yet, records the attempt (`status: 'unknown'`,
    `create_attempted_at`) and creates the shipment with the simplified ShipX
    creation mode (`service` given, `only_choice_of_offer` not set), in which
@@ -356,15 +357,17 @@ order id (cut to 100 characters).
    status. When the row holds an earlier unconfirmed attempt, it reconciles
    instead of creating (see [Indeterminate outcomes](#indeterminate-outcomes));
 3. reads the shipment until it is bought (a tracking number and a status past
-   `offer_selected`): at most 10 reads two seconds apart and never past the
-   overall deadline of 20 seconds from the start of the request. A shipment
-   that already existed before this request and still waits for payment
+   `offer_selected`): at most 10 reads two seconds apart, each one stored on
+   the row. Every read state is first checked for a failed payment: a ShipX
+   transaction that ends in `failure` after the first read of this request
+   (for example missing funds), or an offer that became `unavailable` or
+   `expired`, stops the request at once with `shipx_rejected`,
+   `details.state: 'failed'` and the ShipX reason; the row stays, and staff
+   retry with another click, which pays again. Otherwise a shipment that
+   already existed before this request and still waits for payment
    (`offers_prepared` or `offer_selected` without a running or successful
    transaction) is paid with the selected or the matching available offer
-   (`POST /v1/shipments/<id>/buy`), once per request. A ShipX transaction that
-   ends in `failure` (for example missing funds) or an offer that became
-   `unavailable` or `expired` stops the request at once with `shipx_rejected`
-   and the ShipX reason; the next click pays again;
+   (`POST /v1/shipments/<id>/buy`), at most once per request;
 4. stores the tracking number and the purchase time and calls the existing
    **Mark as shipped** use-case with the carrier `inpost` and the tracking
    number, so the fulfilment event, the shipment projection and the buyer
@@ -375,9 +378,12 @@ order id (cut to 100 characters).
    number in the message and in `details`, so staff can reconcile the two in
    Manager Paczek.
 
-When the deadline is hit, the request answers `shipx_unavailable` with
-`details.state: 'pending'`; the row keeps the ShipX id and the last status,
-and the order stays to pack. Opening the order reads the live ShipX status once
+The request has one deadline, 20 seconds from its start, checked before every
+ShipX call (the reconciliation lookup, the create, each read and the purchase;
+the label download is a separate request). When the deadline has passed, the
+request makes no further call and answers `shipx_unavailable` with
+`details.state: 'pending'`; the row keeps the ShipX id, or the unconfirmed
+attempt, and the last status, and the order stays to pack. Opening the order reads the live ShipX status once
 for a shipment that is not bought yet and stores it; clicking **Create InPost
 shipment** again continues from that status and never creates a second
 shipment.
@@ -394,10 +400,9 @@ the request answers `shipx_unavailable` with `details.state: 'unconfirmed'`.
 The next click reconciles before creating anything. The ShipX documentation
 lists the organization's shipments (`GET /v1/organizations/<id>/shipments`)
 with `page` and `per_page` but documents no filter by `reference`, so the
-client reads the newest shipments (`per_page=100`, `sort_by=id`,
-`sort_order=desc`, at most three pages) and matches `reference` with the order
-id. It stops at the last page or at shipments created more than ten minutes
-before the attempt. A match is adopted: its id and status are stored and the
+client reads one page of the 50 newest shipments (`page=1`, `per_page=50`,
+`sort_by=created_at`, `sort_order=desc`) per click, without a retry, and
+matches `reference` with the order id. A match is adopted: its id and status are stored and the
 flow continues with step 3. Without a match the request answers `conflict`
 ("ShipX did not confirm the previous attempt; check Manager Paczek") and the
 order page shows that warning with **Discard the attempt and create again**.
@@ -409,18 +414,30 @@ created but did not list yet would be paid twice.
 
 ### Concurrency
 
-The row's `operation_started_at` is a lease. Acquiring it is one conditional
-`UPDATE` (`NULL`, or older than the lease of 30 seconds: the 20-second deadline
-plus two request timeouts), or the `INSERT` of a new row; a request that finds
-the lease held answers `fulfilment_conflict` ("Another request is creating the
-InPost shipment for this order; refresh the order in a moment") without calling
-ShipX. Every path clears the lease when it ends. A crashed request keeps the
-lease until it expires; its row then shows either a ShipX id (the next click
-continues) or an unconfirmed attempt (the next click reconciles).
+A request owns the row through its claim: a random `operation_token` and the
+`operation_started_at` lease. Taking the claim is the `INSERT` of a new row or
+one conditional `UPDATE` that succeeds only when `operation_started_at` is
+`NULL` or older than the lease of 90 seconds; a request that finds the claim
+held answers `fulfilment_conflict` ("Another request is creating the InPost
+shipment for this order; refresh the order in a moment") without calling
+ShipX. The lease is longer than the slowest request: the 20-second deadline
+plus one last call of at most 5 seconds, since no call in this flow is retried.
+
+Every later write of the request (the attempt, each ShipX state, the release
+of a rejected attempt, and the final clearing of the claim) is a conditional
+statement on the workspace, the order and the request's `operation_token`. When
+another request holds the row by then, the write changes nothing, and the
+request stops without calling ShipX again and answers `fulfilment_conflict`
+with `details.state: 'lost_lock'`. A request that ends therefore never clears
+or deletes the claim of the next one. A crashed or stuck request keeps the
+lease until it expires after 90 seconds; its row then shows either a ShipX id
+(the next click continues) or an unconfirmed attempt (the next click
+reconciles). Opening the order stores the live ShipX status only while no
+request holds the claim.
 
 The shipment row stores only identifiers (the ShipX shipment id and the ShipX
 organization id), the environment, the ShipX status, the tracking number and
-the attempt, lease, purchase and label times; no personal data, so member
+the attempt, claim, purchase and label times; no personal data, so member
 erasure does not touch it. The receiver data sent to InPost stays in the
 workspace's Manager Paczek account, outside Together's erasure. There are no
 ShipX webhooks.
@@ -446,18 +463,18 @@ paid yet.
 | live order while the environment is the sandbox | `validation` (HTTP 400, CLI exit 2) |
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
-| another request holds the order's lease | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
+| another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
 | the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
 | the stored shipment belongs to another environment or organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
-| ShipX does not answer within 5 seconds (body included), answers 5xx, or the shipment is not bought before the deadline | `shipx_unavailable` (HTTP 503, CLI exit 28) |
+| ShipX does not answer within 5 seconds (body included), answers 5xx, or the shipment is not bought before the 20-second deadline | `shipx_unavailable` (HTTP 503, CLI exit 28) |
 
 Every ShipX call has a 5-second timeout that covers reading the whole body
-(JSON or PDF bytes). Shipment creation, offer purchases and shipment reads are
-never retried by the HTTP client: a lost purchase answer is followed by a fresh
-read, and the request continues from the status ShipX reports. Shipment list
-pages and label downloads are retried once after a network error or a 5xx
+(JSON or PDF bytes). Shipment creation, offer purchases, shipment reads and the
+shipment list are never retried by the HTTP client: a lost purchase answer is
+followed by a fresh read, and the request continues from the status ShipX
+reports. Only label downloads are retried once after a network error or a 5xx
 answer; 4xx answers are never retried. Studio shows the error with the ShipX
 reason under the button; the order stays to pack.
 
@@ -478,9 +495,10 @@ account, with a test-mode order and the environment set to `sandbox`:
 - the receiver phone as 9 digits without `+48` is accepted;
 - courier shipments are priced with the template dimensions and the fixed
   weight of 5 kg;
-- the organization shipments list returns the newest shipments first with
-  `sort_by=id&sort_order=desc` and carries `reference` on each item, which the
-  reconciliation of an unconfirmed attempt relies on;
+- the organization shipments list accepts `sort_by=created_at&sort_order=desc`
+  with `per_page=50`, returns the newest shipments first and carries
+  `reference` on each item, which the reconciliation of an unconfirmed attempt
+  relies on;
 - a transaction `failure` (for example an empty sandbox balance) is reported
   with the ShipX reason.
 

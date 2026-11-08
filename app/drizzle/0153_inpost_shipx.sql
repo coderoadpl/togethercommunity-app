@@ -9,6 +9,7 @@ CREATE TABLE "order_shipments" (
   "status" text NOT NULL,
   "tracking_number" text,
   "create_attempted_at" timestamp with time zone,
+  "operation_token" text,
   "operation_started_at" timestamp with time zone,
   "bought_at" timestamp with time zone,
   "label_fetched_at" timestamp with time zone,

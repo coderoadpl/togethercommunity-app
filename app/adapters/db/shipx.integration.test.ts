@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ok, orderListItemSchema, type ShipxSender, type TenantSecretKey } from '#core/domain/index.js';
+import { err, ok, orderListItemSchema, shipxRejected, type ShipxSender, type TenantSecretKey } from '#core/domain/index.js';
 import { createInpostShipment, type CreateInpostShipmentDeps, type OrderFulfilmentRepository, type ShipxShipmentRepository } from '#core/server/index.js';
 import { createScriptedShipxClient, remoteShipment } from '#core/server/testing/shipx-fakes.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
@@ -10,8 +10,9 @@ import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const now = '2026-11-08T10:00:00.000Z';
-const leaseExpiredBefore = '2026-11-08T09:59:30.000Z';
+const leaseExpiredBefore = '2026-11-08T09:58:30.000Z';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
+let sequence = 0;
 
 const sender: ShipxSender = {
   name: 'Anna Sender', company: null, email: 'shop@example.org', phone: '500600700',
@@ -34,76 +35,103 @@ afterAll(async () => {
 });
 
 const seedShipment = async (repository: ShipxShipmentRepository, orderId: string, shipxShipmentId: string) => {
-  await repository.acquire('workspace', { id: `seed-${orderId}`, orderId, ...context, now, leaseExpiredBefore });
-  await repository.update('workspace', orderId, { shipxShipmentId, status: 'offers_prepared', updatedAt: now });
-  await repository.finishOperation('workspace', orderId);
+  await repository.acquire('workspace', { id: `seed-${orderId}`, orderId, token: `seed-${orderId}`, ...context, now, leaseExpiredBefore });
+  await repository.update('workspace', orderId, `seed-${orderId}`, { shipxShipmentId, status: 'offers_prepared', updatedAt: now });
+  await repository.finishOperation('workspace', orderId, `seed-${orderId}`);
 };
 
 describe('ShipX shipment repository', () => {
   it('acquires an order once, reports a running operation and lets an expired lease be taken over', async () => {
     const repository = createShipxShipmentRepository(database.db);
-    const first = await repository.acquire('workspace', { id: 'claim-1', orderId: 'order-claim', ...context, now, leaseExpiredBefore });
+    const first = await repository.acquire('workspace', { id: 'claim-1', orderId: 'order-claim', token: 'token-1', ...context, now, leaseExpiredBefore });
     expect(first).toMatchObject({
       kind: 'acquired',
-      shipment: { shipxShipmentId: null, status: 'creating', environment: 'production', organizationId: '1234', operationStartedAt: now, createdAt: now },
+      shipment: { shipxShipmentId: null, status: 'creating', environment: 'production', organizationId: '1234', operationToken: 'token-1', operationStartedAt: now, createdAt: now },
     });
-    const busy = await repository.acquire('workspace', { id: 'claim-2', orderId: 'order-claim', ...context, now, leaseExpiredBefore });
-    expect(busy.kind).toBe('in_progress');
+    const busy = await repository.acquire('workspace', { id: 'claim-2', orderId: 'order-claim', token: 'token-2', ...context, now, leaseExpiredBefore });
+    expect(busy).toMatchObject({ kind: 'in_progress', shipment: { operationToken: 'token-1' } });
     const later = '2026-11-08T10:05:00.000Z';
-    const taken = await repository.acquire('workspace', { id: 'claim-3', orderId: 'order-claim', ...context, now: later, leaseExpiredBefore: '2026-11-08T10:04:30.000Z' });
-    expect(taken).toMatchObject({ kind: 'acquired', shipment: { operationStartedAt: later, createdAt: now } });
-    await repository.finishOperation('workspace', 'order-claim');
-    expect((await repository.findByOrder('workspace', 'order-claim'))?.operationStartedAt).toBeNull();
-    expect((await repository.acquire('workspace', { id: 'claim-4', orderId: 'order-claim', ...context, now: later, leaseExpiredBefore })).kind).toBe('acquired');
+    const taken = await repository.acquire('workspace', { id: 'claim-3', orderId: 'order-claim', token: 'token-3', ...context, now: later, leaseExpiredBefore: '2026-11-08T10:03:30.000Z' });
+    expect(taken).toMatchObject({ kind: 'acquired', shipment: { operationToken: 'token-3', operationStartedAt: later, createdAt: now } });
+    expect(await repository.finishOperation('workspace', 'order-claim', 'token-3')).toEqual({ kind: 'finished' });
+    expect(await repository.findByOrder('workspace', 'order-claim')).toMatchObject({ operationToken: null, operationStartedAt: null });
+    expect((await repository.acquire('workspace', { id: 'claim-4', orderId: 'order-claim', token: 'token-4', ...context, now: later, leaseExpiredBefore })).kind).toBe('acquired');
   });
 
   it('lets exactly one of several concurrent requests acquire a free row', async () => {
     const repository = createShipxShipmentRepository(database.db);
     await seedShipment(repository, 'order-race', '555');
     const results = await Promise.all(Array.from({ length: 6 }, (_value, index) =>
-      repository.acquire('workspace', { id: `race-${String(index)}`, orderId: 'order-race', ...context, now, leaseExpiredBefore })));
+      repository.acquire('workspace', { id: `race-${String(index)}`, orderId: 'order-race', token: `race-${String(index)}`, ...context, now, leaseExpiredBefore })));
     expect(results.filter((result) => result.kind === 'acquired')).toHaveLength(1);
     const fresh = await Promise.all(Array.from({ length: 6 }, (_value, index) =>
-      repository.acquire('workspace', { id: `fresh-${String(index)}`, orderId: 'order-fresh', ...context, now, leaseExpiredBefore })));
+      repository.acquire('workspace', { id: `fresh-${String(index)}`, orderId: 'order-fresh', token: `fresh-${String(index)}`, ...context, now, leaseExpiredBefore })));
     expect(fresh.filter((result) => result.kind === 'acquired')).toHaveLength(1);
+  });
+
+  it('writes, finishes and releases only with the token of the current claim', async () => {
+    const repository = createShipxShipmentRepository(database.db);
+    await repository.acquire('workspace', { id: 'owned-1', orderId: 'order-owned', token: 'stale', ...context, now, leaseExpiredBefore });
+    const later = '2026-11-08T10:05:00.000Z';
+    await repository.acquire('workspace', { id: 'owned-2', orderId: 'order-owned', token: 'current', ...context, now: later, leaseExpiredBefore: '2026-11-08T10:03:30.000Z' });
+    expect(await repository.update('workspace', 'order-owned', 'stale', { status: 'unknown', createAttemptedAt: later, updatedAt: later })).toEqual({ kind: 'lost_lock' });
+    expect(await repository.finishOperation('workspace', 'order-owned', 'stale')).toEqual({ kind: 'lost_lock' });
+    expect(await repository.release('workspace', 'order-owned', 'stale')).toEqual({ kind: 'lost_lock' });
+    expect(await repository.update('other', 'order-owned', 'current', { status: 'confirmed', updatedAt: later })).toEqual({ kind: 'lost_lock' });
+    expect(await repository.findByOrder('workspace', 'order-owned')).toMatchObject({ status: 'creating', createAttemptedAt: null, operationToken: 'current', operationStartedAt: later });
+    expect(await repository.update('workspace', 'order-owned', 'current', { status: 'unknown', createAttemptedAt: later, updatedAt: later })).toMatchObject({
+      kind: 'updated', shipment: { status: 'unknown', createAttemptedAt: later },
+    });
+    expect(await repository.release('workspace', 'order-owned', 'current')).toEqual({ kind: 'released' });
+    expect(await repository.findByOrder('workspace', 'order-owned')).toBeNull();
   });
 
   it('records the ShipX shipment, keeps the first purchase time and never releases a row with a ShipX id', async () => {
     const repository = createShipxShipmentRepository(database.db);
-    await repository.acquire('workspace', { id: 'record-1', orderId: 'order-record', ...context, now, leaseExpiredBefore });
-    await repository.update('workspace', 'order-record', { shipxShipmentId: '12345', status: 'created', trackingNumber: null, updatedAt: now });
-    const bought = await repository.update('workspace', 'order-record', {
+    await repository.acquire('workspace', { id: 'record-1', orderId: 'order-record', token: 'record', ...context, now, leaseExpiredBefore });
+    await repository.update('workspace', 'order-record', 'record', { shipxShipmentId: '12345', status: 'created', trackingNumber: null, updatedAt: now });
+    const bought = await repository.update('workspace', 'order-record', 'record', {
       status: 'confirmed', trackingNumber: '523000015611700083038270', boughtAt: '2026-11-08T10:01:00.000Z', updatedAt: '2026-11-08T10:01:00.000Z',
     });
-    expect(bought).toMatchObject({ shipxShipmentId: '12345', status: 'confirmed', boughtAt: '2026-11-08T10:01:00.000Z' });
-    const again = await repository.update('workspace', 'order-record', { boughtAt: '2026-11-08T11:00:00.000Z', updatedAt: '2026-11-08T11:00:00.000Z' });
-    expect(again?.boughtAt).toBe('2026-11-08T10:01:00.000Z');
-    await repository.release('workspace', 'order-record');
+    expect(bought).toMatchObject({ kind: 'updated', shipment: { shipxShipmentId: '12345', status: 'confirmed', boughtAt: '2026-11-08T10:01:00.000Z' } });
+    const again = await repository.update('workspace', 'order-record', 'record', { boughtAt: '2026-11-08T11:00:00.000Z', updatedAt: '2026-11-08T11:00:00.000Z' });
+    expect(again).toMatchObject({ kind: 'updated', shipment: { boughtAt: '2026-11-08T10:01:00.000Z' } });
+    expect(await repository.release('workspace', 'order-record', 'record')).toEqual({ kind: 'lost_lock' });
+    await repository.finishOperation('workspace', 'order-record', 'record');
     expect(await repository.discardUnconfirmed('workspace', 'order-record', leaseExpiredBefore)).toBe(false);
-    expect(await repository.findByOrder('workspace', 'order-record')).not.toBeNull();
+    await repository.markLabelFetched('workspace', 'order-record', '2026-11-08T12:00:00.000Z');
+    expect(await repository.findByOrder('workspace', 'order-record')).toMatchObject({ shipxShipmentId: '12345', labelFetchedAt: '2026-11-08T12:00:00.000Z' });
+  });
+
+  it('refreshes the stored status only while no request holds the operation', async () => {
+    const repository = createShipxShipmentRepository(database.db);
+    await repository.acquire('workspace', { id: 'refresh-1', orderId: 'order-refresh', token: 'refresh', ...context, now, leaseExpiredBefore });
+    await repository.update('workspace', 'order-refresh', 'refresh', { shipxShipmentId: '4321', status: 'offer_selected', updatedAt: now });
+    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, { status: 'confirmed', updatedAt: now })).toBeNull();
+    await repository.finishOperation('workspace', 'order-refresh', 'refresh');
+    expect(await repository.refreshUnclaimed('workspace', 'order-refresh', leaseExpiredBefore, { status: 'confirmed', trackingNumber: '6001', updatedAt: now })).toMatchObject({
+      status: 'confirmed', trackingNumber: '6001',
+    });
   });
 
   it('discards only an unconfirmed attempt that no request is working on', async () => {
     const repository = createShipxShipmentRepository(database.db);
-    await repository.acquire('workspace', { id: 'unknown-1', orderId: 'order-unknown', ...context, now, leaseExpiredBefore });
-    await repository.update('workspace', 'order-unknown', { status: 'unknown', createAttemptedAt: now, updatedAt: now });
+    await repository.acquire('workspace', { id: 'unknown-1', orderId: 'order-unknown', token: 'unknown', ...context, now, leaseExpiredBefore });
+    await repository.update('workspace', 'order-unknown', 'unknown', { status: 'unknown', createAttemptedAt: now, updatedAt: now });
     expect(await repository.discardUnconfirmed('workspace', 'order-unknown', leaseExpiredBefore)).toBe(false);
-    await repository.finishOperation('workspace', 'order-unknown');
+    await repository.finishOperation('workspace', 'order-unknown', 'unknown');
     expect(await repository.findByOrder('workspace', 'order-unknown')).toMatchObject({ status: 'unknown', createAttemptedAt: now });
     expect(await repository.discardUnconfirmed('other', 'order-unknown', leaseExpiredBefore)).toBe(false);
     expect(await repository.discardUnconfirmed('workspace', 'order-unknown', leaseExpiredBefore)).toBe(true);
     expect(await repository.findByOrder('workspace', 'order-unknown')).toBeNull();
   });
 
-  it('releases only a row without a ShipX id and keeps workspaces apart', async () => {
+  it('keeps workspaces apart', async () => {
     const repository = createShipxShipmentRepository(database.db);
-    await repository.acquire('workspace', { id: 'release-1', orderId: 'order-release', ...context, now, leaseExpiredBefore });
+    await repository.acquire('workspace', { id: 'release-1', orderId: 'order-release', token: 'release', ...context, now, leaseExpiredBefore });
     expect(await repository.findByOrder('other', 'order-release')).toBeNull();
-    expect(await repository.update('other', 'order-release', { status: 'confirmed', updatedAt: now })).toBeNull();
-    await repository.release('other', 'order-release');
+    expect(await repository.release('other', 'order-release', 'release')).toEqual({ kind: 'lost_lock' });
     expect(await repository.findByOrder('workspace', 'order-release')).not.toBeNull();
-    await repository.release('workspace', 'order-release');
-    expect(await repository.findByOrder('workspace', 'order-release')).toBeNull();
   });
 });
 
@@ -125,8 +153,7 @@ describe('InPost shipment use-case on the database', () => {
     const stored = order(orderId);
     const findById = async (tenantId: string, id: string) => (tenantId === 'workspace' && id === orderId ? stored : null);
     const values: Partial<Record<TenantSecretKey, string>> = { 'shipx.organizationId': '1234', 'shipx.token': 'token' };
-    let id = 0;
-    const ids = { nextId: () => `${orderId}-${String(++id)}` };
+    const ids = { nextId: () => `${orderId}-${String(++sequence)}` };
     const clock = { nowIso: () => new Date().toISOString() };
     return {
       orderDetails: { findById },
@@ -213,6 +240,61 @@ describe('InPost shipment use-case on the database', () => {
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.filter((result) => !result.ok && result.error.code === 'fulfilment_conflict')).toHaveLength(1);
     expect(client.calls.buy).toHaveLength(1);
+  });
+
+  it('ignores the late cleanup of a released attempt, so a third click cannot create a second shipment', async () => {
+    await createShipxSettingsRepository(database.db).save('workspace', { environment: 'production', sender });
+    const repository = createShipxShipmentRepository(database.db);
+    const rejecting = createScriptedShipxClient({
+      create: () => err(shipxRejected({ status: 400, error: 'validation_failed', description: 'Invalid', fields: {} })),
+    });
+    const accepting = createScriptedShipxClient();
+    let resumeSecond: () => void = () => undefined;
+    const productsGate = new Promise<void>((resolve) => {
+      resumeSecond = resolve;
+    });
+    let secondClaimed: () => void = () => undefined;
+    const claimed = new Promise<void>((resolve) => {
+      secondClaimed = resolve;
+    });
+
+    const second = depsFor('order-relay', accepting.client);
+    const products = second.products;
+    second.products = {
+      findByIds: async (tenantId, productIds) => {
+        await productsGate;
+        return products.findByIds(tenantId, productIds);
+      },
+    };
+    second.shipxShipments = {
+      ...repository,
+      acquire: async (tenantId, input) => {
+        const acquired = await repository.acquire(tenantId, input);
+        secondClaimed();
+        return acquired;
+      },
+    };
+
+    const running: { second?: ReturnType<typeof createInpostShipment> } = {};
+    const first = depsFor('order-relay', rejecting.client);
+    first.shipxShipments = {
+      ...repository,
+      release: async (tenantId, orderId, token) => {
+        const released = await repository.release(tenantId, orderId, token);
+        running.second = createInpostShipment(write, { orderId: 'order-relay' }, second);
+        await claimed;
+        return released;
+      },
+    };
+
+    expect(await createInpostShipment(write, { orderId: 'order-relay' }, first)).toMatchObject({ ok: false, error: { code: 'shipx_rejected' } });
+    const third = await createInpostShipment(write, { orderId: 'order-relay' }, depsFor('order-relay', accepting.client));
+    expect(third).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict' } });
+    resumeSecond();
+    expect(await running.second).toMatchObject({ ok: true, value: { shipment: { shipxShipmentId: '1001' } } });
+    expect(rejecting.calls.create).toHaveLength(1);
+    expect(accepting.calls.create).toHaveLength(1);
+    expect(await repository.findByOrder('workspace', 'order-relay')).toMatchObject({ operationToken: null, operationStartedAt: null });
   });
 });
 

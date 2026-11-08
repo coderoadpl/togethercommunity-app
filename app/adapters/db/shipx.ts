@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { SHIPX_STATUS_CREATING, shipxEnvironmentSchema, shipxSenderSchema, shipxShipmentSchema } from '#core/domain/index.js';
-import type { ShipxSettingsRepository, ShipxShipmentRecord, ShipxShipmentRepository } from '#core/server/index.js';
+import type { ShipxSettingsRepository, ShipxShipmentPatch, ShipxShipmentRecord, ShipxShipmentRepository } from '#core/server/index.js';
 
 import { tenants } from './app-schema.js';
 import type { Db } from './client.js';
@@ -26,12 +26,24 @@ const toShipment = (row: ShipmentRow): ShipxShipmentRecord => ({
     updatedAt: iso(row.updatedAt),
   }),
   organizationId: row.organizationId,
+  operationToken: row.operationToken,
   operationStartedAt: isoOrNull(row.operationStartedAt),
+});
+
+const patchValues = (patch: ShipxShipmentPatch) => ({
+  ...(patch.shipxShipmentId === undefined ? {} : { providerShipmentId: patch.shipxShipmentId }),
+  ...(patch.status === undefined ? {} : { status: patch.status }),
+  ...(patch.trackingNumber === undefined ? {} : { trackingNumber: patch.trackingNumber }),
+  ...(patch.createAttemptedAt === undefined ? {} : { createAttemptedAt: patch.createAttemptedAt }),
+  ...(patch.boughtAt === undefined ? {} : { boughtAt: sql`coalesce(${orderShipments.boughtAt}, ${patch.boughtAt}::timestamptz)` }),
+  updatedAt: patch.updatedAt,
 });
 
 export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository => {
   const byOrder = (tenantId: string, orderId: string) =>
     and(eq(orderShipments.tenantId, tenantId), eq(orderShipments.orderId, orderId));
+  const owned = (tenantId: string, orderId: string, token: string) =>
+    and(byOrder(tenantId, orderId), eq(orderShipments.operationToken, token));
   const operationFree = (leaseExpiredBefore: string) =>
     or(isNull(orderShipments.operationStartedAt), lt(orderShipments.operationStartedAt, leaseExpiredBefore));
   return {
@@ -50,13 +62,14 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
         providerShipmentId: null,
         status: SHIPX_STATUS_CREATING,
         trackingNumber: null,
+        operationToken: input.token,
         operationStartedAt: input.now,
         createdAt: input.now,
         updatedAt: input.now,
       }).onConflictDoNothing().returning();
       if (inserted !== undefined) return { kind: 'acquired', shipment: toShipment(inserted) };
       const [taken] = await db.update(orderShipments)
-        .set({ operationStartedAt: input.now })
+        .set({ operationToken: input.token, operationStartedAt: input.now })
         .where(and(byOrder(tenantId, input.orderId), operationFree(input.leaseExpiredBefore)))
         .returning();
       if (taken !== undefined) return { kind: 'acquired', shipment: toShipment(taken) };
@@ -64,23 +77,31 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       if (busy === undefined) throw new Error('Order shipment row vanished while acquiring it');
       return { kind: 'in_progress', shipment: toShipment(busy) };
     },
-    update: async (tenantId, orderId, patch) => {
-      const [row] = await db.update(orderShipments).set({
-        ...(patch.shipxShipmentId === undefined ? {} : { providerShipmentId: patch.shipxShipmentId }),
-        ...(patch.status === undefined ? {} : { status: patch.status }),
-        ...(patch.trackingNumber === undefined ? {} : { trackingNumber: patch.trackingNumber }),
-        ...(patch.createAttemptedAt === undefined ? {} : { createAttemptedAt: patch.createAttemptedAt }),
-        ...(patch.boughtAt === undefined ? {} : { boughtAt: sql`coalesce(${orderShipments.boughtAt}, ${patch.boughtAt}::timestamptz)` }),
-        ...(patch.labelFetchedAt === undefined ? {} : { labelFetchedAt: patch.labelFetchedAt }),
-        updatedAt: patch.updatedAt,
-      }).where(byOrder(tenantId, orderId)).returning();
+    update: async (tenantId, orderId, token, patch) => {
+      const [row] = await db.update(orderShipments).set(patchValues(patch)).where(owned(tenantId, orderId, token)).returning();
+      return row === undefined ? { kind: 'lost_lock' } : { kind: 'updated', shipment: toShipment(row) };
+    },
+    finishOperation: async (tenantId, orderId, token) => {
+      const finished = await db.update(orderShipments)
+        .set({ operationToken: null, operationStartedAt: null })
+        .where(owned(tenantId, orderId, token))
+        .returning({ id: orderShipments.id });
+      return finished.length > 0 ? { kind: 'finished' } : { kind: 'lost_lock' };
+    },
+    release: async (tenantId, orderId, token) => {
+      const removed = await db.delete(orderShipments)
+        .where(and(owned(tenantId, orderId, token), isNull(orderShipments.providerShipmentId)))
+        .returning({ id: orderShipments.id });
+      return removed.length > 0 ? { kind: 'released' } : { kind: 'lost_lock' };
+    },
+    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch) => {
+      const [row] = await db.update(orderShipments).set(patchValues(patch))
+        .where(and(byOrder(tenantId, orderId), operationFree(leaseExpiredBefore)))
+        .returning();
       return row === undefined ? null : toShipment(row);
     },
-    finishOperation: async (tenantId, orderId) => {
-      await db.update(orderShipments).set({ operationStartedAt: null }).where(byOrder(tenantId, orderId));
-    },
-    release: async (tenantId, orderId) => {
-      await db.delete(orderShipments).where(and(byOrder(tenantId, orderId), isNull(orderShipments.providerShipmentId)));
+    markLabelFetched: async (tenantId, orderId, at) => {
+      await db.update(orderShipments).set({ labelFetchedAt: at, updatedAt: at }).where(byOrder(tenantId, orderId));
     },
     discardUnconfirmed: async (tenantId, orderId, leaseExpiredBefore) => {
       const removed = await db.delete(orderShipments).where(and(

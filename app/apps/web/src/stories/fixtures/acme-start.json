@@ -118,6 +118,11 @@
               }
             ],
             "slug": "acme-course",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Acme Course",
             "type": "course",
             "vatExemptionBasis": null,

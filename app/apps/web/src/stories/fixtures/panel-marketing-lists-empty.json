@@ -168,6 +168,11 @@
               }
             ],
             "slug": "course-together-101",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Together 101 Course",
             "type": "course",
             "vatExemptionBasis": null,
@@ -191,6 +196,11 @@
               }
             ],
             "slug": "js-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "JavaScript Course - full access",
             "type": "course",
             "vatExemptionBasis": null,
@@ -214,6 +224,11 @@
               }
             ],
             "slug": "react-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "React in Practice - full access",
             "type": "course",
             "vatExemptionBasis": null,
@@ -237,6 +252,11 @@
               }
             ],
             "slug": "js-dom-module",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "DOM Module Pack",
             "type": "course",
             "vatExemptionBasis": null,
@@ -260,6 +280,11 @@
               }
             ],
             "slug": "free-preview",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Free preview",
             "type": "course",
             "vatExemptionBasis": null,
@@ -290,6 +315,11 @@
               }
             ],
             "slug": "club",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Studio Club - subscription",
             "type": "membership",
             "vatExemptionBasis": null,
@@ -313,6 +343,11 @@
               }
             ],
             "slug": "download-workbook",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Creator Workbook",
             "type": "digital_download",
             "vatExemptionBasis": null,

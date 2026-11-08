@@ -139,6 +139,42 @@ describe('order shipping persistence', () => {
     expect(await delivery('outbox-other')).toMatchObject({ purchase: { delivery: { address } } });
   });
 
+  it('pseudonymises shipment e-mail addresses only within the erased member workspace', async () => {
+    const email = 'shipment-buyer@example.org';
+    await database.db.insert(user).values({ id: 'shipment-buyer', email, name: 'Shipment Buyer' });
+    await database.db.insert(members).values(['workspace', 'other'].map((tenantId) => ({
+      id: `shipment-member-${tenantId}`, tenantId, userId: 'shipment-buyer', email, displayName: 'Shipment Buyer', createdAt: now,
+    })));
+    const payload = {
+      kind: 'order-shipped', language: 'en', tenantName: 'Workspace',
+      shipment: {
+        orderNumber: 'ORDER-SHIPPED', items: ['Printed accessory'],
+        delivery: { method: 'Courier', pickupPoint: null, address: shipping.address },
+        carrier: 'inpost', trackingNumber: 'ABCD1234', trackingUrl: 'https://example.org/tracking/ABCD1234',
+      },
+    };
+    await database.db.insert(emailOutbox).values(['workspace', 'other'].map((tenantId) => ({
+      id: `outbox-shipment-${tenantId}`, tenantId, kind: 'order-shipped', to: ' Shipment-Buyer@Example.org ',
+      nextAttemptAt: now, createdAt: now, payload,
+    })));
+    const stored = async (tenantId: string) => (await database.db.select().from(emailOutbox).where(eq(emailOutbox.id, `outbox-shipment-${tenantId}`)))[0];
+    const otherBefore = await stored('other');
+    expect(otherBefore).toBeDefined();
+    const memberId = 'shipment-member-workspace';
+    const tombstone = memberTombstone(memberId);
+    await createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` }).pseudonymize('workspace', {
+      memberId, deletedAt: now, tombstoneEmail: tombstone.email,
+      severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+    });
+    expect((await stored('workspace'))?.payload).toEqual({
+      ...payload,
+      shipment: { ...payload.shipment, delivery: { ...payload.shipment.delivery, address: {
+        ...shipping.address, name: DELETED_MEMBER_DISPLAY, line1: DELETED_MEMBER_DISPLAY, line2: null,
+      } } },
+    });
+    expect(await stored('other')).toEqual(otherBefore);
+  });
+
   it('erases a member whose stored delivery data has no address object without failing or keeping a street', async () => {
     await database.db.insert(user).values({ id: 'legacy-buyer', email: 'legacy@example.org', name: 'Legacy Buyer' });
     await database.db.insert(members).values({ id: 'legacy-member', tenantId: 'workspace', userId: 'legacy-buyer', email: 'legacy@example.org', displayName: 'Legacy Buyer', createdAt: now });

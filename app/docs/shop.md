@@ -83,11 +83,15 @@ The server validates it again:
 The zero-total rule exists because a free order never reaches Stripe, so
 nothing would collect the delivery address. A fully discounted product with a
 paid delivery option is a normal Stripe checkout for the fee alone: Stripe
-collects the address, and the webhook claims the coupon redemption. When the
-coupon's redemption limit is reached before that claim, the buyer has already
-paid the delivery fee on Stripe, but the webhook refuses the order and records
-nothing; staff must refund the fee manually in Stripe. A follow-up may record
-such orders instead.
+collects the address, and the webhook claims the coupon redemption. When a
+concurrent buyer takes the coupon's last redemption before that claim, the buyer
+has already paid the delivery fee on Stripe, so the webhook still records the
+order normally, with the coupon and the discount Stripe applied, its delivery
+data and `to_pack` status, sends the purchase confirmation and logs a warning
+with `reason=coupon_over_redeemed`. No redemption row is written, so such a race
+can over-redeem a coupon by one shipped order; staff see the order on the
+Studio Orders page and decide whether to refund it in Stripe. A checkout that
+charged nothing is still refused with `Coupon redemption limit reached`.
 
 Stripe Checkout receives the product lines as line items and the fee as exactly
 one shipping option (`shipping_rate_data` with a fixed amount, the option label

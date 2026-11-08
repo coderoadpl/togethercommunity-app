@@ -292,7 +292,13 @@ falling back to the top-level `shipping_details` of events in API versions
 before `2025-03-31.basil`, the phone number from `customer_details.phone` and the fee from
 `shipping_cost.amount_total`. It rejects a session whose fee differs from the
 snapshot's shipping line or whose address is missing or outside the allowed
-countries. See [Shop](shop.md) for the delivery options and the stored order data.
+countries. A session whose coupon covered every product line but which charged
+the delivery fee is recorded even when the coupon redemption claim loses a race
+at the redemption limit: the order keeps the coupon and Stripe's discount, no
+redemption row is written, so the coupon is over-redeemed by one shipped order,
+and the webhook logs `reason=coupon_over_redeemed`. Staff see the order on the
+Studio Orders page; nothing is refunded automatically. See [Shop](shop.md) for
+the delivery options and the stored order data.
 
 ## Order campaign attribution
 

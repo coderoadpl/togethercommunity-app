@@ -507,7 +507,8 @@ const applyCheckoutCompleted = async (
           shipping.value,
           deps,
         );
-  if (couponCoversFullPrice && discounted === null) {
+  const couponOverRedeemed = couponCoversFullPrice && discounted === null ? couponContext.coupon : null;
+  if (couponOverRedeemed !== null && (event.checkoutSession.amountTotalCents ?? 0) === 0) {
     return err(validation('Coupon redemption limit reached'));
   }
   const product = await deps.products.findById(tenant.id, metadata.productId);
@@ -537,6 +538,7 @@ const applyCheckoutCompleted = async (
           'PLN',
         provider,
         providerObjectIds: providerObjectIdsForCheckout(event),
+        ...(couponOverRedeemed === null ? {} : { couponId: couponOverRedeemed.id }),
         discountCents:
           event.checkoutSession.discountTotalCents ??
           couponContext?.session.discountCents ??
@@ -548,6 +550,9 @@ const applyCheckoutCompleted = async (
       },
       deps,
     ));
+  if (couponOverRedeemed !== null) {
+    deps.logger.warn(`[stripe-webhook] recorded tenant=${tenant.id} event=${event.id} session=${event.objectId} order=${paidOrder.id} coupon=${couponOverRedeemed.id} reason=coupon_over_redeemed`);
+  }
 
   let emailsQueued = false;
   if (event.mode !== 'test' && product !== null) {

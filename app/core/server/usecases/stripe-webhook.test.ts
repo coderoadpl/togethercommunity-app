@@ -3378,24 +3378,39 @@ describe('shipped checkout fulfilment', () => {
     expect(h.redemptions).toHaveLength(1);
   });
 
-  it('refuses a fully discounted shipped product once the coupon redemption limit is consumed', async () => {
+  it('records a paid shipped order without a redemption when the coupon limit is consumed after Stripe collected the fee', async () => {
     const bundle = shippedPayment((lines) => lines.slice(0, 2));
     const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
     h.deps.products = bundle.deps.products;
     if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
     h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
-    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    const event = completedEvent({ id: 'evt-over-redeemed', objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
     if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
     event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
     event.checkoutSession.metadata.salesLinkId = 'link-1';
     event.checkoutSession.shippingCostCents = 1499;
     event.checkoutSession.shipping = collectedShipping;
-    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
-      ok: false,
-      error: { code: 'validation', message: 'Coupon redemption limit reached' },
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    const order = h.orders[0];
+    expect(order).toMatchObject({
+      status: 'paid', couponId: h.coupon.id, amountCents: 1499, discountCents: 10300, fulfilmentStatus: 'to_pack',
+      lines: bundle.lines, providerObjectIds: { checkoutSession: 'cs-coupon' },
+      shipping: { rateId: 'locker', amountCents: 1499, address: { name: 'Jane Buyer', line1: 'Garden Street 5' }, phone: '+48600100200' },
     });
-    expect(h.orders).toHaveLength(0);
     expect(h.redemptions).toHaveLength(0);
+    expect(h.warnings).toEqual([
+      `[stripe-webhook] recorded tenant=${tenantA.id} event=evt-over-redeemed session=cs-coupon order=${order?.id} coupon=${h.coupon.id} reason=coupon_over_redeemed`,
+    ]);
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.autoInvoiceJobs).toHaveLength(1);
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-over-redeemed-redelivered' }, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-over-redeemed-async', type: 'checkout.session.async_payment_succeeded' }, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(0);
+    expect(h.warnings).toHaveLength(1);
   });
 
   it('records the same delivery data from a pre-basil and a basil checkout session', async () => {

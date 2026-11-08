@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
+import { registerPublicMetaCapiRoutes } from './meta-capi-routes.js';
 import { registerPublicMarketingSignupRoutes } from './marketing-signup-routes.js';
 import { type Context, type Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -286,6 +287,7 @@ const checkoutIdentity = async (c: Context<AppVars>, deps: AppDeps) => {
 
 export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   registerDirectSalesLinkRoutes(app, deps);
+  registerPublicMetaCapiRoutes(app, deps);
   const attestation = { version: deps.appVersion, sha: deps.commitSha };
 
   registerManifestRoute(app, deps);

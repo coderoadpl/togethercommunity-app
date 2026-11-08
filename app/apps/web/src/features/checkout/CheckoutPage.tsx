@@ -1,3 +1,4 @@
+import { MetaCapiConsent } from './MetaCapiConsent.js';
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
@@ -276,6 +277,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             purchase={paymentStatus.data?.status === 'paid' ? paymentStatus.data.analytics : undefined}
             testMode={testEnabled || sessionId?.startsWith('cs_test_') === true || new URLSearchParams(window.location.search).get('test_purchase') === '1'}
           /> : null}
+          {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <CardTitle variant="h1">{title}</CardTitle>
           <Typography variant="body1">

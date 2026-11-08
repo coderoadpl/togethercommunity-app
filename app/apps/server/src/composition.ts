@@ -1,3 +1,6 @@
+import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
+import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
+import type { MetaCapiDispatchDeps } from '#core/server/usecases/meta-capi.js';
 import { createTenantTeamRepository } from '#adapters/db/repositories.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -415,6 +418,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
+  metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
   telemetryTenantDirectory: TelemetryTenantDirectory;
@@ -1456,6 +1460,8 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
+    metaCapi: { repository: createMetaCapiRepository(db, resolveOrigin), tenants, clock, hash: contentHash,
+      secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),

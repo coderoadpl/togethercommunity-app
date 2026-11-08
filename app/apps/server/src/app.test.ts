@@ -5088,6 +5088,7 @@ describe('public route manifest', () => {
       'Amazon SNS delivery webhook',
       'Stripe payment webhook',
       'Checkout session start',
+      'Rate-limited JSON consent decision with an opaque checkout or order credential; no cross-origin writes',
       'Rate-limited direct sales-link checkout session creation',
       'Login, recovery, and magic-link authentication surface',
       'Rate-limited public signup recording contacts, consent evidence and confirmation mail requests',

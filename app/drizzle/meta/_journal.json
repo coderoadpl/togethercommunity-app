@@ -1051,6 +1051,13 @@
       "when": 1790964000021,
       "tag": "0149_direct_coupon_checkout_email",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1790964000022,
+      "tag": "0150_meta_capi",
+      "breakpoints": true
     }
   ]
 }

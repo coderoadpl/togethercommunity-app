@@ -1,6 +1,7 @@
 import { BundleOfferSummary } from './BundleOfferSummary.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
 import { DeliveryStep } from './DeliveryStep.js';
+import { ProductSafetyInfo, ProductVariantChips } from './ProductSafetyInfo.js';
 import { useEffect, useMemo, useReducer, useState, type FormEvent } from 'react';
 import {
   Alert,
@@ -167,9 +168,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   ) : bundle === undefined ? undefined : { id: bundle.lines[0]?.productId ?? '', title: bundle.salesLink.heading, description: '', coverUrl: null, vatRate: null, vatExemptionBasis: null, priceCents: bundle.totalCents, currency: bundle.currency, prices: emptyPrices, marketingConsents: bundle.marketingConsents };
   }, [bundle, productRef, salesLinkSlug, singleOffer.data]);
   const productId = product?.id ?? productRef;
+  const offerProduct = salesLinkSlug === undefined ? singleOffer.data?.products.find((candidate) => candidate.id === productId) : undefined;
   const soldOut = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productRef || candidate.slug === productRef)?.stock.soldOut === true
     : bundle?.soldOut === true;
+  const safetyEntries = salesLinkSlug === undefined
+    ? offerProduct?.compliance == null ? [] : [{ productId: offerProduct.id, title: offerProduct.title, type: offerProduct.type, compliance: offerProduct.compliance }]
+    : (bundle?.lines ?? []).flatMap((line) => line.compliance == null ? [] : [{ productId: line.productId, title: line.name, type: line.type, compliance: line.compliance }]);
+  const titledSafety = (bundle?.lines.length ?? 0) > 1;
   const selectedPrice = product?.prices.find((price) => price.id === selectedPriceId) ?? product?.prices[0] ?? null;
   const shippingRequired = salesLinkSlug === undefined
     ? singleOffer.data?.products.find((candidate) => candidate.id === productId)?.deliveryMethod === 'shipping'
@@ -441,6 +447,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     >
         <Stack useFlexGap spacing="1rem">
           {bundle === undefined ? <CardTitle variant="h1">{product.title}</CardTitle> : null}
+          {offerProduct === undefined ? null : <ProductVariantChips productId={offerProduct.id} variants={offerProduct.variants} />}
           {bundle === undefined && product.prices.length <= 1 ? (
             <CheckoutPrice component="p">
               <DataValue>
@@ -459,6 +466,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             fallbackTestId="checkout-product-cover-fallback"
           />
           {bundle === undefined ? <RichTextContent html={product.description} /> : <BundleOfferSummary heading={bundle.salesLink.heading} descriptionHtml={bundle.descriptionHtml} lines={bundle.lines} currency={bundle.currency} totalCents={bundle.totalCents} />}
+          {safetyEntries.map((entry) => (
+            <ProductSafetyInfo key={entry.productId} compliance={entry.compliance} expanded={entry.type === 'physical'} productTitle={titledSafety ? entry.title : undefined} />
+          ))}
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>

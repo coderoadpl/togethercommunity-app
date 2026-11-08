@@ -43,8 +43,8 @@ export const formatOfferPriceTerms = (
   return labels.oneTime({ price: formatted });
 };
 
-export const formatDate = (value: string, language: string): string =>
-  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium' }).format(new Date(value));
+export const formatDate = (value: string, language: string, timeZone?: string): string =>
+  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeZone }).format(new Date(value));
 
 export const formatTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { timeStyle: 'short' }).format(new Date(value));

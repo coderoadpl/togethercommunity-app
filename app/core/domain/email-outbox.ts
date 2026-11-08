@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DEFAULT_LANGUAGE } from './language.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, orderShipped, orderShippedEmailDetailsSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -63,6 +63,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('space-event'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('subscription-ended'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), offerUrl: z.string().url(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('order-shipped'), language: z.string(), tenantName: z.string(), shipment: orderShippedEmailDetailsSchema, branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('support-message'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), memberDisplay: z.string(), subject: z.string(), body: z.string(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('member-erasure-request'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), requestedAt: z.string().datetime(), dueAt: z.string().datetime(), panelUrl: z.string().url() }),
   z.object({ kind: z.literal('reputation-alert'), language: z.string(), tenantName: z.string(), status: z.enum(['warn', 'critical']), hardBounceRate: z.number().nonnegative().nullable(), complaintRate: z.number().nonnegative().nullable(), windowStart: z.string().datetime(), windowEnd: z.string().datetime(), dashboardUrl: z.string().url() }),
@@ -88,6 +89,7 @@ const AUTH_BEARING_EMAIL_KINDS = {
   'space-event': false,
   'subscription-payment-failed': false,
   'subscription-ended': false,
+  'order-shipped': false,
   'support-message': false,
   'member-erasure-request': false,
   'reputation-alert': false,
@@ -169,6 +171,12 @@ const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
                       offerUrl: value.offerUrl,
                       ...(value.branding === undefined ? {} : { branding: value.branding }),
                     })
+                  : value.kind === 'order-shipped'
+                    ? orderShipped(value.language, {
+                        tenantName: value.tenantName,
+                        shipment: value.shipment,
+                        ...(value.branding === undefined ? {} : { branding: value.branding }),
+                      })
                   : value.kind === 'support-message'
                     ? supportMessage(value.language, {
                         tenantName: value.tenantName,

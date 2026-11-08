@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
+import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -20,6 +20,7 @@ import {
   spacePost,
   stockLowEmail,
   subscriptionEnded,
+  orderShipped,
   subscriptionPaymentFailed,
   supportMessage,
   threadReply,
@@ -522,6 +523,7 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', productTitle: 'Course', accessEndsAt: '1998-08-17T10:00:00.000Z',
       offerUrl: 'https://acme.test/offer',
     })],
+    ['order-shipped', (language) => orderShipped(language, orderShippedFixturePl)],
     ['support-message', (language) => supportMessage(language, {
       tenantName: 'Acme Courses', memberEmail: 'alex@acme.test', memberDisplay: 'Alex',
       subject: 'Question', body: 'Body',
@@ -581,6 +583,43 @@ describe('transactional message catalogue', () => {
 
   it.each(catalogue)('falls back to the default locale for %s when the language is unsupported', (_kind, render) => {
     expect(render('de')).toEqual(render('en'));
+  });
+});
+
+describe('orderShipped', () => {
+  const addressDelivery = {
+    tenantName: 'Acme Courses',
+    shipment: {
+      orderNumber: 'order-42',
+      items: ['Printed <stand>'],
+      delivery: { method: 'Courier', pickupPoint: null, address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' } },
+      carrier: 'other' as const,
+      trackingNumber: 'RR123456789PL',
+      trackingUrl: null,
+    },
+  };
+
+  it('matches the Polish golden message for a parcel locker shipment', () => {
+    expect(orderShipped('pl', orderShippedFixturePl)).toEqual(expectedTransactionalEmailPl.orderShipped);
+  });
+
+  it('renders the postal address, escapes item names and omits the link for other carriers', () => {
+    const message = orderShipped('en', addressDelivery);
+    expect(message.subject).toBe('Your order order-42 has been shipped — Acme Courses');
+    expect(message.html).toContain('<li>Printed &lt;stand&gt;</li>');
+    expect(message.html).toContain('<p><strong>Delivery</strong>: Courier<br>Jane Buyer<br>Garden Street 5<br>00-950 Warsaw<br>PL</p>');
+    expect(message.html).toContain('<p><strong>Carrier</strong>: Other carrier<br>Tracking number: RR123456789PL</p>');
+    expect(message.html).not.toContain('<a ');
+    expect(message.text).toContain('Carrier: Other carrier\nTracking number: RR123456789PL');
+  });
+
+  it('adds the workspace branding and social links', () => {
+    const message = orderShipped('en', {
+      ...addressDelivery,
+      branding: { logoUrl: 'https://acme.test/logo.png', accentColor: '#112233', socialLinks: [{ label: 'Instagram', url: 'https://instagram.com/acme' }] },
+    });
+    expect(message.html).toContain('src="https://acme.test/logo.png"');
+    expect(message.text).toContain('Instagram: https://instagram.com/acme');
   });
 });
 

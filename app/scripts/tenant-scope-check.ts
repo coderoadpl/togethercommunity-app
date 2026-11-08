@@ -147,6 +147,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   SesMarketingQuotaReader: 'External SES quota boundary.',
   SesMarketingSender: 'External SES delivery boundary.',
   SesOnboardingControlPlane: 'External SES and SNS control-plane boundary.',
+  ShipOrderDeps: 'Use-case email dispatch callback.',
   SmtpTransport: 'External SMTP delivery boundary.',
   SnsSubscriptionOperations: 'External SNS subscription boundary.',
   SnsVerifier: 'External SNS verification boundary.',

@@ -8,6 +8,8 @@ import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
 import { user } from './auth-schema.js';
 
 import type {
+  OrderShipment,
+  ProductCompliance,
   OrderShipping,
   ShippingRate,
   MarketingListRule,
@@ -367,6 +369,9 @@ export const products = pgTable(
     everPublished: boolean('ever_published').default(false),
     visibility: text('visibility', { enum: ['listed', 'unlisted'] }).notNull().default('listed'),
     deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
+    compliance: jsonb('compliance').$type<ProductCompliance>(),
+    variantGroup: text('variant_group'),
+    variantLabel: text('variant_label'),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
     checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
@@ -376,6 +381,7 @@ export const products = pgTable(
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
     index('products_tenantId_idx').on(table.tenantId),
+    index('products_tenant_variant_group_idx').on(table.tenantId, table.variantGroup),
     check('products_visibility_check', sql`${table.visibility} in ('listed', 'unlisted')`),
     check('products_delivery_method_check', sql`${table.deliveryMethod} in ('pickup', 'shipping')`),
     uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
@@ -538,7 +544,8 @@ export const orders = pgTable(
     salesLinkId: text('sales_link_id'),
     lines: jsonb('lines').$type<OrderLine[]>().notNull().default([]),
     shipping: jsonb('shipping').$type<OrderShipping>(),
-    fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack'] }),
+    fulfilmentStatus: text('fulfilment_status', { enum: ['to_pack', 'shipped'] }),
+    shipment: jsonb('shipment').$type<OrderShipment>(),
     verificationToken: text('verification_token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
     createdAt: text('created_at').notNull(),

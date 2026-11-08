@@ -3,6 +3,7 @@ import { listTenantTeam, addTenantAdmin, removeTenantAdmin } from '#core/server/
 import { safeErrorMessage } from '#core/server/log-safety.js';
 import { registerConsumerSalesRoutes } from './consumer-sales-routes.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
+import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
@@ -1359,6 +1360,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSurveyRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
+  registerOrderFulfilmentRoutes(app, deps);
 
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));

@@ -6,13 +6,11 @@ import {
   Chip,
   Checkbox,
   FormControl,
-  FormControlLabel,
   InputLabel,
   Link as MuiLink,
   MenuItem,
   Select,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -24,7 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
+import type { FulfilmentStatus, OrderExportFile, OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
 import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -35,6 +33,15 @@ import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+const saveFile = (file: OrderExportFile) => {
+  const url = URL.createObjectURL(new Blob([file.content], { type: file.mimeType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = file.filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 export const SalesPanel = () => {
   const t = useTranslations();
@@ -53,7 +60,8 @@ export const SalesPanel = () => {
   const [kind, setKind] = useState<PriceKind | 'all'>('all');
   const [couponId, setCouponId] = useState('all');
   const [source, setSource] = useState('');
-  const [needsShipping, setNeedsShipping] = useState(false);
+  const [fulfilment, setFulfilment] = useState<FulfilmentStatus | 'all'>('all');
+  const [packing, setPacking] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState<OrderExportFormat | null>(null);
@@ -67,7 +75,7 @@ export const SalesPanel = () => {
     ...(kind === 'all' ? {} : { kind }),
     ...(couponId === 'all' ? {} : { couponId }),
     ...(source === '' ? {} : source === 'none' ? { source } : { source: source.slice(6), sourceMatch: 'exact' as const }),
-    ...(needsShipping ? { fulfilmentStatus: 'to_pack' as const } : {}),
+    ...(fulfilment === 'all' ? {} : { fulfilmentStatus: fulfilment }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
@@ -101,17 +109,23 @@ export const SalesPanel = () => {
     setExporting(format);
     setExportError(null);
     try {
-      const file = await queryClient.fetchQuery(actions.ordersExport({ format, ...filters }));
-      const url = URL.createObjectURL(new Blob([file.content], { type: file.mimeType }));
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = file.filename;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      saveFile(await queryClient.fetchQuery(actions.ordersExport({ format, ...filters })));
     } catch (error) {
       setExportError(localizePanelError(error, t));
     } finally {
       setExporting(null);
+    }
+  };
+
+  const downloadPackingList = async (fulfilmentStatus: FulfilmentStatus) => {
+    setPacking(true);
+    setExportError(null);
+    try {
+      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, ...(mode === 'all' ? {} : { mode }) })));
+    } catch (error) {
+      setExportError(localizePanelError(error, t));
+    } finally {
+      setPacking(false);
     }
   };
 
@@ -266,11 +280,24 @@ export const SalesPanel = () => {
                   <MenuItem value="recurring">{t.sales.recurring}</MenuItem>
                 </Select>
               </FormControl>
-              <FormControlLabel
-                label={t.shipping.needsShipping}
-                control={<Switch size="small" checked={needsShipping} data-testid="sales-needs-shipping-filter"
-                  onChange={(_event, checked) => { setNeedsShipping(checked); resetPage(); }} />}
-              />
+              <FormControl size="small" sx={{ minWidth: '9rem' }}>
+                <InputLabel id="sales-fulfilment-label">{t.shipping.fulfilmentFilter}</InputLabel>
+                <Select
+                  labelId="sales-fulfilment-label"
+                  label={t.shipping.fulfilmentFilter}
+                  value={fulfilment}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setFulfilment(value === 'to_pack' || value === 'shipped' ? value : 'all');
+                    resetPage();
+                  }}
+                  data-testid="sales-fulfilment-filter"
+                >
+                  <MenuItem value="all">{t.shipping.fulfilmentAll}</MenuItem>
+                  <MenuItem value="to_pack">{t.shipping.fulfilmentStatuses.to_pack}</MenuItem>
+                  <MenuItem value="shipped">{t.shipping.fulfilmentStatuses.shipped}</MenuItem>
+                </Select>
+              </FormControl>
             </Stack>
           ),
           actions: (
@@ -279,6 +306,11 @@ export const SalesPanel = () => {
                 <Button variant="contained" disabled={sending || selectedHeld.length === 0}
                   onClick={() => void sendSelected(selectedHeld)}>
                   {t.sales.sendSelectedToKsef}
+                </Button>
+              ) : null}
+              {fulfilment === 'to_pack' ? (
+                <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
+                  {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
                 </Button>
               ) : null}
               <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
@@ -308,7 +340,7 @@ export const SalesPanel = () => {
             />
           ) : undefined
         }
-        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && source === '' && !needsShipping && debouncedSearch.length === 0}
+        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && source === '' && fulfilment === 'all' && debouncedSearch.length === 0}
         empty={
           <StatusView
             state={{
@@ -339,6 +371,7 @@ export const SalesPanel = () => {
                   <TableCell>{t.sales.coupon}</TableCell>
                   <TableCell>{t.sales.source}</TableCell>
                   <TableCell>{t.sales.status}</TableCell>
+                  <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
                   <TableCell>{t.sales.invoiceStatus}</TableCell>
                 </TableRow>
               </TableHead>
@@ -373,7 +406,12 @@ export const SalesPanel = () => {
                     <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>
                     <TableCell>
                       <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
-                      {order.fulfilmentStatus === 'to_pack' ? <Chip size="small" color="warning" variant="outlined" label={t.shipping.toPack} sx={{ ml: '0.25rem' }} /> : null}
+                    </TableCell>
+                    <TableCell>
+                      {order.fulfilmentStatus == null ? '—' : (
+                        <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
+                          label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
+                      )}
                     </TableCell>
                     <TableCell>
                       {order.invoice == null ? null : <Stack useFlexGap spacing="0.5rem">

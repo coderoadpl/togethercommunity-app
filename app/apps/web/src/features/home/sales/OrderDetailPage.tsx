@@ -2,7 +2,7 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -10,6 +10,7 @@ import { localizePanelError, useLanguage, useTranslations } from '../../../i18n/
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { OrderShipment } from './OrderShipment.js';
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
@@ -30,6 +31,13 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
+  const shipOrder = useMutation({
+    ...actions.shipOrder,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
+  });
+  const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
   const refreshInvoice = useMutation({
     ...actions.refreshInvoice,
     onSuccess: async () => {
@@ -104,7 +112,10 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
             {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
-            {order.fulfilmentStatus === 'to_pack' ? <Chip size="small" color="warning" label={t.shipping.toPack} data-testid="order-to-pack" /> : null}
+            {order.fulfilmentStatus == null ? null : (
+              <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
+                label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
+            )}
           </Stack>
         </Stack>
       </SectionCard>
@@ -129,6 +140,13 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                 <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
               </Stack>
             ))}
+            <OrderShipment
+              order={order}
+              canShip={canShip}
+              pending={shipOrder.isPending}
+              error={shipOrder.isError ? localizePanelError(shipOrder.error, t) : null}
+              onShip={(input) => shipOrder.mutate({ orderId: order.id, ...input })}
+            />
           </Stack>
         </SectionCard>
       )}

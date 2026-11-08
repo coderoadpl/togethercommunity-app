@@ -61,7 +61,8 @@ follow the same member-erasure selection as live orders.
   confirmation payload (`payload.purchase.delivery.address`) of every
   tenant-scoped `email_outbox` row addressed to the member's e-mail; that
   payload carries no phone number, and a parcel locker delivery stores no
-  postal address there;
+  postal address there; the shipment e-mail payload
+  (`payload.shipment.delivery.address`) receives the same replacement;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state

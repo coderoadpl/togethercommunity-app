@@ -24,6 +24,18 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     delivery: 'Delivery',
     pickupPoint: 'Parcel locker',
   },
+  orderShipped: {
+    items: 'Shipped items',
+    carrier: 'Carrier',
+    trackingNumber: 'Tracking number',
+    trackLabel: 'Track the parcel',
+    carriers: { inpost: 'InPost', other: 'Other carrier' },
+    render: ({ header, tenantName, tenantNameHtml, orderNumber, orderNumberHtml, items, delivery, tracking, socialLinks }) => ({
+      subject: `Your order ${orderNumber} has been shipped — ${tenantName}`,
+      html: `${header}<p>Hello!</p><p>Your order ${orderNumberHtml} from ${tenantNameHtml} has been shipped.</p>${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
+      text: `Hello!\n\nYour order ${orderNumber} from ${tenantName} has been shipped.${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
+    }),
+  },
   welcomeSignIn: {
     actionLabels: {
       course: 'Sign in and open your course',

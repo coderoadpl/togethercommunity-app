@@ -143,6 +143,7 @@
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
             "deliveryMethod": "pickup",
@@ -167,6 +168,7 @@
             },
             "title": "Acme Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }

@@ -33,6 +33,7 @@ const sourceKindLabelKey: Record<EmailSendSourceKind, keyof Messages['marketing'
   'space-event': 'spaceEvent',
   'subscription-payment-failed': 'subscriptionPaymentFailed',
   'subscription-ended': 'subscriptionEnded',
+  'order-shipped': 'orderShipped',
   'support-message': 'supportMessage',
   'member-erasure-request': 'memberErasureRequest',
   'reputation-alert': 'reputationAlert',

@@ -694,6 +694,56 @@ describe('ProductsPanel', () => {
     });
   });
 
+  it('saves product safety information and variant fields for a physical product', async () => {
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', deliveryMethod: 'shipping', published: false, accessItems: [],
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      const body = await request.json();
+      bodies.push(body);
+      return HttpResponse.json({ ok: true, data: { product: physical } });
+    }));
+    expect(await screen.findByText(en.productVariants.heading)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(en.productVariants.group), 'printed-stand');
+    await userEvent.type(screen.getByLabelText(en.productVariants.label), 'Black');
+    await userEvent.click(within(screen.getByTestId('product-compliance')).getByRole('button'));
+    await userEvent.type(await screen.findByLabelText(en.productSafety.manufacturerName), 'Example Workshop');
+    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.incomplete);
+    expect(bodies).toEqual([]);
+    await userEvent.type(screen.getByLabelText(en.productSafety.manufacturerAddress), 'Example Street 1, Warsaw');
+    await userEvent.type(screen.getByLabelText(en.productSafety.manufacturerEmail), 'safety@example.com');
+    await userEvent.type(screen.getByLabelText(en.productSafety.modelIdentifier), 'STAND-1');
+    await userEvent.type(screen.getByLabelText(en.productSafety.safetyWarnings), 'Keep away from open flame.');
+    await userEvent.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({
+      id: 'draft-1',
+      variantGroup: 'printed-stand',
+      variantLabel: 'Black',
+      compliance: {
+        manufacturerName: 'Example Workshop',
+        manufacturerAddress: 'Example Street 1, Warsaw',
+        manufacturerEmail: 'safety@example.com',
+        modelIdentifier: 'STAND-1',
+        batchIdentifier: null,
+        safetyWarnings: 'Keep away from open flame.',
+        instructionsUrl: null,
+      },
+    })]);
+  });
+
+  it('offers product safety and variant fields only for physical products', async () => {
+    await renderProductsPanel([], '/panel/products/draft-1');
+    expect(await screen.findByLabelText(en.products.titleLabel)).toBeInTheDocument();
+    expect(screen.queryByTestId('product-compliance')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-variants')).not.toBeInTheDocument();
+  });
+
   it('unpublishes a live product after confirmation', async () => {
     const product = initialProducts[0];
     if (product === undefined) throw new Error('Expected the base product fixture');

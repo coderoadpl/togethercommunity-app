@@ -55,6 +55,17 @@ export const purchaseEmailDetailsSchema = z.object({
   message: 'Currency and total must both be present or both be absent',
 });
 
+export const orderShippedEmailDetailsSchema = z.object({
+  orderNumber: z.string().min(1),
+  items: z.array(z.string().min(1)).min(1),
+  delivery: purchaseDeliverySchema,
+  carrier: z.enum(['inpost', 'other']),
+  trackingNumber: z.string().min(1),
+  trackingUrl: z.string().url().nullable(),
+});
+
+export type OrderShippedEmailDetails = z.output<typeof orderShippedEmailDetailsSchema>;
+
 export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
 
 const escapeHtmlCharacter = (character: string): string => {
@@ -228,6 +239,34 @@ export const welcomeSignIn = (
     html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
     text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
   });
+};
+
+export const orderShipped = (
+  language: string,
+  input: { tenantName: string; shipment: OrderShippedEmailDetails; branding?: EmailBranding },
+): EmailMessage => {
+  const messages = messagesFor(language);
+  const labels = messages.orderShipped;
+  const { shipment } = input;
+  const carrier = labels.carriers[shipment.carrier];
+  const trackingLink = shipment.trackingUrl === null ? null : link(shipment.trackingUrl, labels.trackLabel);
+  return emailMessageSchema.parse(labels.render({
+    tenantName: input.tenantName,
+    tenantNameHtml: escapeHtml(input.tenantName),
+    orderNumber: shipment.orderNumber,
+    orderNumberHtml: escapeHtml(shipment.orderNumber),
+    items: {
+      html: `<p>${escapeHtml(labels.items)}</p><ul>${shipment.items.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`,
+      text: `\n\n${labels.items}:\n${shipment.items.map((name) => `- ${name}`).join('\n')}`,
+    },
+    delivery: purchaseDelivery(shipment.delivery, messages.purchase),
+    tracking: {
+      html: `<p><strong>${escapeHtml(labels.carrier)}</strong>: ${escapeHtml(carrier)}<br>${escapeHtml(labels.trackingNumber)}: ${escapeHtml(shipment.trackingNumber)}${trackingLink === null ? '' : `<br>${trackingLink}`}</p>`,
+      text: `\n\n${labels.carrier}: ${carrier}\n${labels.trackingNumber}: ${shipment.trackingNumber}${shipment.trackingUrl === null ? '' : `\n${labels.trackLabel}: ${shipment.trackingUrl}`}`,
+    },
+    header: brandHeader(input.branding),
+    socialLinks: brandSocialLinks(input.branding),
+  }));
 };
 
 export const resetPassword = (

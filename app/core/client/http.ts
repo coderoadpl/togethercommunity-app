@@ -21,6 +21,7 @@ import {
   surveyContracts,
   salesLinkContracts,
   orderVerificationContracts,
+  orderFulfilmentContracts,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
   apiKeyImportAuditOutputSchema,
@@ -516,6 +517,8 @@ const directoryQuery = (input: object, drop: readonly string[] = ['contactId', '
 
 export const createApiClient = (options: ApiClientOptions) => ({
   verifyOrder: (input: z.input<typeof orderVerificationContracts.verifyOrder.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.verifyOrder.path.replace(':reference', encodeURIComponent(input.reference)), orderVerificationContracts.verifyOrder.output, undefined, signal),
+  shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
+  ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   issueOrderLine: (input: z.input<typeof orderVerificationContracts.issueOrderLine.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.issueOrderLine.path.replace(':orderId', encodeURIComponent(input.orderId)).replace(':productId', encodeURIComponent(input.productId)), orderVerificationContracts.issueOrderLine.output, input, signal),
   provisionOperatorTenant: (input: ProvisionTenantInput, secret: string) =>
     request(options, API_ROUTES.operatorTenantProvision.method, API_ROUTES.operatorTenantProvision.path,

@@ -1065,6 +1065,13 @@
       "when": 1790964000031,
       "tag": "0151_product_stock",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1790964000041,
+      "tag": "0152_order_fulfilment_compliance",
+      "breakpoints": true
     }
   ]
 }

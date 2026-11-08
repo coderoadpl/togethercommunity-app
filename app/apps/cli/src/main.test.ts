@@ -21,6 +21,8 @@ interface Hoisted {
   exportConsumerSales: ReturnType<typeof vi.fn>;
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
+  shipOrder: ReturnType<typeof vi.fn>;
+  ordersPackingList: ReturnType<typeof vi.fn>;
   provisionOperatorTenant: ReturnType<typeof vi.fn>;
   getOperatorTenantReadiness: ReturnType<typeof vi.fn>;
   activitySummary: ReturnType<typeof vi.fn>;
@@ -88,6 +90,8 @@ const h = vi.hoisted(
     exportConsumerSales: vi.fn(),
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
+    shipOrder: vi.fn(),
+    ordersPackingList: vi.fn(),
     provisionOperatorTenant: vi.fn(),
     getOperatorTenantReadiness: vi.fn(),
     activitySummary: vi.fn(),
@@ -203,6 +207,8 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     exportConsumerSales: h.exportConsumerSales,
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
+    shipOrder: h.shipOrder,
+    ordersPackingList: h.ordersPackingList,
     provisionOperatorTenant: h.provisionOperatorTenant,
     getOperatorTenantReadiness: h.getOperatorTenantReadiness,
     activitySummary: h.activitySummary,
@@ -302,6 +308,8 @@ beforeEach(() => {
   h.exportConsumerSales.mockReset().mockResolvedValue(ok({ filename: 'consumer-sales.csv', mimeType: 'text/csv', content: 'rate,gross_cents\n5,105' }));
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
+  h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.listSurveys.mockReset().mockResolvedValue(ok({ surveys: [] }));
   h.createSurvey.mockReset();
   h.deleteSurvey.mockReset().mockResolvedValue(ok({ deleted: true }));
@@ -1724,6 +1732,52 @@ describe('shipping CLI', () => {
     const rates = Array.from({ length: 6 }, (_, index) => ({ id: `rate-${index}`, label: 'Rate', amountCents: 100, carrier: 'other', pickupPoint: 'none', active: true }));
     await run('--json', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates));
     expect(h.updateTenantSettings).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('fulfilment CLI', () => {
+  it('ships an order with the carrier and tracking number', async () => {
+    await run('orders', 'ship', 'order-number', '--carrier', 'inpost', '--tracking', 'ABCD1234');
+    expect(h.shipOrder).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', carrier: 'inpost', trackingNumber: 'ABCD1234' });
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost ABCD1234)');
+  });
+
+  it('rejects an unknown carrier before calling the server and maps a second shipment to its exit code', async () => {
+    await run('--json', 'orders', 'ship', 'order-number', '--carrier', 'dhl', '--tracking', 'ABCD1234');
+    expect(h.shipOrder).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    h.shipOrder.mockResolvedValue(err(appError('fulfilment_conflict', 'Order has already been shipped')));
+    await run('--json', 'orders', 'ship', 'order-number', '--carrier', 'other', '--tracking', 'RR123456789PL');
+    expect(process.exitCode).toBe(27);
+  });
+
+  it('lists shipped orders and writes the packing list to a file', async () => {
+    await run('--json', 'orders', 'list', '--fulfilment', 'shipped');
+    expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ fulfilmentStatus: 'shipped' });
+    await run('orders', 'packing-list', '--format', 'csv');
+    expect(h.ordersPackingList).toHaveBeenCalledExactlyOnceWith({ format: 'csv' });
+    expect(logSpy).toHaveBeenCalledWith('order_number,paid_at');
+    await run('--json', 'orders', 'packing-list', '--format', 'json');
+    expect(h.ordersPackingList).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('passes product safety information and variant fields to product create and update', async () => {
+    const compliance = { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1', manufacturerEmail: 'safety@example.com', modelIdentifier: 'STAND-1' };
+    await run('--json', 'product', 'create', '--title', 'Printed stand', '--type', 'physical', '--price-cents', '4900',
+      '--compliance', JSON.stringify(compliance), '--variant-group', 'printed-stand', '--variant-label', 'Black · ASA');
+    expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'printed-stand', variantLabel: 'Black · ASA',
+    }));
+    await run('--json', 'product', 'update', 'product-1', '--compliance', 'null', '--clear-variant');
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', compliance: null, variantGroup: null, variantLabel: null });
+  });
+
+  it('rejects invalid product safety information before calling the server', async () => {
+    await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
+    expect(h.createProduct).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
   });
 });

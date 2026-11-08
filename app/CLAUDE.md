@@ -122,7 +122,8 @@ consent-cookie rule (cookie name, optional value fragment, and a bypass switch
 for workspaces that collect consent outside the platform). The live checkout
 success document — the `/offer/*` and `/checkout/*` documents requested with
 `status=success`, and no other document — is the only platform document
-permitted to load third-party scripts, and only these two vendor sources:
+permitted to load third-party scripts (subject to the parcel-locker amendment
+below), and only these two vendor sources:
 Google's tag library under `https://www.googletagmanager.com/gtag/` and Meta's
 pixel library with its configuration scripts under
 `https://connect.facebook.net`. On that document the `script-src` directive of
@@ -143,11 +144,42 @@ one workspace's success document runs with a credential that is valid for
 every workspace where the buyer has roles and can reach same-origin
 account-level auth endpoints; the owner accepts this platform-wide exposure on
 the strength of the two vendors' libraries being the only foreign code, the
-success document being the only place they run, and the full-navigation exit.
+success document being the only place they run (subject to the parcel-locker
+amendment below), and the full-navigation exit.
 Consent: a matching consent cookie grants all four Google consent categories
 and enables the pixel; the bypass switch grants Google analytics storage only
 and enables the pixel without a consent gate, with the workspace owner
 carrying that responsibility.
+
+Parcel locker map (owner decision 2026-11-05, approved for PR #386): this
+amends the two statements above that the success document is the only
+document where foreign code runs. The checkout form documents (`/checkout/*`
+without `status=success`, `/offer/*?checkout=together` and
+`/offer/*?status=cancelled`) may additionally allow one vendor source,
+`https://geowidget.inpost.pl`, in `script-src` and `style-src`; no other
+directive and no other document changes, and the success document keeps its
+own rule. Load conditions: the InPost script and stylesheet load only when the
+workspace has configured a Geowidget token, the buyer has chosen a
+parcel-locker delivery option, the checkout runs in live mode and the viewer
+holds no staff session for the workspace; a staff member or a test-mode
+purchase never injects the vendor code and uses the typed locker code instead,
+and a typed locker code stays available for every buyer without the script.
+Exit rule: once the vendor script has been injected, leaving the document uses
+a full document navigation (no in-app router transition), so the vendor code
+never runs in sign-in views, Studio or member views; the server middleware and
+the static hosting headers each list the origin only for the three document
+kinds above, and regression tests assert the headers and the load conditions.
+Risk accepted by the owner: the
+InPost library runs on buyer checkout documents where the buyer types
+delivery data and where the session cookie, set for the base domain, is valid
+for the platform host and every workspace subdomain, so a signed-in buyer
+runs the vendor script with a credential that is valid for every workspace
+where that buyer has roles, including staff roles in other workspaces, and
+that can reach same-origin account-level auth endpoints; the load conditions
+keep only the current workspace's staff and test-mode purchases away from the
+script. The owner accepts this platform-wide exposure on the strength of
+InPost being the only foreign code on those documents, the load conditions
+and the full-navigation exit.
 
 Direct sales-link checkout (owner decision 2026-10-11): `/offer/` is forwarded
 so public sales links can render the server checkout handoff and crawler metadata.

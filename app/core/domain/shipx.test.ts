@@ -95,7 +95,7 @@ describe('ShipX domain', () => {
     expect(buildShipxShipmentRequest({
       ...input,
       shipping: shipping({ pickupPoint: null, address: { ...shipping().address, line1: 'Rynek' } }),
-    })).toMatchObject({ ok: false, error: { code: 'validation', message: 'The building number cannot be read from the delivery address' } });
+    })).toMatchObject({ ok: false, error: { code: 'validation', message: 'The building number cannot be read from the delivery address', details: { state: 'receiver_invalid', field: 'building_number' } } });
   });
 
   it('treats a shipment as bought only with a tracking number past the offer stages', () => {
@@ -119,7 +119,7 @@ describe('ShipX domain', () => {
     expect(shipxClientKind('sandbox', 'test')).toEqual({ ok: true, value: 'real' });
     expect(shipxClientKind('sandbox', 'live')).toEqual({
       ok: false,
-      error: { code: 'validation', message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders' },
+      error: { code: 'validation', message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders', details: { state: 'setup_missing', reason: 'sandbox_environment' } },
     });
     expect(shipxClientKind('production', 'live')).toEqual({ ok: true, value: 'real' });
     expect(shipxClientKind('production', 'test')).toEqual({ ok: true, value: 'fake' });

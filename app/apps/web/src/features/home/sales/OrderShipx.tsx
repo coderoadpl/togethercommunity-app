@@ -1,10 +1,9 @@
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { useState } from 'react';
-import { z } from 'zod';
-import { shipxAttemptUnconfirmed, shipxErrorDetailsSchema, type OrderListItem, type ShipxOrderView } from '#core/domain/index.js';
+import { SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, type OrderListItem, type ShipxOrderView } from '#core/domain/index.js';
 
 import { ConfirmDialog } from '../../../components/layout/index.js';
-import { localizePanelError, useTranslations } from '../../../i18n/index.js';
+import { localizeShipxError, useTranslations } from '../../../i18n/index.js';
 
 interface OrderShipxProps {
   order: OrderListItem;
@@ -19,21 +18,8 @@ interface OrderShipxProps {
   onDownloadLabel: () => void;
 }
 
-const failureSchema = z.object({ appError: z.object({ message: z.string(), details: z.unknown().optional() }) });
-
-const failureDetail = (error: unknown): string | null => {
-  const failure = failureSchema.safeParse(error);
-  if (!failure.success) return null;
-  const shipx = shipxErrorDetailsSchema.safeParse(failure.data.appError.details);
-  if (!shipx.success) return failure.data.appError.message;
-  const fields = Object.entries(shipx.data.fields).map(([field, keys]) => `${field}: ${keys.join(', ')}`);
-  return [shipx.data.description ?? failure.data.appError.message, ...fields].join('; ');
-};
-
-const HINT_REASONS = ['credentials_missing', 'sender_missing', 'sandbox_environment'] as const;
-
-const hintReason = (reason: ShipxOrderView['reason']): (typeof HINT_REASONS)[number] | null =>
-  HINT_REASONS.find((candidate) => candidate === reason) ?? null;
+const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)[number] | null =>
+  SHIPX_SETUP_GAPS.find((candidate) => candidate === reason) ?? null;
 
 export const OrderShipx = ({ order, view, canCreate, pending, discarding, downloading, error, onCreate, onDiscard, onDownloadLabel }: OrderShipxProps) => {
   const t = useTranslations();
@@ -43,7 +29,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const labelReady = shipment?.shipxShipmentId != null && shipment.trackingNumber !== null;
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
   const awaitingPayment = shipment?.shipxShipmentId != null && shipment.trackingNumber === null && view.reason === null;
-  const detail = error === null ? null : failureDetail(error);
+  const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
   const size = t.shipx.parcelTemplates[view.parcelTemplate];
   const showCreate = canCreate && view.available;
@@ -77,10 +63,10 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         ) : null}
       </Stack>
       {hint === null ? null : <Typography color="text.secondary" data-testid="order-shipx-hint">{hint}</Typography>}
-      {error === null ? null : (
+      {failure === null ? null : (
         <Alert severity="error" data-testid="order-shipx-error">
-          {localizePanelError(error, t)}
-          {detail === null ? null : <Typography component="div" variant="body2">{t.shipx.errorDetail({ detail })}</Typography>}
+          {failure.message}
+          {failure.detail === null ? null : <Typography component="div" variant="body2">{t.shipx.errorDetail({ detail: failure.detail })}</Typography>}
         </Alert>
       )}
       <ConfirmDialog

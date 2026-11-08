@@ -1,11 +1,9 @@
 import {
-  appError,
   buildShipxShipmentRequest,
   configureShipxInputSchema,
   DEFAULT_PARCEL_TEMPLATE,
   DEFAULT_SHIPX_ENVIRONMENT,
   err,
-  integrationNotConfigured,
   largestParcelTemplate,
   notFound,
   ok,
@@ -25,7 +23,7 @@ import {
   shipxReference,
   shipxServiceFor,
   shipxShipmentBought,
-  shipxUnavailable,
+  shipxStateError,
   validation,
   type AppError,
   type OrderListItem,
@@ -162,7 +160,11 @@ const resolveCredentials = async (
     deps.secrets.resolve(tenantId, 'shipx.token'),
   ]);
   if (!organizationId.ok || !token.ok) {
-    return err(integrationNotConfigured('Save the InPost ShipX organization id and token in Settings → Shipping'));
+    return err(shipxStateError(
+      'integration_not_configured',
+      'Save the InPost ShipX organization id and token in Settings → Shipping',
+      { state: 'setup_missing', reason: 'credentials_missing' },
+    ));
   }
   return ok({ organizationId: organizationId.value, token: token.value, environment: settings.environment });
 };
@@ -181,16 +183,17 @@ const clientFor = (environment: ShipxEnvironment, order: OrderListItem, clients:
 
 const storedCredentials = (shipment: ShipxShipmentRecord, current: ShipxCredentials): Result<ShipxCredentials, AppError> => {
   if (shipment.environment !== current.environment) {
-    return err(appError(
+    return err(shipxStateError(
       'conflict',
       `The InPost shipment was created in the ShipX ${shipment.environment} environment, but the settings now use ${current.environment}; switch back or finish the shipment in Manager Paczek`,
-      { environment: shipment.environment },
+      { state: 'environment_mismatch', environment: shipment.environment, settingsEnvironment: current.environment },
     ));
   }
   if (shipment.organizationId !== current.organizationId) {
-    return err(appError(
+    return err(shipxStateError(
       'conflict',
       'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek',
+      { state: 'organization_mismatch' },
     ));
   }
   return ok({ environment: shipment.environment, organizationId: shipment.organizationId, token: current.token });
@@ -280,13 +283,13 @@ export const getInpostShipment = async (
 };
 
 const pendingPayment = (shipmentId: string, status: string | null): AppError =>
-  shipxUnavailable('InPost has not confirmed the payment yet; refresh the order in a moment', { state: 'pending', shipmentId, status });
+  shipxStateError('shipx_unavailable', 'InPost has not confirmed the payment yet; refresh the order in a moment', { state: 'pending', shipmentId, status });
 
 const pendingShipment = (status: string): AppError =>
-  shipxUnavailable('InPost ShipX is answering slowly; refresh the order in a moment', { state: 'pending', shipmentId: null, status });
+  shipxStateError('shipx_unavailable', 'InPost ShipX is answering slowly; refresh the order in a moment', { state: 'pending', shipmentId: null, status });
 
 const lostLock = (): AppError =>
-  appError('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' });
+  shipxStateError('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' });
 
 interface ShipmentRun {
   tenantId: string;
@@ -378,7 +381,8 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
   const created = await client.createShipment(run.credentials, request.value);
   if (!created.ok) {
     if (created.error.code !== 'shipx_unavailable') return releaseAttempt(run, created, deps);
-    return err(shipxUnavailable(
+    return err(shipxStateError(
+      'shipx_unavailable',
       'InPost ShipX did not confirm the shipment; the next attempt looks it up in ShipX before creating anything',
       { state: 'unconfirmed', cause: created.error.message },
     ));
@@ -396,7 +400,7 @@ const reconcileRemote = async (
   const found = await client.findShipmentByReference(run.credentials, shipxReference(run.order.id));
   if (!found.ok) return found;
   if (found.value === null) {
-    return err(appError('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt }));
+    return err(shipxStateError('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt }));
   }
   return saveRemote(run, found.value, deps);
 };
@@ -439,10 +443,10 @@ const runShipment = async (
   const shipped = await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship);
   if (!shipped.ok) {
     if (shipped.error.code !== 'fulfilment_conflict') return shipped;
-    return err(appError(
+    return err(shipxStateError(
       'fulfilment_conflict',
       `The order was marked as shipped meanwhile; the InPost shipment ${trackingNumber} exists as well, reconcile it in Manager Paczek`,
-      { trackingNumber, shipxShipmentId: shipmentId },
+      { state: 'manual_shipped', trackingNumber, shipxShipmentId: shipmentId },
     ));
   }
   const shipment = await deps.shipxShipments.findByOrder(run.tenantId, run.order.id);
@@ -469,7 +473,9 @@ export const createInpostShipment = async (
   const settings = await settingsOf(tenant.value, deps);
   const credentials = await resolveCredentials(tenant.value, settings, deps);
   if (!credentials.ok) return credentials;
-  if (settings.sender === null) return err(integrationNotConfigured('Save the InPost sender details in Settings → Shipping'));
+  if (settings.sender === null) {
+    return err(shipxStateError('integration_not_configured', 'Save the InPost sender details in Settings → Shipping', { state: 'setup_missing', reason: 'sender_missing' }));
+  }
   const selected = clientFor(settings.environment, order.value, deps.shipx);
   if (!selected.ok) return selected;
 
@@ -485,7 +491,7 @@ export const createInpostShipment = async (
     leaseExpiredBefore: leaseExpiredBefore(startedAt),
   });
   if (acquired.kind === 'in_progress') {
-    return err(appError('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment'));
+    return err(shipxStateError('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
   }
   try {
     return await runShipment(ctx, {
@@ -519,7 +525,7 @@ export const discardInpostShipmentAttempt = async (
   if (shipment === null || !shipxAttemptUnconfirmed(shipment)) return err(validation('The order has no unconfirmed InPost attempt to discard'));
   const discarded = await deps.shipxShipments.discardUnconfirmed(tenant.value, order.value.id, leaseExpiredBefore(deps.clock.nowIso()));
   if (!discarded) {
-    return err(appError('fulfilment_conflict', 'Another request is working on the InPost shipment for this order; refresh the order in a moment'));
+    return err(shipxStateError('fulfilment_conflict', 'Another request is working on the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
   }
   return ok({ discarded: true });
 };

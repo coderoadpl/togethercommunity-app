@@ -2,9 +2,12 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
-import type { OrderListItem, ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
+import type { ErrorCode, OrderListItem, ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
+import { LanguageProvider } from '../../../i18n/index.js';
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
+import { languagePreference } from '../../../theme-mode.js';
 import { OrderShipx } from './OrderShipx.js';
 
 const shipping = {
@@ -89,7 +92,7 @@ describe('OrderShipx', () => {
       details: { status: 400, error: 'validation_failed', description: 'Some data are invalid.', fields: { 'receiver.phone': ['invalid'] } },
     });
     const { unmount } = renderWithProviders(<OrderShipx {...props} error={error} />);
-    expect(screen.getByText('InPost rejected the request.')).toBeVisible();
+    expect(screen.getByText('InPost rejected the shipment data.')).toBeVisible();
     expect(screen.getByText('InPost: Some data are invalid.; receiver.phone: invalid')).toBeVisible();
     unmount();
     const { unmount: unmountMissing } = renderWithProviders(<OrderShipx {...props} view={{ ...ready, available: false, reason: 'credentials_missing' }} />);
@@ -99,6 +102,46 @@ describe('OrderShipx', () => {
     renderWithProviders(<OrderShipx {...props} view={{ ...ready, available: false, reason: 'sandbox_environment' }} />);
     expect(screen.getByText(/serves test orders only/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+  });
+
+  describe('in Polish', () => {
+    const failed = (code: ErrorCode, message: string, details?: unknown) => new ApiError({ code, message, ...(details === undefined ? {} : { details }) });
+
+    const renderPolish = (error: ApiError) => {
+      languagePreference.save('pl');
+      renderWithProviders(<LanguageProvider><OrderShipx {...props} error={error} /></LanguageProvider>);
+      return screen.getByTestId('order-shipx-error');
+    };
+
+    it.each([
+      ['pending payment', failed('shipx_unavailable', 'InPost has not confirmed the payment yet; refresh the order in a moment', { state: 'pending', shipmentId: '1001', status: 'offers_prepared' }), pl.shipx.paymentPending],
+      ['slow ShipX', failed('shipx_unavailable', 'InPost ShipX is answering slowly; refresh the order in a moment', { state: 'pending', shipmentId: null, status: 'unknown' }), pl.shipx.failures.slow],
+      ['unconfirmed attempt', failed('shipx_unavailable', 'InPost ShipX did not confirm the shipment; the next attempt looks it up in ShipX before creating anything', { state: 'unconfirmed', cause: 'ShipX timed out' }), pl.shipx.failures.unconfirmed],
+      ['unconfirmed attempt missing in ShipX', failed('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt: '2026-11-08T09:55:00.000Z' }), pl.shipx.failures.unconfirmedNotFound],
+      ['lost lock', failed('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' }), pl.shipx.failures.lostLock],
+      ['lease held', failed('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }), pl.shipx.failures.leaseHeld],
+      ['manual ship', failed('fulfilment_conflict', 'The order was marked as shipped meanwhile; the InPost shipment 520000011395200025754311 exists as well, reconcile it in Manager Paczek', { state: 'manual_shipped', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' }), pl.shipx.failures.manualShipped({ trackingNumber: '520000011395200025754311' })],
+      ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but the settings now use production; switch back or finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
+      ['organization mismatch', failed('conflict', 'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek', { state: 'organization_mismatch' }), pl.shipx.failures.organizationMismatch],
+      ['missing sender', failed('integration_not_configured', 'Save the InPost sender details in Settings → Shipping', { state: 'setup_missing', reason: 'sender_missing' }), pl.shipx.unavailableReasons.sender_missing],
+      ['unreadable building number', failed('validation', 'The building number cannot be read from the delivery address', { state: 'receiver_invalid', field: 'building_number' }), pl.shipx.failures.receiverInvalid.building_number],
+      ['failed payment', failed('shipx_rejected', 'InPost could not charge the shipment; check the funds or the payment method in Manager Paczek', { status: 200, error: 'transaction_failed', description: null, fields: {}, state: 'failed' }), pl.shipx.failures.rejected.transaction_failed],
+      ['rejected token', failed('shipx_rejected', 'InPost rejected the stored ShipX token', { status: 401, error: null, description: null, fields: {} }), pl.shipx.failures.tokenRejected],
+      ['request without a structured state', failed('validation', 'The order has no unconfirmed InPost attempt to discard'), pl.errors.messageValidation],
+    ])('localizes the %s without the English server text', (_name, error, expected) => {
+      const alert = renderPolish(error);
+      expect(alert).toHaveTextContent(expected);
+      expect(alert).not.toHaveTextContent(error.message);
+    });
+
+    it('shows the vendor description and fields of a rejected shipment verbatim after the Polish sentence', () => {
+      const alert = renderPolish(failed('shipx_rejected', 'InPost rejected the shipment data', {
+        status: 400, error: 'validation_failed', description: 'Some data are invalid.', fields: { 'receiver.phone': ['invalid'] },
+      }));
+      expect(within(alert).getByText(pl.shipx.failures.rejected.validation_failed)).toBeVisible();
+      expect(within(alert).getByText('InPost: Some data are invalid.; receiver.phone: invalid')).toBeVisible();
+      expect(alert).not.toHaveTextContent('InPost rejected the shipment data');
+    });
   });
 
   it('renders nothing for other carriers or staff who cannot write orders', () => {

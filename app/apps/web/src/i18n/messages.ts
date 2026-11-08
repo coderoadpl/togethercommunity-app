@@ -3,6 +3,7 @@ import type {
   ImportAuditResourceType,
   LessonBlockType,
   MemberEventType,
+  ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
   TenantAuditEventKind,
@@ -718,6 +719,20 @@ export interface Messages {
     discardConfirm: string;
     unavailableReasons: { credentials_missing: string; sender_missing: string; sandbox_environment: string };
     errorDetail: (params: { detail: string }) => string;
+    failures: {
+      slow: string;
+      unconfirmed: string;
+      unconfirmedNotFound: string;
+      lostLock: string;
+      leaseHeld: string;
+      manualShipped: (params: { trackingNumber: string }) => string;
+      environmentMismatch: (params: { environment: string; settingsEnvironment: string }) => string;
+      organizationMismatch: string;
+      receiverInvalid: { phone: string; name: string; building_number: string; locker_code: string };
+      rejected: Record<ShipxRejectionError, string>;
+      tokenRejected: string;
+      rejectedStatus: (params: { status: number }) => string;
+    };
   };
   productSafety: {
     heading: string;

@@ -520,7 +520,7 @@ describe('create InPost shipment', () => {
   it('refuses a concurrent click while another request holds the operation, without calling ShipX', async () => {
     const h = harness();
     h.seed({ shipxShipmentId: '1001', status: 'offers_prepared', operationStartedAt: '2026-11-08T09:59:50.000Z' });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict' } });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict', details: { state: 'lease_held' } } });
     expect(h.real.calls).toEqual(noCalls);
     expect(h.row()?.operationStartedAt).toBe('2026-11-08T09:59:50.000Z');
   });
@@ -539,7 +539,7 @@ describe('create InPost shipment', () => {
       error: {
         code: 'fulfilment_conflict',
         message: `The order was marked as shipped meanwhile; the InPost shipment ${TRACKING} exists as well, reconcile it in Manager Paczek`,
-        details: { trackingNumber: TRACKING, shipxShipmentId: '1001' },
+        details: { state: 'manual_shipped', trackingNumber: TRACKING, shipxShipmentId: '1001' },
       },
     });
     expect(h.row()).toMatchObject({ shipxShipmentId: '1001', trackingNumber: TRACKING, operationStartedAt: null });
@@ -557,9 +557,9 @@ describe('create InPost shipment', () => {
 
   it('requires credentials and a sender before calling ShipX', async () => {
     const missing = harness({ secrets: {} });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, missing.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, missing.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured', details: { state: 'setup_missing', reason: 'credentials_missing' } } });
     const noSender = harness({ sender: null });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, noSender.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, noSender.deps)).toMatchObject({ ok: false, error: { code: 'integration_not_configured', details: { state: 'setup_missing', reason: 'sender_missing' } } });
     expect(missing.real.calls.create).toEqual([]);
     expect(noSender.real.calls.create).toEqual([]);
   });
@@ -595,7 +595,11 @@ describe('ShipX client selection', () => {
     const h = harness({ environment: 'sandbox' });
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toEqual({
       ok: false,
-      error: { code: 'validation', message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders' },
+      error: {
+        code: 'validation',
+        message: 'ShipX is configured for the sandbox; switch to production before shipping paid orders',
+        details: { state: 'setup_missing', reason: 'sandbox_environment' },
+      },
     });
     expect(h.real.calls).toEqual(noCalls);
     expect(h.fake.calls).toEqual(noCalls);
@@ -628,13 +632,13 @@ describe('ShipX client selection', () => {
     h.seed({ shipxShipmentId: '1001', status: 'offer_selected', environment: 'sandbox' });
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: false,
-      error: { code: 'conflict', message: expect.stringContaining('ShipX sandbox environment'), details: { environment: 'sandbox' } },
+      error: { code: 'conflict', message: expect.stringContaining('ShipX sandbox environment'), details: { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' } },
     });
     expect(await inpostShipmentLabel(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
     h.seed({ shipxShipmentId: '1001', status: 'offer_selected', organizationId: '9999' });
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
       ok: false,
-      error: { code: 'conflict', message: expect.stringContaining('different ShipX organization') },
+      error: { code: 'conflict', message: expect.stringContaining('different ShipX organization'), details: { state: 'organization_mismatch' } },
     });
     expect(h.real.calls).toEqual(noCalls);
     expect(h.row()?.operationStartedAt).toBeNull();
@@ -657,7 +661,7 @@ describe('discard an unconfirmed InPost attempt', () => {
     h.seed({ shipxShipmentId: '1001', status: 'confirmed' });
     expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     h.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z', operationStartedAt: '2026-11-08T09:59:55.000Z' });
-    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict' } });
+    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict', details: { state: 'lease_held' } } });
     expect(await discardInpostShipmentAttempt(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await discardInpostShipmentAttempt(ctx(['order:write'], 'other-workspace'), { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.row()).toBeDefined();

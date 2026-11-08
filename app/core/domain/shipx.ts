@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { appError, validation, type AppError } from './errors.js';
+import { appError, validation, type AppError, type ErrorCode } from './errors.js';
 import type { StripeMode } from './integration.js';
 import { err, ok, type Result } from './result.js';
 import type { OrderShipping } from './shipping.js';
@@ -33,7 +33,7 @@ export const shipxClientKind = (environment: ShipxEnvironment, mode: StripeMode)
   if (environment === 'production') return ok(mode === 'live' ? 'real' : 'fake');
   return mode === 'test'
     ? ok('real')
-    : err(validation('ShipX is configured for the sandbox; switch to production before shipping paid orders'));
+    : err(shipxStateError('validation', 'ShipX is configured for the sandbox; switch to production before shipping paid orders', { state: 'setup_missing', reason: 'sandbox_environment' }));
 };
 
 const SHIPX_SERVICES = ['inpost_locker_standard', 'inpost_courier_standard'] as const;
@@ -128,7 +128,9 @@ export type ShipxShipment = z.infer<typeof shipxShipmentSchema>;
 export const shipxAttemptUnconfirmed = (shipment: Pick<ShipxShipment, 'shipxShipmentId' | 'createAttemptedAt'>): boolean =>
   shipment.shipxShipmentId === null && shipment.createAttemptedAt !== null;
 
-const SHIPX_UNAVAILABLE_REASONS = ['not_inpost', 'not_to_pack', 'credentials_missing', 'sender_missing', 'sandbox_environment'] as const;
+export const SHIPX_SETUP_GAPS = ['credentials_missing', 'sender_missing', 'sandbox_environment'] as const;
+
+const SHIPX_UNAVAILABLE_REASONS = ['not_inpost', 'not_to_pack', ...SHIPX_SETUP_GAPS] as const;
 
 export const shipxOrderViewSchema = z.object({
   available: z.boolean(),
@@ -139,6 +141,27 @@ export const shipxOrderViewSchema = z.object({
 });
 
 export type ShipxOrderView = z.infer<typeof shipxOrderViewSchema>;
+
+const SHIPX_RECEIVER_GAPS = ['phone', 'name', 'building_number', 'locker_code'] as const;
+
+export const shipxErrorStateSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('pending'), shipmentId: z.string().nullable(), status: z.string().nullable() }),
+  z.object({ state: z.literal('unconfirmed'), attemptedAt: z.string().optional(), cause: z.string().optional() }),
+  z.object({ state: z.literal('lost_lock') }),
+  z.object({ state: z.literal('lease_held') }),
+  z.object({ state: z.literal('manual_shipped'), trackingNumber: z.string(), shipxShipmentId: z.string() }),
+  z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
+  z.object({ state: z.literal('organization_mismatch') }),
+  z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS) }),
+  z.object({ state: z.literal('receiver_invalid'), field: z.enum(SHIPX_RECEIVER_GAPS) }),
+]);
+
+export type ShipxErrorState = z.infer<typeof shipxErrorStateSchema>;
+
+export const shipxStateError = (code: ErrorCode, message: string, state: ShipxErrorState): AppError => appError(code, message, state);
+
+const receiverInvalid = (field: (typeof SHIPX_RECEIVER_GAPS)[number], message: string): AppError =>
+  shipxStateError('validation', message, { state: 'receiver_invalid', field });
 
 export const shipxOrderInputSchema = z.object({ orderId: z.string().min(1) }).strict();
 
@@ -233,13 +256,13 @@ export const buildShipxShipmentRequest = (input: {
   const service = shipxServiceFor(input.shipping);
   if (service === null) return err(validation('The order does not use an InPost delivery option'));
   const phone = input.shipping.phone === null ? null : normalizeShipxPhone(input.shipping.phone);
-  if (phone === null) return err(validation('The delivery phone number is not a Polish 9-digit number'));
+  if (phone === null) return err(receiverInvalid('phone', 'The delivery phone number is not a Polish 9-digit number'));
   const name = splitPersonName(input.shipping.address.name);
-  if (name.firstName === '') return err(validation('The delivery name is missing'));
+  if (name.firstName === '') return err(receiverInvalid('name', 'The delivery name is missing'));
   let address: ShipxReceiver['address'] = null;
   if (service === 'inpost_courier_standard') {
     const street = splitStreetAddress(input.shipping.address.line1, input.shipping.address.line2);
-    if (street === null) return err(validation('The building number cannot be read from the delivery address'));
+    if (street === null) return err(receiverInvalid('building_number', 'The building number cannot be read from the delivery address'));
     address = {
       ...street,
       city: input.shipping.address.city,
@@ -248,7 +271,7 @@ export const buildShipxShipmentRequest = (input: {
     };
   }
   const targetPoint = service === 'inpost_locker_standard' ? input.shipping.pickupPoint?.code ?? null : null;
-  if (service === 'inpost_locker_standard' && targetPoint === null) return err(validation('The parcel locker code is missing'));
+  if (service === 'inpost_locker_standard' && targetPoint === null) return err(receiverInvalid('locker_code', 'The parcel locker code is missing'));
   return ok({
     reference: shipxReference(input.orderId),
     service,
@@ -317,7 +340,25 @@ export const sanitizeShipxError = (status: number, body: unknown): ShipxErrorDet
   };
 };
 
-const SHIPX_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+const SHIPX_REJECTION_ERRORS = [
+  'invalid_action',
+  'label_generation_failed',
+  'label_template_not_found',
+  'validation_failed',
+  'offer_expired',
+  'offer_unavailable',
+  'transaction_failed',
+  'resource_not_found',
+  'access_forbidden',
+  'no_carriers',
+  'carrier_unavailable',
+] as const;
+
+export const shipxRejectionErrorSchema = z.enum(SHIPX_REJECTION_ERRORS);
+
+export type ShipxRejectionError = z.infer<typeof shipxRejectionErrorSchema>;
+
+const SHIPX_ERROR_MESSAGES: Readonly<Record<ShipxRejectionError, string>> = {
   invalid_action: 'The InPost label is available only after the shipment is paid',
   label_generation_failed: 'InPost could not generate the label',
   label_template_not_found: 'InPost has no label template for this shipment',
@@ -332,7 +373,8 @@ const SHIPX_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 };
 
 export const shipxRejected = (details: ShipxErrorDetails): AppError => {
-  const known = details.error === null ? undefined : SHIPX_ERROR_MESSAGES[details.error];
+  const error = shipxRejectionErrorSchema.safeParse(details.error);
+  const known = error.success ? SHIPX_ERROR_MESSAGES[error.data] : undefined;
   const fallback = details.status === 401 ? 'InPost rejected the stored ShipX token' : `InPost rejected the request (HTTP ${String(details.status)})`;
   return appError('shipx_rejected', known ?? fallback, details);
 };

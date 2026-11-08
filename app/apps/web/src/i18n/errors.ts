@@ -21,11 +21,15 @@ export const serverMessageOf = (error: unknown): string | null => {
   return typeof message === 'string' && message.trim() !== '' ? message : null;
 };
 
-const errorDetailOf = (error: unknown, key: string): unknown => {
+export const errorDetailsOf = (error: unknown): unknown => {
   if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
   const { appError } = error;
   if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
-  const { details } = appError;
+  return appError.details;
+};
+
+const errorDetailOf = (error: unknown, key: string): unknown => {
+  const details = errorDetailsOf(error);
   if (typeof details !== 'object' || details === null || !(key in details)) return null;
   return Reflect.get(details, key);
 };

@@ -1,7 +1,7 @@
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
-import { lessonEditionSchema } from '#core/domain/index.js';
+import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -419,6 +419,7 @@ export const createProductRepository = (
           coverUrl: product.coverUrl,
           visibility: product.visibility,
           deliveryMethod: product.deliveryMethod,
+          parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
           compliance: product.compliance ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
@@ -449,6 +450,7 @@ export const createProductRepository = (
         coverUrl: product.coverUrl,
         visibility: product.visibility,
         deliveryMethod: product.deliveryMethod,
+        parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
         compliance: product.compliance ?? null,
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,

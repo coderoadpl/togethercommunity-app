@@ -24,6 +24,8 @@ const adapterStorageExternal = 'node_modules/(sharp|undici)(/|$)';
 const adapterDomainsExternal = 'node_modules/zod(/|$)';
 const adapterDomainsTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterStorageTestExternal = 'node_modules/(sharp|vitest)(/|$)';
+const adapterShipxExternal = 'node_modules/zod(/|$)';
+const adapterShipxTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appCliTestExternal = 'node_modules/vitest(/|$)';
@@ -313,6 +315,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/storage/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterStorageTestExternal },
+    },
+    {
+      name: 'adapter-shipx-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/shipx', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterShipxExternal },
+    },
+    {
+      name: 'adapter-shipx-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/shipx/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterShipxTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

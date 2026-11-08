@@ -69,6 +69,36 @@ describe('ShipX domain', () => {
     expect(splitStreetAddress('Rynek', null)).toBeNull();
   });
 
+  it.each([
+    ['Czerniakowska 87A', { street: 'Czerniakowska', buildingNumber: '87A' }],
+    ['Dluga 5/12', { street: 'Dluga', buildingNumber: '5/12' }],
+    ['Dluga 5 / 12', { street: 'Dluga', buildingNumber: '5 / 12' }],
+    ['Krotka 3 m. 4', { street: 'Krotka', buildingNumber: '3 m. 4' }],
+    ['Prosta 10 lok 2', { street: 'Prosta', buildingNumber: '10 lok 2' }],
+    ['al. Jerozolimskie 123B', { street: 'al. Jerozolimskie', buildingNumber: '123B' }],
+    ['  Dluga   5/12b  ', { street: 'Dluga', buildingNumber: '5/12b' }],
+    ['3 Maja 7', { street: '3 Maja', buildingNumber: '7' }],
+    ['Prosta 10/', null],
+    ['Prosta', null],
+    ['', null],
+  ])('splits %j into the street and the building number', (line, expected) => {
+    expect(splitStreetAddress(line, null)).toEqual(expected);
+  });
+
+  it('takes the building number from the second line when the first has none', () => {
+    expect(splitStreetAddress('Plac Zamkowy', ' 4 m. 2 ')).toEqual({ street: 'Plac Zamkowy', buildingNumber: '4 m. 2' });
+    expect(splitStreetAddress('', '4')).toBeNull();
+  });
+
+  it('splits a 10 000-character address line in linear time', () => {
+    const numbers = `Dluga${' 1'.repeat(4_997)}`;
+    const spaces = `Dluga${' '.repeat(9_990)}x`;
+    const startedAt = performance.now();
+    expect(splitStreetAddress(numbers, null)).toEqual({ street: numbers.slice(0, -2), buildingNumber: '1' });
+    expect(splitStreetAddress(spaces, null)).toBeNull();
+    expect(performance.now() - startedAt).toBeLessThan(50);
+  });
+
   it('builds a locker request without an address and a courier request with one', () => {
     const locker = buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender, parcelTemplate: 'small' });
     expect(locker).toEqual({

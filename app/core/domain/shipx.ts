@@ -231,15 +231,80 @@ export const splitPersonName = (name: string): { firstName: string; lastName: st
   return { firstName: parts.slice(0, -1).join(' '), lastName: parts.at(-1) ?? '' };
 };
 
-const STREET_LINE_PATTERN = /^(.+?)\s+(\d+[A-Za-z]?(?:\s*\/\s*\d+[A-Za-z]?)?(?:\s+(?:m|lok)\.?\s*\d+[A-Za-z]?)?)$/u;
+const MAX_BUILDING_TOKENS = 5;
+
+const isWhitespace = (text: string, at: number): boolean => at < text.length && /\s/u.test(text.charAt(at));
+
+const isDigit = (text: string, at: number): boolean => {
+  const char = text.charAt(at);
+  return char >= '0' && char <= '9';
+};
+
+const isAsciiLetter = (text: string, at: number): boolean => {
+  const char = text.charAt(at);
+  return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z');
+};
+
+const skipWhitespace = (text: string, from: number): number => {
+  let at = from;
+  while (isWhitespace(text, at)) at += 1;
+  return at;
+};
+
+const numberEnd = (text: string, from: number): number | null => {
+  let at = from;
+  while (isDigit(text, at)) at += 1;
+  if (at === from) return null;
+  return isAsciiLetter(text, at) ? at + 1 : at;
+};
+
+const unitMarkerEnd = (text: string, from: number): number | null => {
+  if (text.startsWith('lok', from)) return from + 3;
+  return text.charAt(from) === 'm' ? from + 1 : null;
+};
+
+const isBuildingNumber = (text: string, from: number): boolean => {
+  const house = numberEnd(text, from);
+  if (house === null) return false;
+  const slash = skipWhitespace(text, house);
+  const flat = text.charAt(slash) === '/' ? numberEnd(text, skipWhitespace(text, slash + 1)) : house;
+  if (flat === null) return false;
+  if (flat === text.length) return true;
+  const unit = skipWhitespace(text, flat);
+  const marker = unit === flat ? null : unitMarkerEnd(text, unit);
+  if (marker === null) return false;
+  return numberEnd(text, skipWhitespace(text, text.charAt(marker) === '.' ? marker + 1 : marker)) === text.length;
+};
+
+const buildingCandidates = (text: string): Array<{ streetEnd: number; buildingStart: number }> => {
+  const candidates: Array<{ streetEnd: number; buildingStart: number }> = [];
+  let at = text.length;
+  while (candidates.length < MAX_BUILDING_TOKENS) {
+    while (at > 0 && !isWhitespace(text, at - 1)) at -= 1;
+    if (at === 0) break;
+    const buildingStart = at;
+    while (at > 0 && isWhitespace(text, at - 1)) at -= 1;
+    if (at === 0) break;
+    candidates.push({ streetEnd: at, buildingStart });
+  }
+  return candidates.reverse();
+};
+
+const LINE_BREAK_PATTERN = /[\n\r\u2028\u2029]/u;
+
+const splitBuildingNumber = (line: string): { street: string; buildingNumber: string } | null => {
+  const found = buildingCandidates(line).find((candidate) => isBuildingNumber(line, candidate.buildingStart));
+  if (found === undefined) return null;
+  const street = line.slice(0, found.streetEnd);
+  return LINE_BREAK_PATTERN.test(street) ? null : { street, buildingNumber: line.slice(found.buildingStart) };
+};
 
 export const splitStreetAddress = (line1: string, line2: string | null): { street: string; buildingNumber: string } | null => {
-  const match = STREET_LINE_PATTERN.exec(line1.trim());
+  const line = line1.trim();
   const extra = line2?.trim() ?? '';
-  if (match?.[1] !== undefined && match[2] !== undefined) {
-    return { street: match[1], buildingNumber: extra === '' ? match[2] : `${match[2]} ${extra}` };
-  }
-  return extra === '' || line1.trim() === '' ? null : { street: line1.trim(), buildingNumber: extra };
+  const split = splitBuildingNumber(line);
+  if (split !== null) return extra === '' ? split : { ...split, buildingNumber: `${split.buildingNumber} ${extra}` };
+  return extra === '' || line === '' ? null : { street: line, buildingNumber: extra };
 };
 
 const REFERENCE_MAX_LENGTH = 100;

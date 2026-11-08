@@ -4,7 +4,7 @@ import { attributionSchema } from './attribution.js';
 import { languageSchema } from './language.js';
 import { billingDataSchema, type BillingData } from './commerce.js';
 import { COUPON_CODE_MAX_LENGTH } from './coupon.js';
-import { checkoutShippingInputSchema } from './shipping.js';
+import { checkoutShippingInputSchema, type CollectedShipping } from './shipping.js';
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
@@ -43,26 +43,56 @@ export type CheckoutConsentCapture = {
 const stripeNullableText = z.string().nullable().optional().transform((value) => value ?? null);
 
 const stripeShippingDetailsSchema = z.object({
-  shipping_details: z.object({
-    name: stripeNullableText,
-    address: z.object({
-      line1: stripeNullableText,
-      line2: stripeNullableText,
-      postal_code: stripeNullableText,
-      city: stripeNullableText,
-      country: stripeNullableText,
-      state: stripeNullableText,
-    }),
-  }).nullable().optional(),
+  name: stripeNullableText,
+  address: z.object({
+    line1: stripeNullableText,
+    line2: stripeNullableText,
+    postal_code: stripeNullableText,
+    city: stripeNullableText,
+    country: stripeNullableText,
+    state: stripeNullableText,
+  }),
+}).nullable().optional();
+
+const stripeCollectedInformationSchema = z.object({
+  shipping_details: stripeShippingDetailsSchema,
 }).nullable().optional();
 
 const stripeShippingCostSchema = z.object({ amount_total: z.number().int() }).nullable().optional();
 
 export const stripeCheckoutShippingSchema = z.object({
-  collected_information: stripeShippingDetailsSchema,
+  collected_information: stripeCollectedInformationSchema,
+  shipping_details: stripeShippingDetailsSchema,
   customer_details: z.object({ phone: stripeNullableText }).nullable().optional(),
   shipping_cost: stripeShippingCostSchema,
 });
+
+/**
+ * Stripe API versions before 2025-03-31.basil put the delivery address in the
+ * session's top-level `shipping_details`; tenant webhook endpoints are not
+ * pinned to an API version, so both locations have to be read.
+ */
+export const collectedShippingFromStripe = (
+  session: {
+    collected_information?: z.output<typeof stripeCollectedInformationSchema>;
+    shipping_details?: z.output<typeof stripeShippingDetailsSchema>;
+  },
+  phone: string | null,
+): CollectedShipping | null => {
+  const details = session.collected_information?.shipping_details ?? session.shipping_details ?? null;
+  return details === null ? null : {
+    name: details.name,
+    phone,
+    address: {
+      line1: details.address.line1,
+      line2: details.address.line2,
+      postalCode: details.address.postal_code,
+      city: details.address.city,
+      country: details.address.country,
+      state: details.address.state,
+    },
+  };
+};
 
 export const stripeWebhookPayloadSchema = z.object({
   livemode: z.boolean().optional(),
@@ -73,7 +103,8 @@ export const stripeWebhookPayloadSchema = z.object({
       id: z.string().min(1),
       customer_email: z.string().email().nullable().optional(),
       customer_details: z.object({ email: z.string().email().nullable(), phone: stripeNullableText }).nullable().optional(),
-      collected_information: stripeShippingDetailsSchema,
+      collected_information: stripeCollectedInformationSchema,
+      shipping_details: stripeShippingDetailsSchema,
       shipping_cost: stripeShippingCostSchema,
       metadata: z.record(z.string()).nullable().optional(),
       subscription: z.string().nullable().optional(),

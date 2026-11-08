@@ -5,6 +5,7 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
+  collectedShippingFromStripe,
   orderBillingDataSchema,
   nipSchema,
   err,
@@ -106,20 +107,8 @@ const checkoutShippingParams = (
 const checkoutShipping = (session: unknown): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
   const parsed = stripeCheckoutShippingSchema.safeParse(session);
   if (!parsed.success) return { shipping: null, shippingCostCents: null };
-  const details = parsed.data.collected_information?.shipping_details ?? null;
   return {
-    shipping: details === null ? null : {
-      name: details.name,
-      phone: parsed.data.customer_details?.phone ?? null,
-      address: {
-        line1: details.address.line1,
-        line2: details.address.line2,
-        postalCode: details.address.postal_code,
-        city: details.address.city,
-        country: details.address.country,
-        state: details.address.state,
-      },
-    },
+    shipping: collectedShippingFromStripe(parsed.data, parsed.data.customer_details?.phone ?? null),
     shippingCostCents: parsed.data.shipping_cost?.amount_total ?? null,
   };
 };

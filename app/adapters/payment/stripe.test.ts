@@ -1537,6 +1537,26 @@ it('parses the collected shipping address, phone and shipping cost from a signed
   } } });
 });
 
+it.each([
+  ['basil and later', { collected_information: { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } } }],
+  ['pre-basil', { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } }],
+  ['both locations', {
+    collected_information: { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } },
+    shipping_details: { name: 'Stale Name', address: { line1: 'Old Street 1', line2: null, postal_code: '00-001', city: 'Cracow', state: null, country: 'PL' } },
+  }],
+])('reads the delivery address from a %s checkout session', async (_shape, addressFields) => {
+  const result = await verify(JSON.stringify({ id: 'evt_shipping_shape', type: 'checkout.session.completed', api_version: '2024-06-20', data: { object: {
+    id: 'cs_shipping_shape', amount_total: 6399, customer_details: { email: 'buyer@example.test', name: 'Jane Buyer', phone: '+48600100200', address: null },
+    ...addressFields,
+    shipping_cost: { amount_subtotal: 1499, amount_tax: 0, amount_total: 1499, shipping_rate: 'shr_1' },
+    metadata: { tenantId: 'tenant-a', productId: 'accessory' },
+  } } }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    shippingCostCents: 1499,
+    shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+  } } });
+});
+
 it('reports no shipping details for sessions that collected none', async () => {
   const result = await verify(JSON.stringify({ id: 'evt_no_shipping', type: 'checkout.session.completed', data: { object: {
     id: 'cs_no_shipping', customer_details: { email: 'buyer@example.test' }, metadata: { tenantId: 'tenant-a', productId: 'course' },

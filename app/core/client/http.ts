@@ -160,6 +160,8 @@ import {
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
   productPricesListOutputSchema,
+  productStockOutputSchema,
+  productStockWriteOutputSchema,
   salesSummaryOutputSchema,
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
@@ -300,6 +302,9 @@ import {
   type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
+  type ProductStockAdjustInput,
+  type ProductStockEnableInput,
+  type ProductStockThresholdInput,
   type SubscriptionSimulateInput,
   type DiscussionGetInput,
   type PostCreateInput,
@@ -1192,6 +1197,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  getProductStock: (productId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productStock.method,
+      API_ROUTES.productStock.path.replace(':productId', encodeURIComponent(productId)),
+      productStockOutputSchema,
+      undefined,
+      signal,
+    ),
+  enableProductStock: (input: ProductStockEnableInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockEnable.method, API_ROUTES.productStockEnable.path, productStockWriteOutputSchema, input, signal),
+  adjustProductStock: (input: ProductStockAdjustInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockAdjust.method, API_ROUTES.productStockAdjust.path, productStockWriteOutputSchema, input, signal),
+  setProductStockThreshold: (input: ProductStockThresholdInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.productStockThreshold.method, API_ROUTES.productStockThreshold.path, productStockWriteOutputSchema, input, signal),
   listOrders: (input: OrdersListQueryInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (input.mode !== undefined) params.set('mode', input.mode);

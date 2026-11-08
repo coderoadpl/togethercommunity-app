@@ -16,6 +16,7 @@ import {
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
 import { createCheckoutSession, startCheckoutSession, validateCheckoutSelection } from './checkout.js';
+import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
 import { createDirectSalesLinkCheckout } from './direct-sales-link-checkout.js';
 
@@ -146,6 +147,18 @@ describe('checkout delivery selection', () => {
     expect(result).toMatchObject({ ok: false, error: { code } });
   });
 
+  it('reports a sold-out shipped product as sold out before validating the delivery, and writes nothing', async () => {
+    const h = harness();
+    const stock = createStockRepositoryFake();
+    stock.track(tenant.id, accessory.id, 0);
+    h.deps.stock = stock.repository;
+    expect(await createCheckoutSession(tenant, 'https://alpha.example.com', { productId: accessory.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'sold_out' } });
+    expect(h.snapshots).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(stock.events).toEqual([]);
+  });
+
   it('normalizes the locker code and freezes the rate on the selection', async () => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, {
@@ -267,7 +280,7 @@ describe('checkout with shipping', () => {
     const h = harness([accessory, course], [course.id, accessory.id]);
     const result = await createDirectSalesLinkCheckout(tenant, 'https://alpha.example.com', {
       slug: h.link.slug, termsAcceptanceMessage: () => 'I accept the terms.', couponDisclosureMessage: () => 'Lowest price in the last 30 days.',
-    }, { ...h.deps, logger: { warn: vi.fn() } });
+    }, { ...h.deps, logger: { warn: vi.fn(), error: vi.fn() } });
     expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
     expect(h.calls).toHaveLength(0);
   });

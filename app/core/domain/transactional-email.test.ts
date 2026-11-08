@@ -18,6 +18,7 @@ import {
   resetPassword,
   spaceEvent,
   spacePost,
+  stockLowEmail,
   subscriptionEnded,
   subscriptionPaymentFailed,
   supportMessage,
@@ -535,6 +536,10 @@ describe('transactional message catalogue', () => {
       windowStart: '1998-08-01T10:00:00.000Z', windowEnd: '1998-08-17T10:00:00.000Z',
       dashboardUrl: 'https://acme.test/reputation',
     })],
+    ['stock-low', (language) => stockLowEmail(language, {
+      tenantName: 'Acme Courses', productTitle: 'Printed poster', available: 1, threshold: 2,
+      oversold: false, studioUrl: 'https://acme.test/panel/products/p1',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -576,6 +581,38 @@ describe('transactional message catalogue', () => {
 
   it.each(catalogue)('falls back to the default locale for %s when the language is unsupported', (_kind, render) => {
     expect(render('de')).toEqual(render('en'));
+  });
+});
+
+describe('stock low email', () => {
+  const input = {
+    tenantName: 'Acme',
+    productTitle: 'Printed <poster>',
+    available: 1,
+    threshold: 2,
+    oversold: false,
+    studioUrl: 'https://acme.example.com/panel/products/product-1',
+  };
+
+  it('renders the low-stock alert in Polish', () => {
+    expect(stockLowEmail('pl', input)).toEqual(expectedTransactionalEmailPl.stockLowEmail);
+  });
+
+  it('renders the oversold alert in Polish without a threshold', () => {
+    expect(stockLowEmail('pl', { ...input, available: 0, threshold: null, oversold: true })).toEqual(expectedTransactionalEmailPl.stockOversoldEmail);
+  });
+
+  it('renders the available count, threshold, oversold note and Studio link in English', () => {
+    const low = stockLowEmail('en', input);
+    expect(low.subject).toBe('[Acme] Low stock: Printed <poster>');
+    expect(low.html).toContain('Printed &lt;poster&gt; is running low.');
+    expect(low.text).toContain('Available: 1\nLow-stock threshold: 2');
+    expect(low.html).toContain('href="https://acme.example.com/panel/products/product-1"');
+    expect(low.text).not.toContain('no piece was left');
+    const oversold = stockLowEmail('en', { ...input, available: 0, threshold: null, oversold: true });
+    expect(oversold.subject).toBe('[Acme] Oversold: Printed <poster>');
+    expect(oversold.text).toContain('Low-stock threshold: not set');
+    expect(oversold.html).toContain('no piece was left');
   });
 });
 

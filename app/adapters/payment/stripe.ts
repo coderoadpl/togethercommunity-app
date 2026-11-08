@@ -221,6 +221,7 @@ export const stripeCheckoutSessionParams = (
     }),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
+    ...(input.expiresAt === undefined ? {} : { expires_at: Math.floor(Date.parse(input.expiresAt) / 1000) }),
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
     ...(locale === undefined ? {} : { locale }),
     line_items: (input.lines ?? [{ productId: input.productId, name: input.productName, grossCents: input.priceCents }]).map((line) => ({

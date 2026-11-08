@@ -148,4 +148,12 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       text: `E-mail reputation for ${tenantName}: ${status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${windowStartText} – ${windowEndText}\n${dashboardUrl}`,
     }),
   },
+  stockLowEmail: {
+    noThreshold: 'not set',
+    render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({
+      subject: oversold ? `[${tenantName}] Oversold: ${productTitle}` : `[${tenantName}] Low stock: ${productTitle}`,
+      html: `<p>${oversold ? `${productTitleHtml} was sold after its stock ran out.` : `${productTitleHtml} is running low.`}</p><p>Available: ${available}<br>Low-stock threshold: ${threshold}</p>${oversold ? '<p>A paid order arrived when no piece was left. Check the order and adjust the stock.</p>' : ''}<p><a href="${studioUrlHtml}">Open the product</a></p>`,
+      text: `${oversold ? `${productTitle} was sold after its stock ran out.` : `${productTitle} is running low.`}\nAvailable: ${available}\nLow-stock threshold: ${threshold}\n${oversold ? 'A paid order arrived when no piece was left. Check the order and adjust the stock.\n' : ''}${studioUrl}`,
+    }),
+  },
 };

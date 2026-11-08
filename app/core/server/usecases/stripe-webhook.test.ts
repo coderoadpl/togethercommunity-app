@@ -615,6 +615,7 @@ const couponHarness = (
     price?: ProductPrice;
     claim?: boolean;
     session?: Partial<{
+      memberEmail: string | null;
       originalCents: number;
       discountCents: number;
       finalCents: number;
@@ -661,7 +662,7 @@ const couponHarness = (
         options.session?.providerSessionId === undefined
           ? 'cs-coupon'
           : options.session.providerSessionId,
-      memberEmail: 'buyer@example.com',
+      memberEmail: options.session?.memberEmail === undefined ? 'buyer@example.com' : options.session.memberEmail,
       productId: 'product-1',
       priceId: price?.id ?? null,
       originalCents: options.session?.originalCents ?? 4900,
@@ -745,6 +746,12 @@ const deferred = () => {
     resolve = done;
   });
   return { promise, resolve };
+};
+
+const expectIgnoredLog = (h: { warnings: string[]; errors: string[] }, eventId: string, conflict: boolean): void => {
+  const line = `[stripe-webhook] ignored tenant=${tenantA.id} event=${eventId} reason=${conflict ? 'ownership conflict' : 'foreign tenant'}`;
+  expect(conflict ? h.errors : h.warnings).toEqual([line]);
+  expect(conflict ? h.warnings : h.errors).toEqual([]);
 };
 
 describe('fulfillStripeWebhook', () => {
@@ -1473,50 +1480,108 @@ describe('fulfillStripeWebhook', () => {
     expect(h.sent).toEqual(['buyer@example.com']);
   });
 
-  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('rejects foreign %s metadata before initializing auth or opening a transaction', async (type) => {
+  it.each(['invoice.paid', 'invoice.payment_failed'] as const)('acknowledges foreign %s metadata before initializing auth or opening a transaction', async (type) => {
     const h = harness();
     const initialize = vi.spyOn(h.deps.authPort, 'initialize');
     const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
     const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
     const event = { ...invoiceEvent({ id: 'evt-foreign', type, invoiceId: 'in-foreign', subscriptionId: 'sub-foreign' }), tenantIds: ['tenant-b'] };
-    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
     expect(initialize).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
+  });
+
+  it.each(['live', 'test'] as const)('acknowledges an adapter-marked foreign event before any ownership or fulfillment lookup in %s mode', async (mode) => {
+    const h = harness();
+    const ownership = vi.spyOn(h.deps.stripeWebhookOwnership, 'hasForeignOwner');
+    const subscription = vi.spyOn(h.deps.subscriptions, 'findByProviderSubscriptionId');
+    const order = vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds');
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    expect(await fulfillStripeWebhook(tenantA, {
+      id: 'evt-foreign', type: 'invoice.paid', objectId: 'in-foreign', checkoutSession: null,
+      foreignTenant: true, mode, livemode: mode === 'live',
+    }, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=evt-foreign reason=foreign tenant`]);
+    expect(ownership).not.toHaveBeenCalled();
+    expect(subscription).not.toHaveBeenCalled();
+    expect(order).not.toHaveBeenCalled();
+    expect(initialize).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { type: 'checkout.session.completed', metadata: true },
+    { type: 'charge.refunded', metadata: true },
+    { type: 'charge.refunded', metadata: false },
+    { type: 'charge.dispute.created', metadata: true },
+    { type: 'charge.dispute.created', metadata: false },
+  ] as const)('acknowledges $type with a stored foreign payment intent and tenant metadata $metadata before fulfillment', async ({ type, metadata }) => {
+    const h = harness();
+    const event = type === 'checkout.session.completed'
+      ? completedEvent({ paymentIntentId: 'pi-foreign' })
+      : { ...adjustmentEvent({ type, paymentIntentId: 'pi-foreign' }), ...(metadata ? { tenantIds: [tenantA.id] } : {}) };
+    const ownership = vi.spyOn(h.deps.stripeWebhookOwnership, 'hasForeignOwner')
+      .mockImplementation(async (_tenantId, ids) => ids.paymentIntent === 'pi-foreign');
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(ownership).toHaveBeenCalledWith(tenantA.id, expect.objectContaining({ paymentIntent: 'pi-foreign' }));
+    expectIgnoredLog(h, event.id, metadata);
+    expect(initialize).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it.each(['live', 'test'] as const)('skips lookup for a metadata-free invoice without a tenant-local subscription or order in %s mode', async (mode) => {
     const h = harness();
     const findOrder = vi.spyOn(h.deps.paymentRefunds, 'findOrderByProviderObjectIds');
     expect(await validateStripeInvoiceTenant(tenantA.id, { ...invoiceEvent({ id: 'evt-unknown', type: 'invoice.paid', invoiceId: 'in-unknown', subscriptionId: 'sub-unknown' }), mode }, h.deps))
-      .toEqual(ok(false));
+      .toEqual(ok('unknown'));
     expect(findOrder).toHaveBeenCalledWith(tenantA.id, { invoice: 'in-unknown' }, mode);
   });
 
-  it.each(['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const)(
-    'rejects metadata-free %s belonging to a stored foreign subscription before claiming it',
-    async (type) => {
+  it.each([false, true].flatMap((metadata) => (
+    ['invoice.paid', 'customer.subscription.updated', 'customer.subscription.deleted'] as const
+  ).map((type) => ({ type, metadata }))))(
+    'acknowledges $type belonging to a stored foreign subscription with tenant metadata $metadata before claiming it',
+    async ({ type, metadata }) => {
       const h = await subscribedHarness();
       h.subscriptions.set(h.subscription.id, { ...h.subscription, tenantId: 'tenant-b' });
-      const event = type === 'invoice.paid'
-        ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
-        : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' });
+      const event = {
+        ...(type === 'invoice.paid'
+          ? invoiceEvent({ id: 'evt-foreign-record', type, invoiceId: 'in-foreign', subscriptionId: 'sub-1' })
+          : subscriptionEvent({ id: 'evt-foreign-record', type, subscriptionId: 'sub-1' })),
+        ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+      };
+      const initialize = vi.spyOn(h.deps.authPort, 'initialize');
       const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
       const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
       if (type === 'invoice.paid') {
         expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-          .toMatchObject({ ok: false, error: { code: 'validation' } });
+          .toEqual(ok(metadata ? 'conflict' : 'foreign'));
       }
-      expect(await fulfillStripeWebhook(tenantA, event, h.deps))
-        .toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+      expectIgnoredLog(h, event.id, metadata);
+      expect(initialize).not.toHaveBeenCalled();
       expect(claim).not.toHaveBeenCalled();
       expect(transaction).not.toHaveBeenCalled();
     },
   );
 
-  it.each(['customer', 'invoice'] as const)('rejects a stored foreign %s even when the invoice subscription is local', async (record) => {
+  it.each([false, true].flatMap((metadata) => (['customer', 'invoice'] as const).map((record) => ({ record, metadata }))))(
+    'acknowledges a stored foreign $record with tenant metadata $metadata even when the invoice subscription is local', async ({ record, metadata }) => {
     const h = await subscribedHarness();
-    const event = { ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }), customerId: 'cus-foreign' };
+    const event = {
+      ...invoiceEvent({ id: 'evt-conflicting-owner', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' }),
+      customerId: 'cus-foreign',
+      ...(metadata ? { tenantIds: [tenantA.id] } : {}),
+    };
     if (record === 'customer') {
       const member = Array.from(h.members.values())[0];
       if (member === undefined) throw new Error('Expected enrolled member');
@@ -1527,7 +1592,15 @@ describe('fulfillStripeWebhook', () => {
       h.orders.push({ ...order, id: 'foreign-order', tenantId: 'tenant-b', providerObjectIds: { invoice: 'in-foreign' } });
     }
     expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+      .toEqual(ok(metadata ? 'conflict' : 'foreign'));
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expectIgnoredLog(h, event.id, metadata);
+    expect(initialize).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('accepts a tenant-local subscription invoice when checkout created a new customer for an existing member', async () => {
@@ -1536,14 +1609,14 @@ describe('fulfillStripeWebhook', () => {
     if (member === undefined) throw new Error('Expected enrolled member');
     member.externalCustomerIds = { stripe: 'cus-historical' };
     const event = invoiceEvent({ id: 'evt-local', type: 'invoice.paid', invoiceId: 'in-local', subscriptionId: 'sub-1' });
-    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, customerId: 'cus-new-checkout' }, h.deps)).toEqual(ok(true));
+    expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, customerId: 'cus-new-checkout' }, h.deps)).toEqual(ok('owned'));
   });
 
-  it('rejects explicit foreign ownership even when the subscription exists locally', async () => {
+  it('identifies explicit foreign ownership even when the subscription exists locally', async () => {
     const h = await subscribedHarness();
     const event = invoiceEvent({ id: 'evt-foreign', type: 'invoice.paid', invoiceId: 'in-foreign', subscriptionId: 'sub-1' });
     expect(await validateStripeInvoiceTenant(tenantA.id, { ...event, tenantIds: ['tenant-b'] }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+      .toEqual(ok('foreign'));
   });
 
   it.each(['customer.subscription.updated', 'customer.subscription.deleted'] as const)(
@@ -1593,14 +1666,20 @@ describe('fulfillStripeWebhook', () => {
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
   });
 
-  it('rejects foreign subscription metadata even when the subscription exists locally', async () => {
+  it('acknowledges foreign subscription metadata even when the subscription exists locally', async () => {
     const h = await subscribedHarness();
     const event = {
       ...subscriptionEvent({ id: 'evt-conflicting', type: 'customer.subscription.updated', subscriptionId: 'sub-1' }),
       tenantIds: ['tenant-b'],
     };
-    expect(await fulfillStripeWebhook(tenantA, event, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.warnings).toEqual([`[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} reason=foreign tenant`]);
+    expect(initialize).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('keeps an invoice ignored when checkout commits after its enrichment was skipped', async () => {
@@ -1627,7 +1706,7 @@ describe('fulfillStripeWebhook', () => {
       const event = initialEvents()[index];
       if (event === undefined) throw new Error('Expected initial event');
       if (event.invoice != null) {
-        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(false));
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok('unknown'));
       }
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
       expect(h.events.size).toBe(0);
@@ -1644,7 +1723,7 @@ describe('fulfillStripeWebhook', () => {
       expect(h.grants.size).toBe(1);
       expect(h.sent).toEqual(['buyer@example.com']);
       if (event.invoice != null) {
-        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(true));
+        expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok('owned'));
       }
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
       expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
@@ -1657,7 +1736,7 @@ describe('fulfillStripeWebhook', () => {
       for (const event of initialEvents().slice(1)) {
         for (let delivery = 0; delivery < 2; delivery += 1) {
           if (event.invoice != null) {
-            expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok(false));
+            expect(await validateStripeInvoiceTenant(tenantA.id, event, h.deps)).toEqual(ok('unknown'));
           }
           expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
         }
@@ -1693,11 +1772,22 @@ describe('fulfillStripeWebhook', () => {
     expect(transaction.mock.invocationCallOrder[0]).toBeLessThan(ensureUser.mock.invocationCallOrder[0] ?? 0);
   });
 
-  it('rejects tenant metadata mismatch before creating a member or grant', async () => {
+  it.each(['stripe', 'simulated'] as const)('does not fulfill a %s event with mismatched tenant metadata', async (provider) => {
     const h = harness();
-    const result = await fulfillStripeWebhook(tenantA, completedEvent({ tenantId: 'tenant-b' }), h.deps);
+    const initialize = vi.spyOn(h.deps.authPort, 'initialize');
+    const claim = vi.spyOn(h.deps.processedPaymentEvents, 'claim');
+    const transaction = vi.spyOn(h.deps.paymentTransaction, 'run');
+    const result = await fulfillStripeWebhook(tenantA, completedEvent({ tenantId: 'tenant-b' }), h.deps, provider);
 
-    expect(result.ok).toBe(false);
+    expect(result).toEqual(provider === 'stripe'
+      ? ok({ processed: false })
+      : err(validation('Stripe event metadata does not match the webhook tenant')));
+    expect(h.warnings).toEqual(provider === 'stripe'
+      ? [`[stripe-webhook] ignored tenant=${tenantA.id} event=evt-1 reason=foreign tenant`]
+      : []);
+    expect(initialize).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
     expect(h.members.size).toBe(0);
     expect(h.grants.size).toBe(0);
     expect(h.orders).toHaveLength(0);
@@ -2961,7 +3051,7 @@ it.each([undefined, []])('queues the paid amount and resolved product VAT when o
 });
 
 it.each(['wrong-tenant', 'wrong-total', 'wrong-link', 'missing-snapshot'])(
-  'rejects a mismatched bundle payment: %s', async (reason) => {
+  'does not fulfill a mismatched bundle payment: %s', async (reason) => {
     const h = bundlePayment();
     if (h.event.checkoutSession !== null) {
       if (reason === 'wrong-tenant') h.event.checkoutSession.metadata.tenantId = 'tenant-b';
@@ -2970,7 +3060,8 @@ it.each(['wrong-tenant', 'wrong-total', 'wrong-link', 'missing-snapshot'])(
       if (reason === 'missing-snapshot') h.event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-other';
     }
     const result = await fulfillStripeWebhook(tenantA, h.event, h.deps);
-    expect(result.ok).toBe(false);
+    if (reason === 'wrong-tenant') expect(result).toEqual(ok({ processed: false }));
+    else expect(result.ok).toBe(false);
     expect(h.orders).toHaveLength(0);
     expect(h.grants.size).toBe(0);
   },
@@ -3166,4 +3257,15 @@ it.each(['stripe', 'simulated'] as const)('binds an unbound checkout snapshot to
   expect((await fulfillStripeWebhook(tenantA, h.event, h.deps, provider)).ok).toBe(true);
   expect(attach).toHaveBeenCalledExactlyOnceWith(tenantA.id, 'snapshot-1', h.event.objectId);
   expect(h.orders[0]?.providerObjectIds.checkoutSession).toBe(h.event.objectId);
+});
+
+
+it('records a direct coupon redemption for the email collected by Stripe', async () => {
+  const h = couponHarness({ session: { memberEmail: null } });
+  const event = completedEvent({ id: 'event-direct-coupon', objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', email: 'direct-buyer@example.com' });
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  expect(h.orders).toMatchObject([{ couponId: h.coupon.id, amountCents: 2450, discountCents: 2450 }]);
+  expect(h.redemptions).toMatchObject([{ couponId: h.coupon.id, email: 'direct-buyer@example.com', discountCents: 2450 }]);
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+  expect(h.redemptions).toHaveLength(1);
 });

@@ -7905,9 +7905,12 @@ describe('checkout consent ordering', () => {
     );
   });
 
-  it('returns HTTP 400 for an invoice naming another tenant without opening a transaction', async () => {
+  it('acknowledges an invoice naming another tenant without opening a transaction', async () => {
     const base = deps({ tenants: [acme] });
+    const initialize = vi.spyOn(base.authPort, 'initialize');
+    const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
     const transaction = vi.spyOn(base.paymentTransaction, 'run');
+    const warn = vi.spyOn(base.logger, 'warn');
     const app = buildApp({
       ...base,
       payment: {
@@ -7922,8 +7925,11 @@ describe('checkout consent ordering', () => {
     const response = await app.request('/api/webhooks/stripe/t-acme', {
       method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
     });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-foreign-invoice reason=foreign tenant`);
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(claim).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -7954,22 +7960,31 @@ describe('checkout consent ordering', () => {
     },
   );
 
-  it.each(['unknown', 'foreign-metadata', 'foreign-subscription'] as const)(
+  it.each(['unknown', 'foreign-metadata', 'foreign-subscription', 'conflicting-subscription'] as const)(
     'handles a signed invoice with %s ownership before any Stripe API call',
     async (ownership) => {
       const base = deps({ tenants: [acme] });
+      const initialize = vi.spyOn(base.authPort, 'initialize');
+      const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
+      const transaction = vi.spyOn(base.paymentTransaction, 'run');
+      const warn = vi.spyOn(base.logger, 'warn');
+      const error = vi.spyOn(base.logger, 'error');
+      const subscriptionId = ownership === 'foreign-subscription' || ownership === 'conflicting-subscription' ? 'sub-foreign' : 'sub-initial';
       const foreignOwner = vi.spyOn(base.stripeWebhookOwnership, 'hasForeignOwner')
-        .mockResolvedValue(ownership === 'foreign-subscription');
+        .mockImplementation(async (_tenantId, ids) => ids.subscription === 'sub-foreign');
       const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
+      const clientFactory = vi.fn(() => { throw new Error('Unexpected Stripe API client'); });
       const payment = createStripePaymentProvider({
         resolver: { resolve },
+        clientFactory,
       });
       const payload = JSON.stringify({
         id: 'evt-signed-initial', type: 'invoice.paid', livemode: true,
         data: { object: {
           id: 'in-initial', customer: 'cus-initial',
-          parent: { subscription_details: { subscription: 'sub-initial' } },
+          parent: { subscription_details: { subscription: subscriptionId } },
           ...(ownership === 'foreign-metadata' ? { metadata: { tenantId: 't-other' } } : {}),
+          ...(ownership === 'conflicting-subscription' ? { metadata: { tenantId: acme.id } } : {}),
           amount_paid: 1000, currency: 'usd', lines: { data: [] },
         } },
       });
@@ -7979,15 +7994,23 @@ describe('checkout consent ordering', () => {
       const response = await buildApp({ ...base, payment }).request('/api/webhooks/stripe/t-acme', {
         method: 'POST', headers: { 'stripe-signature': signature }, body: payload,
       });
-      expect(response.status).toBe(ownership === 'unknown' ? 200 : 400);
-      expect(await response.json()).toMatchObject(ownership === 'unknown'
-        ? { ok: true, data: { received: true, processed: false } }
-        : { ok: false, error: { code: 'validation' } });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+      if (ownership === 'foreign-metadata' || ownership === 'foreign-subscription') expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=foreign tenant`);
+      else expect(warn).not.toHaveBeenCalled();
+      if (ownership === 'conflicting-subscription') expect(error).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=evt-signed-initial reason=ownership conflict`);
+      else expect(error).not.toHaveBeenCalled();
       if (ownership === 'foreign-metadata') expect(foreignOwner).not.toHaveBeenCalled();
       else expect(foreignOwner).toHaveBeenCalledWith(acme.id, {
-        customer: 'cus-initial', subscription: 'sub-initial', invoice: 'in-initial',
+        customer: 'cus-initial', subscription: subscriptionId, invoice: 'in-initial',
       });
       expect(resolve).not.toHaveBeenCalled();
+      expect(clientFactory).not.toHaveBeenCalled();
+      if (ownership !== 'unknown') {
+        expect(initialize).toHaveBeenCalledTimes(1);
+        expect(claim).not.toHaveBeenCalled();
+        expect(transaction).not.toHaveBeenCalled();
+      }
     },
   );
 
@@ -8070,7 +8093,7 @@ describe('checkout consent ordering', () => {
   });
 
   it.each(['invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'])(
-    'acknowledges unknown %s with HTTP 200 and rejects explicit foreign metadata with HTTP 400',
+    'acknowledges unknown %s and explicit foreign metadata with HTTP 200',
     async (type) => {
       const base = deps({ tenants: [acme] });
       const event = {
@@ -8081,20 +8104,25 @@ describe('checkout consent ordering', () => {
         } : {}),
       };
       for (const tenantIds of [[], [acme.id], ['t-other']]) {
+        const warn = vi.fn();
+        const claim = vi.spyOn(base.processedPaymentEvents, 'claim');
         const app = buildApp({
           ...base,
+          logger: { ...base.logger, warn },
           payment: { ...base.payment, verifyWebhookEvent: async () => ok({ ...event, tenantIds }) },
         });
         const response = await app.request('/api/webhooks/stripe/t-acme', {
           method: 'POST', headers: { 'stripe-signature': 'test-signature' }, body: '{}',
         });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
         if (tenantIds.includes('t-other')) {
-          expect(response.status).toBe(400);
-          expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+          expect(warn).toHaveBeenCalledExactlyOnceWith(`[stripe-webhook] ignored tenant=${acme.id} event=${event.id} reason=foreign tenant`);
+          expect(claim).not.toHaveBeenCalled();
         } else {
-          expect(response.status).toBe(200);
-          expect(await response.json()).toEqual({ ok: true, data: { received: true, processed: false } });
+          expect(warn).not.toHaveBeenCalled();
         }
+        claim.mockRestore();
       }
     },
   );
@@ -9967,10 +9995,153 @@ const directSalesLinkApp = async (cancelReturnUrl?: string) => {
   const create = vi.fn(h.base.payment.createCheckoutSession);
   h.base.payment.createCheckoutSession = create;
   h.base.tenantSecrets.findByKey = async (tenantId, key) => key.startsWith('stripe.test') ? null : ({ id: `secret-${key}`, tenantId, key, ciphertext: 'cipher', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
-  return { ...h, create, settings };
+  const coupons = h.base.coupons;
+  if (coupons === undefined) throw new Error('Missing test coupons');
+  return { ...h, create, settings, coupons };
 };
 
 describe('direct public sales-link checkout', () => {
+  it.each(['coupon-preview:ip', 'coupon-preview:tenant'])('omits coupon previews when %s is exhausted without blocking checkout', async (scope) => {
+    const h = await directSalesLinkApp();
+    const claim = vi.spyOn(h.base.rateLimitBuckets, 'claim').mockImplementation(async (input) => input.scope !== scope);
+    const lookup = vi.spyOn(h.coupons, 'findByCode');
+    const headers = { host: 'acme.localhost' };
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('<form');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(lookup).not.toHaveBeenCalled();
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope: 'coupon-preview:ip', key: 'unattributed', limit: h.base.publicRateLimitPolicies.writesPerIp.limit }));
+    if (scope === 'coupon-preview:tenant') {
+      expect(claim).toHaveBeenCalledWith(expect.objectContaining({ scope, key: acme.id, limit: h.base.publicRateLimitPolicies.writesPerTenant.limit }));
+    }
+    h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-bundle' });
+    const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(checkout.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      promotionCodeId: 'promo-bundle',
+      directCheckout: expect.objectContaining({ disclosureMessage: expect.stringMatching(/^Lowest price in the last 30 days: /) }),
+    }));
+  });
+
+  it.each(['application/json', 'application/x-www-form-urlencoded'])('previews a normalized coupon and applies it from %s', async (contentType) => {
+    const h = await directSalesLinkApp();
+    const lookup = vi.spyOn(h.coupons, 'findByCode');
+    h.base.payment.ensureCouponPromotion = async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promo-bundle' });
+    const page = await h.app.request('/offer/bundle?code=%20bundle%20', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('data-coupon-code="BUNDLE"');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(html).toContain('Code BUNDLE:');
+    expect(html).toContain('2.13');
+    expect(html).toContain('19.17');
+    expect(lookup).toHaveBeenCalledWith(acme.id, 'BUNDLE');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.couponSessions.size).toBe(0);
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType },
+      body: contentType === 'application/json' ? JSON.stringify({ couponCode: 'BUNDLE' }) : new URLSearchParams({ couponCode: 'BUNDLE' }).toString(),
+    });
+    expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ promotionCodeId: 'promo-bundle', couponCheckoutSessionId: expect.any(String), priceCents: 2130 }));
+    expect([...h.couponSessions.values()]).toMatchObject([{ originalCents: 2130, discountCents: 213, finalCents: 1917 }]);
+  });
+
+  it.each(['en', 'pl'] as const)('shows an invalid coupon in %s and still starts checkout without a discount', async (language) => {
+    const h = await directSalesLinkApp();
+    const settings = await h.base.tenants.findSettings(acme.id);
+    if (settings === null) throw new Error('Missing test settings');
+    h.base.tenants.findSettings = async () => ({ ...settings, defaultLanguage: language });
+    h.coupons.findByCode = async () => null;
+    const page = await h.app.request('/offer/bundle?code=UNKNOWN', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain(language === 'pl' ? directSalesLinkCopyPl.couponUnavailable : 'Coupon cannot be applied.');
+    expect(html).toContain('<form');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'UNKNOWN' }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('promotionCodeId');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
+  });
+
+  it('does not preview or apply a coupon that exists only in another tenant', async () => {
+    const h = await directSalesLinkApp();
+    const coupon = await h.coupons.findByCode(acme.id, 'BUNDLE');
+    if (coupon === null) throw new Error('Missing test coupon');
+    const lookup = vi.spyOn(h.coupons, 'findByCode').mockImplementation(async (tenantId, code) => tenantId === 'tenant-other' && code === 'BUNDLE' ? coupon : null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('Coupon cannot be applied.');
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(lookup).toHaveBeenCalledWith(acme.id, 'BUNDLE');
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({ couponCode: 'BUNDLE' }),
+    });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('promotionCodeId');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('couponCheckoutSessionId');
+    expect(h.couponSessions.size).toBe(0);
+  });
+
+  it('renders the offer page without a coupon line and logs a warning when the coupon selection fails', async () => {
+    const h = await directSalesLinkApp();
+    const warn = vi.spyOn(h.base.logger, 'warn');
+    vi.spyOn(h.salesLinks, 'findBySlug').mockResolvedValueOnce(h.link).mockResolvedValue(null);
+    const page = await h.app.request('/offer/bundle?code=BUNDLE', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    const html = await page.text();
+    expect(html).not.toContain('Code BUNDLE:');
+    expect(html).not.toContain('Coupon cannot be applied.');
+    expect(html).toContain('name="couponCode" value="BUNDLE"');
+    expect(html).toContain('<form');
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('[direct-checkout] Coupon preview unavailable tenant='));
+  });
+
+  it('keeps an overlong URL coupon from blocking checkout through the bounded POST contract', async () => {
+    const h = await directSalesLinkApp();
+    const claim = vi.spyOn(h.base.rateLimitBuckets, 'claim');
+    const page = await h.app.request(`/offer/bundle?code=${'X'.repeat(101)}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(200);
+    expect(claim).not.toHaveBeenCalledWith(expect.objectContaining({ scope: expect.stringMatching(/^coupon-preview:/) }));
+    const html = await page.text();
+    expect(html).toContain('Coupon cannot be applied.');
+    expect(html).not.toContain('name="couponCode"');
+    expect(html).toContain('<form');
+  });
+
+  it('redirects member-limited coupons with the other query parameters and preserves crawler and SPA behavior', async () => {
+    const h = await directSalesLinkApp();
+    const coupon = await h.coupons.findByCode(acme.id, 'BUNDLE');
+    if (coupon === null) throw new Error('Missing test coupon');
+    h.coupons.findByCode = async () => ({ ...coupon, maxRedemptionsPerMember: 1 });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const query = 'code=BUNDLE&utm_source=printed&source=qr';
+    const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(302);
+    expect(page.headers.get('location')).toBe(`/offer/bundle?${query}&checkout=together`);
+    const crawler = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost', 'user-agent': 'facebookexternalhit' } });
+    expect(crawler.status).toBe(200);
+    const html = await crawler.text();
+    expect(html).toContain('property="og:title"');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('Coupon');
+    const spa = await h.app.request(`/offer/bundle?${query}&checkout=together`, { headers: { host: 'acme.localhost' } });
+    expect(await spa.text()).toBe('<main>Existing checkout</main>');
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it.each(['unknown', 'inactive', 'expired'] as const)('renders an HTML error for an %s offer without checkout actions', async (state) => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, defaultLanguage: 'pl' });

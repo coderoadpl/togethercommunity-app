@@ -3,6 +3,7 @@ import { attributionSchema } from './attribution.js';
 
 import { languageSchema } from './language.js';
 import { billingDataSchema, type BillingData } from './commerce.js';
+import { COUPON_CODE_MAX_LENGTH } from './coupon.js';
 
 export const checkoutSessionStatusInputSchema = z.object({
   session_id: z.string().regex(/^cs_(live|test)_[A-Za-z0-9]{1,200}$/),
@@ -18,7 +19,7 @@ export const checkoutSessionInputSchema = z.object({
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
-  couponCode: z.string().trim().min(1).max(100).optional(),
+  couponCode: z.string().trim().min(1).max(COUPON_CODE_MAX_LENGTH).optional(),
   billing: billingDataSchema.optional(),
 });
 

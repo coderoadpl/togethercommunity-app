@@ -30,6 +30,7 @@ export interface CouponCheckoutDeps {
 
 export interface CouponCheckoutInput {
   code: string;
+  coupon?: Coupon;
   email?: string;
   productId: string;
   productIds?: string[];
@@ -47,16 +48,17 @@ export interface CouponCheckoutInput {
  */
 export const COUPON_UNAVAILABLE_MESSAGE = 'Coupon cannot be applied';
 
-export const validateCouponForCheckout = async (
+export type CouponCheckoutEvaluation =
+  | { kind: 'valid'; coupon: Coupon; breakdown: CouponCheckoutBreakdown }
+  | { kind: 'emailRequired' };
+
+export const evaluateCouponForCheckout = async (
   tenantId: string,
   input: CouponCheckoutInput,
   deps: CouponCheckoutDeps,
-): Promise<Result<{ coupon: Coupon; breakdown: CouponCheckoutBreakdown }, AppError>> => {
-  const coupon = await deps.coupons.findByCode(tenantId, normalizeCouponCode(input.code));
+): Promise<Result<CouponCheckoutEvaluation, AppError>> => {
+  const coupon = input.coupon ?? await deps.coupons.findByCode(tenantId, normalizeCouponCode(input.code));
   if (!coupon) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
-  if (coupon.maxRedemptionsPerMember !== null && input.email === undefined) {
-    return err(validation('An email is required to validate this coupon'));
-  }
   const email = input.email === undefined ? '' : normalizeEmail(input.email);
   const counts = await deps.redemptions.counts(tenantId, coupon.id, email);
   const validated = validateCoupon(coupon, {
@@ -66,13 +68,14 @@ export const validateCouponForCheckout = async (
     priceKind: input.priceKind,
     currency: input.currency,
     totalRedemptions: counts.total,
-    memberRedemptions: counts.member,
+    memberRedemptions: input.email === undefined ? 0 : counts.member,
   });
   if (coupon.scope.kind === 'products' && input.productIds?.some((id) => coupon.scope.kind === 'products' && !coupon.scope.productIds.includes(id))) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
   if (!validated.valid) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
 
   const discountCents = calculateDiscount(input.amountCents, coupon);
   if (discountCents === 0) return err(validation(COUPON_UNAVAILABLE_MESSAGE));
+  if (coupon.maxRedemptionsPerMember !== null && input.email === undefined) return ok({ kind: 'emailRequired' });
   const now = deps.clock.nowIso();
   const since = new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString();
   const lowestPriceLast30DaysCents = input.products === undefined ? await deps.priceHistory.lowestSince(tenantId, {
@@ -93,5 +96,20 @@ export const validateCouponForCheckout = async (
     lowestPriceLast30DaysCents,
     currency: input.currency,
   });
-  return ok({ coupon, breakdown });
+  return ok({ kind: 'valid', coupon, breakdown });
 };
+
+export const requireCouponEmail = (
+  evaluated: Result<CouponCheckoutEvaluation, AppError>,
+): Result<{ coupon: Coupon; breakdown: CouponCheckoutBreakdown }, AppError> => {
+  if (!evaluated.ok) return evaluated;
+  if (evaluated.value.kind === 'emailRequired') return err(validation('An email is required to validate this coupon'));
+  return ok({ coupon: evaluated.value.coupon, breakdown: evaluated.value.breakdown });
+};
+
+export const validateCouponForCheckout = async (
+  tenantId: string,
+  input: CouponCheckoutInput,
+  deps: CouponCheckoutDeps,
+): Promise<Result<{ coupon: Coupon; breakdown: CouponCheckoutBreakdown }, AppError>> =>
+  requireCouponEmail(await evaluateCouponForCheckout(tenantId, input, deps));

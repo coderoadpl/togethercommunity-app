@@ -84,7 +84,7 @@ export const stripeCouponParams = (
   input: EnsureCouponRequest,
 ): Stripe.CouponCreateParams => ({
   duration: input.recurringDuration === 'forever' ? 'forever' : 'once',
-  name: input.code,
+  name: input.code.slice(0, 40),
   metadata: { tenantId: input.tenantId, couponId: input.couponId },
   ...(input.kind === 'percent'
     ? { percent_off: input.value }
@@ -103,6 +103,17 @@ const legalUrlFromMetadata = (metadata: Record<string, string>, key: string): st
   const chunks: string[] = [];
   for (let index = 0; metadata[`${key}_${index}`] !== undefined; index += 1) chunks.push(metadata[`${key}_${index}`] ?? '');
   return chunks.length === 0 ? null : chunks.join('');
+};
+
+const stripePromotionCode = (code: string): string => {
+  const mapped = code.replace(/[^A-Za-z0-9-]/g, '');
+  return /[A-Za-z0-9]/.test(mapped) ? mapped : '';
+};
+
+const stripePromotionCodeTaken = (cause: unknown): boolean => {
+  const parsed = stripeCancelErrorSchema.safeParse(cause);
+  return parsed.success &&
+    (parsed.data.code === 'resource_already_exists' || /already exists/i.test(parsed.data.message ?? ''));
 };
 
 export const stripeCheckoutSessionParams = (
@@ -151,9 +162,13 @@ export const stripeCheckoutSessionParams = (
     }),
     ...(input.directCheckout === undefined ? {} : {
       consent_collection: { terms_of_service: 'required' as const },
-      custom_text: { terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage } },
+      custom_text: {
+        terms_of_service_acceptance: { message: input.directCheckout.termsAcceptanceMessage },
+        ...(input.promotionCodeId === undefined || input.directCheckout.disclosureMessage === undefined
+          ? {} : { submit: { message: input.directCheckout.disclosureMessage } }),
+      },
       tax_id_collection: { enabled: true },
-      allow_promotion_codes: false,
+      ...(input.promotionCodeId === undefined ? { allow_promotion_codes: false } : {}),
     }),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
@@ -545,11 +560,18 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         let stripePromotionCodeId = input.stripePromotionCodeId;
         if (stripePromotionCodeId === null) {
-          const created = await client.value.promotionCodes.create({
+          const code = stripePromotionCode(input.code);
+          const params: Stripe.PromotionCodeCreateParams = {
             promotion: { type: 'coupon', coupon: stripeCouponId },
-            code: input.code,
             metadata: { tenantId: input.tenantId, couponId: input.couponId },
-          });
+          };
+          let created: Stripe.PromotionCode;
+          try {
+            created = await client.value.promotionCodes.create(code === '' ? params : { ...params, code });
+          } catch (cause) {
+            if (code === '' || !stripePromotionCodeTaken(cause)) throw cause;
+            created = await client.value.promotionCodes.create(params);
+          }
           stripePromotionCodeId = created.id;
         }
         return ok({ stripeCouponId, stripePromotionCodeId });
@@ -622,12 +644,21 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         objectOwnership.parent?.subscription_details?.metadata?.tenantId,
       ].filter((id): id is string => typeof id === 'string' && id.length > 0);
       const tenantCheck = validateStripeWebhookTenant(input.tenantId, { tenantIds, checkoutSession: null });
-      if (!tenantCheck.ok) return tenantCheck;
       const customerId = typeof objectOwnership.customer === 'string' ? objectOwnership.customer : objectOwnership.customer?.id;
       const tenantMetadata = {
         ...(tenantIds.length === 0 ? {} : { tenantIds }),
         ...(customerId === undefined ? {} : { customerId }),
       };
+      const object = event.data.object;
+      const bareEvent = {
+        ...tenantMetadata,
+        livemode: event.livemode,
+        id: event.id,
+        type: event.type,
+        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
+        checkoutSession: null,
+      };
+      if (tenantCheck === 'foreign') return ok({ ...bareEvent, foreignTenant: true });
       if (
         event.type === 'checkout.session.completed' ||
         event.type === 'checkout.session.async_payment_succeeded' ||
@@ -642,8 +673,10 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           if (mappedInvoice !== null && input.validateInvoiceTenant !== undefined) {
             const ownershipCheck = await input.validateInvoiceTenant({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             if (!ownershipCheck.ok) return ownershipCheck;
+            if (ownershipCheck.value === 'foreign') return ok({ ...bareEvent, foreignTenant: true });
+            if (ownershipCheck.value === 'conflict') return ok({ ...mappedInvoice, ...tenantMetadata, livemode: event.livemode });
             // Checkout may commit after this lookup; an unenriched invoice must stay ignored for this delivery.
-            if (!ownershipCheck.value) return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
+            if (ownershipCheck.value === 'unknown') return ok({ ...mappedInvoice, invoice: null, ...tenantMetadata, livemode: event.livemode });
           }
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
@@ -675,15 +708,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
         if (mapped) return ok({ ...mapped, ...tenantMetadata, livemode: event.livemode });
       }
-      const object = event.data.object;
-      return ok({
-        ...tenantMetadata,
-        livemode: event.livemode,
-        id: event.id,
-        type: event.type,
-        objectId: 'id' in object && typeof object.id === 'string' ? object.id : null,
-        checkoutSession: null,
-      });
+      return ok(bareEvent);
     },
   };
 };

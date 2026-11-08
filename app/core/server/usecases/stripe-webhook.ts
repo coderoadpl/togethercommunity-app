@@ -93,6 +93,24 @@ const ignorePaymentMode = (
   return ok({ processed: false });
 };
 
+const ignoreForeignTenant = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Result<{ processed: boolean }, AppError> => {
+  deps.logger.warn(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} reason=foreign tenant`);
+  return ok({ processed: false });
+};
+
+const ignoreOwnershipConflict = (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Result<{ processed: boolean }, AppError> => {
+  deps.logger.error(`[stripe-webhook] ignored tenant=${tenant.id} event=${event.id} reason=ownership conflict`);
+  return ok({ processed: false });
+};
+
 const enqueueAutoInvoice = async (
   tenantId: string,
   event: PaymentWebhookEvent,
@@ -197,6 +215,7 @@ export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 interface CouponPaymentContext {
   coupon: Coupon;
   session: CouponCheckoutSession;
+  memberEmail: string;
   price: ProductPrice | null;
 }
 
@@ -226,7 +245,9 @@ const couponPaymentContext = async (
   const coupon = await deps.coupons.findById(tenant.id, session.couponId);
   if (coupon === null) return null;
   const price = session.priceId === null ? null : await deps.prices.findById(tenant.id, session.priceId);
-  return { coupon, session, price };
+  const memberEmail = session.memberEmail ?? event.checkoutSession?.email;
+  if (memberEmail == null) return null;
+  return { coupon, session, price, memberEmail };
 };
 
 const couponStillAttributable = async (
@@ -246,7 +267,7 @@ const couponStillAttributable = async (
     tenant.id,
     {
       code: context.coupon.code,
-      email: context.session.memberEmail,
+      email: context.memberEmail,
       productId: context.session.productId,
       ...(snapshot?.salesLinkId == null ? {} : { productIds: snapshot.lines.map((line) => line.productId), products: snapshot.lines.map((line) => ({ productId: line.productId, priceId: line.priceId ?? null, amountCents: line.grossCents })) }),
       priceId: context.session.priceId,
@@ -347,7 +368,7 @@ const claimDiscountedOrder = async (
       couponId: context.coupon.id,
       orderId: order.id,
       memberId,
-      email: normalizeEmail(context.session.memberEmail),
+      email: normalizeEmail(context.memberEmail),
       discountCents,
       createdAt: order.createdAt,
     },
@@ -939,36 +960,36 @@ const paymentModeMatches = async (
 export const validateStripeWebhookTenant = (
   tenantId: string,
   event: Pick<PaymentWebhookEvent, 'tenantIds' | 'checkoutSession'>,
-): Result<void, AppError> => {
+): 'owned' | 'foreign' => {
   if (event.tenantIds?.some((id) => id !== tenantId) ||
       (event.checkoutSession !== null && event.checkoutSession.metadata.tenantId !== tenantId)) {
-    return err(validation('Stripe event metadata does not match the webhook tenant'));
+    return 'foreign';
   }
-  return ok(undefined);
+  return 'owned';
 };
 
 export const validateStripeInvoiceTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'subscriptions' | 'paymentRefunds' | 'stripeWebhookOwnership'>,
-): Promise<Result<boolean, AppError>> => {
+): Promise<Result<'owned' | 'unknown' | 'foreign' | 'conflict', AppError>> => {
   const ownership = await validateStoredStripeWebhookTenant(tenantId, event, deps);
-  if (!ownership.ok) return ownership;
+  if (ownership !== 'owned') return ok(ownership);
   const subscriptionId = event.invoice?.subscriptionId;
   const subscription = subscriptionId == null ? null :
     await deps.subscriptions.findByProviderSubscriptionId(tenantId, subscriptionId);
   const order = subscription !== null || event.objectId === null ? null :
     await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { invoice: event.objectId }, event.mode ?? 'live');
-  return ok(subscription !== null || order !== null);
+  return ok(subscription !== null || order !== null ? 'owned' : 'unknown');
 };
 
 const validateStoredStripeWebhookTenant = async (
   tenantId: string,
   event: PaymentWebhookEvent,
   deps: Pick<StripeWebhookDeps, 'stripeWebhookOwnership'>,
-): Promise<Result<void, AppError>> => {
+): Promise<'owned' | 'foreign' | 'conflict'> => {
   const metadata = validateStripeWebhookTenant(tenantId, event);
-  if (!metadata.ok) return metadata;
+  if (metadata === 'foreign') return metadata;
   const subscription = event.checkoutSession?.subscriptionId ?? event.invoice?.subscriptionId ?? event.subscription?.id ??
     (event.type.startsWith('customer.subscription.') ? event.objectId : null);
   const invoice = event.checkoutSession?.invoiceId ?? event.adjustment?.invoiceId ??
@@ -983,7 +1004,8 @@ const validateStoredStripeWebhookTenant = async (
     ...(charge == null ? {} : { charge }),
     ...(event.checkoutSession === null || event.objectId === null ? {} : { checkoutSession: event.objectId }),
   });
-  return foreign ? err(validation('Stripe event belongs to another tenant')) : ok(undefined);
+  if (!foreign) return 'owned';
+  return (event.tenantIds?.length ?? 0) > 0 || event.checkoutSession !== null ? 'conflict' : 'foreign';
 };
 
 export const fulfillStripeWebhook = async (
@@ -992,10 +1014,16 @@ export const fulfillStripeWebhook = async (
   deps: StripeWebhookDeps,
   provider: 'stripe' | 'simulated' = 'stripe',
 ): Promise<Result<{ processed: boolean }, AppError>> => {
+  if (provider === 'stripe' && event.foreignTenant === true) return ignoreForeignTenant(tenant, event, deps);
   const ownership = provider === 'stripe'
     ? await validateStoredStripeWebhookTenant(tenant.id, event, deps)
     : validateStripeWebhookTenant(tenant.id, event);
-  if (!ownership.ok) return ownership;
+  if (ownership === 'conflict') return ignoreOwnershipConflict(tenant, event, deps);
+  if (ownership === 'foreign') {
+    return provider === 'stripe'
+      ? ignoreForeignTenant(tenant, event, deps)
+      : err(validation('Stripe event metadata does not match the webhook tenant'));
+  }
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
   if (event.type.startsWith('customer.subscription.')) {
     const subscription = event.objectId === null ? null :

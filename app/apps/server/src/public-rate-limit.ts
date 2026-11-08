@@ -156,6 +156,19 @@ const AUTH_LINK_PATHS = new Set<string>([
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
 
+export const claimCouponPreview = async (c: Context, tenantId: string, deps: PublicRateLimitMiddlewareDeps): Promise<boolean> => {
+  const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
+  const perIp = await claimRateLimitWindow({
+    scope: 'coupon-preview:ip', key: trustedClientIp(c, deps.authTrustedProxyHeader) ?? UNATTRIBUTED_IP_KEY,
+    window: deps.publicRateLimitPolicies.writesPerIp,
+  }, limiter);
+  if (!perIp.ok) return false;
+  const perTenant = await claimRateLimitWindow({
+    scope: 'coupon-preview:tenant', key: tenantId, window: deps.publicRateLimitPolicies.writesPerTenant,
+  }, limiter);
+  return perTenant.ok;
+};
+
 const emailBodySchema = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
 
 const isPublicWritePath = (path: string): boolean =>

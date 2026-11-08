@@ -1,4 +1,7 @@
 export const directSalesLinkCopyEn = {
+  couponUnavailable: 'Coupon cannot be applied.',
+  couponApplied: (code: string, discount: string, total: string): string => `Code ${code}: −${discount}, amount to pay ${total}`,
+  couponLowestPrice: (price: string): string => `Lowest price in the last 30 days: ${price}`,
   redirecting: 'Redirecting to secure payment…',
   continueToPayment: 'Continue to payment',
   checkoutUnavailable: 'Checkout is unavailable',

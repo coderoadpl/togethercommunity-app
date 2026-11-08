@@ -369,6 +369,24 @@ describe('create InPost shipment', () => {
     expect(h.row()).toMatchObject({ shipxShipmentId: '1001', operationStartedAt: null });
   });
 
+  it('re-checks the deadline after recording the attempt and creates nothing', async () => {
+    const h = harness();
+    h.deps.shipxShipments = {
+      ...h.shipments.repository,
+      update: async (tenantId, orderId, token, patch) => {
+        const updated = await h.shipments.repository.update(tenantId, orderId, token, patch);
+        h.advance(SHIPX_OPERATION_DEADLINE_MS);
+        return updated;
+      },
+    };
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'shipx_unavailable', details: { state: 'pending', shipmentId: null } },
+    });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.row()).toBeUndefined();
+  });
+
   it('checks the deadline before creating and before reconciling', async () => {
     const h = harness();
     h.deps.products = {

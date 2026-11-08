@@ -374,6 +374,7 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
   const attemptedAt = deps.clock.nowIso();
   const marked = await save(run, { status: SHIPX_STATUS_UNCONFIRMED, createAttemptedAt: attemptedAt, updatedAt: attemptedAt }, deps);
   if (!marked.ok) return marked;
+  if (pastDeadline(run, deps)) return releaseAttempt(run, err(pendingShipment(run.shipment.status)), deps);
   const created = await client.createShipment(run.credentials, request.value);
   if (!created.ok) {
     if (created.error.code !== 'shipx_unavailable') return releaseAttempt(run, created, deps);

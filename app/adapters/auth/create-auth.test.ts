@@ -296,7 +296,7 @@ describe('real-provider sign-in and passkey proofs', () => {
       url.searchParams.set('token', 'invalid-magic-link-token');
     } else {
       await db.update(verification).set({ expiresAt: new Date(0) })
-        .where(eq(verification.identifier, url.searchParams.get('token') ?? ''));
+        .where(eq(verification.identifier, `magic-link:${url.searchParams.get('token') ?? ''}`));
     }
     const rejected = await auth.handler(new Request(url));
     expect(rejected.status).toBe(302);
@@ -951,7 +951,7 @@ describe('provider avatar hooks', () => {
       email: `provider-image-${Date.now()}@together.dev`,
       emailVerified: true,
       image: 'https://images.example.org/profile.png',
-    });
+    }, { method: 'admin' });
 
     expect(created.image).toBeNull();
   });
@@ -966,7 +966,7 @@ describe('provider avatar hooks', () => {
       name: 'Google User',
       email: `google-avatar-${Date.now()}@together.dev`,
       emailVerified: true,
-    });
+    }, { method: 'admin' });
     const createdAccount = await internalAdapter.createAccount({
       accountId: `google-${Date.now()}`,
       providerId: 'google',
@@ -1911,7 +1911,7 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
     const tokens = await db
       .select({ expiresAt: verification.expiresAt })
       .from(verification)
-      .where(eq(verification.identifier, token));
+      .where(eq(verification.identifier, `magic-link:${token}`));
     const expiresIn = (tokens[0]?.expiresAt.getTime() ?? 0) - requestedAt;
 
     expect(expiresIn).toBeGreaterThanOrEqual(
@@ -2351,7 +2351,7 @@ describe('operator owner lookup', () => {
     expect(await authPort.findUserByEmail(email)).toBeNull();
     const { internalAdapter } = await auth.$context;
     expect(await internalAdapter.findUserByEmail(email)).toBeNull();
-    const owner = await internalAdapter.createUser({ email, name: 'Owner', emailVerified: false });
+    const owner = await internalAdapter.createUser({ email, name: 'Owner', emailVerified: false }, { method: 'admin' });
     expect(await authPort.findUserByEmail(` ${email.toUpperCase()} `)).toEqual({ userId: owner.id, emailVerified: false });
     await internalAdapter.updateUser(owner.id, { emailVerified: true });
     expect(await authPort.findUserByEmail(email)).toEqual({ userId: owner.id, emailVerified: true });

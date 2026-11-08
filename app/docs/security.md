@@ -249,7 +249,7 @@ finding without blocking, and an unaccepted advisory is handled by a dependency
 bump or acceptance before the next promotion. Accepting an advisory requires both
 an `auditConfig.ignoreGhsas` entry in `app/pnpm-workspace.yaml` and its written
 justification under Accepted dependency advisories.
-The audit allowlist contains only this reviewed advisory:
+The audit allowlist contains these reviewed advisories:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
   audit reaches the old esbuild through `better-auth` and `drizzle-kit`.
@@ -257,6 +257,24 @@ The audit allowlist contains only this reviewed advisory:
   `drizzle-kit` resolves esbuild 0.25 only from 1.0, which in turn requires
   `drizzle-orm` 1.0 while `better-auth` still declares a `drizzle-orm` 0.45
   peer, so revisit when `better-auth` supports `drizzle-orm` 1.0.
+- `GHSA-mrhx-c7xc-m3w5` (zod, high): parsing a very large array against an
+  array schema without a length constraint accumulates one validation issue per
+  failing element with no cap, so an attacker can drive the process out of
+  memory. The fix exists only in zod 4.6.6; Together runs zod 3 and nested zod 4
+  copies are overridden to 4.6.7. Every schema parse of attacker-controlled
+  input in Together runs on a request body, and bodies are capped before
+  parsing by `apps/server/src/body-limits.ts` (16 KiB on public forms, 100 KiB
+  on API bodies, 512 KiB on webhooks and transactional M2M calls, 1 MiB on
+  contact-import row pages, 2 MiB on content and M2M import bodies, 4 MiB on
+  the contact-import upload, 10 MiB on the authenticated M2M import validation,
+  the largest cap), which bounds the array length and therefore the issue
+  list. Webhook bodies are also signature-verified before any schema runs,
+  provider responses come from the tenant's own configured integrations, and
+  browser-side parsing can only exhaust the visitor's own tab. A zod 3 `.max()`
+  on the array schema is not a mitigation: it records one `too_big` issue and
+  still validates every element. Revisit with the zod 4 migration; until then a
+  new parse of unbounded, unauthenticated input must stay behind a route body
+  limit in `body-limits.ts` or check the array length before the schema runs.
 
 ## Tenant API keys
 

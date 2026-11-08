@@ -11,3 +11,4 @@ export { salesLinkActions } from './sales-links.js';
 export { salesLinkContracts } from '#core/contract/index.js';
 export * from './order-verification.js';
 export * from './order-fulfilment.js';
+export * from './shipx.js';

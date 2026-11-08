@@ -20,7 +20,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 123. Route rows: 440. Exported `Ctx` use-case rows: 344.
+Closed capability count: 123. Route rows: 446. Exported `Ctx` use-case rows: 350.
 
 ## Human-readable diff
 
@@ -230,6 +230,12 @@ no changes
 | `POST /api/orders/:orderId/lines/:productId/issue` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/packing-list` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/orders/:orderId/shipx` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/shipx` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/shipx/discard` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/orders/:orderId/shipx/label` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/consent-definitions/:id` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/consent-definitions/update` | marketing:consent-definition:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -762,6 +768,12 @@ no changes
 | `sales-links.ts#deleteSalesLink` | product:write | owner, admin | owner, admin | yes | core/server/usecases/sales-links.ts authorization call |
 | `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
 | `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts authorization call |
+| `shipx.ts#getShipxSettings` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shipx.ts#configureShipx` | tenant:secret:write | owner | owner | yes | core/server/usecases/shipx.ts authorization call |
+| `shipx.ts#getInpostShipment` | order:read | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shipx.ts#createInpostShipment` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shipx.ts#discardInpostShipmentAttempt` | order:write | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
+| `shipx.ts#inpostShipmentLabel` | order:read | owner, admin | owner, admin | yes | core/server/usecases/shipx.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#updateSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#deleteSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
@@ -826,14 +838,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:28` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:208` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1246` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1248` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1270` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1284` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1808` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1808` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:29` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:209` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1247` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1249` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1271` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1285` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1810` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1810` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -69,6 +69,7 @@ import { usePanelContext } from '../panel-context.js';
 import { ImageAssetField } from '../ImageAssetField.js';
 import { AnalyticsSettingsPanel } from './AnalyticsSettingsPanel.js';
 import { ShippingSettingsPanel } from './ShippingSettingsPanel.js';
+import { ShipxSettingsCard } from './ShipxSettingsCard.js';
 import { TeamSettingsPanel } from './TeamSettingsPanel.js';
 
 const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
@@ -1895,9 +1896,10 @@ export const SettingsPanel = () => {
         </Box>
       ) : null}
       {section === 'shipping' ? (
-        <Box id="settings-panel-shipping" role="tabpanel" aria-labelledby="settings-tab-shipping">
+        <Stack id="settings-panel-shipping" role="tabpanel" aria-labelledby="settings-tab-shipping" useFlexGap spacing="1.5rem">
           <ShippingSettingsPanel canEdit={canEdit} />
-        </Box>
+          <ShipxSettingsCard canEdit={canEdit} />
+        </Stack>
       ) : null}
       {section === 'security' ? (
         <Stack id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" useFlexGap spacing="1.5rem">

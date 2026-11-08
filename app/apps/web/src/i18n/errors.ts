@@ -97,6 +97,10 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageSoldOut;
     case 'fulfilment_conflict':
       return t.errors.messageFulfilmentConflict;
+    case 'shipx_unavailable':
+      return t.errors.messageShipxUnavailable;
+    case 'shipx_rejected':
+      return t.errors.messageShipxRejected;
     case 'internal':
       return t.errors.messageInternal;
   }
@@ -135,6 +139,8 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'shipping_required':
     case 'sold_out':
     case 'fulfilment_conflict':
+    case 'shipx_unavailable':
+    case 'shipx_rejected':
     case 'internal':
       return null;
   }

@@ -6,7 +6,10 @@ import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
 import { createOrderFulfilmentRepository } from '#adapters/db/order-fulfilment.js';
-import type { OrderFulfilmentRepository, OrderVerificationRepository } from '#core/server/index.js';
+import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
+import { createFakeShipxClient } from '#adapters/shipx/fake.js';
+import { createShipxHttpClient } from '#adapters/shipx/http.js';
+import type { OrderFulfilmentRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -417,6 +420,13 @@ interface KsefAppDeps {
   }, AppError>>;
 }
 
+interface ShipxIntegrationDeps {
+  shipx: ShipxClients;
+  shipxShipments: ShipxShipmentRepository;
+  shipxSettings: ShipxSettingsRepository;
+  wait(milliseconds: number): Promise<void>;
+}
+
 export interface AppDeps {
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
@@ -488,6 +498,7 @@ export interface AppDeps {
   orderDetails?: OrderDetailRepository;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
+  shipxIntegration?: ShipxIntegrationDeps;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -1464,6 +1475,12 @@ export const createDeps = (
     orderDetails: orderRepository,
     orderVerification: createOrderVerificationRepository(db),
     orderFulfilment: createOrderFulfilmentRepository(db),
+    shipxIntegration: {
+      shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
+      shipxShipments: createShipxShipmentRepository(db),
+      shipxSettings: createShipxSettingsRepository(db),
+      wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    },
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),

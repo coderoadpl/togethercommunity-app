@@ -3,9 +3,11 @@ import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
+import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
@@ -161,6 +163,7 @@ const product = (input: {
   priceCents: 1000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: input.published,
   accessItems: [],
   legacyId: null,
@@ -588,10 +591,13 @@ const deps = (input: {
           confirmations: appDeps.marketing?.confirmations ?? new InMemoryConsentConfirmationTokenRepository(),
           processedPaymentEvents: appDeps.processedPaymentEvents,
           enrollmentTransaction: appDeps.enrollmentTransaction,
+          stock: appDeps.stock,
         }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
+    stock: createStockRepositoryFake().repository,
+    releaseExpiredStockReservations: async () => ok({ released: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -3132,6 +3138,33 @@ describe('email dispatch route', () => {
     expect(dispatchEmails).toHaveBeenCalledWith('cron');
   });
 
+  it('releases expired stock reservations on the same tick before dispatching', async () => {
+    const order: string[] = [];
+    const base = deps({ dispatchEmails: async () => { order.push('dispatch'); return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }); } });
+    base.releaseExpiredStockReservations = async () => { order.push('sweep'); return ok({ released: 2 }); };
+    const app = buildApp(base);
+    const unauthorized = await app.request(API_PATHS.emailDispatch);
+    expect(unauthorized.status).toBe(401);
+    expect(order).toEqual([]);
+    await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect(order).toEqual(['sweep', 'dispatch', 'sweep', 'dispatch']);
+  });
+
+  it('keeps dispatching e-mail when the expired reservation sweep fails', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn(async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 }));
+    const base = deps({ dispatchEmails, logger });
+    base.releaseExpiredStockReservations = async () => { throw new Error('database unavailable'); };
+    const app = buildApp(base);
+    const cron = await app.request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
+    expect([cron.status, manual.status]).toEqual([200, 200]);
+    expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledWith('[stock] expired reservation sweep failed: database unavailable');
+  });
+
   it('surfaces a dispatch failure as an error envelope', async () => {
     const app = buildApp(deps({ dispatchEmails: async () => err(internal('outbox unavailable')) }));
     const response = await app.request(API_PATHS.emailDispatch, {
@@ -3807,6 +3840,50 @@ describe('server edge security baseline', () => {
     }
   });
 
+  it('allows the parcel locker map sources only on checkout form documents', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
+      termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' });
+    h.app.get('/offer/:slug', (c) => c.html('<main>Checkout</main>'));
+    h.app.get('/checkout/:reference', (c) => c.html('<main>Checkout</main>'));
+    for (const shellPath of ['/', '/login', '/register', '/my', '/my/products', '/panel', '/panel/settings', '/panel/orders']) {
+      h.app.get(shellPath, (c) => c.html('<main>Application shell</main>'));
+    }
+    const htmlDocument = async (path: string) => {
+      const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toMatch(/^text\/html/u);
+      return parseCsp(response);
+    };
+    for (const path of ['/checkout/product-1', '/checkout/product-1?status=cancelled', '/offer/bundle?checkout=together', '/offer/bundle?status=cancelled', '/offer/bundle?checkout=together&status=cancelled']) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives), 'https://geowidget.inpost.pl']));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'", 'https://geowidget.inpost.pl']));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", path.startsWith('/offer/') ? 'https://*.sentry.io' : 'https:']));
+    }
+    for (const path of [
+      '/checkout/product-1?status=success', '/checkout/product-1?status=success&session_id=cs_live_one',
+      '/checkout/product-1?checkout=together&status=success', '/offer/bundle?status=success', '/offer/bundle?checkout=together&status=success',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set([
+        "'self'", scriptNonce(directives), 'https://www.googletagmanager.com/gtag/', 'https://connect.facebook.net',
+      ]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+      expect(directives.get('connect-src'), path).toEqual(new Set(["'self'", 'https:']));
+    }
+    for (const path of [
+      '/', '/login', '/login?status=cancelled', '/register', '/my', '/my?checkout=together', '/my/products', '/my/products?status=cancelled',
+      '/panel', '/panel/settings', '/panel/orders?status=cancelled', '/panel/orders?checkout=together', '/offer/bundle',
+    ]) {
+      const directives = await htmlDocument(path);
+      expect(directives.get('script-src'), path).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect(directives.get('style-src'), path).toEqual(new Set(["'self'", "'unsafe-inline'"]));
+    }
+    const legal = await h.app.request('/legal/terms', { headers: { host: 'acme.localhost' } });
+    expect(legal.headers.get('content-security-policy')).not.toContain('geowidget.inpost.pl');
+  });
+
   it('keeps baseline CSP outside checkout success documents', async () => {
     const h = await directSalesLinkApp();
     h.base.tenants.findSettings = async () => ({ ...h.settings, analyticsTagId: 'G-ABCDEF', analyticsMetaPixelId: '12345678',
@@ -3823,7 +3900,10 @@ describe('server edge security baseline', () => {
     ]) {
       const response = await h.app.request(path, { headers: { host: 'acme.localhost' } });
       const directives = parseCsp(response);
-      expect(directives.get('script-src')).toEqual(new Set(["'self'", scriptNonce(directives)]));
+      expect(directives.get('script-src')).toEqual(new Set([
+        "'self'", scriptNonce(directives),
+        ...(path.startsWith('/checkout/') || path.includes('checkout=together') || path.includes('status=cancelled') ? ['https://geowidget.inpost.pl'] : []),
+      ]));
       const serverDocument = path.startsWith('/offer/') || path.startsWith('/legal/') || path.startsWith('/api/');
       expect(directives.get('connect-src')).toEqual(new Set([
         "'self'", serverDocument ? 'https://*.sentry.io' : 'https:',
@@ -6151,6 +6231,23 @@ describe('public payment-config route', () => {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
       analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
+      shippingRates: [], inpostGeowidgetToken: null, inpostGeowidgetWithheld: false,
+    } });
+  });
+
+  it('exposes only active shipping rates with public fields and the parcel locker map token', async () => {
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token', shippingRates: [
+        { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
+        { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
+      ] };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(await response.json()).toMatchObject({ ok: true, data: {
+      inpostGeowidgetToken: 'public-map-token',
+      shippingRates: [{ id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } }],
     } });
   });
 
@@ -6228,6 +6325,26 @@ describe('public offer route', () => {
     expect(second.status).toBe(304);
     expect(second.headers.get('etag')).toBe(etag);
     expect(second.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('revalidates the offer when a tracked product sells out and exposes only stock flags', async () => {
+    const base = deps();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'acme-published', 1);
+    base.stock = stock.repository;
+    const app = buildApp(base);
+    const first = await requestPublicOffer(app, { host: 'acme.localhost:48730' });
+    const etag = first.headers.get('etag') ?? '';
+    expect(etag).toMatch(/^W\/"offer-t-acme-4-[0-9a-f]{64}"$/u);
+    expect(await first.json()).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: false, low: false } }] } });
+    expect((await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag })).status).toBe(304);
+    await stock.repository.reserve(acme.id, { checkoutSnapshotId: 'snapshot-1', productIds: ['acme-published'], expiresAt: '2026-11-05T10:35:00.000Z', quantity: 1, now: '2026-11-05T10:00:00.000Z' });
+    const soldOut = await requestPublicOffer(app, { host: 'acme.localhost:48730', 'if-none-match': etag });
+    expect(soldOut.status).toBe(200);
+    expect(soldOut.headers.get('etag')).not.toBe(etag);
+    const body = await soldOut.json();
+    expect(body).toMatchObject({ data: { products: [{ id: 'acme-published', stock: { tracked: true, soldOut: true } }] } });
+    expect(JSON.stringify(body)).not.toContain('onHand');
   });
 
   it('changes the offer ETag after adding a price to a published product', async () => {
@@ -8908,6 +9025,22 @@ describe('impersonation HTTP surface', () => {
     });
   });
 
+  it('withholds the parcel locker map token from the member view of an impersonating owner', async () => {
+    const base = deps();
+    const { app } = impersonatingApp({ tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token' };
+    } } });
+    const started = await app.request(API_PATHS.impersonationStart, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', reason: 'support ticket 42' }),
+    });
+    expect(started.status).toBe(200);
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers: { ...headers, cookie: cookieOf(started) } });
+    expect(await config.json()).toMatchObject({ ok: true, data: { canTest: false, testEnabled: false, inpostGeowidgetToken: null, inpostGeowidgetWithheld: true } });
+  });
+
   it('takes the __Host- prefix once cookies are secure', async () => {
     const { app } = impersonatingApp({ secureCookies: true });
 
@@ -9328,6 +9461,60 @@ describe('unlisted and free checkout', () => {
     expect(createOrder).toHaveBeenCalledWith('t-acme', expect.objectContaining({ productId: hidden.id, amountCents: 0, status: 'paid' }));
     expect(recordConsent).toHaveBeenCalledWith('t-acme', expect.objectContaining({ email: 'guest@example.com' }));
   });
+
+  const trackedFreeCheckout = () => {
+    const base = deps({ products: [hidden] });
+    const stock = createStockRepositoryFake();
+    stock.track('t-acme', hidden.id, 1);
+    base.stock = stock.repository;
+    base.tenants.findSettings = async () => ({
+      name: 'Acme', logoUrl: null, logoDarkUrl: null, accentColor: null, accentLight: null,
+      faviconUrl: null, socialLinks: [], signInNotice: { enabled: false, text: '' }, billingPortalUrl: null,
+      bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+      ogTitle: null, ogDescription: null, ogImageUrl: null,
+      supportEmail: null, supportUrl: null, termsUrl: 'https://acme.example/terms',
+      privacyUrl: 'https://acme.example/privacy', defaultHomeSpaceId: null,
+    });
+    const start = (app: ReturnType<typeof buildApp>, email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST', headers,
+      body: JSON.stringify({ productId: hidden.id, email, termsAccepted: true }),
+    });
+    return { base, stock, start };
+  };
+
+  it('commits the last tracked piece of a free checkout and refuses the next buyer with sold_out', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    const app = buildApp(base);
+    expect((await start(app, 'first@example.com')).status).toBe(200);
+    expect(stock.levels.get('t-acme', hidden.id)).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toContain('committed_late');
+    const second = await start(app, 'second@example.com');
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ ok: false, error: { code: 'sold_out' } });
+  });
+
+  it('returns the free fulfilment failure and logs the release failure when releasing the hold throws', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    base.logger = logger;
+    const response = await start(buildApp(base), 'first@example.com');
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Checkout snapshot not found' } });
+    expect(release).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
+  });
+
+  it('releases the free checkout hold when fulfilment throws', async () => {
+    const { base, stock, start } = trackedFreeCheckout();
+    base.checkoutSnapshots = { create: async () => undefined, attachProviderSession: async () => undefined, findById: async () => null };
+    base.processedPaymentEvents.claim = async () => { throw new Error('Payment event storage unavailable'); };
+    const response = await start(buildApp(base), 'first@example.com');
+    expect(response.status).toBe(500);
+    expect(stock.levels.get('t-acme', hidden.id)).toMatchObject({ onHand: 1, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'released']);
+  });
 });
 
 describe('post purge route', () => {
@@ -9419,6 +9606,24 @@ describe('staff Stripe test mode routes', () => {
     encrypt: (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' }),
     decrypt: (value) => ok(value.ciphertext),
   };
+
+  it.each(['member', 'none', 'staff', 'owner'] as const)('returns the parcel locker map token to buyers only, never to tenant staff: %s', async (scope) => {
+    const base = deps();
+    const app = scopedApp(scope, { overrides: { tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, inpostGeowidgetToken: 'public-map-token' };
+    } } } });
+    const staff = scope === 'staff' || scope === 'owner';
+    const config = await app.request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ ok: true, data: {
+      canTest: staff, inpostGeowidgetToken: staff ? null : 'public-map-token', inpostGeowidgetWithheld: staff,
+    } });
+  });
+
+  it('reports no withheld map for staff when the workspace has no parcel locker map token', async () => {
+    const config = await scopedApp('owner').request(API_PATHS.publicPaymentConfig, { headers });
+    expect(await config.json()).toMatchObject({ ok: true, data: { canTest: true, inpostGeowidgetToken: null, inpostGeowidgetWithheld: false } });
+  });
 
   it.each(['member', 'none', 'staff', 'owner'] as const)('exposes the switch only to tenant staff: %s', async (scope) => {
     const app = scopedApp(scope);
@@ -9820,6 +10025,65 @@ it.each([undefined, 'BUNDLE'])('simulates the full sales link through the HTTP r
   }
 });
 
+it.each(['consent capture', 'coupon session'] as const)('releases the simulated coupon stock hold when the %s write fails', async (stage) => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release');
+  h.base.stock = stock.repository;
+  if (stage === 'consent capture') h.base.checkoutConsentCaptures.create = async () => { throw new Error('Consent storage unavailable'); };
+  else if (h.base.couponCheckoutSessions !== undefined) h.base.couponCheckoutSessions.create = async () => { throw new Error('Coupon storage unavailable'); };
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(response.status).toBe(500);
+  expect(release).toHaveBeenCalledOnce();
+  expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 0 });
+  expect(h.orders).toHaveLength(0);
+});
+
+it.each(['consent capture', 'coupon session'] as const)('surfaces the %s write failure when releasing the simulated coupon stock hold fails too', async (stage) => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+  const logger = { error: vi.fn(), warn: vi.fn() };
+  h.base.stock = stock.repository;
+  h.base.logger = logger;
+  const original = new Error(`The ${stage} storage is unavailable`);
+  if (stage === 'consent capture') h.base.checkoutConsentCaptures.create = async () => { throw original; };
+  else if (h.base.couponCheckoutSessions !== undefined) h.base.couponCheckoutSessions.create = async () => { throw original; };
+  const surfaced: unknown[] = [];
+  const app = new Hono<AppVars>();
+  app.onError((error) => { surfaced.push(error); return new Response(null, { status: 500 }); });
+  registerInternalRoutes(app, h.base);
+  const response = await app.request(API_PATHS.devSimulatePurchase, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', host: 'acme.localhost' },
+    body: JSON.stringify({ productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' }),
+  });
+  expect(response.status).toBe(500);
+  expect(surfaced).toEqual([original]);
+  expect(release).toHaveBeenCalledOnce();
+  expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
+  expect(h.orders).toHaveLength(0);
+});
+
+it('returns the simulated coupon fulfilment failure and logs the release failure when releasing the hold throws', async () => {
+  const h = simulatedBundleApp();
+  const stock = createStockRepositoryFake();
+  stock.track(acme.id, 'print', 1);
+  const release = vi.spyOn(stock.repository, 'release').mockRejectedValueOnce(new Error('Stock storage unavailable'));
+  const logger = { error: vi.fn(), warn: vi.fn() };
+  h.base.stock = stock.repository;
+  h.base.logger = logger;
+  if (h.base.checkoutSnapshots !== undefined) h.base.checkoutSnapshots.findById = async () => null;
+  const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Checkout snapshot not found' } });
+  expect(release).toHaveBeenCalledOnce();
+  expect(logger.error).toHaveBeenCalledWith('[checkout] cleanup after a failed checkout failed: Stock storage unavailable');
+  expect(h.orders).toHaveLength(0);
+});
+
 it('rejects a simulated bundle coupon that applies only to the first product', async () => {
   const h = simulatedBundleApp('first-only');
   const response = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test', couponCode: 'BUNDLE' });
@@ -9999,6 +10263,61 @@ const directSalesLinkApp = async (cancelReturnUrl?: string) => {
   if (coupons === undefined) throw new Error('Missing test coupons');
   return { ...h, create, settings, coupons };
 };
+
+describe('stock-tracked sales links', () => {
+  it('renders the unavailable handoff for a sold-out link and refuses its checkout with sold_out', async () => {
+    const h = await directSalesLinkApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 0);
+    h.base.stock = stock.repository;
+    h.base.salesLinkManagement = { ...h.base.salesLinkManagement ?? { salesLinks: h.salesLinks, products: h.base.products, prices: h.base.prices, tenants: h.base.tenants, clock: h.base.clock, ids: h.base.ids }, stock: stock.repository };
+    const page = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
+    expect(page.status).toBe(409);
+    const html = await page.text();
+    expect(html).toContain('Checkout is unavailable');
+    expect(html).not.toContain('<form');
+    const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({}),
+    });
+    expect(checkout.status).toBe(409);
+    expect(await checkout.json()).toMatchObject({ ok: false, error: { code: 'sold_out', message: '"Printed item" is sold out' } });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('reserves the last piece for the direct checkout with a 31-minute session and releases it when Stripe fails', async () => {
+    const h = await directSalesLinkApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 1);
+    h.base.stock = stock.repository;
+    const checkout = () => h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({}),
+    });
+    expect((await checkout()).status).toBe(200);
+    const expiresAt = h.create.mock.calls[0]?.[0].expiresAt;
+    expect(Date.parse(expiresAt ?? '') - Date.parse(h.base.clock.nowIso())).toBe(31 * 60_000);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 1 });
+    expect((await checkout()).status).toBe(409);
+    stock.track(acme.id, 'print', 1);
+    h.create.mockResolvedValueOnce(err(integrationUnavailable('Stripe is down')));
+    expect((await checkout()).status).toBe(503);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 1, reserved: 0 });
+  });
+
+  it('decrements stock on a simulated purchase and returns sold_out for the next buyer', async () => {
+    const h = simulatedBundleApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, 'print', 1);
+    h.base.stock = stock.repository;
+    const first = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'first@example.test' });
+    expect(first.status).toBe(200);
+    expect(stock.levels.get(acme.id, 'print')).toMatchObject({ onHand: 0, reserved: 0 });
+    expect(stock.events.map((event) => event.type)).toEqual(['reserved', 'committed']);
+    const second = await purchase(h.app, { host: 'acme.localhost' }, { productId: 'print', salesLinkId: 'bundle-link', email: 'second@example.test' });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ ok: false, error: { code: 'sold_out' } });
+    expect(h.orders).toHaveLength(1);
+  });
+});
 
 describe('direct public sales-link checkout', () => {
   it.each(['coupon-preview:ip', 'coupon-preview:tenant'])('omits coupon previews when %s is exhausted without blocking checkout', async (scope) => {
@@ -10415,6 +10734,44 @@ describe('direct public sales-link checkout', () => {
       const page = await h.app.request(`/offer/bundle?${query}`, { headers: { host: 'acme.localhost' } });
       expect(await page.text()).toBe('<main>Existing checkout</main>');
     }
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps offers with a shipped product on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[1];
+    if (item === undefined) throw new Error('Missing test product');
+    item.type = 'physical';
+    item.deliveryMethod = 'shipping';
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const page = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).toBe('<main>Existing checkout</main>');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps offers with product safety information on the Together checkout instead of the Stripe handoff', async () => {
+    const h = await directSalesLinkApp();
+    const item = h.products[0];
+    if (item === undefined) throw new Error('Missing test product');
+    expect(item).toMatchObject({ type: 'physical', deliveryMethod: 'pickup' });
+    expect(item.checkoutConsentDefinitionIds ?? []).toEqual([]);
+    item.compliance = {
+      manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
+      modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
+    };
+    h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
+    const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/offer/bundle?utm_source=meta&checkout=together');
+    const page = await h.app.request('/offer/bundle?checkout=together', { headers: { host: 'acme.localhost' } });
+    expect(await page.text()).toBe('<main>Existing checkout</main>');
+    const handoff = await h.app.request('/api/public/sales-links/bundle/checkout', { method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: '{}' });
+    expect(handoff.status).toBe(400);
     expect(h.create).not.toHaveBeenCalled();
   });
 

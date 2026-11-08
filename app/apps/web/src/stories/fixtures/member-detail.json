@@ -22,6 +22,7 @@
           "defaultLanguage": "en",
           "directMessagesEnabled": true,
           "faviconUrl": null,
+          "inpostGeowidgetToken": null,
           "invoiceExemptionBasis": null,
           "invoiceExemptionBasisKind": null,
           "invoiceSellerAddress": null,
@@ -38,6 +39,7 @@
           "ogImageUrl": null,
           "ogTitle": null,
           "privacyUrl": null,
+          "shippingRates": [],
           "signInNotice": {
             "enabled": false,
             "text": ""
@@ -269,9 +271,11 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:31.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-studio-course-101",
             "legacyId": null,
@@ -281,6 +285,8 @@
             "tenantId": "tenant-studio",
             "title": "Together 101 Course",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -288,9 +294,11 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:32.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-studio-workshop",
             "legacyId": null,
@@ -300,6 +308,8 @@
             "tenantId": "tenant-studio",
             "title": "Scenario Workshop",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -312,9 +322,11 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:33.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "legacyId": null,
@@ -324,6 +336,8 @@
             "tenantId": "tenant-studio",
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -336,9 +350,11 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:34.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "legacyId": null,
@@ -348,6 +364,8 @@
             "tenantId": "tenant-studio",
             "title": "React in Practice - full access",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -363,9 +381,11 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:35.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "legacyId": null,
@@ -375,6 +395,8 @@
             "tenantId": "tenant-studio",
             "title": "DOM Module Pack",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -401,9 +423,11 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:36.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "legacyId": null,
@@ -413,6 +437,8 @@
             "tenantId": "tenant-studio",
             "title": "Free preview",
             "type": "course",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -429,9 +455,11 @@
               }
             ],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:38.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "legacyId": null,
@@ -441,6 +469,8 @@
             "tenantId": "tenant-studio",
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
@@ -448,9 +478,11 @@
           {
             "accessItems": [],
             "checkoutConsentDefinitionIds": [],
+            "compliance": null,
             "coverUrl": null,
             "createdAt": "2026-07-01T12:00:39.000Z",
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "legacyId": null,
@@ -460,11 +492,14 @@
             "tenantId": "tenant-studio",
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variantGroup": null,
+            "variantLabel": null,
             "vatExemptionBasis": null,
             "vatRate": null,
             "visibility": "listed"
           }
-        ]
+        ],
+        "stock": []
       }
     },
     "listReports:[{\"limit\":1,\"status\":\"open\"}]": {
@@ -576,6 +611,7 @@
             "createdAt": "2026-06-11T12:00:00.000Z",
             "currency": "PLN",
             "discountCents": 0,
+            "fulfilmentStatus": null,
             "id": "order-studio-active-club",
             "kind": "recurring",
             "lines": [
@@ -606,6 +642,8 @@
               "subscription": "sub_seed_active_club"
             },
             "salesLinkId": null,
+            "shipment": null,
+            "shipping": null,
             "status": "paid",
             "tenantId": "tenant-studio",
             "verificationToken": "fixture-verification-token-0000000000000000000000000000000000000000"
@@ -619,6 +657,7 @@
             "createdAt": "2026-06-01T12:00:00.000Z",
             "currency": "PLN",
             "discountCents": 7980,
+            "fulfilmentStatus": null,
             "id": "order-studio-active-js",
             "kind": "one_time",
             "lines": [
@@ -648,6 +687,8 @@
               "checkoutSession": "sim_cs_seed_active"
             },
             "salesLinkId": null,
+            "shipment": null,
+            "shipping": null,
             "status": "paid",
             "tenantId": "tenant-studio",
             "verificationToken": "fixture-verification-token-0000000000000000000000000000000000000000"
@@ -770,11 +811,14 @@
       "ok": true,
       "value": {
         "contentVersion": 1,
+        "inpostGeowidgetToken": null,
         "previewLessons": [],
         "products": [
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "",
             "id": "product-studio-course-101",
             "marketingConsents": [],
@@ -789,14 +833,22 @@
               }
             ],
             "slug": "course-together-101",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Together 101 Course",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to every module in JavaScript from Scratch.",
             "id": "product-js-full",
             "marketingConsents": [],
@@ -811,14 +863,22 @@
               }
             ],
             "slug": "js-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "JavaScript Course - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Full access to React in Practice.",
             "id": "product-react-full",
             "marketingConsents": [],
@@ -833,14 +893,22 @@
               }
             ],
             "slug": "react-full",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "React in Practice - full access",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Access to the DOM module of the JavaScript course.",
             "id": "product-js-dom-module",
             "marketingConsents": [],
@@ -855,14 +923,22 @@
               }
             ],
             "slug": "js-dom-module",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "DOM Module Pack",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Free sample lessons from every module in both courses, plus the video demo.",
             "id": "product-free-preview",
             "marketingConsents": [],
@@ -877,14 +953,22 @@
               }
             ],
             "slug": "free-preview",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Free preview",
             "type": "course",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Club membership includes access to the JavaScript and React courses while your subscription is active.",
             "id": "product-club",
             "marketingConsents": [],
@@ -906,14 +990,22 @@
               }
             ],
             "slug": "club",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Studio Club - subscription",
             "type": "membership",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           },
           {
+            "compliance": null,
             "coverUrl": null,
             "currency": "PLN",
+            "deliveryMethod": "pickup",
             "description": "Exercises and checklists for independent practice after purchase.",
             "id": "product-download-workbook",
             "marketingConsents": [],
@@ -928,13 +1020,20 @@
               }
             ],
             "slug": "download-workbook",
+            "stock": {
+              "low": false,
+              "soldOut": false,
+              "tracked": false
+            },
             "title": "Creator Workbook",
             "type": "digital_download",
+            "variants": [],
             "vatExemptionBasis": null,
             "vatRate": null
           }
         ],
         "salesLinks": [],
+        "shippingRates": [],
         "tenant": {
           "branding": {
             "accentColor": null,

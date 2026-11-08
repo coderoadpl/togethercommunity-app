@@ -164,6 +164,7 @@ const productRow: Product = {
   priceCents: 12_000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: false,
   accessItems: [],
   checkoutConsentDefinitionIds: [],

@@ -25,9 +25,12 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'validation':
       return t.errors.headingValidation;
     case 'conflict':
+    case 'fulfilment_conflict':
       return t.errors.headingConflict;
     case 'slug_reserved':
       return t.errors.headingSlugReserved;
+    case 'sold_out':
+      return t.errors.headingSoldOut;
     case 'integration_not_configured':
     case 'integration_auth':
     case 'integration_unavailable':
@@ -41,6 +44,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'broadcasts_disabled':
     case 'transactional_platform_cap_reached':
     case 'invoice_exemption_basis_missing':
+    case 'shipping_required':
     case 'internal':
       return t.errors.headingGeneric;
   }

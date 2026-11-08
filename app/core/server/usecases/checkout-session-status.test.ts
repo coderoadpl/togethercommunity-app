@@ -129,6 +129,18 @@ describe('checkout session purchase analytics', () => {
     expect(deps.salesLinks.findById).not.toHaveBeenCalled();
   });
 
+  it('keeps the shipping fee in the value but not among the purchased items', async () => {
+    const deps = harness([{ ...order, amountCents: 6399, lines: [
+      { productId: 'product-1', name: 'Printed accessory', productType: 'physical', grossCents: 4900,
+        netCents: 3984, vatRate: 23, vatCents: 916, vatExemptionBasis: null, issuedCount: 0 },
+      { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 1499,
+        netCents: 1219, vatRate: 23, vatCents: 280, vatExemptionBasis: null, issuedCount: null },
+    ] }], analyticsSettings);
+    expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
+      ok: true, value: { status: 'paid', analytics: { value: 63.99, items: [{ itemId: 'product-1', itemName: 'Printed accessory', price: 49 }] } },
+    });
+  });
+
   it('resolves the order sales link within its tenant', async () => {
     const deps = harness([{ ...order, salesLinkId: 'link-1' }], analyticsSettings);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toMatchObject({
@@ -163,7 +175,7 @@ describe('checkout session purchase analytics', () => {
     const product: Product = {
       id: order.productId, tenantId: order.tenantId, type: 'digital_download', slug: 'historical-product',
       title: 'Historical product', description: '', coverUrl: null, priceCents: 9999, currency: 'PLN',
-      published: false, visibility: 'listed', accessItems: [], legacyId: null, createdAt: order.createdAt,
+      published: false, visibility: 'listed', deliveryMethod: 'pickup', accessItems: [], legacyId: null, createdAt: order.createdAt,
     };
     const deps = harness([order], analyticsSettings, product);
     expect(await getCheckoutSessionStatus('tenant-1', 'cs_live_paid123', deps)).toEqual({

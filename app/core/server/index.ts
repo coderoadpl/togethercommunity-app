@@ -57,6 +57,7 @@ export * from './usecases/coupon-management.js';
 export * from './usecases/coupon-stats.js';
 export * from './usecases/stripe-webhook.js';
 export * from './usecases/product-prices.js';
+export * from './usecases/stock.js';
 export * from './usecases/orders.js';
 export * from './usecases/order-reconciliation.js';
 export * from './usecases/support.js';
@@ -148,7 +149,10 @@ export * from './usecases/sales-links.js';
 
 export { captureCheckoutSelection } from './usecases/checkout-lines.js';
 export * from './order-verification-ports.js';
+export * from './stock-ports.js';
 export * from './usecases/order-verification.js';
+export * from './order-fulfilment-ports.js';
+export * from './usecases/order-fulfilment.js';
 export * from './usecases/public-order-qr.js';
 
 export * from './consumer-sales-ports.js';

@@ -205,6 +205,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/sales-links/:id` | authenticated | mutating | delete sales link |
 | `GET /api/orders/verify/:reference` | authenticated | read | verify order |
 | `POST /api/orders/:orderId/lines/:productId/issue` | authenticated | mutating | issue order line |
+| `GET /api/orders/packing-list` | authenticated | read | orders packing list |
+| `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `POST /api/marketing/consent-definitions` | authenticated | mutating | marketing consent definitions create |
 | `GET /api/marketing/consent-definitions/:id` | authenticated | read | marketing consent definition |
 | `POST /api/marketing/consent-definitions/update` | authenticated | mutating | marketing consent definition update |
@@ -336,6 +338,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/products/access-issues` | authenticated | read | products access issues |
 | `GET /api/products/:productId/prices` | authenticated | read | product prices |
 | `POST /api/products/prices` | authenticated | mutating | product prices create |
+| `GET /api/products/:productId/stock` | authenticated | read | product stock |
+| `POST /api/products/stock/enable` | authenticated | mutating | product stock enable |
+| `POST /api/products/stock/adjust` | authenticated | mutating | product stock adjust |
+| `POST /api/products/stock/threshold` | authenticated | mutating | product stock threshold |
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
 | `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |

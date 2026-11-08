@@ -108,6 +108,7 @@ const product = (id: string, lessonIds: string[], courseId: string): Product => 
   priceCents: 5000,
   currency: 'PLN',
   visibility: 'listed',
+  deliveryMethod: 'pickup',
   published: true,
   accessItems: [{ level: 'lessons', courseId, lessonIds }],
   legacyId: null,

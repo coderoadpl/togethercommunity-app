@@ -325,6 +325,24 @@ describe('requestInvoice', () => {
     }
   });
 
+  it.each(['ifirma', 'ksef'] as const)('invoices the shipping fee as its own %s position at its own VAT rate and face value', async (provider) => {
+    const h = harness({ provider });
+    h.deps.orderDetails.findById = async () => ({ ...order(), amountCents: 10949, discountCents: 1050, lines: [
+      { productId: 'p1', name: 'Printed material', productType: 'physical', grossCents: 10500, netCents: 10000, vatCents: 500, vatRate: 5, vatExemptionBasis: null, issuedCount: 0 },
+      { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 1499, netCents: 1219, vatCents: 280, vatRate: 23, vatExemptionBasis: null, issuedCount: null },
+    ] });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    const snapshot = h.events.find((event) => event.type === (provider === 'ksef' ? 'frozen' : 'requested'));
+    expect(snapshot?.meta.positions).toEqual([
+      { name: 'Printed material', grossCents: 9450, netCents: 9000, vatCents: 450, vat: { kind: 'rate', percent: 5 } },
+      { name: 'Parcel locker', grossCents: 1499, netCents: 1219, vatCents: 280, vat: { kind: 'rate', percent: 23 } },
+    ]);
+    if (provider === 'ksef') {
+      expect(h.frozenXml()).toContain('<P_15>109.49</P_15>');
+      expect(h.frozenXml()).toContain('Parcel locker');
+    }
+  });
+
   it.each(['ifirma', 'ksef'] as const)('uses current Settings for an implicit single-product %s invoice requested later', async (provider) => {
     const h = harness({ provider });
     h.deps.orderDetails.findById = async () => ({

@@ -1,3 +1,4 @@
+import { productComplianceSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 import { productVatFields } from './product-vat.js';
 import { z } from 'zod';
 
@@ -183,6 +184,9 @@ export const importProductRecordSchema = z
     priceCents: z.number().int().nonnegative(),
     currency: currencySchema,
     accessItems: z.array(importAccessItemSchema),
+    compliance: productComplianceSchema.nullable().optional(),
+    variantGroup: variantGroupSchema.nullable().optional(),
+    variantLabel: variantLabelSchema.nullable().optional(),
   })
   .strict();
 

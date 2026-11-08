@@ -1,6 +1,6 @@
 import { consumerSalesSummaryQuery, consumerSalesExportQuery } from '#core/client/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
-import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates } from '#core/client/index.js';
+import { orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
 import { surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
@@ -198,6 +198,11 @@ import {
   productsInvalidates,
   productPricesQuery,
   productPricesInvalidates,
+  productStockQuery,
+  productStockInvalidates,
+  enableProductStockMutation,
+  adjustProductStockMutation,
+  setProductStockThresholdMutation,
   uploadProductDownloadMutation,
   uploadCourseCoverMutation,
   uploadProductCoverMutation,
@@ -384,6 +389,11 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   createProductPrice: createProductPriceMutation(apiClient),
   deactivateProductPrice: deactivateProductPriceMutation(apiClient),
   productPricesInvalidates,
+  productStock: (productId: string) => productStockQuery(apiClient, productId),
+  productStockInvalidates,
+  enableProductStock: enableProductStockMutation(apiClient),
+  adjustProductStock: adjustProductStockMutation(apiClient),
+  setProductStockThreshold: setProductStockThresholdMutation(apiClient),
   downloadCopies: (query: Parameters<typeof apiClient.listDownloadCopies>[0]) => downloadCopiesQuery(apiClient, query),
   productDownloadAssets: (productId: string) => productDownloadAssetsQuery(apiClient, productId),
   productDownloadAssetsInvalidates,
@@ -403,6 +413,8 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   orderReconciliation: orderReconciliationQuery(apiClient),
   orderVerification: (reference: string) => orderVerificationQuery(apiClient, reference),
   issueOrderLine: issueOrderLineMutation(apiClient),
+  shipOrder: shipOrderMutation(apiClient),
+  packingList: (input: Parameters<typeof packingListQuery>[1]) => packingListQuery(apiClient, input),
   ordersInvalidates,
   orderVerificationInvalidates,
   order: (id: string) => orderQuery(apiClient, id),

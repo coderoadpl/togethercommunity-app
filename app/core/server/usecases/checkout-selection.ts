@@ -1,4 +1,4 @@
-import { err, ok, validation, type AppError, type Product, type ProductPrice, type Result } from '#core/domain/index.js';
+import { err, ok, validation, type AppError, type CheckoutShippingSelection, type Product, type ProductPrice, type Result } from '#core/domain/index.js';
 
 export interface CheckoutSelection {
   product: Product;
@@ -7,6 +7,7 @@ export interface CheckoutSelection {
   productPrices?: ProductPrice[];
   salesLinkId?: string;
   salesLinkSlug?: string;
+  shipping?: CheckoutShippingSelection;
 }
 
 

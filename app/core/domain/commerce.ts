@@ -4,8 +4,10 @@ import { orderAttributionSchema } from './attribution.js';
 import { invoiceSchema } from './invoice.js';
 import { stripeModeSchema } from './integration.js';
 
-import { currencySchema, productTypeSchema } from './product.js';
+import { currencySchema, PRODUCT_TYPES } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
+import { checkoutShippingSnapshotSchema, fulfilmentStatusSchema, orderShippingSchema } from './shipping.js';
+import { orderShipmentSchema } from './fulfilment.js';
 
 export const priceKindSchema = z.enum(['one_time', 'recurring']);
 
@@ -114,11 +116,17 @@ export const orderBillingDataSchema = billingDataSchema.extend({
   city: z.string().trim().max(120),
 });
 
+export const SHIPPING_LINE_TYPE = 'shipping';
+
+const orderLineTypeSchema = z.enum([...PRODUCT_TYPES, SHIPPING_LINE_TYPE]);
+
+export type OrderLineType = z.infer<typeof orderLineTypeSchema>;
+
 export const orderLineSchema = z.object({
   priceId: z.string().min(1).optional(),
   productId: z.string().min(1),
   name: z.string().min(1),
-  productType: productTypeSchema,
+  productType: orderLineTypeSchema,
   grossCents: z.number().int().nonnegative(),
   netCents: z.number().int().nonnegative(),
   vatRate: productVatRateSchema.nullable(),
@@ -145,6 +153,21 @@ export const allocateOrderLineGross = (lines: { grossCents: number }[], amountCe
   });
 };
 
+export const isShippingLine = (line: { productType: OrderLineType }): boolean => line.productType === SHIPPING_LINE_TYPE;
+
+export const productLines = <T extends { productType: OrderLineType }>(lines: readonly T[]): T[] =>
+  lines.filter((line) => !isShippingLine(line));
+
+export const allocatePaidOrderLineGross = (
+  lines: { grossCents: number; productType: OrderLineType }[],
+  amountCents: number,
+): number[] => {
+  const shippingCents = lines.filter(isShippingLine).reduce((sum, line) => sum + line.grossCents, 0);
+  const allocated = allocateOrderLineGross(productLines(lines), Math.max(0, amountCents - shippingCents));
+  let index = 0;
+  return lines.map((line) => isShippingLine(line) ? line.grossCents : allocated[index++] ?? 0);
+};
+
 export const checkoutSnapshotSchema = z.object({
   attribution: orderAttributionSchema.nullable().optional(),
   mode: stripeModeSchema.nullable().optional(),
@@ -153,6 +176,7 @@ export const checkoutSnapshotSchema = z.object({
   tenantId: z.string(),
   salesLinkId: z.string().nullable(),
   lines: z.array(orderLineSchema).min(1),
+  shipping: checkoutShippingSnapshotSchema.nullable().optional(),
   currency: currencySchema,
   createdAt: z.string().datetime(),
 });
@@ -178,6 +202,9 @@ export const orderSchema = z.object({
   billing: orderBillingDataSchema.nullable().optional(),
   salesLinkId: z.string().nullable().optional(),
   lines: z.array(orderLineSchema).optional(),
+  shipping: orderShippingSchema.nullable().optional(),
+  fulfilmentStatus: fulfilmentStatusSchema.nullable().optional(),
+  shipment: orderShipmentSchema.nullable().optional(),
   verificationToken: z.string().regex(/^[A-Za-z0-9_-]{22,}$/).optional(),
   paidAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
@@ -188,6 +215,7 @@ export type Order = z.infer<typeof orderSchema>;
 export const orderListItemSchema = orderSchema.extend({
   invoice: invoiceSchema.nullable().optional(),
   lines: z.array(orderLineSchema.extend({ issuedByDisplayName: z.string().min(1).optional() })).optional(),
+  shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
   memberName: z.string().nullable(),
@@ -220,6 +248,7 @@ export const listOrdersQuerySchema = z.object({
   productId: z.string().min(1).optional(),
   kind: priceKindSchema.optional(),
   couponId: z.string().min(1).optional(),
+  fulfilmentStatus: fulfilmentStatusSchema.optional(),
   search: z.string().trim().min(1).max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),

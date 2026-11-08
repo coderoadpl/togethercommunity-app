@@ -13,8 +13,8 @@ export interface StaffRecipient {
 export const tenantStaffRecipients = async (
   tenantId: string,
   deps: {
-    tenants: TenantRepository;
-    tenantAccess: TenantAccessReader;
+    tenants: Pick<TenantRepository, 'findSettings'>;
+    tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   },
 ): Promise<StaffRecipient[]> => {
   const settings = await deps.tenants.findSettings(tenantId);

@@ -121,17 +121,35 @@ use `connect-src 'self' https:`, including `/offer/` success returns whose other
 server responses allow only same-origin and Sentry connections. The existing
 `img-src 'self' data: https:` is unchanged; no vendor-specific connection sources
 are added. Entry, cancellation, handoff
-and other documents retain the baseline script policy.
+and other documents retain the baseline script policy, except that checkout form
+documents allow the InPost parcel locker map origin as described below.
 
 The hosted deployment serves these SPA returns statically. In `vercel.json`,
 the `/offer/(.*)` and `/checkout/(.*)` success header entries both require
 `status=success` and allow
 `script-src 'self' https://www.googletagmanager.com/gtag/ https://connect.facebook.net`.
-These entries follow the baseline offer headers and catch-all so their policies
-take precedence only on success returns. Offer fallback and cancellation pages,
-other checkout requests and all other header entries retain the baseline policy.
-No other directive changes: `connect-src 'self' https:` and
-`img-src 'self' data: https:` remain unchanged. Routes and rewrites are unchanged.
+The content security policy entries are mutually exclusive, so the result does
+not depend on which matching entry takes precedence: the catch-all excludes
+`/checkout/` as well as the server-rendered prefixes, and every checkout form
+entry below lists `status=success` under `missing`. All other header entries
+retain the baseline policy, except the checkout form entries below.
+
+Checkout form documents — `/checkout/<productRef>` without `status=success`,
+`/offer/<slug>?checkout=together` and `/offer/<slug>?status=cancelled` — add
+`https://geowidget.inpost.pl` to `script-src` and `style-src` for the InPost
+parcel locker map used by shipped products (owner decision 2026-11-05), in both
+the server middleware and the static hosting headers. `connect-src` is not part
+of that change: each document keeps its base value, `'self' https:` on
+`/checkout/*` documents and in the static hosting headers, and
+`'self' https://*.sentry.io` on `/offer/*` server responses. On a
+server-rendered `/offer/*` form document the map may therefore fail to reach
+InPost's API; the buyer then enters the locker code in the typed input, which
+the delivery step always shows. Success, sign-in, member and Studio documents never
+list that origin, and leaving a form document after the map script was injected
+uses a full document navigation. See
+[Shop](shop.md#content-security-policy-for-the-parcel-locker-map).
+No other directive changes: `connect-src` and `img-src 'self' data: https:`
+keep their base values. Routes and rewrites are unchanged.
 Static headers cannot resolve tenant settings, test mode or cookie consent.
 Their script allowance does not load either library: the client still requires a
 configured ID, a live success return and the consent rule before loading.
@@ -259,6 +277,29 @@ on this fallback page and its checkout endpoint too. Success and cancellation re
 Together page and cannot restart the automatic redirect. The single-product
 checkout page retains its existing behavior.
 
+## Shipping in Stripe Checkout
+
+A checkout with a shipped product passes the delivery fee to Stripe as exactly
+one shipping option instead of a line item: `shipping_options[0].shipping_rate_data`
+is `{ type: 'fixed_amount', fixed_amount: { amount, currency }, display_name,
+tax_behavior: 'inclusive' }`, with `delivery_estimate` in business days when the
+option has one. The session also sets `shipping_address_collection.allowed_countries`
+to the allowed shipping countries (`PL`) and `phone_number_collection.enabled`.
+Stripe coupons discount line items, never shipping rates.
+
+The webhook reads the address from `collected_information.shipping_details`,
+falling back to the top-level `shipping_details` of events in API versions
+before `2025-03-31.basil`, the phone number from `customer_details.phone` and the fee from
+`shipping_cost.amount_total`. It rejects a session whose fee differs from the
+snapshot's shipping line or whose address is missing or outside the allowed
+countries. A session whose coupon covered every product line but which charged
+the delivery fee is recorded even when the coupon redemption claim loses a race
+at the redemption limit: the order keeps the coupon and Stripe's discount, no
+redemption row is written, so the coupon is over-redeemed by one shipped order,
+and the webhook logs `reason=coupon_over_redeemed`. Staff see the order on the
+Studio Orders page; nothing is refunded automatically. See [Shop](shop.md) for
+the delivery options and the stored order data.
+
 ## Order campaign attribution
 
 Checkout captures `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`,
@@ -328,7 +369,12 @@ original event supplies the invoice amounts, currency and billing period.
 Payment-intent or charge IDs are stored on renewal orders so later refunds and
 disputes can find them. Lookup failures fail webhook processing for retry instead
 of acknowledging an event without its payment references. Existing pre-Clover
-top-level payment references remain supported for older events. Signature
+top-level payment references remain supported for older events. Both Checkout
+Session delivery address locations are supported for the same reason: tenant
+webhook endpoints are registered without a pinned API version, so Stripe sends
+events in the account's default version, and versions before `2025-03-31.basil`
+carry the address in the top-level `shipping_details` instead of
+`collected_information.shipping_details`. Signature
 verification and the signed mode check happen before any lookup.
 
 Checkout Sessions propagate `tenantId` to subscription metadata and, for one-time

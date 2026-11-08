@@ -156,11 +156,12 @@ const harness = (options: {
     },
   };
   const row = () => shipments.rows.get(shipments.key('workspace', 'order-1'));
+  const eventTypes = async () => (await shipments.repository.listEvents('workspace', 'order-1')).map((event) => event.type);
   const seed = (change: Partial<ShipxShipmentRecord>) => shipments.rows.set(shipments.key('workspace', 'order-1'), shipmentRecord({ environment: 'production', ...change }));
   const advance = (milliseconds: number) => {
     now = new Date(Date.parse(now) + milliseconds).toISOString();
   };
-  return { deps, real, fake, shipments, settings, ship, wait, resolve, row, seed, advance };
+  return { deps, real, fake, shipments, settings, ship, wait, resolve, row, eventTypes, seed, advance };
 };
 
 const write = ctx(['order:write', 'order:read']);
@@ -258,6 +259,13 @@ describe('create InPost shipment', () => {
     expect(real.calls.buy).toEqual([{ shipmentId: '1001', offerId: '55' }]);
     expect(h.ship).not.toHaveBeenCalled();
     expect(h.row()?.trackingNumber).toBeNull();
+    expect(await h.shipments.repository.listEvents('workspace', 'order-1')).toEqual([
+      expect.objectContaining({ type: 'attempt_claimed', actorUserId: 'staff' }),
+      expect.objectContaining({
+        type: 'payment_failed', shipxShipmentId: '1001', actorUserId: 'staff',
+        details: { status: 'offers_prepared', reason: 'InPost could not charge the shipment; check the funds or the payment method in Manager Paczek' },
+      }),
+    ]);
   });
 
   it('never repeats a purchase whose answer was lost and continues from the re-read status', async () => {
@@ -288,6 +296,7 @@ describe('create InPost shipment', () => {
     expect(real.calls.get).toHaveLength(1);
     expect(real.calls.buy).toEqual([]);
     expect(h.row()).toMatchObject({ shipxShipmentId: '1001', trackingNumber: null });
+    expect(await h.eventTypes()).toEqual(['attempt_claimed', 'attempt_marked', 'shipment_created', 'payment_failed']);
   });
 
   it('surfaces an unavailable offer with its ShipX reasons', async () => {
@@ -373,8 +382,8 @@ describe('create InPost shipment', () => {
     const h = harness();
     h.deps.shipxShipments = {
       ...h.shipments.repository,
-      update: async (tenantId, orderId, token, patch) => {
-        const updated = await h.shipments.repository.update(tenantId, orderId, token, patch);
+      update: async (tenantId, orderId, token, patch, step) => {
+        const updated = await h.shipments.repository.update(tenantId, orderId, token, patch, step);
         h.advance(SHIPX_OPERATION_DEADLINE_MS);
         return updated;
       },
@@ -501,6 +510,7 @@ describe('create InPost shipment', () => {
     expect(real.calls.create).toEqual([]);
     expect(real.calls.get).toEqual([]);
     expect(h.ship.mock.calls[0]?.[1].shipment.trackingNumber).toBe(TRACKING);
+    expect(await h.eventTypes()).toEqual(['attempt_claimed', 'shipment_adopted', 'offer_bought']);
   });
 
   it('pays an adopted shipment that is still waiting for payment', async () => {
@@ -651,6 +661,10 @@ describe('discard an unconfirmed InPost attempt', () => {
     h.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
     expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toEqual({ ok: true, value: { discarded: true } });
     expect(h.row()).toBeUndefined();
+    expect(await h.shipments.repository.listEvents('workspace', 'order-1')).toEqual([{
+      orderId: 'order-1', shipxShipmentId: null, type: 'attempt_discarded', actorUserId: 'staff', operationToken: null,
+      details: { status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' }, createdAt: NOW,
+    }]);
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls.create).toHaveLength(1);
   });
@@ -716,6 +730,13 @@ describe('InPost shipment view and label', () => {
     expect(label).toMatchObject({ ok: true, value: { filename: `inpost-${TRACKING}.pdf`, contentType: 'application/pdf' } });
     expect(h.real.calls.label).toEqual(['1001']);
     expect(h.row()?.labelFetchedAt).toBe(NOW);
+    const events = await h.shipments.repository.listEvents('workspace', 'order-1');
+    expect(events.map((event) => event.type)).toEqual(['attempt_claimed', 'attempt_marked', 'shipment_created', 'offer_bought', 'label_fetched']);
+    expect(events.every((event) => event.actorUserId === 'staff')).toBe(true);
+    expect(events.slice(0, 4).map((event) => event.operationToken)).toEqual(['id-1', 'id-1', 'id-1', 'id-1']);
+    expect(events.map((event) => event.shipxShipmentId)).toEqual([null, null, '1001', '1001', '1001']);
+    expect(events[3]?.details).toEqual({ status: 'confirmed', trackingNumber: TRACKING });
+    expect(await h.shipments.repository.listEvents('other-workspace', 'order-1')).toEqual([]);
   });
 
   it('maps a label requested before payment to the ShipX invalid_action error', async () => {

@@ -6,6 +6,7 @@ import type {
   ShipxRemoteShipment,
   ShipxSender,
   ShipxShipment,
+  ShipxShipmentEventType,
   ShipxShipmentRequest,
 } from '#core/domain/index.js';
 
@@ -34,7 +35,7 @@ export interface ShipxShipmentRecord extends ShipxShipment {
   operationStartedAt: string | null;
 }
 
-type ShipxShipmentAcquisition =
+export type ShipxShipmentAcquisition =
   | { kind: 'acquired'; shipment: ShipxShipmentRecord }
   | { kind: 'in_progress'; shipment: ShipxShipmentRecord };
 
@@ -42,7 +43,7 @@ interface ShipxClaimLost {
   kind: 'lost_lock';
 }
 
-type ShipxOwnedUpdate = { kind: 'updated'; shipment: ShipxShipmentRecord } | ShipxClaimLost;
+export type ShipxOwnedUpdate = { kind: 'updated'; shipment: ShipxShipmentRecord } | ShipxClaimLost;
 
 export interface ShipxShipmentPatch {
   shipxShipmentId?: string;
@@ -51,6 +52,28 @@ export interface ShipxShipmentPatch {
   createAttemptedAt?: string;
   boughtAt?: string | null;
   updatedAt: string;
+}
+
+export type ShipxShipmentEventDetails = Record<string, string | number | null>;
+
+export interface ShipxShipmentEvent {
+  orderId: string;
+  shipxShipmentId: string | null;
+  type: ShipxShipmentEventType;
+  actorUserId: string | null;
+  operationToken: string | null;
+  details: ShipxShipmentEventDetails | null;
+  createdAt: string;
+}
+
+export interface ShipxShipmentStep {
+  actorUserId: string | null;
+  event: { type: Extract<ShipxShipmentEventType, 'attempt_marked' | 'shipment_created' | 'shipment_adopted' | 'payment_failed'>; details?: ShipxShipmentEventDetails } | null;
+}
+
+interface ShipxShipmentAudit {
+  actorUserId: string | null;
+  at: string;
 }
 
 export interface ShipxShipmentRepository {
@@ -63,13 +86,21 @@ export interface ShipxShipmentRepository {
     organizationId: string;
     now: string;
     leaseExpiredBefore: string;
+    actorUserId: string | null;
   }): Promise<ShipxShipmentAcquisition>;
-  update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch): Promise<ShipxOwnedUpdate>;
+  update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch, step: ShipxShipmentStep): Promise<ShipxOwnedUpdate>;
   finishOperation(tenantId: string, orderId: string, token: string): Promise<{ kind: 'finished' } | ShipxClaimLost>;
-  release(tenantId: string, orderId: string, token: string): Promise<{ kind: 'released' } | ShipxClaimLost>;
-  refreshUnclaimed(tenantId: string, orderId: string, leaseExpiredBefore: string, patch: ShipxShipmentPatch): Promise<ShipxShipmentRecord | null>;
-  markLabelFetched(tenantId: string, orderId: string, at: string): Promise<void>;
-  discardUnconfirmed(tenantId: string, orderId: string, leaseExpiredBefore: string): Promise<boolean>;
+  release(tenantId: string, orderId: string, token: string, audit: ShipxShipmentAudit): Promise<{ kind: 'released' } | ShipxClaimLost>;
+  refreshUnclaimed(
+    tenantId: string,
+    orderId: string,
+    leaseExpiredBefore: string,
+    patch: ShipxShipmentPatch,
+    actorUserId: string | null,
+  ): Promise<ShipxShipmentRecord | null>;
+  markLabelFetched(tenantId: string, orderId: string, audit: ShipxShipmentAudit): Promise<void>;
+  discardUnconfirmed(tenantId: string, orderId: string, leaseExpiredBefore: string, audit: ShipxShipmentAudit): Promise<boolean>;
+  listEvents(tenantId: string, orderId: string): Promise<ShipxShipmentEvent[]>;
 }
 
 export interface ShipxSettings {

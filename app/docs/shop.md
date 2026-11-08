@@ -435,10 +435,37 @@ lease until it expires after 90 seconds; its row then shows either a ShipX id
 reconciles). Opening the order stores the live ShipX status only while no
 request holds the claim.
 
+### Shipment history
+
+Every ShipX attempt step is recorded with the staff user who caused it in the
+append-only `order_shipment_events` table, written in the same transaction as
+the `order_shipments` change, so the row can be deleted on release or discard
+without losing what happened. Each event stores the workspace, the order, the
+ShipX shipment id known at that moment, the staff user, the request's
+`operation_token` (when the step belongs to a claimed request) and a small
+`details` object:
+
+| Event | Written when | `details` |
+| --- | --- | --- |
+| `attempt_claimed` | a request takes a free claim (new or existing row) | `environment` |
+| `lease_taken_over` | a request takes a claim whose 90-second lease expired | `previousOperationToken`, `previousOperationStartedAt` |
+| `attempt_marked` | the attempt is recorded before the create call | `createAttemptedAt` |
+| `shipment_created` | the create call answers and its ShipX id is stored | `status` |
+| `shipment_adopted` | the reconciliation lookup finds the shipment and stores its id | `status` |
+| `offer_bought` | the purchase time is stored for the first time (by the request or by opening the order) | `status`, `trackingNumber` |
+| `payment_failed` | ShipX reports a failed payment or a dead offer, or refuses the purchase | `status`, `reason` |
+| `attempt_released` | a rejected attempt without a ShipX id is deleted | `status`, `createAttemptedAt` |
+| `attempt_discarded` | staff discard an unconfirmed attempt | `status`, `createAttemptedAt` |
+| `label_fetched` | a label is downloaded | none |
+
+A read that only refreshes the ShipX status of a known shipment, and the final
+clearing of the claim, change no lifecycle step and write no event. Events are
+never updated or deleted; they go only with their workspace.
+
 The shipment row stores only identifiers (the ShipX shipment id and the ShipX
 organization id), the environment, the ShipX status, the tracking number and
 the attempt, claim, purchase and label times; no personal data, so member
-erasure does not touch it. The receiver data sent to InPost stays in the
+erasure does not touch it. The events add only staff user ids. The receiver data sent to InPost stays in the
 workspace's Manager Paczek account, outside Together's erasure. There are no
 ShipX webhooks.
 

@@ -111,6 +111,21 @@ export type ShipxSettingsView = z.infer<typeof shipxSettingsViewSchema>;
 export const SHIPX_STATUS_CREATING = 'creating';
 export const SHIPX_STATUS_UNCONFIRMED = 'unknown';
 
+export const SHIPX_SHIPMENT_EVENT_TYPES = [
+  'attempt_claimed',
+  'attempt_marked',
+  'shipment_adopted',
+  'shipment_created',
+  'offer_bought',
+  'payment_failed',
+  'attempt_released',
+  'attempt_discarded',
+  'lease_taken_over',
+  'label_fetched',
+] as const;
+
+export type ShipxShipmentEventType = (typeof SHIPX_SHIPMENT_EVENT_TYPES)[number];
+
 export const shipxShipmentSchema = z.object({
   shipxShipmentId: z.string().min(1).nullable(),
   status: z.string().min(1),

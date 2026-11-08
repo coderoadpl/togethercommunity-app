@@ -61,6 +61,7 @@ import type {
   ShipxShipmentPatch,
   ShipxShipmentRecord,
   ShipxShipmentRepository,
+  ShipxShipmentStep,
 } from '../shipx-ports.js';
 import { shipOrder, type ShipOrderDeps } from './order-fulfilment.js';
 import { buildTenantSecret } from './tenant-secrets.js';
@@ -235,6 +236,7 @@ const leaseExpiredBefore = (now: string): string => new Date(Date.parse(now) - S
 
 const refreshedShipment = async (
   tenantId: string,
+  actorUserId: string,
   order: OrderListItem,
   shipment: ShipxShipmentRecord,
   settings: ShipxSettings,
@@ -248,7 +250,7 @@ const refreshedShipment = async (
   const remote = await client.value.getShipment(credentials.value, shipment.shipxShipmentId);
   if (!remote.ok) return shipment;
   const now = deps.clock.nowIso();
-  return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), remotePatch(remote.value, now)) ?? shipment;
+  return await deps.shipxShipments.refreshUnclaimed(tenantId, order.id, leaseExpiredBefore(now), remotePatch(remote.value, now), actorUserId) ?? shipment;
 };
 
 export const getInpostShipment = async (
@@ -278,7 +280,7 @@ export const getInpostShipment = async (
         : settings.sender === null
           ? 'sender_missing'
           : clientFor(settings.environment, order.value, deps.shipx).ok ? null : 'sandbox_environment';
-  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, order.value, stored, settings, deps);
+  const shipment = stored === null || !credentials ? stored : await refreshedShipment(tenant.value, ctx.identity.userId, order.value, stored, settings, deps);
   return ok({ available: reason === null, reason, service, parcelTemplate, shipment: shipment === null ? null : publicShipment(shipment) });
 };
 
@@ -293,6 +295,7 @@ const lostLock = (): AppError =>
 
 interface ShipmentRun {
   tenantId: string;
+  actorUserId: string;
   order: OrderListItem;
   shipping: OrderShipping;
   service: ShipxService;
@@ -306,26 +309,36 @@ interface ShipmentRun {
 const pastDeadline = (run: ShipmentRun, deps: Pick<CreateInpostShipmentDeps, 'clock'>): boolean =>
   Date.parse(deps.clock.nowIso()) >= run.deadline;
 
+type ShipmentStepEvent = ShipxShipmentStep['event'];
+
 const save = async (
   run: ShipmentRun,
   patch: ShipxShipmentPatch,
+  event: ShipmentStepEvent,
   deps: Pick<CreateInpostShipmentDeps, 'shipxShipments'>,
 ): Promise<Result<ShipxShipmentRecord, AppError>> => {
-  const saved = await deps.shipxShipments.update(run.tenantId, run.order.id, run.token, patch);
+  const saved = await deps.shipxShipments.update(run.tenantId, run.order.id, run.token, patch, { actorUserId: run.actorUserId, event });
   return saved.kind === 'lost_lock' ? err(lostLock()) : ok(saved.shipment);
 };
 
 const saveRemote = async (
   run: ShipmentRun,
   remote: ShipxRemoteShipment,
+  event: ShipmentStepEvent,
   deps: Pick<CreateInpostShipmentDeps, 'shipxShipments' | 'clock'>,
 ): Promise<Result<ShipxRemoteShipment, AppError>> => {
-  const saved = await save(run, remotePatch(remote, deps.clock.nowIso()), deps);
+  const saved = await save(run, remotePatch(remote, deps.clock.nowIso()), event, deps);
   return saved.ok ? ok(remote) : saved;
 };
 
-const releaseAttempt = async <T>(run: ShipmentRun, outcome: Result<T, AppError>, deps: Pick<CreateInpostShipmentDeps, 'shipxShipments'>): Promise<Result<T, AppError>> => {
-  const released = await deps.shipxShipments.release(run.tenantId, run.order.id, run.token);
+const paymentFailed = (status: string | null, failure: AppError): ShipmentStepEvent => ({ type: 'payment_failed', details: { status, reason: failure.message } });
+
+const releaseAttempt = async <T>(
+  run: ShipmentRun,
+  outcome: Result<T, AppError>,
+  deps: Pick<CreateInpostShipmentDeps, 'shipxShipments' | 'clock'>,
+): Promise<Result<T, AppError>> => {
+  const released = await deps.shipxShipments.release(run.tenantId, run.order.id, run.token, { actorUserId: run.actorUserId, at: deps.clock.nowIso() });
   return released.kind === 'lost_lock' ? err(lostLock()) : outcome;
 };
 
@@ -347,19 +360,22 @@ const pollUntilBought = async (
     if (pastDeadline(run, deps)) break;
     const current = await client.getShipment(run.credentials, shipmentId);
     if (!current.ok) return current;
-    const saved = await saveRemote(run, current.value, deps);
-    if (!saved.ok) return saved;
     latest = current.value;
-    if (shipxShipmentBought(latest)) return ok(latest);
     failuresBefore ??= shipxFailedTransactions(latest);
     const failure = shipxPurchaseFailure(latest, run.service, failuresBefore);
+    const saved = await saveRemote(run, latest, failure === null ? null : paymentFailed(latest.status, failure), deps);
+    if (!saved.ok) return saved;
+    if (shipxShipmentBought(latest)) return ok(latest);
     if (failure !== null) return err(failure);
     const offerId = allowBuy && !buyAttempted ? shipxOfferToBuy(latest, run.service) : null;
     if (offerId === null) continue;
     if (pastDeadline(run, deps)) break;
     buyAttempted = true;
     const purchase = await client.buyOffer(run.credentials, shipmentId, offerId);
-    if (!purchase.ok && purchase.error.code !== 'shipx_unavailable') return purchase;
+    if (!purchase.ok && purchase.error.code !== 'shipx_unavailable') {
+      const recorded = await save(run, { updatedAt: deps.clock.nowIso() }, paymentFailed(latest.status, purchase.error), deps);
+      return recorded.ok ? purchase : recorded;
+    }
   }
   return err(pendingPayment(shipmentId, latest?.status ?? null));
 };
@@ -375,7 +391,12 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
   if (!request.ok) return releaseAttempt(run, request, deps);
   if (pastDeadline(run, deps)) return err(pendingShipment(run.shipment.status));
   const attemptedAt = deps.clock.nowIso();
-  const marked = await save(run, { status: SHIPX_STATUS_UNCONFIRMED, createAttemptedAt: attemptedAt, updatedAt: attemptedAt }, deps);
+  const marked = await save(
+    run,
+    { status: SHIPX_STATUS_UNCONFIRMED, createAttemptedAt: attemptedAt, updatedAt: attemptedAt },
+    { type: 'attempt_marked', details: { createAttemptedAt: attemptedAt } },
+    deps,
+  );
   if (!marked.ok) return marked;
   if (pastDeadline(run, deps)) return releaseAttempt(run, err(pendingShipment(run.shipment.status)), deps);
   const created = await client.createShipment(run.credentials, request.value);
@@ -387,7 +408,7 @@ const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateI
       { state: 'unconfirmed', cause: created.error.message },
     ));
   }
-  return saveRemote(run, created.value, deps);
+  return saveRemote(run, created.value, { type: 'shipment_created', details: { status: created.value.status } }, deps);
 };
 
 const reconcileRemote = async (
@@ -402,7 +423,7 @@ const reconcileRemote = async (
   if (found.value === null) {
     return err(shipxStateError('conflict', 'ShipX did not confirm the previous attempt; check Manager Paczek', { state: 'unconfirmed', attemptedAt }));
   }
-  return saveRemote(run, found.value, deps);
+  return saveRemote(run, found.value, { type: 'shipment_adopted', details: { status: found.value.status } }, deps);
 };
 
 const runShipment = async (
@@ -489,6 +510,7 @@ export const createInpostShipment = async (
     organizationId: credentials.value.organizationId,
     now: startedAt,
     leaseExpiredBefore: leaseExpiredBefore(startedAt),
+    actorUserId: ctx.identity.userId,
   });
   if (acquired.kind === 'in_progress') {
     return err(shipxStateError('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
@@ -496,6 +518,7 @@ export const createInpostShipment = async (
   try {
     return await runShipment(ctx, {
       tenantId: tenant.value,
+      actorUserId: ctx.identity.userId,
       order: order.value,
       shipping,
       service,
@@ -523,7 +546,8 @@ export const discardInpostShipmentAttempt = async (
   if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(tenant.value, order.value.id);
   if (shipment === null || !shipxAttemptUnconfirmed(shipment)) return err(validation('The order has no unconfirmed InPost attempt to discard'));
-  const discarded = await deps.shipxShipments.discardUnconfirmed(tenant.value, order.value.id, leaseExpiredBefore(deps.clock.nowIso()));
+  const now = deps.clock.nowIso();
+  const discarded = await deps.shipxShipments.discardUnconfirmed(tenant.value, order.value.id, leaseExpiredBefore(now), { actorUserId: ctx.identity.userId, at: now });
   if (!discarded) {
     return err(shipxStateError('fulfilment_conflict', 'Another request is working on the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
   }
@@ -558,7 +582,7 @@ export const inpostShipmentLabel = async (
   if (!client.ok) return client;
   const label = await client.value.fetchLabel(credentials.value, shipment.shipxShipmentId);
   if (!label.ok) return label;
-  await deps.shipxShipments.markLabelFetched(tenant.value, order.value.id, deps.clock.nowIso());
+  await deps.shipxShipments.markLabelFetched(tenant.value, order.value.id, { actorUserId: ctx.identity.userId, at: deps.clock.nowIso() });
   const name = (shipment.trackingNumber ?? shipment.shipxShipmentId).replace(/[^A-Za-z0-9-]/g, '');
   return ok({ filename: `inpost-${name}.pdf`, contentType: label.value.contentType, bytes: label.value.bytes });
 };

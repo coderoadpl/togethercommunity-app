@@ -5,6 +5,7 @@ import type {
   ShipxCredentials,
   ShipxSettings,
   ShipxSettingsRepository,
+  ShipxShipmentEvent,
   ShipxShipmentPatch,
   ShipxShipmentRecord,
   ShipxShipmentRepository,
@@ -38,6 +39,7 @@ const applyPatch = (row: ShipxShipmentRecord, patch: ShipxShipmentPatch): ShipxS
 
 export const createShipxShipmentRepositoryFake = () => {
   const rows = new Map<string, ShipxShipmentRecord>();
+  const events: Array<{ tenantId: string; event: ShipxShipmentEvent }> = [];
   const key = (tenantId: string, orderId: string) => `${tenantId}/${orderId}`;
   const free = (row: ShipxShipmentRecord, leaseExpiredBefore: string) =>
     row.operationStartedAt === null || row.operationStartedAt < leaseExpiredBefore;
@@ -45,10 +47,21 @@ export const createShipxShipmentRepositoryFake = () => {
     const row = rows.get(key(tenantId, orderId));
     return row?.operationToken === token ? row : null;
   };
+  const record = (tenantId: string, orderId: string, row: ShipxShipmentRecord, event: Omit<ShipxShipmentEvent, 'orderId' | 'shipxShipmentId'>) => {
+    events.push({ tenantId, event: { ...event, orderId, shipxShipmentId: row.shipxShipmentId } });
+  };
+  const recordBought = (tenantId: string, orderId: string, before: ShipxShipmentRecord, after: ShipxShipmentRecord, actorUserId: string | null, operationToken: string | null, createdAt: string) => {
+    if (before.boughtAt !== null || after.boughtAt === null) return;
+    record(tenantId, orderId, after, {
+      type: 'offer_bought', actorUserId, operationToken, details: { status: after.status, trackingNumber: after.trackingNumber }, createdAt,
+    });
+  };
+  const attemptDetails = (row: ShipxShipmentRecord) => ({ status: row.status, createAttemptedAt: row.createAttemptedAt });
   const repository: ShipxShipmentRepository = {
     findByOrder: async (tenantId, orderId) => rows.get(key(tenantId, orderId)) ?? null,
     acquire: async (tenantId, input) => {
       const existing = rows.get(key(tenantId, input.orderId));
+      const claim = { actorUserId: input.actorUserId, operationToken: input.token, createdAt: input.now };
       if (existing === undefined) {
         const shipment = shipmentRecord({
           environment: input.environment,
@@ -59,18 +72,28 @@ export const createShipxShipmentRepositoryFake = () => {
           updatedAt: input.now,
         });
         rows.set(key(tenantId, input.orderId), shipment);
+        record(tenantId, input.orderId, shipment, { ...claim, type: 'attempt_claimed', details: { environment: input.environment } });
         return { kind: 'acquired', shipment };
       }
       if (!free(existing, input.leaseExpiredBefore)) return { kind: 'in_progress', shipment: existing };
       const taken = { ...existing, operationToken: input.token, operationStartedAt: input.now };
       rows.set(key(tenantId, input.orderId), taken);
+      record(tenantId, input.orderId, taken, existing.operationToken === null
+        ? { ...claim, type: 'attempt_claimed', details: { environment: taken.environment } }
+        : { ...claim, type: 'lease_taken_over', details: { previousOperationToken: existing.operationToken, previousOperationStartedAt: existing.operationStartedAt } });
       return { kind: 'acquired', shipment: taken };
     },
-    update: async (tenantId, orderId, token, patch) => {
+    update: async (tenantId, orderId, token, patch, step) => {
       const existing = owned(tenantId, orderId, token);
       if (existing === null) return { kind: 'lost_lock' };
       const shipment = applyPatch(existing, patch);
       rows.set(key(tenantId, orderId), shipment);
+      if (step.event !== null) {
+        record(tenantId, orderId, shipment, {
+          type: step.event.type, actorUserId: step.actorUserId, operationToken: token, details: step.event.details ?? null, createdAt: patch.updatedAt,
+        });
+      }
+      recordBought(tenantId, orderId, existing, shipment, step.actorUserId, token, patch.updatedAt);
       return { kind: 'updated', shipment };
     },
     finishOperation: async (tenantId, orderId, token) => {
@@ -79,30 +102,43 @@ export const createShipxShipmentRepositoryFake = () => {
       rows.set(key(tenantId, orderId), { ...existing, operationToken: null, operationStartedAt: null });
       return { kind: 'finished' };
     },
-    release: async (tenantId, orderId, token) => {
-      if (owned(tenantId, orderId, token)?.shipxShipmentId !== null) return { kind: 'lost_lock' };
+    release: async (tenantId, orderId, token, audit) => {
+      const existing = owned(tenantId, orderId, token);
+      if (existing === null || existing.shipxShipmentId !== null) return { kind: 'lost_lock' };
       rows.delete(key(tenantId, orderId));
+      record(tenantId, orderId, existing, {
+        type: 'attempt_released', actorUserId: audit.actorUserId, operationToken: token, details: attemptDetails(existing), createdAt: audit.at,
+      });
       return { kind: 'released' };
     },
-    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch) => {
+    refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch, actorUserId) => {
       const existing = rows.get(key(tenantId, orderId));
       if (existing === undefined || !free(existing, leaseExpiredBefore)) return null;
       const shipment = applyPatch(existing, patch);
       rows.set(key(tenantId, orderId), shipment);
+      recordBought(tenantId, orderId, existing, shipment, actorUserId, null, patch.updatedAt);
       return shipment;
     },
-    markLabelFetched: async (tenantId, orderId, at) => {
+    markLabelFetched: async (tenantId, orderId, audit) => {
       const existing = rows.get(key(tenantId, orderId));
-      if (existing !== undefined) rows.set(key(tenantId, orderId), { ...existing, labelFetchedAt: at, updatedAt: at });
+      if (existing === undefined) return;
+      const shipment = { ...existing, labelFetchedAt: audit.at, updatedAt: audit.at };
+      rows.set(key(tenantId, orderId), shipment);
+      record(tenantId, orderId, shipment, { type: 'label_fetched', actorUserId: audit.actorUserId, operationToken: null, details: null, createdAt: audit.at });
     },
-    discardUnconfirmed: async (tenantId, orderId, leaseExpiredBefore) => {
+    discardUnconfirmed: async (tenantId, orderId, leaseExpiredBefore, audit) => {
       const existing = rows.get(key(tenantId, orderId));
       if (existing?.shipxShipmentId !== null || existing.createAttemptedAt === null || !free(existing, leaseExpiredBefore)) return false;
       rows.delete(key(tenantId, orderId));
+      record(tenantId, orderId, existing, {
+        type: 'attempt_discarded', actorUserId: audit.actorUserId, operationToken: null, details: attemptDetails(existing), createdAt: audit.at,
+      });
       return true;
     },
+    listEvents: async (tenantId, orderId) =>
+      events.filter((entry) => entry.tenantId === tenantId && entry.event.orderId === orderId).map((entry) => entry.event),
   };
-  return { repository, rows, key };
+  return { repository, rows, events, key };
 };
 
 export const createShipxSettingsRepositoryFake = (initial: Record<string, ShipxSettings> = {}) => {

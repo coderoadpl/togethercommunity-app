@@ -528,10 +528,9 @@ const applyCheckoutCompleted = async (
           shipping.value,
           deps,
         );
-  if (couponCoversFullPrice && discounted === null) {
-    return err((event.checkoutSession.shippingCostCents ?? 0) > 0
-      ? appError('validation', 'Coupon redemption limit reached after the shipping fee was paid', { reason: REFUND_REQUIRED })
-      : validation('Coupon redemption limit reached'));
+  const couponOverRedeemed = couponCoversFullPrice && discounted === null ? couponContext.coupon : null;
+  if (couponOverRedeemed !== null && (event.checkoutSession.amountTotalCents ?? 0) === 0) {
+    return err(validation('Coupon redemption limit reached'));
   }
   const product = await deps.products.findById(tenant.id, metadata.productId);
   if (event.mode === 'test') deps.logger.warn(`[stripe-test] fulfilled tenant=${tenant.id} checkout=${event.objectId}; member email suppressed`);
@@ -560,6 +559,7 @@ const applyCheckoutCompleted = async (
           'PLN',
         provider,
         providerObjectIds: providerObjectIdsForCheckout(event),
+        ...(couponOverRedeemed === null ? {} : { couponId: couponOverRedeemed.id }),
         discountCents:
           event.checkoutSession.discountTotalCents ??
           couponContext?.session.discountCents ??
@@ -571,6 +571,9 @@ const applyCheckoutCompleted = async (
       },
       deps,
     ));
+  if (couponOverRedeemed !== null) {
+    deps.logger.warn(`[stripe-webhook] recorded tenant=${tenant.id} event=${event.id} session=${event.objectId} order=${paidOrder.id} coupon=${couponOverRedeemed.id} reason=coupon_over_redeemed`);
+  }
 
   const stockCommit = event.mode === 'test'
     ? { alertsQueued: false }

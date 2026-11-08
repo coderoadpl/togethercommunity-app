@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
   allocateOrderLineGross,
+  collectedShippingFromStripe,
   err,
   internal,
   ok,
@@ -3421,35 +3422,54 @@ describe('shipped checkout fulfilment', () => {
     expect(h.redemptions).toHaveLength(1);
   });
 
-  it('acknowledges a fully discounted shipped product whose coupon limit is consumed and logs a required refund once', async () => {
+  it('records a paid shipped order without a redemption when the coupon limit is consumed after Stripe collected the fee', async () => {
     const bundle = shippedPayment((lines) => lines.slice(0, 2));
     const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
     h.deps.products = bundle.deps.products;
     if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
     h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
-    const dispatchEmail = vi.spyOn(h.deps, 'dispatchEmail');
-    const event = completedEvent({ objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    const event = completedEvent({ id: 'evt-over-redeemed', objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
     if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
     event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
     event.checkoutSession.metadata.salesLinkId = 'link-1';
     event.checkoutSession.shippingCostCents = 1499;
     event.checkoutSession.shipping = collectedShipping;
-    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-    expect(h.errors).toEqual([
-      `[stripe-webhook] ignored tenant=${tenantA.id} event=${event.id} session=cs-coupon amount=1499 reason=refund_required`,
-    ]);
-    expect(h.orders).toHaveLength(0);
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    const order = h.orders[0];
+    expect(order).toMatchObject({
+      status: 'paid', couponId: h.coupon.id, amountCents: 1499, discountCents: 10300, fulfilmentStatus: 'to_pack',
+      lines: bundle.lines, providerObjectIds: { checkoutSession: 'cs-coupon' },
+      shipping: { rateId: 'locker', amountCents: 1499, address: { name: 'Jane Buyer', line1: 'Garden Street 5' }, phone: '+48600100200' },
+    });
     expect(h.redemptions).toHaveLength(0);
-    expect(h.grants.size).toBe(0);
-    expect(h.members.size).toBe(0);
-    expect(h.enrollmentEmails).toHaveLength(0);
-    expect(h.queued).toHaveLength(0);
-    expect(dispatchEmail).not.toHaveBeenCalled();
+    expect(h.warnings).toEqual([
+      `[stripe-webhook] recorded tenant=${tenantA.id} event=evt-over-redeemed session=cs-coupon order=${order?.id} coupon=${h.coupon.id} reason=coupon_over_redeemed`,
+    ]);
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.autoInvoiceJobs).toHaveLength(1);
 
     expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
-    expect(h.errors).toHaveLength(1);
-    expect(h.orders).toHaveLength(0);
-    expect(h.grants.size).toBe(0);
+    expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-over-redeemed-redelivered' }, h.deps)).toEqual(ok({ processed: false }));
+    expect(await fulfillStripeWebhook(tenantA, { ...event, id: 'evt-over-redeemed-async', type: 'checkout.session.async_payment_succeeded' }, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(0);
+    expect(h.warnings).toHaveLength(1);
+  });
+
+  it('records the same delivery data from a pre-basil and a basil checkout session', async () => {
+    const stripeAddress = { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } };
+    const recorded = await Promise.all([
+      { collected_information: { shipping_details: stripeAddress } },
+      { shipping_details: stripeAddress },
+    ].map(async (session) => {
+      const h = shippedPayment();
+      h.session.shipping = collectedShippingFromStripe(session, '+48600100200');
+      expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+      return h.orders[0]?.shipping;
+    }));
+    expect(recorded[0]).toMatchObject({ address: { name: 'Jane Buyer', line1: 'Garden Street 5', postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: '+48600100200' });
+    expect(recorded[1]).toEqual(recorded[0]);
   });
 
   it('never revokes a grant for the shipping line after a full refund', async () => {

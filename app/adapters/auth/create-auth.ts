@@ -1061,7 +1061,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
         name: nameFromEmail(normalizedEmail),
         email: normalizedEmail,
         emailVerified: false,
-      });
+      }, { method: 'admin' });
       return { userId: created.id, created: true };
     } catch (cause) {
       // A concurrent ensureUser may have won the unique-email race; re-read.

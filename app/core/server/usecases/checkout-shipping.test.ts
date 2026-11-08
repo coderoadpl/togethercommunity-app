@@ -17,6 +17,7 @@ import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
 import { createCheckoutSession, startCheckoutSession, validateCheckoutSelection } from './checkout.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
+import { captureCheckoutSelection } from './checkout-lines.js';
 import { createDirectSalesLinkCheckout } from './direct-sales-link-checkout.js';
 
 const now = '2026-11-05T12:00:00.000Z';
@@ -295,5 +296,20 @@ describe('checkout with shipping', () => {
     }, { ...h.deps, logger: { warn: vi.fn(), error: vi.fn() } });
     expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'This sales link requires the workspace checkout page' } });
     expect(h.calls).toHaveLength(0);
+  });
+});
+
+describe('checkout selection capture', () => {
+  it('returns a validation error instead of throwing for a shipping selection the snapshot cannot store', async () => {
+    const create = vi.fn(async () => undefined);
+    const result = await captureCheckoutSelection(tenant.id, {
+      product: accessory, price: null,
+      shipping: { rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: null, allowedCountries: [] },
+    }, {
+      checkoutSnapshots: { create, attachProviderSession: async () => undefined, findById: async () => null },
+      ids: { nextId: () => 'snapshot-1' }, clock: { nowIso: () => now },
+    });
+    expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Checkout shipping selection is invalid' } });
+    expect(create).not.toHaveBeenCalled();
   });
 });

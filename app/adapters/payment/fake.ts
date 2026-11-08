@@ -3,6 +3,7 @@ import { checkoutProductIdsMetadata } from './metadata.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import {
+  collectedShippingFromStripe,
   err,
   ok,
   refundCoverage,
@@ -92,18 +93,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
               invoiceId: object.invoice ?? null,
               amountTotalCents: object.amount_total ?? null,
               discountTotalCents: object.total_details?.amount_discount ?? null,
-              shipping: object.collected_information?.shipping_details == null ? null : {
-                name: object.collected_information.shipping_details.name,
-                phone: object.customer_details?.phone ?? null,
-                address: {
-                  line1: object.collected_information.shipping_details.address.line1,
-                  line2: object.collected_information.shipping_details.address.line2,
-                  postalCode: object.collected_information.shipping_details.address.postal_code,
-                  city: object.collected_information.shipping_details.address.city,
-                  country: object.collected_information.shipping_details.address.country,
-                  state: object.collected_information.shipping_details.address.state,
-                },
-              },
+              shipping: collectedShippingFromStripe(object, object.customer_details?.phone ?? null),
               shippingCostCents: object.shipping_cost?.amount_total ?? null,
               metadata: {
                 attribution: attributionFromMetadata(object.metadata),

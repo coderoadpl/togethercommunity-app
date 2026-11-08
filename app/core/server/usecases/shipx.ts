@@ -16,6 +16,7 @@ import {
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
   shipxClientKind,
+  shipxErrorStateSchema,
   shipxFailedTransactions,
   shipxOfferToBuy,
   shipxOrderInputSchema,
@@ -31,6 +32,8 @@ import {
   type ParcelTemplate,
   type Result,
   type ShipxEnvironment,
+  type ShipxErrorState,
+  type ShipxOperationOutcome,
   type ShipxOrderView,
   type ShipxRemoteShipment,
   type ShipxSender,
@@ -304,6 +307,7 @@ interface ShipmentRun {
   credentials: ShipxCredentials;
   token: string;
   deadline: number;
+  lease: { released: boolean };
 }
 
 const pastDeadline = (run: ShipmentRun, deps: Pick<CreateInpostShipmentDeps, 'clock'>): boolean =>
@@ -339,7 +343,9 @@ const releaseAttempt = async <T>(
   deps: Pick<CreateInpostShipmentDeps, 'shipxShipments' | 'clock'>,
 ): Promise<Result<T, AppError>> => {
   const released = await deps.shipxShipments.release(run.tenantId, run.order.id, run.token, { actorUserId: run.actorUserId, at: deps.clock.nowIso() });
-  return released.kind === 'lost_lock' ? err(lostLock()) : outcome;
+  if (released.kind === 'lost_lock') return err(lostLock());
+  run.lease.released = true;
+  return outcome;
 };
 
 const pollUntilBought = async (
@@ -475,6 +481,25 @@ const runShipment = async (
   return ok({ order: shipped.value.order, shipment: publicShipment(shipment) });
 };
 
+const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> = {
+  pending: 'pending',
+  unconfirmed: 'unconfirmed',
+  lost_lock: 'lost_lock',
+  manual_shipped: 'bought',
+  lease_held: 'failed',
+  environment_mismatch: 'failed',
+  organization_mismatch: 'failed',
+  setup_missing: 'failed',
+  receiver_invalid: 'failed',
+};
+
+const operationOutcome = (result: Result<unknown, AppError>, released: boolean): ShipxOperationOutcome => {
+  if (released) return 'released';
+  if (result.ok) return 'bought';
+  const state = shipxErrorStateSchema.safeParse(result.error.details);
+  return state.success ? OUTCOME_BY_STATE[state.data.state] : 'failed';
+};
+
 export const createInpostShipment = async (
   ctx: Ctx,
   input: unknown,
@@ -515,21 +540,26 @@ export const createInpostShipment = async (
   if (acquired.kind === 'in_progress') {
     return err(shipxStateError('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
   }
+  const run: ShipmentRun = {
+    tenantId: tenant.value,
+    actorUserId: ctx.identity.userId,
+    order: order.value,
+    shipping,
+    service,
+    sender: settings.sender,
+    shipment: acquired.shipment,
+    credentials: credentials.value,
+    token,
+    deadline: Date.parse(startedAt) + SHIPX_OPERATION_DEADLINE_MS,
+    lease: { released: false },
+  };
+  let outcome: ShipxOperationOutcome = 'failed';
   try {
-    return await runShipment(ctx, {
-      tenantId: tenant.value,
-      actorUserId: ctx.identity.userId,
-      order: order.value,
-      shipping,
-      service,
-      sender: settings.sender,
-      shipment: acquired.shipment,
-      credentials: credentials.value,
-      token,
-      deadline: Date.parse(startedAt) + SHIPX_OPERATION_DEADLINE_MS,
-    }, deps);
+    const result = await runShipment(ctx, run, deps);
+    outcome = operationOutcome(result, run.lease.released);
+    return result;
   } finally {
-    await deps.shipxShipments.finishOperation(tenant.value, order.value.id, token);
+    await deps.shipxShipments.finishOperation(tenant.value, order.value.id, token, { actorUserId: ctx.identity.userId, at: deps.clock.nowIso(), outcome });
   }
 };
 

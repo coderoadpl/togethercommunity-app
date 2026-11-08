@@ -57,16 +57,17 @@ at all.
   shipment. `update`, `release` and `finishOperation` are conditional on the
   request's `operation_token` and report `lost_lock` without changing anything
   when another request holds the row, so a finished request never clears the
-  next one's claim. `acquire`, `update`, `release`, `refreshUnclaimed`,
-  `markLabelFetched` and `discardUnconfirmed` each write the `order_shipments`
-  change and its append-only `order_shipment_events` rows (the step, the staff
-  user and the request's `operation_token`) in one transaction; `acquire`, `update` and
-  `refreshUnclaimed` lock the existing row with `FOR UPDATE` before changing
-  it, so a lease takeover and the first purchase time are recorded exactly
-  once. A
-  failed event insert rolls the projection change back. Status-only refreshes
-  and `finishOperation` write no event. The shipment is then marked as shipped
-  through `OrderFulfilmentRepository.ship` above.
+  next one's claim. Every `order_shipments` write pairs with its append-only
+  `order_shipment_events` rows (the step, the staff user and the request's
+  `operation_token`) in one transaction: `acquire`, `update`, `finishOperation`,
+  `release`, `refreshUnclaimed`, `markLabelFetched` and `discardUnconfirmed`
+  each write the projection change and its events together, and `update` and
+  `refreshUnclaimed` skip the write entirely when ShipX reports nothing new.
+  `acquire`, `update` and `refreshUnclaimed` lock the existing row with
+  `FOR UPDATE` before changing it, so a lease takeover, a status change and the
+  first purchase time are recorded exactly once. A failed event insert rolls
+  the projection change back. The shipment is then marked as shipped through
+  `OrderFulfilmentRepository.ship` above.
 - Stock: `StockRepository.reserve`, `StockRepository.release`,
   `StockRepository.commit`, `StockRepository.enableTracking`,
   `StockRepository.adjust`, and `StockRepository.setThreshold` each write the

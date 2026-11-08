@@ -1,6 +1,6 @@
 {
-  "hash": "93632dbd70da016f2bc9a93be0570d2011553985f6ed9df22ca4ec940b956569",
-  "shortId": "93632dbd70da",
+  "hash": "e7c088a71dbe22e38094cbcc75dec8ef5e7dee85461d6ae92da11daec40bfec9",
+  "shortId": "e7c088a71dbe",
   "schema": {
     "constraints": [
       {
@@ -234,7 +234,7 @@
         "table": "order_fulfilment_events"
       },
       {
-        "definition": "CHECK ((type = ANY (ARRAY['attempt_claimed'::text, 'attempt_marked'::text, 'shipment_adopted'::text, 'shipment_created'::text, 'offer_bought'::text, 'payment_failed'::text, 'attempt_released'::text, 'attempt_discarded'::text, 'lease_taken_over'::text, 'label_fetched'::text])))",
+        "definition": "CHECK ((type = ANY (ARRAY['attempt_claimed'::text, 'attempt_marked'::text, 'shipment_adopted'::text, 'shipment_created'::text, 'offer_bought'::text, 'payment_failed'::text, 'attempt_released'::text, 'attempt_discarded'::text, 'lease_taken_over'::text, 'label_fetched'::text, 'status_refreshed'::text, 'operation_finished'::text])))",
         "name": "order_shipment_events_type_check",
         "table": "order_shipment_events"
       },

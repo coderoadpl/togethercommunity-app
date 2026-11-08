@@ -26,7 +26,7 @@ CREATE TABLE "order_shipment_events" (
   "order_id" text NOT NULL,
   "provider" text NOT NULL CONSTRAINT "order_shipment_events_provider_check" CHECK ("provider" IN ('inpost_shipx')),
   "provider_shipment_id" text,
-  "type" text NOT NULL CONSTRAINT "order_shipment_events_type_check" CHECK ("type" IN ('attempt_claimed', 'attempt_marked', 'shipment_adopted', 'shipment_created', 'offer_bought', 'payment_failed', 'attempt_released', 'attempt_discarded', 'lease_taken_over', 'label_fetched')),
+  "type" text NOT NULL CONSTRAINT "order_shipment_events_type_check" CHECK ("type" IN ('attempt_claimed', 'attempt_marked', 'shipment_adopted', 'shipment_created', 'offer_bought', 'payment_failed', 'attempt_released', 'attempt_discarded', 'lease_taken_over', 'label_fetched', 'status_refreshed', 'operation_finished')),
   "actor_user_id" text,
   "operation_token" text,
   "details" jsonb,

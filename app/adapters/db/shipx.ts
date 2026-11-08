@@ -63,6 +63,28 @@ const toEvent = (row: EventRow): ShipxShipmentEvent => ({
 
 const attemptDetails = (row: ShipmentRow) => ({ status: row.status, createAttemptedAt: isoOrNull(row.createAttemptedAt) });
 
+const sameInstant = (left: string | null, right: string | null): boolean =>
+  left === null || right === null ? left === right : Date.parse(left) === Date.parse(right);
+
+const storedChange = (before: ShipmentRow, after: Pick<ShipmentRow, 'providerShipmentId' | 'status' | 'trackingNumber' | 'createAttemptedAt'>): boolean =>
+  before.providerShipmentId !== after.providerShipmentId
+  || before.status !== after.status
+  || before.trackingNumber !== after.trackingNumber
+  || !sameInstant(before.createAttemptedAt, after.createAttemptedAt);
+
+const patchChanges = (before: ShipmentRow, patch: ShipxShipmentPatch): boolean =>
+  storedChange(before, {
+    providerShipmentId: patch.shipxShipmentId ?? before.providerShipmentId,
+    status: patch.status ?? before.status,
+    trackingNumber: patch.trackingNumber === undefined ? before.trackingNumber : patch.trackingNumber,
+    createAttemptedAt: patch.createAttemptedAt ?? before.createAttemptedAt,
+  }) || (before.boughtAt === null && patch.boughtAt != null);
+
+const statusRefresh = (before: ShipmentRow, after: ShipmentRow) =>
+  storedChange(before, after)
+    ? [{ type: 'status_refreshed' as const, details: { from: before.status, to: after.status, trackingNumber: after.trackingNumber } }]
+    : [];
+
 const boughtTransition = (before: ShipmentRow, after: ShipmentRow) =>
   before.boughtAt === null && after.boughtAt !== null
     ? [{ type: 'offer_bought' as const, details: { status: after.status, trackingNumber: after.trackingNumber } }]
@@ -126,10 +148,11 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
     update: async (tenantId, orderId, token, patch, step) => await db.transaction(async (tx): Promise<ShipxOwnedUpdate> => {
       const [before] = await tx.select().from(orderShipments).where(owned(tenantId, orderId, token)).for('update');
       if (before === undefined) return { kind: 'lost_lock' };
+      if (step.event === null && !patchChanges(before, patch)) return { kind: 'updated', shipment: toShipment(before) };
       const [row] = await tx.update(orderShipments).set(patchValues(patch)).where(owned(tenantId, orderId, token)).returning();
       if (row === undefined) return { kind: 'lost_lock' };
       const steps = [
-        ...(step.event === null ? [] : [{ type: step.event.type, details: step.event.details ?? null }]),
+        ...(step.event === null ? statusRefresh(before, row) : [{ type: step.event.type, details: step.event.details ?? null }]),
         ...boughtTransition(before, row),
       ];
       await record(tx, tenantId, orderId, steps.map((event) => ({
@@ -137,13 +160,17 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       })));
       return { kind: 'updated', shipment: toShipment(row) };
     }),
-    finishOperation: async (tenantId, orderId, token) => {
-      const finished = await db.update(orderShipments)
+    finishOperation: async (tenantId, orderId, token, end) => await db.transaction(async (tx): Promise<{ kind: 'finished' } | { kind: 'lost_lock' }> => {
+      const [finished] = await tx.update(orderShipments)
         .set({ operationToken: null, operationStartedAt: null })
         .where(owned(tenantId, orderId, token))
-        .returning({ id: orderShipments.id });
-      return finished.length > 0 ? { kind: 'finished' } : { kind: 'lost_lock' };
-    },
+        .returning();
+      if (finished === undefined) return { kind: 'lost_lock' };
+      await record(tx, tenantId, orderId, [{
+        type: 'operation_finished', providerShipmentId: finished.providerShipmentId, actorUserId: end.actorUserId, operationToken: token, details: { outcome: end.outcome }, createdAt: end.at,
+      }]);
+      return { kind: 'finished' };
+    }),
     release: async (tenantId, orderId, token, audit) => await db.transaction(async (tx): Promise<{ kind: 'released' } | { kind: 'lost_lock' }> => {
       const [removed] = await tx.delete(orderShipments)
         .where(and(owned(tenantId, orderId, token), isNull(orderShipments.providerShipmentId)))
@@ -155,13 +182,13 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       return { kind: 'released' };
     }),
     refreshUnclaimed: async (tenantId, orderId, leaseExpiredBefore, patch, actorUserId) => await db.transaction(async (tx) => {
-      const [before] = await tx.select().from(orderShipments).where(byOrder(tenantId, orderId)).for('update');
+      const unclaimed = and(byOrder(tenantId, orderId), operationFree(leaseExpiredBefore));
+      const [before] = await tx.select().from(orderShipments).where(unclaimed).for('update');
       if (before === undefined) return null;
-      const [row] = await tx.update(orderShipments).set(patchValues(patch))
-        .where(and(byOrder(tenantId, orderId), operationFree(leaseExpiredBefore)))
-        .returning();
+      if (!patchChanges(before, patch)) return toShipment(before);
+      const [row] = await tx.update(orderShipments).set(patchValues(patch)).where(unclaimed).returning();
       if (row === undefined) return null;
-      await record(tx, tenantId, orderId, boughtTransition(before, row).map((event) => ({
+      await record(tx, tenantId, orderId, [...statusRefresh(before, row), ...boughtTransition(before, row)].map((event) => ({
         ...event, providerShipmentId: row.providerShipmentId, actorUserId, operationToken: null, createdAt: patch.updatedAt,
       })));
       return toShipment(row);

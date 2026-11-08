@@ -41,5 +41,5 @@ export const orderShipmentEvents = pgTable('order_shipment_events', {
 }, (table) => [
   index('order_shipment_events_tenant_order_created_idx').on(table.tenantId, table.orderId, table.createdAt),
   check('order_shipment_events_provider_check', sql`${table.provider} IN ('inpost_shipx')`),
-  check('order_shipment_events_type_check', sql`${table.type} IN ('attempt_claimed', 'attempt_marked', 'shipment_adopted', 'shipment_created', 'offer_bought', 'payment_failed', 'attempt_released', 'attempt_discarded', 'lease_taken_over', 'label_fetched')`),
+  check('order_shipment_events_type_check', sql`${table.type} IN ('attempt_claimed', 'attempt_marked', 'shipment_adopted', 'shipment_created', 'offer_bought', 'payment_failed', 'attempt_released', 'attempt_discarded', 'lease_taken_over', 'label_fetched', 'status_refreshed', 'operation_finished')`),
 ]);

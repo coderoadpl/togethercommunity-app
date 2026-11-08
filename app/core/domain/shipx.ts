@@ -122,9 +122,13 @@ export const SHIPX_SHIPMENT_EVENT_TYPES = [
   'attempt_discarded',
   'lease_taken_over',
   'label_fetched',
+  'status_refreshed',
+  'operation_finished',
 ] as const;
 
 export type ShipxShipmentEventType = (typeof SHIPX_SHIPMENT_EVENT_TYPES)[number];
+
+export type ShipxOperationOutcome = 'bought' | 'pending' | 'unconfirmed' | 'released' | 'lost_lock' | 'failed';
 
 export const shipxShipmentSchema = z.object({
   shipxShipmentId: z.string().min(1).nullable(),

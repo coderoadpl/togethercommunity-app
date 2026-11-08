@@ -27,6 +27,12 @@ export const shipmentRecord = (change: Partial<ShipxShipmentRecord> = {}): Shipx
   ...change,
 });
 
+const storedChange = (before: ShipxShipmentRecord, after: ShipxShipmentRecord): boolean =>
+  before.shipxShipmentId !== after.shipxShipmentId
+  || before.status !== after.status
+  || before.trackingNumber !== after.trackingNumber
+  || before.createAttemptedAt !== after.createAttemptedAt;
+
 const applyPatch = (row: ShipxShipmentRecord, patch: ShipxShipmentPatch): ShipxShipmentRecord => ({
   ...row,
   ...(patch.shipxShipmentId === undefined ? {} : { shipxShipmentId: patch.shipxShipmentId }),
@@ -56,6 +62,13 @@ export const createShipxShipmentRepositoryFake = () => {
       type: 'offer_bought', actorUserId, operationToken, details: { status: after.status, trackingNumber: after.trackingNumber }, createdAt,
     });
   };
+  const recordRefresh = (tenantId: string, orderId: string, before: ShipxShipmentRecord, after: ShipxShipmentRecord, actorUserId: string | null, operationToken: string | null, createdAt: string) => {
+    if (!storedChange(before, after)) return;
+    record(tenantId, orderId, after, {
+      type: 'status_refreshed', actorUserId, operationToken, details: { from: before.status, to: after.status, trackingNumber: after.trackingNumber }, createdAt,
+    });
+  };
+  const unchanged = (before: ShipxShipmentRecord, after: ShipxShipmentRecord) => !storedChange(before, after) && before.boughtAt === after.boughtAt;
   const attemptDetails = (row: ShipxShipmentRecord) => ({ status: row.status, createAttemptedAt: row.createAttemptedAt });
   const repository: ShipxShipmentRepository = {
     findByOrder: async (tenantId, orderId) => rows.get(key(tenantId, orderId)) ?? null,
@@ -87,8 +100,11 @@ export const createShipxShipmentRepositoryFake = () => {
       const existing = owned(tenantId, orderId, token);
       if (existing === null) return { kind: 'lost_lock' };
       const shipment = applyPatch(existing, patch);
+      if (step.event === null && unchanged(existing, shipment)) return { kind: 'updated', shipment: existing };
       rows.set(key(tenantId, orderId), shipment);
-      if (step.event !== null) {
+      if (step.event === null) {
+        recordRefresh(tenantId, orderId, existing, shipment, step.actorUserId, token, patch.updatedAt);
+      } else {
         record(tenantId, orderId, shipment, {
           type: step.event.type, actorUserId: step.actorUserId, operationToken: token, details: step.event.details ?? null, createdAt: patch.updatedAt,
         });
@@ -96,10 +112,12 @@ export const createShipxShipmentRepositoryFake = () => {
       recordBought(tenantId, orderId, existing, shipment, step.actorUserId, token, patch.updatedAt);
       return { kind: 'updated', shipment };
     },
-    finishOperation: async (tenantId, orderId, token) => {
+    finishOperation: async (tenantId, orderId, token, end) => {
       const existing = owned(tenantId, orderId, token);
       if (existing === null) return { kind: 'lost_lock' };
-      rows.set(key(tenantId, orderId), { ...existing, operationToken: null, operationStartedAt: null });
+      const finished = { ...existing, operationToken: null, operationStartedAt: null };
+      rows.set(key(tenantId, orderId), finished);
+      record(tenantId, orderId, finished, { type: 'operation_finished', actorUserId: end.actorUserId, operationToken: token, details: { outcome: end.outcome }, createdAt: end.at });
       return { kind: 'finished' };
     },
     release: async (tenantId, orderId, token, audit) => {
@@ -115,7 +133,9 @@ export const createShipxShipmentRepositoryFake = () => {
       const existing = rows.get(key(tenantId, orderId));
       if (existing === undefined || !free(existing, leaseExpiredBefore)) return null;
       const shipment = applyPatch(existing, patch);
+      if (unchanged(existing, shipment)) return existing;
       rows.set(key(tenantId, orderId), shipment);
+      recordRefresh(tenantId, orderId, existing, shipment, actorUserId, null, patch.updatedAt);
       recordBought(tenantId, orderId, existing, shipment, actorUserId, null, patch.updatedAt);
       return shipment;
     },

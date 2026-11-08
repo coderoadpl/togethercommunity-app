@@ -3,6 +3,7 @@ import type {
   Result,
   ShipxEnvironment,
   ShipxLabel,
+  ShipxOperationOutcome,
   ShipxRemoteShipment,
   ShipxSender,
   ShipxShipment,
@@ -76,6 +77,10 @@ interface ShipxShipmentAudit {
   at: string;
 }
 
+interface ShipxOperationEnd extends ShipxShipmentAudit {
+  outcome: ShipxOperationOutcome;
+}
+
 export interface ShipxShipmentRepository {
   findByOrder(tenantId: string, orderId: string): Promise<ShipxShipmentRecord | null>;
   acquire(tenantId: string, input: {
@@ -89,7 +94,7 @@ export interface ShipxShipmentRepository {
     actorUserId: string | null;
   }): Promise<ShipxShipmentAcquisition>;
   update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch, step: ShipxShipmentStep): Promise<ShipxOwnedUpdate>;
-  finishOperation(tenantId: string, orderId: string, token: string): Promise<{ kind: 'finished' } | ShipxClaimLost>;
+  finishOperation(tenantId: string, orderId: string, token: string, end: ShipxOperationEnd): Promise<{ kind: 'finished' } | ShipxClaimLost>;
   release(tenantId: string, orderId: string, token: string, audit: ShipxShipmentAudit): Promise<{ kind: 'released' } | ShipxClaimLost>;
   refreshUnclaimed(
     tenantId: string,

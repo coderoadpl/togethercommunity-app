@@ -457,10 +457,15 @@ ShipX shipment id known at that moment, the staff user, the request's
 | `attempt_released` | a rejected attempt without a ShipX id is deleted | `status`, `createAttemptedAt` |
 | `attempt_discarded` | staff discard an unconfirmed attempt | `status`, `createAttemptedAt` |
 | `label_fetched` | a label is downloaded | none |
+| `status_refreshed` | a ShipX read (a request's poll or opening the order) changes the stored status or tracking number | `from`, `to` (statuses), `trackingNumber` |
+| `operation_finished` | a request clears its own claim at the end | `outcome`: `bought`, `pending`, `unconfirmed`, `released`, `lost_lock` or `failed` |
 
-A read that only refreshes the ShipX status of a known shipment, and the final
-clearing of the claim, change no lifecycle step and write no event. Events are
-never updated or deleted; they go only with their workspace.
+Every `order_shipments` change writes at least one event in the same
+transaction. A ShipX read that reports the stored status and tracking number
+again changes nothing and writes nothing. A request whose claim was taken over,
+or whose attempt was already released, finds no row to clear and writes no
+`operation_finished`. Events are never updated or deleted; they go only with
+their workspace.
 
 The shipment row stores only identifiers (the ShipX shipment id and the ShipX
 organization id), the environment, the ShipX status, the tracking number and
